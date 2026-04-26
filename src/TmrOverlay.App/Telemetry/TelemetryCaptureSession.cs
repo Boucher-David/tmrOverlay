@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
+using TmrOverlay.App.AppInfo;
 
 namespace TmrOverlay.App.Telemetry;
 
@@ -47,14 +48,24 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
         {
             SingleReader = true,
             SingleWriter = false,
-            FullMode = BoundedChannelFullMode.DropWrite
+            FullMode = BoundedChannelFullMode.Wait
         });
         _writerTask = Task.Run(RunWriterLoopAsync);
     }
 
     public string DirectoryPath { get; }
 
+    public string CaptureId => _manifest.CaptureId;
+
     public DateTimeOffset StartedAtUtc { get; }
+
+    public DateTimeOffset? FinishedAtUtc => _manifest.FinishedAtUtc;
+
+    public int FrameCount => _manifest.FrameCount;
+
+    public int DroppedFrameCount => _manifest.DroppedFrameCount;
+
+    public int SessionInfoSnapshotCount => _manifest.SessionInfoSnapshotCount;
 
     public static TelemetryCaptureSession Create(
         string rootDirectory,
@@ -82,7 +93,8 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
             SdkVersion = sdkVersion,
             TickRate = tickRate,
             BufferLength = bufferLength,
-            VariableCount = schema.Count
+            VariableCount = schema.Count,
+            AppVersion = AppVersionInfo.Current
         };
 
         File.WriteAllText(

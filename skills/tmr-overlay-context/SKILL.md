@@ -24,8 +24,8 @@ Use this repo-local skill when the task is about continuing or extending `tmrOve
 ## Primary Files
 
 - `src/TmrOverlay.App/Program.cs`
-- `src/TmrOverlay.App/NotifyIconApplicationContext.cs`
-- `src/TmrOverlay.App/StatusOverlayForm.cs`
+- `src/TmrOverlay.App/Shell/NotifyIconApplicationContext.cs`
+- `src/TmrOverlay.App/Overlays/Status/StatusOverlayForm.cs`
 - `src/TmrOverlay.App/Telemetry/`
 - `docs/capture-format.md`
 - `telemetry.md`
@@ -40,4 +40,3 @@ The immediate goal is not a full overlay suite yet. It is a dependable Windows b
 - live session data is actually being captured
 
 The next major milestone is a live fuel/stint overlay backed by a longer endurance-event capture.
-

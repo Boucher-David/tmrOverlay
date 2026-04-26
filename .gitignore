@@ -1,8 +1,37 @@
-bin/
-obj/
+# macOS / editor noise
+.DS_Store
+.AppleDouble
+.LSOverride
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Visual Studio / .NET build outputs
 .vs/
+[Bb]in/
+[Oo]bj/
+[Tt]est[Rr]esult*/
 *.user
 *.suo
-*.swp
-*.DS_Store
+*.rsuser
+*.userosscache
+*.sln.docstates
 
+# Logs and local diagnostics
+*.log
+
+# Repo-local app data when development overrides are enabled.
+/captures/
+/logs/
+/diagnostics/
+/settings/
+/runtime-state.json
+/history/user/
+
+# Convenience launcher for the ignored macOS harness.
+/run.sh
+
+# Local-only macOS development port.
+# This is intentionally not part of the Windows collector product.
+local-mac/

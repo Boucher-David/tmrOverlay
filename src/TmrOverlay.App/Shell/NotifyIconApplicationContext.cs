@@ -1,13 +1,24 @@
 using System.Diagnostics;
 using System.Drawing;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using TmrOverlay.App.Diagnostics;
+using TmrOverlay.App.Events;
+using TmrOverlay.App.Overlays.Status;
+using TmrOverlay.App.Settings;
+using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
 
-namespace TmrOverlay.App;
+namespace TmrOverlay.App.Shell;
 
 internal sealed class NotifyIconApplicationContext : ApplicationContext
 {
     private readonly IHostApplicationLifetime _applicationLifetime;
+    private readonly AppStorageOptions _storageOptions;
+    private readonly AppSettingsStore _settingsStore;
+    private readonly DiagnosticsBundleService _diagnosticsBundleService;
+    private readonly AppEventRecorder _events;
+    private readonly ILogger<NotifyIconApplicationContext> _logger;
     private readonly TelemetryCaptureOptions _options;
     private readonly TelemetryCaptureState _state;
     private readonly NotifyIcon _notifyIcon;
@@ -19,13 +30,30 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
 
     public NotifyIconApplicationContext(
         IHostApplicationLifetime applicationLifetime,
+        AppStorageOptions storageOptions,
+        AppSettingsStore settingsStore,
+        DiagnosticsBundleService diagnosticsBundleService,
+        AppEventRecorder events,
+        ILogger<NotifyIconApplicationContext> logger,
         TelemetryCaptureOptions options,
         TelemetryCaptureState state)
     {
         _applicationLifetime = applicationLifetime;
+        _storageOptions = storageOptions;
+        _settingsStore = settingsStore;
+        _diagnosticsBundleService = diagnosticsBundleService;
+        _events = events;
+        _logger = logger;
         _options = options;
         _state = state;
-        _overlayForm = new StatusOverlayForm(state, ExitApplication);
+
+        var settings = _settingsStore.Load();
+        var overlaySettings = settings.GetOrAddOverlay(
+            StatusOverlayDefinition.Definition.Id,
+            StatusOverlayDefinition.Definition.DefaultWidth,
+            StatusOverlayDefinition.Definition.DefaultHeight);
+        _settingsStore.Save(settings);
+        _overlayForm = new StatusOverlayForm(state, overlaySettings, SaveSettings, ExitApplication);
 
         _statusItem = new ToolStripMenuItem("Waiting for iRacing")
         {
@@ -38,6 +66,8 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
         };
 
         _rootItem = new ToolStripMenuItem("Open Capture Root", null, (_, _) => OpenDirectory(_options.ResolvedCaptureRoot));
+        var logsItem = new ToolStripMenuItem("Open Logs", null, (_, _) => OpenDirectory(_storageOptions.LogsRoot));
+        var diagnosticsItem = new ToolStripMenuItem("Create Diagnostics Bundle", null, (_, _) => CreateDiagnosticsBundle());
         var exitItem = new ToolStripMenuItem("Exit", null, (_, _) => ExitApplication());
 
         var contextMenu = new ContextMenuStrip();
@@ -47,6 +77,8 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
             new ToolStripSeparator(),
             _captureItem,
             _rootItem,
+            logsItem,
+            diagnosticsItem,
             new ToolStripSeparator(),
             exitItem
         ]);
@@ -123,6 +155,32 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
         _notifyIcon.Visible = false;
         _applicationLifetime.StopApplication();
         ExitThread();
+    }
+
+    private void SaveSettings()
+    {
+        _settingsStore.Save(_settingsStore.Load());
+    }
+
+    private void CreateDiagnosticsBundle()
+    {
+        try
+        {
+            var bundlePath = _diagnosticsBundleService.CreateBundle();
+            _events.Record("diagnostics_bundle_created", new Dictionary<string, string?>
+            {
+                ["bundlePath"] = bundlePath
+            });
+            OpenDirectory(Path.GetDirectoryName(bundlePath)!);
+        }
+        catch (Exception exception)
+        {
+            _events.Record("diagnostics_bundle_failed", new Dictionary<string, string?>
+            {
+                ["error"] = exception.GetType().Name
+            });
+            _logger.LogError(exception, "Failed to create diagnostics bundle.");
+        }
     }
 
     private static void OpenDirectory(string path)

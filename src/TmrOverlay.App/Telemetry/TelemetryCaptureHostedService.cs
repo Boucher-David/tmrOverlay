@@ -1,6 +1,8 @@
 using irsdkSharp;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using TmrOverlay.App.Events;
+using TmrOverlay.App.History;
 
 namespace TmrOverlay.App.Telemetry;
 
@@ -8,10 +10,13 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 {
     private readonly ILogger<TelemetryCaptureHostedService> _logger;
     private readonly TelemetryCaptureOptions _options;
+    private readonly AppEventRecorder _events;
+    private readonly SessionHistoryStore _sessionHistoryStore;
     private readonly TelemetryCaptureState _state;
     private readonly object _sync = new();
     private IRacingSDK? _sdk;
     private TelemetryCaptureSession? _activeCapture;
+    private HistoricalSessionAccumulator? _activeHistory;
     private Task _finalizerTask = Task.CompletedTask;
     private int _frameIndex;
     private int _lastSessionInfoUpdate = -1;
@@ -19,10 +24,14 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     public TelemetryCaptureHostedService(
         ILogger<TelemetryCaptureHostedService> logger,
         TelemetryCaptureOptions options,
+        AppEventRecorder events,
+        SessionHistoryStore sessionHistoryStore,
         TelemetryCaptureState state)
     {
         _logger = logger;
         _options = options;
+        _events = events;
+        _sessionHistoryStore = sessionHistoryStore;
         _state = state;
     }
 
@@ -49,16 +58,19 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         }
 
         TelemetryCaptureSession? captureToFinalize;
+        HistoricalSessionAccumulator? historyToFinalize;
         lock (_sync)
         {
             captureToFinalize = _activeCapture;
+            historyToFinalize = _activeHistory;
             _activeCapture = null;
+            _activeHistory = null;
             _lastSessionInfoUpdate = -1;
         }
 
         if (captureToFinalize is not null)
         {
-            await FinalizeCaptureAsync(captureToFinalize).ConfigureAwait(false);
+            await FinalizeCaptureAsync(captureToFinalize, historyToFinalize).ConfigureAwait(false);
         }
 
         await _finalizerTask.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -67,27 +79,32 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     private void HandleConnected()
     {
         _state.MarkConnected();
+        _events.Record("iracing_connected");
         _logger.LogInformation("Connected to iRacing.");
     }
 
     private void HandleDisconnected()
     {
         _logger.LogInformation("Disconnected from iRacing.");
+        _events.Record("iracing_disconnected");
 
         _state.MarkDisconnected();
 
         TelemetryCaptureSession? captureToFinalize;
+        HistoricalSessionAccumulator? historyToFinalize;
         lock (_sync)
         {
             captureToFinalize = _activeCapture;
+            historyToFinalize = _activeHistory;
             _activeCapture = null;
+            _activeHistory = null;
             _lastSessionInfoUpdate = -1;
             _frameIndex = 0;
         }
 
         if (captureToFinalize is not null)
         {
-            _finalizerTask = FinalizeCaptureAsync(captureToFinalize);
+            _finalizerTask = FinalizeCaptureAsync(captureToFinalize, historyToFinalize);
         }
     }
 
@@ -125,10 +142,12 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             {
                 capture.RecordDroppedFrame();
                 _state.RecordDroppedFrame();
+                _events.Record("capture_dropped_frame");
                 _logger.LogWarning("Dropped telemetry frame because the capture queue is full.");
                 return;
             }
 
+            RecordHistoricalFrame(sdk, capturedAtUtc, sessionInfoUpdate);
             _state.RecordFrame(capturedAtUtc);
         }
         catch (Exception exception)
@@ -174,10 +193,16 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 sdk.Header.TickRate,
                 sdk.Header.BufferLength,
                 schema);
+            _activeHistory = new HistoricalSessionAccumulator();
 
             _frameIndex = 0;
             _lastSessionInfoUpdate = -1;
             _state.MarkCaptureStarted(_activeCapture.DirectoryPath, _activeCapture.StartedAtUtc);
+            _events.Record("capture_started", new Dictionary<string, string?>
+            {
+                ["captureId"] = _activeCapture.CaptureId,
+                ["captureDirectory"] = _activeCapture.DirectoryPath
+            });
             _logger.LogInformation("Started capture {CaptureDirectory}.", _activeCapture.DirectoryPath);
             return _activeCapture;
         }
@@ -230,6 +255,22 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         };
     }
 
+    private static double? ReadNullableDouble(IRacingSDK sdk, string variableName)
+    {
+        var value = ReadDouble(sdk, variableName);
+        return double.IsNaN(value) || double.IsInfinity(value) || value < 0d ? null : value;
+    }
+
+    private static bool ReadBoolean(IRacingSDK sdk, string variableName)
+    {
+        return sdk.GetData(variableName) switch
+        {
+            bool value => value,
+            int value => value != 0,
+            _ => false
+        };
+    }
+
     private void QueueSessionInfoSnapshot(
         TelemetryCaptureSession capture,
         IRacingSDK sdk,
@@ -251,15 +292,85 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         {
             _logger.LogWarning("Dropped session info update {SessionInfoUpdate} because the capture queue is full.", sessionInfoUpdate);
         }
+
+        HistoricalSessionAccumulator? history;
+        lock (_sync)
+        {
+            history = _activeHistory;
+        }
+
+        history?.ApplySessionInfo(sessionInfoYaml);
     }
 
-    private async Task FinalizeCaptureAsync(TelemetryCaptureSession capture)
+    private void RecordHistoricalFrame(IRacingSDK sdk, DateTimeOffset capturedAtUtc, int sessionInfoUpdate)
+    {
+        HistoricalSessionAccumulator? history;
+        lock (_sync)
+        {
+            history = _activeHistory;
+        }
+
+        history?.RecordFrame(new HistoricalTelemetrySample(
+            CapturedAtUtc: capturedAtUtc,
+            SessionTime: ReadDouble(sdk, "SessionTime"),
+            SessionTick: ReadInt32(sdk, "SessionTick"),
+            SessionInfoUpdate: sessionInfoUpdate,
+            IsOnTrack: ReadBoolean(sdk, "IsOnTrack"),
+            IsInGarage: ReadBoolean(sdk, "IsInGarage"),
+            OnPitRoad: ReadBoolean(sdk, "OnPitRoad"),
+            PitstopActive: ReadBoolean(sdk, "PitstopActive"),
+            PlayerCarInPitStall: ReadBoolean(sdk, "PlayerCarInPitStall"),
+            FuelLevelLiters: ReadDouble(sdk, "FuelLevel"),
+            FuelLevelPercent: ReadDouble(sdk, "FuelLevelPct"),
+            FuelUsePerHourKg: ReadDouble(sdk, "FuelUsePerHour"),
+            SpeedMetersPerSecond: ReadDouble(sdk, "Speed"),
+            Lap: ReadInt32(sdk, "Lap"),
+            LapCompleted: ReadInt32(sdk, "LapCompleted"),
+            LapDistPct: ReadDouble(sdk, "LapDistPct"),
+            LapLastLapTimeSeconds: ReadNullableDouble(sdk, "LapLastLapTime"),
+            LapBestLapTimeSeconds: ReadNullableDouble(sdk, "LapBestLapTime"),
+            AirTempC: ReadDouble(sdk, "AirTemp"),
+            TrackTempCrewC: ReadDouble(sdk, "TrackTempCrew"),
+            TrackWetness: ReadInt32(sdk, "TrackWetness"),
+            WeatherDeclaredWet: ReadBoolean(sdk, "WeatherDeclaredWet"),
+            PlayerTireCompound: ReadInt32(sdk, "PlayerTireCompound")));
+    }
+
+    private async Task FinalizeCaptureAsync(TelemetryCaptureSession capture, HistoricalSessionAccumulator? history)
     {
         try
         {
             _state.MarkCaptureStopped();
             await capture.DisposeAsync().ConfigureAwait(false);
             _logger.LogInformation("Finalized capture {CaptureDirectory}.", capture.DirectoryPath);
+            _events.Record("capture_finalized", new Dictionary<string, string?>
+            {
+                ["captureId"] = capture.CaptureId,
+                ["captureDirectory"] = capture.DirectoryPath,
+                ["frameCount"] = capture.FrameCount.ToString(),
+                ["droppedFrameCount"] = capture.DroppedFrameCount.ToString()
+            });
+
+            if (history is not null)
+            {
+                var summary = history.BuildSummary(
+                    capture.CaptureId,
+                    capture.StartedAtUtc,
+                    capture.FinishedAtUtc ?? DateTimeOffset.UtcNow,
+                    capture.DroppedFrameCount,
+                    capture.SessionInfoSnapshotCount);
+
+                await _sessionHistoryStore.SaveAsync(summary, CancellationToken.None).ConfigureAwait(false);
+                _events.Record("history_summary_saved", new Dictionary<string, string?>
+                {
+                    ["captureId"] = capture.CaptureId,
+                    ["carKey"] = summary.Combo.CarKey,
+                    ["trackKey"] = summary.Combo.TrackKey,
+                    ["sessionKey"] = summary.Combo.SessionKey,
+                    ["confidence"] = summary.Quality.Confidence
+                });
+                _logger.LogInformation("Saved session history summary for capture {CaptureId}.", capture.CaptureId);
+            }
         }
         catch (Exception exception)
         {

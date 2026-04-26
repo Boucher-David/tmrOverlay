@@ -1,3 +1,5 @@
+using TmrOverlay.App.AppInfo;
+
 namespace TmrOverlay.App.Telemetry;
 
 internal sealed class CaptureManifest
@@ -31,6 +33,8 @@ internal sealed class CaptureManifest
     public int DroppedFrameCount { get; set; }
 
     public int SessionInfoSnapshotCount { get; set; }
+
+    public AppVersionInfo? AppVersion { get; init; }
 }
 
 internal sealed record TelemetryVariableSchema(
@@ -56,4 +60,3 @@ internal sealed record SessionInfoSnapshot(
     DateTimeOffset CapturedAtUtc,
     int SessionInfoUpdate,
     string Yaml);
-
