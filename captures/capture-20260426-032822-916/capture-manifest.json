@@ -1,0 +1,17 @@
+{
+  "formatVersion": 1,
+  "captureId": "capture-20260426-032822-916",
+  "startedAtUtc": "2026-04-26T03:28:22.9164365+00:00",
+  "finishedAtUtc": "2026-04-26T03:29:40.5137289+00:00",
+  "telemetryFile": "telemetry.bin",
+  "schemaFile": "telemetry-schema.json",
+  "latestSessionInfoFile": "latest-session.yaml",
+  "sessionInfoDirectory": "session-info",
+  "sdkVersion": 2,
+  "tickRate": 60,
+  "bufferLength": 7823,
+  "variableCount": 334,
+  "frameCount": 4592,
+  "droppedFrameCount": 0,
+  "sessionInfoSnapshotCount": 13
+}

@@ -25,7 +25,7 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
         _applicationLifetime = applicationLifetime;
         _options = options;
         _state = state;
-        _overlayForm = new StatusOverlayForm(state);
+        _overlayForm = new StatusOverlayForm(state, ExitApplication);
 
         _statusItem = new ToolStripMenuItem("Waiting for iRacing")
         {

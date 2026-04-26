@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-04-25
+Last updated: 2026-04-26
 
 ## Project Goal
 
@@ -34,8 +34,8 @@ Last updated: 2026-04-25
   - tiny always-on-top overlay placed at `(24, 24)`
   - intended for the top-left of the primary display
   - no taskbar icon
-  - no activation
-  - click-through style via extended window flags
+  - draggable during runtime
+  - includes an `X` button that exits the entire app
   - state colors:
     - gray: waiting for iRacing
     - amber: connected, waiting for first frame
@@ -81,6 +81,32 @@ Short version:
 
 The important architectural choice is that we store the raw shared-memory buffer, not just high-level JSON snapshots. That keeps future analysis and overlay derivation flexible.
 
+## Telemetry Summary
+
+See `telemetry.md`.
+
+That file is the human-oriented outline of the current schema in three layers:
+
+- event
+- session
+- car
+
+It should be kept in sync with how we interpret raw capture artifacts for analysis work.
+
+## Analysis State
+
+Additional preserved context lives in:
+
+- `references/fuel-overlay-context.md`
+- `references/overlay-research.md`
+
+Those files should be read when work shifts from capture plumbing into:
+
+- fuel and stint logic
+- telemetry interpretation
+- overlay feature design
+- overlay UX/layout direction
+
 ## Configuration
 
 `src/TmrOverlay.App/appsettings.json`
@@ -90,6 +116,12 @@ Current keys:
 - `TelemetryCapture:CaptureRoot`
 - `TelemetryCapture:StoreSessionInfoSnapshots`
 - `TelemetryCapture:QueueCapacity`
+
+Current default:
+
+- `CaptureRoot` is set to `captures`
+- relative capture paths resolve against the repo root when `tmrOverlay.sln` is found above the app output directory
+- this keeps live captures in the repo-local `captures/` folder instead of `%LocalAppData%`
 
 Environment override pattern:
 
@@ -137,17 +169,19 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 
 - The scaffold was authored on a machine without `dotnet`, so no compile or runtime verification has happened yet.
 - No replay/decoder tool exists yet for `telemetry.bin`.
-- No user-configurable overlay placement exists yet.
+- Overlay position is draggable at runtime but not persisted yet.
 - No overlay rendering pipeline exists yet beyond the small live-status box.
 - No persistence for logs exists yet beyond capture artifacts.
+- The root-level launcher is `TmrOverlay.cmd`, not a standalone copied `.exe`, because a normal framework-dependent .NET build needs its companion output files.
+- The only analyzed real capture so far is a short offline test session, so fuel/stint logic is still based on limited evidence.
 
 ## Recommended Next Steps
 
-1. Build and run on Windows to verify the tray app, overlay, and SDK connection.
-2. Confirm the overlay remains visible over iRacing and that the collector writes capture folders as expected.
-3. Add a tiny decoder or inspector utility for `telemetry.bin` so stored captures are easy to inspect.
-4. Add a local bridge layer so later overlay windows can subscribe to live snapshots instead of talking to the SDK directly.
-5. Decide whether overlays stay in WinForms or move to a dedicated rendering/UI layer.
+1. Capture and commit a full endurance-event telemetry sample.
+2. Validate fuel/stint derivations against that longer session.
+3. Build the first live fuel/stint overlay.
+4. Add a tiny decoder or inspector utility for `telemetry.bin` so stored captures are easy to inspect.
+5. Add a local bridge layer so later overlay windows can subscribe to live snapshots instead of talking to the SDK directly.
 
 ## Files Most Likely To Change Next
 
@@ -155,6 +189,8 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 - `src/TmrOverlay.App/NotifyIconApplicationContext.cs`
 - `src/TmrOverlay.App/Telemetry/TelemetryCaptureHostedService.cs`
 - `src/TmrOverlay.App/Telemetry/TelemetryCaptureSession.cs`
+- `telemetry.md`
+- `skills/tmr-overlay-context/references/fuel-overlay-context.md`
+- `skills/tmr-overlay-context/references/overlay-research.md`
 - `docs/capture-format.md`
 - `README.md`
-
