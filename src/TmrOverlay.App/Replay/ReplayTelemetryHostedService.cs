@@ -1,0 +1,128 @@
+using System.Text.Json;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using TmrOverlay.App.Events;
+using TmrOverlay.App.Telemetry;
+
+namespace TmrOverlay.App.Replay;
+
+internal sealed class ReplayTelemetryHostedService : IHostedService
+{
+    private readonly ReplayOptions _options;
+    private readonly TelemetryCaptureState _state;
+    private readonly AppEventRecorder _events;
+    private readonly ILogger<ReplayTelemetryHostedService> _logger;
+    private CancellationTokenSource? _replayCancellation;
+    private Task? _replayTask;
+
+    public ReplayTelemetryHostedService(
+        ReplayOptions options,
+        TelemetryCaptureState state,
+        AppEventRecorder events,
+        ILogger<ReplayTelemetryHostedService> logger)
+    {
+        _options = options;
+        _state = state;
+        _events = events;
+        _logger = logger;
+    }
+
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        if (!_options.Enabled)
+        {
+            return Task.CompletedTask;
+        }
+
+        if (string.IsNullOrWhiteSpace(_options.CaptureDirectory))
+        {
+            _logger.LogWarning("Replay mode is enabled, but no Replay:CaptureDirectory was configured.");
+            return Task.CompletedTask;
+        }
+
+        _replayCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _replayTask = Task.Run(() => RunReplayAsync(_replayCancellation.Token), CancellationToken.None);
+        return Task.CompletedTask;
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        _replayCancellation?.Cancel();
+
+        if (_replayTask is not null)
+        {
+            try
+            {
+                await _replayTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (_replayCancellation?.IsCancellationRequested == true)
+            {
+                // Expected when the host is stopping replay mode.
+            }
+        }
+
+        _state.MarkDisconnected();
+    }
+
+    private async Task RunReplayAsync(CancellationToken cancellationToken)
+    {
+        var manifest = ReadManifest(_options.CaptureDirectory!);
+        _logger.LogInformation(
+            "Replay mode started from {CaptureDirectory} with {FrameCount} frames.",
+            _options.CaptureDirectory,
+            manifest?.FrameCount);
+        _events.Record("replay_started", new Dictionary<string, string?>
+        {
+            ["captureDirectory"] = _options.CaptureDirectory,
+            ["frameCount"] = manifest?.FrameCount.ToString()
+        });
+
+        try
+        {
+            _state.MarkConnected();
+            _state.MarkCaptureStarted(_options.CaptureDirectory!, DateTimeOffset.UtcNow);
+
+            var frameCount = Math.Max(0, manifest?.FrameCount ?? 0);
+            var intervalMs = Math.Max(1, (int)Math.Round(1000d / Math.Max(1, manifest?.TickRate ?? 60) / _options.SpeedMultiplier));
+
+            for (var frame = 0; frame < frameCount && !cancellationToken.IsCancellationRequested; frame++)
+            {
+                _state.RecordFrame(DateTimeOffset.UtcNow);
+                await Task.Delay(intervalMs, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Expected when the host stops while replay is active.
+        }
+        finally
+        {
+            _state.MarkCaptureStopped();
+            _state.MarkDisconnected();
+            _events.Record("replay_stopped");
+            _logger.LogInformation("Replay mode stopped.");
+        }
+    }
+
+    private static ReplayCaptureManifest? ReadManifest(string captureDirectory)
+    {
+        var manifestPath = Path.Combine(captureDirectory, "capture-manifest.json");
+        if (!File.Exists(manifestPath))
+        {
+            return null;
+        }
+
+        using var stream = File.OpenRead(manifestPath);
+        return JsonSerializer.Deserialize<ReplayCaptureManifest>(stream, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        });
+    }
+
+    private sealed class ReplayCaptureManifest
+    {
+        public int TickRate { get; init; } = 60;
+
+        public int FrameCount { get; init; }
+    }
+}

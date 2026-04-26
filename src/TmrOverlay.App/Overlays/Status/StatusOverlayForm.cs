@@ -1,13 +1,16 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using TmrOverlay.App.Settings;
 using TmrOverlay.App.Telemetry;
 
-namespace TmrOverlay.App;
+namespace TmrOverlay.App.Overlays.Status;
 
 internal sealed class StatusOverlayForm : Form
 {
     private const int WsExToolWindow = 0x00000080;
     private readonly TelemetryCaptureState _state;
+    private readonly OverlaySettings _settings;
+    private readonly Action _saveSettings;
     private readonly Action _closeApplication;
     private readonly Panel _indicatorPanel;
     private readonly Label _titleLabel;
@@ -19,25 +22,33 @@ internal sealed class StatusOverlayForm : Form
     private Point _dragFormOrigin;
     private bool _dragging;
 
-    public StatusOverlayForm(TelemetryCaptureState state, Action closeApplication)
+    public StatusOverlayForm(
+        TelemetryCaptureState state,
+        OverlaySettings settings,
+        Action saveSettings,
+        Action closeApplication)
     {
         _state = state;
+        _settings = settings;
+        _saveSettings = saveSettings;
         _closeApplication = closeApplication;
 
         AutoScaleMode = AutoScaleMode.None;
         BackColor = Color.FromArgb(26, 26, 26);
-        ClientSize = new Size(304, 92);
+        ClientSize = new Size(
+            _settings.Width > 0 ? _settings.Width : StatusOverlayDefinition.Definition.DefaultWidth,
+            _settings.Height > 0 ? _settings.Height : StatusOverlayDefinition.Definition.DefaultHeight);
         DoubleBuffered = true;
         FormBorderStyle = FormBorderStyle.None;
-        Location = new Point(24, 24);
+        Location = new Point(_settings.X, _settings.Y);
         MaximizeBox = false;
         MinimizeBox = false;
-        Opacity = 0.88d;
+        Opacity = _settings.Opacity;
         Padding = new Padding(14, 12, 14, 12);
         ShowIcon = false;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.Manual;
-        TopMost = true;
+        TopMost = _settings.AlwaysOnTop;
 
         _indicatorPanel = new Panel
         {
@@ -189,6 +200,13 @@ internal sealed class StatusOverlayForm : Form
     private void EndDrag(object? sender, MouseEventArgs e)
     {
         _dragging = false;
+        _settings.X = Location.X;
+        _settings.Y = Location.Y;
+        _settings.Width = Width;
+        _settings.Height = Height;
+        _settings.Opacity = Opacity;
+        _settings.AlwaysOnTop = TopMost;
+        _saveSettings();
     }
 
     private void RefreshOverlay()

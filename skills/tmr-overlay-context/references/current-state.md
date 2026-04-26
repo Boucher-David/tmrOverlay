@@ -20,21 +20,29 @@ Last updated: 2026-04-26
   - loads `appsettings.json`
   - starts the tray application context
 
-- `src/TmrOverlay.App/NotifyIconApplicationContext.cs`
+- `src/TmrOverlay.App/Shell/NotifyIconApplicationContext.cs`
   - owns the tray icon
   - exposes:
     - open latest capture
     - open capture root
+    - open logs
+    - create diagnostics bundle
     - exit
   - shows the overlay form on startup
 
 ### On-screen feedback
 
-- `src/TmrOverlay.App/StatusOverlayForm.cs`
+- `src/TmrOverlay.App/Overlays/`
+  - overlay modules are separated by type
+  - `Abstractions/` contains small shared overlay contracts
+  - `Status/` contains the current collector status overlay
+
+- `src/TmrOverlay.App/Overlays/Status/StatusOverlayForm.cs`
   - tiny always-on-top overlay placed at `(24, 24)`
   - intended for the top-left of the primary display
   - no taskbar icon
   - draggable during runtime
+  - persists position/size under app-owned settings
   - includes an `X` button that exits the entire app
   - state colors:
     - gray: waiting for iRacing
@@ -67,6 +75,67 @@ Last updated: 2026-04-26
   - current capture directory
   - frame counts
   - dropped-frame counts
+
+### Session history
+
+- `src/TmrOverlay.App/History/`
+  - collects compact end-of-session summaries while raw telemetry is captured
+  - stores user summaries under `%LOCALAPPDATA%/TmrOverlay/history/user/cars/{car}/tracks/{track}/sessions/{session}/`
+  - writes a per-capture summary plus an aggregate for baseline lookup
+  - low-confidence samples are still stored but do not contribute to baseline aggregate values
+
+### Storage
+
+- `src/TmrOverlay.App/Storage/AppStorageOptions.cs`
+  - centralizes app-owned local storage roots
+  - default writable root is `%LOCALAPPDATA%/TmrOverlay`
+  - repository-local storage is opt-in with `Storage:UseRepositoryLocalStorage`
+  - tracked starter history belongs under `history/baseline`
+
+### Logging
+
+- `src/TmrOverlay.App/Logging/`
+  - custom local file logger provider
+  - writes rolling logs under `%LOCALAPPDATA%/TmrOverlay/logs`
+  - logs startup/shutdown, storage roots, telemetry service messages, and unhandled exceptions
+  - logging cleanup is best-effort and must not affect capture reliability
+
+### Application boilerplate
+
+- `src/TmrOverlay.App/Settings/`
+  - persists overlay settings under `%LOCALAPPDATA%/TmrOverlay/settings`
+
+- `src/TmrOverlay.App/Events/`
+  - writes JSONL app-event breadcrumbs under `%LOCALAPPDATA%/TmrOverlay/logs/events`
+
+- `src/TmrOverlay.App/Runtime/`
+  - writes a heartbeat/runtime-state file and detects the previous unclean shutdown
+
+- `src/TmrOverlay.App/Diagnostics/`
+  - creates support bundles with app/storage metadata, runtime state, settings, logs/events, and latest capture metadata
+  - intentionally excludes raw `telemetry.bin`
+
+- `src/TmrOverlay.App/Retention/`
+  - removes old capture directories and diagnostics bundles on startup
+
+- `src/TmrOverlay.App/Replay/`
+  - provides a replay-mode seam for overlay development against an existing capture
+
+### Local mac harness
+
+- `local-mac/TmrOverlayMac/`
+  - ignored by git
+  - mirrors the Windows app structure for local macOS development
+  - uses mock telemetry instead of iRacing
+  - defaults writable data to `~/Library/Application Support/TmrOverlayMac`
+  - includes the same categories of logs, events, settings, runtime state, diagnostics, retention, session history, and overlay folder structure
+  - going forward, shared product and app-boilerplate changes should be mirrored in both Windows and mac unless the change is explicitly Windows/iRacing-specific
+
+### Tests
+
+- `tests/TmrOverlay.App.Tests/`
+  - xUnit test project for non-UI logic
+  - currently covers storage path resolution, history path slugs, local file log writing, settings persistence, diagnostics bundle contents, retention cleanup, and runtime-state markers
 
 ## Capture Format
 
@@ -113,19 +182,52 @@ Those files should be read when work shifts from capture plumbing into:
 
 Current keys:
 
-- `TelemetryCapture:CaptureRoot`
 - `TelemetryCapture:StoreSessionInfoSnapshots`
 - `TelemetryCapture:QueueCapacity`
+- `SessionHistory:Enabled`
+- `Storage:UseRepositoryLocalStorage`
+- `Storage:AppDataRoot`
+- `Storage:CaptureRoot`
+- `Storage:UserHistoryRoot`
+- `Storage:BaselineHistoryRoot`
+- `Storage:LogsRoot`
+- `Storage:SettingsRoot`
+- `Storage:DiagnosticsRoot`
+- `Storage:EventsRoot`
+- `Storage:RuntimeStatePath`
+- `Logging:File:Enabled`
+- `Logging:File:MinimumLevel`
+- `Logging:File:MaxFileBytes`
+- `Logging:File:RetainedFileCount`
+- `Retention:Enabled`
+- `Retention:CaptureRetentionDays`
+- `Retention:MaxCaptureDirectories`
+- `Retention:DiagnosticsRetentionDays`
+- `Retention:MaxDiagnosticsBundles`
+- `Replay:Enabled`
+- `Replay:CaptureDirectory`
+- `Replay:SpeedMultiplier`
 
 Current default:
 
-- `CaptureRoot` is set to `captures`
-- relative capture paths resolve against the repo root when `tmrOverlay.sln` is found above the app output directory
-- this keeps live captures in the repo-local `captures/` folder instead of `%LocalAppData%`
+- writable storage resolves under `%LOCALAPPDATA%/TmrOverlay`
+- captures default to `%LOCALAPPDATA%/TmrOverlay/captures`
+- user history defaults to `%LOCALAPPDATA%/TmrOverlay/history/user`
+- local logs default to `%LOCALAPPDATA%/TmrOverlay/logs`
+- app events default to `%LOCALAPPDATA%/TmrOverlay/logs/events`
+- settings default to `%LOCALAPPDATA%/TmrOverlay/settings`
+- diagnostics default to `%LOCALAPPDATA%/TmrOverlay/diagnostics`
+- runtime state defaults to `%LOCALAPPDATA%/TmrOverlay/runtime-state.json`
+- baseline history defaults to the repo `history/baseline` during development when the repository root can be found
 
 Environment override pattern:
 
-- `TMR_TelemetryCapture__CaptureRoot`
+- `TMR_Storage__UseRepositoryLocalStorage=true`
+- `TMR_Storage__CaptureRoot`
+- `TMR_Storage__UserHistoryRoot`
+- `TMR_Storage__AppDataRoot`
+- `TMR_Replay__Enabled=true`
+- `TMR_Replay__CaptureDirectory`
 
 ## Real-World Data Sources Already Identified
 
@@ -167,11 +269,10 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 
 ## Known Limitations
 
-- The scaffold was authored on a machine without `dotnet`, so no compile or runtime verification has happened yet.
+- The current machine does not have `dotnet`, so Windows build/test verification still needs to happen on a .NET-equipped machine.
+- The local mac Swift package builds, but `swift test` currently requires an XCTest-capable Swift/Xcode toolchain.
 - No replay/decoder tool exists yet for `telemetry.bin`.
-- Overlay position is draggable at runtime but not persisted yet.
-- No overlay rendering pipeline exists yet beyond the small live-status box.
-- No persistence for logs exists yet beyond capture artifacts.
+- Overlay modules now live under `src/TmrOverlay.App/Overlays/`, but no full multi-overlay rendering pipeline exists yet beyond the small live-status box.
 - The root-level launcher is `TmrOverlay.cmd`, not a standalone copied `.exe`, because a normal framework-dependent .NET build needs its companion output files.
 - The only analyzed real capture so far is a short offline test session, so fuel/stint logic is still based on limited evidence.
 
@@ -185,8 +286,9 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 
 ## Files Most Likely To Change Next
 
-- `src/TmrOverlay.App/StatusOverlayForm.cs`
-- `src/TmrOverlay.App/NotifyIconApplicationContext.cs`
+- `src/TmrOverlay.App/Overlays/Status/StatusOverlayForm.cs`
+- `src/TmrOverlay.App/Shell/NotifyIconApplicationContext.cs`
+- `src/TmrOverlay.App/History/`
 - `src/TmrOverlay.App/Telemetry/TelemetryCaptureHostedService.cs`
 - `src/TmrOverlay.App/Telemetry/TelemetryCaptureSession.cs`
 - `telemetry.md`
