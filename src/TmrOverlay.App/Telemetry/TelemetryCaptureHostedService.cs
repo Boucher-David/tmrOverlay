@@ -37,7 +37,18 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        Directory.CreateDirectory(_options.ResolvedCaptureRoot);
+        _state.SetCaptureRoot(_options.ResolvedCaptureRoot);
+
+        try
+        {
+            Directory.CreateDirectory(_options.ResolvedCaptureRoot);
+        }
+        catch (Exception exception)
+        {
+            _state.RecordError($"Cannot create capture root: {exception.Message}");
+            _logger.LogError(exception, "Failed to create telemetry capture root {CaptureRoot}.", _options.ResolvedCaptureRoot);
+            throw;
+        }
 
         _sdk = new IRacingSDK();
         _sdk.OnConnected += HandleConnected;
@@ -73,7 +84,15 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             await FinalizeCaptureAsync(captureToFinalize, historyToFinalize).ConfigureAwait(false);
         }
 
-        await _finalizerTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _finalizerTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _state.RecordError($"Capture finalizer failed: {exception.Message}");
+            throw;
+        }
     }
 
     private void HandleConnected()
@@ -142,6 +161,20 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             {
                 capture.RecordDroppedFrame();
                 _state.RecordDroppedFrame();
+                var writerFault = capture.WriterFault;
+                if (writerFault is not null)
+                {
+                    _state.RecordError($"Capture writer failed: {writerFault.Message}");
+                    _events.Record("capture_writer_failed", new Dictionary<string, string?>
+                    {
+                        ["captureId"] = capture.CaptureId,
+                        ["error"] = writerFault.Message
+                    });
+                    _logger.LogError(writerFault, "Dropped telemetry frame because the capture writer failed.");
+                    return;
+                }
+
+                _state.RecordWarning("Dropped telemetry frame because the capture queue is full.");
                 _events.Record("capture_dropped_frame");
                 _logger.LogWarning("Dropped telemetry frame because the capture queue is full.");
                 return;
@@ -152,6 +185,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         }
         catch (Exception exception)
         {
+            _state.RecordError($"Telemetry read failed: {exception.Message}");
             _logger.LogError(exception, "An error occurred while reading telemetry from iRacing.");
         }
     }
@@ -192,7 +226,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 sdk.Header.Version,
                 sdk.Header.TickRate,
                 sdk.Header.BufferLength,
-                schema);
+                schema,
+                _state.RecordCaptureWrite);
             _activeHistory = new HistoricalSessionAccumulator();
 
             _frameIndex = 0;
@@ -290,6 +325,15 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 
         if (!capture.TryQueueSessionInfo(sessionSnapshot))
         {
+            var writerFault = capture.WriterFault;
+            if (writerFault is not null)
+            {
+                _state.RecordError($"Capture writer failed while saving session info: {writerFault.Message}");
+                _logger.LogError(writerFault, "Dropped session info update because the capture writer failed.");
+                return;
+            }
+
+            _state.RecordWarning($"Dropped session info update {sessionInfoUpdate} because the capture queue is full.");
             _logger.LogWarning("Dropped session info update {SessionInfoUpdate} because the capture queue is full.", sessionInfoUpdate);
         }
 
@@ -374,6 +418,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         }
         catch (Exception exception)
         {
+            _state.RecordError($"Capture finalization failed: {exception.Message}");
             _logger.LogError(exception, "Failed to finalize capture {CaptureDirectory}.", capture.DirectoryPath);
         }
     }

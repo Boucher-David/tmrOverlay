@@ -44,10 +44,12 @@ Last updated: 2026-04-26
   - draggable during runtime
   - persists position/size under app-owned settings
   - includes an `X` button that exits the entire app
+  - shows the capture root/current path, queued frame count, written frame count, dropped frames, telemetry file size, latest SDK-frame freshness, latest disk-write freshness, and explicit warning/error text
   - state colors:
     - gray: waiting for iRacing
-    - amber: connected, waiting for first frame
-    - green: actively collecting live session data
+    - amber: waiting, connected-without-capture, app warning, or dropped frames
+    - green: actively collecting live session data with confirmed disk writes
+    - red: capture writer error, queued frames not reaching disk, stale SDK frames, or stale disk writes
 
 ### Telemetry capture pipeline
 
@@ -110,6 +112,7 @@ Last updated: 2026-04-26
 
 - `src/TmrOverlay.App/Runtime/`
   - writes a heartbeat/runtime-state file and detects the previous unclean shutdown
+  - includes a local-development build freshness check that warns when source files in the checkout are newer than the running build
 
 - `src/TmrOverlay.App/Diagnostics/`
   - creates support bundles with app/storage metadata, runtime state, settings, logs/events, and latest capture metadata
@@ -129,6 +132,9 @@ Last updated: 2026-04-26
   - uses mock telemetry instead of iRacing
   - defaults writable data to `~/Library/Application Support/TmrOverlayMac`
   - includes the same categories of logs, events, settings, runtime state, diagnostics, retention, session history, and overlay folder structure
+  - mirrors the capture-health overlay fields and build freshness warning
+  - can preview spoofed overlay states with `TMR_MAC_DEMO_STATES=true ./run.sh`
+  - the mac menu exposes manual demo states for waiting, connected-without-capture, healthy capture, stale build, dropped frames, frames-not-written, disk-stalled, and capture-error
   - going forward, shared product and app-boilerplate changes should be mirrored in both Windows and mac unless the change is explicitly Windows/iRacing-specific
 
 ### Tests

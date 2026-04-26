@@ -7,6 +7,6 @@ internal static class StatusOverlayDefinition
     public static OverlayDefinition Definition { get; } = new(
         Id: "status",
         DisplayName: "Collector Status",
-        DefaultWidth: 304,
-        DefaultHeight: 92);
+        DefaultWidth: 520,
+        DefaultHeight: 150);
 }

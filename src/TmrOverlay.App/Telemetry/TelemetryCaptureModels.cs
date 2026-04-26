@@ -60,3 +60,12 @@ internal sealed record SessionInfoSnapshot(
     DateTimeOffset CapturedAtUtc,
     int SessionInfoUpdate,
     string Yaml);
+
+internal sealed record TelemetryCaptureWriteStatus(
+    DateTimeOffset TimestampUtc,
+    string CaptureId,
+    string DirectoryPath,
+    int FramesWritten,
+    int SessionInfoSnapshotCount,
+    long? TelemetryFileBytes,
+    Exception? Exception);

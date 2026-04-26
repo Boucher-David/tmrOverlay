@@ -27,6 +27,8 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
     private readonly string _latestSessionInfoPath;
     private readonly string _sessionInfoDirectoryPath;
     private readonly CaptureManifest _manifest;
+    private readonly Action<TelemetryCaptureWriteStatus>? _writeStatusChanged;
+    private Exception? _writerFault;
     private int _droppedFrameCount;
     private int _disposed;
 
@@ -34,12 +36,14 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
         string directoryPath,
         bool storeSessionInfoSnapshots,
         CaptureManifest manifest,
-        int queueCapacity)
+        int queueCapacity,
+        Action<TelemetryCaptureWriteStatus>? writeStatusChanged)
     {
         DirectoryPath = directoryPath;
         StartedAtUtc = manifest.StartedAtUtc;
         _storeSessionInfoSnapshots = storeSessionInfoSnapshots;
         _manifest = manifest;
+        _writeStatusChanged = writeStatusChanged;
         _telemetryFilePath = Path.Combine(directoryPath, TelemetryFileName);
         _manifestFilePath = Path.Combine(directoryPath, ManifestFileName);
         _latestSessionInfoPath = Path.Combine(directoryPath, LatestSessionInfoFileName);
@@ -67,6 +71,8 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
 
     public int SessionInfoSnapshotCount => _manifest.SessionInfoSnapshotCount;
 
+    public Exception? WriterFault => Volatile.Read(ref _writerFault);
+
     public static TelemetryCaptureSession Create(
         string rootDirectory,
         int queueCapacity,
@@ -74,7 +80,8 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
         int sdkVersion,
         int tickRate,
         int bufferLength,
-        IReadOnlyCollection<TelemetryVariableSchema> schema)
+        IReadOnlyCollection<TelemetryVariableSchema> schema,
+        Action<TelemetryCaptureWriteStatus>? writeStatusChanged = null)
     {
         var startedAtUtc = DateTimeOffset.UtcNow;
         var captureId = $"capture-{startedAtUtc:yyyyMMdd-HHmmss-fff}";
@@ -109,16 +116,27 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
             directoryPath,
             storeSessionInfoSnapshots,
             manifest,
-            queueCapacity);
+            queueCapacity,
+            writeStatusChanged);
     }
 
     public bool TryQueueFrame(TelemetryFrameEnvelope frame)
     {
+        if (WriterFault is not null)
+        {
+            return false;
+        }
+
         return _messages.Writer.TryWrite(new CaptureFrameMessage(frame));
     }
 
     public bool TryQueueSessionInfo(SessionInfoSnapshot sessionInfo)
     {
+        if (WriterFault is not null)
+        {
+            return false;
+        }
+
         return _messages.Writer.TryWrite(new CaptureSessionInfoMessage(sessionInfo));
     }
 
@@ -140,43 +158,56 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
 
     private async Task RunWriterLoopAsync()
     {
-        Directory.CreateDirectory(_sessionInfoDirectoryPath);
-
-        await using var telemetryStream = new FileStream(
-            _telemetryFilePath,
-            FileMode.Create,
-            FileAccess.Write,
-            FileShare.Read,
-            bufferSize: 64 * 1024,
-            useAsync: true);
-
-        await WriteFileHeaderAsync(telemetryStream).ConfigureAwait(false);
-
-        await foreach (var message in _messages.Reader.ReadAllAsync())
+        try
         {
-            switch (message)
+            Directory.CreateDirectory(_sessionInfoDirectoryPath);
+
+            await using var telemetryStream = new FileStream(
+                _telemetryFilePath,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.Read,
+                bufferSize: 64 * 1024,
+                useAsync: true);
+
+            await WriteFileHeaderAsync(telemetryStream).ConfigureAwait(false);
+            ReportWriteStatus(telemetryStream.Length);
+
+            await foreach (var message in _messages.Reader.ReadAllAsync())
             {
-                case CaptureFrameMessage frameMessage:
-                    await WriteFrameAsync(telemetryStream, frameMessage.Frame).ConfigureAwait(false);
-                    _manifest.FrameCount++;
-                    break;
+                switch (message)
+                {
+                    case CaptureFrameMessage frameMessage:
+                        await WriteFrameAsync(telemetryStream, frameMessage.Frame).ConfigureAwait(false);
+                        _manifest.FrameCount++;
+                        ReportWriteStatus(telemetryStream.Length);
+                        break;
 
-                case CaptureSessionInfoMessage sessionInfoMessage:
-                    await WriteSessionInfoAsync(sessionInfoMessage.SessionInfo).ConfigureAwait(false);
-                    _manifest.SessionInfoSnapshotCount++;
-                    break;
+                    case CaptureSessionInfoMessage sessionInfoMessage:
+                        await WriteSessionInfoAsync(sessionInfoMessage.SessionInfo).ConfigureAwait(false);
+                        _manifest.SessionInfoSnapshotCount++;
+                        ReportWriteStatus(telemetryStream.Length);
+                        break;
+                }
             }
+
+            await telemetryStream.FlushAsync().ConfigureAwait(false);
+
+            _manifest.FinishedAtUtc = DateTimeOffset.UtcNow;
+            _manifest.DroppedFrameCount = Volatile.Read(ref _droppedFrameCount);
+
+            await File.WriteAllTextAsync(
+                    _manifestFilePath,
+                    JsonSerializer.Serialize(_manifest, JsonOptions))
+                .ConfigureAwait(false);
         }
-
-        await telemetryStream.FlushAsync().ConfigureAwait(false);
-
-        _manifest.FinishedAtUtc = DateTimeOffset.UtcNow;
-        _manifest.DroppedFrameCount = Volatile.Read(ref _droppedFrameCount);
-
-        await File.WriteAllTextAsync(
-                _manifestFilePath,
-                JsonSerializer.Serialize(_manifest, JsonOptions))
-            .ConfigureAwait(false);
+        catch (Exception exception)
+        {
+            Volatile.Write(ref _writerFault, exception);
+            _messages.Writer.TryComplete(exception);
+            ReportWriteStatus(null, exception);
+            throw;
+        }
     }
 
     private async Task WriteFileHeaderAsync(FileStream telemetryStream)
@@ -219,6 +250,25 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
             $"session-{sessionInfo.SessionInfoUpdate:D4}.yaml");
 
         await File.WriteAllTextAsync(snapshotPath, sessionInfo.Yaml).ConfigureAwait(false);
+    }
+
+    private void ReportWriteStatus(long? telemetryFileBytes, Exception? exception = null)
+    {
+        try
+        {
+            _writeStatusChanged?.Invoke(new TelemetryCaptureWriteStatus(
+                TimestampUtc: DateTimeOffset.UtcNow,
+                CaptureId: CaptureId,
+                DirectoryPath: DirectoryPath,
+                FramesWritten: _manifest.FrameCount,
+                SessionInfoSnapshotCount: _manifest.SessionInfoSnapshotCount,
+                TelemetryFileBytes: telemetryFileBytes,
+                Exception: exception));
+        }
+        catch
+        {
+            // UI health reporting is diagnostic-only and must not affect capture writes.
+        }
     }
 
     private abstract record CaptureMessage;

@@ -13,6 +13,7 @@
 - Stores the telemetry schema once per capture in `telemetry-schema.json`.
 - Stores raw session YAML snapshots in `session-info/` and updates `latest-session.yaml`.
 - Finalizes a `capture-manifest.json` file when the sim disconnects or the app exits.
+- Shows capture-health signals in the overlay so you can distinguish live SDK frames from confirmed disk writes.
 - Writes compact per-combo session history under app-owned local storage.
 - Writes rolling local logs, JSONL app events, runtime-state markers, persisted settings, and diagnostics bundles for triage.
 - Includes retention cleanup for old captures and diagnostics bundles.
@@ -61,7 +62,9 @@ Each capture folder contains:
 You can also double-click [TmrOverlay.cmd](/Users/davidboucher/Code/tmrOverlay/TmrOverlay.cmd) from the repo root after the app has been built once. It launches the built executable from the expected `Debug` or `Release` output folder.
 
 The tray menu lets you open the captures folder, open the current capture, open logs, create a diagnostics bundle, or exit the app.
-The overlay stays visible over the sim so you can confirm the app is running and whether live telemetry capture has started. You can drag it to a new position, and the `X` button fully exits the application.
+The overlay stays visible over the sim so you can confirm the app is running and whether live telemetry capture has started. It now shows the active capture path, queued frames, written frames, dropped frames, telemetry file size, frame freshness, disk-write freshness, and explicit warning/error messages. You can drag it to a new position, and the `X` button fully exits the application.
+
+During local development, the overlay also warns when source files in this checkout are newer than the running build. That is a rebuild reminder only; it does not block capture.
 
 ## macOS Local Harness
 
@@ -72,6 +75,14 @@ The ignored macOS harness is for local overlay and boilerplate iteration on this
 ```
 
 It writes mock capture data to `~/Library/Application Support/TmrOverlayMac` by default and mirrors the Windows storage layout for captures, user history, logs, events, settings, diagnostics, runtime state, and retention cleanup. Set `TMR_MAC_USE_REPOSITORY_LOCAL_STORAGE=true` if you intentionally want mac harness data under the ignored `local-mac/TmrOverlayMac/` folder.
+
+For overlay-state previews on macOS, launch with:
+
+```bash
+TMR_MAC_DEMO_STATES=true ./run.sh
+```
+
+That cycles through waiting-for-sim, connected-without-capture, healthy capture, stale build, dropped-frame, frames-not-written, disk-stalled, and writer-error states. The menu-bar item also exposes manual demo-state entries.
 
 ## Session History
 

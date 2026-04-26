@@ -122,9 +122,25 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
     {
         var snapshot = _state.Snapshot();
 
+        if (!string.IsNullOrWhiteSpace(snapshot.LastError))
+        {
+            _statusItem.Text = "Capture error";
+            _captureItem.Enabled = !string.IsNullOrWhiteSpace(snapshot.CurrentCaptureDirectory ?? snapshot.LastCaptureDirectory);
+            _captureItem.Text = snapshot.IsCapturing ? "Open Current Capture" : "Open Latest Capture";
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(snapshot.LastWarning))
+        {
+            _statusItem.Text = "Capture warning";
+        }
+
         if (snapshot.IsCapturing)
         {
-            _statusItem.Text = $"Capturing {snapshot.FrameCount:N0} frames";
+            var statusPrefix = !string.IsNullOrWhiteSpace(snapshot.LastWarning)
+                ? "Warning"
+                : "Capturing";
+            _statusItem.Text = $"{statusPrefix}: {snapshot.FrameCount:N0} queued / {snapshot.WrittenFrameCount:N0} written";
             _captureItem.Enabled = !string.IsNullOrWhiteSpace(snapshot.CurrentCaptureDirectory);
             _captureItem.Text = "Open Current Capture";
             return;
