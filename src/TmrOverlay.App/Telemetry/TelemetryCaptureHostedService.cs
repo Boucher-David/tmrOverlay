@@ -18,6 +18,9 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     private TelemetryCaptureSession? _activeCapture;
     private HistoricalSessionAccumulator? _activeHistory;
     private Task _finalizerTask = Task.CompletedTask;
+    private string? _activeSourceId;
+    private DateTimeOffset? _activeStartedAtUtc;
+    private int _sessionInfoSnapshotCount;
     private int _frameIndex;
     private int _lastSessionInfoUpdate = -1;
 
@@ -37,14 +40,32 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        Directory.CreateDirectory(_options.ResolvedCaptureRoot);
+        _state.SetCaptureRoot(_options.ResolvedCaptureRoot);
+        _state.SetRawCaptureEnabled(_options.RawCaptureEnabled);
+
+        if (_options.RawCaptureEnabled)
+        {
+            try
+            {
+                Directory.CreateDirectory(_options.ResolvedCaptureRoot);
+            }
+            catch (Exception exception)
+            {
+                _state.RecordError($"Cannot create capture root: {exception.Message}");
+                _logger.LogError(exception, "Failed to create telemetry capture root {CaptureRoot}.", _options.ResolvedCaptureRoot);
+                throw;
+            }
+        }
 
         _sdk = new IRacingSDK();
         _sdk.OnConnected += HandleConnected;
         _sdk.OnDisconnected += HandleDisconnected;
         _sdk.OnDataChanged += HandleDataChanged;
 
-        _logger.LogInformation("Telemetry capture service started. Captures will be written to {CaptureRoot}.", _options.ResolvedCaptureRoot);
+        _logger.LogInformation(
+            "Telemetry collection service started. Raw capture enabled: {RawCaptureEnabled}. Capture root: {CaptureRoot}.",
+            _options.RawCaptureEnabled,
+            _options.ResolvedCaptureRoot);
         return Task.CompletedTask;
     }
 
@@ -59,21 +80,34 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 
         TelemetryCaptureSession? captureToFinalize;
         HistoricalSessionAccumulator? historyToFinalize;
+        var finalization = CaptureFinalizationContext.Empty;
         lock (_sync)
         {
             captureToFinalize = _activeCapture;
             historyToFinalize = _activeHistory;
+            finalization = BuildFinalizationContext(captureToFinalize);
             _activeCapture = null;
             _activeHistory = null;
+            _activeSourceId = null;
+            _activeStartedAtUtc = null;
+            _sessionInfoSnapshotCount = 0;
             _lastSessionInfoUpdate = -1;
         }
 
-        if (captureToFinalize is not null)
+        if (captureToFinalize is not null || historyToFinalize is not null)
         {
-            await FinalizeCaptureAsync(captureToFinalize, historyToFinalize).ConfigureAwait(false);
+            await FinalizeCollectionAsync(captureToFinalize, historyToFinalize, finalization).ConfigureAwait(false);
         }
 
-        await _finalizerTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _finalizerTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _state.RecordError($"Capture finalizer failed: {exception.Message}");
+            throw;
+        }
     }
 
     private void HandleConnected()
@@ -92,19 +126,24 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 
         TelemetryCaptureSession? captureToFinalize;
         HistoricalSessionAccumulator? historyToFinalize;
+        var finalization = CaptureFinalizationContext.Empty;
         lock (_sync)
         {
             captureToFinalize = _activeCapture;
             historyToFinalize = _activeHistory;
+            finalization = BuildFinalizationContext(captureToFinalize);
             _activeCapture = null;
             _activeHistory = null;
+            _activeSourceId = null;
+            _activeStartedAtUtc = null;
+            _sessionInfoSnapshotCount = 0;
             _lastSessionInfoUpdate = -1;
             _frameIndex = 0;
         }
 
-        if (captureToFinalize is not null)
+        if (captureToFinalize is not null || historyToFinalize is not null)
         {
-            _finalizerTask = FinalizeCaptureAsync(captureToFinalize, historyToFinalize);
+            _finalizerTask = FinalizeCollectionAsync(captureToFinalize, historyToFinalize, finalization);
         }
     }
 
@@ -119,32 +158,49 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 
         try
         {
-            var capture = GetOrCreateCapture(sdk);
             var capturedAtUtc = DateTimeOffset.UtcNow;
+            var capture = GetOrCreateCollection(sdk, capturedAtUtc);
             var sessionInfoUpdate = sdk.Header.SessionInfoUpdate;
 
             var latestSessionInfoUpdate = UpdateSessionInfoVersion(sessionInfoUpdate);
             if (latestSessionInfoUpdate)
             {
-                QueueSessionInfoSnapshot(capture, sdk, capturedAtUtc, sessionInfoUpdate);
+                RecordSessionInfoSnapshot(capture, sdk, capturedAtUtc, sessionInfoUpdate);
             }
 
-            var payload = ReadTelemetryBuffer(sdk);
-            var frame = new TelemetryFrameEnvelope(
-                CapturedAtUtc: capturedAtUtc,
-                FrameIndex: Interlocked.Increment(ref _frameIndex),
-                SessionTick: ReadInt32(sdk, "SessionTick"),
-                SessionInfoUpdate: sessionInfoUpdate,
-                SessionTime: ReadDouble(sdk, "SessionTime"),
-                Payload: payload);
-
-            if (!capture.TryQueueFrame(frame))
+            if (capture is not null)
             {
-                capture.RecordDroppedFrame();
-                _state.RecordDroppedFrame();
-                _events.Record("capture_dropped_frame");
-                _logger.LogWarning("Dropped telemetry frame because the capture queue is full.");
-                return;
+                var payload = ReadTelemetryBuffer(sdk);
+                var frame = new TelemetryFrameEnvelope(
+                    CapturedAtUtc: capturedAtUtc,
+                    FrameIndex: Interlocked.Increment(ref _frameIndex),
+                    SessionTick: ReadInt32(sdk, "SessionTick"),
+                    SessionInfoUpdate: sessionInfoUpdate,
+                    SessionTime: ReadDouble(sdk, "SessionTime"),
+                    Payload: payload);
+
+                if (!capture.TryQueueFrame(frame))
+                {
+                    capture.RecordDroppedFrame();
+                    _state.RecordDroppedFrame();
+                    var writerFault = capture.WriterFault;
+                    if (writerFault is not null)
+                    {
+                        _state.RecordError($"Capture writer failed: {writerFault.Message}");
+                        _events.Record("capture_writer_failed", new Dictionary<string, string?>
+                        {
+                            ["captureId"] = capture.CaptureId,
+                            ["error"] = writerFault.Message
+                        });
+                        _logger.LogError(writerFault, "Dropped telemetry frame because the capture writer failed.");
+                        return;
+                    }
+
+                    _state.RecordWarning("Dropped telemetry frame because the capture queue is full.");
+                    _events.Record("capture_dropped_frame");
+                    _logger.LogWarning("Dropped telemetry frame because the capture queue is full.");
+                    return;
+                }
             }
 
             RecordHistoricalFrame(sdk, capturedAtUtc, sessionInfoUpdate);
@@ -152,60 +208,91 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         }
         catch (Exception exception)
         {
+            _state.RecordError($"Telemetry read failed: {exception.Message}");
             _logger.LogError(exception, "An error occurred while reading telemetry from iRacing.");
         }
     }
 
-    private TelemetryCaptureSession GetOrCreateCapture(IRacingSDK sdk)
+    private TelemetryCaptureSession? GetOrCreateCollection(IRacingSDK sdk, DateTimeOffset startedAtUtc)
     {
         lock (_sync)
         {
-            if (_activeCapture is not null)
+            if (_activeHistory is not null)
             {
                 return _activeCapture;
             }
 
-            var headers = IRacingSDK.GetVarHeaders(sdk);
-            if (headers is null || sdk.Header is null)
+            TelemetryCaptureSession? capture = null;
+            if (_options.RawCaptureEnabled)
             {
-                throw new InvalidOperationException("The SDK headers are not available yet.");
+                capture = CreateCaptureSession(sdk);
+                _activeCapture = capture;
             }
 
-            var schema = headers.Values
-                .OrderBy(header => header.Offset)
-                .Select(header => new TelemetryVariableSchema(
-                    Name: header.Name,
-                    TypeName: header.Type.ToString(),
-                    TypeCode: (int)header.Type,
-                    Count: header.Count,
-                    Offset: header.Offset,
-                    ByteSize: header.Bytes,
-                    Length: header.Length,
-                    Unit: header.Unit,
-                    Description: header.Desc))
-                .ToArray();
-
-            _activeCapture = TelemetryCaptureSession.Create(
-                _options.ResolvedCaptureRoot,
-                _options.QueueCapacity,
-                _options.StoreSessionInfoSnapshots,
-                sdk.Header.Version,
-                sdk.Header.TickRate,
-                sdk.Header.BufferLength,
-                schema);
             _activeHistory = new HistoricalSessionAccumulator();
-
+            _activeSourceId = capture?.CaptureId ?? $"session-{startedAtUtc:yyyyMMdd-HHmmss-fff}";
+            _activeStartedAtUtc = capture?.StartedAtUtc ?? startedAtUtc;
+            _sessionInfoSnapshotCount = 0;
             _frameIndex = 0;
             _lastSessionInfoUpdate = -1;
-            _state.MarkCaptureStarted(_activeCapture.DirectoryPath, _activeCapture.StartedAtUtc);
-            _events.Record("capture_started", new Dictionary<string, string?>
+            _state.MarkCollectionStarted(_activeStartedAtUtc.Value);
+
+            if (capture is not null)
             {
-                ["captureId"] = _activeCapture.CaptureId,
-                ["captureDirectory"] = _activeCapture.DirectoryPath
+                _state.MarkCaptureStarted(capture.DirectoryPath, capture.StartedAtUtc);
+                _events.Record("capture_started", new Dictionary<string, string?>
+                {
+                    ["captureId"] = capture.CaptureId,
+                    ["captureDirectory"] = capture.DirectoryPath
+                });
+                _logger.LogInformation("Started raw capture {CaptureDirectory}.", capture.DirectoryPath);
+            }
+
+            _events.Record("telemetry_collection_started", new Dictionary<string, string?>
+            {
+                ["sourceId"] = _activeSourceId,
+                ["rawCaptureEnabled"] = _options.RawCaptureEnabled.ToString()
             });
-            _logger.LogInformation("Started capture {CaptureDirectory}.", _activeCapture.DirectoryPath);
-            return _activeCapture;
+            _logger.LogInformation(
+                "Started live telemetry collection {SourceId}. Raw capture enabled: {RawCaptureEnabled}.",
+                _activeSourceId,
+                _options.RawCaptureEnabled);
+
+            return capture;
         }
+    }
+
+    private TelemetryCaptureSession CreateCaptureSession(IRacingSDK sdk)
+    {
+        var headers = IRacingSDK.GetVarHeaders(sdk);
+        if (headers is null || sdk.Header is null)
+        {
+            throw new InvalidOperationException("The SDK headers are not available yet.");
+        }
+
+        var schema = headers.Values
+            .OrderBy(header => header.Offset)
+            .Select(header => new TelemetryVariableSchema(
+                Name: header.Name,
+                TypeName: header.Type.ToString(),
+                TypeCode: (int)header.Type,
+                Count: header.Count,
+                Offset: header.Offset,
+                ByteSize: header.Bytes,
+                Length: header.Length,
+                Unit: header.Unit,
+                Description: header.Desc))
+            .ToArray();
+
+        return TelemetryCaptureSession.Create(
+            _options.ResolvedCaptureRoot,
+            _options.QueueCapacity,
+            _options.StoreSessionInfoSnapshots,
+            sdk.Header.Version,
+            sdk.Header.TickRate,
+            sdk.Header.BufferLength,
+            schema,
+            _state.RecordCaptureWrite);
     }
 
     private bool UpdateSessionInfoVersion(int sessionInfoUpdate)
@@ -271,8 +358,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         };
     }
 
-    private void QueueSessionInfoSnapshot(
-        TelemetryCaptureSession capture,
+    private void RecordSessionInfoSnapshot(
+        TelemetryCaptureSession? capture,
         IRacingSDK sdk,
         DateTimeOffset capturedAtUtc,
         int sessionInfoUpdate)
@@ -283,20 +370,33 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             return;
         }
 
-        var sessionSnapshot = new SessionInfoSnapshot(
-            CapturedAtUtc: capturedAtUtc,
-            SessionInfoUpdate: sessionInfoUpdate,
-            Yaml: sessionInfoYaml);
-
-        if (!capture.TryQueueSessionInfo(sessionSnapshot))
+        if (capture is not null)
         {
-            _logger.LogWarning("Dropped session info update {SessionInfoUpdate} because the capture queue is full.", sessionInfoUpdate);
+            var sessionSnapshot = new SessionInfoSnapshot(
+                CapturedAtUtc: capturedAtUtc,
+                SessionInfoUpdate: sessionInfoUpdate,
+                Yaml: sessionInfoYaml);
+
+            if (!capture.TryQueueSessionInfo(sessionSnapshot))
+            {
+                var writerFault = capture.WriterFault;
+                if (writerFault is not null)
+                {
+                    _state.RecordError($"Capture writer failed while saving session info: {writerFault.Message}");
+                    _logger.LogError(writerFault, "Dropped session info update because the capture writer failed.");
+                    return;
+                }
+
+                _state.RecordWarning($"Dropped session info update {sessionInfoUpdate} because the capture queue is full.");
+                _logger.LogWarning("Dropped session info update {SessionInfoUpdate} because the capture queue is full.", sessionInfoUpdate);
+            }
         }
 
         HistoricalSessionAccumulator? history;
         lock (_sync)
         {
             history = _activeHistory;
+            _sessionInfoSnapshotCount++;
         }
 
         history?.ApplySessionInfo(sessionInfoYaml);
@@ -336,45 +436,70 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             PlayerTireCompound: ReadInt32(sdk, "PlayerTireCompound")));
     }
 
-    private async Task FinalizeCaptureAsync(TelemetryCaptureSession capture, HistoricalSessionAccumulator? history)
+    private CaptureFinalizationContext BuildFinalizationContext(TelemetryCaptureSession? capture)
+    {
+        return new CaptureFinalizationContext(
+            SourceId: capture?.CaptureId ?? _activeSourceId,
+            StartedAtUtc: capture?.StartedAtUtc ?? _activeStartedAtUtc,
+            DroppedFrameCount: capture?.DroppedFrameCount ?? 0,
+            SessionInfoSnapshotCount: capture?.SessionInfoSnapshotCount ?? _sessionInfoSnapshotCount);
+    }
+
+    private async Task FinalizeCollectionAsync(
+        TelemetryCaptureSession? capture,
+        HistoricalSessionAccumulator? history,
+        CaptureFinalizationContext finalization)
     {
         try
         {
             _state.MarkCaptureStopped();
-            await capture.DisposeAsync().ConfigureAwait(false);
-            _logger.LogInformation("Finalized capture {CaptureDirectory}.", capture.DirectoryPath);
-            _events.Record("capture_finalized", new Dictionary<string, string?>
+            if (capture is not null)
             {
-                ["captureId"] = capture.CaptureId,
-                ["captureDirectory"] = capture.DirectoryPath,
-                ["frameCount"] = capture.FrameCount.ToString(),
-                ["droppedFrameCount"] = capture.DroppedFrameCount.ToString()
-            });
+                await capture.DisposeAsync().ConfigureAwait(false);
+                _logger.LogInformation("Finalized raw capture {CaptureDirectory}.", capture.DirectoryPath);
+                _events.Record("capture_finalized", new Dictionary<string, string?>
+                {
+                    ["captureId"] = capture.CaptureId,
+                    ["captureDirectory"] = capture.DirectoryPath,
+                    ["frameCount"] = capture.FrameCount.ToString(),
+                    ["droppedFrameCount"] = capture.DroppedFrameCount.ToString()
+                });
+            }
 
-            if (history is not null)
+            if (history is not null && finalization.SourceId is not null && finalization.StartedAtUtc is not null)
             {
                 var summary = history.BuildSummary(
-                    capture.CaptureId,
-                    capture.StartedAtUtc,
-                    capture.FinishedAtUtc ?? DateTimeOffset.UtcNow,
-                    capture.DroppedFrameCount,
-                    capture.SessionInfoSnapshotCount);
+                    finalization.SourceId,
+                    finalization.StartedAtUtc.Value,
+                    capture?.FinishedAtUtc ?? DateTimeOffset.UtcNow,
+                    capture?.DroppedFrameCount ?? finalization.DroppedFrameCount,
+                    capture?.SessionInfoSnapshotCount ?? finalization.SessionInfoSnapshotCount);
 
                 await _sessionHistoryStore.SaveAsync(summary, CancellationToken.None).ConfigureAwait(false);
                 _events.Record("history_summary_saved", new Dictionary<string, string?>
                 {
-                    ["captureId"] = capture.CaptureId,
+                    ["sourceId"] = finalization.SourceId,
                     ["carKey"] = summary.Combo.CarKey,
                     ["trackKey"] = summary.Combo.TrackKey,
                     ["sessionKey"] = summary.Combo.SessionKey,
                     ["confidence"] = summary.Quality.Confidence
                 });
-                _logger.LogInformation("Saved session history summary for capture {CaptureId}.", capture.CaptureId);
+                _logger.LogInformation("Saved session history summary for {SourceId}.", finalization.SourceId);
             }
         }
         catch (Exception exception)
         {
-            _logger.LogError(exception, "Failed to finalize capture {CaptureDirectory}.", capture.DirectoryPath);
+            _state.RecordError($"Telemetry collection finalization failed: {exception.Message}");
+            _logger.LogError(exception, "Failed to finalize telemetry collection.");
         }
+    }
+
+    private sealed record CaptureFinalizationContext(
+        string? SourceId,
+        DateTimeOffset? StartedAtUtc,
+        int DroppedFrameCount,
+        int SessionInfoSnapshotCount)
+    {
+        public static CaptureFinalizationContext Empty { get; } = new(null, null, 0, 0);
     }
 }

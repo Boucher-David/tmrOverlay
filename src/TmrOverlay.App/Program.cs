@@ -29,10 +29,12 @@ internal static class Program
         using var host = CreateHostBuilder().Build();
         var logger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("TmrOverlay.App");
         var storageOptions = host.Services.GetRequiredService<AppStorageOptions>();
+        var captureState = host.Services.GetRequiredService<TelemetryCaptureState>();
 
         RegisterUnhandledExceptionLogging(logger);
 
         host.Start();
+        RecordBuildFreshness(captureState, logger);
         logger.LogInformation(
             "TmrOverlay {Version} started. Captures: {CaptureRoot}. User history: {UserHistoryRoot}. Logs: {LogsRoot}.",
             AppVersionInfo.Current.InformationalVersion,
@@ -118,5 +120,24 @@ internal static class Program
         {
             logger.LogError(exception.Exception, "Unobserved task exception.");
         };
+    }
+
+    private static void RecordBuildFreshness(TelemetryCaptureState captureState, ILogger logger)
+    {
+        try
+        {
+            var buildFreshness = BuildFreshnessChecker.Check();
+            if (!buildFreshness.SourceNewerThanBuild || string.IsNullOrWhiteSpace(buildFreshness.Message))
+            {
+                return;
+            }
+
+            captureState.RecordAppWarning(buildFreshness.Message);
+            logger.LogWarning("{BuildFreshnessWarning}", buildFreshness.Message);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Failed to evaluate local build freshness.");
+        }
     }
 }

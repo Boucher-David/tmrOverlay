@@ -1,0 +1,99 @@
+{
+  "aggregateVersion": 1,
+  "combo": {
+    "carKey": "car-156-mercedesamgevogt3",
+    "trackKey": "track-262-nurburgring-combinedshortb",
+    "sessionKey": "race"
+  },
+  "car": {
+    "carId": 156,
+    "carPath": "mercedesamgevogt3",
+    "carScreenName": "Mercedes-AMG GT3 2020",
+    "carScreenNameShort": "Mercedes GT3 2020",
+    "carClassId": 4098,
+    "carClassShortName": "NECGT3 2026",
+    "carClassEstLapTimeSeconds": 465.166,
+    "driverCarFuelMaxLiters": 106.0,
+    "driverCarFuelKgPerLiter": 0.75,
+    "driverCarEstLapTimeSeconds": 465.166,
+    "driverCarVersion": "2026.04.15.02",
+    "driverGearboxType": "Sequential",
+    "driverSetupName": null,
+    "driverSetupIsModified": null
+  },
+  "track": {
+    "trackId": 262,
+    "trackName": "nurburgring combinedshortb",
+    "trackDisplayName": "Gesamtstrecke VLN",
+    "trackConfigName": null,
+    "trackLengthKm": 24.1544,
+    "trackCity": "N\u00fcrburg",
+    "trackCountry": "Germany",
+    "trackNumTurns": 165,
+    "trackType": "road course",
+    "trackVersion": "2026.03.30.02"
+  },
+  "session": {
+    "currentSessionNum": 2,
+    "sessionNum": 2,
+    "sessionType": "Race",
+    "sessionName": "RACE",
+    "sessionTime": "14400.0000 sec",
+    "sessionLaps": "unlimited",
+    "eventType": "Race",
+    "category": "SportsCar",
+    "official": true,
+    "teamRacing": true,
+    "seriesId": 275,
+    "seasonId": 6236,
+    "sessionId": null,
+    "subSessionId": null,
+    "buildVersion": "2026.04.21.01"
+  },
+  "updatedAtUtc": "2026-04-26T17:51:22.8132357+00:00",
+  "sessionCount": 1,
+  "baselineSessionCount": 1,
+  "fuelPerLapLiters": {
+    "sampleCount": 1,
+    "mean": 13.36344,
+    "minimum": 13.36344,
+    "maximum": 13.36344
+  },
+  "fuelPerHourLiters": {
+    "sampleCount": 1,
+    "mean": 99.364481,
+    "minimum": 99.364481,
+    "maximum": 99.364481
+  },
+  "averageLapSeconds": {
+    "sampleCount": 1,
+    "mean": 482.194874,
+    "minimum": 482.194874,
+    "maximum": 482.194874
+  },
+  "medianLapSeconds": {
+    "sampleCount": 1,
+    "mean": 482.092804,
+    "minimum": 482.092804,
+    "maximum": 482.092804
+  },
+  "pitRoadEntryCount": {
+    "sampleCount": 1,
+    "mean": 3.0,
+    "minimum": 3.0,
+    "maximum": 3.0
+  },
+  "pitServiceCount": {
+    "sampleCount": 1,
+    "mean": 3.0,
+    "minimum": 3.0,
+    "maximum": 3.0
+  },
+  "analysisSource": {
+    "sourceCaptureId": "capture-20260426-130334-932",
+    "sanitized": true,
+    "fuelSource": "live_local_driver_scalar_frames_only",
+    "lapTimingSource": "CarIdxLastLapTime team-car array",
+    "pitStopSource": "CarIdxOnPitRoad team-car array"
+  }
+}

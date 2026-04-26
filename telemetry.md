@@ -6,7 +6,7 @@ This file describes the current raw capture model in three layers:
 - `session`: the active iRacing session state
 - `car`: static vehicle identity plus dynamic usage telemetry
 
-The current implementation stores raw frame payloads in `telemetry.bin`, variable definitions in `telemetry-schema.json`, session YAML in `latest-session.yaml`, and capture metadata in `capture-manifest.json`.
+The current production path analyzes live SDK data and stores compact session history. Raw capture remains available as an opt-in diagnostic/development mode; when enabled it stores raw frame payloads in `telemetry.bin`, variable definitions in `telemetry-schema.json`, session YAML in `latest-session.yaml`, and capture metadata in `capture-manifest.json`.
 
 ## Event Schema
 
@@ -58,7 +58,7 @@ Event-level data is the highest-level context for a capture. It combines the loc
   - `TrackPrecipitation`
   - `TrackWetness` from live telemetry
 
-### Example from current capture
+### Example from short diagnostic capture
 
 - Event type: offline test
 - Track: Nürburgring Combined / Gesamtstrecke 24h
@@ -108,7 +108,7 @@ Session-level data explains what is happening in the current iRacing session and
 - How far through the lap or session did the driver get?
 - Did flags, wetness, or session status change mid-capture?
 
-### Example from current capture
+### Example from short diagnostic capture
 
 - Session type: `Offline Testing`
 - Captured duration: about 77 seconds
@@ -221,7 +221,7 @@ Primary source:
 - `CarIdxBestLapTime`
 - `CarIdxTireCompound`
 
-### Example from current capture
+### Example from short diagnostic capture
 
 - Car: Mercedes-AMG GT3 2020
 - Setup: custom user setup loaded
@@ -239,7 +239,7 @@ Primary source:
 
 This schema summary is intentionally practical, not exhaustive. Not every iRacing variable is always present in every capture or every car/session combination.
 
-The current captured schema does **not** appear to expose richer engineering channels such as:
+The captured diagnostic schema does **not** appear to expose richer engineering channels such as:
 
 - tire wear
 - tire temperature distribution
@@ -247,4 +247,4 @@ The current captured schema does **not** appear to expose richer engineering cha
 - wheel-speed channels
 - suspension travel or damper position
 
-If those metrics matter later, the first check should be whether iRacing exposes them for the target car/session at all. If they do, this collector will record them automatically because it stores the full raw buffer and schema for every frame.
+If those metrics matter later, the first check should be whether iRacing exposes them for the target car/session at all. If they do, raw diagnostic capture can still record them for analysis, but the normal app path should prefer derived live metrics and compact history over storing full-frame payloads.

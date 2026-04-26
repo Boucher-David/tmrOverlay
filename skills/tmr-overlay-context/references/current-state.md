@@ -4,7 +4,7 @@ Last updated: 2026-04-26
 
 ## Project Goal
 
-`tmrOverlay` is being built as a Windows-native iRacing companion. The initial focus is a background collector that can ingest live iRacing session data and raw telemetry reliably. Overlay rendering comes later, after the ingestion path is stable and the stored data is good enough to analyze.
+`tmrOverlay` is being built as a Windows-native iRacing companion. The product direction has shifted from always-on raw capture toward live telemetry analysis plus compact historical session summaries. Raw capture remains available as an opt-in diagnostic/development mode.
 
 ## Implemented So Far
 
@@ -44,19 +44,22 @@ Last updated: 2026-04-26
   - draggable during runtime
   - persists position/size under app-owned settings
   - includes an `X` button that exits the entire app
+  - shows live telemetry analysis state, latest SDK-frame freshness, warning/error text, and raw capture write health only when raw capture is enabled
   - state colors:
     - gray: waiting for iRacing
-    - amber: connected, waiting for first frame
-    - green: actively collecting live session data
+    - amber: waiting, connected-without-capture, app warning, or dropped frames
+    - green: actively analyzing live telemetry, or actively collecting raw telemetry with confirmed disk writes
+    - red: telemetry read errors, stale SDK frames, capture writer errors, queued frames not reaching disk, or stale disk writes when raw capture is enabled
 
-### Telemetry capture pipeline
+### Telemetry collection pipeline
 
 - `src/TmrOverlay.App/Telemetry/TelemetryCaptureHostedService.cs`
   - owns the `IRacingSDK` instance
   - subscribes to `OnConnected`, `OnDisconnected`, and `OnDataChanged`
-  - starts a new capture directory on first usable live data
-  - copies the raw telemetry buffer each frame
-  - snapshots session YAML whenever `SessionInfoUpdate` changes
+  - starts live telemetry collection on first usable live data
+  - records compact historical telemetry samples every frame
+  - snapshots session YAML into the history accumulator whenever `SessionInfoUpdate` changes
+  - only creates raw capture directories and copies the raw telemetry buffer when `TelemetryCapture:RawCaptureEnabled=true`
 
 - `src/TmrOverlay.App/Telemetry/TelemetryCaptureSession.cs`
   - owns the per-capture file writer
@@ -72,17 +75,23 @@ Last updated: 2026-04-26
 - `src/TmrOverlay.App/Telemetry/TelemetryCaptureState.cs`
   - stores shared status for the tray and overlay
   - current connection state
-  - current capture directory
+  - current live-collection state
+  - current raw capture directory when raw capture is enabled
   - frame counts
   - dropped-frame counts
 
 ### Session history
 
 - `src/TmrOverlay.App/History/`
-  - collects compact end-of-session summaries while raw telemetry is captured
+  - collects compact end-of-session summaries during live telemetry analysis
   - stores user summaries under `%LOCALAPPDATA%/TmrOverlay/history/user/cars/{car}/tracks/{track}/sessions/{session}/`
   - writes a per-capture summary plus an aggregate for baseline lookup
   - low-confidence samples are still stored but do not contribute to baseline aggregate values
+
+- `history/baseline/`
+  - now includes a tracked, sanitized baseline from the 4-hour Nürburgring VLN Mercedes-AMG GT3 race capture
+  - fuel baseline uses local-driver scalar fuel frames only
+  - lap timing and pit counts use team-car `CarIdx*` telemetry because those remain valid during teammate stints
 
 ### Storage
 
@@ -110,6 +119,7 @@ Last updated: 2026-04-26
 
 - `src/TmrOverlay.App/Runtime/`
   - writes a heartbeat/runtime-state file and detects the previous unclean shutdown
+  - includes a local-development build freshness check that warns when source files in the checkout are newer than the running build
 
 - `src/TmrOverlay.App/Diagnostics/`
   - creates support bundles with app/storage metadata, runtime state, settings, logs/events, and latest capture metadata
@@ -127,8 +137,12 @@ Last updated: 2026-04-26
   - ignored by git
   - mirrors the Windows app structure for local macOS development
   - uses mock telemetry instead of iRacing
+  - defaults to live mock telemetry analysis plus compact history; raw mock capture is opt-in with `TMR_MAC_RAW_CAPTURE_ENABLED=true`
   - defaults writable data to `~/Library/Application Support/TmrOverlayMac`
   - includes the same categories of logs, events, settings, runtime state, diagnostics, retention, session history, and overlay folder structure
+  - mirrors the capture-health overlay fields and build freshness warning
+  - can preview spoofed overlay states with `TMR_MAC_DEMO_STATES=true ./run.sh`
+  - the mac menu exposes manual demo states for waiting, connected-without-capture, healthy live-analysis, healthy raw-capture, stale build, dropped frames, frames-not-written, disk-stalled, and capture-error
   - going forward, shared product and app-boilerplate changes should be mirrored in both Windows and mac unless the change is explicitly Windows/iRacing-specific
 
 ### Tests
@@ -141,14 +155,14 @@ Last updated: 2026-04-26
 
 See `docs/capture-format.md`.
 
-Short version:
+Short version for opt-in raw capture:
 
 - `telemetry-schema.json` stores variable metadata
 - `telemetry.bin` stores raw frame payloads with a small per-frame header
 - `latest-session.yaml` stores the latest raw session string
 - `session-info/` preserves session-history snapshots
 
-The important architectural choice is that we store the raw shared-memory buffer, not just high-level JSON snapshots. That keeps future analysis and overlay derivation flexible.
+Raw capture format is preserved for diagnostics and future deep-dive analysis, but it is no longer the default production data path.
 
 ## Telemetry Summary
 
@@ -183,6 +197,7 @@ Those files should be read when work shifts from capture plumbing into:
 Current keys:
 
 - `TelemetryCapture:StoreSessionInfoSnapshots`
+- `TelemetryCapture:RawCaptureEnabled`
 - `TelemetryCapture:QueueCapacity`
 - `SessionHistory:Enabled`
 - `Storage:UseRepositoryLocalStorage`
@@ -211,7 +226,7 @@ Current keys:
 Current default:
 
 - writable storage resolves under `%LOCALAPPDATA%/TmrOverlay`
-- captures default to `%LOCALAPPDATA%/TmrOverlay/captures`
+- raw captures default to `%LOCALAPPDATA%/TmrOverlay/captures` but are disabled unless `TelemetryCapture:RawCaptureEnabled=true`
 - user history defaults to `%LOCALAPPDATA%/TmrOverlay/history/user`
 - local logs default to `%LOCALAPPDATA%/TmrOverlay/logs`
 - app events default to `%LOCALAPPDATA%/TmrOverlay/logs/events`
@@ -223,6 +238,7 @@ Current default:
 Environment override pattern:
 
 - `TMR_Storage__UseRepositoryLocalStorage=true`
+- `TMR_TelemetryCapture__RawCaptureEnabled=true`
 - `TMR_Storage__CaptureRoot`
 - `TMR_Storage__UserHistoryRoot`
 - `TMR_Storage__AppDataRoot`
@@ -271,18 +287,17 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 
 - The current machine does not have `dotnet`, so Windows build/test verification still needs to happen on a .NET-equipped machine.
 - The local mac Swift package builds, but `swift test` currently requires an XCTest-capable Swift/Xcode toolchain.
-- No replay/decoder tool exists yet for `telemetry.bin`.
+- No general-purpose replay/decoder tool exists yet for `telemetry.bin`; targeted analysis scripts exist under `tools/analysis/`.
 - Overlay modules now live under `src/TmrOverlay.App/Overlays/`, but no full multi-overlay rendering pipeline exists yet beyond the small live-status box.
 - The root-level launcher is `TmrOverlay.cmd`, not a standalone copied `.exe`, because a normal framework-dependent .NET build needs its companion output files.
-- The only analyzed real capture so far is a short offline test session, so fuel/stint logic is still based on limited evidence.
+- The primary analyzed real capture is the 4-hour Nürburgring VLN race capture. It proved that teammate stints retain `CarIdx*` timing/position data but do not expose direct scalar fuel fields.
 
 ## Recommended Next Steps
 
-1. Capture and commit a full endurance-event telemetry sample.
-2. Validate fuel/stint derivations against that longer session.
-3. Build the first live fuel/stint overlay.
-4. Add a tiny decoder or inspector utility for `telemetry.bin` so stored captures are easy to inspect.
-5. Add a local bridge layer so later overlay windows can subscribe to live snapshots instead of talking to the SDK directly.
+1. Build the first live fuel/stint overlay using live telemetry plus `history/baseline`.
+2. Add a live analysis snapshot/bridge layer so overlay windows can subscribe to derived metrics instead of talking to the SDK directly.
+3. Improve historical aggregation and confidence/source tracking as more user sessions are collected.
+4. Keep raw capture available for diagnostics, but avoid making it the normal user data path.
 
 ## Files Most Likely To Change Next
 

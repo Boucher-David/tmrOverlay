@@ -79,15 +79,27 @@ internal sealed class ReplayTelemetryHostedService : IHostedService
 
         try
         {
+            _state.SetCaptureRoot(Path.GetDirectoryName(_options.CaptureDirectory!) ?? _options.CaptureDirectory!);
+            _state.SetRawCaptureEnabled(true);
             _state.MarkConnected();
             _state.MarkCaptureStarted(_options.CaptureDirectory!, DateTimeOffset.UtcNow);
 
             var frameCount = Math.Max(0, manifest?.FrameCount ?? 0);
             var intervalMs = Math.Max(1, (int)Math.Round(1000d / Math.Max(1, manifest?.TickRate ?? 60) / _options.SpeedMultiplier));
+            var telemetryFileBytes = ReadTelemetryFileBytes(_options.CaptureDirectory!);
 
             for (var frame = 0; frame < frameCount && !cancellationToken.IsCancellationRequested; frame++)
             {
-                _state.RecordFrame(DateTimeOffset.UtcNow);
+                var timestampUtc = DateTimeOffset.UtcNow;
+                _state.RecordFrame(timestampUtc);
+                _state.RecordCaptureWrite(new TelemetryCaptureWriteStatus(
+                    TimestampUtc: timestampUtc,
+                    CaptureId: Path.GetFileName(_options.CaptureDirectory!),
+                    DirectoryPath: _options.CaptureDirectory!,
+                    FramesWritten: frame + 1,
+                    SessionInfoSnapshotCount: 0,
+                    TelemetryFileBytes: telemetryFileBytes,
+                    Exception: null));
                 await Task.Delay(intervalMs, cancellationToken).ConfigureAwait(false);
             }
         }
@@ -117,6 +129,14 @@ internal sealed class ReplayTelemetryHostedService : IHostedService
         {
             PropertyNameCaseInsensitive = true
         });
+    }
+
+    private static long? ReadTelemetryFileBytes(string captureDirectory)
+    {
+        var telemetryPath = Path.Combine(captureDirectory, "telemetry.bin");
+        return File.Exists(telemetryPath)
+            ? new FileInfo(telemetryPath).Length
+            : null;
     }
 
     private sealed class ReplayCaptureManifest

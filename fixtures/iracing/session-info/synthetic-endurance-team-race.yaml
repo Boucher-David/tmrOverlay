@@ -1,0 +1,718 @@
+---
+FixtureInfo:
+  FixtureId: synthetic-endurance-team-race-v1
+  Description: Synthetic/sanitized iRacing endurance team-race fixture for overlay and parser development.
+  Notes:
+    - Top-level iRacing sections mirror fields observed in real captured YAML.
+    - SyntheticTelemetryFrames is fixture-only and is not emitted by iRacing session YAML.
+    - DriverUserID intentionally differs from the active Drivers entry during teammate stints.
+    - CarSetup.Chassis.Rear.FuelLevel is setup fuel, not live fuel remaining.
+
+WeekendInfo:
+  TrackName: sample endurance combined
+  TrackID: 900001
+  TrackLength: 24.1544 km
+  TrackLengthOfficial: 24.43 km
+  TrackDisplayName: Synthetic Endurance Loop
+  TrackDisplayShortName: Endurance Loop
+  TrackConfigName:
+  TrackCity: Example City
+  TrackState: Example State
+  TrackCountry: Example Country
+  TrackAltitude: 620.00 m
+  TrackLatitude: 50.000000 m
+  TrackLongitude: 6.000000 m
+  TrackNorthOffset: 1.5446 rad
+  TrackNumTurns: 165
+  TrackPitSpeedLimit: 60.00 kph
+  TrackPaceSpeed: 80.00 kph
+  TrackNumPitStalls: 38
+  TrackType: road course
+  TrackDirection: neutral
+  TrackWeatherType: Realistic
+  TrackSkies: Dynamic
+  TrackSurfaceTemp: 24.56 C
+  TrackSurfaceTempCrew: 24.56 C
+  TrackAirTemp: 18.56 C
+  TrackAirPressure: 27.69 Hg
+  TrackAirDensity: 1.11 kg/m^3
+  TrackWindVel: 6.85 m/s
+  TrackWindDir: 2.46 rad
+  TrackRelativeHumidity: 95 %
+  TrackFogLevel: 0 %
+  TrackPrecipitation: 0 %
+  TrackCleanup: 0
+  TrackDynamicTrack: 1
+  TrackVersion: 2026.04.01.01
+  SeriesID: 9001
+  SeasonID: 9002
+  SessionID: 9003001
+  SubSessionID: 9004001
+  LeagueID: 0
+  Official: 1
+  RaceWeek: 2
+  EventType: Race
+  Category: SportsCar
+  SimMode: full
+  TeamRacing: 1
+  MinDrivers: 1
+  MaxDrivers: 16
+  DCRuleSet: DriveFairShare_AllMustDrive
+  QualifierMustStartRace: 0
+  NumCarClasses: 3
+  NumCarTypes: 5
+  HeatRacing: 0
+  BuildType: Release
+  BuildTarget: Members
+  BuildVersion: 2026.04.21.01
+  RaceFarm: synthetic
+  WeekendOptions:
+    NumStarters: 60
+    StartingGrid: 2x2 inline pole on left
+    QualifyScoring: best lap
+    CourseCautions: local
+    StandingStart: 0
+    ShortParadeLap: 0
+    Restarts: double file lapped cars behind
+    WeatherType: Realistic
+    Skies: Dynamic
+    WindDirection: N
+    WindSpeed: 3.22 km/h
+    WeatherTemp: 25.56 C
+    RelativeHumidity: 45 %
+    FogLevel: 0 %
+    TimeOfDay: 12:00 pm
+    Date: 2026-04-25
+    EarthRotationSpeedupFactor: 1
+    Unofficial: 0
+    CommercialMode: consumer
+    NightMode: variable
+    IsFixedSetup: 0
+    StrictLapsChecking: default
+    HasOpenRegistration: 1
+    HardcoreLevel: 0
+    IncidentLimit: unlimited
+    FastRepairsLimit: 0
+    GreenWhiteCheckeredLimit: 0
+  TelemetryOptions:
+    TelemetryDiskFile: ""
+
+SessionInfo:
+  CurrentSessionNum: 2
+  Sessions:
+    - SessionNum: 0
+      SessionLaps: unlimited
+      SessionTime: 1800 sec
+      SessionNumLapsToAvg: 0
+      SessionType: Practice
+      SessionTrackRubberState: moderate usage
+      SessionName: PRACTICE
+      SessionSubType:
+      SessionSkipped: 0
+      SessionRunGroupsUsed: 0
+      SessionEnforceTireCompoundChange: 0
+      ResultsPositions:
+        - Position: 12
+          ClassPosition: 7
+          CarIdx: 15
+          Lap: 0
+          Time: -1.0000
+          FastestLap: -1
+          FastestTime: -1.0000
+          LastTime: -1.0000
+          LapsLed: 0
+          LapsComplete: 0
+          JokerLapsComplete: 0
+          LapsDriven: 0.541
+          Incidents: 0
+          ReasonOutId: 0
+          ReasonOutStr: Running
+      ResultsFastestLap:
+        - CarIdx: 15
+          FastestLap: -1
+          FastestTime: -1.0000
+      ResultsAverageLapTime: -1.0000
+      ResultsNumCautionFlags: 0
+      ResultsNumCautionLaps: 0
+      ResultsNumLeadChanges: 0
+      ResultsLapsComplete: 0
+      ResultsOfficial: 0
+    - SessionNum: 1
+      SessionLaps: 2
+      SessionTime: 900 sec
+      SessionNumLapsToAvg: 0
+      SessionType: Lone Qualify
+      SessionTrackRubberState: moderate usage
+      SessionName: QUALIFY
+      SessionSubType:
+      SessionSkipped: 0
+      SessionRunGroupsUsed: 0
+      SessionEnforceTireCompoundChange: 0
+      ResultsPositions:
+        - Position: 24
+          ClassPosition: 18
+          CarIdx: 15
+          Lap: 1
+          Time: 478.5318
+          FastestLap: 1
+          FastestTime: 478.5318
+          LastTime: 478.5318
+          LapsLed: 0
+          LapsComplete: 1
+          JokerLapsComplete: 0
+          LapsDriven: 1.273
+          Incidents: 1
+          ReasonOutId: 0
+          ReasonOutStr: Running
+      ResultsFastestLap:
+        - CarIdx: 15
+          FastestLap: 1
+          FastestTime: 478.5318
+      ResultsAverageLapTime: 478.5318
+      ResultsNumCautionFlags: 0
+      ResultsNumCautionLaps: 0
+      ResultsNumLeadChanges: 0
+      ResultsLapsComplete: 1
+      ResultsOfficial: 1
+    - SessionNum: 2
+      SessionLaps: unlimited
+      SessionTime: 14400 sec
+      SessionNumLapsToAvg: 0
+      SessionType: Race
+      SessionTrackRubberState: moderate usage
+      SessionName: RACE
+      SessionSubType:
+      SessionSkipped: 0
+      SessionRunGroupsUsed: 0
+      SessionEnforceTireCompoundChange: 0
+      ResultsPositions:
+        - Position: 1
+          ClassPosition: 1
+          CarIdx: 4
+          Lap: 0
+          Time: 0.0000
+          FastestLap: 16
+          FastestTime: 469.2220
+          LastTime: 474.3010
+          LapsLed: 19
+          LapsComplete: 31
+          JokerLapsComplete: 0
+          LapsDriven: 0.000
+          Incidents: 14
+          ReasonOutId: 0
+          ReasonOutStr: Running
+        - Position: 7
+          ClassPosition: 6
+          CarIdx: 15
+          Lap: 0
+          Time: 125.9837
+          FastestLap: 5
+          FastestTime: 474.4403
+          LastTime: 482.1056
+          LapsLed: 0
+          LapsComplete: 30
+          JokerLapsComplete: 0
+          LapsDriven: 0.000
+          Incidents: 25
+          ReasonOutId: 0
+          ReasonOutStr: Running
+        - Position: 18
+          ClassPosition: 4
+          CarIdx: 22
+          Lap: 0
+          Time: 1010.2110
+          FastestLap: 10
+          FastestTime: 499.9010
+          LastTime: 505.2230
+          LapsLed: 0
+          LapsComplete: 28
+          JokerLapsComplete: 0
+          LapsDriven: 0.000
+          Incidents: 9
+          ReasonOutId: 0
+          ReasonOutStr: Running
+      ResultsFastestLap:
+        - CarIdx: 4
+          FastestLap: 16
+          FastestTime: 469.2220
+        - CarIdx: 15
+          FastestLap: 5
+          FastestTime: 474.4403
+        - CarIdx: 22
+          FastestLap: 10
+          FastestTime: 499.9010
+      ResultsAverageLapTime: 486.8800
+      ResultsNumCautionFlags: 0
+      ResultsNumCautionLaps: 0
+      ResultsNumLeadChanges: 8
+      ResultsLapsComplete: 31
+      ResultsOfficial: 1
+
+QualifyResultsInfo:
+  Results:
+    - Position: 1
+      ClassPosition: 1
+      CarIdx: 4
+      FastestLap: 1
+      FastestTime: 470.2110
+    - Position: 24
+      ClassPosition: 18
+      CarIdx: 15
+      FastestLap: 1
+      FastestTime: 478.5318
+    - Position: 38
+      ClassPosition: 8
+      CarIdx: 22
+      FastestLap: 1
+      FastestTime: 502.0100
+
+DriverInfo:
+  DriverCarIdx: 15
+  DriverUserID: 100001
+  PaceCarIdx: -1
+  DriverIsAdmin: 0
+  DriverHeadPosX: -0.656
+  DriverHeadPosY: 0.393
+  DriverHeadPosZ: 0.542
+  DriverCarIsElectric: 0
+  DriverCarIdleRPM: 1447.0
+  DriverCarRedLine: 7900.0
+  DriverCarEngCylinderCount: 8
+  DriverCarFuelKgPerLtr: 0.750
+  DriverCarFuelMaxLtr: 106.000
+  DriverCarMaxFuelPct: 1.000
+  DriverCarGearNumForward: 6
+  DriverCarGearNeutral: 1
+  DriverCarGearReverse: 1
+  DriverGearboxType: Sequential
+  DriverGearboxControlType: Sequential
+  DriverCarShiftAid: Antistall_Clutch
+  DriverCarSLFirstRPM: 6600.0
+  DriverCarSLShiftRPM: 7200.0
+  DriverCarSLLastRPM: 7320.0
+  DriverCarSLBlinkRPM: 7777.0
+  DriverCarVersion: 2026.04.15.02
+  DriverPitTrkPct: 0.005342
+  DriverCarEstLapTime: 480.8602
+  DriverSetupName: sample endurance race setup.sto
+  DriverSetupIsModified: 0
+  DriverSetupLoadTypeName: user
+  DriverSetupPassedTech: 1
+  DriverIncidentCount: 17
+  DriverBrakeCurvingFactor: 0.001
+  DriverTires:
+    - TireIndex: 0
+      TireCompoundType: Hard
+    - TireIndex: 1
+      TireCompoundType: Wet
+  Drivers:
+    - CarIdx: 4
+      UserName: Overall Leader
+      AbbrevName: O Leader
+      Initials: OL
+      UserID: 200004
+      TeamID: 400004
+      TeamName: Synthetic Leader Racing
+      CarNumber: "004"
+      CarNumberRaw: 4
+      CarPath: mercedesamgevogt3
+      CarID: 156
+      CarScreenName: Mercedes-AMG GT3 2020
+      CarScreenNameShort: Mercedes GT3 2020
+      CarClassID: 5001
+      CarClassShortName: GT3
+      CarClassEstLapTime: 480.8602
+      CarClassMaxFuelPct: 1.000 %
+      CarClassWeightPenalty: 0.000 kg
+      CarClassPowerAdjust: 0.000 %
+      CarClassDryTireSetLimit: 0 %
+      IRating: 7200
+      LicString: A 4.99
+      LicColor: 0x00ff00
+      LicLevel: 20
+      LicSubLevel: 499
+      IsSpectator: 0
+      CurDriverIncidentCount: 6
+      TeamIncidentCount: 14
+    - CarIdx: 15
+      UserName: Teammate Driver
+      AbbrevName: T Driver
+      Initials: TD
+      UserID: 100002
+      TeamID: 400015
+      TeamName: Synthetic Team Racing
+      CarNumber: "015"
+      CarNumberRaw: 15
+      CarPath: mercedesamgevogt3
+      CarID: 156
+      CarScreenName: Mercedes-AMG GT3 2020
+      CarScreenNameShort: Mercedes GT3 2020
+      CarClassID: 5001
+      CarClassShortName: GT3
+      CarClassEstLapTime: 480.8602
+      CarClassMaxFuelPct: 1.000 %
+      CarClassWeightPenalty: 0.000 kg
+      CarClassPowerAdjust: 0.000 %
+      CarClassDryTireSetLimit: 0 %
+      IRating: 6100
+      LicString: A 4.50
+      LicColor: 0x00ff00
+      LicLevel: 20
+      LicSubLevel: 450
+      IsSpectator: 0
+      CurDriverIncidentCount: 8
+      TeamIncidentCount: 25
+    - CarIdx: 22
+      UserName: Prototype Driver
+      AbbrevName: P Driver
+      Initials: PD
+      UserID: 200022
+      TeamID: 400022
+      TeamName: Synthetic Prototype Team
+      CarNumber: "022"
+      CarNumberRaw: 22
+      CarPath: dallarap217
+      CarID: 124
+      CarScreenName: Dallara P217
+      CarScreenNameShort: Dallara P217
+      CarClassID: 5002
+      CarClassShortName: LMP2
+      CarClassEstLapTime: 455.0000
+      CarClassMaxFuelPct: 1.000 %
+      CarClassWeightPenalty: 0.000 kg
+      CarClassPowerAdjust: 0.000 %
+      CarClassDryTireSetLimit: 0 %
+      IRating: 5400
+      LicString: A 3.75
+      LicColor: 0x00ff00
+      LicLevel: 20
+      LicSubLevel: 375
+      IsSpectator: 0
+      CurDriverIncidentCount: 2
+      TeamIncidentCount: 9
+    - CarIdx: 63
+      UserName: Local Spotter
+      AbbrevName: L Spotter
+      Initials: LS
+      UserID: 100001
+      TeamID: 400015
+      TeamName: Synthetic Team Racing
+      CarNumber: ""
+      CarNumberRaw: 0
+      CarPath:
+      CarID: 0
+      CarScreenName:
+      CarScreenNameShort:
+      CarClassID: 0
+      CarClassShortName:
+      CarClassEstLapTime: -1.0000
+      IsSpectator: 1
+      CurDriverIncidentCount: 0
+      TeamIncidentCount: 25
+
+CarSetup:
+  UpdateCount: 7
+  TiresAero:
+    TireType:
+      TireType: Dry
+    LeftFront:
+      StartingPressure: 159 kPa
+      LastHotPressure: 171 kPa
+      LastTempsOMI: 82C, 84C, 86C
+      TreadRemaining: 92%, 91%, 90%
+    RightFront:
+      StartingPressure: 159 kPa
+      LastHotPressure: 173 kPa
+      LastTempsIMO: 87C, 85C, 83C
+      TreadRemaining: 89%, 90%, 91%
+    LeftRear:
+      StartingPressure: 159 kPa
+      LastHotPressure: 169 kPa
+      LastTempsOMI: 78C, 80C, 82C
+      TreadRemaining: 94%, 93%, 92%
+    RightRear:
+      StartingPressure: 159 kPa
+      LastHotPressure: 170 kPa
+      LastTempsIMO: 83C, 81C, 79C
+      TreadRemaining: 91%, 92%, 93%
+    AeroBalanceCalc:
+      FrontRhAtSpeed: 66 mm
+      RearRhAtSpeed: 66 mm
+      WingSetting: 2 degrees
+      FrontDownforce: 37.5%
+  Chassis:
+    FrontBrakesLights:
+      ArbSetting: D4
+      TotalToeIn: -3.0 mm
+      FrontMasterCyl: 19.1 mm
+      RearMasterCyl: 19.1 mm
+      BrakePads: Medium friction
+      EnduranceLights: Fitted
+      NightLedStripColor: Blue
+      CenterFrontSplitterHeight: 75.6 mm
+    LeftFront:
+      RideHeight: 70.3 mm
+      SpringRate: 300 N/mm
+      Camber: -4.0 deg
+      BumpRubberGap: 18.0 mm
+      CornerWeight: 340 kg
+    RightFront:
+      RideHeight: 70.3 mm
+      SpringRate: 300 N/mm
+      Camber: -4.0 deg
+      BumpRubberGap: 18.0 mm
+      CornerWeight: 341 kg
+    LeftRear:
+      RideHeight: 84.3 mm
+      SpringRate: 275 N/mm
+      Camber: -2.7 deg
+      ToeIn: +1.5 mm
+      BumpRubberGap: 20.0 mm
+      CornerWeight: 360 kg
+    RightRear:
+      RideHeight: 84.3 mm
+      SpringRate: 275 N/mm
+      Camber: -2.7 deg
+      ToeIn: +1.5 mm
+      BumpRubberGap: 20.0 mm
+      CornerWeight: 361 kg
+    Rear:
+      FuelLevel: 105.0 L
+      RarbRate: D7
+      WingAngle: 2 degrees
+    Differential:
+      DiffPreload: 115 Nm
+      DiffFrictionFaces: 8
+    InCarAdjustments:
+      BrakePressureBias: 51.75%
+      AbsSetting: 3
+      TcSetting: 4
+      DashDisplayPage: 1
+  Dampers:
+    LeftFront:
+      LsCompDamping: 11 clicks
+      HsCompDamping: 11 clicks
+      LsRbdDamping: 9 clicks
+      HsRbdDamping: 4 clicks
+    RightFront:
+      LsCompDamping: 11 clicks
+      HsCompDamping: 11 clicks
+      LsRbdDamping: 9 clicks
+      HsRbdDamping: 4 clicks
+    LeftRear:
+      LsCompDamping: 9 clicks
+      HsCompDamping: 11 clicks
+      LsRbdDamping: 11 clicks
+      HsRbdDamping: 11 clicks
+    RightRear:
+      LsCompDamping: 9 clicks
+      HsCompDamping: 11 clicks
+      LsRbdDamping: 11 clicks
+      HsRbdDamping: 11 clicks
+
+SplitTimeInfo:
+  Sectors:
+    - SectorNum: 0
+      SectorStartPct: 0.000000
+    - SectorNum: 1
+      SectorStartPct: 0.164000
+    - SectorNum: 2
+      SectorStartPct: 0.355000
+    - SectorNum: 3
+      SectorStartPct: 0.612000
+    - SectorNum: 4
+      SectorStartPct: 0.825000
+
+RadioInfo:
+  SelectedRadioNum: 0
+  Radios:
+    - RadioNum: 0
+      HopCount: 2
+      NumFrequencies: 3
+      TunedToFrequencyNum: 1
+      ScanningIsOn: 1
+      Frequencies:
+        - FrequencyNum: 0
+          FrequencyName: "@DRIVERS"
+          Priority: 12
+          CarIdx: -1
+          EntryIdx: -1
+          ClubID: 0
+          CanScan: 1
+          CanSquawk: 1
+          Muted: 0
+          IsMutable: 0
+          IsDeletable: 0
+        - FrequencyNum: 1
+          FrequencyName: "@TEAM"
+          Priority: 15
+          CarIdx: 15
+          EntryIdx: -1
+          ClubID: 0
+          CanScan: 1
+          CanSquawk: 1
+          Muted: 0
+          IsMutable: 0
+          IsDeletable: 0
+        - FrequencyNum: 2
+          FrequencyName: "@RACE CONTROL"
+          Priority: 20
+          CarIdx: -1
+          EntryIdx: -1
+          ClubID: 0
+          CanScan: 1
+          CanSquawk: 0
+          Muted: 0
+          IsMutable: 0
+          IsDeletable: 0
+
+CameraInfo:
+  Groups:
+    - GroupNum: 1
+      GroupName: Scenic
+      IsScenic: true
+      Cameras:
+        - CameraNum: 1
+          CameraName: Scenic 1
+        - CameraNum: 2
+          CameraName: Scenic 2
+    - GroupNum: 2
+      GroupName: Cockpit
+      IsScenic: false
+      Cameras:
+        - CameraNum: 1
+          CameraName: Cockpit
+        - CameraNum: 2
+          CameraName: Gearbox
+
+SyntheticTelemetryFrames:
+  - Label: local-driver-green-flag
+    Source: telemetry.bin sample payload
+    SessionInfoUpdate: 340
+    SessionNum: 2
+    SessionTime: 0.500
+    SessionTimeRemain: 14399.500
+    SessionState: Racing
+    IsOnTrack: true
+    IsReplayPlaying: false
+    PlayerCarIdx: 15
+    CamCarIdx: 15
+    Lap: 1
+    LapCompleted: 0
+    LapDistPct: 0.005342
+    LapCurrentLapTime: 2.100
+    LapLastLapTime: -1.000
+    LapBestLapTime: -1.000
+    OnPitRoad: false
+    PlayerCarInPitStall: false
+    PitstopActive: false
+    FuelLevel: 104.8
+    FuelLevelPct: 0.989
+    FuelUsePerHour: 38.4
+    PitSvFuel: 0.0
+    PitSvTireCompound: 0
+    Speed: 87.2
+    RPM: 5150
+    Gear: 3
+    Throttle: 0.72
+    Brake: 0.00
+    SteeringWheelAngle: -0.03
+    CarIdxLap:
+      15: 1
+    CarIdxLapCompleted:
+      15: 0
+    CarIdxLapDistPct:
+      15: 0.005342
+    CarIdxOnPitRoad:
+      15: false
+    CarIdxPosition:
+      15: 18
+    CarIdxClassPosition:
+      15: 13
+    CarIdxLastLapTime:
+      15: -1.000
+    CarIdxBestLapTime:
+      15: -1.000
+  - Label: teammate-driving-spotter-view
+    Source: telemetry.bin sample payload
+    SessionInfoUpdate: 641
+    SessionNum: 2
+    SessionTime: 3643.000
+    SessionTimeRemain: 10757.000
+    SessionState: Racing
+    IsOnTrack: false
+    IsReplayPlaying: false
+    PlayerCarIdx: 15
+    CamCarIdx: 15
+    Lap: 0
+    LapCompleted: 0
+    LapDistPct: 0.000000
+    OnPitRoad: false
+    PlayerCarInPitStall: true
+    PitstopActive: false
+    FuelLevel: 0.0
+    FuelLevelPct: 0.0
+    FuelUsePerHour: 0.0
+    Speed: 0.0
+    RPM: 0
+    Gear: 0
+    CarIdxLap:
+      15: 8
+    CarIdxLapCompleted:
+      15: 7
+    CarIdxLapDistPct:
+      15: 0.250000
+    CarIdxOnPitRoad:
+      15: false
+    CarIdxPosition:
+      15: 9
+    CarIdxClassPosition:
+      15: 8
+    CarIdxLastLapTime:
+      15: 482.1056
+    CarIdxBestLapTime:
+      15: 474.4403
+  - Label: pit-stop-service
+    Source: telemetry.bin sample payload
+    SessionInfoUpdate: 1384
+    SessionNum: 2
+    SessionTime: 7591.000
+    SessionTimeRemain: 6809.000
+    SessionState: Racing
+    IsOnTrack: true
+    IsReplayPlaying: false
+    PlayerCarIdx: 15
+    CamCarIdx: 15
+    Lap: 16
+    LapCompleted: 15
+    LapDistPct: 0.992000
+    OnPitRoad: true
+    PlayerCarInPitStall: true
+    PitstopActive: true
+    PitRepairLeft: 0.0
+    PitOptRepairLeft: 12.0
+    FuelLevel: 12.4
+    FuelLevelPct: 0.117
+    FuelUsePerHour: 0.0
+    PitSvFlags: Fuel Tires
+    PitSvFuel: 92.0
+    PitSvTireCompound: 0
+    Speed: 0.0
+    RPM: 1400
+    Gear: 0
+    CarIdxLap:
+      15: 16
+    CarIdxLapCompleted:
+      15: 15
+    CarIdxLapDistPct:
+      15: 0.992000
+    CarIdxOnPitRoad:
+      15: true
+    CarIdxPosition:
+      15: 7
+    CarIdxClassPosition:
+      15: 6
+    CarIdxLastLapTime:
+      15: 482.1056
+    CarIdxBestLapTime:
+      15: 474.4403
