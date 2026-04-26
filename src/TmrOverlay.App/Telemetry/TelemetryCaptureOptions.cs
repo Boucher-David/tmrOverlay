@@ -7,6 +7,8 @@ internal sealed class TelemetryCaptureOptions
 {
     public required string ResolvedCaptureRoot { get; init; }
 
+    public bool RawCaptureEnabled { get; init; }
+
     public bool StoreSessionInfoSnapshots { get; init; } = true;
 
     public int QueueCapacity { get; init; } = 2048;
@@ -20,6 +22,7 @@ internal sealed class TelemetryCaptureOptions
         return new TelemetryCaptureOptions
         {
             ResolvedCaptureRoot = storageOptions.CaptureRoot,
+            RawCaptureEnabled = ParseBoolean(section["RawCaptureEnabled"], defaultValue: false),
             StoreSessionInfoSnapshots = ParseBoolean(section["StoreSessionInfoSnapshots"], defaultValue: true),
             QueueCapacity = ParseInt32(section["QueueCapacity"], defaultValue: 2048, minimumValue: 128)
         };

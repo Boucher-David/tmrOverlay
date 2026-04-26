@@ -4,6 +4,8 @@ internal sealed class TelemetryCaptureState
 {
     private readonly object _sync = new();
     private bool _isConnected;
+    private bool _isCollecting;
+    private bool _rawCaptureEnabled;
     private string? _captureRoot;
     private string? _currentCaptureDirectory;
     private string? _lastCaptureDirectory;
@@ -27,6 +29,14 @@ internal sealed class TelemetryCaptureState
         }
     }
 
+    public void SetRawCaptureEnabled(bool enabled)
+    {
+        lock (_sync)
+        {
+            _rawCaptureEnabled = enabled;
+        }
+    }
+
     public void MarkConnected()
     {
         lock (_sync)
@@ -41,6 +51,7 @@ internal sealed class TelemetryCaptureState
         lock (_sync)
         {
             _isConnected = false;
+            _isCollecting = false;
             _currentCaptureDirectory = null;
             _captureStartedAtUtc = null;
             _frameCount = 0;
@@ -56,8 +67,27 @@ internal sealed class TelemetryCaptureState
     {
         lock (_sync)
         {
+            _isCollecting = true;
             _currentCaptureDirectory = captureDirectory;
             _lastCaptureDirectory = captureDirectory;
+            _captureStartedAtUtc = startedAtUtc;
+            _frameCount = 0;
+            _writtenFrameCount = 0;
+            _droppedFrameCount = 0;
+            _telemetryFileBytes = null;
+            _lastFrameCapturedAtUtc = null;
+            _lastDiskWriteAtUtc = null;
+            _lastWarning = null;
+            _lastError = null;
+            _lastIssueAtUtc = null;
+        }
+    }
+
+    public void MarkCollectionStarted(DateTimeOffset startedAtUtc)
+    {
+        lock (_sync)
+        {
+            _isCollecting = true;
             _captureStartedAtUtc = startedAtUtc;
             _frameCount = 0;
             _writtenFrameCount = 0;
@@ -75,6 +105,7 @@ internal sealed class TelemetryCaptureState
     {
         lock (_sync)
         {
+            _isCollecting = false;
             _currentCaptureDirectory = null;
             _captureStartedAtUtc = null;
             _frameCount = 0;
@@ -148,7 +179,9 @@ internal sealed class TelemetryCaptureState
         {
             return new TelemetryCaptureStatusSnapshot(
                 IsConnected: _isConnected,
-                IsCapturing: !string.IsNullOrWhiteSpace(_currentCaptureDirectory),
+                IsCapturing: _isCollecting,
+                RawCaptureEnabled: _rawCaptureEnabled,
+                RawCaptureActive: !string.IsNullOrWhiteSpace(_currentCaptureDirectory),
                 CaptureRoot: _captureRoot,
                 CurrentCaptureDirectory: _currentCaptureDirectory,
                 LastCaptureDirectory: _lastCaptureDirectory,

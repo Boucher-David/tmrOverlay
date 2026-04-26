@@ -1,6 +1,6 @@
 # Capture Format
 
-Each live capture produces a directory with four core artifacts:
+Raw capture is an opt-in diagnostic/development mode. When `TelemetryCapture:RawCaptureEnabled` is `true`, each live capture produces a directory with four core artifacts:
 
 - `capture-manifest.json`
 - `telemetry-schema.json`
@@ -64,4 +64,3 @@ session-info/session-0002.yaml
 ```
 
 Those snapshots let us reconstruct session metadata changes over time without parsing the binary stream.
-

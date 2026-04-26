@@ -22,6 +22,7 @@
 *.log
 
 # Repo-local app data when development overrides are enabled.
+# Raw/imported captures can be multi-GB and must stay out of git.
 /captures/
 /logs/
 /diagnostics/

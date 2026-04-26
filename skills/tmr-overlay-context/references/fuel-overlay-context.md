@@ -2,9 +2,9 @@
 
 Last updated: 2026-04-26
 
-## Current Analyzed Capture
+## Current Analyzed Captures
 
-Sample analyzed capture:
+Short sample analyzed capture:
 
 - `captures/capture-20260426-032822-916`
 
@@ -47,6 +47,23 @@ Fuel-specific rough derivation from the sample:
 
 Treat those full-tank estimates as low-confidence because the capture is short, partial-lap, wet, and includes pit-road time.
 
+Long endurance capture:
+
+- `captures/capture-20260426-130334-932`
+- Nürburgring Gesamtstrecke VLN / `nurburgring combinedshortb`
+- Mercedes-AMG GT3 2020
+- 4-hour team race, 30 completed laps, final P7 overall / P6 class
+- raw capture: 1,036,026 frames, 0 dropped frames, 2,208 session-info snapshots
+
+Derived baseline now tracked under `history/baseline/cars/car-156-mercedesamgevogt3/tracks/track-262-nurburgring-combinedshortb/sessions/race/`:
+
+- fuel per lap: about `13.363 L/lap`
+- fuel per hour: about `99.364 L/h`
+- valid local-driver fuel distance: about `14.112 laps`
+- unique team lap-time samples: 27
+- pit/service count: 3
+- source limitation: fuel comes only from local-driver scalar frames; teammate stints have timing/position from `CarIdx*` arrays but no direct fuel scalar
+
 ## What iRacing Exposes For Fuel Work
 
 The currently observed raw fields are enough to build a fuel/stint overlay even though the SDK does not appear to hand us a ready-made stint answer.
@@ -73,7 +90,8 @@ Fields already seen or expected to matter:
 
 Current working assumption:
 
-- iRacing exposes raw usage and context
+- iRacing exposes raw usage and context for the local driver
+- in team events, `CarIdx*` arrays remain useful while spotting/teammate-driving, but scalar `FuelLevel`/`FuelUsePerHour` can become invalid or zero
 - we derive:
   - burn rate
   - time remaining on current fuel
@@ -118,14 +136,11 @@ Suggested derivations:
 
 Use rolling smoothing and ignore invalid startup frames.
 
-## Next Expected Input
+## Next Direction
 
-The planned next dataset is a full endurance-event capture.
+The next implementation step is a live fuel/stint overlay that uses:
 
-That is the right time to:
-
-- validate stint projections over long runs
-- separate pit-road and green-flag burn behavior
-- add timed-session vs lap-limited logic
-- test multi-class assumptions
-
+- current local-driver scalar telemetry when valid
+- historical baseline data for startup estimates
+- `CarIdx*` timing/position data for team-car lap and pit context
+- confidence/source flags so teammate-stint fuel is never treated as direct measured fuel unless a future source exposes it

@@ -1,0 +1,215 @@
+{
+  "summaryVersion": 1,
+  "sourceCaptureId": "capture-20260426-130334-932",
+  "startedAtUtc": "2026-04-26T13:03:34.9320906+00:00",
+  "finishedAtUtc": "2026-04-26T17:51:22.8132357+00:00",
+  "combo": {
+    "carKey": "car-156-mercedesamgevogt3",
+    "trackKey": "track-262-nurburgring-combinedshortb",
+    "sessionKey": "race"
+  },
+  "car": {
+    "carId": 156,
+    "carPath": "mercedesamgevogt3",
+    "carScreenName": "Mercedes-AMG GT3 2020",
+    "carScreenNameShort": "Mercedes GT3 2020",
+    "carClassId": 4098,
+    "carClassShortName": "NECGT3 2026",
+    "carClassEstLapTimeSeconds": 465.166,
+    "driverCarFuelMaxLiters": 106.0,
+    "driverCarFuelKgPerLiter": 0.75,
+    "driverCarEstLapTimeSeconds": 465.166,
+    "driverCarVersion": "2026.04.15.02",
+    "driverGearboxType": "Sequential",
+    "driverSetupName": null,
+    "driverSetupIsModified": null
+  },
+  "track": {
+    "trackId": 262,
+    "trackName": "nurburgring combinedshortb",
+    "trackDisplayName": "Gesamtstrecke VLN",
+    "trackConfigName": null,
+    "trackLengthKm": 24.1544,
+    "trackCity": "N\u00fcrburg",
+    "trackCountry": "Germany",
+    "trackNumTurns": 165,
+    "trackType": "road course",
+    "trackVersion": "2026.03.30.02"
+  },
+  "session": {
+    "currentSessionNum": 2,
+    "sessionNum": 2,
+    "sessionType": "Race",
+    "sessionName": "RACE",
+    "sessionTime": "14400.0000 sec",
+    "sessionLaps": "unlimited",
+    "eventType": "Race",
+    "category": "SportsCar",
+    "official": true,
+    "teamRacing": true,
+    "seriesId": 275,
+    "seasonId": 6236,
+    "sessionId": null,
+    "subSessionId": null,
+    "buildVersion": "2026.04.21.01"
+  },
+  "conditions": {
+    "airTempC": 18.529861,
+    "trackTempCrewC": 22.222229,
+    "trackWetness": 1,
+    "weatherDeclaredWet": false,
+    "playerTireCompound": 0,
+    "trackWeatherType": "Realistic",
+    "trackSkies": "Dynamic",
+    "trackPrecipitationPercent": 0.0,
+    "sessionTrackRubberState": "carry over"
+  },
+  "metrics": {
+    "sampleFrameCount": 896593,
+    "captureDurationSeconds": 14942.918,
+    "onTrackTimeSeconds": 7053.116667,
+    "pitRoadTimeSeconds": 190.183333,
+    "movingTimeSeconds": 14676.1,
+    "validGreenTimeSeconds": 6832.383333,
+    "validDistanceLaps": 14.111807,
+    "fuelUsedLiters": 188.582284,
+    "fuelAddedLiters": 1.192806,
+    "startingFuelLiters": 104.940002,
+    "endingFuelLiters": 14.363888,
+    "minimumFuelLiters": 7.660156,
+    "maximumFuelLiters": 104.940002,
+    "pitRoadEntryCount": 3,
+    "pitServiceCount": 3,
+    "completedValidLaps": 27,
+    "averageLapSeconds": 482.194874,
+    "medianLapSeconds": 482.092804,
+    "bestLapSeconds": 474.440308,
+    "fuelPerHourLiters": 99.364481,
+    "fuelPerLapLiters": 13.36344,
+    "stintCount": 4
+  },
+  "quality": {
+    "confidence": "high",
+    "contributesToBaseline": true,
+    "reasons": [
+      "fuel_source_live_local_scalar_partial",
+      "teammate_stints_have_no_direct_fuel_scalar",
+      "lap_timing_source_car_idx",
+      "pit_count_source_car_idx_on_pit_road"
+    ]
+  },
+  "appVersion": null,
+  "analysisSource": {
+    "generatedBy": "tools/analysis/export_history_from_capture.py",
+    "generatedAtUtc": "2026-04-26T23:16:52.619393Z",
+    "sanitized": true,
+    "fuelSource": "live_local_driver_scalar_frames_only",
+    "lapTimingSource": "CarIdxLastLapTime team-car array",
+    "pitStopSource": "CarIdxOnPitRoad team-car array",
+    "stintSource": "session-info active driver changes",
+    "limitations": [
+      "Direct FuelLevel/FuelUsePerHour was not available during teammate stints in this capture.",
+      "Fuel-per-lap is computed from local-driver green-flag scalar telemetry only.",
+      "Lap timing and pit-road counts use team-car CarIdx arrays because those remain valid while spotting."
+    ],
+    "teamResult": null,
+    "stints": [
+      {
+        "driverRole": "local-driver",
+        "startUpdate": 340,
+        "endUpdate": 640,
+        "startRaceTimeSeconds": 0.5,
+        "endRaceTimeSeconds": 3642.567,
+        "fuelSource": "live_local_scalar"
+      },
+      {
+        "driverRole": "teammate-driver",
+        "startUpdate": 641,
+        "endUpdate": 1383,
+        "startRaceTimeSeconds": 3642.583,
+        "endRaceTimeSeconds": 7590.567,
+        "fuelSource": "unavailable_teammate_stint"
+      },
+      {
+        "driverRole": "local-driver",
+        "startUpdate": 1384,
+        "endUpdate": 1685,
+        "startRaceTimeSeconds": 7590.583,
+        "endRaceTimeSeconds": 11013.583,
+        "fuelSource": "live_local_scalar"
+      },
+      {
+        "driverRole": "teammate-driver",
+        "startUpdate": 1686,
+        "endUpdate": null,
+        "startRaceTimeSeconds": 11013.6,
+        "endRaceTimeSeconds": 14943.383,
+        "fuelSource": "unavailable_teammate_stint"
+      }
+    ],
+    "pitWindows": [
+      {
+        "entryRaceTimeSeconds": 3626.15,
+        "entryLapCompleted": 6,
+        "entryPosition": 10,
+        "entryClassPosition": 10,
+        "exitRaceTimeSeconds": 3690.017,
+        "exitLapCompleted": 7,
+        "exitPosition": 10,
+        "exitClassPosition": 10,
+        "durationSeconds": 63.867
+      },
+      {
+        "entryRaceTimeSeconds": 7573.55,
+        "entryLapCompleted": 14,
+        "entryPosition": 11,
+        "entryClassPosition": 11,
+        "exitRaceTimeSeconds": 7640.217,
+        "exitLapCompleted": 15,
+        "exitPosition": 4,
+        "exitClassPosition": 4,
+        "durationSeconds": 66.667
+      },
+      {
+        "entryRaceTimeSeconds": 10998.267,
+        "entryLapCompleted": 21,
+        "entryPosition": 8,
+        "entryClassPosition": 8,
+        "exitRaceTimeSeconds": 11062.2,
+        "exitLapCompleted": 22,
+        "exitPosition": 4,
+        "exitClassPosition": 4,
+        "durationSeconds": 63.933
+      }
+    ],
+    "teamLapTimesSeconds": [
+      498.9951,
+      479.9469,
+      478.6103,
+      477.0691,
+      474.4403,
+      475.1112,
+      479.829,
+      484.4866,
+      484.4436,
+      486.3979,
+      484.5252,
+      480.4045,
+      486.3365,
+      489.3119,
+      476.6746,
+      476.9517,
+      476.0537,
+      487.2816,
+      478.0855,
+      484.4221,
+      483.5894,
+      482.0928,
+      479.9,
+      481.6103,
+      487.2321,
+      483.3542,
+      482.1056
+    ]
+  }
+}

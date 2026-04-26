@@ -80,6 +80,7 @@ internal sealed class ReplayTelemetryHostedService : IHostedService
         try
         {
             _state.SetCaptureRoot(Path.GetDirectoryName(_options.CaptureDirectory!) ?? _options.CaptureDirectory!);
+            _state.SetRawCaptureEnabled(true);
             _state.MarkConnected();
             _state.MarkCaptureStarted(_options.CaptureDirectory!, DateTimeOffset.UtcNow);
 

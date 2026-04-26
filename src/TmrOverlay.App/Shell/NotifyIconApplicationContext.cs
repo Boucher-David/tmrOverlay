@@ -66,6 +66,10 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
         };
 
         _rootItem = new ToolStripMenuItem("Open Capture Root", null, (_, _) => OpenDirectory(_options.ResolvedCaptureRoot));
+        if (!_options.RawCaptureEnabled)
+        {
+            _rootItem.Text = "Open Raw Capture Root";
+        }
         var logsItem = new ToolStripMenuItem("Open Logs", null, (_, _) => OpenDirectory(_storageOptions.LogsRoot));
         var diagnosticsItem = new ToolStripMenuItem("Create Diagnostics Bundle", null, (_, _) => CreateDiagnosticsBundle());
         var exitItem = new ToolStripMenuItem("Exit", null, (_, _) => ExitApplication());
@@ -124,24 +128,34 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
 
         if (!string.IsNullOrWhiteSpace(snapshot.LastError))
         {
-            _statusItem.Text = "Capture error";
+            _statusItem.Text = snapshot.RawCaptureEnabled ? "Capture error" : "Telemetry error";
             _captureItem.Enabled = !string.IsNullOrWhiteSpace(snapshot.CurrentCaptureDirectory ?? snapshot.LastCaptureDirectory);
-            _captureItem.Text = snapshot.IsCapturing ? "Open Current Capture" : "Open Latest Capture";
+            _captureItem.Text = snapshot.RawCaptureEnabled && snapshot.RawCaptureActive
+                ? "Open Current Capture"
+                : "Open Latest Raw Capture";
             return;
         }
 
         if (!string.IsNullOrWhiteSpace(snapshot.LastWarning))
         {
-            _statusItem.Text = "Capture warning";
+            _statusItem.Text = snapshot.RawCaptureEnabled ? "Capture warning" : "Telemetry warning";
         }
 
         if (snapshot.IsCapturing)
         {
+            if (!snapshot.RawCaptureEnabled)
+            {
+                _statusItem.Text = $"Analyzing live telemetry: {snapshot.FrameCount:N0} frames";
+                _captureItem.Enabled = !string.IsNullOrWhiteSpace(snapshot.LastCaptureDirectory);
+                _captureItem.Text = "Open Latest Raw Capture";
+                return;
+            }
+
             var statusPrefix = !string.IsNullOrWhiteSpace(snapshot.LastWarning)
                 ? "Warning"
                 : "Capturing";
             _statusItem.Text = $"{statusPrefix}: {snapshot.FrameCount:N0} queued / {snapshot.WrittenFrameCount:N0} written";
-            _captureItem.Enabled = !string.IsNullOrWhiteSpace(snapshot.CurrentCaptureDirectory);
+            _captureItem.Enabled = snapshot.RawCaptureActive && !string.IsNullOrWhiteSpace(snapshot.CurrentCaptureDirectory);
             _captureItem.Text = "Open Current Capture";
             return;
         }
@@ -156,7 +170,7 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
         }
 
         _captureItem.Enabled = !string.IsNullOrWhiteSpace(snapshot.LastCaptureDirectory);
-        _captureItem.Text = "Open Latest Capture";
+        _captureItem.Text = snapshot.RawCaptureEnabled ? "Open Latest Capture" : "Open Latest Raw Capture";
     }
 
     private void OpenCapture()

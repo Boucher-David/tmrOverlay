@@ -1,6 +1,6 @@
 # TmrOverlay
 
-`TmrOverlay` starts as a Windows background collector for the iRacing SDK. The current scaffold runs as a tray application, watches for iRacing to come online, and writes raw capture artifacts that we can analyze later when we start building overlays and derived metrics.
+`TmrOverlay` starts as a Windows iRacing companion. The current scaffold runs as a tray application, watches for iRacing to come online, analyzes live telemetry, and writes compact per-combo history that future overlays can use for fuel and stint estimates.
 
 ## What It Does Today
 
@@ -8,13 +8,11 @@
 - Shows a tiny always-on-top status overlay in the top-left corner.
 - Lets you drag the status overlay and close the whole app from its `X` button.
 - Connects to iRacing through the `irsdkSharp` wrapper.
-- Opens a new capture whenever iRacing starts sending live data.
-- Stores the raw telemetry buffer for every frame in `telemetry.bin`.
-- Stores the telemetry schema once per capture in `telemetry-schema.json`.
-- Stores raw session YAML snapshots in `session-info/` and updates `latest-session.yaml`.
-- Finalizes a `capture-manifest.json` file when the sim disconnects or the app exits.
-- Shows capture-health signals in the overlay so you can distinguish live SDK frames from confirmed disk writes.
+- Starts live telemetry analysis whenever iRacing sends usable frame data.
 - Writes compact per-combo session history under app-owned local storage.
+- Keeps raw capture as an opt-in diagnostic/development mode.
+- When raw capture is enabled, stores `telemetry.bin`, `telemetry-schema.json`, `latest-session.yaml`, optional `session-info/`, and `capture-manifest.json`.
+- Shows live-analysis health signals in the overlay, plus disk-write health when raw capture is enabled.
 - Writes rolling local logs, JSONL app events, runtime-state markers, persisted settings, and diagnostics bundles for triage.
 - Includes retention cleanup for old captures and diagnostics bundles.
 - Includes a replay-mode seam for overlay development against an existing capture.
@@ -33,9 +31,15 @@
 - `docs/capture-format.md` documents the binary frame format used by `telemetry.bin`.
 - `telemetry.md` summarizes the event/session/car schema exposed by the current raw capture model.
 
-## Capture Output
+## Raw Capture Output
 
-By default captures are written under the user-local application data directory:
+Raw capture is disabled by default. Enable it only when you need a diagnostic/development capture:
+
+```powershell
+$env:TMR_TelemetryCapture__RawCaptureEnabled = "true"
+```
+
+When enabled, captures are written under the user-local application data directory:
 
 ```text
 %LOCALAPPDATA%\TmrOverlay\captures
@@ -61,8 +65,8 @@ Each capture folder contains:
 
 You can also double-click [TmrOverlay.cmd](/Users/davidboucher/Code/tmrOverlay/TmrOverlay.cmd) from the repo root after the app has been built once. It launches the built executable from the expected `Debug` or `Release` output folder.
 
-The tray menu lets you open the captures folder, open the current capture, open logs, create a diagnostics bundle, or exit the app.
-The overlay stays visible over the sim so you can confirm the app is running and whether live telemetry capture has started. It now shows the active capture path, queued frames, written frames, dropped frames, telemetry file size, frame freshness, disk-write freshness, and explicit warning/error messages. You can drag it to a new position, and the `X` button fully exits the application.
+The tray menu lets you open the raw capture folder, open the current raw capture when one exists, open logs, create a diagnostics bundle, or exit the app.
+The overlay stays visible over the sim so you can confirm the app is running and whether live telemetry analysis has started. With raw capture disabled it shows live frame freshness and history-collection state. With raw capture enabled it also shows queued frames, written frames, dropped frames, telemetry file size, disk-write freshness, and explicit warning/error messages. You can drag it to a new position, and the `X` button fully exits the application.
 
 During local development, the overlay also warns when source files in this checkout are newer than the running build. That is a rebuild reminder only; it does not block capture.
 
@@ -74,7 +78,13 @@ The ignored macOS harness is for local overlay and boilerplate iteration on this
 ./run.sh
 ```
 
-It writes mock capture data to `~/Library/Application Support/TmrOverlayMac` by default and mirrors the Windows storage layout for captures, user history, logs, events, settings, diagnostics, runtime state, and retention cleanup. Set `TMR_MAC_USE_REPOSITORY_LOCAL_STORAGE=true` if you intentionally want mac harness data under the ignored `local-mac/TmrOverlayMac/` folder.
+It writes mock session history to `~/Library/Application Support/TmrOverlayMac/history/user` by default and mirrors the Windows storage layout for captures, user history, logs, events, settings, diagnostics, runtime state, and retention cleanup. Set `TMR_MAC_USE_REPOSITORY_LOCAL_STORAGE=true` if you intentionally want mac harness data under the ignored `local-mac/TmrOverlayMac/` folder.
+
+Raw mock capture is disabled by default. Enable it only when you want to exercise the raw capture writer and disk-health UI:
+
+```bash
+TMR_MAC_RAW_CAPTURE_ENABLED=true ./run.sh
+```
 
 For overlay-state previews on macOS, launch with:
 
@@ -82,11 +92,11 @@ For overlay-state previews on macOS, launch with:
 TMR_MAC_DEMO_STATES=true ./run.sh
 ```
 
-That cycles through waiting-for-sim, connected-without-capture, healthy capture, stale build, dropped-frame, frames-not-written, disk-stalled, and writer-error states. The menu-bar item also exposes manual demo-state entries.
+That cycles through waiting-for-sim, connected-without-capture, healthy live-analysis, healthy raw-capture, stale build, dropped-frame, frames-not-written, disk-stalled, and writer-error states. The menu-bar item also exposes manual demo-state entries.
 
 ## Session History
 
-At the end of each capture, the app writes a compact historical summary under:
+At the end of each live telemetry collection, the app writes a compact historical summary under:
 
 ```text
 %LOCALAPPDATA%\TmrOverlay\history\user\cars\{car}\tracks\{track}\sessions\{session}
@@ -103,6 +113,7 @@ The app reads `src/TmrOverlay.App/appsettings.json`.
 Available settings:
 
 - `TelemetryCapture:StoreSessionInfoSnapshots`
+- `TelemetryCapture:RawCaptureEnabled`
 - `TelemetryCapture:QueueCapacity`
 - `SessionHistory:Enabled`
 - `Storage:UseRepositoryLocalStorage`

@@ -303,11 +303,15 @@ internal sealed class StatusOverlayForm : Form
         {
             var now = DateTimeOffset.UtcNow;
             var capturePath = snapshot.CurrentCaptureDirectory ?? snapshot.LastCaptureDirectory ?? snapshot.CaptureRoot;
-            var captureText = $"path: {CompactPath(capturePath)}";
+            var captureText = snapshot.RawCaptureEnabled
+                ? $"raw: {CompactPath(capturePath)}"
+                : "raw: disabled; history ready";
             var frameAge = AgeSeconds(snapshot.LastFrameCapturedAtUtc, now);
             var diskAge = AgeSeconds(snapshot.LastDiskWriteAtUtc, now);
             var bytes = FormatBytes(snapshot.TelemetryFileBytes);
-            var detail = $"queued {snapshot.FrameCount,7:N0}  written {snapshot.WrittenFrameCount,7:N0}  drops {snapshot.DroppedFrameCount,4:N0}  file {bytes}";
+            var detail = snapshot.RawCaptureEnabled
+                ? $"queued {snapshot.FrameCount,7:N0}  written {snapshot.WrittenFrameCount,7:N0}  drops {snapshot.DroppedFrameCount,4:N0}  file {bytes}"
+                : $"frames {snapshot.FrameCount,7:N0}  history on  raw off";
 
             if (!string.IsNullOrWhiteSpace(snapshot.LastError))
             {
@@ -337,13 +341,13 @@ internal sealed class StatusOverlayForm : Form
             {
                 return new CaptureHealth(
                     CaptureHealthLevel.Warning,
-                    "Connected, not capturing yet",
+                    "Connected, waiting for telemetry",
                     "waiting for first telemetry frame",
                     captureText,
-                    Combine(appWarning, "health: SDK connected but no capture folder has started"));
+                    Combine(appWarning, "health: SDK connected but no live telemetry frame has started collection"));
             }
 
-            if (snapshot.FrameCount > 0 && snapshot.WrittenFrameCount == 0)
+            if (snapshot.RawCaptureEnabled && snapshot.FrameCount > 0 && snapshot.WrittenFrameCount == 0)
             {
                 return new CaptureHealth(
                     CaptureHealthLevel.Error,
@@ -353,7 +357,7 @@ internal sealed class StatusOverlayForm : Form
                     "error: telemetry frames arrived but disk writer has not confirmed writes");
             }
 
-            if (snapshot.WrittenFrameCount > snapshot.FrameCount + 2)
+            if (snapshot.RawCaptureEnabled && snapshot.WrittenFrameCount > snapshot.FrameCount + 2)
             {
                 return new CaptureHealth(
                     CaptureHealthLevel.Warning,
@@ -383,7 +387,7 @@ internal sealed class StatusOverlayForm : Form
                     $"error: no SDK frame for {frameAge:N0}s; sim may be paused/disconnected");
             }
 
-            if (diskAge is not null && diskAge > 5)
+            if (snapshot.RawCaptureEnabled && diskAge is not null && diskAge > 5)
             {
                 return new CaptureHealth(
                     CaptureHealthLevel.Error,
@@ -413,10 +417,12 @@ internal sealed class StatusOverlayForm : Form
                     appWarning);
             }
 
-            var healthMessage = $"health: live frames ok; last frame {FormatAge(frameAge)}, disk {FormatAge(diskAge)}";
+            var healthMessage = snapshot.RawCaptureEnabled
+                ? $"health: live frames ok; last frame {FormatAge(frameAge)}, disk {FormatAge(diskAge)}"
+                : $"health: live analysis ok; last frame {FormatAge(frameAge)}";
             return new CaptureHealth(
                 CaptureHealthLevel.Ok,
-                "Collecting live session data",
+                snapshot.RawCaptureEnabled ? "Collecting raw telemetry" : "Analyzing live telemetry",
                 detail,
                 captureText,
                 healthMessage);
