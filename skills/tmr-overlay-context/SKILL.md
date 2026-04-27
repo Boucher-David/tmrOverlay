@@ -18,8 +18,9 @@ Use this repo-local skill when the task is about continuing or extending `tmrOve
    live status overlay,
    telemetry capture service,
    raw capture artifacts on disk.
-6. If you touch the capture format, update `docs/capture-format.md`, `telemetry.md`, and `README.md` together when needed.
-7. If you change product direction or analysis assumptions, update the relevant reference file so future sessions inherit the new context.
+6. When adding or changing overlay features, include defensive error handling and useful debug/error logs. Telemetry gaps should degrade to an unavailable/waiting state; unexpected refresh/render failures should be logged and surfaced in the relevant overlay or status path without taking down the whole app.
+7. If you touch the capture format, update `docs/capture-format.md`, `telemetry.md`, and `README.md` together when needed.
+8. If you change product direction or analysis assumptions, update the relevant reference file so future sessions inherit the new context.
 
 ## Primary Files
 

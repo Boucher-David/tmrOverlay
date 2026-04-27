@@ -19,6 +19,8 @@ internal sealed class HistoricalSessionContext
     public required HistoricalSessionIdentity Session { get; init; }
 
     public required HistoricalSessionInfoConditions Conditions { get; init; }
+
+    public IReadOnlyList<HistoricalSessionDriver> Drivers { get; init; } = [];
 }
 
 internal sealed class HistoricalSessionSummary
@@ -173,6 +175,31 @@ internal sealed class HistoricalSessionInfoConditions
     public double? TrackPrecipitationPercent { get; init; }
 
     public string? SessionTrackRubberState { get; init; }
+}
+
+internal sealed class HistoricalSessionDriver
+{
+    public int? CarIdx { get; init; }
+
+    public string? UserName { get; init; }
+
+    public string? AbbrevName { get; init; }
+
+    public string? Initials { get; init; }
+
+    public int? UserId { get; init; }
+
+    public int? TeamId { get; init; }
+
+    public string? TeamName { get; init; }
+
+    public string? CarNumber { get; init; }
+
+    public int? CarClassId { get; init; }
+
+    public string? CarClassShortName { get; init; }
+
+    public bool? IsSpectator { get; init; }
 }
 
 internal sealed class HistoricalConditions
@@ -446,20 +473,31 @@ internal sealed record HistoricalTelemetrySample(
     int? PlayerCarIdx = null,
     int? TeamLapCompleted = null,
     double? TeamLapDistPct = null,
+    double? TeamF2TimeSeconds = null,
+    double? TeamEstimatedTimeSeconds = null,
     double? TeamLastLapTimeSeconds = null,
     double? TeamBestLapTimeSeconds = null,
     int? TeamPosition = null,
     int? TeamClassPosition = null,
+    int? TeamCarClass = null,
     int? LeaderCarIdx = null,
     int? LeaderLapCompleted = null,
     double? LeaderLapDistPct = null,
+    double? LeaderF2TimeSeconds = null,
+    double? LeaderEstimatedTimeSeconds = null,
     double? LeaderLastLapTimeSeconds = null,
     double? LeaderBestLapTimeSeconds = null,
     int? ClassLeaderCarIdx = null,
     int? ClassLeaderLapCompleted = null,
     double? ClassLeaderLapDistPct = null,
+    double? ClassLeaderF2TimeSeconds = null,
+    double? ClassLeaderEstimatedTimeSeconds = null,
     double? ClassLeaderLastLapTimeSeconds = null,
     double? ClassLeaderBestLapTimeSeconds = null,
+    int? PlayerTrackSurface = null,
+    int? CarLeftRight = null,
+    IReadOnlyList<HistoricalCarProximity>? NearbyCars = null,
+    IReadOnlyList<HistoricalCarProximity>? ClassCars = null,
     bool? TeamOnPitRoad = null,
     int? TeamFastRepairsUsed = null,
     int? PitServiceFlags = null,
@@ -470,3 +508,15 @@ internal sealed record HistoricalTelemetrySample(
     int? FastRepairUsed = null,
     int? DriversSoFar = null,
     int? DriverChangeLapStatus = null);
+
+internal sealed record HistoricalCarProximity(
+    int CarIdx,
+    int LapCompleted,
+    double LapDistPct,
+    double? F2TimeSeconds,
+    double? EstimatedTimeSeconds,
+    int? Position,
+    int? ClassPosition,
+    int? CarClass,
+    int? TrackSurface,
+    bool? OnPitRoad);

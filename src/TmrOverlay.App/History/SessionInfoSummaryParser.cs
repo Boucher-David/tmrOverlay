@@ -71,7 +71,11 @@ internal static class SessionInfoSummaryParser
                 TrackSkies = ReadString(parsed.WeekendInfo, "TrackSkies"),
                 TrackPrecipitationPercent = ReadDouble(parsed.WeekendInfo, "TrackPrecipitation"),
                 SessionTrackRubberState = ReadString(session, "SessionTrackRubberState")
-            }
+            },
+            Drivers = parsed.Drivers
+                .Select(ToDriver)
+                .Where(driver => driver.CarIdx is not null)
+                .ToArray()
         };
     }
 
@@ -233,6 +237,24 @@ internal static class SessionInfoSummaryParser
         }
 
         return parsed.Drivers.FirstOrDefault() ?? EmptyDictionary;
+    }
+
+    private static HistoricalSessionDriver ToDriver(IReadOnlyDictionary<string, string> values)
+    {
+        return new HistoricalSessionDriver
+        {
+            CarIdx = ReadInt(values, "CarIdx"),
+            UserName = ReadString(values, "UserName"),
+            AbbrevName = ReadString(values, "AbbrevName"),
+            Initials = ReadString(values, "Initials"),
+            UserId = ReadInt(values, "UserID"),
+            TeamId = ReadInt(values, "TeamID"),
+            TeamName = ReadString(values, "TeamName"),
+            CarNumber = ReadString(values, "CarNumber"),
+            CarClassId = ReadInt(values, "CarClassID"),
+            CarClassShortName = ReadString(values, "CarClassShortName"),
+            IsSpectator = ReadBool(values, "IsSpectator")
+        };
     }
 
     private static bool TryReadKeyValue(string trimmedLine, out string key, out string value)

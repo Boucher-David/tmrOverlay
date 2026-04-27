@@ -216,10 +216,25 @@ Primary source:
 - `CarIdxLapDistPct`
 - `CarIdxTrackSurface`
 - `CarIdxOnPitRoad`
+- `CarIdxPosition`
+- `CarIdxClassPosition`
+- `CarIdxClass`
+- `CarIdxF2Time`
+- `CarIdxEstTime`
 - `CarIdxRPM`
 - `CarIdxGear`
 - `CarIdxBestLapTime`
 - `CarIdxTireCompound`
+- `CarLeftRight`
+
+#### Proximity and leader-gap fields
+
+- `CarLeftRight` is the scalar side-warning signal for cars to the left, right, or both sides of the driver.
+- `CarIdxF2Time` is used for race gap timing to the overall leader, class leader, and same-class cars in the gap trend graph when race-position data is available.
+- Gap graph class rows are kept separate from radar proximity rows: cars with valid standings/F2 timing can remain graphable even when `CarIdxLapCompleted` or `CarIdxLapDistPct` is unavailable.
+- `CarIdxEstTime`, `CarIdxLapCompleted`, and `CarIdxLapDistPct` provide the first-pass relative track-position model for nearby cars.
+- `CarIdxTrackSurface` and `CarIdxOnPitRoad` help distinguish cars physically on track from pit-road or off-track cars as the radar model gets refined.
+- The live radar model keeps a short in-memory proximity history so different-class cars approaching from behind can raise a multiclass warning before they reach the close-range radar circle. This derived warning is not persisted in compact history.
 
 ### Example from short diagnostic capture
 

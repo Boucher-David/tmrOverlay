@@ -25,12 +25,12 @@ internal static class FuelStrategyCalculator
         var teammateStintTarget = SelectTeammateStintTarget(aggregate, aggregateSource, maxFuelLiters, fuelPerLap.Value);
         var completedStintCount = EstimateCompletedStintCount(live, maxFuelLiters, fuelPerLap.Value, teammateStintTarget.TargetLaps);
         var pitStrategy = SelectPitStrategy(aggregate, aggregateSource);
-        var raceLapEstimate = EstimateRaceLapsRemaining(live.Context, sample, lapTime.Seconds, racePace);
+        var raceLapEstimate = EstimateRaceLapsRemaining(live.Context, sample, lapTime.Value, racePace);
         var raceLapsRemaining = raceLapEstimate.LapsRemaining;
-        var fuelToFinish = fuelPerLap.Value is not null && raceLapsRemaining is not null
+        double? fuelToFinish = fuelPerLap.Value is not null && raceLapsRemaining is not null
             ? fuelPerLap.Value.Value * raceLapsRemaining.Value
             : null;
-        var additionalFuelNeeded = fuelToFinish is not null && currentFuelLiters is not null
+        double? additionalFuelNeeded = fuelToFinish is not null && currentFuelLiters is not null
             ? Math.Max(0d, fuelToFinish.Value - currentFuelLiters.Value)
             : null;
         var stintPlan = BuildStintPlan(
@@ -54,7 +54,7 @@ internal static class FuelStrategyCalculator
             FuelPerLapMinimumLiters: fuelPerLap.Minimum,
             FuelPerLapMaximumLiters: fuelPerLap.Maximum,
             FuelPerHourLiters: fuelPerHour,
-            LapTimeSeconds: lapTime.Seconds,
+            LapTimeSeconds: lapTime.Value,
             LapTimeSource: lapTime.Source,
             RacePaceSeconds: racePace.Value,
             RacePaceSource: racePace.Source,
@@ -306,10 +306,10 @@ internal static class FuelStrategyCalculator
             return StintPlan.Empty;
         }
 
-        var currentStintLaps = currentFuelLiters is not null
+        double? currentStintLaps = currentFuelLiters is not null
             ? currentFuelLiters.Value / fuelPerLapLiters.Value
             : null;
-        var fullTankStintLaps = maxFuelLiters is not null
+        double? fullTankStintLaps = maxFuelLiters is not null
             ? maxFuelLiters.Value / fuelPerLapLiters.Value
             : null;
 
@@ -398,7 +398,7 @@ internal static class FuelStrategyCalculator
                 TireAdvice: TireChangeAdvice.NoStop));
         }
 
-        var remainingAfterCurrent = raceLapsRemaining is not null && currentStintLaps is not null
+        double? remainingAfterCurrent = raceLapsRemaining is not null && currentStintLaps is not null
             ? Math.Max(0d, raceLapsRemaining.Value - currentStintLaps.Value)
             : null;
 

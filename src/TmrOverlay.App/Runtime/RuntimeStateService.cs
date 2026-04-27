@@ -20,7 +20,7 @@ internal sealed class RuntimeStateService : IHostedService, IDisposable
     private readonly ILogger<RuntimeStateService> _logger;
     private readonly object _sync = new();
     private RuntimeState? _currentState;
-    private Timer? _heartbeatTimer;
+    private System.Threading.Timer? _heartbeatTimer;
 
     public RuntimeStateService(
         AppStorageOptions storageOptions,
@@ -56,7 +56,7 @@ internal sealed class RuntimeStateService : IHostedService, IDisposable
         WriteState(_currentState);
         _events.Record("app_started");
 
-        _heartbeatTimer = new Timer(_ => Heartbeat(), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+        _heartbeatTimer = new System.Threading.Timer(_ => Heartbeat(), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
         return Task.CompletedTask;
     }
 

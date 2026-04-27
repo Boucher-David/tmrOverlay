@@ -414,7 +414,9 @@ public sealed class FuelStrategyCalculatorTests
             Context: context,
             Combo: combo,
             LatestSample: sample,
-            Fuel: LiveFuelSnapshot.From(context, sample));
+            Fuel: LiveFuelSnapshot.From(context, sample),
+            Proximity: LiveProximitySnapshot.From(context, sample, teamLastLapTimeSeconds),
+            LeaderGap: LiveLeaderGapSnapshot.From(sample));
     }
 
     private static SessionHistoryLookupResult EmptyHistory(HistoricalComboIdentity combo)

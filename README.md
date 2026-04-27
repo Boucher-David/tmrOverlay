@@ -11,6 +11,8 @@
 - Starts live telemetry analysis whenever iRacing sends usable frame data.
 - Writes compact per-combo session history under app-owned local storage.
 - Shows an early fuel calculator overlay that estimates race laps, whole-lap stint targets, final-stint length, realistic fuel-saving alerts, and stop-by-stop tire-change timing guidance.
+- Shows first-pass radar and gap-to-leader overlays backed by live `CarLeftRight`, `CarIdxF2Time`, `CarIdxEstTime`, and `CarIdx*` progress/position telemetry.
+  The radar is a transparent circular proximity view that only paints when traffic is nearby, fades car rectangles from red to yellow to transparent as traffic moves away, and can show an outer-ring multiclass approaching warning with a live seconds gap. The gap overlay is a four-hour in-class trend graph with the class leader as the top baseline, adaptive Y-axis scaling, left-side axis labels, lap reference lines, subtle weather bands, driver/leader-change markers, dimmed non-team context lines, and endpoint `P<N>` labels. It keeps bounded in-memory traces for all available same-class timing rows, while dynamically rendering the leader, the team car, nearby class traffic, and recently visible cars.
 - Stores early pit-service history signals such as pit-lane time, pit-stall/service time, observed fuel fill rate, tire/repair indicators, and confidence flags.
 - Keeps raw capture as an opt-in diagnostic/development mode; the status overlay can request raw capture at runtime if the app was started without the flag.
 - When raw capture is enabled, stores `telemetry.bin`, `telemetry-schema.json`, `latest-session.yaml`, optional `session-info/`, and `capture-manifest.json`.
@@ -87,7 +89,7 @@ The ignored macOS harness is for local overlay and boilerplate iteration on this
 
 It writes mock session history to `~/Library/Application Support/TmrOverlayMac/history/user` by default and mirrors the Windows storage layout for captures, user history, logs, events, settings, diagnostics, runtime state, and retention cleanup. Set `TMR_MAC_USE_REPOSITORY_LOCAL_STORAGE=true` if you intentionally want mac harness data under the ignored `local-mac/TmrOverlayMac/` folder.
 
-The mac harness opens the live mock fuel calculator only. It uses the same startup overlay set as Windows: status plus one fuel calculator.
+The mac harness opens the same startup overlay set as Windows: status, fuel calculator, radar, and gap-to-leader. Its mock live race uses the tracked four-hour Nürburgring baseline shape at 4x speed so long-run gap and fuel behavior can be inspected quickly. Treat Windows overlay code as production-facing and real-data-driven; the ignored mac harness can use looser mock offsets, named drivers, synthetic weather windows, and exaggerated events for visual iteration.
 
 Raw mock capture is disabled by default. Enable it only when you want to exercise the raw capture writer and disk-health UI:
 
@@ -212,5 +214,5 @@ The current Command Line Tools-only setup on this Mac can run `swift build`, but
 
 - Add a lightweight local bridge for downstream overlay processes.
 - Add a replay tool that can decode `telemetry.bin` with `telemetry-schema.json`.
-- Add overlay windows as separate UI surfaces without changing the collector.
+- Harden the radar and gap overlays against longer multi-class traffic captures.
 - Design the post-race strategy review/export flow described in [docs/post-race-strategy-analysis.md](/Users/davidboucher/Code/tmrOverlay/docs/post-race-strategy-analysis.md).
