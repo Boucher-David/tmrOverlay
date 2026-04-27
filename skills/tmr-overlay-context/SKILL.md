@@ -19,8 +19,9 @@ Use this repo-local skill when the task is about continuing or extending `tmrOve
    telemetry capture service,
    raw capture artifacts on disk.
 6. When adding or changing overlay features, include defensive error handling and useful debug/error logs. Telemetry gaps should degrade to an unavailable/waiting state; unexpected refresh/render failures should be logged and surfaced in the relevant overlay or status path without taking down the whole app.
-7. If you touch the capture format, update `docs/capture-format.md`, `telemetry.md`, and `README.md` together when needed.
-8. If you change product direction or analysis assumptions, update the relevant reference file so future sessions inherit the new context.
+7. When adding or materially changing overlays, update review images under `mocks/<overlay-id>/`. Prefer at least one focused screenshot plus a multi-state contact sheet that covers waiting/unavailable, normal/healthy, edge/warning, and error/fallback behavior when those states apply.
+8. If you touch the capture format, update `docs/capture-format.md`, `telemetry.md`, and `README.md` together when needed.
+9. If you change product direction or analysis assumptions, update the relevant reference file so future sessions inherit the new context.
 
 ## Primary Files
 
