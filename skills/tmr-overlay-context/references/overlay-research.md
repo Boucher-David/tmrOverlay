@@ -1,6 +1,6 @@
 # Overlay Research
 
-Last updated: 2026-04-26
+Last updated: 2026-04-27
 
 ## External Reference Reviewed
 
@@ -81,5 +81,19 @@ Good direction for `tmrOverlay`:
 - low-noise dark styling
 - clear semantic state color
 - prioritize live decision support over decorative telemetry
-- build fuel/stint first, then expand to session-relative and strategy overlays
+- build fuel/stint first, then expand through small race-context overlays such as radar, leader gap, relative, and strategy views
 
+## Current Expansion Notes
+
+The first post-fuel overlays are now bootstrapped:
+
+- radar: transparent 300px circular proximity view; scalar side occupancy from `CarLeftRight`, plus first-pass nearby car rectangles from `CarIdxEstTime` and `CarIdx*` progress; car rectangles fade from red to yellow to transparent as traffic moves away. Faster approaching multiclass traffic can show a short outer warning arc with a live seconds gap before it reaches close radar range.
+- gap-to-leader: rolling four-hour in-class inverse line graph; class leader is the top baseline, all available same-class timing rows are retained in a bounded overlay-local in-memory render buffer, and the currently rendered set is selected dynamically as leader, team car, nearest same-class cars ahead/behind, plus recently visible cars that need continuity as they enter/leave the nearby window. The Windows live path keeps gap graph timing rows separate from radar proximity rows so standings/F2 data can still be graphed when lap-distance progress is unavailable. The visible history starts at the left edge, Y-axis scale follows the visible field spread, left-side axis labels avoid covering lines, whole-lap gap reference lines appear when the field spreads by a lap or more, vertical 5-lap markers show visible-history duration, and line endpoints show compact `P<N>` class-position labels.
+- gap-to-leader odd-event policy: the class-leader baseline is a role, not a fixed car. When the leader changes, the old leader's car line should continue downward as a normal trace, the new leader becomes the baseline reference, and a compact leader-change marker should explain the reset. Cars with missing telemetry should end their line cleanly instead of connecting across gaps; recently visible cars should fade/dash out after a sticky window so crashes, spins, disconnects, or position losses remain understandable.
+- gap-to-leader weather and driver context: weather should render as subtle full-height vertical bands behind the graph from live wetness/declared-wet telemetry. Driver changes should preserve each line's color and add compact ticks/dots on the affected line. Windows should infer real driver swaps from session-info `DriverInfo.Drivers[]` changes by `CarIdx`, with `DCDriversSoFar` as the explicit local-team signal. Mac may use named mock handoffs for visual iteration.
+
+## Development Boundary
+
+Treat the Windows app as production-facing during overlay development: keep it conservative, real-data-driven, and free of mock offsets or named sample assumptions. The ignored mac harness should mirror feature behavior, but it can be much looser about data generation, including fixed preview race offsets, named mock drivers, synthetic all-class timing rows, artificial weather windows, and exaggerated graph events that help validate visuals quickly.
+
+The radar should be treated as an early proximity surface until we collect enough side-by-side traffic samples to validate lateral behavior beyond the scalar left/right signal.

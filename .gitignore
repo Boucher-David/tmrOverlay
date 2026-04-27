@@ -29,6 +29,7 @@
 /settings/
 /runtime-state.json
 /history/user/
+/artifacts/
 
 # Convenience launcher for the ignored macOS harness.
 /run.sh

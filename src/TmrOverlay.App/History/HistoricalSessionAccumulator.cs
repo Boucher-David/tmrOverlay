@@ -485,10 +485,10 @@ internal sealed class HistoricalSessionAccumulator
             var distanceLaps = _distanceLaps > 0d
                 ? _distanceLaps
                 : Math.Max(0d, endPosition - _startPosition);
-            var fuelUsedLiters = _fuelStartLiters is not null && _fuelEndLiters is not null
+            double? fuelUsedLiters = _fuelStartLiters is not null && _fuelEndLiters is not null
                 ? Math.Max(0d, _fuelStartLiters.Value - _fuelEndLiters.Value)
                 : null;
-            var fuelPerLap = fuelUsedLiters is { } fuelUsed && fuelUsed > 0d && distanceLaps > 0.1d
+            double? fuelPerLap = fuelUsedLiters is { } fuelUsed && fuelUsed > 0d && distanceLaps > 0.1d
                 ? fuelUsed / distanceLaps
                 : null;
             var confidence = new List<string>();
@@ -599,10 +599,10 @@ internal sealed class HistoricalSessionAccumulator
         {
             var exit = exitSample ?? _entry;
             var pitLaneSeconds = Math.Max(0d, exit.SessionTime - _entry.SessionTime);
-            var fuelAddedLiters = _fuelBeforeLiters is not null && _fuelAfterLiters is not null
+            double? fuelAddedLiters = _fuelBeforeLiters is not null && _fuelAfterLiters is not null
                 ? Math.Max(0d, _fuelAfterLiters.Value - _fuelBeforeLiters.Value)
                 : null;
-            var fuelFillRate = fuelAddedLiters is { } addedFuel && addedFuel > 0d && _serviceActiveSeconds > 0d
+            double? fuelFillRate = fuelAddedLiters is { } addedFuel && addedFuel > 0d && _serviceActiveSeconds > 0d
                 ? addedFuel / _serviceActiveSeconds
                 : null;
             var confidence = new List<string>();

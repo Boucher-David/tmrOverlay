@@ -1,5 +1,7 @@
 using TmrOverlay.App.Overlays.Abstractions;
+using TmrOverlay.App.Overlays.CarRadar;
 using TmrOverlay.App.Overlays.FuelCalculator;
+using TmrOverlay.App.Overlays.GapToLeader;
 using TmrOverlay.App.Overlays.Status;
 using TmrOverlay.App.Settings;
 using TmrOverlay.App.Telemetry;
@@ -18,6 +20,8 @@ internal sealed class OverlayManager : IDisposable
     private readonly SessionHistoryQueryService _historyQueryService;
     private readonly AppEventRecorder _events;
     private readonly ILogger<StatusOverlayForm> _statusOverlayLogger;
+    private readonly ILogger<CarRadarForm> _carRadarLogger;
+    private readonly ILogger<GapToLeaderForm> _gapToLeaderLogger;
     private readonly List<Form> _forms = [];
     private ApplicationSettings? _settings;
 
@@ -27,7 +31,9 @@ internal sealed class OverlayManager : IDisposable
         LiveTelemetryStore liveTelemetryStore,
         SessionHistoryQueryService historyQueryService,
         AppEventRecorder events,
-        ILogger<StatusOverlayForm> statusOverlayLogger)
+        ILogger<StatusOverlayForm> statusOverlayLogger,
+        ILogger<CarRadarForm> carRadarLogger,
+        ILogger<GapToLeaderForm> gapToLeaderLogger)
     {
         _settingsStore = settingsStore;
         _telemetryCaptureState = telemetryCaptureState;
@@ -35,6 +41,8 @@ internal sealed class OverlayManager : IDisposable
         _historyQueryService = historyQueryService;
         _events = events;
         _statusOverlayLogger = statusOverlayLogger;
+        _carRadarLogger = carRadarLogger;
+        _gapToLeaderLogger = gapToLeaderLogger;
     }
 
     public void ShowStartupOverlays(Action closeApplication)
@@ -47,6 +55,8 @@ internal sealed class OverlayManager : IDisposable
         _settings = _settingsStore.Load();
         ShowStatusOverlay(closeApplication);
         ShowFuelCalculatorOverlay();
+        ShowCarRadarOverlay();
+        ShowGapToLeaderOverlay();
         SaveSettings();
     }
 
@@ -85,6 +95,32 @@ internal sealed class OverlayManager : IDisposable
                 SaveSettings),
             defaultX: 24,
             defaultY: 190);
+    }
+
+    private void ShowCarRadarOverlay()
+    {
+        ShowOverlay(
+            CarRadarOverlayDefinition.Definition,
+            settings => new CarRadarForm(
+                _liveTelemetryStore,
+                _carRadarLogger,
+                settings,
+                SaveSettings),
+            defaultX: 650,
+            defaultY: 24);
+    }
+
+    private void ShowGapToLeaderOverlay()
+    {
+        ShowOverlay(
+            GapToLeaderOverlayDefinition.Definition,
+            settings => new GapToLeaderForm(
+                _liveTelemetryStore,
+                _gapToLeaderLogger,
+                settings,
+                SaveSettings),
+            defaultX: 650,
+            defaultY: 260);
     }
 
     private void ShowOverlay(

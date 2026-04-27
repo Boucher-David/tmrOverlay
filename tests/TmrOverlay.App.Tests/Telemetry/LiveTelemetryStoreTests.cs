@@ -60,11 +60,50 @@ public sealed class LiveTelemetryStoreTests
         Assert.True(snapshot.Fuel.HasValidFuel);
     }
 
+    [Fact]
+    public void RecordFrame_SurfacesMulticlassApproachOutsideCloseRadarRange()
+    {
+        var store = new LiveTelemetryStore();
+
+        store.RecordFrame(CreateSample(
+            playerCarIdx: 10,
+            teamLapDistPct: 0.50d,
+            teamEstimatedTimeSeconds: 50d,
+            teamCarClass: 4098,
+            nearbyCars:
+            [
+                new HistoricalCarProximity(
+                    CarIdx: 51,
+                    LapCompleted: 2,
+                    LapDistPct: 0.32d,
+                    F2TimeSeconds: 0d,
+                    EstimatedTimeSeconds: 32d,
+                    Position: 3,
+                    ClassPosition: 1,
+                    CarClass: 4099,
+                    TrackSurface: 3,
+                    OnPitRoad: false)
+            ]));
+
+        var snapshot = store.Snapshot();
+
+        var approach = Assert.Single(snapshot.Proximity.MulticlassApproaches);
+        Assert.Equal(51, approach.CarIdx);
+        Assert.Equal(4099, approach.CarClass);
+        Assert.Equal(-18d, approach.RelativeSeconds!.Value, precision: 6);
+        Assert.Equal(approach, snapshot.Proximity.StrongestMulticlassApproach);
+    }
+
     private static HistoricalTelemetrySample CreateSample(
         DateTimeOffset? capturedAtUtc = null,
         double fuelLevelLiters = 42d,
         double fuelLevelPercent = 0.4d,
-        double fuelUsePerHourKg = 60d)
+        double fuelUsePerHourKg = 60d,
+        int? playerCarIdx = null,
+        double? teamLapDistPct = null,
+        double? teamEstimatedTimeSeconds = null,
+        int? teamCarClass = null,
+        IReadOnlyList<HistoricalCarProximity>? nearbyCars = null)
     {
         return new HistoricalTelemetrySample(
             CapturedAtUtc: capturedAtUtc ?? DateTimeOffset.UtcNow,
@@ -89,6 +128,12 @@ public sealed class LiveTelemetryStoreTests
             TrackTempCrewC: 24d,
             TrackWetness: 1,
             WeatherDeclaredWet: false,
-            PlayerTireCompound: 0);
+            PlayerTireCompound: 0,
+            PlayerCarIdx: playerCarIdx,
+            TeamLapCompleted: teamLapDistPct is null ? null : 2,
+            TeamLapDistPct: teamLapDistPct,
+            TeamEstimatedTimeSeconds: teamEstimatedTimeSeconds,
+            TeamCarClass: teamCarClass,
+            NearbyCars: nearbyCars);
     }
 }
