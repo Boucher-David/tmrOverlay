@@ -89,6 +89,66 @@
     "minimum": 3.0,
     "maximum": 3.0
   },
+  "averageStintLaps": {
+    "sampleCount": 1,
+    "mean": 7.5,
+    "minimum": 7.5,
+    "maximum": 7.5
+  },
+  "averageStintSeconds": {
+    "sampleCount": 1,
+    "mean": 3735.7085,
+    "minimum": 3735.7085,
+    "maximum": 3735.7085
+  },
+  "averageStintFuelPerLapLiters": {
+    "sampleCount": 1,
+    "mean": 13.36344,
+    "minimum": 13.36344,
+    "maximum": 13.36344
+  },
+  "localDriverStintLaps": {
+    "sampleCount": 2,
+    "mean": 7.0,
+    "minimum": 7.0,
+    "maximum": 7.0
+  },
+  "teammateDriverStintLaps": {
+    "sampleCount": 2,
+    "mean": 8.0,
+    "minimum": 8.0,
+    "maximum": 8.0
+  },
+  "averagePitLaneSeconds": {
+    "sampleCount": 1,
+    "mean": 64.822333,
+    "minimum": 64.822333,
+    "maximum": 64.822333
+  },
+  "averagePitStallSeconds": {
+    "sampleCount": 1,
+    "mean": 39.2,
+    "minimum": 39.2,
+    "maximum": 39.2
+  },
+  "averagePitServiceSeconds": {
+    "sampleCount": 1,
+    "mean": 39.2,
+    "minimum": 39.2,
+    "maximum": 39.2
+  },
+  "observedFuelFillRateLitersPerSecond": {
+    "sampleCount": 1,
+    "mean": 2.68,
+    "minimum": 2.68,
+    "maximum": 2.68
+  },
+  "averageTireChangePitServiceSeconds": {
+    "sampleCount": 1,
+    "mean": 39.2,
+    "minimum": 39.2,
+    "maximum": 39.2
+  },
   "analysisSource": {
     "sourceCaptureId": "capture-20260426-130334-932",
     "sanitized": true,

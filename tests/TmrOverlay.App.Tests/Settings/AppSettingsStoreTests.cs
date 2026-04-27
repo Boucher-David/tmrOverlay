@@ -38,6 +38,26 @@ public sealed class AppSettingsStoreTests
         }
     }
 
+    [Fact]
+    public void GetOrAddOverlay_KeepsOverlaySettingsIndependentById()
+    {
+        var settings = new ApplicationSettings();
+
+        var status = settings.GetOrAddOverlay("status", 520, 150);
+        var fuel = settings.GetOrAddOverlay("fuel-calculator", 360, 180);
+        status.X = 64;
+        fuel.X = 512;
+
+        var reloadedStatus = settings.GetOrAddOverlay("status", 100, 100);
+
+        Assert.Equal(2, settings.Overlays.Count);
+        Assert.Same(status, reloadedStatus);
+        Assert.Equal(64, status.X);
+        Assert.Equal(512, fuel.X);
+        Assert.Equal(520, status.Width);
+        Assert.Equal(360, fuel.Width);
+    }
+
     private static AppStorageOptions CreateStorage(string root)
     {
         return new AppStorageOptions

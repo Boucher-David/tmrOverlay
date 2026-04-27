@@ -4,8 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
-using TmrOverlay.App.Overlays.Status;
-using TmrOverlay.App.Settings;
+using TmrOverlay.App.Overlays;
 using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
 
@@ -15,14 +14,13 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
 {
     private readonly IHostApplicationLifetime _applicationLifetime;
     private readonly AppStorageOptions _storageOptions;
-    private readonly AppSettingsStore _settingsStore;
     private readonly DiagnosticsBundleService _diagnosticsBundleService;
     private readonly AppEventRecorder _events;
     private readonly ILogger<NotifyIconApplicationContext> _logger;
     private readonly TelemetryCaptureOptions _options;
     private readonly TelemetryCaptureState _state;
+    private readonly OverlayManager _overlayManager;
     private readonly NotifyIcon _notifyIcon;
-    private readonly StatusOverlayForm _overlayForm;
     private readonly ToolStripMenuItem _statusItem;
     private readonly ToolStripMenuItem _captureItem;
     private readonly ToolStripMenuItem _rootItem;
@@ -31,29 +29,21 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
     public NotifyIconApplicationContext(
         IHostApplicationLifetime applicationLifetime,
         AppStorageOptions storageOptions,
-        AppSettingsStore settingsStore,
         DiagnosticsBundleService diagnosticsBundleService,
         AppEventRecorder events,
         ILogger<NotifyIconApplicationContext> logger,
         TelemetryCaptureOptions options,
-        TelemetryCaptureState state)
+        TelemetryCaptureState state,
+        OverlayManager overlayManager)
     {
         _applicationLifetime = applicationLifetime;
         _storageOptions = storageOptions;
-        _settingsStore = settingsStore;
         _diagnosticsBundleService = diagnosticsBundleService;
         _events = events;
         _logger = logger;
         _options = options;
         _state = state;
-
-        var settings = _settingsStore.Load();
-        var overlaySettings = settings.GetOrAddOverlay(
-            StatusOverlayDefinition.Definition.Id,
-            StatusOverlayDefinition.Definition.DefaultWidth,
-            StatusOverlayDefinition.Definition.DefaultHeight);
-        _settingsStore.Save(settings);
-        _overlayForm = new StatusOverlayForm(state, overlaySettings, SaveSettings, ExitApplication);
+        _overlayManager = overlayManager;
 
         _statusItem = new ToolStripMenuItem("Waiting for iRacing")
         {
@@ -95,7 +85,7 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
             Visible = true
         };
         _notifyIcon.DoubleClick += (_, _) => OpenCapture();
-        _overlayForm.Show();
+        _overlayManager.ShowStartupOverlays(ExitApplication);
 
         _refreshTimer = new System.Windows.Forms.Timer
         {
@@ -113,8 +103,7 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
         {
             _refreshTimer.Stop();
             _refreshTimer.Dispose();
-            _overlayForm.Close();
-            _overlayForm.Dispose();
+            _overlayManager.Dispose();
             _notifyIcon.Visible = false;
             _notifyIcon.Dispose();
         }
@@ -125,6 +114,7 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
     private void RefreshMenu()
     {
         var snapshot = _state.Snapshot();
+        _rootItem.Text = snapshot.RawCaptureEnabled ? "Open Capture Root" : "Open Raw Capture Root";
 
         if (!string.IsNullOrWhiteSpace(snapshot.LastError))
         {
@@ -185,11 +175,6 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
         _notifyIcon.Visible = false;
         _applicationLifetime.StopApplication();
         ExitThread();
-    }
-
-    private void SaveSettings()
-    {
-        _settingsStore.Save(_settingsStore.Load());
     }
 
     private void CreateDiagnosticsBundle()

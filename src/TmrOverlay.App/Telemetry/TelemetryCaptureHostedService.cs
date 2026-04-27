@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.History;
+using TmrOverlay.App.Telemetry.Live;
 
 namespace TmrOverlay.App.Telemetry;
 
@@ -12,6 +13,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     private readonly TelemetryCaptureOptions _options;
     private readonly AppEventRecorder _events;
     private readonly SessionHistoryStore _sessionHistoryStore;
+    private readonly LiveTelemetryStore _liveTelemetryStore;
     private readonly TelemetryCaptureState _state;
     private readonly object _sync = new();
     private IRacingSDK? _sdk;
@@ -29,12 +31,14 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         TelemetryCaptureOptions options,
         AppEventRecorder events,
         SessionHistoryStore sessionHistoryStore,
+        LiveTelemetryStore liveTelemetryStore,
         TelemetryCaptureState state)
     {
         _logger = logger;
         _options = options;
         _events = events;
         _sessionHistoryStore = sessionHistoryStore;
+        _liveTelemetryStore = liveTelemetryStore;
         _state = state;
     }
 
@@ -113,6 +117,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     private void HandleConnected()
     {
         _state.MarkConnected();
+        _liveTelemetryStore.MarkConnected();
         _events.Record("iracing_connected");
         _logger.LogInformation("Connected to iRacing.");
     }
@@ -123,6 +128,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         _events.Record("iracing_disconnected");
 
         _state.MarkDisconnected();
+        _liveTelemetryStore.MarkDisconnected();
 
         TelemetryCaptureSession? captureToFinalize;
         HistoricalSessionAccumulator? historyToFinalize;
@@ -219,47 +225,93 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         {
             if (_activeHistory is not null)
             {
+                if (_activeCapture is null && _state.IsRawCaptureEnabled())
+                {
+                    _activeCapture = TryStartRawCaptureLocked(sdk, startedAtUtc, queueCurrentSessionInfo: true);
+                }
+
                 return _activeCapture;
             }
 
             TelemetryCaptureSession? capture = null;
-            if (_options.RawCaptureEnabled)
+            if (_state.IsRawCaptureEnabled())
             {
-                capture = CreateCaptureSession(sdk);
-                _activeCapture = capture;
+                capture = TryStartRawCaptureLocked(sdk, startedAtUtc, queueCurrentSessionInfo: false);
             }
 
             _activeHistory = new HistoricalSessionAccumulator();
-            _activeSourceId = capture?.CaptureId ?? $"session-{startedAtUtc:yyyyMMdd-HHmmss-fff}";
+            var sourceId = capture?.CaptureId ?? $"session-{startedAtUtc:yyyyMMdd-HHmmss-fff}";
+            _activeSourceId = sourceId;
             _activeStartedAtUtc = capture?.StartedAtUtc ?? startedAtUtc;
             _sessionInfoSnapshotCount = 0;
             _frameIndex = 0;
             _lastSessionInfoUpdate = -1;
             _state.MarkCollectionStarted(_activeStartedAtUtc.Value);
+            _liveTelemetryStore.MarkCollectionStarted(sourceId, _activeStartedAtUtc.Value);
 
             if (capture is not null)
             {
-                _state.MarkCaptureStarted(capture.DirectoryPath, capture.StartedAtUtc);
-                _events.Record("capture_started", new Dictionary<string, string?>
-                {
-                    ["captureId"] = capture.CaptureId,
-                    ["captureDirectory"] = capture.DirectoryPath
-                });
-                _logger.LogInformation("Started raw capture {CaptureDirectory}.", capture.DirectoryPath);
+                _activeCapture = capture;
             }
 
             _events.Record("telemetry_collection_started", new Dictionary<string, string?>
             {
                 ["sourceId"] = _activeSourceId,
-                ["rawCaptureEnabled"] = _options.RawCaptureEnabled.ToString()
+                ["rawCaptureEnabled"] = _state.IsRawCaptureEnabled().ToString()
             });
             _logger.LogInformation(
                 "Started live telemetry collection {SourceId}. Raw capture enabled: {RawCaptureEnabled}.",
                 _activeSourceId,
-                _options.RawCaptureEnabled);
+                _state.IsRawCaptureEnabled());
 
             return capture;
         }
+    }
+
+    private TelemetryCaptureSession? TryStartRawCaptureLocked(
+        IRacingSDK sdk,
+        DateTimeOffset capturedAtUtc,
+        bool queueCurrentSessionInfo)
+    {
+        try
+        {
+            return StartRawCaptureLocked(sdk, capturedAtUtc, queueCurrentSessionInfo);
+        }
+        catch (Exception exception)
+        {
+            _state.RecordError($"Failed to start raw capture: {exception.Message}");
+            _state.SetRawCaptureEnabled(false);
+            _events.Record("capture_start_failed", new Dictionary<string, string?>
+            {
+                ["error"] = exception.GetType().Name
+            });
+            _logger.LogError(exception, "Failed to start raw telemetry capture.");
+            return null;
+        }
+    }
+
+    private TelemetryCaptureSession StartRawCaptureLocked(
+        IRacingSDK sdk,
+        DateTimeOffset capturedAtUtc,
+        bool queueCurrentSessionInfo)
+    {
+        Directory.CreateDirectory(_options.ResolvedCaptureRoot);
+        var capture = CreateCaptureSession(sdk);
+        _activeCapture = capture;
+        _state.MarkCaptureStarted(capture.DirectoryPath, capture.StartedAtUtc);
+        _events.Record("capture_started", new Dictionary<string, string?>
+        {
+            ["captureId"] = capture.CaptureId,
+            ["captureDirectory"] = capture.DirectoryPath
+        });
+        _logger.LogInformation("Started raw capture {CaptureDirectory}.", capture.DirectoryPath);
+
+        if (queueCurrentSessionInfo && sdk.Header is not null)
+        {
+            RecordCaptureSessionInfoSnapshot(capture, sdk, capturedAtUtc, sdk.Header.SessionInfoUpdate);
+        }
+
+        return capture;
     }
 
     private TelemetryCaptureSession CreateCaptureSession(IRacingSDK sdk)
@@ -327,6 +379,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         return sdk.GetData(variableName) switch
         {
             int value => value,
+            uint value => unchecked((int)value),
             _ => 0
         };
     }
@@ -346,6 +399,145 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     {
         var value = ReadDouble(sdk, variableName);
         return double.IsNaN(value) || double.IsInfinity(value) || value < 0d ? null : value;
+    }
+
+    private static int? ReadInt32ArrayElement(IRacingSDK sdk, string variableName, int index)
+    {
+        if (index < 0)
+        {
+            return null;
+        }
+
+        return sdk.GetData(variableName) switch
+        {
+            int[] values when index < values.Length => values[index],
+            Array values when index < values.Length && values.GetValue(index) is not null => Convert.ToInt32(values.GetValue(index)),
+            _ => null
+        };
+    }
+
+    private static double? ReadDoubleArrayElement(IRacingSDK sdk, string variableName, int index)
+    {
+        if (index < 0)
+        {
+            return null;
+        }
+
+        return sdk.GetData(variableName) switch
+        {
+            double[] values when index < values.Length => values[index],
+            float[] values when index < values.Length => values[index],
+            int[] values when index < values.Length => values[index],
+            Array values when index < values.Length && values.GetValue(index) is not null => Convert.ToDouble(values.GetValue(index)),
+            _ => null
+        };
+    }
+
+    private static double? ReadNullableDoubleArrayElement(IRacingSDK sdk, string variableName, int index)
+    {
+        var value = ReadDoubleArrayElement(sdk, variableName, index);
+        return value is null || double.IsNaN(value.Value) || double.IsInfinity(value.Value) || value.Value < 0d
+            ? null
+            : value;
+    }
+
+    private static bool? ReadBooleanArrayElement(IRacingSDK sdk, string variableName, int index)
+    {
+        if (index < 0)
+        {
+            return null;
+        }
+
+        return sdk.GetData(variableName) switch
+        {
+            bool[] values when index < values.Length => values[index],
+            int[] values when index < values.Length => values[index] != 0,
+            Array values when index < values.Length && values.GetValue(index) is not null => Convert.ToBoolean(values.GetValue(index)),
+            _ => null
+        };
+    }
+
+    private static CarProgress? ReadLeaderProgress(IRacingSDK sdk)
+    {
+        CarProgress? bestProgress = null;
+
+        for (var carIdx = 0; carIdx < 64; carIdx++)
+        {
+            var progress = ReadCarProgress(sdk, carIdx);
+            if (progress is null)
+            {
+                continue;
+            }
+
+            if (progress.Position == 1)
+            {
+                return progress;
+            }
+
+            if (bestProgress is null || progress.TotalLaps > bestProgress.TotalLaps)
+            {
+                bestProgress = progress;
+            }
+        }
+
+        return bestProgress;
+    }
+
+    private static CarProgress? ReadClassLeaderProgress(IRacingSDK sdk, int playerCarIdx)
+    {
+        var playerClass = ReadInt32ArrayElement(sdk, "CarIdxClass", playerCarIdx);
+        if (playerClass is null)
+        {
+            return null;
+        }
+
+        CarProgress? bestClassProgress = null;
+        for (var carIdx = 0; carIdx < 64; carIdx++)
+        {
+            var carClass = ReadInt32ArrayElement(sdk, "CarIdxClass", carIdx);
+            if (carClass != playerClass)
+            {
+                continue;
+            }
+
+            var progress = ReadCarProgress(sdk, carIdx);
+            if (progress is null)
+            {
+                continue;
+            }
+
+            if (progress.ClassPosition == 1)
+            {
+                return progress;
+            }
+
+            if (bestClassProgress is null || progress.TotalLaps > bestClassProgress.TotalLaps)
+            {
+                bestClassProgress = progress;
+            }
+        }
+
+        return bestClassProgress;
+    }
+
+    private static CarProgress? ReadCarProgress(IRacingSDK sdk, int carIdx)
+    {
+        var lapCompleted = ReadInt32ArrayElement(sdk, "CarIdxLapCompleted", carIdx);
+        var lapDistPct = ReadDoubleArrayElement(sdk, "CarIdxLapDistPct", carIdx);
+        if (lapCompleted is null || lapDistPct is null || lapCompleted < 0 || lapDistPct < 0d)
+        {
+            return null;
+        }
+
+        return new CarProgress(
+            CarIdx: carIdx,
+            LapCompleted: lapCompleted.Value,
+            LapDistPct: Math.Clamp(lapDistPct.Value, 0d, 1d),
+            LastLapTimeSeconds: ReadNullableDoubleArrayElement(sdk, "CarIdxLastLapTime", carIdx),
+            BestLapTimeSeconds: ReadNullableDoubleArrayElement(sdk, "CarIdxBestLapTime", carIdx),
+            Position: ReadInt32ArrayElement(sdk, "CarIdxPosition", carIdx),
+            ClassPosition: ReadInt32ArrayElement(sdk, "CarIdxClassPosition", carIdx),
+            CarClass: ReadInt32ArrayElement(sdk, "CarIdxClass", carIdx));
     }
 
     private static bool ReadBoolean(IRacingSDK sdk, string variableName)
@@ -372,24 +564,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 
         if (capture is not null)
         {
-            var sessionSnapshot = new SessionInfoSnapshot(
-                CapturedAtUtc: capturedAtUtc,
-                SessionInfoUpdate: sessionInfoUpdate,
-                Yaml: sessionInfoYaml);
-
-            if (!capture.TryQueueSessionInfo(sessionSnapshot))
-            {
-                var writerFault = capture.WriterFault;
-                if (writerFault is not null)
-                {
-                    _state.RecordError($"Capture writer failed while saving session info: {writerFault.Message}");
-                    _logger.LogError(writerFault, "Dropped session info update because the capture writer failed.");
-                    return;
-                }
-
-                _state.RecordWarning($"Dropped session info update {sessionInfoUpdate} because the capture queue is full.");
-                _logger.LogWarning("Dropped session info update {SessionInfoUpdate} because the capture queue is full.", sessionInfoUpdate);
-            }
+            RecordCaptureSessionInfoSnapshot(capture, sdk, capturedAtUtc, sessionInfoUpdate);
         }
 
         HistoricalSessionAccumulator? history;
@@ -399,7 +574,40 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             _sessionInfoSnapshotCount++;
         }
 
+        _liveTelemetryStore.ApplySessionInfo(sessionInfoYaml);
         history?.ApplySessionInfo(sessionInfoYaml);
+    }
+
+    private void RecordCaptureSessionInfoSnapshot(
+        TelemetryCaptureSession capture,
+        IRacingSDK sdk,
+        DateTimeOffset capturedAtUtc,
+        int sessionInfoUpdate)
+    {
+        var sessionInfoYaml = sdk.GetSessionInfo();
+        if (string.IsNullOrWhiteSpace(sessionInfoYaml))
+        {
+            return;
+        }
+
+        var sessionSnapshot = new SessionInfoSnapshot(
+            CapturedAtUtc: capturedAtUtc,
+            SessionInfoUpdate: sessionInfoUpdate,
+            Yaml: sessionInfoYaml);
+
+        if (!capture.TryQueueSessionInfo(sessionSnapshot))
+        {
+            var writerFault = capture.WriterFault;
+            if (writerFault is not null)
+            {
+                _state.RecordError($"Capture writer failed while saving session info: {writerFault.Message}");
+                _logger.LogError(writerFault, "Dropped session info update because the capture writer failed.");
+                return;
+            }
+
+            _state.RecordWarning($"Dropped session info update {sessionInfoUpdate} because the capture queue is full.");
+            _logger.LogWarning("Dropped session info update {SessionInfoUpdate} because the capture queue is full.", sessionInfoUpdate);
+        }
     }
 
     private void RecordHistoricalFrame(IRacingSDK sdk, DateTimeOffset capturedAtUtc, int sessionInfoUpdate)
@@ -410,7 +618,10 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             history = _activeHistory;
         }
 
-        history?.RecordFrame(new HistoricalTelemetrySample(
+        var playerCarIdx = ReadInt32(sdk, "PlayerCarIdx");
+        var leaderProgress = ReadLeaderProgress(sdk);
+        var classLeaderProgress = ReadClassLeaderProgress(sdk, playerCarIdx);
+        var sample = new HistoricalTelemetrySample(
             CapturedAtUtc: capturedAtUtc,
             SessionTime: ReadDouble(sdk, "SessionTime"),
             SessionTick: ReadInt32(sdk, "SessionTick"),
@@ -433,14 +644,50 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             TrackTempCrewC: ReadDouble(sdk, "TrackTempCrew"),
             TrackWetness: ReadInt32(sdk, "TrackWetness"),
             WeatherDeclaredWet: ReadBoolean(sdk, "WeatherDeclaredWet"),
-            PlayerTireCompound: ReadInt32(sdk, "PlayerTireCompound")));
+            PlayerTireCompound: ReadInt32(sdk, "PlayerTireCompound"),
+            SessionTimeRemain: ReadNullableDouble(sdk, "SessionTimeRemain"),
+            SessionTimeTotal: ReadNullableDouble(sdk, "SessionTimeTotal"),
+            SessionLapsRemainEx: ReadInt32(sdk, "SessionLapsRemainEx"),
+            SessionLapsTotal: ReadInt32(sdk, "SessionLapsTotal"),
+            SessionState: ReadInt32(sdk, "SessionState"),
+            RaceLaps: ReadInt32(sdk, "RaceLaps"),
+            PlayerCarIdx: playerCarIdx,
+            TeamLapCompleted: ReadInt32ArrayElement(sdk, "CarIdxLapCompleted", playerCarIdx),
+            TeamLapDistPct: ReadDoubleArrayElement(sdk, "CarIdxLapDistPct", playerCarIdx),
+            TeamLastLapTimeSeconds: ReadNullableDoubleArrayElement(sdk, "CarIdxLastLapTime", playerCarIdx),
+            TeamBestLapTimeSeconds: ReadNullableDoubleArrayElement(sdk, "CarIdxBestLapTime", playerCarIdx),
+            TeamPosition: ReadInt32ArrayElement(sdk, "CarIdxPosition", playerCarIdx),
+            TeamClassPosition: ReadInt32ArrayElement(sdk, "CarIdxClassPosition", playerCarIdx),
+            LeaderCarIdx: leaderProgress?.CarIdx,
+            LeaderLapCompleted: leaderProgress?.LapCompleted,
+            LeaderLapDistPct: leaderProgress?.LapDistPct,
+            LeaderLastLapTimeSeconds: leaderProgress?.LastLapTimeSeconds,
+            LeaderBestLapTimeSeconds: leaderProgress?.BestLapTimeSeconds,
+            ClassLeaderCarIdx: classLeaderProgress?.CarIdx,
+            ClassLeaderLapCompleted: classLeaderProgress?.LapCompleted,
+            ClassLeaderLapDistPct: classLeaderProgress?.LapDistPct,
+            ClassLeaderLastLapTimeSeconds: classLeaderProgress?.LastLapTimeSeconds,
+            ClassLeaderBestLapTimeSeconds: classLeaderProgress?.BestLapTimeSeconds,
+            TeamOnPitRoad: ReadBooleanArrayElement(sdk, "CarIdxOnPitRoad", playerCarIdx),
+            TeamFastRepairsUsed: ReadInt32ArrayElement(sdk, "CarIdxFastRepairsUsed", playerCarIdx),
+            PitServiceFlags: ReadInt32(sdk, "PitSvFlags"),
+            PitServiceFuelLiters: ReadNullableDouble(sdk, "PitSvFuel"),
+            PitRepairLeftSeconds: ReadNullableDouble(sdk, "PitRepairLeft"),
+            PitOptRepairLeftSeconds: ReadNullableDouble(sdk, "PitOptRepairLeft"),
+            TireSetsUsed: ReadInt32(sdk, "TireSetsUsed"),
+            FastRepairUsed: ReadInt32(sdk, "FastRepairUsed"),
+            DriversSoFar: ReadInt32(sdk, "DCDriversSoFar"),
+            DriverChangeLapStatus: ReadInt32(sdk, "DCLapStatus"));
+
+        _liveTelemetryStore.RecordFrame(sample);
+        history?.RecordFrame(sample);
     }
 
     private CaptureFinalizationContext BuildFinalizationContext(TelemetryCaptureSession? capture)
     {
         return new CaptureFinalizationContext(
-            SourceId: capture?.CaptureId ?? _activeSourceId,
-            StartedAtUtc: capture?.StartedAtUtc ?? _activeStartedAtUtc,
+            SourceId: _activeSourceId ?? capture?.CaptureId,
+            StartedAtUtc: _activeStartedAtUtc ?? capture?.StartedAtUtc,
             DroppedFrameCount: capture?.DroppedFrameCount ?? 0,
             SessionInfoSnapshotCount: capture?.SessionInfoSnapshotCount ?? _sessionInfoSnapshotCount);
     }
@@ -501,5 +748,18 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         int SessionInfoSnapshotCount)
     {
         public static CaptureFinalizationContext Empty { get; } = new(null, null, 0, 0);
+    }
+
+    private sealed record CarProgress(
+        int CarIdx,
+        int LapCompleted,
+        double LapDistPct,
+        double? LastLapTimeSeconds,
+        double? BestLapTimeSeconds,
+        int? Position,
+        int? ClassPosition,
+        int? CarClass)
+    {
+        public double TotalLaps => LapCompleted + LapDistPct;
     }
 }

@@ -46,7 +46,7 @@ internal sealed class AppStorageOptions
                 storageSection["UserHistoryRoot"] ?? configuration["SessionHistory:HistoryRoot"],
                 appDataRoot,
                 Path.Combine("history", "user")),
-            BaselineHistoryRoot = ResolveBaselineHistoryRoot(storageSection["BaselineHistoryRoot"], appDataRoot, repositoryRoot),
+            BaselineHistoryRoot = ResolveChildPath(storageSection["BaselineHistoryRoot"], appDataRoot, Path.Combine("history", "baseline")),
             LogsRoot = ResolveChildPath(storageSection["LogsRoot"], appDataRoot, "logs"),
             SettingsRoot = ResolveChildPath(storageSection["SettingsRoot"], appDataRoot, "settings"),
             DiagnosticsRoot = ResolveChildPath(storageSection["DiagnosticsRoot"], appDataRoot, "diagnostics"),
@@ -74,28 +74,6 @@ internal sealed class AppStorageOptions
         return Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             ApplicationDirectoryName);
-    }
-
-    private static string ResolveBaselineHistoryRoot(
-        string? configuredValue,
-        string appDataRoot,
-        string? repositoryRoot)
-    {
-        var configuredRoot = ResolveConfiguredRoot(configuredValue);
-        if (configuredRoot is not null)
-        {
-            return configuredRoot;
-        }
-
-        if (repositoryRoot is not null)
-        {
-            return Path.Combine(repositoryRoot, "history", "baseline");
-        }
-
-        var bundledBaselineRoot = Path.Combine(AppContext.BaseDirectory, "history", "baseline");
-        return Directory.Exists(bundledBaselineRoot)
-            ? bundledBaselineRoot
-            : Path.Combine(appDataRoot, "history", "baseline");
     }
 
     private static string ResolveChildPath(string? configuredValue, string appDataRoot, string defaultRelativePath)

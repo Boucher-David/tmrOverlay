@@ -6,7 +6,12 @@ internal sealed class ApplicationSettings
 
     public List<OverlaySettings> Overlays { get; init; } = [];
 
-    public OverlaySettings GetOrAddOverlay(string id, int defaultWidth, int defaultHeight)
+    public OverlaySettings GetOrAddOverlay(
+        string id,
+        int defaultWidth,
+        int defaultHeight,
+        int defaultX = 24,
+        int defaultY = 24)
     {
         var existing = Overlays.FirstOrDefault(overlay => string.Equals(overlay.Id, id, StringComparison.OrdinalIgnoreCase));
         if (existing is not null)
@@ -17,6 +22,8 @@ internal sealed class ApplicationSettings
         var overlay = new OverlaySettings
         {
             Id = id,
+            X = defaultX,
+            Y = defaultY,
             Width = defaultWidth,
             Height = defaultHeight
         };

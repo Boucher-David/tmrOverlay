@@ -43,6 +43,10 @@ internal sealed class HistoricalSessionSummary
 
     public required HistoricalSessionMetrics Metrics { get; init; }
 
+    public IReadOnlyList<HistoricalStintSummary> Stints { get; init; } = [];
+
+    public IReadOnlyList<HistoricalPitStopSummary> PitStops { get; init; } = [];
+
     public required HistoricalDataQuality Quality { get; init; }
 
     public AppVersionInfo? AppVersion { get; init; }
@@ -241,6 +245,88 @@ internal sealed class HistoricalSessionMetrics
     public int PitServiceCount { get; init; }
 
     public int StintCount { get; init; }
+
+    public double? AverageStintLaps { get; init; }
+
+    public double? AverageStintSeconds { get; init; }
+
+    public double? AverageStintFuelPerLapLiters { get; init; }
+
+    public double? AveragePitLaneSeconds { get; init; }
+
+    public double? AveragePitStallSeconds { get; init; }
+
+    public double? AveragePitServiceSeconds { get; init; }
+
+    public double? ObservedFuelFillRateLitersPerSecond { get; init; }
+
+    public double? AverageTireChangePitServiceSeconds { get; init; }
+
+    public double? AverageNoTirePitServiceSeconds { get; init; }
+}
+
+internal sealed class HistoricalStintSummary
+{
+    public int StintNumber { get; init; }
+
+    public double StartRaceTimeSeconds { get; init; }
+
+    public double EndRaceTimeSeconds { get; init; }
+
+    public double DurationSeconds { get; init; }
+
+    public int? StartLapCompleted { get; init; }
+
+    public int? EndLapCompleted { get; init; }
+
+    public double DistanceLaps { get; init; }
+
+    public double? FuelStartLiters { get; init; }
+
+    public double? FuelEndLiters { get; init; }
+
+    public double? FuelUsedLiters { get; init; }
+
+    public double? FuelPerLapLiters { get; init; }
+
+    public required string DriverRole { get; init; }
+
+    public required string[] ConfidenceFlags { get; init; }
+}
+
+internal sealed class HistoricalPitStopSummary
+{
+    public int StopNumber { get; init; }
+
+    public double EntryRaceTimeSeconds { get; init; }
+
+    public double ExitRaceTimeSeconds { get; init; }
+
+    public double PitLaneSeconds { get; init; }
+
+    public int? EntryLapCompleted { get; init; }
+
+    public int? ExitLapCompleted { get; init; }
+
+    public double? PitStallSeconds { get; init; }
+
+    public double? ServiceActiveSeconds { get; init; }
+
+    public double? FuelBeforeLiters { get; init; }
+
+    public double? FuelAfterLiters { get; init; }
+
+    public double? FuelAddedLiters { get; init; }
+
+    public double? FuelFillRateLitersPerSecond { get; init; }
+
+    public bool TireSetChanged { get; init; }
+
+    public bool FastRepairUsed { get; init; }
+
+    public int? PitServiceFlags { get; init; }
+
+    public required string[] ConfidenceFlags { get; init; }
 }
 
 internal sealed class HistoricalDataQuality
@@ -350,4 +436,37 @@ internal sealed record HistoricalTelemetrySample(
     double TrackTempCrewC,
     int TrackWetness,
     bool WeatherDeclaredWet,
-    int PlayerTireCompound);
+    int PlayerTireCompound,
+    double? SessionTimeRemain = null,
+    double? SessionTimeTotal = null,
+    int? SessionLapsRemainEx = null,
+    int? SessionLapsTotal = null,
+    int? SessionState = null,
+    int? RaceLaps = null,
+    int? PlayerCarIdx = null,
+    int? TeamLapCompleted = null,
+    double? TeamLapDistPct = null,
+    double? TeamLastLapTimeSeconds = null,
+    double? TeamBestLapTimeSeconds = null,
+    int? TeamPosition = null,
+    int? TeamClassPosition = null,
+    int? LeaderCarIdx = null,
+    int? LeaderLapCompleted = null,
+    double? LeaderLapDistPct = null,
+    double? LeaderLastLapTimeSeconds = null,
+    double? LeaderBestLapTimeSeconds = null,
+    int? ClassLeaderCarIdx = null,
+    int? ClassLeaderLapCompleted = null,
+    double? ClassLeaderLapDistPct = null,
+    double? ClassLeaderLastLapTimeSeconds = null,
+    double? ClassLeaderBestLapTimeSeconds = null,
+    bool? TeamOnPitRoad = null,
+    int? TeamFastRepairsUsed = null,
+    int? PitServiceFlags = null,
+    double? PitServiceFuelLiters = null,
+    double? PitRepairLeftSeconds = null,
+    double? PitOptRepairLeftSeconds = null,
+    int? TireSetsUsed = null,
+    int? FastRepairUsed = null,
+    int? DriversSoFar = null,
+    int? DriverChangeLapStatus = null);

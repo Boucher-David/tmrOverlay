@@ -86,8 +86,90 @@
     "bestLapSeconds": 474.440308,
     "fuelPerHourLiters": 99.364481,
     "fuelPerLapLiters": 13.36344,
-    "stintCount": 4
+    "stintCount": 4,
+    "averageStintLaps": 7.5,
+    "averageStintSeconds": 3735.7085,
+    "averageStintFuelPerLapLiters": 13.36344,
+    "averagePitLaneSeconds": 64.822333,
+    "averagePitStallSeconds": 39.2,
+    "averagePitServiceSeconds": 39.2,
+    "observedFuelFillRateLitersPerSecond": 2.68,
+    "averageTireChangePitServiceSeconds": 39.2
   },
+  "stints": [
+    {
+      "stintNumber": 1,
+      "startRaceTimeSeconds": 0.5,
+      "endRaceTimeSeconds": 3642.567,
+      "durationSeconds": 3642.067,
+      "startLapCompleted": 0,
+      "endLapCompleted": 7,
+      "distanceLaps": 7.0,
+      "fuelStartLiters": 104.940002,
+      "fuelEndLiters": null,
+      "fuelUsedLiters": null,
+      "fuelPerLapLiters": 13.36344,
+      "driverRole": "local-driver",
+      "confidenceFlags": [
+        "fuel_source_live_local_scalar_partial",
+        "distance_from_active_driver_window"
+      ]
+    },
+    {
+      "stintNumber": 2,
+      "startRaceTimeSeconds": 3642.583,
+      "endRaceTimeSeconds": 7590.567,
+      "durationSeconds": 3947.984,
+      "startLapCompleted": 7,
+      "endLapCompleted": 15,
+      "distanceLaps": 8.0,
+      "fuelStartLiters": null,
+      "fuelEndLiters": null,
+      "fuelUsedLiters": null,
+      "fuelPerLapLiters": null,
+      "driverRole": "teammate-driver",
+      "confidenceFlags": [
+        "fuel_unavailable_teammate_stint",
+        "distance_from_active_driver_window"
+      ]
+    },
+    {
+      "stintNumber": 3,
+      "startRaceTimeSeconds": 7590.583,
+      "endRaceTimeSeconds": 11013.583,
+      "durationSeconds": 3423.0,
+      "startLapCompleted": 15,
+      "endLapCompleted": 22,
+      "distanceLaps": 7.0,
+      "fuelStartLiters": null,
+      "fuelEndLiters": null,
+      "fuelUsedLiters": null,
+      "fuelPerLapLiters": 13.36344,
+      "driverRole": "local-driver",
+      "confidenceFlags": [
+        "fuel_source_live_local_scalar_partial",
+        "distance_from_active_driver_window"
+      ]
+    },
+    {
+      "stintNumber": 4,
+      "startRaceTimeSeconds": 11013.6,
+      "endRaceTimeSeconds": 14943.383,
+      "durationSeconds": 3929.783,
+      "startLapCompleted": 22,
+      "endLapCompleted": 30,
+      "distanceLaps": 8.0,
+      "fuelStartLiters": null,
+      "fuelEndLiters": 14.363888,
+      "fuelUsedLiters": null,
+      "fuelPerLapLiters": null,
+      "driverRole": "teammate-driver",
+      "confidenceFlags": [
+        "fuel_unavailable_teammate_stint",
+        "distance_from_active_driver_window"
+      ]
+    }
+  ],
   "quality": {
     "confidence": "high",
     "contributesToBaseline": true,

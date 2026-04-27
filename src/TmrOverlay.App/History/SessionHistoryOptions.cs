@@ -7,6 +7,8 @@ internal sealed class SessionHistoryOptions
 {
     public bool Enabled { get; init; } = true;
 
+    public bool UseBaselineHistory { get; init; }
+
     public required string ResolvedUserHistoryRoot { get; init; }
 
     public required string ResolvedBaselineHistoryRoot { get; init; }
@@ -22,6 +24,7 @@ internal sealed class SessionHistoryOptions
         return new SessionHistoryOptions
         {
             Enabled = ParseBoolean(section["Enabled"], defaultValue: true),
+            UseBaselineHistory = ParseBoolean(section["UseBaselineHistory"], defaultValue: false),
             ResolvedUserHistoryRoot = storageOptions.UserHistoryRoot,
             ResolvedBaselineHistoryRoot = storageOptions.BaselineHistoryRoot
         };

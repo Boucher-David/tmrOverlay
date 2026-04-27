@@ -35,7 +35,9 @@ Last updated: 2026-04-26
 - `src/TmrOverlay.App/Overlays/`
   - overlay modules are separated by type
   - `Abstractions/` contains small shared overlay contracts
+  - `PersistentOverlayForm` centralizes Windows overlay frame setup, drag handling, and per-overlay settings persistence
   - `Status/` contains the current collector status overlay
+  - `FuelCalculator/` contains the first strategy overlay, backed by live telemetry plus exact car/track/session history
 
 - `src/TmrOverlay.App/Overlays/Status/StatusOverlayForm.cs`
   - tiny always-on-top overlay placed at `(24, 24)`
@@ -44,12 +46,25 @@ Last updated: 2026-04-26
   - draggable during runtime
   - persists position/size under app-owned settings
   - includes an `X` button that exits the entire app
+  - includes a `Raw capture` checkbox that can request raw capture at runtime when the app was started without `TelemetryCapture:RawCaptureEnabled=true`
   - shows live telemetry analysis state, latest SDK-frame freshness, warning/error text, and raw capture write health only when raw capture is enabled
   - state colors:
     - gray: waiting for iRacing
     - amber: waiting, connected-without-capture, app warning, or dropped frames
     - green: actively analyzing live telemetry, or actively collecting raw telemetry with confirmed disk writes
-    - red: telemetry read errors, stale SDK frames, capture writer errors, queued frames not reaching disk, or stale disk writes when raw capture is enabled
+  - red: telemetry read errors, stale SDK frames, capture writer errors, queued frames not reaching disk, or stale disk writes when raw capture is enabled
+
+- `src/TmrOverlay.App/Overlays/FuelCalculator/`
+  - draggable three-column fuel strategy overlay placed below the status overlay by default
+  - estimates timed-race laps from session time, selected lap time, and leader/team progress
+  - uses live fuel burn first, then exact user history for car/track/session combos; tracked baseline/sample history is opt-in
+  - renders whole-lap stint targets, target liters-per-lap, planned stint/stop count, final stint length, laps-per-tank, and min/avg/max burn when history exists
+  - collapses unnecessary future rows when no fuel stop is needed
+  - adds an advice column that estimates whether tire service is likely free under refueling time or costs extra stationary time, using historical fill-rate and tire-service aggregates when available
+  - adds a strategy row when useful, comparing a shorter conservative stint rhythm against the longest realistic target and quantifying extra stops plus estimated pit-time loss
+  - accounts for overall leader pace/progress for timed-race lap count, stores class-leader context, and shows leader/class gaps in the source row when available
+  - can bias future stint targets toward historical team-stint evidence, currently 8 laps for the 4-hour Nürburgring baseline, without labeling teammate rows in the UI
+  - warns when a target such as an 8-lap stint needs realistic fuel saving versus nominal tank range or avoids extra stops over longer races
 
 ### Telemetry collection pipeline
 
@@ -59,7 +74,8 @@ Last updated: 2026-04-26
   - starts live telemetry collection on first usable live data
   - records compact historical telemetry samples every frame
   - snapshots session YAML into the history accumulator whenever `SessionInfoUpdate` changes
-  - only creates raw capture directories and copies the raw telemetry buffer when `TelemetryCapture:RawCaptureEnabled=true`
+  - creates raw capture directories and copies the raw telemetry buffer only when raw capture is enabled by startup configuration or runtime overlay request
+  - logs and records app events for runtime raw-capture start failures instead of silently failing
 
 - `src/TmrOverlay.App/Telemetry/TelemetryCaptureSession.cs`
   - owns the per-capture file writer
@@ -89,9 +105,14 @@ Last updated: 2026-04-26
   - low-confidence samples are still stored but do not contribute to baseline aggregate values
 
 - `history/baseline/`
-  - now includes a tracked, sanitized baseline from the 4-hour Nürburgring VLN Mercedes-AMG GT3 race capture
+  - contains tracked, sanitized development/sample data from the 4-hour Nürburgring VLN Mercedes-AMG GT3 race capture
+  - is not read by default because `SessionHistory:UseBaselineHistory` defaults to `false`
   - fuel baseline uses local-driver scalar fuel frames only
   - lap timing and pit counts use team-car `CarIdx*` telemetry because those remain valid during teammate stints
+  - session summaries can store completed stint summaries and per-stop pit-service timing estimates with confidence flags
+  - teammate stint fuel is modeled from user/baseline history unless a reliable live scalar source is available
+  - the 4-hour baseline summary now includes sanitized local-driver 7-lap and teammate-driver 8-lap stint history for planning hints
+  - the 4-hour baseline aggregate includes observed fuel fill rate and inferred tire-service timing for early tire guidance
 
 ### Storage
 
@@ -99,7 +120,7 @@ Last updated: 2026-04-26
   - centralizes app-owned local storage roots
   - default writable root is `%LOCALAPPDATA%/TmrOverlay`
   - repository-local storage is opt-in with `Storage:UseRepositoryLocalStorage`
-  - tracked starter history belongs under `history/baseline`
+  - tracked sample/baseline history belongs under `history/baseline` but production lookup is opt-in
 
 ### Logging
 
@@ -144,12 +165,16 @@ Last updated: 2026-04-26
   - can preview spoofed overlay states with `TMR_MAC_DEMO_STATES=true ./run.sh`
   - the mac menu exposes manual demo states for waiting, connected-without-capture, healthy live-analysis, healthy raw-capture, stale build, dropped frames, frames-not-written, disk-stalled, and capture-error
   - going forward, shared product and app-boilerplate changes should be mirrored in both Windows and mac unless the change is explicitly Windows/iRacing-specific
+  - overlay windows use the shared mac `OverlayWindow` through `OverlayManager`, so each overlay id can restore its saved position/size
+  - the mac fuel overlay uses live mock telemetry plus local user history, matching the Windows baseline-disabled default
+  - the mac harness only opens the real-use fuel overlay at startup, matching Windows startup overlay parity
+  - the mac status overlay mirrors the runtime raw-capture checkbox and logs/events behavior
 
 ### Tests
 
 - `tests/TmrOverlay.App.Tests/`
   - xUnit test project for non-UI logic
-  - currently covers storage path resolution, history path slugs, local file log writing, settings persistence, diagnostics bundle contents, retention cleanup, and runtime-state markers
+  - currently covers storage path resolution, history path slugs, local file log writing, settings persistence, diagnostics bundle contents, retention cleanup, runtime-state markers, and fuel strategy calculations
 
 ## Capture Format
 
@@ -200,6 +225,7 @@ Current keys:
 - `TelemetryCapture:RawCaptureEnabled`
 - `TelemetryCapture:QueueCapacity`
 - `SessionHistory:Enabled`
+- `SessionHistory:UseBaselineHistory`
 - `Storage:UseRepositoryLocalStorage`
 - `Storage:AppDataRoot`
 - `Storage:CaptureRoot`
@@ -233,7 +259,7 @@ Current default:
 - settings default to `%LOCALAPPDATA%/TmrOverlay/settings`
 - diagnostics default to `%LOCALAPPDATA%/TmrOverlay/diagnostics`
 - runtime state defaults to `%LOCALAPPDATA%/TmrOverlay/runtime-state.json`
-- baseline history defaults to the repo `history/baseline` during development when the repository root can be found
+- baseline/sample lookup defaults off with `SessionHistory:UseBaselineHistory=false`
 
 Environment override pattern:
 
@@ -288,16 +314,17 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 - The current machine does not have `dotnet`, so Windows build/test verification still needs to happen on a .NET-equipped machine.
 - The local mac Swift package builds, but `swift test` currently requires an XCTest-capable Swift/Xcode toolchain.
 - No general-purpose replay/decoder tool exists yet for `telemetry.bin`; targeted analysis scripts exist under `tools/analysis/`.
-- Overlay modules now live under `src/TmrOverlay.App/Overlays/`, but no full multi-overlay rendering pipeline exists yet beyond the small live-status box.
+- Overlay modules now live under `src/TmrOverlay.App/Overlays/`; status and fuel-calculator overlays are wired, but the remaining overlay folders are placeholders.
 - The root-level launcher is `TmrOverlay.cmd`, not a standalone copied `.exe`, because a normal framework-dependent .NET build needs its companion output files.
 - The primary analyzed real capture is the 4-hour Nürburgring VLN race capture. It proved that teammate stints retain `CarIdx*` timing/position data but do not expose direct scalar fuel fields.
 
 ## Recommended Next Steps
 
-1. Build the first live fuel/stint overlay using live telemetry plus `history/baseline`.
+1. Add live-burn smoothing and reserve/margin settings to the fuel calculator.
 2. Add a live analysis snapshot/bridge layer so overlay windows can subscribe to derived metrics instead of talking to the SDK directly.
 3. Improve historical aggregation and confidence/source tracking as more user sessions are collected.
 4. Keep raw capture available for diagnostics, but avoid making it the normal user data path.
+5. Treat post-race strategy review/export as a future branch; see `docs/post-race-strategy-analysis.md`.
 
 ## Files Most Likely To Change Next
 

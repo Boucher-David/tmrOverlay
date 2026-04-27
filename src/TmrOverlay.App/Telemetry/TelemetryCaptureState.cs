@@ -29,11 +29,27 @@ internal sealed class TelemetryCaptureState
         }
     }
 
-    public void SetRawCaptureEnabled(bool enabled)
+    public bool SetRawCaptureEnabled(bool enabled)
     {
         lock (_sync)
         {
+            if (!enabled && !string.IsNullOrWhiteSpace(_currentCaptureDirectory))
+            {
+                _lastWarning = "Raw capture is already active; it will stop when the current collection ends.";
+                _lastIssueAtUtc = DateTimeOffset.UtcNow;
+                return false;
+            }
+
             _rawCaptureEnabled = enabled;
+            return true;
+        }
+    }
+
+    public bool IsRawCaptureEnabled()
+    {
+        lock (_sync)
+        {
+            return _rawCaptureEnabled;
         }
     }
 

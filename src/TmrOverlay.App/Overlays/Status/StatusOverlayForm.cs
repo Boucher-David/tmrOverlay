@@ -1,16 +1,18 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using Microsoft.Extensions.Logging;
+using TmrOverlay.App.Events;
+using TmrOverlay.App.Overlays.Abstractions;
 using TmrOverlay.App.Settings;
 using TmrOverlay.App.Telemetry;
 
 namespace TmrOverlay.App.Overlays.Status;
 
-internal sealed class StatusOverlayForm : Form
+internal sealed class StatusOverlayForm : PersistentOverlayForm
 {
-    private const int WsExToolWindow = 0x00000080;
     private readonly TelemetryCaptureState _state;
-    private readonly OverlaySettings _settings;
-    private readonly Action _saveSettings;
+    private readonly AppEventRecorder _events;
+    private readonly ILogger<StatusOverlayForm> _logger;
     private readonly Action _closeApplication;
     private readonly Panel _indicatorPanel;
     private readonly Label _titleLabel;
@@ -18,39 +20,31 @@ internal sealed class StatusOverlayForm : Form
     private readonly Label _detailLabel;
     private readonly Label _captureLabel;
     private readonly Label _healthLabel;
+    private readonly CheckBox _rawCaptureCheckBox;
     private readonly Button _closeButton;
     private readonly System.Windows.Forms.Timer _refreshTimer;
-    private Point _dragCursorOrigin;
-    private Point _dragFormOrigin;
-    private bool _dragging;
+    private bool _syncingRawCaptureCheckBox;
 
     public StatusOverlayForm(
         TelemetryCaptureState state,
+        AppEventRecorder events,
+        ILogger<StatusOverlayForm> logger,
         OverlaySettings settings,
         Action saveSettings,
         Action closeApplication)
+        : base(
+            settings,
+            saveSettings,
+            StatusOverlayDefinition.Definition.DefaultWidth,
+            StatusOverlayDefinition.Definition.DefaultHeight)
     {
         _state = state;
-        _settings = settings;
-        _saveSettings = saveSettings;
+        _events = events;
+        _logger = logger;
         _closeApplication = closeApplication;
 
-        AutoScaleMode = AutoScaleMode.None;
         BackColor = Color.FromArgb(26, 26, 26);
-        ClientSize = new Size(
-            Math.Max(_settings.Width, StatusOverlayDefinition.Definition.DefaultWidth),
-            Math.Max(_settings.Height, StatusOverlayDefinition.Definition.DefaultHeight));
-        DoubleBuffered = true;
-        FormBorderStyle = FormBorderStyle.None;
-        Location = new Point(_settings.X, _settings.Y);
-        MaximizeBox = false;
-        MinimizeBox = false;
-        Opacity = _settings.Opacity;
         Padding = new Padding(14, 12, 14, 12);
-        ShowIcon = false;
-        ShowInTaskbar = false;
-        StartPosition = FormStartPosition.Manual;
-        TopMost = _settings.AlwaysOnTop;
 
         _indicatorPanel = new Panel
         {
@@ -73,6 +67,19 @@ internal sealed class StatusOverlayForm : Form
             Location = new Point(36, 10),
             Text = "TmrOverlay"
         };
+
+        _rawCaptureCheckBox = new CheckBox
+        {
+            AutoSize = false,
+            ForeColor = Color.FromArgb(220, 220, 220),
+            Font = new Font("Segoe UI", 8.75f, FontStyle.Regular, GraphicsUnit.Point),
+            Location = new Point(ClientSize.Width - 156, 10),
+            Size = new Size(112, 22),
+            TabStop = false,
+            Text = "Raw capture",
+            UseVisualStyleBackColor = false
+        };
+        _rawCaptureCheckBox.CheckedChanged += (_, _) => RawCaptureCheckBoxChanged();
 
         _statusLabel = new Label
         {
@@ -135,15 +142,16 @@ internal sealed class StatusOverlayForm : Form
         Controls.Add(_detailLabel);
         Controls.Add(_captureLabel);
         Controls.Add(_healthLabel);
+        Controls.Add(_rawCaptureCheckBox);
         Controls.Add(_closeButton);
 
-        RegisterDragSurface(this);
-        RegisterDragSurface(_indicatorPanel);
-        RegisterDragSurface(_titleLabel);
-        RegisterDragSurface(_statusLabel);
-        RegisterDragSurface(_detailLabel);
-        RegisterDragSurface(_captureLabel);
-        RegisterDragSurface(_healthLabel);
+        RegisterDragSurfaces(
+            _indicatorPanel,
+            _titleLabel,
+            _statusLabel,
+            _detailLabel,
+            _captureLabel,
+            _healthLabel);
 
         _refreshTimer = new System.Windows.Forms.Timer
         {
@@ -155,16 +163,6 @@ internal sealed class StatusOverlayForm : Form
         RefreshOverlay();
     }
 
-    protected override CreateParams CreateParams
-    {
-        get
-        {
-            var createParams = base.CreateParams;
-            createParams.ExStyle |= WsExToolWindow;
-            return createParams;
-        }
-    }
-
     protected override void Dispose(bool disposing)
     {
         if (disposing)
@@ -172,6 +170,7 @@ internal sealed class StatusOverlayForm : Form
             _refreshTimer.Stop();
             _refreshTimer.Dispose();
             _closeButton.Dispose();
+            _rawCaptureCheckBox.Dispose();
             _titleLabel.Dispose();
             _statusLabel.Dispose();
             _detailLabel.Dispose();
@@ -190,51 +189,6 @@ internal sealed class StatusOverlayForm : Form
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         using var borderPen = new Pen(Color.FromArgb(72, 255, 255, 255));
         e.Graphics.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
-    }
-
-    private void RegisterDragSurface(Control control)
-    {
-        control.Cursor = Cursors.SizeAll;
-        control.MouseDown += BeginDrag;
-        control.MouseMove += DragOverlay;
-        control.MouseUp += EndDrag;
-    }
-
-    private void BeginDrag(object? sender, MouseEventArgs e)
-    {
-        if (e.Button != MouseButtons.Left)
-        {
-            return;
-        }
-
-        _dragging = true;
-        _dragCursorOrigin = Cursor.Position;
-        _dragFormOrigin = Location;
-    }
-
-    private void DragOverlay(object? sender, MouseEventArgs e)
-    {
-        if (!_dragging)
-        {
-            return;
-        }
-
-        var cursor = Cursor.Position;
-        Location = new Point(
-            _dragFormOrigin.X + (cursor.X - _dragCursorOrigin.X),
-            _dragFormOrigin.Y + (cursor.Y - _dragCursorOrigin.Y));
-    }
-
-    private void EndDrag(object? sender, MouseEventArgs e)
-    {
-        _dragging = false;
-        _settings.X = Location.X;
-        _settings.Y = Location.Y;
-        _settings.Width = Width;
-        _settings.Height = Height;
-        _settings.Opacity = Opacity;
-        _settings.AlwaysOnTop = TopMost;
-        _saveSettings();
     }
 
     private void RefreshOverlay()
@@ -281,8 +235,78 @@ internal sealed class StatusOverlayForm : Form
         _detailLabel.Text = health.DetailText;
         _captureLabel.Text = health.CaptureText;
         _healthLabel.Text = health.MessageText;
+        SyncRawCaptureCheckBox(snapshot);
         _indicatorPanel.Invalidate();
         Invalidate();
+    }
+
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+        if (_statusLabel is null || _detailLabel is null || _captureLabel is null || _healthLabel is null || _rawCaptureCheckBox is null || _closeButton is null)
+        {
+            return;
+        }
+
+        _statusLabel.Size = new Size(Math.Max(220, ClientSize.Width - 32), 22);
+        _detailLabel.Size = new Size(Math.Max(220, ClientSize.Width - 32), 18);
+        _captureLabel.Size = new Size(Math.Max(220, ClientSize.Width - 32), 18);
+        _healthLabel.Size = new Size(Math.Max(220, ClientSize.Width - 32), 34);
+        _rawCaptureCheckBox.Location = new Point(Math.Max(150, ClientSize.Width - 156), 10);
+        _closeButton.Location = new Point(ClientSize.Width - 36, 8);
+    }
+
+    private void RawCaptureCheckBoxChanged()
+    {
+        if (_syncingRawCaptureCheckBox)
+        {
+            return;
+        }
+
+        try
+        {
+            var requested = _rawCaptureCheckBox.Checked;
+            var accepted = _state.SetRawCaptureEnabled(requested);
+            _events.Record("raw_capture_runtime_toggle", new Dictionary<string, string?>
+            {
+                ["requested"] = requested.ToString(),
+                ["accepted"] = accepted.ToString()
+            });
+
+            if (accepted)
+            {
+                _logger.LogInformation("Runtime raw capture request changed to {RawCaptureEnabled}.", requested);
+                return;
+            }
+
+            _logger.LogWarning("Runtime raw capture request to disable was rejected because capture is active.");
+            SyncRawCaptureCheckBox(_state.Snapshot());
+        }
+        catch (Exception exception)
+        {
+            _state.RecordError($"Raw capture toggle failed: {exception.Message}");
+            _events.Record("raw_capture_runtime_toggle_failed", new Dictionary<string, string?>
+            {
+                ["error"] = exception.GetType().Name
+            });
+            _logger.LogError(exception, "Failed to update runtime raw capture request from the status overlay.");
+            SyncRawCaptureCheckBox(_state.Snapshot());
+        }
+    }
+
+    private void SyncRawCaptureCheckBox(TelemetryCaptureStatusSnapshot snapshot)
+    {
+        _syncingRawCaptureCheckBox = true;
+        try
+        {
+            _rawCaptureCheckBox.Checked = snapshot.RawCaptureEnabled || snapshot.RawCaptureActive;
+            _rawCaptureCheckBox.Enabled = !snapshot.RawCaptureActive;
+            _rawCaptureCheckBox.Text = snapshot.RawCaptureActive ? "Raw active" : "Raw capture";
+        }
+        finally
+        {
+            _syncingRawCaptureCheckBox = false;
+        }
     }
 
     private enum CaptureHealthLevel

@@ -7,6 +7,7 @@ using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.History;
 using TmrOverlay.App.Logging;
+using TmrOverlay.App.Overlays;
 using TmrOverlay.App.Replay;
 using TmrOverlay.App.Retention;
 using TmrOverlay.App.Runtime;
@@ -14,6 +15,7 @@ using TmrOverlay.App.Shell;
 using TmrOverlay.App.Settings;
 using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
+using TmrOverlay.App.Telemetry.Live;
 
 namespace TmrOverlay.App;
 
@@ -79,8 +81,11 @@ internal static class Program
                 services.AddSingleton<AppEventRecorder>();
                 services.AddSingleton<AppSettingsStore>();
                 services.AddSingleton<SessionHistoryStore>();
+                services.AddSingleton<SessionHistoryQueryService>();
                 services.AddSingleton<DiagnosticsBundleService>();
                 services.AddSingleton<TelemetryCaptureState>();
+                services.AddSingleton<LiveTelemetryStore>();
+                services.AddSingleton<OverlayManager>();
                 services.AddSingleton<NotifyIconApplicationContext>();
                 services.AddHostedService<RuntimeStateService>();
                 services.AddHostedService<RetentionHostedService>();
