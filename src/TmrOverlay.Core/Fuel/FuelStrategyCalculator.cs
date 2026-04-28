@@ -1,8 +1,8 @@
 using System.Globalization;
-using TmrOverlay.App.History;
-using TmrOverlay.App.Telemetry.Live;
+using TmrOverlay.Core.History;
+using TmrOverlay.Core.Telemetry.Live;
 
-namespace TmrOverlay.App.Overlays.FuelCalculator;
+namespace TmrOverlay.Core.Fuel;
 
 internal static class FuelStrategyCalculator
 {

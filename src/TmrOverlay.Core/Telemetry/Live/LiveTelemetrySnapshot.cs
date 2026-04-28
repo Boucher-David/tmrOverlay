@@ -1,6 +1,6 @@
-using TmrOverlay.App.History;
+using TmrOverlay.Core.History;
 
-namespace TmrOverlay.App.Telemetry.Live;
+namespace TmrOverlay.Core.Telemetry.Live;
 
 internal sealed record LiveTelemetrySnapshot(
     bool IsConnected,

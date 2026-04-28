@@ -1,6 +1,6 @@
-using TmrOverlay.App.AppInfo;
+using TmrOverlay.Core.AppInfo;
 
-namespace TmrOverlay.App.History;
+namespace TmrOverlay.Core.History;
 
 internal sealed class HistoricalSessionContext
 {

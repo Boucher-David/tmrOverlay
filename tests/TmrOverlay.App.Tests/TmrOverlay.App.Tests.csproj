@@ -24,6 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\TmrOverlay.Core\TmrOverlay.Core.csproj" />
     <ProjectReference Include="..\..\src\TmrOverlay.App\TmrOverlay.App.csproj" />
   </ItemGroup>
 </Project>

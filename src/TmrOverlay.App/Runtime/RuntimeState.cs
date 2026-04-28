@@ -1,4 +1,4 @@
-using TmrOverlay.App.AppInfo;
+using TmrOverlay.Core.AppInfo;
 
 namespace TmrOverlay.App.Runtime;
 

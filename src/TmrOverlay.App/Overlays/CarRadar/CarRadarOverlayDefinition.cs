@@ -1,4 +1,4 @@
-using TmrOverlay.App.Overlays.Abstractions;
+using TmrOverlay.Core.Overlays;
 
 namespace TmrOverlay.App.Overlays.CarRadar;
 
@@ -8,5 +8,12 @@ internal static class CarRadarOverlayDefinition
         Id: "car-radar",
         DisplayName: "Car Radar",
         DefaultWidth: 300,
-        DefaultHeight: 300);
+        DefaultHeight: 300,
+        Options:
+        [
+            OverlaySettingsOptionDescriptor.Boolean(
+                OverlayOptionKeys.RadarMulticlassWarning,
+                "Show multiclass warning",
+                defaultValue: true)
+        ]);
 }

@@ -1,9 +1,11 @@
 using irsdkSharp;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using TmrOverlay.App.Analysis;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.History;
-using TmrOverlay.App.Telemetry.Live;
+using TmrOverlay.Core.History;
+using TmrOverlay.Core.Telemetry.Live;
 
 namespace TmrOverlay.App.Telemetry;
 
@@ -13,7 +15,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     private readonly TelemetryCaptureOptions _options;
     private readonly AppEventRecorder _events;
     private readonly SessionHistoryStore _sessionHistoryStore;
-    private readonly LiveTelemetryStore _liveTelemetryStore;
+    private readonly PostRaceAnalysisPipeline _postRaceAnalysisPipeline;
+    private readonly ILiveTelemetrySink _liveTelemetrySink;
     private readonly TelemetryCaptureState _state;
     private readonly object _sync = new();
     private IRacingSDK? _sdk;
@@ -31,14 +34,16 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         TelemetryCaptureOptions options,
         AppEventRecorder events,
         SessionHistoryStore sessionHistoryStore,
-        LiveTelemetryStore liveTelemetryStore,
+        PostRaceAnalysisPipeline postRaceAnalysisPipeline,
+        ILiveTelemetrySink liveTelemetrySink,
         TelemetryCaptureState state)
     {
         _logger = logger;
         _options = options;
         _events = events;
         _sessionHistoryStore = sessionHistoryStore;
-        _liveTelemetryStore = liveTelemetryStore;
+        _postRaceAnalysisPipeline = postRaceAnalysisPipeline;
+        _liveTelemetrySink = liveTelemetrySink;
         _state = state;
     }
 
@@ -117,7 +122,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     private void HandleConnected()
     {
         _state.MarkConnected();
-        _liveTelemetryStore.MarkConnected();
+        _liveTelemetrySink.MarkConnected();
         _events.Record("iracing_connected");
         _logger.LogInformation("Connected to iRacing.");
     }
@@ -128,7 +133,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         _events.Record("iracing_disconnected");
 
         _state.MarkDisconnected();
-        _liveTelemetryStore.MarkDisconnected();
+        _liveTelemetrySink.MarkDisconnected();
 
         TelemetryCaptureSession? captureToFinalize;
         HistoricalSessionAccumulator? historyToFinalize;
@@ -247,7 +252,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             _frameIndex = 0;
             _lastSessionInfoUpdate = -1;
             _state.MarkCollectionStarted(_activeStartedAtUtc.Value);
-            _liveTelemetryStore.MarkCollectionStarted(sourceId, _activeStartedAtUtc.Value);
+            _liveTelemetrySink.MarkCollectionStarted(sourceId, _activeStartedAtUtc.Value);
 
             if (capture is not null)
             {
@@ -715,7 +720,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             _sessionInfoSnapshotCount++;
         }
 
-        _liveTelemetryStore.ApplySessionInfo(sessionInfoYaml);
+        _liveTelemetrySink.ApplySessionInfo(sessionInfoYaml);
         history?.ApplySessionInfo(sessionInfoYaml);
     }
 
@@ -831,7 +836,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             DriversSoFar: ReadInt32(sdk, "DCDriversSoFar"),
             DriverChangeLapStatus: ReadInt32(sdk, "DCLapStatus"));
 
-        _liveTelemetryStore.RecordFrame(sample);
+        _liveTelemetrySink.RecordFrame(sample);
         history?.RecordFrame(sample);
     }
 
@@ -875,6 +880,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                     capture?.SessionInfoSnapshotCount ?? finalization.SessionInfoSnapshotCount);
 
                 await _sessionHistoryStore.SaveAsync(summary, CancellationToken.None).ConfigureAwait(false);
+                await _postRaceAnalysisPipeline.SaveFromSummaryAsync(summary, CancellationToken.None).ConfigureAwait(false);
                 _events.Record("history_summary_saved", new Dictionary<string, string?>
                 {
                     ["sourceId"] = finalization.SourceId,

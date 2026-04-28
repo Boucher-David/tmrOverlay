@@ -1,5 +1,5 @@
-using TmrOverlay.App.History;
-using TmrOverlay.App.Telemetry.Live;
+using TmrOverlay.Core.History;
+using TmrOverlay.Core.Telemetry.Live;
 using Xunit;
 
 namespace TmrOverlay.App.Tests.Telemetry;

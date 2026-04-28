@@ -1,6 +1,6 @@
 # Post-Race Strategy Analysis Design Note
 
-This is intentionally out of scope for the v1 fuel calculator branch. The v1 branch should stop at live strategy generation, compact session history, and clear overlay feedback.
+The first implementation is intentionally narrow: session finalization builds a compact analysis from the saved historical summary, stores it as JSON, and the settings overlay can browse recent analyses plus the built-in four-hour sample. The broader strategy review/export flow remains post-v1.0 work.
 
 ## Goal
 
@@ -8,16 +8,15 @@ After a race ends, generate a compact strategy review that explains how the race
 
 ## Candidate Output
 
-Store a `strategy-analysis.json` beside the user session summary:
+Current implementation stores post-race analysis JSON under:
 
 ```text
 %LOCALAPPDATA%/TmrOverlay/history/user/
-  cars/{car}/tracks/{track}/sessions/{session}/
-    summaries/{source-id}.json
-    strategy-analysis/{source-id}.json
+  analysis/
+    {analysis-id}.json
 ```
 
-The file should stay compact and derived. Do not include raw telemetry frames.
+The file stays compact and derived. It does not include raw telemetry frames.
 
 ## Data To Include
 
@@ -56,12 +55,16 @@ The export should exclude:
 
 ## Implementation Notes
 
+- `src/TmrOverlay.Core/Analysis/PostRaceAnalysisBuilder.cs` builds the first compact line-based analysis from `HistoricalSessionSummary`.
+- `src/TmrOverlay.App/Analysis/PostRaceAnalysisStore.cs` persists and loads analysis JSON.
+- `src/TmrOverlay.App/Analysis/PostRaceAnalysisPipeline.cs` isolates analysis persistence/event failures from telemetry finalization.
+- `src/TmrOverlay.App/Overlays/SettingsPanel/SettingsOverlayForm.cs` displays recent analyses in the Post-race Analysis tab.
 - Record recommendation snapshots only when strategy output changes materially: stint count, stop count, target laps, required saving, tire advice, or confidence source.
 - Keep the live overlay independent from post-race analysis. The live path should publish derived strategy snapshots; the analysis writer can subscribe to or receive those snapshots.
 - Use the same source/confidence language as session history so teammate-mode model data is never treated as measured fuel.
 - Prefer additive schema versions. The first implementation can be a narrow v1 JSON file and grow as more telemetry cases are understood.
 
-## Not For This Branch
+## Not Implemented Yet
 
 - Building the exporter UI.
 - Building a full strategy comparison engine beyond the current fuel calculator logic.

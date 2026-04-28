@@ -1,5 +1,5 @@
 using System.Drawing;
-using TmrOverlay.App.Settings;
+using TmrOverlay.Core.Settings;
 
 namespace TmrOverlay.App.Overlays.Abstractions;
 
@@ -24,8 +24,8 @@ internal abstract class PersistentOverlayForm : Form
 
         AutoScaleMode = AutoScaleMode.None;
         ClientSize = new Size(
-            Math.Max(_settings.Width, defaultWidth),
-            Math.Max(_settings.Height, defaultHeight));
+            _settings.Width > 0 ? _settings.Width : defaultWidth,
+            _settings.Height > 0 ? _settings.Height : defaultHeight);
         DoubleBuffered = true;
         FormBorderStyle = FormBorderStyle.None;
         Location = new Point(_settings.X, _settings.Y);

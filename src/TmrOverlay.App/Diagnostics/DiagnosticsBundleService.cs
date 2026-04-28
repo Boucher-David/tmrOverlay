@@ -1,7 +1,7 @@
 using System.IO.Compression;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using TmrOverlay.App.AppInfo;
+using TmrOverlay.Core.AppInfo;
 using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
 

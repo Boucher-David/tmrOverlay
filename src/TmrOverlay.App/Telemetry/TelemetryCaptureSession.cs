@@ -2,7 +2,7 @@ using System.Buffers.Binary;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
-using TmrOverlay.App.AppInfo;
+using TmrOverlay.Core.AppInfo;
 
 namespace TmrOverlay.App.Telemetry;
 

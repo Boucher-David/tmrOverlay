@@ -1,4 +1,4 @@
-using TmrOverlay.App.Overlays.Abstractions;
+using TmrOverlay.Core.Overlays;
 
 namespace TmrOverlay.App.Overlays.GapToLeader;
 
@@ -8,5 +8,20 @@ internal static class GapToLeaderOverlayDefinition
         Id: "gap-to-leader",
         DisplayName: "Gap To Leader",
         DefaultWidth: 560,
-        DefaultHeight: 260);
+        DefaultHeight: 260,
+        Options:
+        [
+            OverlaySettingsOptionDescriptor.Integer(
+                OverlayOptionKeys.GapCarsAhead,
+                "Cars ahead",
+                0,
+                12,
+                defaultValue: 5),
+            OverlaySettingsOptionDescriptor.Integer(
+                OverlayOptionKeys.GapCarsBehind,
+                "Cars behind",
+                0,
+                12,
+                defaultValue: 5)
+        ]);
 }

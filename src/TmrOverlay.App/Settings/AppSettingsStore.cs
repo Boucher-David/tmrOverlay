@@ -1,5 +1,6 @@
 using System.Text.Json;
 using TmrOverlay.App.Storage;
+using TmrOverlay.Core.Settings;
 
 namespace TmrOverlay.App.Settings;
 
@@ -31,7 +32,7 @@ internal sealed class AppSettingsStore
 
             if (!File.Exists(_settingsPath))
             {
-                _settings = new ApplicationSettings();
+                _settings = AppSettingsMigrator.Migrate(new ApplicationSettings());
                 SaveCore(_settings);
                 return _settings;
             }
@@ -39,13 +40,15 @@ internal sealed class AppSettingsStore
             try
             {
                 using var stream = File.OpenRead(_settingsPath);
-                _settings = JsonSerializer.Deserialize<ApplicationSettings>(stream, JsonOptions) ?? new ApplicationSettings();
+                _settings = JsonSerializer.Deserialize<ApplicationSettings>(stream, JsonOptions);
             }
             catch
             {
                 _settings = new ApplicationSettings();
             }
 
+            _settings = AppSettingsMigrator.Migrate(_settings);
+            SaveCore(_settings);
             return _settings;
         }
     }
@@ -54,8 +57,8 @@ internal sealed class AppSettingsStore
     {
         lock (_sync)
         {
-            _settings = settings;
-            SaveCore(settings);
+            _settings = AppSettingsMigrator.Migrate(settings);
+            SaveCore(_settings);
         }
     }
 

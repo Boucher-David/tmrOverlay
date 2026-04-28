@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using TmrOverlay.App.AppInfo;
+using TmrOverlay.Core.AppInfo;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.Storage;
 

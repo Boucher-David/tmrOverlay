@@ -1,4 +1,4 @@
-using TmrOverlay.App.History;
+using TmrOverlay.Core.History;
 using Xunit;
 
 namespace TmrOverlay.App.Tests.History;

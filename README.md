@@ -6,6 +6,8 @@
 
 - Starts as a WinForms tray application with no main window.
 - Shows a tiny always-on-top status overlay in the top-left corner.
+- Shows a centered tabbed settings overlay for managing overlay visibility, scale, session filters, shared overlay font, units, and overlay-specific display options.
+- Includes a placeholder Overlay Bridge settings tab for post-v1.0 bridge controls.
 - Lets you drag overlays and remembers each overlay position between app launches.
 - Connects to iRacing through the `irsdkSharp` wrapper.
 - Starts live telemetry analysis whenever iRacing sends usable frame data.
@@ -14,7 +16,7 @@
 - Shows first-pass radar and gap-to-leader overlays backed by live `CarLeftRight`, `CarIdxF2Time`, `CarIdxEstTime`, and `CarIdx*` progress/position telemetry.
   The radar is a transparent circular proximity view that only paints when traffic is nearby, fades car rectangles from red to yellow to transparent as traffic moves away, and can show an outer-ring multiclass approaching warning with a live seconds gap. The gap overlay is a four-hour in-class trend graph with the class leader as the top baseline, adaptive Y-axis scaling, left-side axis labels, lap reference lines, subtle weather bands, driver/leader-change markers, dimmed non-team context lines, and endpoint `P<N>` labels. It keeps bounded in-memory traces for all available same-class timing rows, while dynamically rendering the leader, the team car, nearby class traffic, and recently visible cars.
 - Stores early pit-service history signals such as pit-lane time, pit-stall/service time, observed fuel fill rate, tire/repair indicators, and confidence flags.
-- Keeps raw capture as an opt-in diagnostic/development mode; the status overlay can request raw capture at runtime if the app was started without the flag.
+- Keeps raw capture as an opt-in diagnostic/development mode; the settings overlay can request raw capture at runtime if the app was started without the flag.
 - When raw capture is enabled, stores `telemetry.bin`, `telemetry-schema.json`, `latest-session.yaml`, optional `session-info/`, and `capture-manifest.json`.
 - Shows live-analysis health signals in the overlay, plus disk-write health when raw capture is enabled.
 - Writes rolling local logs, JSONL app events, runtime-state markers, persisted settings, and diagnostics bundles for triage.
@@ -25,11 +27,13 @@
 
 - `src/TmrOverlay.App/` contains the Windows application, tray shell, and telemetry collector.
 - `src/TmrOverlay.App/Overlays/` contains overlay modules. Each overlay type gets its own folder and uses shared draggable/persisted window behavior.
+- `src/TmrOverlay.App/Overlays/Styling/OverlayTheme.cs` contains the common Windows overlay visual tokens, including shared colors, font helpers, and basic layout constants.
+- `src/TmrOverlay.App/Bridge/` contains the optional localhost overlay bridge for future external UI clients.
 - `src/TmrOverlay.App/Shell/` contains the tray/menu shell.
-- `src/TmrOverlay.App/Telemetry/Live/` contains the shared live telemetry read model for overlays.
+- `src/TmrOverlay.Core/` contains platform-neutral settings models, overlay metadata, historical telemetry/session models, live telemetry derivation, post-race analysis models, and fuel strategy logic.
 - `src/TmrOverlay.App/Storage/` contains app-owned local storage path resolution.
-- `src/TmrOverlay.App/History/` contains compact session-history summary storage.
-- `src/TmrOverlay.App/Logging/`, `Events/`, `Runtime/`, `Diagnostics/`, `Retention/`, `Replay/`, and `Settings/` contain shared application boilerplate.
+- `src/TmrOverlay.App/History/` contains compact session-history disk storage and lookup services.
+- `src/TmrOverlay.App/Logging/`, `Events/`, `Runtime/`, `Diagnostics/`, `Retention/`, `Replay/`, `Analysis/`, and `Settings/` contain Windows app boilerplate and persistence services.
 - `history/baseline/` contains tracked development/sample historical summaries. The app does not read these by default.
 - `tests/TmrOverlay.App.Tests/` contains the xUnit test project for non-UI logic.
 - `local-mac/TmrOverlayMac/` is the ignored local macOS harness. It mirrors the Windows structure for overlay iteration but uses mock telemetry.
@@ -52,7 +56,7 @@ When enabled, captures are written under the user-local application data directo
 
 For development, set `TMR_Storage__UseRepositoryLocalStorage=true` to write under this checkout instead.
 
-If the app is already running and you forgot the startup flag, check `Raw capture` in the status overlay. That requests raw capture for the current process and starts a raw capture on the next live SDK frame. Active raw captures cannot be disabled mid-collection; the checkbox is locked until the current collection ends.
+If the app is already running and you forgot the startup flag, check `Raw capture` in the Collector Status settings tab. That requests raw capture for the current process and starts a raw capture on the next live SDK frame. Active raw captures cannot be disabled mid-collection; the checkbox is locked until the current collection ends.
 
 Each capture folder contains:
 
@@ -72,12 +76,12 @@ Each capture folder contains:
 
 You can also double-click [TmrOverlay.cmd](/Users/davidboucher/Code/tmrOverlay/TmrOverlay.cmd) from the repo root after the app has been built once. It launches the built executable from the expected `Debug` or `Release` output folder.
 
-The tray menu lets you open the raw capture folder, open the current raw capture when one exists, open logs, create a diagnostics bundle, or exit the app.
-The overlay stays visible over the sim so you can confirm the app is running and whether live telemetry analysis has started. With raw capture disabled it shows live frame freshness and history-collection state. With raw capture enabled it also shows queued frames, written frames, dropped frames, telemetry file size, disk-write freshness, and explicit warning/error messages. The raw-capture checkbox records app events and local logs when toggled or rejected. You can drag overlays to new positions, and each overlay restores its saved frame on restart. The status overlay `X` button fully exits the application.
+The tray menu lets you open the raw capture folder, open the current raw capture when one exists, open logs, open the settings overlay, create a diagnostics bundle, or exit the app.
+The status overlay stays visible over the sim so you can confirm the app is running and whether live telemetry analysis has started. With raw capture disabled it shows live frame freshness and history-collection state. With raw capture enabled it also shows queued frames, written frames, dropped frames, telemetry file size, disk-write freshness, and explicit warning/error messages. The settings raw-capture checkbox records app events and local logs when toggled or rejected. You can drag overlays to new positions, and each overlay restores its saved frame on restart. Use the tray menu to reopen settings or exit the application.
 
 During local development, the overlay also warns when source files in this checkout are newer than the running build. That is a rebuild reminder only; it does not block capture.
 
-Future overlays should consume shared live data from `LiveTelemetryStore` and user-history lookups from `SessionHistoryQueryService`; they should not read directly from iRacing or raw capture files.
+Future overlays should consume shared live data through `TmrOverlay.Core.Telemetry.Live.ILiveTelemetrySource` and user-history lookups from `SessionHistoryQueryService`; they should not read directly from iRacing or raw capture files. Live/replay providers write through `ILiveTelemetrySink`. Prefer changing shared overlay colors and basic typography through `OverlayTheme` or the optional `overlay-theme.json` file instead of editing one-off color values in each form.
 
 ## macOS Local Harness
 
@@ -154,6 +158,8 @@ Available settings:
 - `Replay:Enabled`
 - `Replay:CaptureDirectory`
 - `Replay:SpeedMultiplier`
+- `OverlayBridge:Enabled`
+- `OverlayBridge:Port`
 
 By default, writable data resolves under `%LOCALAPPDATA%\TmrOverlay`.
 
@@ -164,6 +170,36 @@ $env:TMR_SessionHistory__UseBaselineHistory = "true"
 ```
 
 Path settings may be absolute or relative. Relative path settings resolve under the selected app data root.
+
+User-facing overlay preferences are stored in the local settings file under the app settings root. The settings overlay can update each current overlay's visibility, scale, test/practice/qualifying/race session filters, shared font family, metric/imperial units, and overlay-specific display options. It also includes a placeholder Overlay Bridge tab for post-v1.0 bridge controls. Settings files are versioned and normalized on load so older local files receive safe defaults as customization expands.
+
+### Overlay Theme Overrides
+
+Advanced visual tokens can be overridden with an optional `overlay-theme.json` file in the app settings root, for example:
+
+```json
+{
+  "defaultFontFamily": "Segoe UI",
+  "colors": {
+    "windowBackground": "#0E1215",
+    "textPrimary": "#FFFFFF",
+    "warningText": "#F6B858"
+  }
+}
+```
+
+Color keys match `OverlayTheme.Colors` property names and can be written as camelCase, kebab-case, snake_case, or PascalCase. Colors accept `#RRGGBB` or `#AARRGGBB`.
+
+### Local Overlay Bridge
+
+The optional bridge is disabled by default. Enable it only for local development or future external overlay clients:
+
+```powershell
+$env:TMR_OverlayBridge__Enabled = "true"
+$env:TMR_OverlayBridge__Port = "8765"
+```
+
+When enabled, it listens on `http://localhost:{port}/` and serves `GET /health` plus `GET /snapshot`. The snapshot is sourced from `ILiveTelemetrySource`, so bridge clients receive normalized app state rather than direct iRacing SDK data.
 
 For repo-local development storage, set:
 
@@ -201,6 +237,8 @@ The Windows solution includes an xUnit test project at `tests/TmrOverlay.App.Tes
 dotnet test
 ```
 
+GitHub Actions runs the Windows .NET build and test gate on `windows-latest` through `.github/workflows/windows-dotnet.yml`.
+
 The local mac harness includes a SwiftPM XCTest target under `local-mac/TmrOverlayMac/Tests/`.
 
 ```bash
@@ -212,7 +250,6 @@ The current Command Line Tools-only setup on this Mac can run `swift build`, but
 
 ## Next Steps
 
-- Add a lightweight local bridge for downstream overlay processes.
 - Add a replay tool that can decode `telemetry.bin` with `telemetry-schema.json`.
 - Harden the radar and gap overlays against longer multi-class traffic captures.
 - Design the post-race strategy review/export flow described in [docs/post-race-strategy-analysis.md](/Users/davidboucher/Code/tmrOverlay/docs/post-race-strategy-analysis.md).

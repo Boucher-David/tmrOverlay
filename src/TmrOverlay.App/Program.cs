@@ -2,12 +2,15 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using TmrOverlay.App.AppInfo;
+using TmrOverlay.Core.AppInfo;
+using TmrOverlay.App.Analysis;
+using TmrOverlay.App.Bridge;
 using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.History;
 using TmrOverlay.App.Logging;
 using TmrOverlay.App.Overlays;
+using TmrOverlay.App.Overlays.Styling;
 using TmrOverlay.App.Replay;
 using TmrOverlay.App.Retention;
 using TmrOverlay.App.Runtime;
@@ -15,7 +18,7 @@ using TmrOverlay.App.Shell;
 using TmrOverlay.App.Settings;
 using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
-using TmrOverlay.App.Telemetry.Live;
+using TmrOverlay.Core.Telemetry.Live;
 
 namespace TmrOverlay.App;
 
@@ -34,6 +37,7 @@ internal static class Program
         var captureState = host.Services.GetRequiredService<TelemetryCaptureState>();
 
         RegisterUnhandledExceptionLogging(logger);
+        OverlayTheme.LoadOverrides(Path.Combine(storageOptions.SettingsRoot, "overlay-theme.json"), logger);
 
         host.Start();
         RecordBuildFreshness(captureState, logger);
@@ -78,26 +82,24 @@ internal static class Program
                 services.AddSingleton(SessionHistoryOptions.FromConfiguration(context.Configuration, storageOptions));
                 services.AddSingleton(RetentionOptions.FromConfiguration(context.Configuration));
                 services.AddSingleton(replayOptions);
+                services.AddSingleton(OverlayBridgeOptions.FromConfiguration(context.Configuration));
                 services.AddSingleton<AppEventRecorder>();
                 services.AddSingleton<AppSettingsStore>();
                 services.AddSingleton<SessionHistoryStore>();
                 services.AddSingleton<SessionHistoryQueryService>();
+                services.AddSingleton<PostRaceAnalysisStore>();
+                services.AddSingleton<PostRaceAnalysisPipeline>();
                 services.AddSingleton<DiagnosticsBundleService>();
                 services.AddSingleton<TelemetryCaptureState>();
                 services.AddSingleton<LiveTelemetryStore>();
+                services.AddSingleton<ILiveTelemetrySource>(services => services.GetRequiredService<LiveTelemetryStore>());
+                services.AddSingleton<ILiveTelemetrySink>(services => services.GetRequiredService<LiveTelemetryStore>());
                 services.AddSingleton<OverlayManager>();
                 services.AddSingleton<NotifyIconApplicationContext>();
                 services.AddHostedService<RuntimeStateService>();
                 services.AddHostedService<RetentionHostedService>();
-
-                if (replayOptions.Enabled)
-                {
-                    services.AddHostedService<ReplayTelemetryHostedService>();
-                }
-                else
-                {
-                    services.AddHostedService<TelemetryCaptureHostedService>();
-                }
+                services.AddHostedService<OverlayBridgeHostedService>();
+                services.AddTelemetryProvider(replayOptions);
             });
     }
 

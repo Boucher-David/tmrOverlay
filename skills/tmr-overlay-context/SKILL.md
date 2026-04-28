@@ -1,6 +1,6 @@
 ---
 name: tmr-overlay-context
-description: Use when continuing work in the tmrOverlay repo. Summarizes the current Windows tray app, draggable live-status overlay, iRacing telemetry capture pipeline, raw capture format, analyzed sample capture, fuel-overlay findings, overlay research notes, known limitations, and next priorities. Read references/current-state.md before making architectural changes.
+description: Use when continuing work in the tmrOverlay repo. Summarizes the current Windows tray app, settings/customization UI, live overlay suite, iRacing telemetry capture pipeline, raw capture format, analyzed sample capture, fuel-overlay findings, overlay research notes, known limitations, and next priorities. Read references/current-state.md before making architectural changes.
 ---
 
 # TmrOverlay Context
@@ -15,8 +15,10 @@ Use this repo-local skill when the task is about continuing or extending `tmrOve
 4. Inspect git status before editing because this repo may accumulate ongoing local changes.
 5. Preserve the current split:
    tray shell,
-   live status overlay,
-   telemetry capture service,
+   settings/customization overlay,
+   product overlays,
+   Core read models and strategy logic,
+   telemetry provider services,
    raw capture artifacts on disk.
 6. When adding or changing overlay features, include defensive error handling and useful debug/error logs. Telemetry gaps should degrade to an unavailable/waiting state; unexpected refresh/render failures should be logged and surfaced in the relevant overlay or status path without taking down the whole app.
 7. When adding or materially changing overlays, update review images under `mocks/<overlay-id>/`. Prefer at least one focused screenshot plus a multi-state contact sheet that covers waiting/unavailable, normal/healthy, edge/warning, and error/fallback behavior when those states apply.
@@ -35,10 +37,13 @@ Use this repo-local skill when the task is about continuing or extending `tmrOve
 
 ## Intent
 
-The immediate goal is not a full overlay suite yet. It is a dependable Windows background collector with just enough on-screen feedback to confirm:
+The immediate goal is a dependable Windows iRacing companion with a small customizable overlay suite:
 
 - the app is alive
 - iRacing is connected
 - live session data is actually being captured
+- fuel/radar/class-gap overlays consume normalized live state
+- users can manage overlay visibility, scale, sessions, font, units, and basic overlay display options
+- raw capture remains an opt-in diagnostic/development mode
 
-The next major milestone is a live fuel/stint overlay backed by a longer endurance-event capture.
+The next major milestone is hardening the live overlay suite and settings/customization surface enough for a v1.0 production pass while keeping the mac harness useful for mock-telemetry iteration.

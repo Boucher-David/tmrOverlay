@@ -1,11 +1,11 @@
-using TmrOverlay.App.History;
+using TmrOverlay.Core.History;
 
-namespace TmrOverlay.App.Telemetry.Live;
+namespace TmrOverlay.Core.Telemetry.Live;
 
-internal sealed class LiveTelemetryStore
+internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetrySink
 {
     private const double CloseRadarRangeSeconds = 7d;
-    private const double MulticlassWarningRangeSeconds = 45d;
+    private const double MulticlassWarningRangeSeconds = 5d;
     private const double CloseRadarRangeLaps = 0.02d;
     private const double MulticlassWarningRangeLaps = 0.14d;
     private const double MinimumClosingRateSecondsPerSecond = 0.15d;
@@ -130,7 +130,7 @@ internal sealed class LiveTelemetryStore
                 continue;
             }
 
-            if (!IsBehind(car) || IsInCloseRadarRange(car) || !IsInMulticlassWarningRange(car))
+            if (!IsBehind(car) || !IsInMulticlassWarningRange(car))
             {
                 continue;
             }
@@ -227,7 +227,7 @@ internal sealed class LiveTelemetryStore
     private static bool IsCloseEnoughForEarlyWarning(LiveProximityCar car)
     {
         return car.RelativeSeconds is { } seconds
-            ? seconds >= -22d
+            ? seconds >= -MulticlassWarningRangeSeconds
             : car.RelativeLaps >= -0.07d;
     }
 
@@ -245,6 +245,11 @@ internal sealed class LiveTelemetryStore
 
     private static double RangeUrgency(double distance, double closeRange, double warningRange)
     {
+        if (warningRange <= closeRange)
+        {
+            return 1d - Math.Clamp(distance / Math.Max(0.001d, warningRange), 0d, 1d);
+        }
+
         return 1d - Math.Clamp((distance - closeRange) / Math.Max(0.001d, warningRange - closeRange), 0d, 1d);
     }
 
