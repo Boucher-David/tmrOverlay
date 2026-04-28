@@ -11,7 +11,7 @@ internal sealed class AppPerformanceHostedService : IHostedService, IDisposable
     private readonly AppPerformanceState _performanceState;
     private readonly AppPerformanceSnapshotRecorder _recorder;
     private readonly ILogger<AppPerformanceHostedService> _logger;
-    private Timer? _timer;
+    private System.Threading.Timer? _timer;
 
     public AppPerformanceHostedService(
         AppPerformanceState performanceState,
@@ -26,7 +26,7 @@ internal sealed class AppPerformanceHostedService : IHostedService, IDisposable
     public Task StartAsync(CancellationToken cancellationToken)
     {
         RecordSnapshot();
-        _timer = new Timer(_ => RecordSnapshot(), null, InitialDelay, SnapshotInterval);
+        _timer = new System.Threading.Timer(_ => RecordSnapshot(), null, InitialDelay, SnapshotInterval);
         _logger.LogInformation(
             "Performance diagnostics started. Interval: {SnapshotIntervalSeconds}s. Logs: {PerformanceLogsRoot}.",
             SnapshotInterval.TotalSeconds,
