@@ -13,6 +13,10 @@ namespace TmrOverlay.App.Overlays.SettingsPanel;
 
 internal sealed class SettingsOverlayForm : PersistentOverlayForm
 {
+    private const string WindowsBuildCommand = "dotnet build .\\src\\TmrOverlay.App\\TmrOverlay.App.csproj -c Release";
+    private const string WindowsPublishCommand = "dotnet publish .\\src\\TmrOverlay.App\\TmrOverlay.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o .\\artifacts\\TmrOverlay-win-x64";
+    private const string WindowsZipCommand = "Compress-Archive -Path .\\artifacts\\TmrOverlay-win-x64\\* -DestinationPath .\\artifacts\\TmrOverlay-win-x64.zip -Force";
+
     private static readonly string[] PreferredFontFamilies =
     [
         "Segoe UI",
@@ -49,6 +53,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private bool _syncingRawCaptureCheckBox;
     private bool _syncingAnalysis;
     private bool _applicationExitRequested;
+    private Label? _buildCommandStatusLabel;
 
     public SettingsOverlayForm(
         ApplicationSettings applicationSettings,
@@ -76,7 +81,12 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _requestApplicationExit = requestApplicationExit;
 
         BackColor = OverlayTheme.Colors.SettingsBackground;
+        Icon = SystemIcons.Application;
         Padding = Padding.Empty;
+        ShowIcon = true;
+        ShowInTaskbar = true;
+        Text = "TmrOverlay Settings";
+        TopMost = false;
 
         _titleBar = new Panel
         {
@@ -192,6 +202,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             _requestApplicationExit();
         }
     }
+
+    protected override bool UseToolWindowStyle => false;
 
     protected override void OnPaint(PaintEventArgs e)
     {
@@ -313,7 +325,37 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
         page.Controls.Add(unitsLabel);
         page.Controls.Add(unitsCombo);
+        AddWindowsBuildCommands(page);
         return page;
+    }
+
+    private void AddWindowsBuildCommands(TabPage page)
+    {
+        var title = CreateSectionLabel("Windows local build", 18, 154, 500);
+        var note = CreateMutedLabel("PowerShell from the repo root. The app only copies these commands.", 22, 184, 510);
+        var buildLabel = CreateLabel("Build", 22, 224, 70);
+        var buildCommand = CreateCommandTextBox(92, 220, 350, WindowsBuildCommand);
+        var buildCopy = CreateCopyButton(452, 220, WindowsBuildCommand);
+        var publishLabel = CreateLabel("Publish", 22, 270, 70);
+        var publishCommand = CreateCommandTextBox(92, 266, 350, WindowsPublishCommand);
+        var publishCopy = CreateCopyButton(452, 266, WindowsPublishCommand);
+        var zipLabel = CreateLabel("Zip", 22, 316, 70);
+        var zipCommand = CreateCommandTextBox(92, 312, 350, WindowsZipCommand);
+        var zipCopy = CreateCopyButton(452, 312, WindowsZipCommand);
+        _buildCommandStatusLabel = CreateMutedLabel(string.Empty, 92, 352, 350);
+
+        page.Controls.Add(title);
+        page.Controls.Add(note);
+        page.Controls.Add(buildLabel);
+        page.Controls.Add(buildCommand);
+        page.Controls.Add(buildCopy);
+        page.Controls.Add(publishLabel);
+        page.Controls.Add(publishCommand);
+        page.Controls.Add(publishCopy);
+        page.Controls.Add(zipLabel);
+        page.Controls.Add(zipCommand);
+        page.Controls.Add(zipCopy);
+        page.Controls.Add(_buildCommandStatusLabel);
     }
 
     private TabPage CreateOverlayTab(OverlayDefinition definition)
@@ -477,6 +519,27 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _applyOverlaySettings();
     }
 
+    private void CopyBuildCommand(string command)
+    {
+        try
+        {
+            Clipboard.SetText(command);
+            if (_buildCommandStatusLabel is not null)
+            {
+                _buildCommandStatusLabel.ForeColor = OverlayTheme.Colors.SuccessText;
+                _buildCommandStatusLabel.Text = "Copied command.";
+            }
+        }
+        catch
+        {
+            if (_buildCommandStatusLabel is not null)
+            {
+                _buildCommandStatusLabel.ForeColor = OverlayTheme.Colors.WarningText;
+                _buildCommandStatusLabel.Text = "Clipboard unavailable. Select the command text instead.";
+            }
+        }
+    }
+
     private static TabPage CreateTabPage(string text)
     {
         return new TabPage(text)
@@ -511,6 +574,55 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             Text = text,
             TextAlign = ContentAlignment.MiddleLeft
         };
+    }
+
+    private static Label CreateMutedLabel(string text, int x, int y, int width)
+    {
+        return new Label
+        {
+            AutoSize = false,
+            ForeColor = OverlayTheme.Colors.TextMuted,
+            Font = OverlayTheme.Font(OverlayTheme.DefaultFontFamily, 8.5f),
+            Location = new Point(x, y),
+            Size = new Size(width, 24),
+            Text = text,
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+    }
+
+    private static TextBox CreateCommandTextBox(int x, int y, int width, string command)
+    {
+        return new TextBox
+        {
+            BackColor = OverlayTheme.Colors.PanelBackground,
+            BorderStyle = BorderStyle.FixedSingle,
+            ForeColor = OverlayTheme.Colors.TextSecondary,
+            Font = OverlayTheme.Font("Consolas", 8.25f),
+            Location = new Point(x, y),
+            ReadOnly = true,
+            Size = new Size(width, 28),
+            TabStop = true,
+            Text = command,
+            WordWrap = false
+        };
+    }
+
+    private Button CreateCopyButton(int x, int y, string command)
+    {
+        var button = new Button
+        {
+            BackColor = OverlayTheme.Colors.ButtonBackground,
+            FlatStyle = FlatStyle.Flat,
+            ForeColor = OverlayTheme.Colors.TextControl,
+            Location = new Point(x, y),
+            Size = new Size(78, 28),
+            TabStop = true,
+            Text = "Copy",
+            UseVisualStyleBackColor = false
+        };
+        button.FlatAppearance.BorderColor = OverlayTheme.Colors.TabBorder;
+        button.Click += (_, _) => CopyBuildCommand(command);
+        return button;
     }
 
     private static CheckBox CreateCheckBox(string text, bool isChecked, int x, int y, int width)

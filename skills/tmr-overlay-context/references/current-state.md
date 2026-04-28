@@ -39,7 +39,7 @@ Last updated: 2026-04-28
   - `Styling/OverlayTheme.cs` contains human-editable shared Windows overlay colors, font helpers, and common layout tokens; data-visualization-specific colors can remain near their drawing code
   - optional `overlay-theme.json` under the app settings root can override shared font/color tokens without recompiling
   - `Status/` contains the current collector status overlay
-  - `SettingsPanel/` contains a centered tabbed settings overlay for user-managed overlay visibility, scale, session filters, shared font/units, runtime raw-capture requests, placeholder Overlay Bridge controls, post-race analysis browsing, and overlay-specific display options
+  - `SettingsPanel/` contains a centered tabbed settings window for user-managed overlay visibility, scale, session filters, shared font/units, runtime raw-capture requests, placeholder Overlay Bridge controls, post-race analysis browsing, and overlay-specific display options
   - `FuelCalculator/` contains the first strategy overlay, backed by live telemetry plus exact car/track/session history
   - `CarRadar/` contains a transparent circular proximity overlay, backed by `CarLeftRight` and nearby `CarIdx*` progress/position telemetry
   - `GapToLeader/` contains a rolling in-class gap trend graph, backed by `CarIdxF2Time` with progress fallback
@@ -50,7 +50,7 @@ Last updated: 2026-04-28
   - no taskbar icon
   - draggable during runtime
   - persists position/size under app-owned settings
-  - display-only; visibility, detail rows, and runtime raw-capture requests now live in the settings overlay
+  - display-only; visibility, detail rows, and runtime raw-capture requests now live in the settings window
   - shows live telemetry analysis state, latest SDK-frame freshness, warning/error text, and raw capture write health only when raw capture is enabled
   - state colors:
     - gray: waiting for iRacing
@@ -60,11 +60,12 @@ Last updated: 2026-04-28
   - new overlay features should log unexpected refresh/render failures and surface a compact visible error state, while normal telemetry gaps should degrade to waiting/unavailable
 
 - `src/TmrOverlay.App/Overlays/SettingsPanel/`
-  - square 600x600 settings overlay centered on the primary screen by default
+  - square 600x600 settings window centered on the primary screen by default
   - opens on startup and can be reopened from the tray menu
   - acts as the main UI; clicking its `X` or otherwise closing it through the user close path exits the application instead of hiding the app to the tray
+  - uses normal desktop z-order, taskbar, and Alt+Tab behavior instead of the product overlays' tool-window/always-on-top behavior
   - tabs include General, each current overlay, an Overlay Bridge placeholder for post-v1.0 controls, and Post-race Analysis with a past-session picker backed by saved analysis rows plus the built-in four-hour sample
-  - General exposes a shared overlay font-family selector from widely available fonts and a metric/imperial unit selector
+  - General exposes a shared overlay font-family selector from widely available fonts, a metric/imperial unit selector, and copy-only Windows build/publish/zip commands for local development
   - per-overlay tabs expose visibility, scale, test/practice/qualifying/race session filters, and descriptor-driven overlay-specific display options
   - the Collector Status tab owns the runtime `Raw capture` checkbox
   - visibility, scale, font, unit, and display-option changes apply to open overlays immediately; session filters are rechecked against live session type
@@ -152,7 +153,7 @@ Last updated: 2026-04-28
   - contains platform-neutral historical session context, telemetry samples, summary/aggregate models, slug/path helpers, session-info parsing, and the in-memory historical accumulator
 
 - `src/TmrOverlay.App/Analysis/`
-  - persists post-race analysis JSON under the user history root and populates the settings overlay dropdown
+  - persists post-race analysis JSON under the user history root and populates the settings window dropdown
   - `PostRaceAnalysisPipeline` saves an analysis row after compact session history is saved and isolates analysis persistence/event failures from telemetry finalization
 
 - `history/baseline/`
@@ -210,7 +211,7 @@ Last updated: 2026-04-28
   - optional disabled-by-default localhost HTTP bridge
   - exposes `GET /health` and `GET /snapshot`
   - snapshots come from `ILiveTelemetrySource`, so downstream UI clients do not read directly from iRacing or raw capture files
-  - the settings overlay has a placeholder Overlay Bridge tab for post-v1.0 bridge controls; configuration still lives in app settings for now
+  - the settings window has a placeholder Overlay Bridge tab for post-v1.0 bridge controls; configuration still lives in app settings for now
 
 ### Local mac harness
 
