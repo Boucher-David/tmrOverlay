@@ -1,0 +1,20 @@
+{
+  "isConnected": true,
+  "isCapturing": true,
+  "rawCaptureEnabled": false,
+  "rawCaptureActive": false,
+  "captureRoot": "C:\\Users\\David\\AppData\\Local\\TmrOverlay\\captures",
+  "currentCaptureDirectory": null,
+  "lastCaptureDirectory": "C:\\Users\\David\\AppData\\Local\\TmrOverlay\\captures\\capture-20260428-232504-925",
+  "frameCount": 366,
+  "writtenFrameCount": 0,
+  "droppedFrameCount": 0,
+  "telemetryFileBytes": null,
+  "captureStartedAtUtc": "2026-04-28T23:41:16.0334801+00:00",
+  "lastFrameCapturedAtUtc": "2026-04-28T23:41:21.3815299+00:00",
+  "lastDiskWriteAtUtc": null,
+  "appWarning": null,
+  "lastWarning": null,
+  "lastError": null,
+  "lastIssueAtUtc": null
+}

@@ -1,0 +1,117 @@
+{
+  "timestampUtc": "2026-04-28T23:41:21.399686+00:00",
+  "startedAtUtc": "2026-04-28T23:23:33.4460526+00:00",
+  "telemetryFrameCount": 51965,
+  "telemetryFramesPerSecond": 53.22,
+  "metrics": [
+    {
+      "id": "capture.writer_write",
+      "count": 51669,
+      "errorCount": 0,
+      "averageMilliseconds": 0.022,
+      "lastMilliseconds": 0.011,
+      "maxMilliseconds": 3.812,
+      "p95Milliseconds": 0.08,
+      "lastRecordedAtUtc": "2026-04-28T23:39:24.8879322+00:00"
+    },
+    {
+      "id": "capture.write_status_callback",
+      "count": 51670,
+      "errorCount": 0,
+      "averageMilliseconds": 0.009,
+      "lastMilliseconds": 0,
+      "maxMilliseconds": 2.902,
+      "p95Milliseconds": 0.002,
+      "lastRecordedAtUtc": "2026-04-28T23:39:24.887933+00:00"
+    },
+    {
+      "id": "overlay.fuel.refresh",
+      "count": 2110,
+      "errorCount": 0,
+      "averageMilliseconds": 71.83,
+      "lastMilliseconds": 0.356,
+      "maxMilliseconds": 825.544,
+      "p95Milliseconds": 373.962,
+      "lastRecordedAtUtc": "2026-04-28T23:41:21.0364817+00:00"
+    },
+    {
+      "id": "overlay.gap.refresh",
+      "count": 2109,
+      "errorCount": 0,
+      "averageMilliseconds": 0.103,
+      "lastMilliseconds": 0.06,
+      "maxMilliseconds": 3.195,
+      "p95Milliseconds": 0.388,
+      "lastRecordedAtUtc": "2026-04-28T23:41:21.0311183+00:00"
+    },
+    {
+      "id": "overlay.radar.refresh",
+      "count": 8668,
+      "errorCount": 0,
+      "averageMilliseconds": 0.009,
+      "lastMilliseconds": 0.008,
+      "maxMilliseconds": 0.361,
+      "p95Milliseconds": 0.024,
+      "lastRecordedAtUtc": "2026-04-28T23:41:21.361551+00:00"
+    },
+    {
+      "id": "overlay.status.refresh",
+      "count": 3873,
+      "errorCount": 0,
+      "averageMilliseconds": 0.141,
+      "lastMilliseconds": 0.154,
+      "maxMilliseconds": 1.598,
+      "p95Milliseconds": 0.292,
+      "lastRecordedAtUtc": "2026-04-28T23:41:21.1614002+00:00"
+    },
+    {
+      "id": "telemetry.data_changed",
+      "count": 51965,
+      "errorCount": 0,
+      "averageMilliseconds": 0.276,
+      "lastMilliseconds": 0.344,
+      "maxMilliseconds": 30.345,
+      "p95Milliseconds": 0.524,
+      "lastRecordedAtUtc": "2026-04-28T23:41:21.3818738+00:00"
+    },
+    {
+      "id": "telemetry.history_record_frame",
+      "count": 51965,
+      "errorCount": 0,
+      "averageMilliseconds": 0.001,
+      "lastMilliseconds": 0,
+      "maxMilliseconds": 0.777,
+      "p95Milliseconds": 0.001,
+      "lastRecordedAtUtc": "2026-04-28T23:41:21.381873+00:00"
+    },
+    {
+      "id": "telemetry.live_sink",
+      "count": 51965,
+      "errorCount": 0,
+      "averageMilliseconds": 0.017,
+      "lastMilliseconds": 0.04,
+      "maxMilliseconds": 5.513,
+      "p95Milliseconds": 0.049,
+      "lastRecordedAtUtc": "2026-04-28T23:41:21.3818722+00:00"
+    }
+  ],
+  "capture": {
+    "writeStatusCount": 51670,
+    "lastCaptureId": "capture-20260428-232504-925",
+    "lastCaptureDirectory": "C:\\Users\\David\\AppData\\Local\\TmrOverlay\\captures\\capture-20260428-232504-925",
+    "lastFramesWritten": 51599,
+    "lastSessionInfoSnapshotCount": 70,
+    "lastPendingMessageCount": 0,
+    "lastTelemetryFileBytes": 405310177,
+    "lastWriteAtUtc": "2026-04-28T23:39:24.8879322+00:00",
+    "lastWriteError": null
+  },
+  "process": {
+    "workingSetBytes": 158396416,
+    "privateMemoryBytes": 83947520,
+    "managedHeapBytes": 34689568,
+    "gen0Collections": 464,
+    "gen1Collections": 67,
+    "gen2Collections": 5
+  }
+}
