@@ -1,9 +1,9 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
-using Microsoft.Extensions.Logging;
-using TmrOverlay.App.Events;
 using TmrOverlay.App.Overlays.Abstractions;
-using TmrOverlay.App.Settings;
+using TmrOverlay.App.Overlays.Styling;
+using TmrOverlay.Core.Overlays;
+using TmrOverlay.Core.Settings;
 using TmrOverlay.App.Telemetry;
 
 namespace TmrOverlay.App.Overlays.Status;
@@ -11,27 +11,20 @@ namespace TmrOverlay.App.Overlays.Status;
 internal sealed class StatusOverlayForm : PersistentOverlayForm
 {
     private readonly TelemetryCaptureState _state;
-    private readonly AppEventRecorder _events;
-    private readonly ILogger<StatusOverlayForm> _logger;
-    private readonly Action _closeApplication;
+    private readonly OverlaySettings _settings;
     private readonly Panel _indicatorPanel;
     private readonly Label _titleLabel;
     private readonly Label _statusLabel;
     private readonly Label _detailLabel;
     private readonly Label _captureLabel;
     private readonly Label _healthLabel;
-    private readonly CheckBox _rawCaptureCheckBox;
-    private readonly Button _closeButton;
     private readonly System.Windows.Forms.Timer _refreshTimer;
-    private bool _syncingRawCaptureCheckBox;
 
     public StatusOverlayForm(
         TelemetryCaptureState state,
-        AppEventRecorder events,
-        ILogger<StatusOverlayForm> logger,
         OverlaySettings settings,
-        Action saveSettings,
-        Action closeApplication)
+        string fontFamily,
+        Action saveSettings)
         : base(
             settings,
             saveSettings,
@@ -39,18 +32,16 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
             StatusOverlayDefinition.Definition.DefaultHeight)
     {
         _state = state;
-        _events = events;
-        _logger = logger;
-        _closeApplication = closeApplication;
+        _settings = settings;
 
-        BackColor = Color.FromArgb(26, 26, 26);
+        BackColor = OverlayTheme.Colors.NeutralBackground;
         Padding = new Padding(14, 12, 14, 12);
 
         _indicatorPanel = new Panel
         {
             Location = new Point(16, 16),
             Size = new Size(12, 12),
-            BackColor = Color.FromArgb(140, 140, 140)
+            BackColor = OverlayTheme.Colors.NeutralIndicator
         };
         _indicatorPanel.Paint += (_, e) =>
         {
@@ -62,30 +53,17 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
         _titleLabel = new Label
         {
             AutoSize = true,
-            ForeColor = Color.White,
-            Font = new Font("Segoe UI Semibold", 11f, FontStyle.Bold, GraphicsUnit.Point),
+            ForeColor = OverlayTheme.Colors.TextPrimary,
+            Font = OverlayTheme.Font(fontFamily, 11f, FontStyle.Bold),
             Location = new Point(36, 10),
             Text = "TmrOverlay"
         };
 
-        _rawCaptureCheckBox = new CheckBox
-        {
-            AutoSize = false,
-            ForeColor = Color.FromArgb(220, 220, 220),
-            Font = new Font("Segoe UI", 8.75f, FontStyle.Regular, GraphicsUnit.Point),
-            Location = new Point(ClientSize.Width - 156, 10),
-            Size = new Size(112, 22),
-            TabStop = false,
-            Text = "Raw capture",
-            UseVisualStyleBackColor = false
-        };
-        _rawCaptureCheckBox.CheckedChanged += (_, _) => RawCaptureCheckBoxChanged();
-
         _statusLabel = new Label
         {
             AutoSize = false,
-            ForeColor = Color.FromArgb(220, 220, 220),
-            Font = new Font("Segoe UI", 10f, FontStyle.Regular, GraphicsUnit.Point),
+            ForeColor = OverlayTheme.Colors.TextControl,
+            Font = OverlayTheme.Font(fontFamily, 10f),
             Location = new Point(16, 36),
             Size = new Size(ClientSize.Width - 32, 22),
             Text = "Waiting for iRacing"
@@ -94,8 +72,8 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
         _detailLabel = new Label
         {
             AutoSize = false,
-            ForeColor = Color.FromArgb(180, 180, 180),
-            Font = new Font("Consolas", 9f, FontStyle.Regular, GraphicsUnit.Point),
+            ForeColor = OverlayTheme.Colors.TextSubtle,
+            Font = OverlayTheme.Font(fontFamily, 9f),
             Location = new Point(16, 58),
             Size = new Size(ClientSize.Width - 32, 18),
             Text = "collector idle"
@@ -104,8 +82,8 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
         _captureLabel = new Label
         {
             AutoSize = false,
-            ForeColor = Color.FromArgb(176, 196, 214),
-            Font = new Font("Consolas", 8.75f, FontStyle.Regular, GraphicsUnit.Point),
+            ForeColor = OverlayTheme.Colors.InfoText,
+            Font = OverlayTheme.Font(fontFamily, 8.75f),
             Location = new Point(16, 80),
             Size = new Size(ClientSize.Width - 32, 18),
             Text = "capture: not started"
@@ -114,27 +92,12 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
         _healthLabel = new Label
         {
             AutoSize = false,
-            ForeColor = Color.FromArgb(184, 184, 184),
-            Font = new Font("Consolas", 8.75f, FontStyle.Regular, GraphicsUnit.Point),
+            ForeColor = OverlayTheme.Colors.TextSubtle,
+            Font = OverlayTheme.Font(fontFamily, 8.75f),
             Location = new Point(16, 102),
             Size = new Size(ClientSize.Width - 32, 34),
             Text = "health: waiting for telemetry"
         };
-
-        _closeButton = new Button
-        {
-            FlatStyle = FlatStyle.Flat,
-            Font = new Font("Segoe UI", 9.5f, FontStyle.Bold, GraphicsUnit.Point),
-            ForeColor = Color.FromArgb(225, 225, 225),
-            Location = new Point(ClientSize.Width - 36, 8),
-            Size = new Size(26, 24),
-            TabStop = false,
-            Text = "X",
-            UseVisualStyleBackColor = false
-        };
-        _closeButton.FlatAppearance.BorderSize = 0;
-        _closeButton.Cursor = Cursors.Hand;
-        _closeButton.Click += (_, _) => _closeApplication();
 
         Controls.Add(_indicatorPanel);
         Controls.Add(_titleLabel);
@@ -142,8 +105,6 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
         Controls.Add(_detailLabel);
         Controls.Add(_captureLabel);
         Controls.Add(_healthLabel);
-        Controls.Add(_rawCaptureCheckBox);
-        Controls.Add(_closeButton);
 
         RegisterDragSurfaces(
             _indicatorPanel,
@@ -169,8 +130,6 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
         {
             _refreshTimer.Stop();
             _refreshTimer.Dispose();
-            _closeButton.Dispose();
-            _rawCaptureCheckBox.Dispose();
             _titleLabel.Dispose();
             _statusLabel.Dispose();
             _detailLabel.Dispose();
@@ -187,7 +146,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
         base.OnPaint(e);
 
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        using var borderPen = new Pen(Color.FromArgb(72, 255, 255, 255));
+        using var borderPen = new Pen(OverlayTheme.Colors.WindowBorder);
         e.Graphics.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
     }
 
@@ -198,44 +157,40 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
 
         if (health.Level == CaptureHealthLevel.Error)
         {
-            BackColor = Color.FromArgb(70, 18, 24);
-            _indicatorPanel.BackColor = Color.FromArgb(245, 88, 88);
-            _closeButton.BackColor = Color.FromArgb(105, 28, 36);
+            BackColor = OverlayTheme.Colors.ErrorBackground;
+            _indicatorPanel.BackColor = OverlayTheme.Colors.ErrorIndicator;
             _statusLabel.Text = health.StatusText;
         }
         else if (health.Level == CaptureHealthLevel.Warning)
         {
-            BackColor = Color.FromArgb(64, 46, 14);
-            _indicatorPanel.BackColor = Color.FromArgb(244, 180, 64);
-            _closeButton.BackColor = Color.FromArgb(92, 64, 20);
+            BackColor = OverlayTheme.Colors.WarningBackground;
+            _indicatorPanel.BackColor = OverlayTheme.Colors.WarningIndicator;
             _statusLabel.Text = health.StatusText;
         }
         else if (snapshot.IsCapturing)
         {
-            BackColor = Color.FromArgb(18, 46, 34);
-            _indicatorPanel.BackColor = Color.FromArgb(80, 214, 124);
-            _closeButton.BackColor = Color.FromArgb(28, 67, 49);
+            BackColor = OverlayTheme.Colors.SuccessStrongBackground;
+            _indicatorPanel.BackColor = OverlayTheme.Colors.SuccessIndicator;
             _statusLabel.Text = health.StatusText;
         }
         else if (snapshot.IsConnected)
         {
-            BackColor = Color.FromArgb(56, 44, 14);
-            _indicatorPanel.BackColor = Color.FromArgb(242, 176, 64);
-            _closeButton.BackColor = Color.FromArgb(87, 67, 22);
+            BackColor = OverlayTheme.Colors.WarningBackground;
+            _indicatorPanel.BackColor = OverlayTheme.Colors.WarningIndicator;
             _statusLabel.Text = health.StatusText;
         }
         else
         {
-            BackColor = Color.FromArgb(26, 26, 26);
-            _indicatorPanel.BackColor = Color.FromArgb(140, 140, 140);
-            _closeButton.BackColor = Color.FromArgb(54, 54, 54);
+            BackColor = OverlayTheme.Colors.NeutralBackground;
+            _indicatorPanel.BackColor = OverlayTheme.Colors.NeutralIndicator;
             _statusLabel.Text = health.StatusText;
         }
 
         _detailLabel.Text = health.DetailText;
         _captureLabel.Text = health.CaptureText;
         _healthLabel.Text = health.MessageText;
-        SyncRawCaptureCheckBox(snapshot);
+        _captureLabel.Visible = _settings.GetBooleanOption(OverlayOptionKeys.StatusCaptureDetails, defaultValue: true);
+        _healthLabel.Visible = _settings.GetBooleanOption(OverlayOptionKeys.StatusHealthDetails, defaultValue: true);
         _indicatorPanel.Invalidate();
         Invalidate();
     }
@@ -243,7 +198,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
-        if (_statusLabel is null || _detailLabel is null || _captureLabel is null || _healthLabel is null || _rawCaptureCheckBox is null || _closeButton is null)
+        if (_statusLabel is null || _detailLabel is null || _captureLabel is null || _healthLabel is null)
         {
             return;
         }
@@ -252,61 +207,6 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
         _detailLabel.Size = new Size(Math.Max(220, ClientSize.Width - 32), 18);
         _captureLabel.Size = new Size(Math.Max(220, ClientSize.Width - 32), 18);
         _healthLabel.Size = new Size(Math.Max(220, ClientSize.Width - 32), 34);
-        _rawCaptureCheckBox.Location = new Point(Math.Max(150, ClientSize.Width - 156), 10);
-        _closeButton.Location = new Point(ClientSize.Width - 36, 8);
-    }
-
-    private void RawCaptureCheckBoxChanged()
-    {
-        if (_syncingRawCaptureCheckBox)
-        {
-            return;
-        }
-
-        try
-        {
-            var requested = _rawCaptureCheckBox.Checked;
-            var accepted = _state.SetRawCaptureEnabled(requested);
-            _events.Record("raw_capture_runtime_toggle", new Dictionary<string, string?>
-            {
-                ["requested"] = requested.ToString(),
-                ["accepted"] = accepted.ToString()
-            });
-
-            if (accepted)
-            {
-                _logger.LogInformation("Runtime raw capture request changed to {RawCaptureEnabled}.", requested);
-                return;
-            }
-
-            _logger.LogWarning("Runtime raw capture request to disable was rejected because capture is active.");
-            SyncRawCaptureCheckBox(_state.Snapshot());
-        }
-        catch (Exception exception)
-        {
-            _state.RecordError($"Raw capture toggle failed: {exception.Message}");
-            _events.Record("raw_capture_runtime_toggle_failed", new Dictionary<string, string?>
-            {
-                ["error"] = exception.GetType().Name
-            });
-            _logger.LogError(exception, "Failed to update runtime raw capture request from the status overlay.");
-            SyncRawCaptureCheckBox(_state.Snapshot());
-        }
-    }
-
-    private void SyncRawCaptureCheckBox(TelemetryCaptureStatusSnapshot snapshot)
-    {
-        _syncingRawCaptureCheckBox = true;
-        try
-        {
-            _rawCaptureCheckBox.Checked = snapshot.RawCaptureEnabled || snapshot.RawCaptureActive;
-            _rawCaptureCheckBox.Enabled = !snapshot.RawCaptureActive;
-            _rawCaptureCheckBox.Text = snapshot.RawCaptureActive ? "Raw active" : "Raw capture";
-        }
-        finally
-        {
-            _syncingRawCaptureCheckBox = false;
-        }
     }
 
     private enum CaptureHealthLevel

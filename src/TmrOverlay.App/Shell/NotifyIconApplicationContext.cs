@@ -61,6 +61,7 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
             _rootItem.Text = "Open Raw Capture Root";
         }
         var logsItem = new ToolStripMenuItem("Open Logs", null, (_, _) => OpenDirectory(_storageOptions.LogsRoot));
+        var settingsItem = new ToolStripMenuItem("Open Settings", null, (_, _) => _overlayManager.OpenSettingsOverlay());
         var diagnosticsItem = new ToolStripMenuItem("Create Diagnostics Bundle", null, (_, _) => CreateDiagnosticsBundle());
         var exitItem = new ToolStripMenuItem("Exit", null, (_, _) => ExitApplication());
 
@@ -72,6 +73,7 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
             _captureItem,
             _rootItem,
             logsItem,
+            settingsItem,
             diagnosticsItem,
             new ToolStripSeparator(),
             exitItem
@@ -85,7 +87,7 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
             Visible = true
         };
         _notifyIcon.DoubleClick += (_, _) => OpenCapture();
-        _overlayManager.ShowStartupOverlays(ExitApplication);
+        _overlayManager.ShowStartupOverlays();
 
         _refreshTimer = new System.Windows.Forms.Timer
         {

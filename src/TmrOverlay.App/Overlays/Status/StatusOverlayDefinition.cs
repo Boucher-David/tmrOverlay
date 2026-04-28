@@ -1,4 +1,4 @@
-using TmrOverlay.App.Overlays.Abstractions;
+using TmrOverlay.Core.Overlays;
 
 namespace TmrOverlay.App.Overlays.Status;
 
@@ -8,5 +8,16 @@ internal static class StatusOverlayDefinition
         Id: "status",
         DisplayName: "Collector Status",
         DefaultWidth: 520,
-        DefaultHeight: 150);
+        DefaultHeight: 150,
+        Options:
+        [
+            OverlaySettingsOptionDescriptor.Boolean(
+                OverlayOptionKeys.StatusCaptureDetails,
+                "Show capture path",
+                defaultValue: true),
+            OverlaySettingsOptionDescriptor.Boolean(
+                OverlayOptionKeys.StatusHealthDetails,
+                "Show health details",
+                defaultValue: true)
+        ]);
 }

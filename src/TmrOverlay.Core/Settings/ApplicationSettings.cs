@@ -1,10 +1,12 @@
-namespace TmrOverlay.App.Settings;
+namespace TmrOverlay.Core.Settings;
 
 internal sealed class ApplicationSettings
 {
-    public int SettingsVersion { get; init; } = 1;
+    public int SettingsVersion { get; set; } = AppSettingsMigrator.CurrentVersion;
 
-    public List<OverlaySettings> Overlays { get; init; } = [];
+    public ApplicationGeneralSettings General { get; set; } = new();
+
+    public List<OverlaySettings> Overlays { get; set; } = [];
 
     public OverlaySettings GetOrAddOverlay(
         string id,
@@ -30,4 +32,11 @@ internal sealed class ApplicationSettings
         Overlays.Add(overlay);
         return overlay;
     }
+}
+
+internal sealed class ApplicationGeneralSettings
+{
+    public string FontFamily { get; set; } = "Segoe UI";
+
+    public string UnitSystem { get; set; } = "Metric";
 }

@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace TmrOverlay.App.History;
+namespace TmrOverlay.Core.History;
 
 internal static class SessionInfoSummaryParser
 {

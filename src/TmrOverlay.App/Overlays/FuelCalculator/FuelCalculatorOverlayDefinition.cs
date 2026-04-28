@@ -1,4 +1,4 @@
-using TmrOverlay.App.Overlays.Abstractions;
+using TmrOverlay.Core.Overlays;
 
 namespace TmrOverlay.App.Overlays.FuelCalculator;
 
@@ -8,5 +8,16 @@ internal static class FuelCalculatorOverlayDefinition
         Id: "fuel-calculator",
         DisplayName: "Fuel Calculator",
         DefaultWidth: 600,
-        DefaultHeight: 320);
+        DefaultHeight: 320,
+        Options:
+        [
+            OverlaySettingsOptionDescriptor.Boolean(
+                OverlayOptionKeys.FuelAdvice,
+                "Show advice column",
+                defaultValue: true),
+            OverlaySettingsOptionDescriptor.Boolean(
+                OverlayOptionKeys.FuelSource,
+                "Show source row",
+                defaultValue: true)
+        ]);
 }

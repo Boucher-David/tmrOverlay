@@ -2,8 +2,10 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Overlays.Abstractions;
-using TmrOverlay.App.Settings;
-using TmrOverlay.App.Telemetry.Live;
+using TmrOverlay.App.Overlays.Styling;
+using TmrOverlay.Core.Overlays;
+using TmrOverlay.Core.Settings;
+using TmrOverlay.Core.Telemetry.Live;
 
 namespace TmrOverlay.App.Overlays.CarRadar;
 
@@ -15,18 +17,24 @@ internal sealed class CarRadarForm : PersistentOverlayForm
     private const float MulticlassWarningArcStartDegrees = 62.5f;
     private const float MulticlassWarningArcSweepDegrees = 55f;
 
-    private readonly LiveTelemetryStore _liveTelemetryStore;
+    private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly ILogger<CarRadarForm> _logger;
     private readonly System.Windows.Forms.Timer _refreshTimer;
+    private readonly OverlaySettings _settings;
+    private readonly string _fontFamily;
     private LiveProximitySnapshot _proximity = LiveProximitySnapshot.Unavailable;
     private string? _overlayError;
     private string? _lastLoggedError;
     private DateTimeOffset? _lastLoggedErrorAtUtc;
 
+    private bool ShowMulticlassWarning =>
+        _settings.GetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true);
+
     public CarRadarForm(
-        LiveTelemetryStore liveTelemetryStore,
+        ILiveTelemetrySource liveTelemetrySource,
         ILogger<CarRadarForm> logger,
         OverlaySettings settings,
+        string fontFamily,
         Action saveSettings)
         : base(
             settings,
@@ -34,8 +42,10 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             CarRadarOverlayDefinition.Definition.DefaultWidth,
             CarRadarOverlayDefinition.Definition.DefaultHeight)
     {
-        _liveTelemetryStore = liveTelemetryStore;
+        _liveTelemetrySource = liveTelemetrySource;
         _logger = logger;
+        _settings = settings;
+        _fontFamily = fontFamily;
         BackColor = TransparentColor;
         TransparencyKey = TransparentColor;
         Padding = Padding.Empty;
@@ -90,7 +100,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
     {
         try
         {
-            _proximity = _liveTelemetryStore.Snapshot().Proximity;
+            _proximity = _liveTelemetrySource.Snapshot().Proximity;
             _overlayError = null;
             Invalidate();
         }
@@ -107,7 +117,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             || _proximity.HasCarLeft
             || _proximity.HasCarRight
             || _proximity.NearbyCars.Any(IsInRadarRange)
-            || _proximity.StrongestMulticlassApproach is not null;
+            || (ShowMulticlassWarning && _proximity.StrongestMulticlassApproach is not null);
     }
 
     private void DrawRadar(Graphics graphics)
@@ -147,10 +157,10 @@ internal sealed class CarRadarForm : PersistentOverlayForm
         graphics.FillEllipse(circleBrush, bounds);
         graphics.DrawEllipse(circlePen, bounds);
 
-        using var titleFont = new Font("Segoe UI Semibold", 10f, FontStyle.Bold, GraphicsUnit.Point);
-        using var detailFont = new Font("Consolas", 7.5f, FontStyle.Regular, GraphicsUnit.Point);
-        using var titleBrush = new SolidBrush(Color.FromArgb(238, 255, 225, 220));
-        using var detailBrush = new SolidBrush(Color.FromArgb(205, 255, 225, 220));
+        using var titleFont = OverlayTheme.Font(_fontFamily, 10f, FontStyle.Bold);
+        using var detailFont = OverlayTheme.Font(_fontFamily, 7.5f);
+        using var titleBrush = new SolidBrush(OverlayTheme.Colors.TextPrimary);
+        using var detailBrush = new SolidBrush(OverlayTheme.Colors.TextSecondary);
         using var format = new StringFormat
         {
             Alignment = StringAlignment.Center,
@@ -209,6 +219,11 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             return;
         }
 
+        if (!ShowMulticlassWarning)
+        {
+            return;
+        }
+
         var urgency = Math.Clamp(approach.Urgency, 0d, 1d);
         var alpha = (int)Math.Round(120d + urgency * 110d);
         var warningColor = Color.FromArgb(alpha, 236, 112, 99);
@@ -220,7 +235,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
         };
         graphics.DrawArc(arcPen, arcBounds, MulticlassWarningArcStartDegrees, MulticlassWarningArcSweepDegrees);
 
-        using var font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold, GraphicsUnit.Point);
+        using var font = OverlayTheme.Font(_fontFamily, 9f, FontStyle.Bold);
         using var textBrush = new SolidBrush(Color.FromArgb(alpha, 255, 225, 220));
         using var format = new StringFormat
         {

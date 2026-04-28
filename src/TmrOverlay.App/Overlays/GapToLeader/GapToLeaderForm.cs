@@ -1,10 +1,12 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using Microsoft.Extensions.Logging;
-using TmrOverlay.App.History;
 using TmrOverlay.App.Overlays.Abstractions;
-using TmrOverlay.App.Settings;
-using TmrOverlay.App.Telemetry.Live;
+using TmrOverlay.App.Overlays.Styling;
+using TmrOverlay.Core.History;
+using TmrOverlay.Core.Overlays;
+using TmrOverlay.Core.Settings;
+using TmrOverlay.Core.Telemetry.Live;
 
 namespace TmrOverlay.App.Overlays.GapToLeader;
 
@@ -15,7 +17,6 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
     private const int MaxTrendPointsPerCar = 36_000;
     private const int MaxWeatherPoints = 36_000;
     private const int MaxDriverChangeMarkers = 64;
-    private const int NearbyCarsEachSide = 5;
     private const double StickyVisibilityMinimumSeconds = 120d;
     private const double StickyVisibilityLaps = 1.5d;
     private const double EntryTailSeconds = 300d;
@@ -23,8 +24,10 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
     private const double MissingSegmentGapSeconds = 10d;
     private const double MissingTelemetryGraceSeconds = 5d;
 
-    private readonly LiveTelemetryStore _liveTelemetryStore;
+    private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly ILogger<GapToLeaderForm> _logger;
+    private readonly OverlaySettings _settings;
+    private readonly string _fontFamily;
     private readonly Label _titleLabel;
     private readonly Label _statusLabel;
     private readonly Label _sourceLabel;
@@ -48,9 +51,10 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
     private DateTimeOffset? _lastLoggedErrorAtUtc;
 
     public GapToLeaderForm(
-        LiveTelemetryStore liveTelemetryStore,
+        ILiveTelemetrySource liveTelemetrySource,
         ILogger<GapToLeaderForm> logger,
         OverlaySettings settings,
+        string fontFamily,
         Action saveSettings)
         : base(
             settings,
@@ -58,17 +62,19 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
             GapToLeaderOverlayDefinition.Definition.DefaultWidth,
             GapToLeaderOverlayDefinition.Definition.DefaultHeight)
     {
-        _liveTelemetryStore = liveTelemetryStore;
+        _liveTelemetrySource = liveTelemetrySource;
         _logger = logger;
+        _settings = settings;
+        _fontFamily = fontFamily;
 
-        BackColor = Color.FromArgb(14, 18, 21);
+        BackColor = OverlayTheme.Colors.WindowBackground;
         Padding = new Padding(12);
 
         _titleLabel = new Label
         {
             AutoSize = false,
-            ForeColor = Color.White,
-            Font = new Font("Segoe UI Semibold", 11f, FontStyle.Bold, GraphicsUnit.Point),
+            ForeColor = OverlayTheme.Colors.TextPrimary,
+            Font = OverlayTheme.Font(_fontFamily, 11f, FontStyle.Bold),
             Location = new Point(14, 10),
             Size = new Size(210, 24),
             Text = "Class Gap Trend"
@@ -77,8 +83,8 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         _statusLabel = new Label
         {
             AutoSize = false,
-            ForeColor = Color.FromArgb(160, 160, 160),
-            Font = new Font("Consolas", 9f, FontStyle.Regular, GraphicsUnit.Point),
+            ForeColor = OverlayTheme.Colors.TextSubtle,
+            Font = OverlayTheme.Font(_fontFamily, 9f),
             Location = new Point(224, 11),
             Size = new Size(ClientSize.Width - 238, 22),
             Text = "waiting",
@@ -88,8 +94,8 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         _sourceLabel = new Label
         {
             AutoSize = false,
-            ForeColor = Color.FromArgb(128, 145, 153),
-            Font = new Font("Consolas", 8.5f, FontStyle.Regular, GraphicsUnit.Point),
+            ForeColor = OverlayTheme.Colors.TextMuted,
+            Font = OverlayTheme.Font(_fontFamily, 8.5f),
             Location = new Point(14, ClientSize.Height - 28),
             Size = new Size(ClientSize.Width - 28, 18),
             Text = "source: waiting",
@@ -145,7 +151,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         base.OnPaint(e);
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
 
-        using var borderPen = new Pen(Color.FromArgb(72, 255, 255, 255));
+        using var borderPen = new Pen(OverlayTheme.Colors.WindowBorder);
         e.Graphics.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
 
         var graphBounds = new Rectangle(
@@ -153,7 +159,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
             42,
             Math.Max(280, ClientSize.Width - 28),
             Math.Max(120, ClientSize.Height - 76));
-        using var graphBrush = new SolidBrush(Color.FromArgb(24, 30, 34));
+        using var graphBrush = new SolidBrush(OverlayTheme.Colors.PanelBackground);
         e.Graphics.FillRectangle(graphBrush, graphBounds);
         e.Graphics.DrawRectangle(borderPen, graphBounds);
 
@@ -178,7 +184,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
     {
         try
         {
-            var snapshot = _liveTelemetryStore.Snapshot();
+            var snapshot = _liveTelemetrySource.Snapshot();
             _gap = snapshot.LeaderGap;
             _lapReferenceSeconds = SelectLapReferenceSeconds(snapshot);
             if (snapshot.Sequence != _lastSequence)
@@ -481,7 +487,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         }
     }
 
-    private static HashSet<int> SelectDesiredCarIds(IReadOnlyList<LiveClassGapCar> cars)
+    private HashSet<int> SelectDesiredCarIds(IReadOnlyList<LiveClassGapCar> cars)
     {
         var selected = new HashSet<int>();
         foreach (var car in cars.Where(car => car.IsClassLeader || car.IsTeamCar))
@@ -495,7 +501,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
                 && car.DeltaSecondsToTeam is not null
                 && car.DeltaSecondsToTeam.Value < 0d)
             .OrderByDescending(car => car.DeltaSecondsToTeam!.Value)
-            .Take(NearbyCarsEachSide))
+            .Take(_settings.GetIntegerOption(OverlayOptionKeys.GapCarsAhead, defaultValue: 5, minimum: 0, maximum: 12)))
         {
             selected.Add(car.CarIdx);
         }
@@ -506,7 +512,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
                 && car.DeltaSecondsToTeam is not null
                 && car.DeltaSecondsToTeam.Value > 0d)
             .OrderBy(car => car.DeltaSecondsToTeam!.Value)
-            .Take(NearbyCarsEachSide))
+            .Take(_settings.GetIntegerOption(OverlayOptionKeys.GapCarsBehind, defaultValue: 5, minimum: 0, maximum: 12)))
         {
             selected.Add(car.CarIdx);
         }
@@ -760,7 +766,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         Rectangle plotBounds)
     {
         const float labelHeight = 13f;
-        using var font = new Font("Consolas", label.IsTeamCar ? 7.5f : 7f, FontStyle.Regular, GraphicsUnit.Point);
+        using var font = new Font(_fontFamily, label.IsTeamCar ? 7.5f : 7f, FontStyle.Regular, GraphicsUnit.Point);
         var textSize = graphics.MeasureString(label.Text, font);
         var x = Math.Min(plotBounds.Right - textSize.Width - 2f, label.Point.X + 6f);
         var labelBounds = new RectangleF(x - 2f, y, textSize.Width + 4f, labelHeight);
@@ -805,7 +811,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         {
             DashStyle = DashStyle.Dot
         };
-        using var labelFont = new Font("Consolas", 7f, FontStyle.Regular, GraphicsUnit.Point);
+        using var labelFont = new Font(_fontFamily, 7f, FontStyle.Regular, GraphicsUnit.Point);
         using var labelBrush = new SolidBrush(Color.FromArgb(150, 218, 226, 230));
 
         foreach (var marker in markers)
@@ -884,7 +890,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         using var markerFill = new SolidBrush(Color.FromArgb(18, 30, 42));
         using var teamMarkerPen = new Pen(Color.FromArgb(112, 224, 146), 1.8f);
         using var otherMarkerPen = new Pen(Color.FromArgb(220, 235, 245, 255), 1.4f);
-        using var labelFont = new Font("Consolas", 7f, FontStyle.Regular, GraphicsUnit.Point);
+        using var labelFont = new Font(_fontFamily, 7f, FontStyle.Regular, GraphicsUnit.Point);
         using var labelBrush = new SolidBrush(Color.FromArgb(190, 205, 218, 228));
 
         foreach (var marker in markers)
@@ -908,7 +914,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         DrawLapIntervalLines(graphics, plotBounds, domain, lapReferenceSeconds);
 
         using var gridPen = new Pen(Color.FromArgb(34, 255, 255, 255), 1f);
-        using var gridFont = new Font("Consolas", 7f, FontStyle.Regular, GraphicsUnit.Point);
+        using var gridFont = new Font(_fontFamily, 7f, FontStyle.Regular, GraphicsUnit.Point);
         using var gridBrush = new SolidBrush(Color.FromArgb(120, 138, 152, 160));
         using var labelFormat = new StringFormat
         {
@@ -958,7 +964,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         }
 
         using var linePen = new Pen(Color.FromArgb(34, 255, 255, 255), 1f);
-        using var labelFont = new Font("Consolas", 7f, FontStyle.Regular, GraphicsUnit.Point);
+        using var labelFont = new Font(_fontFamily, 7f, FontStyle.Regular, GraphicsUnit.Point);
         using var labelBrush = new SolidBrush(Color.FromArgb(128, 138, 152, 160));
         using var labelFormat = new StringFormat
         {
@@ -982,7 +988,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
 
     private void DrawScaleLabels(Graphics graphics, Rectangle plotBounds, Rectangle axisBounds, double maxGapSeconds)
     {
-        using var font = new Font("Consolas", 7.5f, FontStyle.Regular, GraphicsUnit.Point);
+        using var font = new Font(_fontFamily, 7.5f, FontStyle.Regular, GraphicsUnit.Point);
         using var brush = new SolidBrush(Color.FromArgb(138, 152, 160));
         using var labelFormat = new StringFormat
         {
@@ -1016,19 +1022,19 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
     {
         if (!gap.HasData)
         {
-            BackColor = Color.FromArgb(14, 18, 21);
-            _statusLabel.ForeColor = Color.FromArgb(160, 160, 160);
+            BackColor = OverlayTheme.Colors.WindowBackground;
+            _statusLabel.ForeColor = OverlayTheme.Colors.TextSubtle;
             return;
         }
 
-        BackColor = Color.FromArgb(18, 30, 42);
-        _statusLabel.ForeColor = Color.FromArgb(140, 190, 245);
+        BackColor = OverlayTheme.Colors.InfoBackground;
+        _statusLabel.ForeColor = OverlayTheme.Colors.InfoText;
     }
 
     private void ApplyErrorStatusColor()
     {
-        BackColor = Color.FromArgb(42, 18, 22);
-        _statusLabel.ForeColor = Color.FromArgb(236, 112, 99);
+        BackColor = OverlayTheme.Colors.ErrorGraphBackground;
+        _statusLabel.ForeColor = OverlayTheme.Colors.ErrorText;
     }
 
     private void DrawError(Graphics graphics, Rectangle graphBounds)
@@ -1039,8 +1045,8 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         using var borderPen = new Pen(Color.FromArgb(180, 236, 112, 99), 1f);
         graphics.DrawRectangle(borderPen, graphBounds);
 
-        using var titleFont = new Font("Segoe UI Semibold", 10f, FontStyle.Bold, GraphicsUnit.Point);
-        using var detailFont = new Font("Consolas", 8f, FontStyle.Regular, GraphicsUnit.Point);
+        using var titleFont = new Font(_fontFamily, 10f, FontStyle.Bold, GraphicsUnit.Point);
+        using var detailFont = new Font(_fontFamily, 8f, FontStyle.Regular, GraphicsUnit.Point);
         using var titleBrush = new SolidBrush(Color.FromArgb(238, 255, 225, 220));
         using var detailBrush = new SolidBrush(Color.FromArgb(205, 255, 225, 220));
         using var format = new StringFormat

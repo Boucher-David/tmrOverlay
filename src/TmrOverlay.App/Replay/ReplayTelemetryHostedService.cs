@@ -3,7 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.Telemetry;
-using TmrOverlay.App.Telemetry.Live;
+using TmrOverlay.Core.Telemetry.Live;
 
 namespace TmrOverlay.App.Replay;
 
@@ -11,7 +11,7 @@ internal sealed class ReplayTelemetryHostedService : IHostedService
 {
     private readonly ReplayOptions _options;
     private readonly TelemetryCaptureState _state;
-    private readonly LiveTelemetryStore _liveTelemetryStore;
+    private readonly ILiveTelemetrySink _liveTelemetrySink;
     private readonly AppEventRecorder _events;
     private readonly ILogger<ReplayTelemetryHostedService> _logger;
     private CancellationTokenSource? _replayCancellation;
@@ -20,13 +20,13 @@ internal sealed class ReplayTelemetryHostedService : IHostedService
     public ReplayTelemetryHostedService(
         ReplayOptions options,
         TelemetryCaptureState state,
-        LiveTelemetryStore liveTelemetryStore,
+        ILiveTelemetrySink liveTelemetrySink,
         AppEventRecorder events,
         ILogger<ReplayTelemetryHostedService> logger)
     {
         _options = options;
         _state = state;
-        _liveTelemetryStore = liveTelemetryStore;
+        _liveTelemetrySink = liveTelemetrySink;
         _events = events;
         _logger = logger;
     }
@@ -66,7 +66,7 @@ internal sealed class ReplayTelemetryHostedService : IHostedService
         }
 
         _state.MarkDisconnected();
-        _liveTelemetryStore.MarkDisconnected();
+        _liveTelemetrySink.MarkDisconnected();
     }
 
     private async Task RunReplayAsync(CancellationToken cancellationToken)
@@ -87,7 +87,7 @@ internal sealed class ReplayTelemetryHostedService : IHostedService
             _state.SetCaptureRoot(Path.GetDirectoryName(_options.CaptureDirectory!) ?? _options.CaptureDirectory!);
             _state.SetRawCaptureEnabled(true);
             _state.MarkConnected();
-            _liveTelemetryStore.MarkConnected();
+            _liveTelemetrySink.MarkConnected();
             var startedAtUtc = DateTimeOffset.UtcNow;
             var sourceId = Path.GetFileName(_options.CaptureDirectory!);
             if (string.IsNullOrWhiteSpace(sourceId))
@@ -96,7 +96,7 @@ internal sealed class ReplayTelemetryHostedService : IHostedService
             }
 
             _state.MarkCaptureStarted(_options.CaptureDirectory!, startedAtUtc);
-            _liveTelemetryStore.MarkCollectionStarted(sourceId, startedAtUtc);
+            _liveTelemetrySink.MarkCollectionStarted(sourceId, startedAtUtc);
 
             var frameCount = Math.Max(0, manifest?.FrameCount ?? 0);
             var intervalMs = Math.Max(1, (int)Math.Round(1000d / Math.Max(1, manifest?.TickRate ?? 60) / _options.SpeedMultiplier));
@@ -125,7 +125,7 @@ internal sealed class ReplayTelemetryHostedService : IHostedService
         {
             _state.MarkCaptureStopped();
             _state.MarkDisconnected();
-            _liveTelemetryStore.MarkDisconnected();
+            _liveTelemetrySink.MarkDisconnected();
             _events.Record("replay_stopped");
             _logger.LogInformation("Replay mode stopped.");
         }

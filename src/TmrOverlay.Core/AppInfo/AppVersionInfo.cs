@@ -1,7 +1,7 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
 
-namespace TmrOverlay.App.AppInfo;
+namespace TmrOverlay.Core.AppInfo;
 
 internal sealed class AppVersionInfo
 {
@@ -21,7 +21,7 @@ internal sealed class AppVersionInfo
 
     private static AppVersionInfo Create()
     {
-        var assembly = typeof(AppVersionInfo).Assembly;
+        var assembly = Assembly.GetEntryAssembly() ?? typeof(AppVersionInfo).Assembly;
         var name = assembly.GetName();
 
         return new AppVersionInfo

@@ -9,6 +9,7 @@ mocks/
   fuel-calculator/
   car-radar/
   gap-to-leader/
+  settings-overlay/
   standings/
   relative/
   competition-distance-graph/
