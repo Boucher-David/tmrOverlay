@@ -715,7 +715,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
             state.IsClassLeader));
     }
 
-    private static void DrawPositionLabels(Graphics graphics, IReadOnlyList<EndpointLabel> labels, Rectangle plotBounds)
+    private void DrawPositionLabels(Graphics graphics, IReadOnlyList<EndpointLabel> labels, Rectangle plotBounds)
     {
         if (labels.Count == 0)
         {
@@ -759,7 +759,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         }
     }
 
-    private static void DrawPositionLabel(
+    private void DrawPositionLabel(
         Graphics graphics,
         EndpointLabel label,
         float y,
@@ -903,7 +903,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         }
     }
 
-    private static void DrawGridLines(
+    private void DrawGridLines(
         Graphics graphics,
         Rectangle plotBounds,
         Rectangle axisBounds,
@@ -945,7 +945,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         }
     }
 
-    private static void DrawLapIntervalLines(
+    private void DrawLapIntervalLines(
         Graphics graphics,
         Rectangle plotBounds,
         TrendDomain domain,
