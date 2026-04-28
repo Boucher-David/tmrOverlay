@@ -1,9 +1,11 @@
+using System.Diagnostics;
 using irsdkSharp;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Analysis;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.History;
+using TmrOverlay.App.Performance;
 using TmrOverlay.Core.History;
 using TmrOverlay.Core.Telemetry.Live;
 
@@ -18,6 +20,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     private readonly PostRaceAnalysisPipeline _postRaceAnalysisPipeline;
     private readonly ILiveTelemetrySink _liveTelemetrySink;
     private readonly TelemetryCaptureState _state;
+    private readonly AppPerformanceState _performance;
     private readonly object _sync = new();
     private IRacingSDK? _sdk;
     private TelemetryCaptureSession? _activeCapture;
@@ -36,7 +39,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         SessionHistoryStore sessionHistoryStore,
         PostRaceAnalysisPipeline postRaceAnalysisPipeline,
         ILiveTelemetrySink liveTelemetrySink,
-        TelemetryCaptureState state)
+        TelemetryCaptureState state,
+        AppPerformanceState performance)
     {
         _logger = logger;
         _options = options;
@@ -45,6 +49,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         _postRaceAnalysisPipeline = postRaceAnalysisPipeline;
         _liveTelemetrySink = liveTelemetrySink;
         _state = state;
+        _performance = performance;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -160,6 +165,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 
     private void HandleDataChanged()
     {
+        var dataChangedStarted = Stopwatch.GetTimestamp();
+        var succeeded = false;
         var sdk = _sdk;
 
         if (sdk is null || !sdk.IsConnected() || sdk.Header is null)
@@ -216,11 +223,20 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 
             RecordHistoricalFrame(sdk, capturedAtUtc, sessionInfoUpdate);
             _state.RecordFrame(capturedAtUtc);
+            _performance.RecordTelemetryFrame(capturedAtUtc);
+            succeeded = true;
         }
         catch (Exception exception)
         {
             _state.RecordError($"Telemetry read failed: {exception.Message}");
             _logger.LogError(exception, "An error occurred while reading telemetry from iRacing.");
+        }
+        finally
+        {
+            _performance.RecordOperation(
+                AppPerformanceMetricIds.TelemetryDataChanged,
+                Stopwatch.GetElapsedTime(dataChangedStarted),
+                succeeded);
         }
     }
 
@@ -349,7 +365,26 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             sdk.Header.TickRate,
             sdk.Header.BufferLength,
             schema,
-            _state.RecordCaptureWrite);
+            RecordCaptureWriteStatus);
+    }
+
+    private void RecordCaptureWriteStatus(TelemetryCaptureWriteStatus writeStatus)
+    {
+        var started = Stopwatch.GetTimestamp();
+        var succeeded = false;
+        try
+        {
+            _state.RecordCaptureWrite(writeStatus);
+            _performance.RecordCaptureWrite(writeStatus);
+            succeeded = true;
+        }
+        finally
+        {
+            _performance.RecordOperation(
+                AppPerformanceMetricIds.CaptureWriteStatusCallback,
+                Stopwatch.GetElapsedTime(started),
+                succeeded);
+        }
     }
 
     private bool UpdateSessionInfoVersion(int sessionInfoUpdate)
@@ -836,8 +871,40 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             DriversSoFar: ReadInt32(sdk, "DCDriversSoFar"),
             DriverChangeLapStatus: ReadInt32(sdk, "DCLapStatus"));
 
-        _liveTelemetrySink.RecordFrame(sample);
-        history?.RecordFrame(sample);
+        var liveSinkStarted = Stopwatch.GetTimestamp();
+        var liveSinkSucceeded = false;
+        try
+        {
+            _liveTelemetrySink.RecordFrame(sample);
+            liveSinkSucceeded = true;
+        }
+        finally
+        {
+            _performance.RecordOperation(
+                AppPerformanceMetricIds.LiveTelemetrySink,
+                Stopwatch.GetElapsedTime(liveSinkStarted),
+                liveSinkSucceeded);
+        }
+
+        if (history is null)
+        {
+            return;
+        }
+
+        var historyStarted = Stopwatch.GetTimestamp();
+        var historySucceeded = false;
+        try
+        {
+            history.RecordFrame(sample);
+            historySucceeded = true;
+        }
+        finally
+        {
+            _performance.RecordOperation(
+                AppPerformanceMetricIds.HistoryRecordFrame,
+                Stopwatch.GetElapsedTime(historyStarted),
+                historySucceeded);
+        }
     }
 
     private CaptureFinalizationContext BuildFinalizationContext(TelemetryCaptureSession? capture)

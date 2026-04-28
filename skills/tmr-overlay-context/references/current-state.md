@@ -64,8 +64,9 @@ Last updated: 2026-04-28
   - opens on startup and can be reopened from the tray menu
   - acts as the main UI; clicking its `X` or otherwise closing it through the user close path exits the application instead of hiding the app to the tray
   - uses normal desktop z-order, taskbar, and Alt+Tab behavior instead of the product overlays' tool-window/always-on-top behavior
-  - tabs include General, each current overlay, an Overlay Bridge placeholder for post-v1.0 controls, and Post-race Analysis with a past-session picker backed by saved analysis rows plus the built-in four-hour sample
+  - tabs include General, Error Logging, each current overlay, an Overlay Bridge placeholder for post-v1.0 controls, and Post-race Analysis with a past-session picker backed by saved analysis rows plus the built-in four-hour sample
   - General exposes a shared overlay font-family selector from widely available fonts, a metric/imperial unit selector, and copy-only Windows build/publish/zip commands for local development
+  - Error Logging shows the current app warning/error from `TelemetryCaptureState`, opens local log/diagnostics folders, shows a lightweight performance summary, and can create/copy a diagnostics bundle using `DiagnosticsBundleService`
   - per-overlay tabs expose visibility, scale, test/practice/qualifying/race session filters, and descriptor-driven overlay-specific display options
   - the Collector Status tab owns the runtime `Raw capture` checkbox
   - visibility, scale, font, unit, and display-option changes apply to open overlays immediately; session filters are rechecked against live session type
@@ -135,6 +136,12 @@ Last updated: 2026-04-28
   - frame counts
   - dropped-frame counts
 
+- `src/TmrOverlay.App/Performance/AppPerformanceState.cs`
+  - stores lightweight in-memory performance counters and rolling timing summaries
+  - tracks telemetry callback throughput, normalized live sink time, history accumulation time, capture writer write time, capture queue depth, overlay refresh timings, dropped/written raw frames, process memory, and GC counts
+  - intentionally stores aggregate/recent-window metrics rather than every telemetry frame
+  - `AppPerformanceHostedService` writes periodic JSONL snapshots under the logs performance folder regardless of raw-capture state
+
 - `src/TmrOverlay.Core/Telemetry/Live/`
   - `LiveTelemetryStore` is the shared normalized live source for product overlays
   - `ILiveTelemetrySource` is the read boundary for overlays and the local bridge
@@ -197,11 +204,12 @@ Last updated: 2026-04-28
   - includes a local-development build freshness check that warns when source files in the checkout are newer than the running build
 
 - `src/TmrOverlay.App/Diagnostics/`
-  - creates support bundles with app/storage metadata, runtime state, settings, logs/events, and latest capture metadata
+  - creates support bundles with app/storage metadata, telemetry state, lightweight performance snapshots, recent performance logs, runtime state, settings, logs/events, and latest capture metadata
   - intentionally excludes raw `telemetry.bin`
 
 - `src/TmrOverlay.App/Retention/`
   - removes old capture directories and diagnostics bundles on startup
+  - removes old always-on performance JSONL logs on startup
 
 - `src/TmrOverlay.App/Replay/`
   - provides a replay-mode seam for overlay development against an existing capture
@@ -232,14 +240,26 @@ Last updated: 2026-04-28
   - for overlay development, Windows should stay production-facing and real-data-driven; the ignored mac harness can use looser mock scenes, fixed offsets, named sample drivers, and exaggerated events for fast visual iteration
   - the mac mock race mirrors the Windows radar/gap feature behavior with synthetic all-class timing rows, multiclass approach traffic, weather bands, and driver handoff events, while Windows remains real telemetry only
   - the mac harness opens the same startup overlay set as Windows: status, fuel calculator, radar, and gap-to-leader
-  - the mac status overlay is display-only, matching Windows; runtime raw-capture requests live in the settings overlay and still record logs/events
-  - the mac harness mirrors the settings overlay schema and basic tabbed UI for visibility, scale, session filters, font/units, raw capture, placeholder Overlay Bridge controls, and overlay-specific display options
+  - the mac status overlay is display-only, matching Windows; runtime raw-capture requests live in the settings window and still record logs/events
+  - the mac harness mirrors the settings window schema and basic tabbed UI for visibility, scale, session filters, font/units, raw capture, placeholder Overlay Bridge controls, post-race analysis, and a mock Error Logging/performance snapshot tab; mac diagnostics bundles include matching telemetry-state/performance metadata stubs and recent mock performance JSONL logs
+  - `swift run TmrOverlayMacScreenshots` renders tracked overlay review artifacts under `mocks/`: focused live-state screenshots, multi-state contact sheets, and smaller per-state PNG cards for status, fuel calculator, settings, car radar, and gap-to-leader
+  - screenshot waiting/unavailable fixtures should be isolated from local user history and cached live telemetry; for example, the fuel waiting preview uses an empty temporary history root so it cannot accidentally show stale stint rows from this machine
 
 ### Tests
 
 - `tests/TmrOverlay.App.Tests/`
   - xUnit test project for non-UI logic
-  - currently covers storage path resolution, bridge options, history path slugs, local file log writing, settings persistence/migration, diagnostics bundle contents, retention cleanup, runtime-state markers, live fuel/proximity/gap derivation, and fuel strategy calculations
+  - currently covers storage path resolution, bridge options, history path slugs, local file log writing, settings persistence/migration, diagnostics bundle contents, performance snapshot aggregation, retention cleanup, runtime-state markers, live fuel/proximity/gap derivation, fuel strategy calculations, and fuel view-model empty-state behavior
+
+- `tools/validate_overlay_screenshots.py`
+  - validates that expected screenshot PNG artifacts exist, match fixed dimensions where appropriate, and are not blank
+  - should be run after regenerating screenshots, but does not replace visual review for scenario correctness, text clipping/overlap, misleading populated-empty states, or platform-specific layout behavior
+
+- Validation standard going forward:
+  - rendered screenshots are validation artifacts as well as design artifacts
+  - each scenario fixture should make both positive expectations and negative expectations obvious
+  - waiting/unavailable/error paths should be deterministic and isolated from local machine state unless the scenario explicitly tests history fallback or support-path display
+  - the same fixture-driven approach applies to collectors, diagnostics bundles, retention, updater, settings, and performance telemetry paths
 
 - `.github/workflows/windows-dotnet.yml`
   - restores, builds, and tests `tmrOverlay.sln` on `windows-latest`
@@ -401,6 +421,7 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 4. Improve historical aggregation and confidence/source tracking as more user sessions are collected.
 5. Keep raw capture available for diagnostics, but avoid making it the normal user data path.
 6. Expand post-race strategy review/export beyond the first saved-analysis view; see `docs/post-race-strategy-analysis.md`.
+7. Start with update notification before self-update; see `docs/update-strategy.md`.
 
 ## Files Most Likely To Change Next
 
@@ -411,6 +432,7 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 - `src/TmrOverlay.App/Bridge/`
 - `src/TmrOverlay.App/Shell/NotifyIconApplicationContext.cs`
 - `src/TmrOverlay.App/History/`
+- `src/TmrOverlay.App/Performance/AppPerformanceState.cs`
 - `src/TmrOverlay.App/Telemetry/TelemetryCaptureHostedService.cs`
 - `src/TmrOverlay.App/Telemetry/TelemetryCaptureSession.cs`
 - `telemetry.md`

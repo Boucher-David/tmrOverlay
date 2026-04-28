@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using System.Drawing;
 using TmrOverlay.App.History;
 using TmrOverlay.App.Overlays.Abstractions;
 using TmrOverlay.App.Overlays.Styling;
+using TmrOverlay.App.Performance;
 using TmrOverlay.Core.Fuel;
 using TmrOverlay.Core.History;
 using TmrOverlay.Core.Overlays;
@@ -18,6 +20,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
     private const int NormalMinimumTableHeight = 150;
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly SessionHistoryQueryService _historyQueryService;
+    private readonly AppPerformanceState _performanceState;
     private readonly OverlaySettings _settings;
     private readonly Label _titleLabel;
     private readonly Label _statusLabel;
@@ -40,6 +43,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
     public FuelCalculatorForm(
         ILiveTelemetrySource liveTelemetrySource,
         SessionHistoryQueryService historyQueryService,
+        AppPerformanceState performanceState,
         OverlaySettings settings,
         string fontFamily,
         string unitSystem,
@@ -52,6 +56,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
     {
         _liveTelemetrySource = liveTelemetrySource;
         _historyQueryService = historyQueryService;
+        _performanceState = performanceState;
         _settings = settings;
         _fontFamily = fontFamily;
         _unitSystem = string.Equals(unitSystem, "Imperial", StringComparison.OrdinalIgnoreCase)
@@ -203,38 +208,51 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
 
     private void RefreshOverlay()
     {
-        var live = _liveTelemetrySource.Snapshot();
-        var history = _historyQueryService.Lookup(live.Combo);
-        var strategy = FuelStrategyCalculator.From(live, history);
-        var viewModel = FuelCalculatorViewModel.From(strategy, history, ShowAdvice, _unitSystem, StintRowCount);
-
-        ApplyStatusColor(strategy);
-        _statusLabel.Text = viewModel.Status;
-        _overviewValueLabel.Text = viewModel.Overview;
-        _sourceLabel.Text = viewModel.Source;
-        _sourceLabel.Visible = ShowSource;
-        ApplyAdviceColumnVisibility();
-
-        var rows = viewModel.Rows;
-        ApplyPreferredLayout(rows.Count);
-        for (var index = 0; index < StintRowCount; index++)
+        var started = Stopwatch.GetTimestamp();
+        var succeeded = false;
+        try
         {
-            if (index < rows.Count)
+            var live = _liveTelemetrySource.Snapshot();
+            var history = _historyQueryService.Lookup(live.Combo);
+            var strategy = FuelStrategyCalculator.From(live, history);
+            var viewModel = FuelCalculatorViewModel.From(strategy, history, ShowAdvice, _unitSystem, StintRowCount);
+
+            ApplyStatusColor(strategy);
+            _statusLabel.Text = viewModel.Status;
+            _overviewValueLabel.Text = viewModel.Overview;
+            _sourceLabel.Text = viewModel.Source;
+            _sourceLabel.Visible = ShowSource;
+            ApplyAdviceColumnVisibility();
+
+            var rows = viewModel.Rows;
+            ApplyPreferredLayout(rows.Count);
+            for (var index = 0; index < StintRowCount; index++)
             {
-                var row = rows[index];
-                _stintNumberLabels[index].Text = row.Label;
-                _stintLengthLabels[index].Text = row.Value;
-                _stintTireLabels[index].Text = row.Advice;
-                continue;
+                if (index < rows.Count)
+                {
+                    var row = rows[index];
+                    _stintNumberLabels[index].Text = row.Label;
+                    _stintLengthLabels[index].Text = row.Value;
+                    _stintTireLabels[index].Text = row.Advice;
+                    continue;
+                }
+
+                _stintNumberLabels[index].Text = $"Stint {index + 1}";
+                _stintLengthLabels[index].Text = string.Empty;
+                _stintTireLabels[index].Text = string.Empty;
             }
 
-            _stintNumberLabels[index].Text = $"Stint {index + 1}";
-            _stintLengthLabels[index].Text = string.Empty;
-            _stintTireLabels[index].Text = string.Empty;
+            UpdateVisibleRows(rows.Count);
+            Invalidate();
+            succeeded = true;
         }
-
-        UpdateVisibleRows(rows.Count);
-        Invalidate();
+        finally
+        {
+            _performanceState.RecordOperation(
+                AppPerformanceMetricIds.OverlayFuelRefresh,
+                Stopwatch.GetElapsedTime(started),
+                succeeded);
+        }
     }
 
     private void ApplyPreferredLayout(int rowCount)
@@ -250,7 +268,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
 
     private void UpdateVisibleRows(int stintCount)
     {
-        var visibleStintRows = Math.Clamp(stintCount, 1, StintRowCount);
+        var visibleStintRows = Math.Clamp(stintCount, 0, StintRowCount);
         var visibleRows = visibleStintRows + 1;
         for (var row = 0; row < _table.RowStyles.Count; row++)
         {

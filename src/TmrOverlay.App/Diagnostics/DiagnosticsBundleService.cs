@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.Core.AppInfo;
+using TmrOverlay.App.Performance;
 using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
 
@@ -17,15 +18,21 @@ internal sealed class DiagnosticsBundleService
 
     private readonly AppStorageOptions _storageOptions;
     private readonly TelemetryCaptureState _captureState;
+    private readonly AppPerformanceState _performanceState;
+    private readonly AppPerformanceSnapshotRecorder _performanceRecorder;
     private readonly ILogger<DiagnosticsBundleService> _logger;
 
     public DiagnosticsBundleService(
         AppStorageOptions storageOptions,
         TelemetryCaptureState captureState,
+        AppPerformanceState performanceState,
+        AppPerformanceSnapshotRecorder performanceRecorder,
         ILogger<DiagnosticsBundleService> logger)
     {
         _storageOptions = storageOptions;
         _captureState = captureState;
+        _performanceState = performanceState;
+        _performanceRecorder = performanceRecorder;
         _logger = logger;
     }
 
@@ -39,9 +46,12 @@ internal sealed class DiagnosticsBundleService
         using var archive = ZipFile.Open(bundlePath, ZipArchiveMode.Create);
         AddTextEntry(archive, "metadata/app-version.json", JsonSerializer.Serialize(AppVersionInfo.Current, JsonOptions));
         AddTextEntry(archive, "metadata/storage.json", JsonSerializer.Serialize(_storageOptions, JsonOptions));
+        AddTextEntry(archive, "metadata/telemetry-state.json", JsonSerializer.Serialize(_captureState.Snapshot(), JsonOptions));
+        AddTextEntry(archive, "metadata/performance.json", JsonSerializer.Serialize(_performanceState.Snapshot(), JsonOptions));
         AddFileIfExists(archive, _storageOptions.RuntimeStatePath, "runtime/runtime-state.json");
         AddFileIfExists(archive, Path.Combine(_storageOptions.SettingsRoot, "settings.json"), "settings/settings.json");
         AddRecentFiles(archive, _storageOptions.LogsRoot, "*.log", "logs", maxFiles: 10);
+        AddRecentFiles(archive, _performanceRecorder.PerformanceLogsRoot, "*.jsonl", "performance", maxFiles: 10);
         AddRecentFiles(archive, _storageOptions.EventsRoot, "*.jsonl", "events", maxFiles: 10);
         AddLatestCaptureMetadata(archive);
 

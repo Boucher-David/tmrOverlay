@@ -20,6 +20,8 @@ Start here when continuing work in this repo.
 
 ## Read Next
 
+`AGENTS.md` is the authoritative repo-level contract. The repo skill below is supplemental context for deeper product/current-state details.
+
 - `skills/tmr-overlay-context/SKILL.md`
 - `skills/tmr-overlay-context/references/current-state.md`
 - `skills/tmr-overlay-context/references/fuel-overlay-context.md`
@@ -36,4 +38,7 @@ Start here when continuing work in this repo.
 - Prefer shared Core models/read services, descriptor-driven overlay options, and `OverlayTheme` tokens over one-off UI contracts.
 - Product overlays should read normalized live state through `ILiveTelemetrySource`; telemetry providers should write through `ILiveTelemetrySink`.
 - Mirror shared app/overlay/boilerplate changes in both the Windows app and ignored mac harness unless the work is explicitly Windows/iRacing-specific.
+- Treat rendered overlay screenshots as validation artifacts, not only design artifacts: update `mocks/<overlay-id>/` when overlays or settings UI change, keep one contact sheet plus smaller per-state PNGs, and run `python3 tools/validate_overlay_screenshots.py` after generating them.
+- Waiting/unavailable/error preview states must use deterministic isolated fixtures. Do not let local user history, cached telemetry, or machine-specific paths make an empty state look populated unless the scenario explicitly tests history fallback or support-path display.
+- For wider app changes, carry the same validation discipline beyond screenshots: assert both data that should appear and data that must stay hidden, cover failure/degraded paths, and keep performance/diagnostics/update flows fixture-driven where possible.
 - The authoring machine used for the initial scaffold did not have `dotnet` installed, so build/test verification still needs to happen on Windows.

@@ -6,7 +6,7 @@
 
 - Starts as a WinForms tray application with no main window.
 - Shows a tiny always-on-top status overlay in the top-left corner.
-- Shows a centered tabbed settings window for managing overlay visibility, scale, session filters, shared overlay font, units, copyable Windows local build commands, and overlay-specific display options.
+- Shows a centered tabbed settings window for managing overlay visibility, scale, session filters, shared overlay font, units, copyable Windows local build commands, support/log access, and overlay-specific display options.
 - Treats the settings window as the main UI: clicking its `X` exits the application instead of hiding it to the tray.
 - Keeps the settings window on the normal desktop layer with a taskbar/Alt+Tab entry, while driving overlays can stay above the sim.
 - Includes a placeholder Overlay Bridge settings tab for post-v1.0 bridge controls.
@@ -21,7 +21,7 @@
 - Keeps raw capture as an opt-in diagnostic/development mode; the settings window can request raw capture at runtime if the app was started without the flag.
 - When raw capture is enabled, stores `telemetry.bin`, `telemetry-schema.json`, `latest-session.yaml`, optional `session-info/`, and `capture-manifest.json`.
 - Shows live-analysis health signals in the overlay, plus disk-write health when raw capture is enabled.
-- Writes rolling local logs, JSONL app events, runtime-state markers, persisted settings, and diagnostics bundles for triage.
+- Writes rolling local logs, JSONL app events, runtime-state markers, persisted settings, lightweight performance snapshots, and diagnostics bundles for triage.
 - Includes retention cleanup for old captures and diagnostics bundles.
 - Includes a replay-mode seam for overlay development against an existing capture.
 
@@ -173,7 +173,7 @@ $env:TMR_SessionHistory__UseBaselineHistory = "true"
 
 Path settings may be absolute or relative. Relative path settings resolve under the selected app data root.
 
-User-facing overlay preferences are stored in the local settings file under the app settings root. The settings window can update each current overlay's visibility, scale, test/practice/qualifying/race session filters, shared font family, metric/imperial units, and overlay-specific display options. It appears on the normal desktop layer so it can sit behind the sim when the user switches away. The General tab also includes copyable Windows build, publish, and zip commands for local development; it does not execute builds from inside the running app. It also includes a placeholder Overlay Bridge tab for post-v1.0 bridge controls. Settings files are versioned and normalized on load so older local files receive safe defaults as customization expands.
+User-facing overlay preferences are stored in the local settings file under the app settings root. The settings window can update each current overlay's visibility, scale, test/practice/qualifying/race session filters, shared font family, metric/imperial units, and overlay-specific display options. It appears on the normal desktop layer so it can sit behind the sim when the user switches away. The General tab also includes copyable Windows build, publish, and zip commands for local development; it does not execute builds from inside the running app. The Error Logging tab shows the current app warning/error, opens the local logs and diagnostics folders, shows a lightweight performance summary, and can create/copy a diagnostics bundle for sharing. It also includes a placeholder Overlay Bridge tab for post-v1.0 bridge controls. Settings files are versioned and normalized on load so older local files receive safe defaults as customization expands.
 
 ### Overlay Theme Overrides
 
@@ -229,7 +229,11 @@ The tray menu can create a diagnostics bundle under:
 %LOCALAPPDATA%\TmrOverlay\diagnostics
 ```
 
-Bundles include app/storage metadata, runtime state, settings, recent logs/events, and latest capture metadata. They intentionally exclude raw `telemetry.bin` payloads.
+Performance diagnostics are always on, even when raw capture is disabled. The app writes periodic JSONL snapshots under `%LOCALAPPDATA%\TmrOverlay\logs\performance` with telemetry throughput, overlay refresh timing, capture writer state when available, process memory, and GC counts.
+
+Bundles include app/storage metadata, telemetry state, lightweight performance snapshots, recent performance logs, runtime state, settings, recent logs/events, and latest capture metadata. They intentionally exclude raw `telemetry.bin` payloads.
+
+See `docs/update-strategy.md` for the current update notification and self-update plan.
 
 ## Tests
 
@@ -250,8 +254,20 @@ swift test
 
 The current Command Line Tools-only setup on this Mac can run `swift build`, but `swift test` requires an XCTest-capable Xcode toolchain.
 
+Generated overlay screenshots are also part of review. From the mac harness:
+
+```bash
+cd local-mac/TmrOverlayMac
+swift run TmrOverlayMacScreenshots
+cd ../..
+python3 tools/validate_overlay_screenshots.py
+```
+
+That keeps the contact sheets and per-state PNGs under `mocks/` current and catches missing, wrong-size, or blank artifacts before visual review.
+
 ## Next Steps
 
 - Add a replay tool that can decode `telemetry.bin` with `telemetry-schema.json`.
 - Harden the radar and gap overlays against longer multi-class traffic captures.
 - Design the post-race strategy review/export flow described in [docs/post-race-strategy-analysis.md](/Users/davidboucher/Code/tmrOverlay/docs/post-race-strategy-analysis.md).
+- Start with update notification before self-update; see [docs/update-strategy.md](/Users/davidboucher/Code/tmrOverlay/docs/update-strategy.md).

@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Events;
+using TmrOverlay.App.Performance;
 using TmrOverlay.App.Telemetry;
 using TmrOverlay.Core.Telemetry.Live;
 
@@ -12,6 +13,7 @@ internal sealed class ReplayTelemetryHostedService : IHostedService
     private readonly ReplayOptions _options;
     private readonly TelemetryCaptureState _state;
     private readonly ILiveTelemetrySink _liveTelemetrySink;
+    private readonly AppPerformanceState _performance;
     private readonly AppEventRecorder _events;
     private readonly ILogger<ReplayTelemetryHostedService> _logger;
     private CancellationTokenSource? _replayCancellation;
@@ -21,12 +23,14 @@ internal sealed class ReplayTelemetryHostedService : IHostedService
         ReplayOptions options,
         TelemetryCaptureState state,
         ILiveTelemetrySink liveTelemetrySink,
+        AppPerformanceState performance,
         AppEventRecorder events,
         ILogger<ReplayTelemetryHostedService> logger)
     {
         _options = options;
         _state = state;
         _liveTelemetrySink = liveTelemetrySink;
+        _performance = performance;
         _events = events;
         _logger = logger;
     }
@@ -106,14 +110,18 @@ internal sealed class ReplayTelemetryHostedService : IHostedService
             {
                 var timestampUtc = DateTimeOffset.UtcNow;
                 _state.RecordFrame(timestampUtc);
-                _state.RecordCaptureWrite(new TelemetryCaptureWriteStatus(
+                _performance.RecordTelemetryFrame(timestampUtc);
+                var writeStatus = new TelemetryCaptureWriteStatus(
                     TimestampUtc: timestampUtc,
                     CaptureId: Path.GetFileName(_options.CaptureDirectory!),
                     DirectoryPath: _options.CaptureDirectory!,
                     FramesWritten: frame + 1,
                     SessionInfoSnapshotCount: 0,
+                    PendingMessageCount: 0,
                     TelemetryFileBytes: telemetryFileBytes,
-                    Exception: null));
+                    Exception: null);
+                _state.RecordCaptureWrite(writeStatus);
+                _performance.RecordCaptureWrite(writeStatus);
                 await Task.Delay(intervalMs, cancellationToken).ConfigureAwait(false);
             }
         }

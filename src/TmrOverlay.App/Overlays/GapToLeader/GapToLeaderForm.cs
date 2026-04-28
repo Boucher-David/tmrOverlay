@@ -1,8 +1,10 @@
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Overlays.Abstractions;
 using TmrOverlay.App.Overlays.Styling;
+using TmrOverlay.App.Performance;
 using TmrOverlay.Core.History;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
@@ -26,6 +28,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
 
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly ILogger<GapToLeaderForm> _logger;
+    private readonly AppPerformanceState _performanceState;
     private readonly OverlaySettings _settings;
     private readonly string _fontFamily;
     private readonly Label _titleLabel;
@@ -53,6 +56,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
     public GapToLeaderForm(
         ILiveTelemetrySource liveTelemetrySource,
         ILogger<GapToLeaderForm> logger,
+        AppPerformanceState performanceState,
         OverlaySettings settings,
         string fontFamily,
         Action saveSettings)
@@ -64,6 +68,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
     {
         _liveTelemetrySource = liveTelemetrySource;
         _logger = logger;
+        _performanceState = performanceState;
         _settings = settings;
         _fontFamily = fontFamily;
 
@@ -182,6 +187,8 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
 
     private void RefreshOverlay()
     {
+        var started = Stopwatch.GetTimestamp();
+        var succeeded = false;
         try
         {
             var snapshot = _liveTelemetrySource.Snapshot();
@@ -202,6 +209,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
                 ? $"{FormatTrendWindow(TrendWindow)} class trend | cars {SelectChartSeries().Count}"
                 : "source: waiting";
             Invalidate();
+            succeeded = true;
         }
         catch (Exception exception)
         {
@@ -210,6 +218,13 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
             _statusLabel.Text = "graph error";
             _sourceLabel.Text = TrimError(_overlayError);
             Invalidate();
+        }
+        finally
+        {
+            _performanceState.RecordOperation(
+                AppPerformanceMetricIds.OverlayGapRefresh,
+                Stopwatch.GetElapsedTime(started),
+                succeeded);
         }
     }
 

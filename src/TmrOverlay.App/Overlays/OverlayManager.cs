@@ -5,20 +5,26 @@ using TmrOverlay.App.Overlays.GapToLeader;
 using TmrOverlay.App.Overlays.SettingsPanel;
 using TmrOverlay.App.Overlays.Status;
 using TmrOverlay.App.Settings;
+using TmrOverlay.App.Storage;
 using TmrOverlay.Core.Settings;
 using TmrOverlay.App.Telemetry;
 using TmrOverlay.Core.Telemetry.Live;
 using TmrOverlay.App.History;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Analysis;
+using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
+using TmrOverlay.App.Performance;
 
 namespace TmrOverlay.App.Overlays;
 
 internal sealed class OverlayManager : IDisposable
 {
     private readonly AppSettingsStore _settingsStore;
+    private readonly AppStorageOptions _storageOptions;
+    private readonly DiagnosticsBundleService _diagnosticsBundleService;
     private readonly TelemetryCaptureState _telemetryCaptureState;
+    private readonly AppPerformanceState _performanceState;
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly SessionHistoryQueryService _historyQueryService;
     private readonly PostRaceAnalysisStore _postRaceAnalysisStore;
@@ -37,7 +43,10 @@ internal sealed class OverlayManager : IDisposable
 
     public OverlayManager(
         AppSettingsStore settingsStore,
+        AppStorageOptions storageOptions,
+        DiagnosticsBundleService diagnosticsBundleService,
         TelemetryCaptureState telemetryCaptureState,
+        AppPerformanceState performanceState,
         ILiveTelemetrySource liveTelemetrySource,
         SessionHistoryQueryService historyQueryService,
         PostRaceAnalysisStore postRaceAnalysisStore,
@@ -46,7 +55,10 @@ internal sealed class OverlayManager : IDisposable
         ILogger<GapToLeaderForm> gapToLeaderLogger)
     {
         _settingsStore = settingsStore;
+        _storageOptions = storageOptions;
+        _diagnosticsBundleService = diagnosticsBundleService;
         _telemetryCaptureState = telemetryCaptureState;
+        _performanceState = performanceState;
         _liveTelemetrySource = liveTelemetrySource;
         _historyQueryService = historyQueryService;
         _postRaceAnalysisStore = postRaceAnalysisStore;
@@ -96,6 +108,9 @@ internal sealed class OverlayManager : IDisposable
                 ManagedOverlayDefinitions,
                 _postRaceAnalysisStore,
                 _telemetryCaptureState,
+                _performanceState,
+                _storageOptions,
+                _diagnosticsBundleService,
                 _events,
                 settings,
                 SaveSettings,
@@ -138,6 +153,7 @@ internal sealed class OverlayManager : IDisposable
             StatusOverlayDefinition.Definition,
             settings => new StatusOverlayForm(
                 _telemetryCaptureState,
+                _performanceState,
                 settings,
                 SelectedFontFamily,
                 SaveSettings),
@@ -148,6 +164,7 @@ internal sealed class OverlayManager : IDisposable
             settings => new FuelCalculatorForm(
                 _liveTelemetrySource,
                 _historyQueryService,
+                _performanceState,
                 settings,
                 SelectedFontFamily,
                 SelectedUnitSystem,
@@ -159,6 +176,7 @@ internal sealed class OverlayManager : IDisposable
             settings => new CarRadarForm(
                 _liveTelemetrySource,
                 _carRadarLogger,
+                _performanceState,
                 settings,
                 SelectedFontFamily,
                 SaveSettings),
@@ -169,6 +187,7 @@ internal sealed class OverlayManager : IDisposable
             settings => new GapToLeaderForm(
                 _liveTelemetrySource,
                 _gapToLeaderLogger,
+                _performanceState,
                 settings,
                 SelectedFontFamily,
                 SaveSettings),

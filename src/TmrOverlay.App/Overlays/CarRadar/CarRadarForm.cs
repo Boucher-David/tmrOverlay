@@ -1,8 +1,10 @@
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Overlays.Abstractions;
 using TmrOverlay.App.Overlays.Styling;
+using TmrOverlay.App.Performance;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 using TmrOverlay.Core.Telemetry.Live;
@@ -19,6 +21,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
 
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly ILogger<CarRadarForm> _logger;
+    private readonly AppPerformanceState _performanceState;
     private readonly System.Windows.Forms.Timer _refreshTimer;
     private readonly OverlaySettings _settings;
     private readonly string _fontFamily;
@@ -33,6 +36,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
     public CarRadarForm(
         ILiveTelemetrySource liveTelemetrySource,
         ILogger<CarRadarForm> logger,
+        AppPerformanceState performanceState,
         OverlaySettings settings,
         string fontFamily,
         Action saveSettings)
@@ -44,6 +48,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
     {
         _liveTelemetrySource = liveTelemetrySource;
         _logger = logger;
+        _performanceState = performanceState;
         _settings = settings;
         _fontFamily = fontFamily;
         BackColor = TransparentColor;
@@ -98,16 +103,26 @@ internal sealed class CarRadarForm : PersistentOverlayForm
 
     private void RefreshOverlay()
     {
+        var started = Stopwatch.GetTimestamp();
+        var succeeded = false;
         try
         {
             _proximity = _liveTelemetrySource.Snapshot().Proximity;
             _overlayError = null;
             Invalidate();
+            succeeded = true;
         }
         catch (Exception exception)
         {
             ReportOverlayError(exception, "refresh");
             Invalidate();
+        }
+        finally
+        {
+            _performanceState.RecordOperation(
+                AppPerformanceMetricIds.OverlayRadarRefresh,
+                Stopwatch.GetElapsedTime(started),
+                succeeded);
         }
     }
 

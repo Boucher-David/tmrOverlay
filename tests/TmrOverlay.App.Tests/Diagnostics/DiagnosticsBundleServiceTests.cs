@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using Microsoft.Extensions.Logging.Abstractions;
 using TmrOverlay.App.Diagnostics;
+using TmrOverlay.App.Performance;
 using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
 using Xunit;
@@ -34,9 +35,15 @@ public sealed class DiagnosticsBundleServiceTests
 
             var state = new TelemetryCaptureState();
             state.MarkCaptureStarted(captureDirectory, DateTimeOffset.UtcNow);
+            var performance = new AppPerformanceState();
+            performance.RecordOperation("test.operation", TimeSpan.FromMilliseconds(3));
+            var performanceRecorder = new AppPerformanceSnapshotRecorder(storage);
+            performanceRecorder.Record(performance.Snapshot());
             var service = new DiagnosticsBundleService(
                 storage,
                 state,
+                performance,
+                performanceRecorder,
                 NullLogger<DiagnosticsBundleService>.Instance);
 
             var bundlePath = service.CreateBundle();
@@ -45,9 +52,12 @@ public sealed class DiagnosticsBundleServiceTests
             var entryNames = archive.Entries.Select(entry => entry.FullName).ToHashSet(StringComparer.OrdinalIgnoreCase);
             Assert.Contains("metadata/app-version.json", entryNames);
             Assert.Contains("metadata/storage.json", entryNames);
+            Assert.Contains("metadata/telemetry-state.json", entryNames);
+            Assert.Contains("metadata/performance.json", entryNames);
             Assert.Contains("runtime/runtime-state.json", entryNames);
             Assert.Contains("settings/settings.json", entryNames);
             Assert.Contains("logs/tmroverlay-20260426.log", entryNames);
+            Assert.Contains(entryNames, entryName => entryName.StartsWith("performance/performance-", StringComparison.OrdinalIgnoreCase));
             Assert.Contains("events/events-20260426.jsonl", entryNames);
             Assert.Contains("latest-capture/capture-manifest.json", entryNames);
             Assert.Contains("latest-capture/telemetry-schema.json", entryNames);

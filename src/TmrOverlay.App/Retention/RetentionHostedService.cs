@@ -29,6 +29,11 @@ internal sealed class RetentionHostedService : IHostedService
 
         CleanupDirectories(_storageOptions.CaptureRoot, "capture-*", _options.CaptureRetentionDays, _options.MaxCaptureDirectories);
         CleanupFiles(_storageOptions.DiagnosticsRoot, "*.zip", _options.DiagnosticsRetentionDays, _options.MaxDiagnosticsBundles);
+        CleanupFiles(
+            Path.Combine(_storageOptions.LogsRoot, "performance"),
+            "performance-*.jsonl",
+            _options.PerformanceLogRetentionDays,
+            _options.MaxPerformanceLogFiles);
         return Task.CompletedTask;
     }
 

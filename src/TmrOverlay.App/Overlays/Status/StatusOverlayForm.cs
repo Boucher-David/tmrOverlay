@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using TmrOverlay.App.Overlays.Abstractions;
 using TmrOverlay.App.Overlays.Styling;
+using TmrOverlay.App.Performance;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 using TmrOverlay.App.Telemetry;
@@ -11,6 +13,7 @@ namespace TmrOverlay.App.Overlays.Status;
 internal sealed class StatusOverlayForm : PersistentOverlayForm
 {
     private readonly TelemetryCaptureState _state;
+    private readonly AppPerformanceState _performanceState;
     private readonly OverlaySettings _settings;
     private readonly Panel _indicatorPanel;
     private readonly Label _titleLabel;
@@ -22,6 +25,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
 
     public StatusOverlayForm(
         TelemetryCaptureState state,
+        AppPerformanceState performanceState,
         OverlaySettings settings,
         string fontFamily,
         Action saveSettings)
@@ -32,6 +36,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
             StatusOverlayDefinition.Definition.DefaultHeight)
     {
         _state = state;
+        _performanceState = performanceState;
         _settings = settings;
 
         BackColor = OverlayTheme.Colors.NeutralBackground;
@@ -152,47 +157,60 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
 
     private void RefreshOverlay()
     {
-        var snapshot = _state.Snapshot();
-        var health = CaptureHealth.From(snapshot);
+        var started = Stopwatch.GetTimestamp();
+        var succeeded = false;
+        try
+        {
+            var snapshot = _state.Snapshot();
+            var health = CaptureHealth.From(snapshot);
 
-        if (health.Level == CaptureHealthLevel.Error)
-        {
-            BackColor = OverlayTheme.Colors.ErrorBackground;
-            _indicatorPanel.BackColor = OverlayTheme.Colors.ErrorIndicator;
-            _statusLabel.Text = health.StatusText;
-        }
-        else if (health.Level == CaptureHealthLevel.Warning)
-        {
-            BackColor = OverlayTheme.Colors.WarningBackground;
-            _indicatorPanel.BackColor = OverlayTheme.Colors.WarningIndicator;
-            _statusLabel.Text = health.StatusText;
-        }
-        else if (snapshot.IsCapturing)
-        {
-            BackColor = OverlayTheme.Colors.SuccessStrongBackground;
-            _indicatorPanel.BackColor = OverlayTheme.Colors.SuccessIndicator;
-            _statusLabel.Text = health.StatusText;
-        }
-        else if (snapshot.IsConnected)
-        {
-            BackColor = OverlayTheme.Colors.WarningBackground;
-            _indicatorPanel.BackColor = OverlayTheme.Colors.WarningIndicator;
-            _statusLabel.Text = health.StatusText;
-        }
-        else
-        {
-            BackColor = OverlayTheme.Colors.NeutralBackground;
-            _indicatorPanel.BackColor = OverlayTheme.Colors.NeutralIndicator;
-            _statusLabel.Text = health.StatusText;
-        }
+            if (health.Level == CaptureHealthLevel.Error)
+            {
+                BackColor = OverlayTheme.Colors.ErrorBackground;
+                _indicatorPanel.BackColor = OverlayTheme.Colors.ErrorIndicator;
+                _statusLabel.Text = health.StatusText;
+            }
+            else if (health.Level == CaptureHealthLevel.Warning)
+            {
+                BackColor = OverlayTheme.Colors.WarningBackground;
+                _indicatorPanel.BackColor = OverlayTheme.Colors.WarningIndicator;
+                _statusLabel.Text = health.StatusText;
+            }
+            else if (snapshot.IsCapturing)
+            {
+                BackColor = OverlayTheme.Colors.SuccessStrongBackground;
+                _indicatorPanel.BackColor = OverlayTheme.Colors.SuccessIndicator;
+                _statusLabel.Text = health.StatusText;
+            }
+            else if (snapshot.IsConnected)
+            {
+                BackColor = OverlayTheme.Colors.WarningBackground;
+                _indicatorPanel.BackColor = OverlayTheme.Colors.WarningIndicator;
+                _statusLabel.Text = health.StatusText;
+            }
+            else
+            {
+                BackColor = OverlayTheme.Colors.NeutralBackground;
+                _indicatorPanel.BackColor = OverlayTheme.Colors.NeutralIndicator;
+                _statusLabel.Text = health.StatusText;
+            }
 
-        _detailLabel.Text = health.DetailText;
-        _captureLabel.Text = health.CaptureText;
-        _healthLabel.Text = health.MessageText;
-        _captureLabel.Visible = _settings.GetBooleanOption(OverlayOptionKeys.StatusCaptureDetails, defaultValue: true);
-        _healthLabel.Visible = _settings.GetBooleanOption(OverlayOptionKeys.StatusHealthDetails, defaultValue: true);
-        _indicatorPanel.Invalidate();
-        Invalidate();
+            _detailLabel.Text = health.DetailText;
+            _captureLabel.Text = health.CaptureText;
+            _healthLabel.Text = health.MessageText;
+            _captureLabel.Visible = _settings.GetBooleanOption(OverlayOptionKeys.StatusCaptureDetails, defaultValue: true);
+            _healthLabel.Visible = _settings.GetBooleanOption(OverlayOptionKeys.StatusHealthDetails, defaultValue: true);
+            _indicatorPanel.Invalidate();
+            Invalidate();
+            succeeded = true;
+        }
+        finally
+        {
+            _performanceState.RecordOperation(
+                AppPerformanceMetricIds.OverlayStatusRefresh,
+                Stopwatch.GetElapsedTime(started),
+                succeeded);
+        }
     }
 
     protected override void OnResize(EventArgs e)
