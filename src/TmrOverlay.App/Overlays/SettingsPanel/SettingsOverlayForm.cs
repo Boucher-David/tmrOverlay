@@ -34,9 +34,10 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private readonly AppEventRecorder _events;
     private readonly Action _saveSettings;
     private readonly Action _applyOverlaySettings;
+    private readonly Action _requestApplicationExit;
     private readonly Panel _titleBar;
     private readonly Label _titleLabel;
-    private readonly Button _hideButton;
+    private readonly Button _closeButton;
     private readonly TabControl _tabs;
     private readonly System.Windows.Forms.Timer _refreshTimer;
     private CheckBox? _rawCaptureCheckBox;
@@ -47,6 +48,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private bool _loading = true;
     private bool _syncingRawCaptureCheckBox;
     private bool _syncingAnalysis;
+    private bool _applicationExitRequested;
 
     public SettingsOverlayForm(
         ApplicationSettings applicationSettings,
@@ -56,7 +58,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         AppEventRecorder events,
         OverlaySettings settings,
         Action saveSettings,
-        Action applyOverlaySettings)
+        Action applyOverlaySettings,
+        Action requestApplicationExit)
         : base(
             settings,
             saveSettings,
@@ -70,6 +73,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _events = events;
         _saveSettings = saveSettings;
         _applyOverlaySettings = applyOverlaySettings;
+        _requestApplicationExit = requestApplicationExit;
 
         BackColor = OverlayTheme.Colors.SettingsBackground;
         Padding = Padding.Empty;
@@ -92,7 +96,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             TextAlign = ContentAlignment.MiddleLeft
         };
 
-        _hideButton = new Button
+        _closeButton = new Button
         {
             BackColor = OverlayTheme.Colors.ButtonBackground,
             FlatStyle = FlatStyle.Flat,
@@ -104,9 +108,9 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             Text = "X",
             UseVisualStyleBackColor = false
         };
-        _hideButton.FlatAppearance.BorderSize = 0;
-        _hideButton.Cursor = Cursors.Hand;
-        _hideButton.Click += (_, _) => Hide();
+        _closeButton.FlatAppearance.BorderSize = 0;
+        _closeButton.Cursor = Cursors.Hand;
+        _closeButton.Click += (_, _) => RequestApplicationExit();
 
         _tabs = new TabControl
         {
@@ -120,7 +124,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _tabs.DrawItem += DrawSettingsTab;
 
         _titleBar.Controls.Add(_titleLabel);
-        _titleBar.Controls.Add(_hideButton);
+        _titleBar.Controls.Add(_closeButton);
         Controls.Add(_titleBar);
         Controls.Add(_tabs);
 
@@ -150,7 +154,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             _refreshTimer.Stop();
             _refreshTimer.Dispose();
             _tabs.Dispose();
-            _hideButton.Dispose();
+            _closeButton.Dispose();
             _titleLabel.Dispose();
             _titleBar.Dispose();
         }
@@ -161,16 +165,32 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
-        if (_titleBar is null || _titleLabel is null || _hideButton is null || _tabs is null)
+        if (_titleBar is null || _titleLabel is null || _closeButton is null || _tabs is null)
         {
             return;
         }
 
         _titleBar.Size = new Size(ClientSize.Width, OverlayTheme.Layout.SettingsTitleBarHeight);
         _titleLabel.Size = new Size(Math.Max(120, ClientSize.Width - 60), 24);
-        _hideButton.Location = new Point(ClientSize.Width - 36, 8);
+        _closeButton.Location = new Point(ClientSize.Width - 36, 8);
         _tabs.Location = new Point(OverlayTheme.Layout.SettingsTabInset, OverlayTheme.Layout.SettingsTabTop);
         _tabs.Size = new Size(Math.Max(360, ClientSize.Width - 24), Math.Max(320, ClientSize.Height - 66));
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        var shouldRequestApplicationExit = e.CloseReason == CloseReason.UserClosing && !_applicationExitRequested;
+        if (shouldRequestApplicationExit)
+        {
+            _applicationExitRequested = true;
+        }
+
+        base.OnFormClosing(e);
+
+        if (shouldRequestApplicationExit && !e.Cancel)
+        {
+            _requestApplicationExit();
+        }
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -193,6 +213,17 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _tabs.TabPages.Add(CreateOverlayBridgeTab());
         _tabs.TabPages.Add(CreatePostRaceAnalysisTab());
         _tabs.SelectedIndex = 0;
+    }
+
+    private void RequestApplicationExit()
+    {
+        if (_applicationExitRequested)
+        {
+            return;
+        }
+
+        _applicationExitRequested = true;
+        _requestApplicationExit();
     }
 
     private void DrawSettingsTab(object? sender, DrawItemEventArgs e)

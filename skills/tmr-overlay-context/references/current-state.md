@@ -62,6 +62,7 @@ Last updated: 2026-04-28
 - `src/TmrOverlay.App/Overlays/SettingsPanel/`
   - square 600x600 settings overlay centered on the primary screen by default
   - opens on startup and can be reopened from the tray menu
+  - acts as the main UI; clicking its `X` or otherwise closing it through the user close path exits the application instead of hiding the app to the tray
   - tabs include General, each current overlay, an Overlay Bridge placeholder for post-v1.0 controls, and Post-race Analysis with a past-session picker backed by saved analysis rows plus the built-in four-hour sample
   - General exposes a shared overlay font-family selector from widely available fonts and a metric/imperial unit selector
   - per-overlay tabs expose visibility, scale, test/practice/qualifying/race session filters, and descriptor-driven overlay-specific display options

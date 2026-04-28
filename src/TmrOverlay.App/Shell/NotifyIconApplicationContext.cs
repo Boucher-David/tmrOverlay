@@ -25,6 +25,7 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
     private readonly ToolStripMenuItem _captureItem;
     private readonly ToolStripMenuItem _rootItem;
     private readonly System.Windows.Forms.Timer _refreshTimer;
+    private bool _exiting;
 
     public NotifyIconApplicationContext(
         IHostApplicationLifetime applicationLifetime,
@@ -44,6 +45,7 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
         _options = options;
         _state = state;
         _overlayManager = overlayManager;
+        _overlayManager.ApplicationExitRequested += OnOverlayManagerApplicationExitRequested;
 
         _statusItem = new ToolStripMenuItem("Waiting for iRacing")
         {
@@ -105,6 +107,7 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
         {
             _refreshTimer.Stop();
             _refreshTimer.Dispose();
+            _overlayManager.ApplicationExitRequested -= OnOverlayManagerApplicationExitRequested;
             _overlayManager.Dispose();
             _notifyIcon.Visible = false;
             _notifyIcon.Dispose();
@@ -174,9 +177,20 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
 
     private void ExitApplication()
     {
+        if (_exiting)
+        {
+            return;
+        }
+
+        _exiting = true;
         _notifyIcon.Visible = false;
         _applicationLifetime.StopApplication();
         ExitThread();
+    }
+
+    private void OnOverlayManagerApplicationExitRequested(object? sender, EventArgs e)
+    {
+        ExitApplication();
     }
 
     private void CreateDiagnosticsBundle()

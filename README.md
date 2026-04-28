@@ -7,6 +7,7 @@
 - Starts as a WinForms tray application with no main window.
 - Shows a tiny always-on-top status overlay in the top-left corner.
 - Shows a centered tabbed settings overlay for managing overlay visibility, scale, session filters, shared overlay font, units, and overlay-specific display options.
+- Treats the settings overlay as the main UI: clicking its `X` exits the application instead of hiding it to the tray.
 - Includes a placeholder Overlay Bridge settings tab for post-v1.0 bridge controls.
 - Lets you drag overlays and remembers each overlay position between app launches.
 - Connects to iRacing through the `irsdkSharp` wrapper.
@@ -76,8 +77,8 @@ Each capture folder contains:
 
 You can also double-click [TmrOverlay.cmd](/Users/davidboucher/Code/tmrOverlay/TmrOverlay.cmd) from the repo root after the app has been built once. It launches the built executable from the expected `Debug` or `Release` output folder.
 
-The tray menu lets you open the raw capture folder, open the current raw capture when one exists, open logs, open the settings overlay, create a diagnostics bundle, or exit the app.
-The status overlay stays visible over the sim so you can confirm the app is running and whether live telemetry analysis has started. With raw capture disabled it shows live frame freshness and history-collection state. With raw capture enabled it also shows queued frames, written frames, dropped frames, telemetry file size, disk-write freshness, and explicit warning/error messages. The settings raw-capture checkbox records app events and local logs when toggled or rejected. You can drag overlays to new positions, and each overlay restores its saved frame on restart. Use the tray menu to reopen settings or exit the application.
+The tray menu lets you open the raw capture folder, open the current raw capture when one exists, open logs, open the settings overlay, create a diagnostics bundle, or exit the app. Closing the settings overlay with its `X` also exits the app.
+The status overlay stays visible over the sim so you can confirm the app is running and whether live telemetry analysis has started. With raw capture disabled it shows live frame freshness and history-collection state. With raw capture enabled it also shows queued frames, written frames, dropped frames, telemetry file size, disk-write freshness, and explicit warning/error messages. The settings raw-capture checkbox records app events and local logs when toggled or rejected. You can drag overlays to new positions, and each overlay restores its saved frame on restart.
 
 During local development, the overlay also warns when source files in this checkout are newer than the running build. That is a rebuild reminder only; it does not block capture.
 

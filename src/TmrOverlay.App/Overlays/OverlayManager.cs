@@ -33,6 +33,8 @@ internal sealed class OverlayManager : IDisposable
     private string? _appliedUnitSystem;
     private bool _startupShown;
 
+    public event EventHandler? ApplicationExitRequested;
+
     public OverlayManager(
         AppSettingsStore settingsStore,
         TelemetryCaptureState telemetryCaptureState,
@@ -97,7 +99,8 @@ internal sealed class OverlayManager : IDisposable
                 _events,
                 settings,
                 SaveSettings,
-                ApplyOverlaySettings));
+                ApplyOverlaySettings,
+                RequestApplicationExit));
         if (!form.Visible)
         {
             form.Show();
@@ -261,6 +264,11 @@ internal sealed class OverlayManager : IDisposable
         {
             _settingsStore.Save(_settings);
         }
+    }
+
+    private void RequestApplicationExit()
+    {
+        ApplicationExitRequested?.Invoke(this, EventArgs.Empty);
     }
 
     private void ApplyScaleIfChanged(OverlayDefinition definition, OverlaySettings settings, Form form)
