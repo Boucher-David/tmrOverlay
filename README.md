@@ -6,7 +6,7 @@
 
 - Starts as a WinForms tray application with no main window.
 - Shows a tiny always-on-top status overlay in the top-left corner.
-- Shows a centered tabbed settings window for managing overlay visibility, scale, session filters, shared overlay font, units, copyable Windows local build commands, support/log access, and overlay-specific display options.
+- Shows a centered tabbed settings window for managing overlay visibility, scale, session filters, shared overlay font, units, copyable Windows local clean/build commands, support/log access, and overlay-specific display options.
 - Treats the settings window as the main UI: clicking its `X` exits the application instead of hiding it to the tray.
 - Keeps the settings window on the normal desktop layer with a taskbar/Alt+Tab entry, while driving overlays can stay above the sim.
 - Includes a placeholder Overlay Bridge settings tab for post-v1.0 bridge controls.
@@ -174,7 +174,7 @@ $env:TMR_SessionHistory__UseBaselineHistory = "true"
 
 Path settings may be absolute or relative. Relative path settings resolve under the selected app data root.
 
-User-facing overlay preferences are stored in the local settings file under the app settings root. The settings window can update each current overlay's visibility, scale, test/practice/qualifying/race session filters, shared font family, metric/imperial units, and overlay-specific display options. It appears on the normal desktop layer so it can sit behind the sim when the user switches away. The General tab also includes copyable Windows build, publish, and zip commands for local development; it does not execute builds from inside the running app. The Error Logging tab shows the current app warning/error, opens the local logs and diagnostics folders, shows a lightweight performance summary, and can create/copy a diagnostics bundle for sharing. It also includes a placeholder Overlay Bridge tab for post-v1.0 bridge controls. Settings files are versioned and normalized on load so older local files receive safe defaults as customization expands.
+User-facing overlay preferences are stored in the local settings file under the app settings root. The settings window can update each current overlay's visibility, scale, test/practice/qualifying/race session filters, shared font family, metric/imperial units, and overlay-specific display options. It appears on the normal desktop layer so it can sit behind the sim when the user switches away. The General tab also includes copyable Windows clean, build, publish, and zip commands for local development; it does not execute builds from inside the running app. The clean command clears normal .NET build outputs plus the custom `artifacts/TmrOverlay-win-x64` publish folder so a rebuilt local app or republished tester build cannot silently reuse stale output. The Error Logging tab shows the current app warning/error, opens the local logs and diagnostics folders, shows a lightweight performance summary, and can create/copy a diagnostics bundle for sharing. It also includes a placeholder Overlay Bridge tab for post-v1.0 bridge controls. Settings files are versioned and normalized on load so older local files receive safe defaults as customization expands.
 
 ### Overlay Theme Overrides
 

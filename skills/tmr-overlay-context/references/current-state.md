@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-04-28
+Last updated: 2026-04-29
 
 ## Project Goal
 
@@ -66,7 +66,7 @@ Last updated: 2026-04-28
   - acts as the main UI; clicking its `X` or otherwise closing it through the user close path exits the application instead of hiding the app to the tray
   - uses normal desktop z-order, taskbar, and Alt+Tab behavior instead of the product overlays' tool-window/always-on-top behavior
   - tabs include General, Error Logging, each current overlay, an Overlay Bridge placeholder for post-v1.0 controls, and Post-race Analysis with a past-session picker backed by saved analysis rows plus the built-in four-hour sample; refreshes default to the most recent analysis
-  - General exposes a shared overlay font-family selector from widely available fonts, a metric/imperial unit selector, and copy-only Windows build/publish/zip commands for local development
+  - General exposes a shared overlay font-family selector from widely available fonts, a metric/imperial unit selector, and copy-only Windows clean/build/publish/zip commands for local development
   - Error Logging shows the current app warning/error from `TelemetryCaptureState`, opens local log/diagnostics folders, shows a lightweight performance summary, and can create/copy a diagnostics bundle using `DiagnosticsBundleService`
   - per-overlay tabs expose visibility, scale, test/practice/qualifying/race session filters, and descriptor-driven overlay-specific display options
   - opening the radar settings tab forces the radar overlay visible as a live preview even when user/session visibility would otherwise hide it

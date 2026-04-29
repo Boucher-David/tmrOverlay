@@ -56,6 +56,15 @@ The settings UI has:
 
 The selected overlay tab is reported back to `OverlayManager`.
 
+The General tab exposes copyable Windows PowerShell commands for local development:
+
+- Clean clears Release build intermediates, app/core `bin` and `obj` folders, the custom `artifacts/TmrOverlay-win-x64` publish folder, and its zip.
+- Build compiles the WinForms app in Release.
+- Publish writes the self-contained `win-x64` tester build to `artifacts/TmrOverlay-win-x64`.
+- Zip packages the current publish folder.
+
+The settings UI only copies these commands. It never runs builds from inside the app.
+
 ## Overlay Settings Normalization
 
 For every managed driving overlay, `OverlayManager` ensures:
@@ -149,4 +158,3 @@ The Error Logging tab:
 - Keep driving overlays focused and simulator-friendly.
 - If an overlay has preview behavior, document which settings tab triggers it.
 - If new overlay visibility rules are added, update this file and the overlay-specific logic doc.
-

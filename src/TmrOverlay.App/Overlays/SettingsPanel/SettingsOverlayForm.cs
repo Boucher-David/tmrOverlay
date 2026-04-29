@@ -17,6 +17,7 @@ namespace TmrOverlay.App.Overlays.SettingsPanel;
 
 internal sealed class SettingsOverlayForm : PersistentOverlayForm
 {
+    private const string WindowsCleanCommand = "dotnet clean .\\tmrOverlay.sln -c Release; Remove-Item .\\src\\TmrOverlay.App\\bin, .\\src\\TmrOverlay.App\\obj, .\\src\\TmrOverlay.Core\\bin, .\\src\\TmrOverlay.Core\\obj, .\\artifacts\\TmrOverlay-win-x64, .\\artifacts\\TmrOverlay-win-x64.zip -Recurse -Force -ErrorAction SilentlyContinue";
     private const string WindowsBuildCommand = "dotnet build .\\src\\TmrOverlay.App\\TmrOverlay.App.csproj -c Release";
     private const string WindowsPublishCommand = "dotnet publish .\\src\\TmrOverlay.App\\TmrOverlay.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o .\\artifacts\\TmrOverlay-win-x64";
     private const string WindowsZipCommand = "Compress-Archive -Path .\\artifacts\\TmrOverlay-win-x64\\* -DestinationPath .\\artifacts\\TmrOverlay-win-x64.zip -Force";
@@ -438,19 +439,25 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     {
         var title = CreateSectionLabel("Windows local build", 18, 154, 500);
         var note = CreateMutedLabel("PowerShell from the repo root. The app only copies these commands.", 22, 184, 510);
-        var buildLabel = CreateLabel("Build", 22, 224, 70);
-        var buildCommand = CreateCommandTextBox(92, 220, 350, WindowsBuildCommand);
-        var buildCopy = CreateCopyButton(452, 220, WindowsBuildCommand);
-        var publishLabel = CreateLabel("Publish", 22, 270, 70);
-        var publishCommand = CreateCommandTextBox(92, 266, 350, WindowsPublishCommand);
-        var publishCopy = CreateCopyButton(452, 266, WindowsPublishCommand);
-        var zipLabel = CreateLabel("Zip", 22, 316, 70);
-        var zipCommand = CreateCommandTextBox(92, 312, 350, WindowsZipCommand);
-        var zipCopy = CreateCopyButton(452, 312, WindowsZipCommand);
-        _buildCommandStatusLabel = CreateMutedLabel(string.Empty, 92, 352, 350);
+        var cleanLabel = CreateLabel("Clean", 22, 224, 70);
+        var cleanCommand = CreateCommandTextBox(92, 220, 350, WindowsCleanCommand);
+        var cleanCopy = CreateCopyButton(452, 220, WindowsCleanCommand);
+        var buildLabel = CreateLabel("Build", 22, 270, 70);
+        var buildCommand = CreateCommandTextBox(92, 266, 350, WindowsBuildCommand);
+        var buildCopy = CreateCopyButton(452, 266, WindowsBuildCommand);
+        var publishLabel = CreateLabel("Publish", 22, 316, 70);
+        var publishCommand = CreateCommandTextBox(92, 312, 350, WindowsPublishCommand);
+        var publishCopy = CreateCopyButton(452, 312, WindowsPublishCommand);
+        var zipLabel = CreateLabel("Zip", 22, 362, 70);
+        var zipCommand = CreateCommandTextBox(92, 358, 350, WindowsZipCommand);
+        var zipCopy = CreateCopyButton(452, 358, WindowsZipCommand);
+        _buildCommandStatusLabel = CreateMutedLabel(string.Empty, 92, 398, 350);
 
         page.Controls.Add(title);
         page.Controls.Add(note);
+        page.Controls.Add(cleanLabel);
+        page.Controls.Add(cleanCommand);
+        page.Controls.Add(cleanCopy);
         page.Controls.Add(buildLabel);
         page.Controls.Add(buildCommand);
         page.Controls.Add(buildCopy);

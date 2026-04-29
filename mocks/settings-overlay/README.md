@@ -3,7 +3,7 @@
 Generated preview screenshots for the main settings window.
 
 - `settings-overlay-states.png` is the current mac-harness contact sheet.
-- `states/general.png` shows shared font/units plus copy-only Windows build commands.
+- `states/general.png` shows shared font/units plus copy-only Windows clean, build, publish, and zip commands.
 - `states/error-logging.png` shows support paths, current issue, diagnostics bundle, and performance snapshot.
 - `states/overlay-tab.png` shows per-overlay visibility, scale, session filters, and overlay-specific options.
 - `states/post-race-analysis.png` shows saved strategy analysis browsing.
