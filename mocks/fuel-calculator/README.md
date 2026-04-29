@@ -6,6 +6,6 @@ Generated preview screenshots for the fuel calculator overlay.
 - `states/waiting.png` shows the no-telemetry/no-history waiting state.
 - `states/opening-stint.png` shows initial race-lap and stint target estimates.
 - `states/mid-race.png` shows strategy rows and advice with live mock telemetry.
-- `states/compact-finish.png` shows the compact no-stop finish state.
+- `states/stable-finish.png` shows the no-stop finish state using the same full table layout as the other fuel views.
 
 Generated PNGs are the source of truth for runtime screenshot review.

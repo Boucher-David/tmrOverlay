@@ -128,7 +128,7 @@ Implemented initial overlay contents:
 - stint rows: whole-lap targets such as neutral `8/8/7/7` or team-history-adjusted `7/8/7/8`
 - per-stint target liters-per-lap only; live/model burn is kept out of the row for now
 - advice column: per-stop guidance such as `tires free (106 L)`, `tires +4s`, `tire data pending`, `no tire stop`, or strategy time-loss/saving hints
-- compact content state: when no fuel stop remains, including after the final stop, the overlay hides unused rows and shows a single actionable stint row while keeping a stable window height
+- stable content state: when no fuel stop remains, including after the final stop, the overlay keeps the same full table layout and leaves future rows blank so threshold changes do not switch the view mid-run
 - source row: selected burn source, laps-per-tank, history source, and min/avg/max burn when available
 - status color:
   - gray: waiting for usable fuel/burn
@@ -156,7 +156,7 @@ During teammate stints, local scalar fuel can be unavailable. In that mode the o
 
 When historical completed-stint data shows team stints around 8 laps and the fuel-saving requirement stays within the realistic threshold, the calculator can bias projected rows to 8 laps. This is a planning hint, not proof that current live teammate fuel is directly available, and the UI intentionally does not label rows as teammate stints.
 
-Strategy analysis should feed table generation, not be a separate afterthought. For every race length, the calculator should check whether a slightly longer realistic stint rhythm avoids one or more stops versus the conservative rhythm, then show the stop/time cost in the table before listing the next actionable stints. Long endurance races should not render every future stint row; the overlay should stay compact and show near-term execution plus the strategic delta. As live progress advances, completed rows should disappear from the window so the top actionable row is the current or next stint.
+Strategy analysis should feed table generation, not be a separate afterthought. For every race length, the calculator should check whether a slightly longer realistic stint rhythm avoids one or more stops versus the conservative rhythm, then show the stop/time cost in the table before listing the next actionable stints. Long endurance races should not render every future stint row; the overlay should keep a stable near-term table plus the strategic delta. As live progress advances, completed rows should disappear from the active row content so the top actionable row is the current or next stint, while the table layout itself remains stable.
 
 Tire guidance is also a planning hint. It should only use measured or confidence-flagged historical pit-service data, and it should display `tire data pending` when fill-rate or tire-service history is not available for the combo.
 

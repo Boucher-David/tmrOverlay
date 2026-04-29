@@ -26,6 +26,7 @@ Start here when continuing work in this repo.
 - `skills/tmr-overlay-context/references/current-state.md`
 - `skills/tmr-overlay-context/references/fuel-overlay-context.md`
 - `skills/tmr-overlay-context/references/overlay-research.md`
+- `docs/overlay-logic.md`
 - `docs/capture-format.md`
 - `telemetry.md`
 - `README.md`
@@ -42,4 +43,6 @@ Start here when continuing work in this repo.
 - Treat rendered overlay screenshots as validation artifacts, not only design artifacts: update `mocks/<overlay-id>/` when overlays or settings UI change, keep one contact sheet plus smaller per-state PNGs, and run `python3 tools/validate_overlay_screenshots.py` after generating them.
 - Waiting/unavailable/error preview states must use deterministic isolated fixtures. Do not let local user history, cached telemetry, or machine-specific paths make an empty state look populated unless the scenario explicitly tests history fallback or support-path display.
 - For wider app changes, carry the same validation discipline beyond screenshots: assert both data that should appear and data that must stay hidden, cover failure/degraded paths, and keep performance/diagnostics/update flows fixture-driven where possible.
+- After making code changes, do a stale-reference sweep before final validation: search docs, mocks, tests, the ignored mac harness, and repo skills for old behavior names/descriptions/API call patterns that no longer match the implementation. Patch those references in the same pass so future agents inherit the current behavior instead of stale assumptions.
+- When overlay behavior or analysis logic changes, update the matching English logic note under `docs/overlay-logic.md` in the same pass so future design tweaks can be reviewed from readable rules instead of code.
 - The authoring machine used for the initial scaffold did not have `dotnet` installed, so build/test verification still needs to happen on Windows.

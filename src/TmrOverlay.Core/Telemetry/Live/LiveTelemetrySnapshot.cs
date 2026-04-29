@@ -59,8 +59,7 @@ internal sealed record LiveProximitySnapshot(
 
     public static LiveProximitySnapshot From(
         HistoricalSessionContext context,
-        HistoricalTelemetrySample sample,
-        double? lapTimeSeconds)
+        HistoricalTelemetrySample sample)
     {
         var playerLapDistPct = PlayerLapDistPct(sample);
         if (playerLapDistPct is null)
@@ -77,12 +76,14 @@ internal sealed record LiveProximitySnapshot(
         var trackLengthMeters = context.Track.TrackLengthKm is { } km && IsPositiveFinite(km)
             ? km * 1000d
             : (double?)null;
+        var liveLapTimeSeconds = LiveLapTimeSeconds(sample);
         var cars = (sample.NearbyCars ?? [])
             .Select(car => ToLiveCar(
                 car,
                 playerLapDistPct.Value,
+                sample.TeamF2TimeSeconds,
                 sample.TeamEstimatedTimeSeconds,
-                lapTimeSeconds,
+                liveLapTimeSeconds,
                 trackLengthMeters))
             .Where(car => Math.Abs(car.RelativeLaps) <= 0.5d && Math.Abs(car.RelativeLaps) > 0.00001d)
             .OrderBy(car => Math.Abs(car.RelativeLaps))
@@ -108,8 +109,9 @@ internal sealed record LiveProximitySnapshot(
     private static LiveProximityCar ToLiveCar(
         HistoricalCarProximity car,
         double playerLapDistPct,
+        double? playerF2TimeSeconds,
         double? playerEstimatedTimeSeconds,
-        double? lapTimeSeconds,
+        double? liveLapTimeSeconds,
         double? trackLengthMeters)
     {
         var relativeLaps = car.LapDistPct - playerLapDistPct;
@@ -128,7 +130,9 @@ internal sealed record LiveProximitySnapshot(
             RelativeSeconds: CalculateRelativeSeconds(
                 car.EstimatedTimeSeconds,
                 playerEstimatedTimeSeconds,
-                lapTimeSeconds,
+                car.F2TimeSeconds,
+                playerF2TimeSeconds,
+                liveLapTimeSeconds,
                 relativeLaps),
             RelativeMeters: trackLengthMeters is { } meters && IsPositiveFinite(meters)
                 ? relativeLaps * meters
@@ -145,32 +149,81 @@ internal sealed record LiveProximitySnapshot(
     private static double? CalculateRelativeSeconds(
         double? carEstimatedTimeSeconds,
         double? playerEstimatedTimeSeconds,
-        double? lapTimeSeconds,
+        double? carF2TimeSeconds,
+        double? playerF2TimeSeconds,
+        double? liveLapTimeSeconds,
         double relativeLaps)
     {
         if (carEstimatedTimeSeconds is { } carEst
             && playerEstimatedTimeSeconds is { } playerEst
-            && lapTimeSeconds is { } lapSeconds
             && IsPositiveFinite(carEst)
-            && IsPositiveFinite(playerEst)
-            && IsPositiveFinite(lapSeconds))
+            && IsPositiveFinite(playerEst))
         {
             var delta = carEst - playerEst;
-            if (delta > lapSeconds / 2d)
+            if (liveLapTimeSeconds is { } lapSeconds && IsPositiveFinite(lapSeconds))
             {
-                delta -= lapSeconds;
-            }
-            else if (delta < -lapSeconds / 2d)
-            {
-                delta += lapSeconds;
+                if (delta > lapSeconds / 2d)
+                {
+                    delta -= lapSeconds;
+                }
+                else if (delta < -lapSeconds / 2d)
+                {
+                    delta += lapSeconds;
+                }
             }
 
-            return delta;
+            if (IsPlausibleRelativeTiming(delta, relativeLaps, liveLapTimeSeconds))
+            {
+                return delta;
+            }
         }
 
-        return lapTimeSeconds is { } fallbackLapSeconds && IsPositiveFinite(fallbackLapSeconds)
-            ? relativeLaps * fallbackLapSeconds
-            : null;
+        if (carF2TimeSeconds is { } carF2
+            && playerF2TimeSeconds is { } playerF2
+            && IsNonNegativeFinite(carF2)
+            && IsNonNegativeFinite(playerF2))
+        {
+            var delta = playerF2 - carF2;
+            if (IsPlausibleRelativeTiming(delta, relativeLaps, liveLapTimeSeconds))
+            {
+                return delta;
+            }
+        }
+
+        return null;
+    }
+
+    private static double? LiveLapTimeSeconds(HistoricalTelemetrySample sample)
+    {
+        return FirstPositiveFinite(
+            sample.TeamLastLapTimeSeconds,
+            sample.TeamBestLapTimeSeconds,
+            sample.LapLastLapTimeSeconds,
+            sample.LapBestLapTimeSeconds);
+    }
+
+    private static bool IsPlausibleRelativeTiming(double seconds, double relativeLaps, double? lapTimeSeconds)
+    {
+        if (!IsFinite(seconds))
+        {
+            return false;
+        }
+
+        var timingSign = Math.Sign(seconds);
+        var lapSign = Math.Sign(relativeLaps);
+        if (timingSign != 0 && lapSign != 0 && timingSign != lapSign)
+        {
+            return false;
+        }
+
+        if (lapTimeSeconds is { } lapSeconds && IsPositiveFinite(lapSeconds))
+        {
+            var lapBasedSeconds = Math.Abs(relativeLaps * lapSeconds);
+            var maximumDelta = Math.Max(5d, Math.Min(lapSeconds / 2d, lapBasedSeconds + 10d));
+            return Math.Abs(seconds) <= maximumDelta;
+        }
+
+        return Math.Abs(seconds) <= 60d;
     }
 
     private static double? PlayerLapDistPct(HistoricalTelemetrySample sample)
@@ -213,6 +266,24 @@ internal sealed record LiveProximitySnapshot(
     private static bool IsPositiveFinite(double value)
     {
         return IsFinite(value) && value > 0d;
+    }
+
+    private static bool IsNonNegativeFinite(double value)
+    {
+        return IsFinite(value) && value >= 0d;
+    }
+
+    private static double? FirstPositiveFinite(params double?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (value is { } number && IsPositiveFinite(number))
+            {
+                return number;
+            }
+        }
+
+        return null;
     }
 
     private static bool IsFinite(double value)

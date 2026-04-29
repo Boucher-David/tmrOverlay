@@ -119,7 +119,7 @@ internal abstract class PersistentOverlayForm : Form
         PersistOverlayFrame();
     }
 
-    private void PersistOverlayFrame()
+    protected virtual void PersistOverlayFrame()
     {
         var persistedSize = GetPersistedOverlaySize();
         _settings.X = Location.X;

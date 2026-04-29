@@ -2,6 +2,8 @@
 
 The first implementation is intentionally narrow: session finalization builds a compact analysis from the saved historical summary, stores it as JSON, and the settings overlay can browse recent analyses plus the built-in four-hour sample. The broader strategy review/export flow remains post-v1.0 work.
 
+For the current implementation's step-by-step English logic, see [post-race-analysis-logic.md](post-race-analysis-logic.md).
+
 ## Goal
 
 After a race ends, generate a compact strategy review that explains how the race went and what realistic alternatives may have existed. The review should help users learn from their own sessions and give us a shareable, privacy-conscious artifact for improving the fuel algorithm.

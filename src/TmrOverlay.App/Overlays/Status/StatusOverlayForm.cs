@@ -148,11 +148,24 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
 
     protected override void OnPaint(PaintEventArgs e)
     {
-        base.OnPaint(e);
+        var started = Stopwatch.GetTimestamp();
+        var succeeded = false;
+        try
+        {
+            base.OnPaint(e);
 
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        using var borderPen = new Pen(OverlayTheme.Colors.WindowBorder);
-        e.Graphics.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using var borderPen = new Pen(OverlayTheme.Colors.WindowBorder);
+            e.Graphics.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
+            succeeded = true;
+        }
+        finally
+        {
+            _performanceState.RecordOperation(
+                AppPerformanceMetricIds.OverlayStatusPaint,
+                started,
+                succeeded);
+        }
     }
 
     private void RefreshOverlay()
@@ -161,54 +174,97 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
         var succeeded = false;
         try
         {
-            var snapshot = _state.Snapshot();
-            var health = CaptureHealth.From(snapshot);
-
-            if (health.Level == CaptureHealthLevel.Error)
+            TelemetryCaptureStatusSnapshot snapshot;
+            var snapshotStarted = Stopwatch.GetTimestamp();
+            var snapshotSucceeded = false;
+            try
             {
-                BackColor = OverlayTheme.Colors.ErrorBackground;
-                _indicatorPanel.BackColor = OverlayTheme.Colors.ErrorIndicator;
-                _statusLabel.Text = health.StatusText;
+                snapshot = _state.Snapshot();
+                snapshotSucceeded = true;
             }
-            else if (health.Level == CaptureHealthLevel.Warning)
+            finally
             {
-                BackColor = OverlayTheme.Colors.WarningBackground;
-                _indicatorPanel.BackColor = OverlayTheme.Colors.WarningIndicator;
-                _statusLabel.Text = health.StatusText;
-            }
-            else if (snapshot.IsCapturing)
-            {
-                BackColor = OverlayTheme.Colors.SuccessStrongBackground;
-                _indicatorPanel.BackColor = OverlayTheme.Colors.SuccessIndicator;
-                _statusLabel.Text = health.StatusText;
-            }
-            else if (snapshot.IsConnected)
-            {
-                BackColor = OverlayTheme.Colors.WarningBackground;
-                _indicatorPanel.BackColor = OverlayTheme.Colors.WarningIndicator;
-                _statusLabel.Text = health.StatusText;
-            }
-            else
-            {
-                BackColor = OverlayTheme.Colors.NeutralBackground;
-                _indicatorPanel.BackColor = OverlayTheme.Colors.NeutralIndicator;
-                _statusLabel.Text = health.StatusText;
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayStatusSnapshot,
+                    snapshotStarted,
+                    snapshotSucceeded);
             }
 
-            _detailLabel.Text = health.DetailText;
-            _captureLabel.Text = health.CaptureText;
-            _healthLabel.Text = health.MessageText;
-            _captureLabel.Visible = _settings.GetBooleanOption(OverlayOptionKeys.StatusCaptureDetails, defaultValue: true);
-            _healthLabel.Visible = _settings.GetBooleanOption(OverlayOptionKeys.StatusHealthDetails, defaultValue: true);
-            _indicatorPanel.Invalidate();
-            Invalidate();
+            CaptureHealth health;
+            var healthStarted = Stopwatch.GetTimestamp();
+            var healthSucceeded = false;
+            try
+            {
+                health = CaptureHealth.From(snapshot);
+                healthSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayStatusHealth,
+                    healthStarted,
+                    healthSucceeded);
+            }
+
+            var applyStarted = Stopwatch.GetTimestamp();
+            var applySucceeded = false;
+            try
+            {
+                if (health.Level == CaptureHealthLevel.Error)
+                {
+                    BackColor = OverlayTheme.Colors.ErrorBackground;
+                    _indicatorPanel.BackColor = OverlayTheme.Colors.ErrorIndicator;
+                    _statusLabel.Text = health.StatusText;
+                }
+                else if (health.Level == CaptureHealthLevel.Warning)
+                {
+                    BackColor = OverlayTheme.Colors.WarningBackground;
+                    _indicatorPanel.BackColor = OverlayTheme.Colors.WarningIndicator;
+                    _statusLabel.Text = health.StatusText;
+                }
+                else if (snapshot.IsCapturing)
+                {
+                    BackColor = OverlayTheme.Colors.SuccessStrongBackground;
+                    _indicatorPanel.BackColor = OverlayTheme.Colors.SuccessIndicator;
+                    _statusLabel.Text = health.StatusText;
+                }
+                else if (snapshot.IsConnected)
+                {
+                    BackColor = OverlayTheme.Colors.WarningBackground;
+                    _indicatorPanel.BackColor = OverlayTheme.Colors.WarningIndicator;
+                    _statusLabel.Text = health.StatusText;
+                }
+                else
+                {
+                    BackColor = OverlayTheme.Colors.NeutralBackground;
+                    _indicatorPanel.BackColor = OverlayTheme.Colors.NeutralIndicator;
+                    _statusLabel.Text = health.StatusText;
+                }
+
+                _detailLabel.Text = health.DetailText;
+                _captureLabel.Text = health.CaptureText;
+                _healthLabel.Text = health.MessageText;
+                _captureLabel.Visible = _settings.GetBooleanOption(OverlayOptionKeys.StatusCaptureDetails, defaultValue: true);
+                _healthLabel.Visible = _settings.GetBooleanOption(OverlayOptionKeys.StatusHealthDetails, defaultValue: true);
+                _indicatorPanel.Invalidate();
+                Invalidate();
+                applySucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayStatusApplyUi,
+                    applyStarted,
+                    applySucceeded);
+            }
+
             succeeded = true;
         }
         finally
         {
             _performanceState.RecordOperation(
                 AppPerformanceMetricIds.OverlayStatusRefresh,
-                Stopwatch.GetElapsedTime(started),
+                started,
                 succeeded);
         }
     }

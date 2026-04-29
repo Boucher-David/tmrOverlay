@@ -1,0 +1,97 @@
+{
+  "timestampUtc": "2026-04-29T12:44:06.8473219+00:00",
+  "startedAtUtc": "2026-04-29T12:18:59.5314052+00:00",
+  "telemetryFrameCount": 88867,
+  "telemetryFramesPerSecond": 60,
+  "metrics": [
+    {
+      "id": "overlay.fuel.refresh",
+      "count": 1499,
+      "errorCount": 0,
+      "averageMilliseconds": 111.824,
+      "lastMilliseconds": 0.07,
+      "maxMilliseconds": 709.016,
+      "p95Milliseconds": 414.094,
+      "lastRecordedAtUtc": "2026-04-29T12:44:06.1914818+00:00"
+    },
+    {
+      "id": "overlay.gap.refresh",
+      "count": 2950,
+      "errorCount": 0,
+      "averageMilliseconds": 0.426,
+      "lastMilliseconds": 0.008,
+      "maxMilliseconds": 3.472,
+      "p95Milliseconds": 0.869,
+      "lastRecordedAtUtc": "2026-04-29T12:44:06.4779866+00:00"
+    },
+    {
+      "id": "overlay.radar.refresh",
+      "count": 12568,
+      "errorCount": 0,
+      "averageMilliseconds": 0.022,
+      "lastMilliseconds": 0.008,
+      "maxMilliseconds": 4.095,
+      "p95Milliseconds": 0.046,
+      "lastRecordedAtUtc": "2026-04-29T12:44:06.7396183+00:00"
+    },
+    {
+      "id": "overlay.status.refresh",
+      "count": 5585,
+      "errorCount": 0,
+      "averageMilliseconds": 0.179,
+      "lastMilliseconds": 0.14,
+      "maxMilliseconds": 1.378,
+      "p95Milliseconds": 0.326,
+      "lastRecordedAtUtc": "2026-04-29T12:44:06.6464105+00:00"
+    },
+    {
+      "id": "telemetry.data_changed",
+      "count": 88867,
+      "errorCount": 0,
+      "averageMilliseconds": 0.252,
+      "lastMilliseconds": 0.166,
+      "maxMilliseconds": 17.888,
+      "p95Milliseconds": 0.288,
+      "lastRecordedAtUtc": "2026-04-29T12:43:41.7769679+00:00"
+    },
+    {
+      "id": "telemetry.history_record_frame",
+      "count": 88867,
+      "errorCount": 0,
+      "averageMilliseconds": 0.001,
+      "lastMilliseconds": 0.001,
+      "maxMilliseconds": 0.844,
+      "p95Milliseconds": 0.001,
+      "lastRecordedAtUtc": "2026-04-29T12:43:41.7769675+00:00"
+    },
+    {
+      "id": "telemetry.live_sink",
+      "count": 88867,
+      "errorCount": 0,
+      "averageMilliseconds": 0.024,
+      "lastMilliseconds": 0.027,
+      "maxMilliseconds": 5.321,
+      "p95Milliseconds": 0.049,
+      "lastRecordedAtUtc": "2026-04-29T12:43:41.7769668+00:00"
+    }
+  ],
+  "capture": {
+    "writeStatusCount": 0,
+    "lastCaptureId": null,
+    "lastCaptureDirectory": null,
+    "lastFramesWritten": 0,
+    "lastSessionInfoSnapshotCount": 0,
+    "lastPendingMessageCount": 0,
+    "lastTelemetryFileBytes": null,
+    "lastWriteAtUtc": null,
+    "lastWriteError": null
+  },
+  "process": {
+    "workingSetBytes": 148946944,
+    "privateMemoryBytes": 83980288,
+    "managedHeapBytes": 12604496,
+    "gen0Collections": 665,
+    "gen1Collections": 120,
+    "gen2Collections": 7
+  }
+}

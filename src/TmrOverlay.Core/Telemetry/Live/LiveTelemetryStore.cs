@@ -88,7 +88,7 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
         lock (_sync)
         {
             var fuel = LiveFuelSnapshot.From(_context, sample);
-            var proximity = LiveProximitySnapshot.From(_context, sample, fuel.LapTimeSeconds);
+            var proximity = LiveProximitySnapshot.From(_context, sample);
             var multiclassApproaches = BuildMulticlassApproaches(sample, proximity);
             proximity = proximity with
             {

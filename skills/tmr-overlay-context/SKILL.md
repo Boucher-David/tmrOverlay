@@ -18,7 +18,9 @@ Use this repo-local skill when the task is about continuing or extending `tmrOve
 5. Inspect git status before editing because this repo may accumulate ongoing local changes.
 6. For overlay/settings changes, regenerate mac-harness screenshots and run `python3 tools/validate_overlay_screenshots.py`; still do visual review for text overlap and scenario correctness.
 7. Treat fixtures as contracts: assert visible data, assert absent data, and isolate waiting/unavailable/error states from local user history or cached telemetry unless the scenario explicitly tests those paths.
-8. If you change product direction, validation assumptions, capture format, or analysis assumptions, update the relevant reference/docs file so future sessions inherit the new context.
+8. After code changes, run a stale-reference sweep before final validation. Search docs, mocks, tests, the ignored mac harness, and repo skills for old behavior names/descriptions/API call patterns that no longer match the implementation, then patch those references in the same pass.
+9. If overlay behavior or analysis logic changes, update the matching English logic note under `docs/overlay-logic.md` so future design review can happen from readable rules.
+10. If you change product direction, validation assumptions, capture format, or analysis assumptions, update the relevant reference/docs file so future sessions inherit the new context.
 
 ## Primary Files
 
@@ -33,6 +35,7 @@ Use this repo-local skill when the task is about continuing or extending `tmrOve
 - `local-mac/TmrOverlayMac/Sources/TmrOverlayMac/Preview/OverlayScreenshotGenerator.swift`
 - `tools/validate_overlay_screenshots.py`
 - `mocks/README.md`
+- `docs/overlay-logic.md`
 - `docs/capture-format.md`
 - `telemetry.md`
 - `README.md`

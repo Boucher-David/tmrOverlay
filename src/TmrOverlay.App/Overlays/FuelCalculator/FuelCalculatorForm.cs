@@ -194,9 +194,22 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
 
     protected override void OnPaint(PaintEventArgs e)
     {
-        base.OnPaint(e);
-        using var borderPen = new Pen(OverlayTheme.Colors.WindowBorder);
-        e.Graphics.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
+        var started = Stopwatch.GetTimestamp();
+        var succeeded = false;
+        try
+        {
+            base.OnPaint(e);
+            using var borderPen = new Pen(OverlayTheme.Colors.WindowBorder);
+            e.Graphics.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
+            succeeded = true;
+        }
+        finally
+        {
+            _performanceState.RecordOperation(
+                AppPerformanceMetricIds.OverlayFuelPaint,
+                started,
+                succeeded);
+        }
     }
 
     private void RefreshOverlay()
@@ -205,36 +218,122 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
         var succeeded = false;
         try
         {
-            var live = _liveTelemetrySource.Snapshot();
-            var history = LookupHistory(live.Combo);
-            var strategy = FuelStrategyCalculator.From(live, history);
-            var viewModel = FuelCalculatorViewModel.From(strategy, history, ShowAdvice, _unitSystem, StintRowCount);
-
-            ApplyStatusColor(strategy);
-            _statusLabel.Text = viewModel.Status;
-            _overviewValueLabel.Text = viewModel.Overview;
-            _sourceLabel.Text = viewModel.Source;
-            _sourceLabel.Visible = ShowSource;
-            ApplyAdviceColumnVisibility();
-
-            var rows = viewModel.Rows;
-            for (var index = 0; index < StintRowCount; index++)
+            LiveTelemetrySnapshot live;
+            var snapshotStarted = Stopwatch.GetTimestamp();
+            var snapshotSucceeded = false;
+            try
             {
-                if (index < rows.Count)
-                {
-                    var row = rows[index];
-                    _stintNumberLabels[index].Text = row.Label;
-                    _stintLengthLabels[index].Text = row.Value;
-                    _stintTireLabels[index].Text = row.Advice;
-                    continue;
-                }
-
-                _stintNumberLabels[index].Text = $"Stint {index + 1}";
-                _stintLengthLabels[index].Text = string.Empty;
-                _stintTireLabels[index].Text = string.Empty;
+                live = _liveTelemetrySource.Snapshot();
+                snapshotSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayFuelSnapshot,
+                    snapshotStarted,
+                    snapshotSucceeded);
             }
 
-            UpdateVisibleRows(rows.Count);
+            SessionHistoryLookupResult history;
+            var historyStarted = Stopwatch.GetTimestamp();
+            var historySucceeded = false;
+            try
+            {
+                history = LookupHistory(live.Combo);
+                historySucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayFuelHistoryLookup,
+                    historyStarted,
+                    historySucceeded);
+            }
+
+            FuelStrategySnapshot strategy;
+            var strategyStarted = Stopwatch.GetTimestamp();
+            var strategySucceeded = false;
+            try
+            {
+                strategy = FuelStrategyCalculator.From(live, history);
+                strategySucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayFuelStrategy,
+                    strategyStarted,
+                    strategySucceeded);
+            }
+
+            FuelCalculatorViewModel viewModel;
+            var viewModelStarted = Stopwatch.GetTimestamp();
+            var viewModelSucceeded = false;
+            try
+            {
+                viewModel = FuelCalculatorViewModel.From(strategy, history, ShowAdvice, _unitSystem, StintRowCount);
+                viewModelSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayFuelViewModel,
+                    viewModelStarted,
+                    viewModelSucceeded);
+            }
+
+            var applyStarted = Stopwatch.GetTimestamp();
+            var applySucceeded = false;
+            try
+            {
+                ApplyStatusColor(strategy);
+                _statusLabel.Text = viewModel.Status;
+                _overviewValueLabel.Text = viewModel.Overview;
+                _sourceLabel.Text = viewModel.Source;
+                _sourceLabel.Visible = ShowSource;
+                ApplyAdviceColumnVisibility();
+                applySucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayFuelApplyUi,
+                    applyStarted,
+                    applySucceeded);
+            }
+
+            var rows = viewModel.Rows;
+            var rowsStarted = Stopwatch.GetTimestamp();
+            var rowsSucceeded = false;
+            try
+            {
+                for (var index = 0; index < StintRowCount; index++)
+                {
+                    if (index < rows.Count)
+                    {
+                        var row = rows[index];
+                        _stintNumberLabels[index].Text = row.Label;
+                        _stintLengthLabels[index].Text = row.Value;
+                        _stintTireLabels[index].Text = row.Advice;
+                        continue;
+                    }
+
+                    _stintNumberLabels[index].Text = $"Stint {index + 1}";
+                    _stintLengthLabels[index].Text = string.Empty;
+                    _stintTireLabels[index].Text = string.Empty;
+                }
+
+                UpdateVisibleRows(rows.Count);
+                rowsSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayFuelRows,
+                    rowsStarted,
+                    rowsSucceeded);
+            }
+
             Invalidate();
             succeeded = true;
         }
@@ -242,7 +341,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
         {
             _performanceState.RecordOperation(
                 AppPerformanceMetricIds.OverlayFuelRefresh,
-                Stopwatch.GetElapsedTime(started),
+                started,
                 succeeded);
         }
     }
@@ -271,9 +370,9 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
             && string.Equals(left.SessionKey, right.SessionKey, StringComparison.Ordinal);
     }
 
-    private void UpdateVisibleRows(int stintCount)
+    private void UpdateVisibleRows(int _)
     {
-        var visibleStintRows = Math.Clamp(stintCount, 0, StintRowCount);
+        var visibleStintRows = StintRowCount;
         var visibleRows = visibleStintRows + 1;
         for (var row = 0; row < _table.RowStyles.Count; row++)
         {

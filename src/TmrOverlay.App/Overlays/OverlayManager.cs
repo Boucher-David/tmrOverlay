@@ -37,6 +37,7 @@ internal sealed class OverlayManager : IDisposable
     private ApplicationSettings? _settings;
     private string? _appliedFontFamily;
     private string? _appliedUnitSystem;
+    private bool _radarSettingsPreviewVisible;
     private bool _startupShown;
 
     public event EventHandler? ApplicationExitRequested;
@@ -101,6 +102,7 @@ internal sealed class OverlayManager : IDisposable
             defaultLocation.X,
             defaultLocation.Y);
         var settingsSizeChanged = EnsureSettingsOverlayMinimumSize(settings);
+        CenterSettingsOverlay(settings);
 
         var form = EnsureForm(
             SettingsOverlayDefinition.Definition.Id,
@@ -116,7 +118,9 @@ internal sealed class OverlayManager : IDisposable
                 settings,
                 SaveSettings,
                 ApplyOverlaySettings,
-                RequestApplicationExit));
+                RequestApplicationExit,
+                SelectSettingsOverlayTab));
+        form.Location = new Point(settings.X, settings.Y);
         if (!form.Visible)
         {
             form.Show();
@@ -240,12 +244,15 @@ internal sealed class OverlayManager : IDisposable
                 registration.Definition.DefaultHeight,
                 registration.DefaultX,
                 registration.DefaultY);
-            var shouldShow = settings.Enabled && IsAllowedForSession(settings, currentSession);
+            var settingsPreview = _radarSettingsPreviewVisible
+                && string.Equals(registration.Definition.Id, CarRadarOverlayDefinition.Definition.Id, StringComparison.Ordinal);
+            var shouldShow = settingsPreview || (settings.Enabled && IsAllowedForSession(settings, currentSession));
 
             if (!shouldShow)
             {
                 if (_forms.TryGetValue(registration.Definition.Id, out var hiddenForm))
                 {
+                    ApplyRadarSettingsPreview(hiddenForm, previewVisible: false);
                     hiddenForm.Hide();
                 }
 
@@ -256,6 +263,7 @@ internal sealed class OverlayManager : IDisposable
                 registration.Definition.Id,
                 () => registration.Create(settings));
             ApplyScaleIfChanged(registration.Definition, settings, form);
+            ApplyRadarSettingsPreview(form, settingsPreview);
             if (!form.Visible)
             {
                 form.Show();
@@ -296,6 +304,29 @@ internal sealed class OverlayManager : IDisposable
     private void RequestApplicationExit()
     {
         ApplicationExitRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void SelectSettingsOverlayTab(string? overlayId)
+    {
+        var radarPreviewVisible = string.Equals(
+            overlayId,
+            CarRadarOverlayDefinition.Definition.Id,
+            StringComparison.Ordinal);
+        if (_radarSettingsPreviewVisible == radarPreviewVisible)
+        {
+            return;
+        }
+
+        _radarSettingsPreviewVisible = radarPreviewVisible;
+        ApplyOverlaySettings();
+    }
+
+    private static void ApplyRadarSettingsPreview(Form form, bool previewVisible)
+    {
+        if (form is CarRadarForm radar)
+        {
+            radar.SetSettingsPreviewVisible(previewVisible);
+        }
     }
 
     private void ApplyScaleIfChanged(OverlayDefinition definition, OverlaySettings settings, Form form)
@@ -442,6 +473,15 @@ internal sealed class OverlayManager : IDisposable
         settings.Width = width;
         settings.Height = height;
         return true;
+    }
+
+    private static void CenterSettingsOverlay(OverlaySettings settings)
+    {
+        var area = Screen.FromPoint(Cursor.Position).WorkingArea;
+        var width = Math.Max(SettingsOverlayDefinition.Definition.DefaultWidth, settings.Width);
+        var height = Math.Max(SettingsOverlayDefinition.Definition.DefaultHeight, settings.Height);
+        settings.X = area.Left + Math.Max(0, (area.Width - width) / 2);
+        settings.Y = area.Top + Math.Max(0, (area.Height - height) / 2);
     }
 
     private static void ApplyGapToLeaderRaceOnlyDefault(OverlayDefinition definition, OverlaySettings settings)

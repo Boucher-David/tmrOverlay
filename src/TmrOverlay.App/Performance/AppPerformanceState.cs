@@ -52,6 +52,11 @@ internal sealed class AppPerformanceState
         }
     }
 
+    public void RecordOperation(string metricId, long startedTimestamp, bool succeeded = true)
+    {
+        RecordOperation(metricId, Stopwatch.GetElapsedTime(startedTimestamp), succeeded);
+    }
+
     public void RecordCaptureWrite(TelemetryCaptureWriteStatus writeStatus)
     {
         lock (_sync)
@@ -185,14 +190,72 @@ internal sealed class AppPerformanceState
 internal static class AppPerformanceMetricIds
 {
     public const string TelemetryDataChanged = "telemetry.data_changed";
+    public const string TelemetryDataChangedGetCollection = "telemetry.data_changed.get_collection";
+    public const string TelemetryDataChangedSessionInfoVersion = "telemetry.data_changed.session_info_version";
+    public const string TelemetryDataChangedSessionInfoSnapshot = "telemetry.data_changed.session_info_snapshot";
+    public const string TelemetryDataChangedRawCaptureFrame = "telemetry.data_changed.raw_capture_frame";
+    public const string TelemetryDataChangedHistoricalFrame = "telemetry.data_changed.historical_frame";
+    public const string TelemetryDataChangedStateFrame = "telemetry.data_changed.state_frame";
     public const string LiveTelemetrySink = "telemetry.live_sink";
     public const string HistoryRecordFrame = "telemetry.history_record_frame";
+    public const string TelemetryHistoryBuildSample = "telemetry.history.build_sample";
+    public const string TelemetryHistoryReadLeader = "telemetry.history.read_leader";
+    public const string TelemetryHistoryReadClassLeader = "telemetry.history.read_class_leader";
+    public const string TelemetryHistoryReadNearbyCars = "telemetry.history.read_nearby_cars";
+    public const string TelemetryHistoryReadClassCars = "telemetry.history.read_class_cars";
+    public const string TelemetrySessionInfoRead = "telemetry.session_info.read";
+    public const string TelemetrySessionInfoApply = "telemetry.session_info.apply";
+    public const string TelemetrySessionInfoCaptureQueue = "telemetry.session_info.capture_queue";
+    public const string TelemetryRawFrameRead = "telemetry.raw_frame.read";
+    public const string TelemetryRawFrameQueue = "telemetry.raw_frame.queue";
+    public const string TelemetryFinalizeCollection = "telemetry.finalize_collection";
+    public const string TelemetryFinalizeCapture = "telemetry.finalize_capture";
+    public const string TelemetryFinalizeBuildSummary = "telemetry.finalize.build_summary";
+    public const string TelemetryFinalizeSaveHistory = "telemetry.finalize.save_history";
+    public const string TelemetryFinalizeSaveAnalysis = "telemetry.finalize.save_analysis";
+    public const string TelemetryFinalizeDiagnosticsBundle = "telemetry.finalize.diagnostics_bundle";
     public const string CaptureWriterWrite = "capture.writer_write";
     public const string CaptureWriteStatusCallback = "capture.write_status_callback";
     public const string OverlayStatusRefresh = "overlay.status.refresh";
+    public const string OverlayStatusSnapshot = "overlay.status.snapshot";
+    public const string OverlayStatusHealth = "overlay.status.health";
+    public const string OverlayStatusApplyUi = "overlay.status.apply_ui";
+    public const string OverlayStatusPaint = "overlay.status.paint";
     public const string OverlayFuelRefresh = "overlay.fuel.refresh";
+    public const string OverlayFuelSnapshot = "overlay.fuel.snapshot";
+    public const string OverlayFuelHistoryLookup = "overlay.fuel.history_lookup";
+    public const string OverlayFuelStrategy = "overlay.fuel.strategy";
+    public const string OverlayFuelViewModel = "overlay.fuel.view_model";
+    public const string OverlayFuelApplyUi = "overlay.fuel.apply_ui";
+    public const string OverlayFuelRows = "overlay.fuel.rows";
+    public const string OverlayFuelPaint = "overlay.fuel.paint";
     public const string OverlayRadarRefresh = "overlay.radar.refresh";
+    public const string OverlayRadarSnapshot = "overlay.radar.snapshot";
+    public const string OverlayRadarFadeState = "overlay.radar.fade_state";
+    public const string OverlayRadarPaint = "overlay.radar.paint";
+    public const string OverlayRadarDraw = "overlay.radar.draw";
     public const string OverlayGapRefresh = "overlay.gap.refresh";
+    public const string OverlayGapSnapshot = "overlay.gap.snapshot";
+    public const string OverlayGapRecordSnapshot = "overlay.gap.record_snapshot";
+    public const string OverlayGapSelectSeries = "overlay.gap.select_series";
+    public const string OverlayGapPaint = "overlay.gap.paint";
+    public const string OverlayGapDrawGraph = "overlay.gap.draw_graph";
+    public const string OverlayGapDrawPrepare = "overlay.gap.draw_prepare";
+    public const string OverlayGapDrawStatic = "overlay.gap.draw_static";
+    public const string OverlayGapDrawSeries = "overlay.gap.draw_series";
+    public const string OverlayGapDrawLabels = "overlay.gap.draw_labels";
+    public const string OverlaySettingsRefresh = "overlay.settings.refresh";
+    public const string OverlaySettingsSyncCapture = "overlay.settings.sync_capture";
+    public const string OverlaySettingsSyncDiagnostics = "overlay.settings.sync_diagnostics";
+    public const string OverlaySettingsSyncAnalysis = "overlay.settings.sync_analysis";
+    public const string DiagnosticsBundleCreate = "diagnostics.bundle.create";
+    public const string DiagnosticsBundleMetadata = "diagnostics.bundle.metadata";
+    public const string DiagnosticsBundleRuntimeSettings = "diagnostics.bundle.runtime_settings";
+    public const string DiagnosticsBundleLogs = "diagnostics.bundle.logs";
+    public const string DiagnosticsBundlePerformanceFiles = "diagnostics.bundle.performance_files";
+    public const string DiagnosticsBundleEvents = "diagnostics.bundle.events";
+    public const string DiagnosticsBundleLatestCapture = "diagnostics.bundle.latest_capture";
+    public const string DiagnosticsBundleHistory = "diagnostics.bundle.history";
 }
 
 internal sealed record AppPerformanceSnapshot(

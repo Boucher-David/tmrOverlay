@@ -35,6 +35,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
     private double _radarAlpha;
     private double _leftSideAlpha;
     private double _rightSideAlpha;
+    private bool _settingsPreviewVisible;
     private string? _overlayError;
     private string? _lastLoggedError;
     private DateTimeOffset? _lastLoggedErrorAtUtc;
@@ -74,6 +75,22 @@ internal sealed class CarRadarForm : PersistentOverlayForm
         RefreshOverlay();
     }
 
+    internal void SetSettingsPreviewVisible(bool visible)
+    {
+        if (_settingsPreviewVisible == visible)
+        {
+            return;
+        }
+
+        _settingsPreviewVisible = visible;
+        if (visible)
+        {
+            _radarAlpha = 1d;
+        }
+
+        Invalidate();
+    }
+
     protected override void Dispose(bool disposing)
     {
         if (disposing)
@@ -87,26 +104,52 @@ internal sealed class CarRadarForm : PersistentOverlayForm
 
     protected override void OnPaint(PaintEventArgs e)
     {
-        base.OnPaint(e);
-        if (!ShouldPaintRadar())
-        {
-            return;
-        }
-
+        var started = Stopwatch.GetTimestamp();
+        var succeeded = false;
         try
         {
-            if (_overlayError is not null)
+            base.OnPaint(e);
+            if (!ShouldPaintRadar())
             {
-                DrawError(e.Graphics);
+                succeeded = true;
                 return;
             }
 
-            DrawRadar(e.Graphics);
+            if (_overlayError is not null)
+            {
+                DrawError(e.Graphics);
+                succeeded = true;
+                return;
+            }
+
+            var drawStarted = Stopwatch.GetTimestamp();
+            var drawSucceeded = false;
+            try
+            {
+                DrawRadar(e.Graphics);
+                drawSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayRadarDraw,
+                    drawStarted,
+                    drawSucceeded);
+            }
+
+            succeeded = true;
         }
         catch (Exception exception)
         {
             ReportOverlayError(exception, "render");
             DrawError(e.Graphics);
+        }
+        finally
+        {
+            _performanceState.RecordOperation(
+                AppPerformanceMetricIds.OverlayRadarPaint,
+                started,
+                succeeded);
         }
     }
 
@@ -122,10 +165,39 @@ internal sealed class CarRadarForm : PersistentOverlayForm
                 : FadeInSeconds;
             _lastRefreshAtUtc = now;
 
-            var snapshot = _liveTelemetrySource.Snapshot();
-            _proximity = IsFresh(snapshot, now) ? snapshot.Proximity : LiveProximitySnapshot.Unavailable;
+            LiveTelemetrySnapshot snapshot;
+            var snapshotStarted = Stopwatch.GetTimestamp();
+            var snapshotSucceeded = false;
+            try
+            {
+                snapshot = _liveTelemetrySource.Snapshot();
+                _proximity = IsFresh(snapshot, now) ? snapshot.Proximity : LiveProximitySnapshot.Unavailable;
+                snapshotSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayRadarSnapshot,
+                    snapshotStarted,
+                    snapshotSucceeded);
+            }
+
             _overlayError = null;
-            UpdateFadeState(now, elapsedSeconds);
+            var fadeStarted = Stopwatch.GetTimestamp();
+            var fadeSucceeded = false;
+            try
+            {
+                UpdateFadeState(now, elapsedSeconds);
+                fadeSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayRadarFadeState,
+                    fadeStarted,
+                    fadeSucceeded);
+            }
+
             Invalidate();
             succeeded = true;
         }
@@ -138,7 +210,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
         {
             _performanceState.RecordOperation(
                 AppPerformanceMetricIds.OverlayRadarRefresh,
-                Stopwatch.GetElapsedTime(started),
+                started,
                 succeeded);
         }
     }
@@ -146,6 +218,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
     private bool ShouldPaintRadar()
     {
         return _overlayError is not null
+            || _settingsPreviewVisible
             || _radarAlpha > MinimumVisibleAlpha
             || _leftSideAlpha > MinimumVisibleAlpha
             || _rightSideAlpha > MinimumVisibleAlpha
@@ -155,6 +228,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
     private bool HasCurrentRadarSignal()
     {
         return _overlayError is not null
+            || _settingsPreviewVisible
             || _proximity.HasCarLeft
             || _proximity.HasCarRight
             || CurrentRadarCars().Any()
@@ -329,15 +403,32 @@ internal sealed class CarRadarForm : PersistentOverlayForm
     private void DrawDistanceRings(Graphics graphics, RectangleF bounds)
     {
         using var ringPen = new Pen(WithAlpha(40, 255, 255, 255), 1f);
+        using var labelFont = OverlayTheme.Font(_fontFamily, 7.5f);
+        using var labelBrush = new SolidBrush(WithAlpha(118, 220, 230, 236));
+        using var labelFormat = new StringFormat
+        {
+            Alignment = StringAlignment.Near,
+            LineAlignment = StringAlignment.Center,
+            Trimming = StringTrimming.EllipsisCharacter
+        };
+        var centerX = bounds.X + bounds.Width / 2f;
+        var centerY = bounds.Y + bounds.Height / 2f;
         for (var index = 1; index <= 2; index++)
         {
             var inset = bounds.Width * index / 6f;
+            var radius = bounds.Width / 2f - inset;
             graphics.DrawEllipse(
                 ringPen,
                 bounds.X + inset,
                 bounds.Y + inset,
                 bounds.Width - inset * 2f,
                 bounds.Height - inset * 2f);
+            var labelBounds = new RectangleF(
+                centerX + radius * 0.35f,
+                centerY - radius - 8f,
+                58f,
+                16f);
+            graphics.DrawString(FormatRingGap(index), labelFont, labelBrush, labelBounds, labelFormat);
         }
     }
 
@@ -409,7 +500,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             var color = ProximityColor(closeness, visual.Alpha * _radarAlpha);
 
             using var brush = new SolidBrush(color);
-            using var pen = new Pen(Color.FromArgb(ScaleAlpha(Math.Min(255, color.A + 36), _radarAlpha), 255, 255, 255), 1f);
+            using var pen = new Pen(Color.FromArgb(Math.Min(255, color.A + 36), 255, 255, 255), 1f);
             graphics.FillRoundedRectangle(brush, carRect, 4f);
             graphics.DrawRoundedRectangle(pen, carRect, 4f);
         }
@@ -483,15 +574,23 @@ internal sealed class CarRadarForm : PersistentOverlayForm
     private static Color ProximityColor(double closeness, double visualAlpha)
     {
         var normalized = Math.Clamp(closeness, 0d, 1d);
-        var redMix = SmoothStep(0.45d, 1d, normalized);
-        var alpha = ScaleAlpha(
-            (int)Math.Round(Math.Pow(normalized, 0.8d) * 238d),
-            visualAlpha);
+        var alpha = ScaleAlpha(238, visualAlpha);
+        if (normalized < 0.55d)
+        {
+            var yellowMix = SmoothStep(0d, 0.55d, normalized);
+            return Color.FromArgb(
+                alpha,
+                255,
+                Lerp(255, 210, yellowMix),
+                Lerp(255, 64, yellowMix));
+        }
+
+        var redMix = SmoothStep(0.55d, 1d, normalized);
         return Color.FromArgb(
             alpha,
-            Lerp(246, 236, redMix),
-            Lerp(184, 112, redMix),
-            Lerp(88, 99, redMix));
+            Lerp(255, 236, redMix),
+            Lerp(210, 72, redMix),
+            Lerp(64, 64, redMix));
     }
 
     private static int ScaleAlpha(int alpha, double multiplier)
@@ -525,6 +624,12 @@ internal sealed class CarRadarForm : PersistentOverlayForm
         return car.RelativeSeconds is { } seconds
             ? Math.Abs(seconds) <= RadarRangeSeconds
             : Math.Abs(car.RelativeLaps) <= RadarRangeLaps;
+    }
+
+    private static string FormatRingGap(int ringIndex)
+    {
+        var seconds = RadarRangeSeconds * (1d - ringIndex / 3d);
+        return FormattableString.Invariant($"+/-{seconds:0.0}s");
     }
 
     private static string FormatMulticlassWarning(LiveMulticlassApproach approach)

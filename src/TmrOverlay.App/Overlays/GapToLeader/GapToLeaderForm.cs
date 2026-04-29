@@ -46,6 +46,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
     private LiveLeaderGapSnapshot _gap = LiveLeaderGapSnapshot.Unavailable;
     private DateTimeOffset? _latestPointAtUtc;
     private double? _latestAxisSeconds;
+    private double? _trendStartAxisSeconds;
     private double? _lapReferenceSeconds;
     private int? _lastDriversSoFar;
     private int? _lastClassLeaderCarIdx;
@@ -153,35 +154,66 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
 
     protected override void OnPaint(PaintEventArgs e)
     {
-        base.OnPaint(e);
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-
-        using var borderPen = new Pen(OverlayTheme.Colors.WindowBorder);
-        e.Graphics.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
-
-        var graphBounds = new Rectangle(
-            14,
-            42,
-            Math.Max(280, ClientSize.Width - 28),
-            Math.Max(120, ClientSize.Height - 76));
-        using var graphBrush = new SolidBrush(OverlayTheme.Colors.PanelBackground);
-        e.Graphics.FillRectangle(graphBrush, graphBounds);
-        e.Graphics.DrawRectangle(borderPen, graphBounds);
-
+        var started = Stopwatch.GetTimestamp();
+        var succeeded = false;
         try
         {
+            base.OnPaint(e);
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+
+            using var borderPen = new Pen(OverlayTheme.Colors.WindowBorder);
+            e.Graphics.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
+
+            var graphBounds = new Rectangle(
+                14,
+                42,
+                Math.Max(280, ClientSize.Width - 28),
+                Math.Max(120, ClientSize.Height - 76));
+            using var graphBrush = new SolidBrush(OverlayTheme.Colors.PanelBackground);
+            e.Graphics.FillRectangle(graphBrush, graphBounds);
+            e.Graphics.DrawRectangle(borderPen, graphBounds);
+
             if (_overlayError is not null)
             {
                 DrawError(e.Graphics, graphBounds);
+                succeeded = true;
                 return;
             }
 
-            DrawGraph(e.Graphics, graphBounds);
+            var drawStarted = Stopwatch.GetTimestamp();
+            var drawSucceeded = false;
+            try
+            {
+                DrawGraph(e.Graphics, graphBounds);
+                drawSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayGapDrawGraph,
+                    drawStarted,
+                    drawSucceeded);
+            }
+
+            succeeded = true;
         }
         catch (Exception exception)
         {
             ReportOverlayError(exception, "render");
-            DrawError(e.Graphics, graphBounds);
+            DrawError(
+                e.Graphics,
+                new Rectangle(
+                    14,
+                    42,
+                    Math.Max(280, ClientSize.Width - 28),
+                    Math.Max(120, ClientSize.Height - 76)));
+        }
+        finally
+        {
+            _performanceState.RecordOperation(
+                AppPerformanceMetricIds.OverlayGapPaint,
+                started,
+                succeeded);
         }
     }
 
@@ -191,22 +223,69 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         var succeeded = false;
         try
         {
-            var snapshot = _liveTelemetrySource.Snapshot();
+            LiveTelemetrySnapshot snapshot;
+            var snapshotStarted = Stopwatch.GetTimestamp();
+            var snapshotSucceeded = false;
+            try
+            {
+                snapshot = _liveTelemetrySource.Snapshot();
+                snapshotSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayGapSnapshot,
+                    snapshotStarted,
+                    snapshotSucceeded);
+            }
+
             _gap = snapshot.LeaderGap;
             _lapReferenceSeconds = SelectLapReferenceSeconds(snapshot);
             if (snapshot.Sequence != _lastSequence)
             {
                 _lastSequence = snapshot.Sequence;
-                RecordGapSnapshot(snapshot);
+                var recordStarted = Stopwatch.GetTimestamp();
+                var recordSucceeded = false;
+                try
+                {
+                    RecordGapSnapshot(snapshot);
+                    recordSucceeded = true;
+                }
+                finally
+                {
+                    _performanceState.RecordOperation(
+                        AppPerformanceMetricIds.OverlayGapRecordSnapshot,
+                        recordStarted,
+                        recordSucceeded);
+                }
             }
 
             _overlayError = null;
             ApplyStatusColor(_gap);
+            var selectedSeriesCount = 0;
+            if (_gap.HasData)
+            {
+                var selectStarted = Stopwatch.GetTimestamp();
+                var selectSucceeded = false;
+                try
+                {
+                    selectedSeriesCount = SelectChartSeries().Count;
+                    selectSucceeded = true;
+                }
+                finally
+                {
+                    _performanceState.RecordOperation(
+                        AppPerformanceMetricIds.OverlayGapSelectSeries,
+                        selectStarted,
+                        selectSucceeded);
+                }
+            }
+
             _statusLabel.Text = _gap.HasData
                 ? $"C{FormatPosition(_gap.TeamClassPosition)} {FormatGap(_gap.ClassLeaderGap)}"
                 : "waiting";
             _sourceLabel.Text = _gap.HasData
-                ? $"{FormatTrendWindow(TrendWindow)} class trend | cars {SelectChartSeries().Count}"
+                ? $"{FormatTrendWindow(TrendWindow)} class trend | cars {selectedSeriesCount}"
                 : "source: waiting";
             Invalidate();
             succeeded = true;
@@ -223,7 +302,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         {
             _performanceState.RecordOperation(
                 AppPerformanceMetricIds.OverlayGapRefresh,
-                Stopwatch.GetElapsedTime(started),
+                started,
                 succeeded);
         }
     }
@@ -236,6 +315,10 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         var axisSeconds = SelectAxisSeconds(timestamp, snapshot.LatestSample?.SessionTime);
         _latestPointAtUtc = timestamp;
         _latestAxisSeconds = axisSeconds;
+        if (_trendStartAxisSeconds is null || axisSeconds < _trendStartAxisSeconds.Value)
+        {
+            _trendStartAxisSeconds = axisSeconds;
+        }
 
         RecordWeatherSnapshot(snapshot, axisSeconds);
         RecordDriverChangeMarkers(snapshot, timestamp, axisSeconds);
@@ -277,64 +360,122 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
 
     private void DrawGraph(Graphics graphics, Rectangle graphBounds)
     {
-        var innerBounds = Rectangle.Inflate(graphBounds, -12, -14);
-        innerBounds.Y += 10;
-        innerBounds.Height -= 12;
-        var plotBounds = new Rectangle(
-            innerBounds.Left + AxisLabelWidth,
-            innerBounds.Top,
-            Math.Max(40, innerBounds.Width - AxisLabelWidth),
-            innerBounds.Height);
-        var axisBounds = new Rectangle(innerBounds.Left, innerBounds.Top, AxisLabelWidth - 8, innerBounds.Height);
-
-        var selectedSeries = SelectChartSeries();
-        var domain = SelectTimeDomain(selectedSeries);
-        var maxGapSeconds = SelectMaxGapSeconds(selectedSeries, domain.StartSeconds, domain.EndSeconds);
-
-        DrawWeatherBands(graphics, plotBounds, domain);
-        DrawGridLines(graphics, plotBounds, axisBounds, domain, maxGapSeconds, _lapReferenceSeconds);
-        DrawLeaderChangeMarkers(graphics, plotBounds, domain);
-
-        using var leaderPen = new Pen(Color.FromArgb(235, 255, 255, 255), 1.6f);
-        graphics.DrawLine(leaderPen, plotBounds.Left, plotBounds.Top, plotBounds.Right, plotBounds.Top);
-
-        var endpointLabels = new List<EndpointLabel>();
-        foreach (var selection in selectedSeries
-            .OrderBy(selection => selection.State.IsClassLeader)
-            .ThenBy(selection => selection.State.IsTeamCar))
+        Rectangle plotBounds;
+        Rectangle axisBounds;
+        IReadOnlyList<ChartSeriesSelection> selectedSeries;
+        TrendDomain domain;
+        double maxGapSeconds;
+        var prepareStarted = Stopwatch.GetTimestamp();
+        var prepareSucceeded = false;
+        try
         {
-            var state = selection.State;
-            if (!_series.TryGetValue(state.CarIdx, out var points))
-            {
-                continue;
-            }
+            var innerBounds = Rectangle.Inflate(graphBounds, -12, -14);
+            innerBounds.Y += 10;
+            innerBounds.Height -= 12;
+            plotBounds = new Rectangle(
+                innerBounds.Left + AxisLabelWidth,
+                innerBounds.Top,
+                Math.Max(40, innerBounds.Width - AxisLabelWidth),
+                innerBounds.Height);
+            axisBounds = new Rectangle(innerBounds.Left, innerBounds.Top, AxisLabelWidth - 8, innerBounds.Height);
 
-            var visiblePoints = points
-                .Where(point => point.AxisSeconds >= selection.DrawStartSeconds && point.AxisSeconds >= domain.StartSeconds && point.AxisSeconds <= domain.EndSeconds)
-                .ToArray();
-            if (visiblePoints.Length == 0)
-            {
-                continue;
-            }
-
-            var color = WithAlpha(SeriesColor(state), selection.Alpha * SeriesAlphaMultiplier(state));
-            using var pen = new Pen(color, state.IsTeamCar ? 2.8f : state.IsClassLeader ? 1.8f : 1.25f);
-            if (selection.IsStale || selection.IsStickyExit)
-            {
-                pen.DashStyle = DashStyle.Dash;
-            }
-
-            DrawSeriesSegments(graphics, visiblePoints, pen, color, state.IsTeamCar, domain, maxGapSeconds, plotBounds);
-            AddPositionLabel(endpointLabels, state, visiblePoints[^1], color, domain, maxGapSeconds, plotBounds);
-            if (selection.IsStale)
-            {
-                DrawTerminalMarker(graphics, visiblePoints[^1], color, domain, maxGapSeconds, plotBounds);
-            }
+            selectedSeries = SelectChartSeries();
+            domain = SelectTimeDomain(selectedSeries);
+            maxGapSeconds = SelectMaxGapSeconds(selectedSeries, domain.StartSeconds, domain.EndSeconds);
+            prepareSucceeded = true;
+        }
+        finally
+        {
+            _performanceState.RecordOperation(
+                AppPerformanceMetricIds.OverlayGapDrawPrepare,
+                prepareStarted,
+                prepareSucceeded);
         }
 
-        DrawPositionLabels(graphics, endpointLabels, plotBounds);
-        DrawDriverChangeMarkers(graphics, plotBounds, domain, maxGapSeconds);
-        DrawScaleLabels(graphics, plotBounds, axisBounds, maxGapSeconds);
+        var staticStarted = Stopwatch.GetTimestamp();
+        var staticSucceeded = false;
+        try
+        {
+            DrawWeatherBands(graphics, plotBounds, domain);
+            DrawGridLines(graphics, plotBounds, axisBounds, domain, maxGapSeconds, _lapReferenceSeconds);
+            DrawLeaderChangeMarkers(graphics, plotBounds, domain);
+
+            using var leaderPen = new Pen(Color.FromArgb(235, 255, 255, 255), 1.6f);
+            graphics.DrawLine(leaderPen, plotBounds.Left, plotBounds.Top, plotBounds.Right, plotBounds.Top);
+            staticSucceeded = true;
+        }
+        finally
+        {
+            _performanceState.RecordOperation(
+                AppPerformanceMetricIds.OverlayGapDrawStatic,
+                staticStarted,
+                staticSucceeded);
+        }
+
+        var endpointLabels = new List<EndpointLabel>();
+        var seriesStarted = Stopwatch.GetTimestamp();
+        var seriesSucceeded = false;
+        try
+        {
+            foreach (var selection in selectedSeries
+                .OrderBy(selection => selection.State.IsClassLeader)
+                .ThenBy(selection => selection.State.IsTeamCar))
+            {
+                var state = selection.State;
+                if (!_series.TryGetValue(state.CarIdx, out var points))
+                {
+                    continue;
+                }
+
+                var visiblePoints = points
+                    .Where(point => point.AxisSeconds >= selection.DrawStartSeconds && point.AxisSeconds >= domain.StartSeconds && point.AxisSeconds <= domain.EndSeconds)
+                    .ToArray();
+                if (visiblePoints.Length == 0)
+                {
+                    continue;
+                }
+
+                var color = WithAlpha(SeriesColor(state), selection.Alpha * SeriesAlphaMultiplier(state));
+                using var pen = new Pen(color, state.IsTeamCar ? 2.8f : state.IsClassLeader ? 1.8f : 1.25f);
+                if (selection.IsStale || selection.IsStickyExit)
+                {
+                    pen.DashStyle = DashStyle.Dash;
+                }
+
+                DrawSeriesSegments(graphics, visiblePoints, pen, color, state.IsTeamCar, domain, maxGapSeconds, plotBounds);
+                AddPositionLabel(endpointLabels, state, visiblePoints[^1], color, domain, maxGapSeconds, plotBounds);
+                if (selection.IsStale)
+                {
+                    DrawTerminalMarker(graphics, visiblePoints[^1], color, domain, maxGapSeconds, plotBounds);
+                }
+            }
+
+            seriesSucceeded = true;
+        }
+        finally
+        {
+            _performanceState.RecordOperation(
+                AppPerformanceMetricIds.OverlayGapDrawSeries,
+                seriesStarted,
+                seriesSucceeded);
+        }
+
+        var labelsStarted = Stopwatch.GetTimestamp();
+        var labelsSucceeded = false;
+        try
+        {
+            DrawPositionLabels(graphics, endpointLabels, plotBounds);
+            DrawDriverChangeMarkers(graphics, plotBounds, domain, maxGapSeconds);
+            DrawScaleLabels(graphics, plotBounds, axisBounds, maxGapSeconds);
+            labelsSucceeded = true;
+        }
+        finally
+        {
+            _performanceState.RecordOperation(
+                AppPerformanceMetricIds.OverlayGapDrawLabels,
+                labelsStarted,
+                labelsSucceeded);
+        }
     }
 
     private void RecordWeatherSnapshot(LiveTelemetrySnapshot snapshot, double axisSeconds)
@@ -585,8 +726,16 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
 
     private TrendDomain SelectTimeDomain(IReadOnlyList<ChartSeriesSelection> selectedSeries)
     {
-        var end = _latestAxisSeconds ?? SelectAxisSeconds(_latestPointAtUtc ?? DateTimeOffset.UtcNow, null);
-        var cutoff = end - TrendWindow.TotalSeconds;
+        var latest = _latestAxisSeconds ?? SelectAxisSeconds(_latestPointAtUtc ?? DateTimeOffset.UtcNow, null);
+        var anchor = _trendStartAxisSeconds ?? FirstVisibleAxisSeconds(selectedSeries) ?? latest;
+        var start = latest - anchor > TrendWindow.TotalSeconds
+            ? latest - TrendWindow.TotalSeconds
+            : anchor;
+        return new TrendDomain(start, start + TrendWindow.TotalSeconds);
+    }
+
+    private double? FirstVisibleAxisSeconds(IReadOnlyList<ChartSeriesSelection> selectedSeries)
+    {
         double? firstVisiblePoint = null;
         foreach (var selection in selectedSeries)
         {
@@ -595,7 +744,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
                 continue;
             }
 
-            foreach (var point in points.Where(point => point.AxisSeconds >= cutoff && point.AxisSeconds <= end && point.AxisSeconds >= selection.DrawStartSeconds))
+            foreach (var point in points.Where(point => point.AxisSeconds >= selection.DrawStartSeconds))
             {
                 if (firstVisiblePoint is null || point.AxisSeconds < firstVisiblePoint.Value)
                 {
@@ -604,7 +753,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
             }
         }
 
-        return new TrendDomain(firstVisiblePoint ?? cutoff, end);
+        return firstVisiblePoint;
     }
 
     private double SelectMaxGapSeconds(

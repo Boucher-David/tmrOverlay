@@ -415,7 +415,7 @@ public sealed class FuelStrategyCalculatorTests
             Combo: combo,
             LatestSample: sample,
             Fuel: LiveFuelSnapshot.From(context, sample),
-            Proximity: LiveProximitySnapshot.From(context, sample, teamLastLapTimeSeconds),
+            Proximity: LiveProximitySnapshot.From(context, sample),
             LeaderGap: LiveLeaderGapSnapshot.From(sample));
     }
 

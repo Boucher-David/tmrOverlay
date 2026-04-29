@@ -20,6 +20,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private const string WindowsBuildCommand = "dotnet build .\\src\\TmrOverlay.App\\TmrOverlay.App.csproj -c Release";
     private const string WindowsPublishCommand = "dotnet publish .\\src\\TmrOverlay.App\\TmrOverlay.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o .\\artifacts\\TmrOverlay-win-x64";
     private const string WindowsZipCommand = "Compress-Archive -Path .\\artifacts\\TmrOverlay-win-x64\\* -DestinationPath .\\artifacts\\TmrOverlay-win-x64.zip -Force";
+    private const int SideTabThickness = 38;
+    private const int SideTabLength = 174;
 
     private static readonly string[] PreferredFontFamilies =
     [
@@ -46,6 +48,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private readonly Action _saveSettings;
     private readonly Action _applyOverlaySettings;
     private readonly Action _requestApplicationExit;
+    private readonly Action<string?> _selectedOverlayChanged;
     private readonly Panel _titleBar;
     private readonly Label _titleLabel;
     private readonly Button _closeButton;
@@ -56,6 +59,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private Label? _analysisText;
     private DateTimeOffset _lastAnalysisRefreshUtc = DateTimeOffset.MinValue;
     private string _analysisFingerprint = string.Empty;
+    private string? _lastDisplayedDiagnosticsBundlePath;
+    private DateTimeOffset? _lastDisplayedDiagnosticsBundleErrorAtUtc;
     private bool _loading = true;
     private bool _syncingRawCaptureCheckBox;
     private bool _syncingAnalysis;
@@ -78,7 +83,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         OverlaySettings settings,
         Action saveSettings,
         Action applyOverlaySettings,
-        Action requestApplicationExit)
+        Action requestApplicationExit,
+        Action<string?> selectedOverlayChanged)
         : base(
             settings,
             saveSettings,
@@ -96,6 +102,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _saveSettings = saveSettings;
         _applyOverlaySettings = applyOverlaySettings;
         _requestApplicationExit = requestApplicationExit;
+        _selectedOverlayChanged = selectedOverlayChanged;
 
         BackColor = OverlayTheme.Colors.SettingsBackground;
         Icon = SystemIcons.Application;
@@ -119,7 +126,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             Font = OverlayTheme.Font(OverlayTheme.DefaultFontFamily, 11f, FontStyle.Bold),
             Location = new Point(14, 9),
             Size = new Size(ClientSize.Width - 60, 24),
-            Text = "Settings",
+            Text = "TMR Overlay",
             TextAlign = ContentAlignment.MiddleLeft
         };
 
@@ -141,14 +148,17 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
         _tabs = new TabControl
         {
+            Alignment = TabAlignment.Left,
             DrawMode = TabDrawMode.OwnerDrawFixed,
-            ItemSize = new Size(126, 30),
+            ItemSize = new Size(SideTabThickness, SideTabLength),
             Location = new Point(OverlayTheme.Layout.SettingsTabInset, OverlayTheme.Layout.SettingsTabTop),
+            Multiline = true,
             SizeMode = TabSizeMode.Fixed,
             Size = new Size(ClientSize.Width - 24, ClientSize.Height - 66),
             TabIndex = 0
         };
         _tabs.DrawItem += DrawSettingsTab;
+        _tabs.SelectedIndexChanged += (_, _) => ReportSelectedOverlayTab();
 
         _titleBar.Controls.Add(_titleLabel);
         _titleBar.Controls.Add(_closeButton);
@@ -158,17 +168,13 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         RegisterDragSurfaces(_titleBar, _titleLabel);
 
         BuildTabs();
+        ReportSelectedOverlayTab();
         ApplyFontFamily(_applicationSettings.General.FontFamily);
         _refreshTimer = new System.Windows.Forms.Timer
         {
             Interval = 500
         };
-        _refreshTimer.Tick += (_, _) =>
-        {
-            SyncRawCaptureCheckBox();
-            SyncErrorLoggingTab();
-            SyncPostRaceAnalysis();
-        };
+        _refreshTimer.Tick += (_, _) => RefreshSettingsOverlayState();
         _refreshTimer.Start();
         SyncRawCaptureCheckBox();
         SyncErrorLoggingTab();
@@ -224,6 +230,12 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
     protected override bool UseToolWindowStyle => false;
 
+    protected override void PersistOverlayFrame()
+    {
+        // The settings window is an access point, not a trackside overlay. Keep it
+        // centered on each open instead of carrying monitor-specific placement.
+    }
+
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
@@ -247,6 +259,11 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _tabs.SelectedIndex = 0;
     }
 
+    private void ReportSelectedOverlayTab()
+    {
+        _selectedOverlayChanged(_tabs.SelectedTab?.Tag as string);
+    }
+
     private void RequestApplicationExit()
     {
         if (_applicationExitRequested)
@@ -256,6 +273,68 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
         _applicationExitRequested = true;
         _requestApplicationExit();
+    }
+
+    private void RefreshSettingsOverlayState()
+    {
+        var started = Stopwatch.GetTimestamp();
+        var succeeded = false;
+        try
+        {
+            var captureStarted = Stopwatch.GetTimestamp();
+            var captureSucceeded = false;
+            try
+            {
+                SyncRawCaptureCheckBox();
+                captureSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlaySettingsSyncCapture,
+                    captureStarted,
+                    captureSucceeded);
+            }
+
+            var diagnosticsStarted = Stopwatch.GetTimestamp();
+            var diagnosticsSucceeded = false;
+            try
+            {
+                SyncErrorLoggingTab();
+                diagnosticsSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlaySettingsSyncDiagnostics,
+                    diagnosticsStarted,
+                    diagnosticsSucceeded);
+            }
+
+            var analysisStarted = Stopwatch.GetTimestamp();
+            var analysisSucceeded = false;
+            try
+            {
+                SyncPostRaceAnalysis();
+                analysisSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlaySettingsSyncAnalysis,
+                    analysisStarted,
+                    analysisSucceeded);
+            }
+
+            succeeded = true;
+        }
+        finally
+        {
+            _performanceState.RecordOperation(
+                AppPerformanceMetricIds.OverlaySettingsRefresh,
+                started,
+                succeeded);
+        }
     }
 
     private void DrawSettingsTab(object? sender, DrawItemEventArgs e)
@@ -273,14 +352,20 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         using var borderPen = new Pen(OverlayTheme.Colors.TabBorder);
         e.Graphics.FillRectangle(backgroundBrush, bounds);
         e.Graphics.DrawRectangle(borderPen, bounds.X, bounds.Y, bounds.Width - 1, bounds.Height - 1);
+        if (selected)
+        {
+            using var accentBrush = new SolidBrush(OverlayTheme.Colors.InfoText);
+            e.Graphics.FillRectangle(accentBrush, bounds.Left, bounds.Top + 4, 3, Math.Max(0, bounds.Height - 8));
+        }
 
+        var textBounds = Rectangle.Inflate(bounds, -12, 0);
         TextRenderer.DrawText(
             e.Graphics,
             _tabs.TabPages[e.Index].Text,
             _tabs.Font,
-            bounds,
+            textBounds,
             OverlayTheme.Colors.TextPrimary,
-            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
     }
 
     private TabPage CreateGeneralTab()
@@ -405,8 +490,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         createBundleButton.Click += (_, _) => CreateDiagnosticsBundleFromTab();
         _supportStatusLabel = CreateMutedLabel(string.Empty, 330, 308, 200);
 
-        var performanceLabel = CreateLabel("Performance", 22, 354, 140);
-        _performanceSnapshotLabel = CreateMultiLineValueLabel(string.Empty, 180, 348, 350, 124);
+        var performanceLabel = CreateLabel("Performance", 22, 350, 140);
+        _performanceSnapshotLabel = CreateMultiLineValueLabel(string.Empty, 180, 344, 350, 138);
 
         page.Controls.Add(title);
         page.Controls.Add(note);
@@ -437,6 +522,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             definition.DefaultWidth,
             definition.DefaultHeight);
         var page = CreateTabPage(definition.DisplayName);
+        page.Tag = definition.Id;
         var title = CreateSectionLabel(definition.DisplayName, 18, 18, 500);
 
         var enabledCheckBox = CreateCheckBox("Visible", settings.Enabled, 22, 58, 220);
@@ -871,7 +957,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         }
 
         _analysisFingerprint = fingerprint;
-        var selectedId = (_analysisCombo.SelectedItem as AnalysisListItem)?.Analysis.Id;
         _syncingAnalysis = true;
         try
         {
@@ -881,21 +966,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
                 _analysisCombo.Items.Add(new AnalysisListItem(analysis));
             }
 
-            var selectedIndex = 0;
-            if (!string.IsNullOrWhiteSpace(selectedId))
-            {
-                for (var index = 0; index < _analysisCombo.Items.Count; index++)
-                {
-                    if (_analysisCombo.Items[index] is AnalysisListItem item
-                        && string.Equals(item.Analysis.Id, selectedId, StringComparison.OrdinalIgnoreCase))
-                    {
-                        selectedIndex = index;
-                        break;
-                    }
-                }
-            }
-
-            _analysisCombo.SelectedIndex = _analysisCombo.Items.Count > 0 ? selectedIndex : -1;
+            _analysisCombo.SelectedIndex = _analysisCombo.Items.Count > 0 ? 0 : -1;
         }
         finally
         {
@@ -968,6 +1039,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         }
 
         var captureSnapshot = _captureState.Snapshot();
+        var diagnosticsSnapshot = _diagnosticsBundleService.Snapshot();
         if (_currentIssueLabel is not null)
         {
             _currentIssueLabel.Text = CurrentIssueText(captureSnapshot);
@@ -975,7 +1047,9 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
         if (_latestDiagnosticsBundleTextBox is not null)
         {
-            _latestDiagnosticsBundleTextBox.Text = LatestDiagnosticsBundlePath() ?? string.Empty;
+            var latestBundlePath = diagnosticsSnapshot.LastBundlePath ?? LatestDiagnosticsBundlePath() ?? string.Empty;
+            _latestDiagnosticsBundleTextBox.Text = latestBundlePath;
+            ReportAutomaticDiagnosticsBundleStatus(diagnosticsSnapshot, latestBundlePath);
         }
 
         if (_performanceSnapshotLabel is not null)
@@ -1066,6 +1140,43 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             ?.FullName;
     }
 
+    private void ReportAutomaticDiagnosticsBundleStatus(
+        DiagnosticsBundleStatus diagnosticsSnapshot,
+        string latestBundlePath)
+    {
+        if (_supportStatusLabel is null)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(diagnosticsSnapshot.LastError)
+            && string.Equals(
+                diagnosticsSnapshot.LastErrorSource,
+                DiagnosticsBundleSources.SessionFinalization,
+                StringComparison.Ordinal)
+            && diagnosticsSnapshot.LastErrorAtUtc != _lastDisplayedDiagnosticsBundleErrorAtUtc)
+        {
+            _lastDisplayedDiagnosticsBundleErrorAtUtc = diagnosticsSnapshot.LastErrorAtUtc;
+            SetSupportStatus($"Auto bundle failed: {diagnosticsSnapshot.LastError}", isError: true);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(latestBundlePath)
+            || string.Equals(_lastDisplayedDiagnosticsBundlePath, latestBundlePath, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _lastDisplayedDiagnosticsBundlePath = latestBundlePath;
+        if (string.Equals(
+                diagnosticsSnapshot.LastBundleSource,
+                DiagnosticsBundleSources.SessionFinalization,
+                StringComparison.Ordinal))
+        {
+            SetSupportStatus("Auto bundle created after session.", isError: false);
+        }
+    }
+
     private void SetSupportStatus(string message, bool isError)
     {
         if (_supportStatusLabel is null)
@@ -1106,7 +1217,9 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             $"telemetry: {performance.TelemetryFrameCount:N0} frames, {performance.TelemetryFramesPerSecond:0.##} fps",
             $"data changed: {MetricSummary(performance, AppPerformanceMetricIds.TelemetryDataChanged)}",
             $"live/history: {MetricCompact(performance, AppPerformanceMetricIds.LiveTelemetrySink)} / {MetricCompact(performance, AppPerformanceMetricIds.HistoryRecordFrame)}",
+            $"finalize: history {MetricCompact(performance, AppPerformanceMetricIds.TelemetryFinalizeSaveHistory)}, analysis {MetricCompact(performance, AppPerformanceMetricIds.TelemetryFinalizeSaveAnalysis)}, bundle {MetricCompact(performance, AppPerformanceMetricIds.TelemetryFinalizeDiagnosticsBundle)}",
             $"overlays avg: status {MetricAverage(performance, AppPerformanceMetricIds.OverlayStatusRefresh)}, fuel {MetricAverage(performance, AppPerformanceMetricIds.OverlayFuelRefresh)}, radar {MetricAverage(performance, AppPerformanceMetricIds.OverlayRadarRefresh)}, gap {MetricAverage(performance, AppPerformanceMetricIds.OverlayGapRefresh)}",
+            $"diagnostics: create {MetricCompact(performance, AppPerformanceMetricIds.DiagnosticsBundleCreate)}, files {MetricCompact(performance, AppPerformanceMetricIds.DiagnosticsBundlePerformanceFiles)}, history {MetricCompact(performance, AppPerformanceMetricIds.DiagnosticsBundleHistory)}",
             $"raw: written {capture.WrittenFrameCount:N0}, queue {performance.Capture.LastPendingMessageCount:N0}, drops {capture.DroppedFrameCount:N0}, file {FormatBytes(capture.TelemetryFileBytes)}",
             $"process: ws {FormatBytes(performance.Process.WorkingSetBytes)}, heap {FormatBytes(performance.Process.ManagedHeapBytes)}");
     }

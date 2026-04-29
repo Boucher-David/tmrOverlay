@@ -16,7 +16,7 @@
 - Writes compact per-combo session history under app-owned local storage.
 - Shows an early fuel calculator overlay that estimates race laps, whole-lap stint targets, final-stint length, realistic fuel-saving alerts, and stop-by-stop tire-change timing guidance.
 - Shows first-pass radar and gap-to-leader overlays backed by live `CarLeftRight`, `CarIdxF2Time`, `CarIdxEstTime`, and `CarIdx*` progress/position telemetry.
-  The radar is a transparent circular proximity view that only paints when traffic is nearby, fades car rectangles from red to yellow to transparent as traffic moves away, and can show an outer-ring multiclass approaching warning with a live seconds gap. The gap overlay is a four-hour in-class trend graph with the class leader as the top baseline, adaptive Y-axis scaling, left-side axis labels, lap reference lines, subtle weather bands, driver/leader-change markers, dimmed non-team context lines, and endpoint `P<N>` labels. It keeps bounded in-memory traces for all available same-class timing rows, while dynamically rendering the leader, the team car, nearby class traffic, and recently visible cars.
+  The radar is a transparent circular proximity view that only paints from fresh live telemetry, colors nearby car rectangles from white to yellow to red as traffic gets closer, labels its time-gap rings, and can show an outer-ring multiclass approaching warning with a live seconds gap. The gap overlay is a four-hour in-class trend graph with the class leader as the top baseline, adaptive Y-axis scaling, left-side axis labels, lap reference lines, subtle weather bands, driver/leader-change markers, dimmed non-team context lines, and endpoint `P<N>` labels. It keeps bounded in-memory traces for all available same-class timing rows, while dynamically rendering the leader, the team car, nearby class traffic, and recently visible cars.
 - Stores early pit-service history signals such as pit-lane time, pit-stall/service time, observed fuel fill rate, tire/repair indicators, and confidence flags.
 - Keeps raw capture as an opt-in diagnostic/development mode; the settings window can request raw capture at runtime if the app was started without the flag.
 - When raw capture is enabled, stores `telemetry.bin`, `telemetry-schema.json`, `latest-session.yaml`, optional `session-info/`, and `capture-manifest.json`.
@@ -40,6 +40,7 @@
 - `tests/TmrOverlay.App.Tests/` contains the xUnit test project for non-UI logic.
 - `local-mac/TmrOverlayMac/` is the ignored local macOS harness. It mirrors the Windows structure for overlay iteration but uses mock telemetry.
 - `docs/capture-format.md` documents the binary frame format used by `telemetry.bin`.
+- `docs/overlay-logic.md` is the human-readable index for how each overlay derives and displays its state.
 - `telemetry.md` summarizes the event/session/car schema exposed by the current raw capture model.
 
 ## Raw Capture Output
@@ -121,7 +122,7 @@ At the end of each live telemetry collection, the app writes a compact historica
 
 That data is intentionally much smaller than raw telemetry. It is meant to support future startup estimates for fuel usage, lap time, stint length, and pit behavior for a known car/track/session combo before the current live session has enough data.
 
-The fuel calculator uses live race telemetry first, then exact car/track/session user history only as a fallback while the current session is still sparse. For timed races, it continuously estimates the likely lap count from session time, overall-leader pace/progress, class-leader context, and team-car progress, then converts that into whole-lap stint targets; it does not hard-code a four-hour race length in the production overlay. If completed user/team history shows an 8-lap stint is realistic, future rows can be biased toward that shape, such as `7/8/7/8` for the local Nürburgring development sample. The table also performs strategy analysis across race lengths by comparing a shorter conservative stint rhythm against the longest realistic target, then surfaces extra stops and estimated pit-time loss as a strategy row. Stint rows show target laps and target liters-per-lap, plus tire-change guidance based on historical fill-rate and tire-service timing. As live progress advances, completed stint rows roll off the top of the table. If no fuel stop is needed, unused rows are hidden while the overlay keeps a stable window height instead of switching between compact and full layouts.
+The fuel calculator uses live race telemetry first, then exact car/track/session user history only as a fallback while the current session is still sparse. For timed races, it continuously estimates the likely lap count from session time, overall-leader pace/progress, class-leader context, and team-car progress, then converts that into whole-lap stint targets; it does not hard-code a four-hour race length in the production overlay. If completed user/team history shows an 8-lap stint is realistic, future rows can be biased toward that shape, such as `7/8/7/8` for the local Nürburgring development sample. The table also performs strategy analysis across race lengths by comparing a shorter conservative stint rhythm against the longest realistic target, then surfaces extra stops and estimated pit-time loss as a strategy row. Stint rows show target laps and target liters-per-lap, plus tire-change guidance based on historical fill-rate and tire-service timing. As live progress advances, completed stint rows roll off the top of the table while the table keeps its full row layout to avoid view changes during a run.
 
 Completed stint history is stored separately from the active/future fuel table so completed stints can improve future user-specific estimates without continuing to occupy overlay rows. Pit-service history is stored as derived stop summaries plus aggregate metrics, including average tire-change service time, no-tire service time when known, and observed fuel fill rate. Fuel fill rates are only treated as measured when local scalar fuel telemetry is valid; team-driver or inferred values carry confidence flags.
 
@@ -265,9 +266,11 @@ python3 tools/validate_overlay_screenshots.py
 
 That keeps the contact sheets and per-state PNGs under `mocks/` current and catches missing, wrong-size, or blank artifacts before visual review.
 
+When overlay behavior changes, update the matching English logic note under [docs/overlay-logic.md](/Users/davidboucher/Code/tmrOverlay/docs/overlay-logic.md) in the same pass so later design tweaks can be made from readable rules instead of code spelunking.
+
 ## Next Steps
 
 - Add a replay tool that can decode `telemetry.bin` with `telemetry-schema.json`.
 - Harden the radar and gap overlays against longer multi-class traffic captures.
-- Design the post-race strategy review/export flow described in [docs/post-race-strategy-analysis.md](/Users/davidboucher/Code/tmrOverlay/docs/post-race-strategy-analysis.md).
+- Expand the post-race strategy review/export flow described in [docs/post-race-strategy-analysis.md](/Users/davidboucher/Code/tmrOverlay/docs/post-race-strategy-analysis.md) and [docs/post-race-analysis-logic.md](/Users/davidboucher/Code/tmrOverlay/docs/post-race-analysis-logic.md).
 - Start with update notification before self-update; see [docs/update-strategy.md](/Users/davidboucher/Code/tmrOverlay/docs/update-strategy.md).

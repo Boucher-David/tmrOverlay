@@ -29,7 +29,7 @@ EXPECTED_STATE_PNGS = [
     "fuel-calculator/states/waiting.png",
     "fuel-calculator/states/opening-stint.png",
     "fuel-calculator/states/mid-race.png",
-    "fuel-calculator/states/compact-finish.png",
+    "fuel-calculator/states/stable-finish.png",
     "settings-overlay/states/general.png",
     "settings-overlay/states/error-logging.png",
     "settings-overlay/states/overlay-tab.png",

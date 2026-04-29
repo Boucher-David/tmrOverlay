@@ -25,6 +25,13 @@ internal sealed class DiagnosticsBundleService
     private readonly AppPerformanceState _performanceState;
     private readonly AppPerformanceSnapshotRecorder _performanceRecorder;
     private readonly ILogger<DiagnosticsBundleService> _logger;
+    private readonly object _sync = new();
+    private string? _lastBundlePath;
+    private DateTimeOffset? _lastBundleCreatedAtUtc;
+    private string? _lastBundleSource;
+    private string? _lastError;
+    private DateTimeOffset? _lastErrorAtUtc;
+    private string? _lastErrorSource;
 
     public DiagnosticsBundleService(
         AppStorageOptions storageOptions,
@@ -40,28 +47,189 @@ internal sealed class DiagnosticsBundleService
         _logger = logger;
     }
 
-    public string CreateBundle()
+    public DiagnosticsBundleStatus Snapshot()
     {
-        Directory.CreateDirectory(_storageOptions.DiagnosticsRoot);
-        var bundlePath = Path.Combine(
-            _storageOptions.DiagnosticsRoot,
-            $"tmroverlay-diagnostics-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.zip");
+        lock (_sync)
+        {
+            return new DiagnosticsBundleStatus(
+                _lastBundlePath,
+                _lastBundleCreatedAtUtc,
+                _lastBundleSource,
+                _lastError,
+                _lastErrorAtUtc,
+                _lastErrorSource);
+        }
+    }
 
-        using var archive = ZipFile.Open(bundlePath, ZipArchiveMode.Create);
-        AddTextEntry(archive, "metadata/app-version.json", JsonSerializer.Serialize(AppVersionInfo.Current, JsonOptions));
-        AddTextEntry(archive, "metadata/storage.json", JsonSerializer.Serialize(_storageOptions, JsonOptions));
-        AddTextEntry(archive, "metadata/telemetry-state.json", JsonSerializer.Serialize(_captureState.Snapshot(), JsonOptions));
-        AddTextEntry(archive, "metadata/performance.json", JsonSerializer.Serialize(_performanceState.Snapshot(), JsonOptions));
-        AddFileIfExists(archive, _storageOptions.RuntimeStatePath, "runtime/runtime-state.json");
-        AddFileIfExists(archive, Path.Combine(_storageOptions.SettingsRoot, "settings.json"), "settings/settings.json");
-        AddRecentFiles(archive, _storageOptions.LogsRoot, "*.log", "logs", maxFiles: 10);
-        AddRecentFiles(archive, _performanceRecorder.PerformanceLogsRoot, "*.jsonl", "performance", maxFiles: 10);
-        AddRecentFiles(archive, _storageOptions.EventsRoot, "*.jsonl", "events", maxFiles: 10);
-        AddLatestCaptureMetadata(archive);
-        AddUserHistoryMetadata(archive);
+    public string CreateBundle(string source = DiagnosticsBundleSources.Manual)
+    {
+        var bundleStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+        var bundleSucceeded = false;
+        try
+        {
+            Directory.CreateDirectory(_storageOptions.DiagnosticsRoot);
+            var createdAtUtc = DateTimeOffset.UtcNow;
+            var bundlePath = Path.Combine(
+                _storageOptions.DiagnosticsRoot,
+                $"tmroverlay-diagnostics-{createdAtUtc:yyyyMMdd-HHmmss-fff}.zip");
 
-        _logger.LogInformation("Created diagnostics bundle {DiagnosticsBundlePath}.", bundlePath);
-        return bundlePath;
+            using var archive = ZipFile.Open(bundlePath, ZipArchiveMode.Create);
+
+            var metadataStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+            var metadataSucceeded = false;
+            try
+            {
+                AddTextEntry(archive, "metadata/app-version.json", JsonSerializer.Serialize(AppVersionInfo.Current, JsonOptions));
+                AddTextEntry(archive, "metadata/diagnostics-bundle.json", JsonSerializer.Serialize(new
+                {
+                    CreatedAtUtc = createdAtUtc,
+                    Source = source
+                }, JsonOptions));
+                AddTextEntry(archive, "metadata/storage.json", JsonSerializer.Serialize(_storageOptions, JsonOptions));
+                AddTextEntry(archive, "metadata/telemetry-state.json", JsonSerializer.Serialize(_captureState.Snapshot(), JsonOptions));
+                metadataSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.DiagnosticsBundleMetadata,
+                    metadataStarted,
+                    metadataSucceeded);
+            }
+
+            var runtimeSettingsStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+            var runtimeSettingsSucceeded = false;
+            try
+            {
+                AddFileIfExists(archive, _storageOptions.RuntimeStatePath, "runtime/runtime-state.json");
+                AddFileIfExists(archive, Path.Combine(_storageOptions.SettingsRoot, "settings.json"), "settings/settings.json");
+                runtimeSettingsSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.DiagnosticsBundleRuntimeSettings,
+                    runtimeSettingsStarted,
+                    runtimeSettingsSucceeded);
+            }
+
+            var logsStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+            var logsSucceeded = false;
+            try
+            {
+                AddRecentFiles(archive, _storageOptions.LogsRoot, "*.log", "logs", maxFiles: 10);
+                logsSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.DiagnosticsBundleLogs,
+                    logsStarted,
+                    logsSucceeded);
+            }
+
+            var performanceStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+            var performanceSucceeded = false;
+            try
+            {
+                AddRecentFiles(archive, _performanceRecorder.PerformanceLogsRoot, "*.jsonl", "performance", maxFiles: 10);
+                performanceSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.DiagnosticsBundlePerformanceFiles,
+                    performanceStarted,
+                    performanceSucceeded);
+            }
+
+            var eventsStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+            var eventsSucceeded = false;
+            try
+            {
+                AddRecentFiles(archive, _storageOptions.EventsRoot, "*.jsonl", "events", maxFiles: 10);
+                eventsSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.DiagnosticsBundleEvents,
+                    eventsStarted,
+                    eventsSucceeded);
+            }
+
+            var latestCaptureStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+            var latestCaptureSucceeded = false;
+            try
+            {
+                AddLatestCaptureMetadata(archive);
+                latestCaptureSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.DiagnosticsBundleLatestCapture,
+                    latestCaptureStarted,
+                    latestCaptureSucceeded);
+            }
+
+            var historyStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+            var historySucceeded = false;
+            try
+            {
+                AddUserHistoryMetadata(archive);
+                historySucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.DiagnosticsBundleHistory,
+                    historyStarted,
+                    historySucceeded);
+            }
+
+            AddTextEntry(archive, "metadata/performance.json", JsonSerializer.Serialize(_performanceState.Snapshot(), JsonOptions));
+
+            _logger.LogInformation("Created diagnostics bundle {DiagnosticsBundlePath}.", bundlePath);
+            RecordSuccess(bundlePath, createdAtUtc, source);
+            bundleSucceeded = true;
+            return bundlePath;
+        }
+        catch (Exception exception)
+        {
+            RecordFailure(exception, source);
+            throw;
+        }
+        finally
+        {
+            _performanceState.RecordOperation(
+                AppPerformanceMetricIds.DiagnosticsBundleCreate,
+                bundleStarted,
+                bundleSucceeded);
+        }
+    }
+
+    private void RecordSuccess(string bundlePath, DateTimeOffset createdAtUtc, string source)
+    {
+        lock (_sync)
+        {
+            _lastBundlePath = bundlePath;
+            _lastBundleCreatedAtUtc = createdAtUtc;
+            _lastBundleSource = source;
+            _lastError = null;
+            _lastErrorAtUtc = null;
+            _lastErrorSource = null;
+        }
+    }
+
+    private void RecordFailure(Exception exception, string source)
+    {
+        lock (_sync)
+        {
+            _lastError = exception.Message;
+            _lastErrorAtUtc = DateTimeOffset.UtcNow;
+            _lastErrorSource = source;
+        }
     }
 
     private void AddUserHistoryMetadata(ZipArchive archive)
@@ -184,3 +352,17 @@ internal sealed class DiagnosticsBundleService
         return relativePath.Replace(Path.DirectorySeparatorChar, '/').Replace(Path.AltDirectorySeparatorChar, '/');
     }
 }
+
+internal static class DiagnosticsBundleSources
+{
+    public const string Manual = "manual";
+    public const string SessionFinalization = "session_finalization";
+}
+
+internal sealed record DiagnosticsBundleStatus(
+    string? LastBundlePath,
+    DateTimeOffset? LastBundleCreatedAtUtc,
+    string? LastBundleSource,
+    string? LastError,
+    DateTimeOffset? LastErrorAtUtc,
+    string? LastErrorSource);

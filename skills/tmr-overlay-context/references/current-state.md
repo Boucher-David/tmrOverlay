@@ -60,14 +60,16 @@ Last updated: 2026-04-28
   - new overlay features should log unexpected refresh/render failures and surface a compact visible error state, while normal telemetry gaps should degrade to waiting/unavailable
 
 - `src/TmrOverlay.App/Overlays/SettingsPanel/`
-  - wide 1080x600 settings window centered on the primary screen by default so all current tabs fit without tab-strip scrolling
+  - wide 1080x600 settings window with a `TMR Overlay` title bar and vertical left-side tabs so all current tabs fit without horizontal tab-strip scrolling
+  - the settings window is recentered whenever it opens and does not persist user-dragged placement between runs
   - opens on startup and can be reopened from the tray menu
   - acts as the main UI; clicking its `X` or otherwise closing it through the user close path exits the application instead of hiding the app to the tray
   - uses normal desktop z-order, taskbar, and Alt+Tab behavior instead of the product overlays' tool-window/always-on-top behavior
-  - tabs include General, Error Logging, each current overlay, an Overlay Bridge placeholder for post-v1.0 controls, and Post-race Analysis with a past-session picker backed by saved analysis rows plus the built-in four-hour sample
+  - tabs include General, Error Logging, each current overlay, an Overlay Bridge placeholder for post-v1.0 controls, and Post-race Analysis with a past-session picker backed by saved analysis rows plus the built-in four-hour sample; refreshes default to the most recent analysis
   - General exposes a shared overlay font-family selector from widely available fonts, a metric/imperial unit selector, and copy-only Windows build/publish/zip commands for local development
   - Error Logging shows the current app warning/error from `TelemetryCaptureState`, opens local log/diagnostics folders, shows a lightweight performance summary, and can create/copy a diagnostics bundle using `DiagnosticsBundleService`
   - per-overlay tabs expose visibility, scale, test/practice/qualifying/race session filters, and descriptor-driven overlay-specific display options
+  - opening the radar settings tab forces the radar overlay visible as a live preview even when user/session visibility would otherwise hide it
   - the Collector Status tab owns the runtime `Raw capture` checkbox
   - visibility, scale, font, unit, and display-option changes apply to open overlays immediately; session filters are rechecked against live session type
 
@@ -76,21 +78,22 @@ Last updated: 2026-04-28
   - estimates timed-race laps from session time, selected lap time, and leader/team progress
   - uses live fuel burn first, then exact user history for car/track/session combos; tracked baseline/sample history is opt-in
   - renders whole-lap stint targets, target liters-per-lap, planned stint/stop count, final stint length, laps-per-tank, and min/avg/max burn when history exists
-  - collapses unnecessary future rows when no fuel stop is needed
+  - keeps the full table row layout visible so strategy changes do not resize or switch the overlay view during live updates
   - adds an advice column that estimates whether tire service is likely free under refueling time or costs extra stationary time, using historical fill-rate and tire-service aggregates when available
   - adds a strategy row when useful, comparing a shorter conservative stint rhythm against the longest realistic target and quantifying extra stops plus estimated pit-time loss
   - accounts for overall leader pace/progress for timed-race lap count, stores class-leader context, and shows leader/class gaps in the source row when available
   - can bias future stint targets toward historical team-stint evidence, currently 8 laps for the 4-hour Nürburgring baseline, without labeling teammate rows in the UI
   - warns when a target such as an 8-lap stint needs realistic fuel saving versus nominal tank range or avoids extra stops over longer races
-  - keeps a stable window height while hiding unused future rows; it no longer switches between compact/full window layouts during live updates
+  - uses blank future rows when no fuel stop is needed or fewer stints are known, instead of hiding rows based on noisy collection thresholds
   - caches exact history lookups briefly by car/track/session so live fuel refreshes do not reread aggregate JSON every tick
 
 - `src/TmrOverlay.App/Overlays/CarRadar/`
   - draggable 300px circular radar overlay placed to the right of the status overlay by default
   - transparent outside the circle and paints nothing when no cars are within proximity or multiclass warning range
   - uses `CarLeftRight` for side occupancy
-  - uses nearby `CarIdxEstTime`, `CarIdxLapDistPct`, and `CarIdxLapCompleted` progress for first-pass relative placement
-  - draws the team car as a white rectangle and nearby traffic from any class as car rectangles that fade from red to yellow to transparent as traffic moves away
+  - uses only fresh live nearby-car telemetry for placement/timing; `CarIdxEstTime` and `CarIdxF2Time` provide timing when available, while live `CarIdxLapDistPct` / `CarIdxLapCompleted` progress can still place cars without synthesizing a seconds gap from history or fuel estimates
+  - keeps pit-road cars in the nearby set when live telemetry reports them, including the test case where the player is also on pit road
+  - draws the team car as a white rectangle and nearby traffic from any class as car rectangles that color from white to yellow to red as traffic gets closer, with light time-gap labels on the radar rings
   - keeps per-car visual state by `CarIdx`, fades the whole radar and side-warning rectangles in/out, and treats stale live snapshots as unavailable so old proximity does not stay painted forever
   - tracks recent relative timing for other-class cars and can draw a short outer red arc with a live seconds gap when faster multiclass traffic is approaching from behind before it reaches close radar range
   - currently does not have true per-car lateral placement; side occupancy comes from the scalar iRacing left/right signal
@@ -101,7 +104,7 @@ Last updated: 2026-04-28
   - keeps bounded overlay-local four-hour in-memory traces for all available same-class timing rows; these traces are only for rendering and are not persisted
   - consumes a separate same-class timing row list so cars with valid standings/F2 timing but invalid lap-distance progress can still appear in the graph without polluting radar proximity placement
   - dynamically renders the class leader, team car, nearest five same-class cars ahead and behind, plus recently visible cars that need continuity as they enter/leave the nearby window
-  - starts the X-axis at the first visible sample, scales the Y-axis to the visible field spread, keeps axis labels in a left gutter, highlights whole-lap gap reference lines when the field spreads far enough, draws vertical 5-lap duration markers, and labels current line endpoints with compact current `P<N>` class-position tags
+  - anchors the X-axis at the first visible sample and grows the line horizontally until the four-hour window is full, then slides the window; it scales the Y-axis to the visible field spread, keeps axis labels in a left gutter, highlights whole-lap gap reference lines when the field spreads far enough, draws vertical 5-lap duration markers, and labels current line endpoints with compact current `P<N>` class-position tags
   - draws subtle weather-condition bands behind the graph from live `TrackWetness` / `WeatherDeclaredWet`; non-team/non-leader context lines are intentionally dimmed to keep the team gap and position readable
   - marks driver swaps as compact ticks/dots on the affected line while preserving line color; Windows uses real session-info driver-row changes by `CarIdx` plus the local `DCDriversSoFar` signal, while the mac harness can use named mock handoffs
   - marks leader changes and keeps old leader/currently exiting/missing-telemetry car lines visually continuous with fade/dash behavior instead of disappearing abruptly
@@ -211,6 +214,7 @@ Last updated: 2026-04-28
 - `src/TmrOverlay.App/Diagnostics/`
   - creates support bundles with app/storage metadata, telemetry state, lightweight performance snapshots, recent performance logs, runtime state, settings, logs/events, and latest capture metadata
   - includes recent post-race analysis JSON plus recent user-history summaries and aggregates so collected car/track/session metrics can be inspected for accuracy
+  - creates a best-effort diagnostics bundle automatically when a live telemetry session finalizes, and the Error Logging tab reports the latest automatic bundle
   - intentionally excludes raw `telemetry.bin`
 
 - `src/TmrOverlay.App/Retention/`
@@ -257,6 +261,9 @@ Last updated: 2026-04-28
   - xUnit test project for non-UI logic
   - currently covers storage path resolution, bridge options, history path slugs, local file log writing, settings persistence/migration, diagnostics bundle contents, performance snapshot aggregation, retention cleanup, runtime-state markers, live fuel/proximity/gap derivation, fuel strategy calculations, and fuel view-model empty-state behavior
 
+- `docs/overlay-logic.md`
+  - index for human-readable overlay and analysis logic notes; update the matching note whenever overlay derivation, display rules, visibility rules, or analysis rules change
+
 - `tools/validate_overlay_screenshots.py`
   - validates that expected screenshot PNG artifacts exist, match fixed dimensions where appropriate, and are not blank
   - should be run after regenerating screenshots, but does not replace visual review for scenario correctness, text clipping/overlap, misleading populated-empty states, or platform-specific layout behavior
@@ -266,6 +273,7 @@ Last updated: 2026-04-28
   - each scenario fixture should make both positive expectations and negative expectations obvious
   - waiting/unavailable/error paths should be deterministic and isolated from local machine state unless the scenario explicitly tests history fallback or support-path display
   - the same fixture-driven approach applies to collectors, diagnostics bundles, retention, updater, settings, and performance telemetry paths
+  - code changes should include a stale-reference sweep across docs, mocks, tests, the ignored mac harness, and repo skills before final validation so old behavior names/descriptions/API patterns do not survive alongside new implementation behavior
 
 - `.github/workflows/windows-dotnet.yml`
   - restores, builds, and tests `tmrOverlay.sln` on `windows-latest`
@@ -428,6 +436,7 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 5. Keep raw capture available for diagnostics, but avoid making it the normal user data path.
 6. Expand post-race strategy review/export beyond the first saved-analysis view; see `docs/post-race-strategy-analysis.md`.
 7. Start with update notification before self-update; see `docs/update-strategy.md`.
+8. Future branch idea: add a historical data maintenance flow that parses the user's stored history/analysis collection, detects schema or functionality-version gaps, and migrates/rebuilds data so older sessions stay compatible with newer app behavior.
 
 ## Files Most Likely To Change Next
 
