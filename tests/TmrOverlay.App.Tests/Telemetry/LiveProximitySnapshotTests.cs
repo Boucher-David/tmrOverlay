@@ -88,9 +88,54 @@ public sealed class LiveProximitySnapshotTests
 
         var proximity = LiveProximitySnapshot.From(context, sample);
 
+        Assert.Equal(4098, proximity.ReferenceCarClass);
         var multiclassCar = Assert.Single(proximity.NearbyCars);
         Assert.Equal(55, multiclassCar.CarIdx);
         Assert.Equal(4099, multiclassCar.CarClass);
+    }
+
+    [Fact]
+    public void From_UsesFocusedCarProgressWhenCameraFocusDiffersFromPlayer()
+    {
+        var context = new HistoricalSessionContext
+        {
+            Car = new HistoricalCarIdentity(),
+            Track = new HistoricalTrackIdentity(),
+            Session = new HistoricalSessionIdentity(),
+            Conditions = new HistoricalSessionInfoConditions()
+        };
+        var sample = CreateSample(
+            teamLapDistPct: -1d,
+            carLeftRight: 4,
+            focusCarIdx: 30,
+            focusLapDistPct: 0.25d,
+            focusEstimatedTimeSeconds: 50d,
+            focusCarClass: 4099,
+            nearbyCars:
+            [
+                new HistoricalCarProximity(
+                    CarIdx: 12,
+                    LapCompleted: 5,
+                    LapDistPct: 0.265d,
+                    F2TimeSeconds: null,
+                    EstimatedTimeSeconds: 51.5d,
+                    Position: 3,
+                    ClassPosition: 3,
+                    CarClass: 1,
+                    TrackSurface: 3,
+                    OnPitRoad: false)
+            ]);
+
+        var proximity = LiveProximitySnapshot.From(context, sample);
+
+        Assert.Equal(4099, proximity.ReferenceCarClass);
+        var car = Assert.Single(proximity.NearbyCars);
+        Assert.Equal(12, car.CarIdx);
+        Assert.Equal(0.015d, car.RelativeLaps, precision: 6);
+        Assert.Equal(1.5d, car.RelativeSeconds!.Value, precision: 6);
+        Assert.False(proximity.HasCarLeft);
+        Assert.False(proximity.HasCarRight);
+        Assert.Equal("waiting", proximity.SideStatus);
     }
 
     [Fact]
@@ -220,13 +265,13 @@ public sealed class LiveProximitySnapshotTests
         var gap = LiveLeaderGapSnapshot.From(sample);
 
         Assert.True(gap.HasData);
-        Assert.Equal(7, gap.TeamOverallPosition);
-        Assert.Equal(6, gap.TeamClassPosition);
+        Assert.Equal(7, gap.ReferenceOverallPosition);
+        Assert.Equal(6, gap.ReferenceClassPosition);
         Assert.Equal(91.5d, gap.OverallLeaderGap.Seconds!.Value);
         Assert.Equal(68.25d, gap.ClassLeaderGap.Seconds!.Value);
         Assert.Equal("CarIdxF2Time", gap.OverallLeaderGap.Source);
         Assert.Contains(gap.ClassCars, car => car.IsClassLeader && car.GapSecondsToClassLeader == 0d);
-        Assert.Contains(gap.ClassCars, car => car.IsTeamCar && car.GapSecondsToClassLeader == 68.25d);
+        Assert.Contains(gap.ClassCars, car => car.IsReferenceCar && car.GapSecondsToClassLeader == 68.25d);
     }
 
     [Fact]
@@ -300,11 +345,66 @@ public sealed class LiveProximitySnapshotTests
         Assert.Equal(2, gap.ClassCars.Single(car => car.IsClassLeader).CarIdx);
     }
 
+    [Fact]
+    public void LeaderGap_UsesFocusedCarClassContextWhenCameraFocusDiffersFromPlayer()
+    {
+        var sample = CreateSample(
+            teamClassPosition: 6,
+            teamCarClass: 4098,
+            teamF2TimeSeconds: 90d,
+            classLeaderF2TimeSeconds: 10d,
+            focusCarIdx: 30,
+            focusPosition: 8,
+            focusClassPosition: 3,
+            focusCarClass: 4099,
+            focusF2TimeSeconds: 42d,
+            focusClassLeaderCarIdx: 55,
+            focusClassLeaderF2TimeSeconds: 12d,
+            focusClassCars:
+            [
+                new HistoricalCarProximity(
+                    CarIdx: 56,
+                    LapCompleted: -1,
+                    LapDistPct: -1d,
+                    F2TimeSeconds: 50d,
+                    EstimatedTimeSeconds: null,
+                    Position: 9,
+                    ClassPosition: 4,
+                    CarClass: 4099,
+                    TrackSurface: null,
+                    OnPitRoad: null)
+            ],
+            classCars:
+            [
+                new HistoricalCarProximity(
+                    CarIdx: 23,
+                    LapCompleted: -1,
+                    LapDistPct: -1d,
+                    F2TimeSeconds: 62.75d,
+                    EstimatedTimeSeconds: null,
+                    Position: 2,
+                    ClassPosition: 2,
+                    CarClass: 4098,
+                    TrackSurface: null,
+                    OnPitRoad: null)
+            ]);
+
+        var gap = LiveLeaderGapSnapshot.From(sample);
+
+        Assert.Equal(3, gap.ReferenceClassPosition);
+        Assert.Equal(55, gap.ClassLeaderCarIdx);
+        Assert.Equal(30d, gap.ClassLeaderGap.Seconds!.Value);
+        Assert.Contains(gap.ClassCars, car => car.CarIdx == 30 && car.IsReferenceCar);
+        Assert.Contains(gap.ClassCars, car => car.CarIdx == 56 && car.GapSecondsToClassLeader == 38d);
+        Assert.DoesNotContain(gap.ClassCars, car => car.CarIdx == 23);
+    }
+
     private static HistoricalTelemetrySample CreateSample(
         double teamLapDistPct = 0.42d,
         int? carLeftRight = null,
         IReadOnlyList<HistoricalCarProximity>? nearbyCars = null,
         IReadOnlyList<HistoricalCarProximity>? classCars = null,
+        IReadOnlyList<HistoricalCarProximity>? focusClassCars = null,
         int? teamPosition = 2,
         int? teamClassPosition = 2,
         int? teamCarClass = null,
@@ -312,6 +412,15 @@ public sealed class LiveProximitySnapshotTests
         double? teamEstimatedTimeSeconds = null,
         double? leaderF2TimeSeconds = null,
         double? classLeaderF2TimeSeconds = null,
+        int? focusCarIdx = null,
+        double? focusLapDistPct = null,
+        double? focusF2TimeSeconds = null,
+        double? focusEstimatedTimeSeconds = null,
+        int? focusPosition = null,
+        int? focusClassPosition = null,
+        int? focusCarClass = null,
+        int? focusClassLeaderCarIdx = null,
+        double? focusClassLeaderF2TimeSeconds = null,
         bool onPitRoad = false)
     {
         return new HistoricalTelemetrySample(
@@ -339,6 +448,14 @@ public sealed class LiveProximitySnapshotTests
             WeatherDeclaredWet: false,
             PlayerTireCompound: 0,
             PlayerCarIdx: 10,
+            FocusCarIdx: focusCarIdx,
+            FocusLapCompleted: focusLapDistPct is null ? null : 5,
+            FocusLapDistPct: focusLapDistPct,
+            FocusF2TimeSeconds: focusF2TimeSeconds,
+            FocusEstimatedTimeSeconds: focusEstimatedTimeSeconds,
+            FocusPosition: focusPosition,
+            FocusClassPosition: focusClassPosition,
+            FocusCarClass: focusCarClass,
             TeamLapCompleted: 5,
             TeamLapDistPct: teamLapDistPct,
             TeamF2TimeSeconds: teamF2TimeSeconds,
@@ -354,8 +471,13 @@ public sealed class LiveProximitySnapshotTests
             ClassLeaderLapCompleted: 5,
             ClassLeaderLapDistPct: 0.66d,
             ClassLeaderF2TimeSeconds: classLeaderF2TimeSeconds,
+            FocusClassLeaderCarIdx: focusClassLeaderCarIdx,
+            FocusClassLeaderLapCompleted: focusClassLeaderCarIdx is null ? null : 5,
+            FocusClassLeaderLapDistPct: focusClassLeaderCarIdx is null ? null : 0.66d,
+            FocusClassLeaderF2TimeSeconds: focusClassLeaderF2TimeSeconds,
             CarLeftRight: carLeftRight,
             NearbyCars: nearbyCars,
-            ClassCars: classCars);
+            ClassCars: classCars,
+            FocusClassCars: focusClassCars);
     }
 }

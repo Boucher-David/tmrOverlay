@@ -4,16 +4,17 @@ namespace TmrOverlay.Core.Telemetry.Live;
 
 internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetrySink
 {
-    private const double CloseRadarRangeSeconds = 7d;
+    private const double CloseRadarRangeSeconds = 2d;
     private const double MulticlassWarningRangeSeconds = 5d;
     private const double CloseRadarRangeLaps = 0.02d;
-    private const double MulticlassWarningRangeLaps = 0.14d;
+    private const double MulticlassWarningRangeLaps = 0.05d;
     private const double MinimumClosingRateSecondsPerSecond = 0.15d;
 
     private readonly object _sync = new();
     private readonly Dictionary<int, ProximityHistory> _proximityHistory = [];
     private HistoricalSessionContext _context = HistoricalSessionContext.Empty;
     private LiveTelemetrySnapshot _snapshot = LiveTelemetrySnapshot.Empty;
+    private int? _lastProximityReferenceCarIdx;
     private long _sequence;
 
     public LiveTelemetrySnapshot Snapshot()
@@ -59,6 +60,7 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
         {
             _context = HistoricalSessionContext.Empty;
             _proximityHistory.Clear();
+            _lastProximityReferenceCarIdx = null;
             _snapshot = LiveTelemetrySnapshot.Empty with
             {
                 LastUpdatedAtUtc = DateTimeOffset.UtcNow,
@@ -89,6 +91,7 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
         {
             var fuel = LiveFuelSnapshot.From(_context, sample);
             var proximity = LiveProximitySnapshot.From(_context, sample);
+            ResetProximityHistoryIfReferenceChanged(sample);
             var multiclassApproaches = BuildMulticlassApproaches(sample, proximity);
             proximity = proximity with
             {
@@ -113,11 +116,23 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
         }
     }
 
+    private void ResetProximityHistoryIfReferenceChanged(HistoricalTelemetrySample sample)
+    {
+        var referenceCarIdx = sample.FocusCarIdx ?? sample.PlayerCarIdx;
+        if (_lastProximityReferenceCarIdx is not null && _lastProximityReferenceCarIdx != referenceCarIdx)
+        {
+            _proximityHistory.Clear();
+        }
+
+        _lastProximityReferenceCarIdx = referenceCarIdx;
+    }
+
     private IReadOnlyList<LiveMulticlassApproach> BuildMulticlassApproaches(
         HistoricalTelemetrySample sample,
         LiveProximitySnapshot proximity)
     {
-        if (sample.TeamCarClass is null || proximity.NearbyCars.Count == 0)
+        var focusCarClass = FocusCarClass(sample);
+        if (focusCarClass is null || proximity.NearbyCars.Count == 0)
         {
             return [];
         }
@@ -125,7 +140,7 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
         var approaches = new List<LiveMulticlassApproach>();
         foreach (var car in proximity.NearbyCars)
         {
-            if (car.CarClass is null || car.CarClass == sample.TeamCarClass)
+            if (car.CarClass is null || car.CarClass == focusCarClass)
             {
                 continue;
             }
@@ -210,13 +225,6 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
             : car.RelativeLaps < 0d;
     }
 
-    private static bool IsInCloseRadarRange(LiveProximityCar car)
-    {
-        return car.RelativeSeconds is { } seconds
-            ? Math.Abs(seconds) <= CloseRadarRangeSeconds
-            : Math.Abs(car.RelativeLaps) <= CloseRadarRangeLaps;
-    }
-
     private static bool IsInMulticlassWarningRange(LiveProximityCar car)
     {
         return car.RelativeSeconds is { } seconds
@@ -228,7 +236,7 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
     {
         return car.RelativeSeconds is { } seconds
             ? seconds >= -MulticlassWarningRangeSeconds
-            : car.RelativeLaps >= -0.07d;
+            : car.RelativeLaps >= -MulticlassWarningRangeLaps;
     }
 
     private static double CalculateUrgency(LiveProximityCar car, double? closingRate)
@@ -251,6 +259,20 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
         }
 
         return 1d - Math.Clamp((distance - closeRange) / Math.Max(0.001d, warningRange - closeRange), 0d, 1d);
+    }
+
+    private static int? FocusCarClass(HistoricalTelemetrySample sample)
+    {
+        return HasExplicitNonPlayerFocus(sample)
+            ? sample.FocusCarClass
+            : sample.FocusCarClass ?? sample.TeamCarClass;
+    }
+
+    private static bool HasExplicitNonPlayerFocus(HistoricalTelemetrySample sample)
+    {
+        return sample.FocusCarIdx is not null
+            && sample.PlayerCarIdx is not null
+            && sample.FocusCarIdx != sample.PlayerCarIdx;
     }
 
     private sealed record ProximityHistory(

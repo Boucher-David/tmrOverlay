@@ -14,8 +14,10 @@ namespace TmrOverlay.App.Overlays.CarRadar;
 internal sealed class CarRadarForm : PersistentOverlayForm
 {
     private static readonly Color TransparentColor = Color.Fuchsia;
-    private const double RadarRangeSeconds = 7d;
-    private const double RadarRangeLaps = 0.02d;
+    private const double SameClassRadarRangeSeconds = 2d;
+    private const double MulticlassRadarRangeSeconds = 5d;
+    private const double SameClassRadarRangeLaps = 0.02d;
+    private const double MulticlassRadarRangeLaps = 0.05d;
     private const double SnapshotStaleSeconds = 1.5d;
     private const double FadeInSeconds = 0.25d;
     private const double FadeOutSeconds = 0.85d;
@@ -609,27 +611,49 @@ internal sealed class CarRadarForm : PersistentOverlayForm
         return ratio * ratio * (3d - 2d * ratio);
     }
 
-    private static double RangeRatio(LiveProximityCar car)
+    private double RangeRatio(LiveProximityCar car)
     {
         return Math.Clamp(
             car.RelativeSeconds is { } seconds
-                ? seconds / RadarRangeSeconds
-                : car.RelativeLaps / RadarRangeLaps,
+                ? seconds / RadarRangeSeconds(car)
+                : car.RelativeLaps / RadarRangeLaps(car),
             -1d,
             1d);
     }
 
-    private static bool IsInRadarRange(LiveProximityCar car)
+    private bool IsInRadarRange(LiveProximityCar car)
     {
         return car.RelativeSeconds is { } seconds
-            ? Math.Abs(seconds) <= RadarRangeSeconds
-            : Math.Abs(car.RelativeLaps) <= RadarRangeLaps;
+            ? Math.Abs(seconds) <= RadarRangeSeconds(car)
+            : Math.Abs(car.RelativeLaps) <= RadarRangeLaps(car);
+    }
+
+    private double RadarRangeSeconds(LiveProximityCar car)
+    {
+        return IsMulticlassCar(car)
+            ? MulticlassRadarRangeSeconds
+            : SameClassRadarRangeSeconds;
+    }
+
+    private double RadarRangeLaps(LiveProximityCar car)
+    {
+        return IsMulticlassCar(car)
+            ? MulticlassRadarRangeLaps
+            : SameClassRadarRangeLaps;
+    }
+
+    private bool IsMulticlassCar(LiveProximityCar car)
+    {
+        return _proximity.ReferenceCarClass is { } referenceClass
+            && car.CarClass is { } carClass
+            && carClass != referenceClass;
     }
 
     private static string FormatRingGap(int ringIndex)
     {
-        var seconds = RadarRangeSeconds * (1d - ringIndex / 3d);
-        return FormattableString.Invariant($"+/-{seconds:0.0}s");
+        var sameClassSeconds = SameClassRadarRangeSeconds * (1d - ringIndex / 3d);
+        var multiclassSeconds = MulticlassRadarRangeSeconds * (1d - ringIndex / 3d);
+        return FormattableString.Invariant($"{sameClassSeconds:0.0}/{multiclassSeconds:0.0}s");
     }
 
     private static string FormatMulticlassWarning(LiveMulticlassApproach approach)

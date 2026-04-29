@@ -14,6 +14,7 @@ The radar is a live proximity overlay. It is not a historical or replay overlay.
 
 It uses fresh live telemetry only:
 
+- `CamCarIdx` for the current camera/focus car when valid, falling back to `PlayerCarIdx`.
 - `CarLeftRight` for side occupancy.
 - Nearby `CarIdxLapDistPct` and lap completion for relative placement.
 - Nearby `CarIdxEstTime` or `CarIdxF2Time` for live relative seconds when available and plausible.
@@ -37,14 +38,14 @@ Stale snapshots are treated as unavailable so old traffic does not remain painte
 
 `LiveProximitySnapshot.From` derives proximity from the current telemetry sample.
 
-1. Determine player/team lap distance:
-   - Prefer `TeamLapDistPct`.
-   - Fall back to player `LapDistPct`.
-2. If player/team lap distance is unavailable:
-   - Keep side occupancy from `CarLeftRight`.
+1. Determine focused-car lap distance:
+   - Prefer `FocusLapDistPct`, sourced from `CarIdxLapDistPct[CamCarIdx]` when the camera focus car is valid.
+   - Fall back to team/player lap distance only when the focus car is the player car.
+2. If focused-car lap distance is unavailable:
+   - Keep side occupancy from `CarLeftRight` only when the focus car is the player car.
    - Mark nearby cars unavailable.
 3. Convert each nearby car:
-   - `relativeLaps = car.LapDistPct - playerLapDistPct`
+   - `relativeLaps = car.LapDistPct - focusLapDistPct`
    - Wrap across start/finish so values stay within `-0.5` to `0.5`.
    - Preserve position, class, track surface, pit-road flag, F2 time, and estimated time.
    - Calculate relative meters when track length exists.
@@ -53,7 +54,7 @@ Stale snapshots are treated as unavailable so old traffic does not remain painte
 6. Nearest ahead is the smallest positive relative laps.
 7. Nearest behind is the largest negative relative laps.
 
-Pit-road cars remain in the nearby set when live telemetry reports them, including when the player is also on pit road.
+Pit-road cars remain in the nearby set when live telemetry reports them, including when the focused car is also on pit road.
 
 ## Relative Seconds
 
@@ -62,12 +63,12 @@ Relative seconds are optional.
 The first valid source wins:
 
 1. `CarIdxEstTime` difference:
-   - `delta = carEstimatedTimeSeconds - playerEstimatedTimeSeconds`
+   - `delta = carEstimatedTimeSeconds - focusEstimatedTimeSeconds`
    - If a live lap time exists, wrap deltas larger than half a lap.
    - Accept only when plausible against relative lap direction.
 
 2. `CarIdxF2Time` difference:
-   - `delta = playerF2TimeSeconds - carF2TimeSeconds`
+   - `delta = focusF2TimeSeconds - carF2TimeSeconds`
    - Accept only when plausible against relative lap direction.
 
 3. Otherwise, relative seconds is null.
@@ -84,6 +85,8 @@ Plausibility rules:
 
 Live lap time for this plausibility check comes from current live lap-time fields only:
 
+- Focus last lap.
+- Focus best lap.
 - Team last lap.
 - Team best lap.
 - Player last lap.
@@ -108,6 +111,8 @@ Left side is active for `2`, `4`, and `5`.
 
 Right side is active for `3`, `4`, and `6`.
 
+`CarLeftRight` is a player-car scalar. When the camera is focused on another car, side occupancy is hidden instead of applying the player's side warning to the watched car.
+
 ## Radar Visibility
 
 The radar fades in when any current signal exists:
@@ -127,18 +132,20 @@ Settings preview mode is enabled while the radar settings tab is selected. Previ
 
 Radar range is:
 
-- 7 seconds when relative seconds exists.
-- 0.02 laps when relative seconds is missing.
+- 2 seconds for cars in the focused car's class when relative seconds exists.
+- 5 seconds for cars outside the focused car's class when relative seconds exists.
+- 0.02 laps for cars in the focused car's class when relative seconds is missing.
+- 0.05 laps for cars outside the focused car's class when relative seconds is missing.
 
 A car is in range when its absolute relative value is within that range.
 
 Range ratio:
 
-- `relativeSeconds / 7` when seconds exists.
-- `relativeLaps / 0.02` otherwise.
+- `relativeSeconds / classAwareSecondsRange` when seconds exists.
+- `relativeLaps / classAwareLapRange` otherwise.
 - Clamped from `-1` to `1`.
 
-Negative ratio draws behind the player. Positive ratio draws ahead.
+Negative ratio draws behind the focused car. Positive ratio draws ahead.
 
 ## Fade State
 
@@ -152,7 +159,7 @@ Each refresh updates:
 Fade timing:
 
 - Fade in: 0.25 seconds.
-- Fade out: 0.55 seconds.
+- Fade out: 0.85 seconds.
 
 Cars are tracked by `CarIdx`. If a car disappears from current range, its visual alpha fades out before the visual state is removed.
 
@@ -165,11 +172,11 @@ The radar draws:
 3. Two time-gap rings with labels.
 4. Nearby car rectangles.
 5. Side-warning rectangles.
-6. Player car rectangle.
+6. Focused car rectangle.
 
 Ring labels show approximate seconds:
 
-- Inner/outer labels are based on the 7 second radar range divided into thirds.
+- Inner/outer labels show same-class and multiclass seconds at that ring, for example `1.3/3.3s`.
 
 ## Car Color
 
@@ -194,7 +201,14 @@ Approximation:
 
 ## Multiclass Warning
 
-`LiveTelemetryStore` tracks short per-car proximity history and can build early multiclass warnings from other-class traffic behind the player.
+`LiveTelemetryStore` tracks short per-car proximity history and can build early multiclass warnings from other-class traffic behind the focused car.
+
+The early-warning seconds range extends beyond the close radar range:
+
+- Same-class radar range: 2 seconds.
+- Multiclass radar and warning range: 5 seconds.
+
+When camera focus changes, the short closing-rate history is reset so approach rates measured against the old reference car are not applied to the new focused car.
 
 The radar can draw:
 
@@ -211,4 +225,3 @@ This is still live-only derived state. It is not persisted into compact history.
 - Pit-road test cases are useful because they increase available proximity scenarios.
 - Color should communicate proximity only: white to yellow to red.
 - Visibility should be communicated by alpha fade only.
-

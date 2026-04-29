@@ -243,7 +243,7 @@ internal sealed class DiagnosticsBundleService
             archive,
             Path.Combine(_storageOptions.UserHistoryRoot, "analysis"),
             "*.json",
-            "history/user/analysis",
+            "analysis",
             MaxRecentAnalysisFiles);
 
         var carsRoot = Path.Combine(_storageOptions.UserHistoryRoot, "cars");

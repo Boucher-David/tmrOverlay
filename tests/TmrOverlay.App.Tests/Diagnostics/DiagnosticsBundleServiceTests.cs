@@ -78,7 +78,8 @@ public sealed class DiagnosticsBundleServiceTests
             Assert.Contains("latest-capture/capture-manifest.json", entryNames);
             Assert.Contains("latest-capture/telemetry-schema.json", entryNames);
             Assert.Contains("latest-capture/latest-session.yaml", entryNames);
-            Assert.Contains("history/user/analysis/20260426-race.json", entryNames);
+            Assert.Contains("analysis/20260426-race.json", entryNames);
+            Assert.DoesNotContain("history/user/analysis/20260426-race.json", entryNames);
             Assert.Contains("history/user/cars/car-156-mercedesamgevogt3/tracks/track-262-nurburgring-combinedshortb/sessions/race/aggregate.json", entryNames);
             Assert.Contains("history/user/cars/car-156-mercedesamgevogt3/tracks/track-262-nurburgring-combinedshortb/sessions/race/summaries/capture-20260426-120000-000.json", entryNames);
             Assert.DoesNotContain("latest-capture/telemetry.bin", entryNames);

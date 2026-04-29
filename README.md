@@ -15,8 +15,8 @@
 - Starts live telemetry analysis whenever iRacing sends usable frame data.
 - Writes compact per-combo session history under app-owned local storage.
 - Shows an early fuel calculator overlay that estimates race laps, whole-lap stint targets, final-stint length, realistic fuel-saving alerts, and stop-by-stop tire-change timing guidance.
-- Shows first-pass radar and gap-to-leader overlays backed by live `CarLeftRight`, `CarIdxF2Time`, `CarIdxEstTime`, and `CarIdx*` progress/position telemetry.
-  The radar is a transparent circular proximity view that only paints from fresh live telemetry, colors nearby car rectangles from white to yellow to red as traffic gets closer, labels its time-gap rings, and can show an outer-ring multiclass approaching warning with a live seconds gap. The gap overlay is a four-hour in-class trend graph with the class leader as the top baseline, adaptive Y-axis scaling, left-side axis labels, lap reference lines, subtle weather bands, driver/leader-change markers, dimmed non-team context lines, and endpoint `P<N>` labels. It keeps bounded in-memory traces for all available same-class timing rows, while dynamically rendering the leader, the team car, nearby class traffic, and recently visible cars.
+- Shows first-pass radar and gap-to-leader overlays backed by live `CamCarIdx`, `CarLeftRight`, `CarIdxF2Time`, `CarIdxEstTime`, and `CarIdx*` progress/position telemetry.
+  The radar is a transparent circular proximity view that only paints from fresh live telemetry, follows the current camera/focus car when available, colors nearby car rectangles from white to yellow to red as traffic gets closer, labels its time-gap rings, and can show an outer-ring multiclass approaching warning with a live seconds gap. The gap overlay is a four-hour in-class trend graph with the focused car's class leader as the top baseline, adaptive Y-axis scaling, left-side axis labels, lap reference lines, subtle weather bands, driver/leader-change markers, dimmed context lines, and endpoint `P<N>` labels. It keeps bounded in-memory traces for all available same-class timing rows, while dynamically rendering the leader, the focused car, nearby class traffic, and recently visible cars.
 - Stores early pit-service history signals such as pit-lane time, pit-stall/service time, observed fuel fill rate, tire/repair indicators, and confidence flags.
 - Keeps raw capture as an opt-in diagnostic/development mode; the settings window can request raw capture at runtime if the app was started without the flag.
 - When raw capture is enabled, stores `telemetry.bin`, `telemetry-schema.json`, `latest-session.yaml`, optional `session-info/`, and `capture-manifest.json`.
@@ -232,7 +232,7 @@ The tray menu can create a diagnostics bundle under:
 
 Performance diagnostics are always on, even when raw capture is disabled. The app writes periodic JSONL snapshots under `%LOCALAPPDATA%\TmrOverlay\logs\performance` with telemetry throughput, overlay refresh timing, capture writer state when available, process memory, and GC counts.
 
-Bundles include app/storage metadata, telemetry state, lightweight performance snapshots, recent performance logs, runtime state, settings, recent logs/events, latest capture metadata, recent post-race analysis JSON, and recent user-history summaries/aggregates for car/track/session accuracy checks. They intentionally exclude raw `telemetry.bin` payloads.
+Bundles include app/storage metadata, telemetry state, lightweight performance snapshots, recent performance logs, runtime state, settings, recent logs/events, latest capture metadata, recent post-race analysis JSON under top-level `analysis/`, and recent user-history summaries/aggregates for car/track/session accuracy checks. They intentionally exclude raw `telemetry.bin` payloads.
 
 See `docs/update-strategy.md` for the current update notification and self-update plan.
 

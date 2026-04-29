@@ -225,10 +225,12 @@ Primary source:
 - `CarIdxGear`
 - `CarIdxBestLapTime`
 - `CarIdxTireCompound`
+- `CamCarIdx`
 - `CarLeftRight`
 
 #### Proximity and leader-gap fields
 
+- `CamCarIdx` is the active camera/focus car index. Live visual overlays use it when valid so radar and class-gap context can follow a watched car; fuel/history remain anchored to the player/team car.
 - `CarLeftRight` is the scalar side-warning signal for cars to the left, right, or both sides of the driver.
 - `CarIdxF2Time` is used for race gap timing to the overall leader, class leader, and same-class cars in the gap trend graph when race-position data is available.
 - Gap graph class rows are kept separate from radar proximity rows: cars with valid standings/F2 timing can remain graphable even when `CarIdxLapCompleted` or `CarIdxLapDistPct` is unavailable.

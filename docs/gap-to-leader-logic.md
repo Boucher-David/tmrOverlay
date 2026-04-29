@@ -9,7 +9,7 @@ Implementation files:
 
 ## Purpose
 
-The gap-to-leader overlay is a live in-class trend graph. It shows how the team car and nearby same-class cars relate to the class leader over time.
+The gap-to-leader overlay is a live in-class trend graph. It shows how the currently focused car and nearby same-class cars relate to that car's class leader over time.
 
 It is separate from radar. Radar needs live proximity placement. The gap graph can use same-class timing rows even when lap-distance placement is unavailable.
 
@@ -35,25 +35,32 @@ Snapshots are ignored when no new sequence exists.
 - Class leader gap.
 - A same-class car list for graphing.
 
-Team progress:
+Reference car:
 
-- Prefer team lap completed plus team lap distance.
-- Fall back to player lap completed plus player lap distance.
+- Prefer `CamCarIdx` when the camera focus car is valid.
+- Fall back to `PlayerCarIdx`.
+- Fuel and compact history still use the team/player car; this focus behavior is for live visual overlays.
+
+Reference progress:
+
+- Prefer focused-car lap completed plus focused-car lap distance.
+- Fall back to team/player progress only when the focus car is the player car.
+- When the camera is focused on a non-player car, missing focus progress stays unavailable instead of silently using team progress.
 
 ## Leader Gap Values
 
 For overall and class leader gaps, the first valid rule wins:
 
-1. If team position is 1, or leader car id equals player car id:
+1. If reference position is 1, or leader car id equals reference car id:
    - Gap is zero.
    - Source is `position`.
-2. If team `CarIdxF2Time` is valid:
+2. If reference `CarIdxF2Time` is valid:
    - Use leader `CarIdxF2Time` when valid, otherwise zero.
-   - If team F2 time is greater than or equal to leader F2 time:
-     - `gapSeconds = teamF2 - leaderF2`
+   - If reference F2 time is greater than or equal to leader F2 time:
+     - `gapSeconds = referenceF2 - leaderF2`
      - Source is `CarIdxF2Time`.
-3. If team progress and leader progress exist:
-   - `gapLaps = max(0, leaderProgress - teamProgress)`
+3. If reference progress and leader progress exist:
+   - `gapLaps = max(0, leaderProgress - referenceProgress)`
    - Source is `CarIdxLapDistPct`.
 4. Otherwise unavailable.
 
@@ -64,30 +71,31 @@ Valid F2 gap seconds must be finite, non-negative, and less than 86400.
 The graph list always attempts to include:
 
 - Class leader row.
-- Team/player row.
+- Focused/reference car row.
 - Same-class candidate rows.
 
 Candidate source:
 
-- Prefer `ClassCars` when available.
+- Prefer `FocusClassCars` when available.
+- Fall back to team `ClassCars` only when the focus car is the player car.
 - Otherwise use `NearbyCars`.
 
-When using `NearbyCars`, candidates must explicitly match the player's class if the player class is known.
+When using `NearbyCars`, candidates must explicitly match the focused car's class if that class is known.
 
 For each candidate:
 
-1. Skip team car and class leader duplicates.
-2. Skip non-user-class cars.
+1. Skip reference car and class leader duplicates.
+2. Skip non-reference-class cars.
 3. Try seconds gap:
    - `carF2Time - classLeaderF2Time`
    - Only when both are valid and car F2 is greater than or equal to leader F2.
 4. If seconds gap is unavailable, try laps gap:
    - `classLeaderProgress - carProgress`
 5. Skip if both seconds and laps are unavailable.
-6. Calculate delta to team when both car gap seconds and team gap seconds exist:
-   - `carGapSeconds - teamGapSeconds`
+6. Calculate delta to the focused car when both car gap seconds and reference gap seconds exist:
+   - `carGapSeconds - referenceGapSeconds`
 
-Duplicate car ids are grouped. Team rows win, then class leader rows.
+Duplicate car ids are grouped. Focused/reference rows win, then class leader rows.
 
 ## Chart Gap Seconds
 
@@ -126,18 +134,18 @@ Every car gets a render state when seen.
 
 Always desired:
 
-- Team car.
+- Focused/reference car.
 - Class leader.
 
 Additional desired cars:
 
-- Nearest same-class cars ahead of team, up to the `GapCarsAhead` setting.
-- Nearest same-class cars behind team, up to the `GapCarsBehind` setting.
+- Nearest same-class cars ahead of the focused car, up to the `GapCarsAhead` setting.
+- Nearest same-class cars behind the focused car, up to the `GapCarsBehind` setting.
 
-Ahead/behind is based on `DeltaSecondsToTeam`:
+Ahead/behind is based on delta seconds to the focused car:
 
-- Negative delta means ahead of team.
-- Positive delta means behind team.
+- Negative delta means ahead of the focused car.
+- Positive delta means behind the focused car.
 
 Recently desired cars stay visible for continuity.
 
@@ -205,7 +213,7 @@ The graph draws:
 
 For each selected car:
 
-- Team car gets the strongest line.
+- Focused/reference car gets the strongest line.
 - Class leader gets a leader-style line.
 - Other cars get thinner, dimmer lines.
 - Stale or sticky-exit cars use dashed lines.
@@ -242,7 +250,7 @@ Markers are drawn on the affected line with:
 - Dot.
 - Small label.
 
-Team markers use the team accent.
+Focused-car markers use the main accent. Explicit team driver-change markers still only apply when the focused/reference car is the team car.
 
 ## Leader Change Markers
 
@@ -257,7 +265,7 @@ The leader baseline is a role. The old leader's car can continue as a normal tra
 
 When gap data exists:
 
-- Status shows team class position and class leader gap.
+- Status shows focused-car class position and class leader gap.
 - Source row shows four-hour class trend and selected car count.
 
 When no gap data exists:
@@ -272,4 +280,3 @@ When no gap data exists:
 - Use lap progress fallback for trend participation when seconds are unavailable.
 - Keep old leaders and recently visible cars understandable instead of disappearing abruptly.
 - Make early-race graphs grow from the left until four hours are filled.
-

@@ -41,7 +41,7 @@ Last updated: 2026-04-29
   - `Status/` contains the current collector status overlay
   - `SettingsPanel/` contains a centered tabbed settings window for user-managed overlay visibility, scale, session filters, shared font/units, runtime raw-capture requests, placeholder Overlay Bridge controls, post-race analysis browsing, and overlay-specific display options
   - `FuelCalculator/` contains the first strategy overlay, backed by live telemetry plus exact car/track/session history
-  - `CarRadar/` contains a transparent circular proximity overlay, backed by `CarLeftRight` and nearby `CarIdx*` progress/position telemetry
+  - `CarRadar/` contains a transparent circular proximity overlay, backed by `CamCarIdx`, player-only `CarLeftRight`, and nearby `CarIdx*` progress/position telemetry
   - `GapToLeader/` contains a rolling in-class gap trend graph, backed by `CarIdxF2Time` with progress fallback
 
 - `src/TmrOverlay.App/Overlays/Status/StatusOverlayForm.cs`
@@ -90,10 +90,11 @@ Last updated: 2026-04-29
 - `src/TmrOverlay.App/Overlays/CarRadar/`
   - draggable 300px circular radar overlay placed to the right of the status overlay by default
   - transparent outside the circle and paints nothing when no cars are within proximity or multiclass warning range
-  - uses `CarLeftRight` for side occupancy
-  - uses only fresh live nearby-car telemetry for placement/timing; `CarIdxEstTime` and `CarIdxF2Time` provide timing when available, while live `CarIdxLapDistPct` / `CarIdxLapCompleted` progress can still place cars without synthesizing a seconds gap from history or fuel estimates
+  - follows the active camera/focus car through `CamCarIdx` when valid, falling back to the player/team car
+  - uses `CarLeftRight` for side occupancy only when focused on the player car
+  - uses only fresh live nearby-car telemetry for placement/timing around the focused car; `CarIdxEstTime` and `CarIdxF2Time` provide timing when available, while live `CarIdxLapDistPct` / `CarIdxLapCompleted` progress can still place cars without synthesizing a seconds gap from history or fuel estimates
   - keeps pit-road cars in the nearby set when live telemetry reports them, including the test case where the player is also on pit road
-  - draws the team car as a white rectangle and nearby traffic from any class as car rectangles that color from white to yellow to red as traffic gets closer, with light time-gap labels on the radar rings
+  - draws the focused car as a white rectangle and nearby traffic from any class as car rectangles that color from white to yellow to red as traffic gets closer, using 2-second same-class and 5-second multiclass radar windows with light time-gap labels on the rings
   - keeps per-car visual state by `CarIdx`, fades the whole radar and side-warning rectangles in/out, and treats stale live snapshots as unavailable so old proximity does not stay painted forever
   - tracks recent relative timing for other-class cars and can draw a short outer red arc with a live seconds gap when faster multiclass traffic is approaching from behind before it reaches close radar range
   - currently does not have true per-car lateral placement; side occupancy comes from the scalar iRacing left/right signal
@@ -103,9 +104,9 @@ Last updated: 2026-04-29
   - draws the class leader as the fixed top baseline
   - keeps bounded overlay-local four-hour in-memory traces for all available same-class timing rows; these traces are only for rendering and are not persisted
   - consumes a separate same-class timing row list so cars with valid standings/F2 timing but invalid lap-distance progress can still appear in the graph without polluting radar proximity placement
-  - dynamically renders the class leader, team car, nearest five same-class cars ahead and behind, plus recently visible cars that need continuity as they enter/leave the nearby window
+  - dynamically renders the focused car's class leader, the focused car, nearest five same-class cars ahead and behind, plus recently visible cars that need continuity as they enter/leave the nearby window
   - anchors the X-axis at the first visible sample and grows the line horizontally until the four-hour window is full, then slides the window; it scales the Y-axis to the visible field spread, keeps axis labels in a left gutter, highlights whole-lap gap reference lines when the field spreads far enough, draws vertical 5-lap duration markers, and labels current line endpoints with compact current `P<N>` class-position tags
-  - draws subtle weather-condition bands behind the graph from live `TrackWetness` / `WeatherDeclaredWet`; non-team/non-leader context lines are intentionally dimmed to keep the team gap and position readable
+  - draws subtle weather-condition bands behind the graph from live `TrackWetness` / `WeatherDeclaredWet`; non-focused/non-leader context lines are intentionally dimmed to keep the focused-car gap and position readable
   - marks driver swaps as compact ticks/dots on the affected line while preserving line color; Windows uses real session-info driver-row changes by `CarIdx` plus the local `DCDriversSoFar` signal, while the mac harness can use named mock handoffs
   - marks leader changes and keeps old leader/currently exiting/missing-telemetry car lines visually continuous with fade/dash behavior instead of disappearing abruptly
   - can label current line endpoints with compact `P<N>` class-position text
@@ -213,7 +214,7 @@ Last updated: 2026-04-29
 
 - `src/TmrOverlay.App/Diagnostics/`
   - creates support bundles with app/storage metadata, telemetry state, lightweight performance snapshots, recent performance logs, runtime state, settings, logs/events, and latest capture metadata
-  - includes recent post-race analysis JSON plus recent user-history summaries and aggregates so collected car/track/session metrics can be inspected for accuracy
+  - includes recent post-race analysis JSON at top-level `analysis/` plus recent user-history summaries and aggregates so collected car/track/session metrics can be inspected for accuracy
   - creates a best-effort diagnostics bundle automatically when a live telemetry session finalizes, and the Error Logging tab reports the latest automatic bundle
   - intentionally excludes raw `telemetry.bin`
 

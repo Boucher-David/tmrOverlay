@@ -75,9 +75,9 @@ public sealed class LiveTelemetryStoreTests
                 new HistoricalCarProximity(
                     CarIdx: 51,
                     LapCompleted: 2,
-                    LapDistPct: 0.32d,
+                    LapDistPct: 0.455d,
                     F2TimeSeconds: 0d,
-                    EstimatedTimeSeconds: 32d,
+                    EstimatedTimeSeconds: 45.5d,
                     Position: 3,
                     ClassPosition: 1,
                     CarClass: 4099,
@@ -90,8 +90,64 @@ public sealed class LiveTelemetryStoreTests
         var approach = Assert.Single(snapshot.Proximity.MulticlassApproaches);
         Assert.Equal(51, approach.CarIdx);
         Assert.Equal(4099, approach.CarClass);
-        Assert.Equal(-18d, approach.RelativeSeconds!.Value, precision: 6);
+        Assert.Equal(-4.5d, approach.RelativeSeconds!.Value, precision: 6);
         Assert.Equal(approach, snapshot.Proximity.StrongestMulticlassApproach);
+    }
+
+    [Fact]
+    public void RecordFrame_ClearsMulticlassClosingHistoryWhenCameraFocusChanges()
+    {
+        var store = new LiveTelemetryStore();
+        var startedAtUtc = DateTimeOffset.UtcNow;
+
+        store.RecordFrame(CreateSample(
+            capturedAtUtc: startedAtUtc,
+            playerCarIdx: 10,
+            teamLapDistPct: 0.50d,
+            teamEstimatedTimeSeconds: 50d,
+            teamCarClass: 4098,
+            nearbyCars:
+            [
+                new HistoricalCarProximity(
+                    CarIdx: 51,
+                    LapCompleted: 2,
+                    LapDistPct: 0.455d,
+                    F2TimeSeconds: 0d,
+                    EstimatedTimeSeconds: 45.5d,
+                    Position: 3,
+                    ClassPosition: 1,
+                    CarClass: 4099,
+                    TrackSurface: 3,
+                    OnPitRoad: false)
+            ]));
+        store.RecordFrame(CreateSample(
+            capturedAtUtc: startedAtUtc.AddSeconds(1),
+            playerCarIdx: 10,
+            teamCarClass: 4098,
+            focusCarIdx: 30,
+            focusLapDistPct: 0.50d,
+            focusEstimatedTimeSeconds: 50d,
+            focusCarClass: 4098,
+            nearbyCars:
+            [
+                new HistoricalCarProximity(
+                    CarIdx: 51,
+                    LapCompleted: 2,
+                    LapDistPct: 0.465d,
+                    F2TimeSeconds: 0d,
+                    EstimatedTimeSeconds: 46.5d,
+                    Position: 3,
+                    ClassPosition: 1,
+                    CarClass: 4099,
+                    TrackSurface: 3,
+                    OnPitRoad: false)
+            ]));
+
+        var snapshot = store.Snapshot();
+
+        var approach = Assert.Single(snapshot.Proximity.MulticlassApproaches);
+        Assert.Equal(51, approach.CarIdx);
+        Assert.Null(approach.ClosingRateSecondsPerSecond);
     }
 
     private static HistoricalTelemetrySample CreateSample(
@@ -103,6 +159,10 @@ public sealed class LiveTelemetryStoreTests
         double? teamLapDistPct = null,
         double? teamEstimatedTimeSeconds = null,
         int? teamCarClass = null,
+        int? focusCarIdx = null,
+        double? focusLapDistPct = null,
+        double? focusEstimatedTimeSeconds = null,
+        int? focusCarClass = null,
         IReadOnlyList<HistoricalCarProximity>? nearbyCars = null)
     {
         return new HistoricalTelemetrySample(
@@ -130,6 +190,11 @@ public sealed class LiveTelemetryStoreTests
             WeatherDeclaredWet: false,
             PlayerTireCompound: 0,
             PlayerCarIdx: playerCarIdx,
+            FocusCarIdx: focusCarIdx,
+            FocusLapCompleted: focusLapDistPct is null ? null : 2,
+            FocusLapDistPct: focusLapDistPct,
+            FocusEstimatedTimeSeconds: focusEstimatedTimeSeconds,
+            FocusCarClass: focusCarClass,
             TeamLapCompleted: teamLapDistPct is null ? null : 2,
             TeamLapDistPct: teamLapDistPct,
             TeamEstimatedTimeSeconds: teamEstimatedTimeSeconds,

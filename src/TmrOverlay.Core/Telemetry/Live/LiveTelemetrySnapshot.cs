@@ -35,6 +35,7 @@ internal sealed record LiveTelemetrySnapshot(
 
 internal sealed record LiveProximitySnapshot(
     bool HasData,
+    int? ReferenceCarClass,
     int? CarLeftRight,
     string SideStatus,
     bool HasCarLeft,
@@ -47,6 +48,7 @@ internal sealed record LiveProximitySnapshot(
 {
     public static LiveProximitySnapshot Unavailable { get; } = new(
         HasData: false,
+        ReferenceCarClass: null,
         CarLeftRight: null,
         SideStatus: "waiting",
         HasCarLeft: false,
@@ -61,15 +63,18 @@ internal sealed record LiveProximitySnapshot(
         HistoricalSessionContext context,
         HistoricalTelemetrySample sample)
     {
-        var playerLapDistPct = PlayerLapDistPct(sample);
-        if (playerLapDistPct is null)
+        var focusLapDistPct = FocusLapDistPct(sample);
+        var focusCarClass = FocusCarClass(sample);
+        var carLeftRight = CarLeftRightForFocus(sample);
+        if (focusLapDistPct is null)
         {
             return Unavailable with
             {
-                CarLeftRight = sample.CarLeftRight,
-                SideStatus = FormatSideStatus(sample.CarLeftRight),
-                HasCarLeft = DetectCarLeft(sample.CarLeftRight),
-                HasCarRight = DetectCarRight(sample.CarLeftRight)
+                ReferenceCarClass = focusCarClass,
+                CarLeftRight = carLeftRight,
+                SideStatus = FormatSideStatus(carLeftRight),
+                HasCarLeft = DetectCarLeft(carLeftRight),
+                HasCarRight = DetectCarRight(carLeftRight)
             };
         }
 
@@ -80,9 +85,9 @@ internal sealed record LiveProximitySnapshot(
         var cars = (sample.NearbyCars ?? [])
             .Select(car => ToLiveCar(
                 car,
-                playerLapDistPct.Value,
-                sample.TeamF2TimeSeconds,
-                sample.TeamEstimatedTimeSeconds,
+                focusLapDistPct.Value,
+                FocusF2TimeSeconds(sample),
+                FocusEstimatedTimeSeconds(sample),
                 liveLapTimeSeconds,
                 trackLengthMeters))
             .Where(car => Math.Abs(car.RelativeLaps) <= 0.5d && Math.Abs(car.RelativeLaps) > 0.00001d)
@@ -90,11 +95,12 @@ internal sealed record LiveProximitySnapshot(
             .ToArray();
 
         return new LiveProximitySnapshot(
-            HasData: sample.CarLeftRight is not null || cars.Length > 0,
-            CarLeftRight: sample.CarLeftRight,
-            SideStatus: FormatSideStatus(sample.CarLeftRight),
-            HasCarLeft: DetectCarLeft(sample.CarLeftRight),
-            HasCarRight: DetectCarRight(sample.CarLeftRight),
+            HasData: carLeftRight is not null || cars.Length > 0,
+            ReferenceCarClass: focusCarClass,
+            CarLeftRight: carLeftRight,
+            SideStatus: FormatSideStatus(carLeftRight),
+            HasCarLeft: DetectCarLeft(carLeftRight),
+            HasCarRight: DetectCarRight(carLeftRight),
             NearbyCars: cars,
             NearestAhead: cars
                 .Where(car => car.RelativeLaps > 0d)
@@ -108,13 +114,13 @@ internal sealed record LiveProximitySnapshot(
 
     private static LiveProximityCar ToLiveCar(
         HistoricalCarProximity car,
-        double playerLapDistPct,
-        double? playerF2TimeSeconds,
-        double? playerEstimatedTimeSeconds,
+        double focusLapDistPct,
+        double? focusF2TimeSeconds,
+        double? focusEstimatedTimeSeconds,
         double? liveLapTimeSeconds,
         double? trackLengthMeters)
     {
-        var relativeLaps = car.LapDistPct - playerLapDistPct;
+        var relativeLaps = car.LapDistPct - focusLapDistPct;
         if (relativeLaps > 0.5d)
         {
             relativeLaps -= 1d;
@@ -129,9 +135,9 @@ internal sealed record LiveProximitySnapshot(
             RelativeLaps: relativeLaps,
             RelativeSeconds: CalculateRelativeSeconds(
                 car.EstimatedTimeSeconds,
-                playerEstimatedTimeSeconds,
+                focusEstimatedTimeSeconds,
                 car.F2TimeSeconds,
-                playerF2TimeSeconds,
+                focusF2TimeSeconds,
                 liveLapTimeSeconds,
                 relativeLaps),
             RelativeMeters: trackLengthMeters is { } meters && IsPositiveFinite(meters)
@@ -148,18 +154,18 @@ internal sealed record LiveProximitySnapshot(
 
     private static double? CalculateRelativeSeconds(
         double? carEstimatedTimeSeconds,
-        double? playerEstimatedTimeSeconds,
+        double? focusEstimatedTimeSeconds,
         double? carF2TimeSeconds,
-        double? playerF2TimeSeconds,
+        double? focusF2TimeSeconds,
         double? liveLapTimeSeconds,
         double relativeLaps)
     {
         if (carEstimatedTimeSeconds is { } carEst
-            && playerEstimatedTimeSeconds is { } playerEst
+            && focusEstimatedTimeSeconds is { } focusEst
             && IsPositiveFinite(carEst)
-            && IsPositiveFinite(playerEst))
+            && IsPositiveFinite(focusEst))
         {
-            var delta = carEst - playerEst;
+            var delta = carEst - focusEst;
             if (liveLapTimeSeconds is { } lapSeconds && IsPositiveFinite(lapSeconds))
             {
                 if (delta > lapSeconds / 2d)
@@ -179,11 +185,11 @@ internal sealed record LiveProximitySnapshot(
         }
 
         if (carF2TimeSeconds is { } carF2
-            && playerF2TimeSeconds is { } playerF2
+            && focusF2TimeSeconds is { } focusF2
             && IsNonNegativeFinite(carF2)
-            && IsNonNegativeFinite(playerF2))
+            && IsNonNegativeFinite(focusF2))
         {
-            var delta = playerF2 - carF2;
+            var delta = focusF2 - carF2;
             if (IsPlausibleRelativeTiming(delta, relativeLaps, liveLapTimeSeconds))
             {
                 return delta;
@@ -195,7 +201,16 @@ internal sealed record LiveProximitySnapshot(
 
     private static double? LiveLapTimeSeconds(HistoricalTelemetrySample sample)
     {
+        if (HasExplicitNonPlayerFocus(sample))
+        {
+            return FirstPositiveFinite(
+                sample.FocusLastLapTimeSeconds,
+                sample.FocusBestLapTimeSeconds);
+        }
+
         return FirstPositiveFinite(
+            sample.FocusLastLapTimeSeconds,
+            sample.FocusBestLapTimeSeconds,
             sample.TeamLastLapTimeSeconds,
             sample.TeamBestLapTimeSeconds,
             sample.LapLastLapTimeSeconds,
@@ -226,8 +241,18 @@ internal sealed record LiveProximitySnapshot(
         return Math.Abs(seconds) <= 60d;
     }
 
-    private static double? PlayerLapDistPct(HistoricalTelemetrySample sample)
+    private static double? FocusLapDistPct(HistoricalTelemetrySample sample)
     {
+        if (sample.FocusLapDistPct is { } focusLapDistPct && IsFinite(focusLapDistPct) && focusLapDistPct >= 0d)
+        {
+            return Math.Clamp(focusLapDistPct, 0d, 1d);
+        }
+
+        if (HasExplicitNonPlayerFocus(sample))
+        {
+            return null;
+        }
+
         if (sample.TeamLapDistPct is { } teamLapDistPct && IsFinite(teamLapDistPct) && teamLapDistPct >= 0d)
         {
             return Math.Clamp(teamLapDistPct, 0d, 1d);
@@ -236,6 +261,53 @@ internal sealed record LiveProximitySnapshot(
         return IsFinite(sample.LapDistPct) && sample.LapDistPct >= 0d
             ? Math.Clamp(sample.LapDistPct, 0d, 1d)
             : null;
+    }
+
+    private static double? FocusF2TimeSeconds(HistoricalTelemetrySample sample)
+    {
+        if (HasExplicitNonPlayerFocus(sample))
+        {
+            return FirstPositiveOrZeroFinite(sample.FocusF2TimeSeconds);
+        }
+
+        return FirstPositiveOrZeroFinite(sample.FocusF2TimeSeconds, sample.TeamF2TimeSeconds);
+    }
+
+    private static double? FocusEstimatedTimeSeconds(HistoricalTelemetrySample sample)
+    {
+        if (HasExplicitNonPlayerFocus(sample))
+        {
+            return FirstPositiveOrZeroFinite(sample.FocusEstimatedTimeSeconds);
+        }
+
+        return FirstPositiveOrZeroFinite(sample.FocusEstimatedTimeSeconds, sample.TeamEstimatedTimeSeconds);
+    }
+
+    private static int? FocusCarClass(HistoricalTelemetrySample sample)
+    {
+        if (HasExplicitNonPlayerFocus(sample))
+        {
+            return sample.FocusCarClass;
+        }
+
+        return sample.FocusCarClass ?? sample.TeamCarClass;
+    }
+
+    private static int? CarLeftRightForFocus(HistoricalTelemetrySample sample)
+    {
+        return FocusUsesPlayerSideTelemetry(sample) ? sample.CarLeftRight : null;
+    }
+
+    private static bool FocusUsesPlayerSideTelemetry(HistoricalTelemetrySample sample)
+    {
+        return !HasExplicitNonPlayerFocus(sample);
+    }
+
+    private static bool HasExplicitNonPlayerFocus(HistoricalTelemetrySample sample)
+    {
+        return sample.FocusCarIdx is not null
+            && sample.PlayerCarIdx is not null
+            && sample.FocusCarIdx != sample.PlayerCarIdx;
     }
 
     private static string FormatSideStatus(int? carLeftRight)
@@ -286,6 +358,19 @@ internal sealed record LiveProximitySnapshot(
         return null;
     }
 
+    private static double? FirstPositiveOrZeroFinite(params double?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (value is { } number && IsNonNegativeFinite(number))
+            {
+                return number;
+            }
+        }
+
+        return null;
+    }
+
     private static bool IsFinite(double value)
     {
         return !double.IsNaN(value) && !double.IsInfinity(value);
@@ -315,8 +400,8 @@ internal sealed record LiveMulticlassApproach(
 
 internal sealed record LiveLeaderGapSnapshot(
     bool HasData,
-    int? TeamOverallPosition,
-    int? TeamClassPosition,
+    int? ReferenceOverallPosition,
+    int? ReferenceClassPosition,
     int? OverallLeaderCarIdx,
     int? ClassLeaderCarIdx,
     LiveGapValue OverallLeaderGap,
@@ -325,8 +410,8 @@ internal sealed record LiveLeaderGapSnapshot(
 {
     public static LiveLeaderGapSnapshot Unavailable { get; } = new(
         HasData: false,
-        TeamOverallPosition: null,
-        TeamClassPosition: null,
+        ReferenceOverallPosition: null,
+        ReferenceClassPosition: null,
         OverallLeaderCarIdx: null,
         ClassLeaderCarIdx: null,
         OverallLeaderGap: LiveGapValue.Unavailable,
@@ -335,83 +420,89 @@ internal sealed record LiveLeaderGapSnapshot(
 
     public static LiveLeaderGapSnapshot From(HistoricalTelemetrySample sample)
     {
-        var teamProgress = TeamProgress(sample);
+        var focusCarIdx = FocusCarIdx(sample);
+        var focusProgress = FocusProgress(sample);
+        var focusClassLeaderCarIdx = FocusClassLeaderCarIdx(sample);
+        var focusClassLeaderProgress = Progress(FocusClassLeaderLapCompleted(sample), FocusClassLeaderLapDistPct(sample));
         var overallGap = BuildGap(
-            position: sample.TeamPosition,
+            position: FocusPosition(sample),
             leaderCarIdx: sample.LeaderCarIdx,
-            playerCarIdx: sample.PlayerCarIdx,
-            teamF2TimeSeconds: sample.TeamF2TimeSeconds,
+            referenceCarIdx: focusCarIdx,
+            referenceF2TimeSeconds: FocusF2TimeSecondsForGap(sample),
             leaderF2TimeSeconds: sample.LeaderF2TimeSeconds,
-            teamProgress: teamProgress,
+            referenceProgress: focusProgress,
             leaderProgress: Progress(sample.LeaderLapCompleted, sample.LeaderLapDistPct));
         var classGap = BuildGap(
-            position: sample.TeamClassPosition,
-            leaderCarIdx: sample.ClassLeaderCarIdx,
-            playerCarIdx: sample.PlayerCarIdx,
-            teamF2TimeSeconds: sample.TeamF2TimeSeconds,
-            leaderF2TimeSeconds: sample.ClassLeaderF2TimeSeconds,
-            teamProgress: teamProgress,
-            leaderProgress: Progress(sample.ClassLeaderLapCompleted, sample.ClassLeaderLapDistPct));
+            position: FocusClassPosition(sample),
+            leaderCarIdx: focusClassLeaderCarIdx,
+            referenceCarIdx: focusCarIdx,
+            referenceF2TimeSeconds: FocusF2TimeSecondsForGap(sample),
+            leaderF2TimeSeconds: FocusClassLeaderF2TimeSeconds(sample),
+            referenceProgress: focusProgress,
+            leaderProgress: focusClassLeaderProgress);
 
         return new LiveLeaderGapSnapshot(
             HasData: overallGap.HasData || classGap.HasData,
-            TeamOverallPosition: sample.TeamPosition,
-            TeamClassPosition: sample.TeamClassPosition,
+            ReferenceOverallPosition: FocusPosition(sample),
+            ReferenceClassPosition: FocusClassPosition(sample),
             OverallLeaderCarIdx: sample.LeaderCarIdx,
-            ClassLeaderCarIdx: sample.ClassLeaderCarIdx,
+            ClassLeaderCarIdx: focusClassLeaderCarIdx,
             OverallLeaderGap: overallGap,
             ClassLeaderGap: classGap,
-            ClassCars: BuildClassCars(sample, teamProgress, classGap));
+            ClassCars: BuildClassCars(sample, focusCarIdx, classGap));
     }
 
     private static IReadOnlyList<LiveClassGapCar> BuildClassCars(
         HistoricalTelemetrySample sample,
-        double? teamProgress,
-        LiveGapValue teamClassGap)
+        int? focusCarIdx,
+        LiveGapValue referenceClassGap)
     {
-        var playerCarIdx = sample.PlayerCarIdx;
-        var playerClass = sample.TeamCarClass;
-        var classLeaderF2 = ValidGapSeconds(sample.ClassLeaderF2TimeSeconds);
-        var classLeaderProgress = Progress(sample.ClassLeaderLapCompleted, sample.ClassLeaderLapDistPct);
+        var focusClass = FocusCarClass(sample);
+        var classLeaderCarIdx = FocusClassLeaderCarIdx(sample);
+        var classLeaderF2 = ValidGapSeconds(FocusClassLeaderF2TimeSeconds(sample));
+        var classLeaderProgress = Progress(FocusClassLeaderLapCompleted(sample), FocusClassLeaderLapDistPct(sample));
         var cars = new List<LiveClassGapCar>();
 
-        if (sample.ClassLeaderCarIdx is { } leaderIdx)
+        if (classLeaderCarIdx is { } leaderIdx)
         {
             cars.Add(new LiveClassGapCar(
                 CarIdx: leaderIdx,
-                IsTeamCar: playerCarIdx == leaderIdx,
+                IsReferenceCar: focusCarIdx == leaderIdx,
                 IsClassLeader: true,
                 ClassPosition: 1,
                 GapSecondsToClassLeader: 0d,
                 GapLapsToClassLeader: 0d,
-                DeltaSecondsToTeam: teamClassGap.Seconds is { } teamSeconds ? -teamSeconds : null));
+                DeltaSecondsToReference: referenceClassGap.Seconds is { } referenceSeconds ? -referenceSeconds : null));
         }
 
-        if (playerCarIdx is { } teamIdx)
+        if (focusCarIdx is { } referenceIdx)
         {
             cars.Add(new LiveClassGapCar(
-                CarIdx: teamIdx,
-                IsTeamCar: true,
-                IsClassLeader: teamClassGap.IsLeader,
-                ClassPosition: sample.TeamClassPosition,
-                GapSecondsToClassLeader: teamClassGap.Seconds,
-                GapLapsToClassLeader: teamClassGap.Laps,
-                DeltaSecondsToTeam: 0d));
+                CarIdx: referenceIdx,
+                IsReferenceCar: true,
+                IsClassLeader: referenceClassGap.IsLeader,
+                ClassPosition: FocusClassPosition(sample),
+                GapSecondsToClassLeader: referenceClassGap.Seconds,
+                GapLapsToClassLeader: referenceClassGap.Laps,
+                DeltaSecondsToReference: 0d));
         }
 
-        var classCandidates = sample.ClassCars is { Count: > 0 }
-            ? sample.ClassCars
-            : sample.NearbyCars ?? [];
-        var requireExplicitClassMatch = sample.ClassCars is not { Count: > 0 };
+        var classCandidates = sample.FocusClassCars is { Count: > 0 }
+            ? sample.FocusClassCars
+            : !HasExplicitNonPlayerFocus(sample) && sample.ClassCars is { Count: > 0 }
+                ? sample.ClassCars
+                : sample.NearbyCars ?? [];
+        var requireExplicitClassMatch = sample.FocusClassCars is not { Count: > 0 }
+            && (HasExplicitNonPlayerFocus(sample) || sample.ClassCars is not { Count: > 0 });
 
         foreach (var car in classCandidates)
         {
-            if (car.CarIdx == playerCarIdx || car.CarIdx == sample.ClassLeaderCarIdx)
+            if (car.CarIdx == focusCarIdx || car.CarIdx == classLeaderCarIdx)
             {
                 continue;
             }
 
-            if (!IsUserClassCar(car, playerClass, requireExplicitClassMatch))
+            if (!IsUserClassCar(car, focusClass, requireExplicitClassMatch))
             {
                 continue;
             }
@@ -427,18 +518,18 @@ internal sealed record LiveLeaderGapSnapshot(
 
             cars.Add(new LiveClassGapCar(
                 CarIdx: car.CarIdx,
-                IsTeamCar: false,
-                IsClassLeader: car.CarIdx == sample.ClassLeaderCarIdx,
+                IsReferenceCar: false,
+                IsClassLeader: car.CarIdx == classLeaderCarIdx,
                 ClassPosition: car.ClassPosition,
                 GapSecondsToClassLeader: gapSeconds,
                 GapLapsToClassLeader: gapLaps,
-                DeltaSecondsToTeam: CalculateDeltaSecondsToTeam(gapSeconds, teamClassGap.Seconds)));
+                DeltaSecondsToReference: CalculateDeltaSecondsToReference(gapSeconds, referenceClassGap.Seconds)));
         }
 
         return cars
             .GroupBy(car => car.CarIdx)
             .Select(group => group
-                .OrderByDescending(car => car.IsTeamCar)
+                .OrderByDescending(car => car.IsReferenceCar)
                 .ThenByDescending(car => car.IsClassLeader)
                 .First())
             .OrderBy(car => car.GapSecondsToClassLeader ?? double.MaxValue)
@@ -449,15 +540,15 @@ internal sealed record LiveLeaderGapSnapshot(
 
     private static bool IsUserClassCar(
         HistoricalCarProximity car,
-        int? playerClass,
+        int? referenceClass,
         bool requireExplicitClassMatch)
     {
-        if (playerClass is null)
+        if (referenceClass is null)
         {
             return !requireExplicitClassMatch;
         }
 
-        return car.CarClass == playerClass;
+        return car.CarClass == referenceClass;
     }
 
     private static double? CalculateClassGapSeconds(double? carF2TimeSeconds, double? classLeaderF2TimeSeconds)
@@ -476,23 +567,23 @@ internal sealed record LiveLeaderGapSnapshot(
             : null;
     }
 
-    private static double? CalculateDeltaSecondsToTeam(double? gapSeconds, double? teamGapSeconds)
+    private static double? CalculateDeltaSecondsToReference(double? gapSeconds, double? referenceGapSeconds)
     {
-        return gapSeconds is not null && teamGapSeconds is not null
-            ? gapSeconds.Value - teamGapSeconds.Value
+        return gapSeconds is not null && referenceGapSeconds is not null
+            ? gapSeconds.Value - referenceGapSeconds.Value
             : null;
     }
 
     private static LiveGapValue BuildGap(
         int? position,
         int? leaderCarIdx,
-        int? playerCarIdx,
-        double? teamF2TimeSeconds,
+        int? referenceCarIdx,
+        double? referenceF2TimeSeconds,
         double? leaderF2TimeSeconds,
-        double? teamProgress,
+        double? referenceProgress,
         double? leaderProgress)
     {
-        if (position == 1 || (leaderCarIdx is not null && leaderCarIdx == playerCarIdx))
+        if (position == 1 || (leaderCarIdx is not null && leaderCarIdx == referenceCarIdx))
         {
             return new LiveGapValue(
                 HasData: true,
@@ -502,46 +593,135 @@ internal sealed record LiveLeaderGapSnapshot(
                 Source: "position");
         }
 
-        if (ValidGapSeconds(teamF2TimeSeconds) is { } teamF2)
+        if (ValidGapSeconds(referenceF2TimeSeconds) is { } referenceF2)
         {
             var leaderF2 = ValidGapSeconds(leaderF2TimeSeconds) ?? 0d;
-            if (teamF2 >= leaderF2)
+            if (referenceF2 >= leaderF2)
             {
                 return new LiveGapValue(
                     HasData: true,
                     IsLeader: false,
-                    Seconds: teamF2 - leaderF2,
+                    Seconds: referenceF2 - leaderF2,
                     Laps: null,
                     Source: "CarIdxF2Time");
             }
         }
 
-        if (teamProgress is not null && leaderProgress is not null)
+        if (referenceProgress is not null && leaderProgress is not null)
         {
             return new LiveGapValue(
                 HasData: true,
                 IsLeader: false,
                 Seconds: null,
-                Laps: Math.Max(0d, leaderProgress.Value - teamProgress.Value),
+                Laps: Math.Max(0d, leaderProgress.Value - referenceProgress.Value),
                 Source: "CarIdxLapDistPct");
         }
 
         return LiveGapValue.Unavailable;
     }
 
-    private static double? TeamProgress(HistoricalTelemetrySample sample)
+    private static int? FocusCarIdx(HistoricalTelemetrySample sample)
     {
-        if (sample.TeamLapCompleted is { } teamLapCompleted
-            && sample.TeamLapDistPct is { } teamLapDistPct
-            && IsFinite(teamLapDistPct)
-            && teamLapDistPct >= 0d)
+        return sample.FocusCarIdx ?? sample.PlayerCarIdx;
+    }
+
+    private static int? FocusPosition(HistoricalTelemetrySample sample)
+    {
+        if (HasExplicitNonPlayerFocus(sample))
         {
-            return teamLapCompleted + Math.Clamp(teamLapDistPct, 0d, 1d);
+            return sample.FocusPosition;
         }
 
-        return sample.LapCompleted >= 0 && IsFinite(sample.LapDistPct) && sample.LapDistPct >= 0d
-            ? sample.LapCompleted + Math.Clamp(sample.LapDistPct, 0d, 1d)
-            : null;
+        return sample.FocusPosition ?? sample.TeamPosition;
+    }
+
+    private static int? FocusClassPosition(HistoricalTelemetrySample sample)
+    {
+        if (HasExplicitNonPlayerFocus(sample))
+        {
+            return sample.FocusClassPosition;
+        }
+
+        return sample.FocusClassPosition ?? sample.TeamClassPosition;
+    }
+
+    private static int? FocusCarClass(HistoricalTelemetrySample sample)
+    {
+        if (HasExplicitNonPlayerFocus(sample))
+        {
+            return sample.FocusCarClass;
+        }
+
+        return sample.FocusCarClass ?? sample.TeamCarClass;
+    }
+
+    private static double? FocusF2TimeSecondsForGap(HistoricalTelemetrySample sample)
+    {
+        if (HasExplicitNonPlayerFocus(sample))
+        {
+            return sample.FocusF2TimeSeconds;
+        }
+
+        return sample.FocusF2TimeSeconds ?? sample.TeamF2TimeSeconds;
+    }
+
+    private static double? FocusProgress(HistoricalTelemetrySample sample)
+    {
+        if (HasExplicitNonPlayerFocus(sample))
+        {
+            return Progress(sample.FocusLapCompleted, sample.FocusLapDistPct);
+        }
+
+        return Progress(sample.FocusLapCompleted, sample.FocusLapDistPct)
+            ?? Progress(sample.TeamLapCompleted, sample.TeamLapDistPct)
+            ?? Progress(sample.LapCompleted, sample.LapDistPct);
+    }
+
+    private static int? FocusClassLeaderCarIdx(HistoricalTelemetrySample sample)
+    {
+        if (HasExplicitNonPlayerFocus(sample))
+        {
+            return sample.FocusClassLeaderCarIdx;
+        }
+
+        return sample.FocusClassLeaderCarIdx ?? sample.ClassLeaderCarIdx;
+    }
+
+    private static int? FocusClassLeaderLapCompleted(HistoricalTelemetrySample sample)
+    {
+        if (HasExplicitNonPlayerFocus(sample))
+        {
+            return sample.FocusClassLeaderLapCompleted;
+        }
+
+        return sample.FocusClassLeaderLapCompleted ?? sample.ClassLeaderLapCompleted;
+    }
+
+    private static double? FocusClassLeaderLapDistPct(HistoricalTelemetrySample sample)
+    {
+        if (HasExplicitNonPlayerFocus(sample))
+        {
+            return sample.FocusClassLeaderLapDistPct;
+        }
+
+        return sample.FocusClassLeaderLapDistPct ?? sample.ClassLeaderLapDistPct;
+    }
+
+    private static double? FocusClassLeaderF2TimeSeconds(HistoricalTelemetrySample sample)
+    {
+        if (HasExplicitNonPlayerFocus(sample))
+        {
+            return sample.FocusClassLeaderF2TimeSeconds;
+        }
+
+        return sample.FocusClassLeaderF2TimeSeconds ?? sample.ClassLeaderF2TimeSeconds;
+    }
+
+    private static bool HasExplicitNonPlayerFocus(HistoricalTelemetrySample sample)
+    {
+        return sample.FocusCarIdx is not null
+            && sample.PlayerCarIdx is not null
+            && sample.FocusCarIdx != sample.PlayerCarIdx;
     }
 
     private static double? Progress(int? lapCompleted, double? lapDistPct)
@@ -585,12 +765,12 @@ internal sealed record LiveGapValue(
 
 internal sealed record LiveClassGapCar(
     int CarIdx,
-    bool IsTeamCar,
+    bool IsReferenceCar,
     bool IsClassLeader,
     int? ClassPosition,
     double? GapSecondsToClassLeader,
     double? GapLapsToClassLeader,
-    double? DeltaSecondsToTeam);
+    double? DeltaSecondsToReference);
 
 internal sealed record LiveFuelSnapshot(
     bool HasValidFuel,
