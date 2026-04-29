@@ -15,9 +15,9 @@ namespace TmrOverlay.App.Overlays.FuelCalculator;
 internal sealed class FuelCalculatorForm : PersistentOverlayForm
 {
     private const int StintRowCount = 6;
-    private const int CompactHeight = 154;
-    private const int CompactMinimumTableHeight = 70;
     private const int NormalMinimumTableHeight = 150;
+    private const int RefreshIntervalMilliseconds = 1000;
+    private static readonly TimeSpan HistoryLookupCacheDuration = TimeSpan.FromSeconds(30);
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly SessionHistoryQueryService _historyQueryService;
     private readonly AppPerformanceState _performanceState;
@@ -33,8 +33,9 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
     private readonly Label[] _stintLengthLabels = new Label[StintRowCount];
     private readonly Label[] _stintTireLabels = new Label[StintRowCount];
     private readonly System.Windows.Forms.Timer _refreshTimer;
-    private readonly int _normalClientHeight;
-    private bool _compactLayout;
+    private HistoricalComboIdentity? _cachedHistoryCombo;
+    private SessionHistoryLookupResult? _cachedHistory;
+    private DateTimeOffset _cachedHistoryAtUtc;
 
     private bool ShowAdvice => _settings.GetBooleanOption(OverlayOptionKeys.FuelAdvice, defaultValue: true);
 
@@ -62,7 +63,6 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
         _unitSystem = string.Equals(unitSystem, "Imperial", StringComparison.OrdinalIgnoreCase)
             ? "Imperial"
             : "Metric";
-        _normalClientHeight = Math.Max(ClientSize.Height, FuelCalculatorOverlayDefinition.Definition.DefaultHeight);
 
         BackColor = OverlayTheme.Colors.WindowBackground;
         Padding = new Padding(12);
@@ -151,7 +151,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
 
         _refreshTimer = new System.Windows.Forms.Timer
         {
-            Interval = 500
+            Interval = RefreshIntervalMilliseconds
         };
         _refreshTimer.Tick += (_, _) => RefreshOverlay();
         _refreshTimer.Start();
@@ -172,16 +172,9 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
         _table.Location = new Point(14, 42);
         _table.Size = new Size(
             Math.Max(250, ClientSize.Width - 28),
-            Math.Max(_compactLayout ? CompactMinimumTableHeight : NormalMinimumTableHeight, ClientSize.Height - 76));
+            Math.Max(NormalMinimumTableHeight, ClientSize.Height - 76));
         _sourceLabel.Location = new Point(14, ClientSize.Height - 28);
         _sourceLabel.Size = new Size(Math.Max(250, ClientSize.Width - 28), 18);
-    }
-
-    protected override Size GetPersistedOverlaySize()
-    {
-        return _compactLayout
-            ? new Size(Width, _normalClientHeight)
-            : base.GetPersistedOverlaySize();
     }
 
     protected override void Dispose(bool disposing)
@@ -213,7 +206,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
         try
         {
             var live = _liveTelemetrySource.Snapshot();
-            var history = _historyQueryService.Lookup(live.Combo);
+            var history = LookupHistory(live.Combo);
             var strategy = FuelStrategyCalculator.From(live, history);
             var viewModel = FuelCalculatorViewModel.From(strategy, history, ShowAdvice, _unitSystem, StintRowCount);
 
@@ -225,7 +218,6 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
             ApplyAdviceColumnVisibility();
 
             var rows = viewModel.Rows;
-            ApplyPreferredLayout(rows.Count);
             for (var index = 0; index < StintRowCount; index++)
             {
                 if (index < rows.Count)
@@ -255,15 +247,28 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
         }
     }
 
-    private void ApplyPreferredLayout(int rowCount)
+    private SessionHistoryLookupResult LookupHistory(HistoricalComboIdentity combo)
     {
-        var shouldCompact = rowCount <= 1;
-        var targetHeight = shouldCompact ? CompactHeight : _normalClientHeight;
-        _compactLayout = shouldCompact;
-        if (ClientSize.Height != targetHeight)
+        var now = DateTimeOffset.UtcNow;
+        if (_cachedHistory is not null
+            && SameCombo(_cachedHistoryCombo, combo)
+            && now - _cachedHistoryAtUtc <= HistoryLookupCacheDuration)
         {
-            ClientSize = new Size(ClientSize.Width, targetHeight);
+            return _cachedHistory;
         }
+
+        _cachedHistory = _historyQueryService.Lookup(combo);
+        _cachedHistoryCombo = combo;
+        _cachedHistoryAtUtc = now;
+        return _cachedHistory;
+    }
+
+    private static bool SameCombo(HistoricalComboIdentity? left, HistoricalComboIdentity right)
+    {
+        return left is not null
+            && string.Equals(left.CarKey, right.CarKey, StringComparison.Ordinal)
+            && string.Equals(left.TrackKey, right.TrackKey, StringComparison.Ordinal)
+            && string.Equals(left.SessionKey, right.SessionKey, StringComparison.Ordinal);
     }
 
     private void UpdateVisibleRows(int stintCount)

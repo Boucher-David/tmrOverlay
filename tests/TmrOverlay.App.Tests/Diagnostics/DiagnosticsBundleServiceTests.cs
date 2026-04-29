@@ -26,6 +26,22 @@ public sealed class DiagnosticsBundleServiceTests
             File.WriteAllText(Path.Combine(storage.SettingsRoot, "settings.json"), "{}");
             File.WriteAllText(storage.RuntimeStatePath, "{}");
 
+            var analysisDirectory = Path.Combine(storage.UserHistoryRoot, "analysis");
+            var historySessionDirectory = Path.Combine(
+                storage.UserHistoryRoot,
+                "cars",
+                "car-156-mercedesamgevogt3",
+                "tracks",
+                "track-262-nurburgring-combinedshortb",
+                "sessions",
+                "race");
+            var summariesDirectory = Path.Combine(historySessionDirectory, "summaries");
+            Directory.CreateDirectory(analysisDirectory);
+            Directory.CreateDirectory(summariesDirectory);
+            File.WriteAllText(Path.Combine(analysisDirectory, "20260426-race.json"), """{"title":"race analysis"}""");
+            File.WriteAllText(Path.Combine(historySessionDirectory, "aggregate.json"), """{"sessionCount":1}""");
+            File.WriteAllText(Path.Combine(summariesDirectory, "capture-20260426-120000-000.json"), """{"sourceCaptureId":"capture-20260426-120000-000"}""");
+
             var captureDirectory = Path.Combine(storage.CaptureRoot, "capture-20260426-120000-000");
             Directory.CreateDirectory(captureDirectory);
             File.WriteAllText(Path.Combine(captureDirectory, "capture-manifest.json"), "{}");
@@ -62,6 +78,9 @@ public sealed class DiagnosticsBundleServiceTests
             Assert.Contains("latest-capture/capture-manifest.json", entryNames);
             Assert.Contains("latest-capture/telemetry-schema.json", entryNames);
             Assert.Contains("latest-capture/latest-session.yaml", entryNames);
+            Assert.Contains("history/user/analysis/20260426-race.json", entryNames);
+            Assert.Contains("history/user/cars/car-156-mercedesamgevogt3/tracks/track-262-nurburgring-combinedshortb/sessions/race/aggregate.json", entryNames);
+            Assert.Contains("history/user/cars/car-156-mercedesamgevogt3/tracks/track-262-nurburgring-combinedshortb/sessions/race/summaries/capture-20260426-120000-000.json", entryNames);
             Assert.DoesNotContain("latest-capture/telemetry.bin", entryNames);
         }
         finally

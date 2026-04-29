@@ -128,7 +128,7 @@ Implemented initial overlay contents:
 - stint rows: whole-lap targets such as neutral `8/8/7/7` or team-history-adjusted `7/8/7/8`
 - per-stint target liters-per-lap only; live/model burn is kept out of the row for now
 - advice column: per-stop guidance such as `tires free (106 L)`, `tires +4s`, `tire data pending`, `no tire stop`, or strategy time-loss/saving hints
-- compact state: when no fuel stop remains, including after the final stop, the overlay collapses to a single actionable stint row instead of keeping the full multi-stint height
+- compact content state: when no fuel stop remains, including after the final stop, the overlay hides unused rows and shows a single actionable stint row while keeping a stable window height
 - source row: selected burn source, laps-per-tank, history source, and min/avg/max burn when available
 - status color:
   - gray: waiting for usable fuel/burn

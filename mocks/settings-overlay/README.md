@@ -8,7 +8,7 @@ Generated preview screenshots for the main settings window.
 - `states/overlay-tab.png` shows per-overlay visibility, scale, session filters, and overlay-specific options.
 - `states/post-race-analysis.png` shows saved strategy analysis browsing.
 
-The settings window is a normal desktop window, not an always-on-top driving overlay. It uses a centered 600x600 tabbed panel with a General tab, Error Logging tab, one tab per current overlay, a placeholder Overlay Bridge tab, and a post-race analysis tab.
+The settings window is a normal desktop window, not an always-on-top driving overlay. It uses a centered 1080x600 tabbed panel with a General tab, Error Logging tab, one tab per current overlay, a placeholder Overlay Bridge tab, and a post-race analysis tab. The width keeps all current tabs visible without tab-strip scrolling.
 
 The overlay tabs expose:
 

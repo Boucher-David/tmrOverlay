@@ -188,37 +188,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 
             if (capture is not null)
             {
-                var payload = ReadTelemetryBuffer(sdk);
-                var frame = new TelemetryFrameEnvelope(
-                    CapturedAtUtc: capturedAtUtc,
-                    FrameIndex: Interlocked.Increment(ref _frameIndex),
-                    SessionTick: ReadInt32(sdk, "SessionTick"),
-                    SessionInfoUpdate: sessionInfoUpdate,
-                    SessionTime: ReadDouble(sdk, "SessionTime"),
-                    Payload: payload);
-
-                if (!capture.TryQueueFrame(frame))
-                {
-                    capture.RecordDroppedFrame();
-                    _state.RecordDroppedFrame();
-                    var writerFault = capture.WriterFault;
-                    if (writerFault is not null)
-                    {
-                        _state.RecordError($"Capture writer failed: {writerFault.Message}");
-                        _events.Record("capture_writer_failed", new Dictionary<string, string?>
-                        {
-                            ["captureId"] = capture.CaptureId,
-                            ["error"] = writerFault.Message
-                        });
-                        _logger.LogError(writerFault, "Dropped telemetry frame because the capture writer failed.");
-                        return;
-                    }
-
-                    _state.RecordWarning("Dropped telemetry frame because the capture queue is full.");
-                    _events.Record("capture_dropped_frame");
-                    _logger.LogWarning("Dropped telemetry frame because the capture queue is full.");
-                    return;
-                }
+                RecordRawCaptureFrame(capture, sdk, capturedAtUtc, sessionInfoUpdate);
             }
 
             RecordHistoricalFrame(sdk, capturedAtUtc, sessionInfoUpdate);
@@ -329,7 +299,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 
         if (queueCurrentSessionInfo && sdk.Header is not null)
         {
-            RecordCaptureSessionInfoSnapshot(capture, sdk, capturedAtUtc, sdk.Header.SessionInfoUpdate);
+            RecordCurrentCaptureSessionInfoSnapshot(capture, sdk, capturedAtUtc, sdk.Header.SessionInfoUpdate);
         }
 
         return capture;
@@ -731,13 +701,93 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         };
     }
 
+    private void RecordRawCaptureFrame(
+        TelemetryCaptureSession capture,
+        IRacingSDK sdk,
+        DateTimeOffset capturedAtUtc,
+        int sessionInfoUpdate)
+    {
+        try
+        {
+            var payload = ReadTelemetryBuffer(sdk);
+            var frame = new TelemetryFrameEnvelope(
+                CapturedAtUtc: capturedAtUtc,
+                FrameIndex: Interlocked.Increment(ref _frameIndex),
+                SessionTick: ReadInt32(sdk, "SessionTick"),
+                SessionInfoUpdate: sessionInfoUpdate,
+                SessionTime: ReadDouble(sdk, "SessionTime"),
+                Payload: payload);
+
+            if (capture.TryQueueFrame(frame))
+            {
+                return;
+            }
+
+            RecordRawCaptureDroppedFrame(capture);
+        }
+        catch (Exception exception)
+        {
+            capture.RecordDroppedFrame();
+            _state.RecordDroppedFrame();
+            _state.RecordError($"Raw capture frame read failed: {exception.Message}");
+            _events.Record("capture_frame_read_failed", new Dictionary<string, string?>
+            {
+                ["captureId"] = capture.CaptureId,
+                ["error"] = exception.GetType().Name
+            });
+            _logger.LogError(
+                exception,
+                "Failed to read a raw telemetry frame. Live telemetry will continue from SDK variables.");
+        }
+    }
+
+    private void RecordRawCaptureDroppedFrame(TelemetryCaptureSession capture)
+    {
+        capture.RecordDroppedFrame();
+        _state.RecordDroppedFrame();
+        var writerFault = capture.WriterFault;
+        if (writerFault is not null)
+        {
+            _state.RecordError($"Capture writer failed: {writerFault.Message}");
+            _events.Record("capture_writer_failed", new Dictionary<string, string?>
+            {
+                ["captureId"] = capture.CaptureId,
+                ["error"] = writerFault.Message
+            });
+            _logger.LogError(writerFault, "Dropped telemetry frame because the capture writer failed. Live telemetry will continue.");
+            return;
+        }
+
+        _state.RecordWarning("Dropped telemetry frame because the capture queue is full.");
+        _events.Record("capture_dropped_frame", new Dictionary<string, string?>
+        {
+            ["captureId"] = capture.CaptureId
+        });
+        _logger.LogWarning("Dropped telemetry frame because the capture queue is full. Live telemetry will continue.");
+    }
+
     private void RecordSessionInfoSnapshot(
         TelemetryCaptureSession? capture,
         IRacingSDK sdk,
         DateTimeOffset capturedAtUtc,
         int sessionInfoUpdate)
     {
-        var sessionInfoYaml = sdk.GetSessionInfo();
+        string sessionInfoYaml;
+        try
+        {
+            sessionInfoYaml = sdk.GetSessionInfo();
+        }
+        catch (Exception exception)
+        {
+            _state.RecordWarning($"Session info read failed: {exception.Message}");
+            _events.Record("session_info_read_failed", new Dictionary<string, string?>
+            {
+                ["error"] = exception.GetType().Name
+            });
+            _logger.LogWarning(exception, "Failed to read session info. Live telemetry frames will continue with the previous session context.");
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(sessionInfoYaml))
         {
             return;
@@ -745,7 +795,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 
         if (capture is not null)
         {
-            RecordCaptureSessionInfoSnapshot(capture, sdk, capturedAtUtc, sessionInfoUpdate);
+            RecordCaptureSessionInfoSnapshot(capture, capturedAtUtc, sessionInfoUpdate, sessionInfoYaml);
         }
 
         HistoricalSessionAccumulator? history;
@@ -759,13 +809,38 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         history?.ApplySessionInfo(sessionInfoYaml);
     }
 
-    private void RecordCaptureSessionInfoSnapshot(
+    private void RecordCurrentCaptureSessionInfoSnapshot(
         TelemetryCaptureSession capture,
         IRacingSDK sdk,
         DateTimeOffset capturedAtUtc,
         int sessionInfoUpdate)
     {
-        var sessionInfoYaml = sdk.GetSessionInfo();
+        string sessionInfoYaml;
+        try
+        {
+            sessionInfoYaml = sdk.GetSessionInfo();
+        }
+        catch (Exception exception)
+        {
+            _state.RecordWarning($"Raw capture session info read failed: {exception.Message}");
+            _events.Record("capture_session_info_read_failed", new Dictionary<string, string?>
+            {
+                ["captureId"] = capture.CaptureId,
+                ["error"] = exception.GetType().Name
+            });
+            _logger.LogWarning(exception, "Failed to read current session info for raw capture. Raw frame capture and live telemetry will continue.");
+            return;
+        }
+
+        RecordCaptureSessionInfoSnapshot(capture, capturedAtUtc, sessionInfoUpdate, sessionInfoYaml);
+    }
+
+    private void RecordCaptureSessionInfoSnapshot(
+        TelemetryCaptureSession capture,
+        DateTimeOffset capturedAtUtc,
+        int sessionInfoUpdate,
+        string sessionInfoYaml)
+    {
         if (string.IsNullOrWhiteSpace(sessionInfoYaml))
         {
             return;

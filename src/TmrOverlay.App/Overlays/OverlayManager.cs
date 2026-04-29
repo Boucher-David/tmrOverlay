@@ -100,6 +100,7 @@ internal sealed class OverlayManager : IDisposable
             SettingsOverlayDefinition.Definition.DefaultHeight,
             defaultLocation.X,
             defaultLocation.Y);
+        var settingsSizeChanged = EnsureSettingsOverlayMinimumSize(settings);
 
         var form = EnsureForm(
             SettingsOverlayDefinition.Definition.Id,
@@ -119,6 +120,11 @@ internal sealed class OverlayManager : IDisposable
         if (!form.Visible)
         {
             form.Show();
+        }
+
+        if (settingsSizeChanged)
+        {
+            SaveSettings();
         }
 
         form.Activate();
@@ -211,6 +217,8 @@ internal sealed class OverlayManager : IDisposable
                 overlay.Width = ScaleDimension(registration.Definition.DefaultWidth, overlay.Scale);
                 overlay.Height = ScaleDimension(registration.Definition.DefaultHeight, overlay.Scale);
             }
+
+            ApplyGapToLeaderRaceOnlyDefault(registration.Definition, overlay);
         }
     }
 
@@ -418,6 +426,44 @@ internal sealed class OverlayManager : IDisposable
     private static int ScaleDimension(int defaultDimension, double scale)
     {
         return Math.Max(80, (int)Math.Round(defaultDimension * Math.Clamp(scale, 0.6d, 2d)));
+    }
+
+    private static bool EnsureSettingsOverlayMinimumSize(OverlaySettings settings)
+    {
+        var minimumWidth = SettingsOverlayDefinition.Definition.DefaultWidth;
+        var minimumHeight = SettingsOverlayDefinition.Definition.DefaultHeight;
+        var width = Math.Max(settings.Width, minimumWidth);
+        var height = Math.Max(settings.Height, minimumHeight);
+        if (settings.Width == width && settings.Height == height)
+        {
+            return false;
+        }
+
+        settings.Width = width;
+        settings.Height = height;
+        return true;
+    }
+
+    private static void ApplyGapToLeaderRaceOnlyDefault(OverlayDefinition definition, OverlaySettings settings)
+    {
+        if (!string.Equals(definition.Id, GapToLeaderOverlayDefinition.Definition.Id, StringComparison.Ordinal)
+            || settings.GetBooleanOption(OverlayOptionKeys.GapRaceOnlyDefaultApplied, defaultValue: false))
+        {
+            return;
+        }
+
+        if (settings.ShowInTest
+            && settings.ShowInPractice
+            && settings.ShowInQualifying
+            && settings.ShowInRace)
+        {
+            settings.ShowInTest = false;
+            settings.ShowInPractice = false;
+            settings.ShowInQualifying = false;
+            settings.ShowInRace = true;
+        }
+
+        settings.SetBooleanOption(OverlayOptionKeys.GapRaceOnlyDefaultApplied, true);
     }
 
     private static Point CenteredDefaultLocation(OverlayDefinition definition)

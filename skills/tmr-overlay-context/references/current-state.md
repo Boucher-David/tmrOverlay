@@ -60,7 +60,7 @@ Last updated: 2026-04-28
   - new overlay features should log unexpected refresh/render failures and surface a compact visible error state, while normal telemetry gaps should degrade to waiting/unavailable
 
 - `src/TmrOverlay.App/Overlays/SettingsPanel/`
-  - square 600x600 settings window centered on the primary screen by default
+  - wide 1080x600 settings window centered on the primary screen by default so all current tabs fit without tab-strip scrolling
   - opens on startup and can be reopened from the tray menu
   - acts as the main UI; clicking its `X` or otherwise closing it through the user close path exits the application instead of hiding the app to the tray
   - uses normal desktop z-order, taskbar, and Alt+Tab behavior instead of the product overlays' tool-window/always-on-top behavior
@@ -82,6 +82,8 @@ Last updated: 2026-04-28
   - accounts for overall leader pace/progress for timed-race lap count, stores class-leader context, and shows leader/class gaps in the source row when available
   - can bias future stint targets toward historical team-stint evidence, currently 8 laps for the 4-hour Nürburgring baseline, without labeling teammate rows in the UI
   - warns when a target such as an 8-lap stint needs realistic fuel saving versus nominal tank range or avoids extra stops over longer races
+  - keeps a stable window height while hiding unused future rows; it no longer switches between compact/full window layouts during live updates
+  - caches exact history lookups briefly by car/track/session so live fuel refreshes do not reread aggregate JSON every tick
 
 - `src/TmrOverlay.App/Overlays/CarRadar/`
   - draggable 300px circular radar overlay placed to the right of the status overlay by default
@@ -89,6 +91,7 @@ Last updated: 2026-04-28
   - uses `CarLeftRight` for side occupancy
   - uses nearby `CarIdxEstTime`, `CarIdxLapDistPct`, and `CarIdxLapCompleted` progress for first-pass relative placement
   - draws the team car as a white rectangle and nearby traffic from any class as car rectangles that fade from red to yellow to transparent as traffic moves away
+  - keeps per-car visual state by `CarIdx`, fades the whole radar and side-warning rectangles in/out, and treats stale live snapshots as unavailable so old proximity does not stay painted forever
   - tracks recent relative timing for other-class cars and can draw a short outer red arc with a live seconds gap when faster multiclass traffic is approaching from behind before it reaches close radar range
   - currently does not have true per-car lateral placement; side occupancy comes from the scalar iRacing left/right signal
 
@@ -104,6 +107,7 @@ Last updated: 2026-04-28
   - marks leader changes and keeps old leader/currently exiting/missing-telemetry car lines visually continuous with fade/dash behavior instead of disappearing abruptly
   - can label current line endpoints with compact `P<N>` class-position text
   - prefers `CarIdxF2Time` for timed gaps, with lap-progress fallback from `CarIdxLapCompleted` and `CarIdxLapDistPct`
+  - defaults to race sessions only; a hidden migration marker prevents that default from overriding later user session-filter changes
 
 ### Telemetry collection pipeline
 
@@ -114,6 +118,7 @@ Last updated: 2026-04-28
   - records compact historical telemetry samples every frame
   - snapshots session YAML into the history accumulator whenever `SessionInfoUpdate` changes
   - creates raw capture directories and copies the raw telemetry buffer only when raw capture is enabled by startup configuration or runtime overlay request
+  - isolates raw-capture frame queue/write/read failures from live history, normalized live telemetry, and overlay performance recording so overlays can keep updating while capture diagnostics run
   - logs and records app events for runtime raw-capture start failures instead of silently failing
   - writes normalized live frames through `ILiveTelemetrySink`, not directly to overlays
 
@@ -205,6 +210,7 @@ Last updated: 2026-04-28
 
 - `src/TmrOverlay.App/Diagnostics/`
   - creates support bundles with app/storage metadata, telemetry state, lightweight performance snapshots, recent performance logs, runtime state, settings, logs/events, and latest capture metadata
+  - includes recent post-race analysis JSON plus recent user-history summaries and aggregates so collected car/track/session metrics can be inspected for accuracy
   - intentionally excludes raw `telemetry.bin`
 
 - `src/TmrOverlay.App/Retention/`

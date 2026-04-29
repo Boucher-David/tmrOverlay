@@ -9,4 +9,5 @@ internal static class OverlayOptionKeys
     public const string RadarMulticlassWarning = "radar.multiclass-warning";
     public const string GapCarsAhead = "gap.cars-ahead";
     public const string GapCarsBehind = "gap.cars-behind";
+    public const string GapRaceOnlyDefaultApplied = "gap.race-only-default-applied";
 }

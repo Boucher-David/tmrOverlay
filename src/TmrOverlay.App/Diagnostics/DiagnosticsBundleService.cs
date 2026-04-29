@@ -10,6 +10,10 @@ namespace TmrOverlay.App.Diagnostics;
 
 internal sealed class DiagnosticsBundleService
 {
+    private const int MaxRecentAnalysisFiles = 12;
+    private const int MaxRecentHistorySummaryFiles = 50;
+    private const int MaxRecentHistoryAggregateFiles = 50;
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -54,9 +58,39 @@ internal sealed class DiagnosticsBundleService
         AddRecentFiles(archive, _performanceRecorder.PerformanceLogsRoot, "*.jsonl", "performance", maxFiles: 10);
         AddRecentFiles(archive, _storageOptions.EventsRoot, "*.jsonl", "events", maxFiles: 10);
         AddLatestCaptureMetadata(archive);
+        AddUserHistoryMetadata(archive);
 
         _logger.LogInformation("Created diagnostics bundle {DiagnosticsBundlePath}.", bundlePath);
         return bundlePath;
+    }
+
+    private void AddUserHistoryMetadata(ZipArchive archive)
+    {
+        if (!Directory.Exists(_storageOptions.UserHistoryRoot))
+        {
+            return;
+        }
+
+        AddRecentFiles(
+            archive,
+            Path.Combine(_storageOptions.UserHistoryRoot, "analysis"),
+            "*.json",
+            "history/user/analysis",
+            MaxRecentAnalysisFiles);
+
+        var carsRoot = Path.Combine(_storageOptions.UserHistoryRoot, "cars");
+        AddRecentRecursiveFiles(
+            archive,
+            carsRoot,
+            file => string.Equals(file.Name, "aggregate.json", StringComparison.OrdinalIgnoreCase),
+            "history/user/cars",
+            MaxRecentHistoryAggregateFiles);
+        AddRecentRecursiveFiles(
+            archive,
+            carsRoot,
+            file => string.Equals(file.Directory?.Name, "summaries", StringComparison.OrdinalIgnoreCase),
+            "history/user/cars",
+            MaxRecentHistorySummaryFiles);
     }
 
     private void AddLatestCaptureMetadata(ZipArchive archive)
@@ -97,6 +131,36 @@ internal sealed class DiagnosticsBundleService
         }
     }
 
+    private static void AddRecentRecursiveFiles(
+        ZipArchive archive,
+        string rootDirectory,
+        Func<FileInfo, bool> includeFile,
+        string entryDirectory,
+        int maxFiles)
+    {
+        if (!Directory.Exists(rootDirectory))
+        {
+            return;
+        }
+
+        var root = Path.GetFullPath(rootDirectory);
+        var files = Directory
+            .EnumerateFiles(root, "*.json", SearchOption.AllDirectories)
+            .Select(path => new FileInfo(path))
+            .Where(includeFile)
+            .OrderByDescending(file => file.LastWriteTimeUtc)
+            .Take(maxFiles);
+
+        foreach (var file in files)
+        {
+            var relativePath = Path.GetRelativePath(root, file.FullName);
+            AddFileIfExists(
+                archive,
+                file.FullName,
+                $"{entryDirectory}/{ToZipEntryPath(relativePath)}");
+        }
+    }
+
     private static void AddFileIfExists(ZipArchive archive, string sourcePath, string entryName)
     {
         if (!File.Exists(sourcePath))
@@ -113,5 +177,10 @@ internal sealed class DiagnosticsBundleService
         using var stream = entry.Open();
         using var writer = new StreamWriter(stream);
         writer.Write(content);
+    }
+
+    private static string ToZipEntryPath(string relativePath)
+    {
+        return relativePath.Replace(Path.DirectorySeparatorChar, '/').Replace(Path.AltDirectorySeparatorChar, '/');
     }
 }
