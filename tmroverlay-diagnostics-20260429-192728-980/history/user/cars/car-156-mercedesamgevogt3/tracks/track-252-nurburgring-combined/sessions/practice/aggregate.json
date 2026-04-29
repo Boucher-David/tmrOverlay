@@ -1,0 +1,158 @@
+{
+  "aggregateVersion": 1,
+  "combo": {
+    "carKey": "car-156-mercedesamgevogt3",
+    "trackKey": "track-252-nurburgring-combined",
+    "sessionKey": "practice"
+  },
+  "car": {
+    "carId": 156,
+    "carPath": "mercedesamgevogt3",
+    "carScreenName": "Mercedes-AMG GT3 2020",
+    "carScreenNameShort": "Mercedes GT3 2020",
+    "carClassId": 4098,
+    "carClassShortName": "NECGT3 2026",
+    "carClassEstLapTimeSeconds": 480.8602,
+    "driverCarFuelMaxLiters": 106,
+    "driverCarFuelKgPerLiter": 0.75,
+    "driverCarEstLapTimeSeconds": 480.8602,
+    "driverCarVersion": "2026.04.15.02",
+    "driverGearboxType": "Sequential",
+    "driverSetupName": "nurburgring combined\\26s2\\GO 26S2 Nords24hrs AMGGT3 Safe R .sto",
+    "driverSetupIsModified": true
+  },
+  "track": {
+    "trackId": 252,
+    "trackName": "nurburgring combined",
+    "trackDisplayName": "Gesamtstrecke 24h",
+    "trackConfigName": null,
+    "trackLengthKm": 25.1764,
+    "trackCity": "N\u00FCrburg",
+    "trackCountry": "Germany",
+    "trackNumTurns": 170,
+    "trackType": "road course",
+    "trackVersion": "2026.03.30.02"
+  },
+  "session": {
+    "currentSessionNum": 0,
+    "sessionNum": 0,
+    "sessionType": "Practice",
+    "sessionName": "PRACTICE",
+    "sessionTime": "7200.0000 sec",
+    "sessionLaps": "unlimited",
+    "eventType": "Practice",
+    "category": "SportsCar",
+    "official": true,
+    "teamRacing": true,
+    "seriesId": 279,
+    "seasonId": 6401,
+    "sessionId": 308068238,
+    "subSessionId": 85366246,
+    "buildVersion": "2026.04.21.01"
+  },
+  "updatedAtUtc": "2026-04-29T12:43:42.8150989+00:00",
+  "sessionCount": 4,
+  "baselineSessionCount": 2,
+  "fuelPerLapLiters": {
+    "sampleCount": 2,
+    "mean": 14.379427398388682,
+    "minimum": 14.377340447815218,
+    "maximum": 14.381514348962144
+  },
+  "fuelPerHourLiters": {
+    "sampleCount": 2,
+    "mean": 101.63918278648313,
+    "minimum": 101.46265950685044,
+    "maximum": 101.81570606611581
+  },
+  "averageLapSeconds": {
+    "sampleCount": 1,
+    "mean": 494.6191101074219,
+    "minimum": 494.6191101074219,
+    "maximum": 494.6191101074219
+  },
+  "medianLapSeconds": {
+    "sampleCount": 1,
+    "mean": 494.6191101074219,
+    "minimum": 494.6191101074219,
+    "maximum": 494.6191101074219
+  },
+  "pitRoadEntryCount": {
+    "sampleCount": 2,
+    "mean": 1.5,
+    "minimum": 1,
+    "maximum": 2
+  },
+  "pitServiceCount": {
+    "sampleCount": 2,
+    "mean": 0,
+    "minimum": 0,
+    "maximum": 0
+  },
+  "averageStintLaps": {
+    "sampleCount": 2,
+    "mean": 1.1808486265917963,
+    "minimum": 0.5463098859563615,
+    "maximum": 1.8153873672272312
+  },
+  "averageStintSeconds": {
+    "sampleCount": 2,
+    "mean": 602.1249999999948,
+    "minimum": 286.2833333330731,
+    "maximum": 917.9666666669166
+  },
+  "averageStintFuelPerLapLiters": {
+    "sampleCount": 2,
+    "mean": 14.38124501351555,
+    "minimum": 14.25730855521436,
+    "maximum": 14.505181471816739
+  },
+  "localDriverStintLaps": {
+    "sampleCount": 2,
+    "mean": 1.1808486265917963,
+    "minimum": 0.5463098859563615,
+    "maximum": 1.8153873672272312
+  },
+  "teammateDriverStintLaps": {
+    "sampleCount": 0,
+    "mean": null,
+    "minimum": null,
+    "maximum": null
+  },
+  "averagePitLaneSeconds": {
+    "sampleCount": 2,
+    "mean": 14.333333333391465,
+    "minimum": 10.466666666799483,
+    "maximum": 18.199999999983447
+  },
+  "averagePitStallSeconds": {
+    "sampleCount": 2,
+    "mean": 13.3416666667257,
+    "minimum": 10.466666666799483,
+    "maximum": 16.216666666651918
+  },
+  "averagePitServiceSeconds": {
+    "sampleCount": 0,
+    "mean": null,
+    "minimum": null,
+    "maximum": null
+  },
+  "observedFuelFillRateLitersPerSecond": {
+    "sampleCount": 0,
+    "mean": null,
+    "minimum": null,
+    "maximum": null
+  },
+  "averageTireChangePitServiceSeconds": {
+    "sampleCount": 0,
+    "mean": null,
+    "minimum": null,
+    "maximum": null
+  },
+  "averageNoTirePitServiceSeconds": {
+    "sampleCount": 2,
+    "mean": 13.3416666667257,
+    "minimum": 10.466666666799483,
+    "maximum": 16.216666666651918
+  }
+}
