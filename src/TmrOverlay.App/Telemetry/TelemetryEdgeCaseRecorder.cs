@@ -181,11 +181,11 @@ internal sealed class TelemetryEdgeCaseRecorder
         }
 
         var clip = new EdgeCaseClipBuilder(
-            Id: $"edge-{_clips.Count + 1:000}",
-            Observation: observation,
-            TriggeredAtUtc: observation.DetectedAtUtc,
-            CaptureUntilUtc: observation.DetectedAtUtc.AddSeconds(_options.PostTriggerSeconds),
-            MaxFrames: _options.MaxFramesPerClip);
+            id: $"edge-{_clips.Count + 1:000}",
+            observation: observation,
+            triggeredAtUtc: observation.DetectedAtUtc,
+            captureUntilUtc: observation.DetectedAtUtc.AddSeconds(_options.PostTriggerSeconds),
+            maxFrames: _options.MaxFramesPerClip);
         foreach (var frame in _ring.Where(frame =>
             frame.CapturedAtUtc >= observation.DetectedAtUtc.AddSeconds(-_options.PreTriggerSeconds)))
         {
