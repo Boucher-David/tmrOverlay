@@ -1,0 +1,637 @@
+{
+  "timestampUtc": "2026-04-30T02:22:31.5827624+00:00",
+  "startedAtUtc": "2026-04-30T01:56:13.8357371+00:00",
+  "telemetryFrameCount": 94505,
+  "telemetryFramesPerSecond": 59.99,
+  "metrics": [
+    {
+      "id": "diagnostics.bundle.edge_cases",
+      "count": 1,
+      "errorCount": 0,
+      "averageMilliseconds": 35.432,
+      "lastMilliseconds": 35.432,
+      "maxMilliseconds": 35.432,
+      "p95Milliseconds": 35.432,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.5181286+00:00"
+    },
+    {
+      "id": "diagnostics.bundle.events",
+      "count": 1,
+      "errorCount": 0,
+      "averageMilliseconds": 10.804,
+      "lastMilliseconds": 10.804,
+      "maxMilliseconds": 10.804,
+      "p95Milliseconds": 10.804,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.4825741+00:00"
+    },
+    {
+      "id": "diagnostics.bundle.history",
+      "count": 1,
+      "errorCount": 0,
+      "averageMilliseconds": 63.993,
+      "lastMilliseconds": 63.993,
+      "maxMilliseconds": 63.993,
+      "p95Milliseconds": 63.993,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.5821234+00:00"
+    },
+    {
+      "id": "diagnostics.bundle.latest_capture",
+      "count": 1,
+      "errorCount": 0,
+      "averageMilliseconds": 0.119,
+      "lastMilliseconds": 0.119,
+      "maxMilliseconds": 0.119,
+      "p95Milliseconds": 0.119,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.4826946+00:00"
+    },
+    {
+      "id": "diagnostics.bundle.logs",
+      "count": 1,
+      "errorCount": 0,
+      "averageMilliseconds": 16.622,
+      "lastMilliseconds": 16.622,
+      "maxMilliseconds": 16.622,
+      "p95Milliseconds": 16.622,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.4484147+00:00"
+    },
+    {
+      "id": "diagnostics.bundle.metadata",
+      "count": 1,
+      "errorCount": 0,
+      "averageMilliseconds": 6.421,
+      "lastMilliseconds": 6.421,
+      "maxMilliseconds": 6.421,
+      "p95Milliseconds": 6.421,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.4313648+00:00"
+    },
+    {
+      "id": "diagnostics.bundle.performance_files",
+      "count": 1,
+      "errorCount": 0,
+      "averageMilliseconds": 23.354,
+      "lastMilliseconds": 23.354,
+      "maxMilliseconds": 23.354,
+      "p95Milliseconds": 23.354,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.4717697+00:00"
+    },
+    {
+      "id": "diagnostics.bundle.runtime_settings",
+      "count": 1,
+      "errorCount": 0,
+      "averageMilliseconds": 0.424,
+      "lastMilliseconds": 0.424,
+      "maxMilliseconds": 0.424,
+      "p95Milliseconds": 0.424,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.4317907+00:00"
+    },
+    {
+      "id": "overlay.fuel.apply_ui",
+      "count": 1568,
+      "errorCount": 0,
+      "averageMilliseconds": 1.856,
+      "lastMilliseconds": 0.036,
+      "maxMilliseconds": 26.02,
+      "p95Milliseconds": 10.239,
+      "lastRecordedAtUtc": "2026-04-30T02:22:30.6338925+00:00"
+    },
+    {
+      "id": "overlay.fuel.history_lookup",
+      "count": 1568,
+      "errorCount": 0,
+      "averageMilliseconds": 0.021,
+      "lastMilliseconds": 0.001,
+      "maxMilliseconds": 17.974,
+      "p95Milliseconds": 0.002,
+      "lastRecordedAtUtc": "2026-04-30T02:22:30.6338313+00:00"
+    },
+    {
+      "id": "overlay.fuel.paint",
+      "count": 1569,
+      "errorCount": 0,
+      "averageMilliseconds": 0.075,
+      "lastMilliseconds": 0.056,
+      "maxMilliseconds": 1.153,
+      "p95Milliseconds": 0.099,
+      "lastRecordedAtUtc": "2026-04-30T02:22:30.6344808+00:00"
+    },
+    {
+      "id": "overlay.fuel.refresh",
+      "count": 1568,
+      "errorCount": 0,
+      "averageMilliseconds": 20.728,
+      "lastMilliseconds": 0.195,
+      "maxMilliseconds": 160.907,
+      "p95Milliseconds": 104.269,
+      "lastRecordedAtUtc": "2026-04-30T02:22:30.6340212+00:00"
+    },
+    {
+      "id": "overlay.fuel.rows",
+      "count": 1568,
+      "errorCount": 0,
+      "averageMilliseconds": 18.794,
+      "lastMilliseconds": 0.121,
+      "maxMilliseconds": 155.333,
+      "p95Milliseconds": 98.551,
+      "lastRecordedAtUtc": "2026-04-30T02:22:30.6340136+00:00"
+    },
+    {
+      "id": "overlay.fuel.snapshot",
+      "count": 1568,
+      "errorCount": 0,
+      "averageMilliseconds": 0.001,
+      "lastMilliseconds": 0.002,
+      "maxMilliseconds": 0.021,
+      "p95Milliseconds": 0.001,
+      "lastRecordedAtUtc": "2026-04-30T02:22:30.6338299+00:00"
+    },
+    {
+      "id": "overlay.fuel.strategy",
+      "count": 1568,
+      "errorCount": 0,
+      "averageMilliseconds": 0.022,
+      "lastMilliseconds": 0.008,
+      "maxMilliseconds": 5.702,
+      "p95Milliseconds": 0.028,
+      "lastRecordedAtUtc": "2026-04-30T02:22:30.6338394+00:00"
+    },
+    {
+      "id": "overlay.fuel.view_model",
+      "count": 1568,
+      "errorCount": 0,
+      "averageMilliseconds": 0.015,
+      "lastMilliseconds": 0.016,
+      "maxMilliseconds": 2.103,
+      "p95Milliseconds": 0.016,
+      "lastRecordedAtUtc": "2026-04-30T02:22:30.6338556+00:00"
+    },
+    {
+      "id": "overlay.gap.draw_graph",
+      "count": 3116,
+      "errorCount": 0,
+      "averageMilliseconds": 1.042,
+      "lastMilliseconds": 2.176,
+      "maxMilliseconds": 6.425,
+      "p95Milliseconds": 2.282,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.2347337+00:00"
+    },
+    {
+      "id": "overlay.gap.draw_labels",
+      "count": 3116,
+      "errorCount": 0,
+      "averageMilliseconds": 0.053,
+      "lastMilliseconds": 0.135,
+      "maxMilliseconds": 1.363,
+      "p95Milliseconds": 0.135,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.2347336+00:00"
+    },
+    {
+      "id": "overlay.gap.draw_prepare",
+      "count": 3116,
+      "errorCount": 0,
+      "averageMilliseconds": 0.143,
+      "lastMilliseconds": 0.764,
+      "maxMilliseconds": 1.424,
+      "p95Milliseconds": 0.416,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.2333227+00:00"
+    },
+    {
+      "id": "overlay.gap.draw_series",
+      "count": 3116,
+      "errorCount": 0,
+      "averageMilliseconds": 0.614,
+      "lastMilliseconds": 0.93,
+      "maxMilliseconds": 2.186,
+      "p95Milliseconds": 1.338,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.234598+00:00"
+    },
+    {
+      "id": "overlay.gap.draw_static",
+      "count": 3116,
+      "errorCount": 0,
+      "averageMilliseconds": 0.229,
+      "lastMilliseconds": 0.345,
+      "maxMilliseconds": 2.542,
+      "p95Milliseconds": 0.527,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.2336677+00:00"
+    },
+    {
+      "id": "overlay.gap.paint",
+      "count": 3116,
+      "errorCount": 0,
+      "averageMilliseconds": 1.258,
+      "lastMilliseconds": 2.34,
+      "maxMilliseconds": 6.702,
+      "p95Milliseconds": 2.557,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.2347342+00:00"
+    },
+    {
+      "id": "overlay.gap.record_snapshot",
+      "count": 3112,
+      "errorCount": 0,
+      "averageMilliseconds": 0.796,
+      "lastMilliseconds": 1.323,
+      "maxMilliseconds": 6.155,
+      "p95Milliseconds": 1.692,
+      "lastRecordedAtUtc": "2026-04-30T02:22:30.7070922+00:00"
+    },
+    {
+      "id": "overlay.gap.refresh",
+      "count": 3115,
+      "errorCount": 0,
+      "averageMilliseconds": 0.836,
+      "lastMilliseconds": 0.028,
+      "maxMilliseconds": 6.182,
+      "p95Milliseconds": 1.929,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.2321025+00:00"
+    },
+    {
+      "id": "overlay.gap.select_series",
+      "count": 1069,
+      "errorCount": 0,
+      "averageMilliseconds": 0.007,
+      "lastMilliseconds": 0.007,
+      "maxMilliseconds": 0.866,
+      "p95Milliseconds": 0.007,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.2320847+00:00"
+    },
+    {
+      "id": "overlay.gap.snapshot",
+      "count": 3115,
+      "errorCount": 0,
+      "averageMilliseconds": 0.001,
+      "lastMilliseconds": 0,
+      "maxMilliseconds": 0.223,
+      "p95Milliseconds": 0.001,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.2320746+00:00"
+    },
+    {
+      "id": "overlay.radar.draw",
+      "count": 160,
+      "errorCount": 0,
+      "averageMilliseconds": 0.608,
+      "lastMilliseconds": 0.53,
+      "maxMilliseconds": 8.004,
+      "p95Milliseconds": 0.704,
+      "lastRecordedAtUtc": "2026-04-30T02:19:54.2095093+00:00"
+    },
+    {
+      "id": "overlay.radar.fade_state",
+      "count": 14376,
+      "errorCount": 0,
+      "averageMilliseconds": 0.2,
+      "lastMilliseconds": 0.237,
+      "maxMilliseconds": 6.773,
+      "p95Milliseconds": 0.267,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.5720887+00:00"
+    },
+    {
+      "id": "overlay.radar.paint",
+      "count": 14376,
+      "errorCount": 0,
+      "averageMilliseconds": 0.008,
+      "lastMilliseconds": 0.002,
+      "maxMilliseconds": 8.008,
+      "p95Milliseconds": 0.002,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.572609+00:00"
+    },
+    {
+      "id": "overlay.radar.refresh",
+      "count": 14376,
+      "errorCount": 0,
+      "averageMilliseconds": 0.255,
+      "lastMilliseconds": 0.303,
+      "maxMilliseconds": 6.855,
+      "p95Milliseconds": 0.376,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.5721514+00:00"
+    },
+    {
+      "id": "overlay.radar.snapshot",
+      "count": 14376,
+      "errorCount": 0,
+      "averageMilliseconds": 0.001,
+      "lastMilliseconds": 0.001,
+      "maxMilliseconds": 0.156,
+      "p95Milliseconds": 0.002,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.5718509+00:00"
+    },
+    {
+      "id": "overlay.settings.refresh",
+      "count": 3114,
+      "errorCount": 0,
+      "averageMilliseconds": 4.636,
+      "lastMilliseconds": 4.217,
+      "maxMilliseconds": 10.938,
+      "p95Milliseconds": 5.426,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.2320557+00:00"
+    },
+    {
+      "id": "overlay.settings.sync_analysis",
+      "count": 3114,
+      "errorCount": 0,
+      "averageMilliseconds": 0.22,
+      "lastMilliseconds": 0,
+      "maxMilliseconds": 1.888,
+      "p95Milliseconds": 0.994,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.2320555+00:00"
+    },
+    {
+      "id": "overlay.settings.sync_capture",
+      "count": 3114,
+      "errorCount": 0,
+      "averageMilliseconds": 0.003,
+      "lastMilliseconds": 0.004,
+      "maxMilliseconds": 0.082,
+      "p95Milliseconds": 0.004,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.2278443+00:00"
+    },
+    {
+      "id": "overlay.settings.sync_diagnostics",
+      "count": 3114,
+      "errorCount": 0,
+      "averageMilliseconds": 4.409,
+      "lastMilliseconds": 4.21,
+      "maxMilliseconds": 9.476,
+      "p95Milliseconds": 5.004,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.2320549+00:00"
+    },
+    {
+      "id": "overlay.status.apply_ui",
+      "count": 6145,
+      "errorCount": 0,
+      "averageMilliseconds": 0.285,
+      "lastMilliseconds": 0.697,
+      "maxMilliseconds": 2.918,
+      "p95Milliseconds": 0.564,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.4331419+00:00"
+    },
+    {
+      "id": "overlay.status.health",
+      "count": 6145,
+      "errorCount": 0,
+      "averageMilliseconds": 0.007,
+      "lastMilliseconds": 0.004,
+      "maxMilliseconds": 1.977,
+      "p95Milliseconds": 0.009,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.4324442+00:00"
+    },
+    {
+      "id": "overlay.status.paint",
+      "count": 6146,
+      "errorCount": 0,
+      "averageMilliseconds": 0.047,
+      "lastMilliseconds": 0.026,
+      "maxMilliseconds": 1.8,
+      "p95Milliseconds": 0.082,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.4334879+00:00"
+    },
+    {
+      "id": "overlay.status.refresh",
+      "count": 6145,
+      "errorCount": 0,
+      "averageMilliseconds": 0.296,
+      "lastMilliseconds": 0.705,
+      "maxMilliseconds": 3.965,
+      "p95Milliseconds": 0.572,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.4331424+00:00"
+    },
+    {
+      "id": "overlay.status.snapshot",
+      "count": 6145,
+      "errorCount": 0,
+      "averageMilliseconds": 0.001,
+      "lastMilliseconds": 0.002,
+      "maxMilliseconds": 0.081,
+      "p95Milliseconds": 0.002,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.4324399+00:00"
+    },
+    {
+      "id": "telemetry.data_changed",
+      "count": 94505,
+      "errorCount": 0,
+      "averageMilliseconds": 0.442,
+      "lastMilliseconds": 0.33,
+      "maxMilliseconds": 51.571,
+      "p95Milliseconds": 0.659,
+      "lastRecordedAtUtc": "2026-04-30T02:22:30.2286767+00:00"
+    },
+    {
+      "id": "telemetry.data_changed.get_collection",
+      "count": 94505,
+      "errorCount": 0,
+      "averageMilliseconds": 0,
+      "lastMilliseconds": 0,
+      "maxMilliseconds": 4.825,
+      "p95Milliseconds": 0.001,
+      "lastRecordedAtUtc": "2026-04-30T02:22:30.2283474+00:00"
+    },
+    {
+      "id": "telemetry.data_changed.historical_frame",
+      "count": 94505,
+      "errorCount": 0,
+      "averageMilliseconds": 0.417,
+      "lastMilliseconds": 0.328,
+      "maxMilliseconds": 37.922,
+      "p95Milliseconds": 0.622,
+      "lastRecordedAtUtc": "2026-04-30T02:22:30.228676+00:00"
+    },
+    {
+      "id": "telemetry.data_changed.session_info_snapshot",
+      "count": 96,
+      "errorCount": 0,
+      "averageMilliseconds": 2.401,
+      "lastMilliseconds": 1.546,
+      "maxMilliseconds": 19.78,
+      "p95Milliseconds": 4.357,
+      "lastRecordedAtUtc": "2026-04-30T02:22:24.0517575+00:00"
+    },
+    {
+      "id": "telemetry.data_changed.session_info_version",
+      "count": 94505,
+      "errorCount": 0,
+      "averageMilliseconds": 0,
+      "lastMilliseconds": 0,
+      "maxMilliseconds": 0.081,
+      "p95Milliseconds": 0,
+      "lastRecordedAtUtc": "2026-04-30T02:22:30.2283478+00:00"
+    },
+    {
+      "id": "telemetry.data_changed.state_frame",
+      "count": 94505,
+      "errorCount": 0,
+      "averageMilliseconds": 0,
+      "lastMilliseconds": 0,
+      "maxMilliseconds": 0.146,
+      "p95Milliseconds": 0,
+      "lastRecordedAtUtc": "2026-04-30T02:22:30.2286763+00:00"
+    },
+    {
+      "id": "telemetry.edge_cases.record_frame",
+      "count": 94505,
+      "errorCount": 0,
+      "averageMilliseconds": 0.063,
+      "lastMilliseconds": 0.044,
+      "maxMilliseconds": 14.71,
+      "p95Milliseconds": 0.104,
+      "lastRecordedAtUtc": "2026-04-30T02:22:30.228675+00:00"
+    },
+    {
+      "id": "telemetry.finalize.build_summary",
+      "count": 1,
+      "errorCount": 0,
+      "averageMilliseconds": 10.234,
+      "lastMilliseconds": 10.234,
+      "maxMilliseconds": 10.234,
+      "p95Milliseconds": 10.234,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.2563095+00:00"
+    },
+    {
+      "id": "telemetry.finalize.edge_cases",
+      "count": 1,
+      "errorCount": 0,
+      "averageMilliseconds": 135.017,
+      "lastMilliseconds": 135.017,
+      "maxMilliseconds": 135.017,
+      "p95Milliseconds": 135.017,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.4213468+00:00"
+    },
+    {
+      "id": "telemetry.finalize.save_analysis",
+      "count": 1,
+      "errorCount": 0,
+      "averageMilliseconds": 3.855,
+      "lastMilliseconds": 3.855,
+      "maxMilliseconds": 3.855,
+      "p95Milliseconds": 3.855,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.2858806+00:00"
+    },
+    {
+      "id": "telemetry.finalize.save_history",
+      "count": 1,
+      "errorCount": 0,
+      "averageMilliseconds": 25.711,
+      "lastMilliseconds": 25.711,
+      "maxMilliseconds": 25.711,
+      "p95Milliseconds": 25.711,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.2820237+00:00"
+    },
+    {
+      "id": "telemetry.finalize_collection",
+      "count": 1,
+      "errorCount": 0,
+      "averageMilliseconds": 175.394,
+      "lastMilliseconds": 175.394,
+      "maxMilliseconds": 175.394,
+      "p95Milliseconds": 175.394,
+      "lastRecordedAtUtc": "2026-04-30T02:22:31.4213487+00:00"
+    },
+    {
+      "id": "telemetry.history.build_sample",
+      "count": 94505,
+      "errorCount": 0,
+      "averageMilliseconds": 0.304,
+      "lastMilliseconds": 0.26,
+      "maxMilliseconds": 8.772,
+      "p95Milliseconds": 0.471,
+      "lastRecordedAtUtc": "2026-04-30T02:22:30.228609+00:00"
+    },
+    {
+      "id": "telemetry.history.read_class_cars",
+      "count": 94505,
+      "errorCount": 0,
+      "averageMilliseconds": 0.079,
+      "lastMilliseconds": 0.064,
+      "maxMilliseconds": 8.438,
+      "p95Milliseconds": 0.113,
+      "lastRecordedAtUtc": "2026-04-30T02:22:30.2285704+00:00"
+    },
+    {
+      "id": "telemetry.history.read_class_leader",
+      "count": 94505,
+      "errorCount": 0,
+      "averageMilliseconds": 0.055,
+      "lastMilliseconds": 0.051,
+      "maxMilliseconds": 1.389,
+      "p95Milliseconds": 0.093,
+      "lastRecordedAtUtc": "2026-04-30T02:22:30.2284581+00:00"
+    },
+    {
+      "id": "telemetry.history.read_leader",
+      "count": 94505,
+      "errorCount": 0,
+      "averageMilliseconds": 0.06,
+      "lastMilliseconds": 0.052,
+      "maxMilliseconds": 6.748,
+      "p95Milliseconds": 0.092,
+      "lastRecordedAtUtc": "2026-04-30T02:22:30.2284068+00:00"
+    },
+    {
+      "id": "telemetry.history.read_nearby_cars",
+      "count": 94505,
+      "errorCount": 0,
+      "averageMilliseconds": 0.05,
+      "lastMilliseconds": 0.048,
+      "maxMilliseconds": 1.684,
+      "p95Milliseconds": 0.091,
+      "lastRecordedAtUtc": "2026-04-30T02:22:30.2285067+00:00"
+    },
+    {
+      "id": "telemetry.history_record_frame",
+      "count": 94505,
+      "errorCount": 0,
+      "averageMilliseconds": 0.001,
+      "lastMilliseconds": 0,
+      "maxMilliseconds": 0.844,
+      "p95Milliseconds": 0.002,
+      "lastRecordedAtUtc": "2026-04-30T02:22:30.2286757+00:00"
+    },
+    {
+      "id": "telemetry.live_sink",
+      "count": 94505,
+      "errorCount": 0,
+      "averageMilliseconds": 0.044,
+      "lastMilliseconds": 0.022,
+      "maxMilliseconds": 10.246,
+      "p95Milliseconds": 0.055,
+      "lastRecordedAtUtc": "2026-04-30T02:22:30.2286309+00:00"
+    },
+    {
+      "id": "telemetry.session_info.apply",
+      "count": 96,
+      "errorCount": 0,
+      "averageMilliseconds": 1.435,
+      "lastMilliseconds": 0.803,
+      "maxMilliseconds": 18.72,
+      "p95Milliseconds": 2.268,
+      "lastRecordedAtUtc": "2026-04-30T02:22:24.0517567+00:00"
+    },
+    {
+      "id": "telemetry.session_info.read",
+      "count": 96,
+      "errorCount": 0,
+      "averageMilliseconds": 0.925,
+      "lastMilliseconds": 0.741,
+      "maxMilliseconds": 2.142,
+      "p95Milliseconds": 1.222,
+      "lastRecordedAtUtc": "2026-04-30T02:22:24.0509533+00:00"
+    }
+  ],
+  "capture": {
+    "writeStatusCount": 0,
+    "lastCaptureId": null,
+    "lastCaptureDirectory": null,
+    "lastFramesWritten": 0,
+    "lastSessionInfoSnapshotCount": 0,
+    "lastPendingMessageCount": 0,
+    "lastTelemetryFileBytes": null,
+    "lastWriteAtUtc": null,
+    "lastWriteError": null
+  },
+  "process": {
+    "workingSetBytes": 275914752,
+    "privateMemoryBytes": 220868608,
+    "managedHeapBytes": 137795536,
+    "gen0Collections": 1017,
+    "gen1Collections": 183,
+    "gen2Collections": 36
+  }
+}

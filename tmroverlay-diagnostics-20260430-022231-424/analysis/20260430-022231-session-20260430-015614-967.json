@@ -1,0 +1,30 @@
+{
+  "analysisVersion": 1,
+  "id": "20260430-022231-session-20260430-015614-967",
+  "createdAtUtc": "2026-04-30T02:22:31.283492+00:00",
+  "finishedAtUtc": "2026-04-30T02:22:31.2460736+00:00",
+  "sourceId": "session-20260430-015614-967",
+  "title": "Gesamtstrecke 24h - Practice",
+  "subtitle": "Mercedes-AMG GT3 2020 | medium confidence",
+  "combo": {
+    "carKey": "car-156-mercedesamgevogt3",
+    "trackKey": "track-252-nurburgring-combined",
+    "sessionKey": "practice"
+  },
+  "lines": [
+    "Gesamtstrecke 24h - Practice",
+    "Mercedes-AMG GT3 2020 | medium confidence",
+    "",
+    "Duration: 26.3m captured, 1 completed valid laps, 2.7 valid distance laps.",
+    "Fuel model: 14.48 L/lap average, 106.0 L tank, about 7.3 laps/tank.",
+    "Stints: 1 recorded, avg 1.0 laps / 8.3m.",
+    "Pit service: 0 service stops, 6 pit-road entries, avg lane 20s, service --.",
+    "",
+    "Strategy note:",
+    "8-lap stints are plausible only with fuel saving versus the average; compare against a conservative 7-lap rhythm before the next race.",
+    "",
+    "Quality: medium; no quality warnings."
+  ],
+  "displayName": "2026-04-30 Gesamtstrecke 24h - Practice",
+  "body": "Gesamtstrecke 24h - Practice\r\nMercedes-AMG GT3 2020 | medium confidence\r\n\r\nDuration: 26.3m captured, 1 completed valid laps, 2.7 valid distance laps.\r\nFuel model: 14.48 L/lap average, 106.0 L tank, about 7.3 laps/tank.\r\nStints: 1 recorded, avg 1.0 laps / 8.3m.\r\nPit service: 0 service stops, 6 pit-road entries, avg lane 20s, service --.\r\n\r\nStrategy note:\r\n8-lap stints are plausible only with fuel saving versus the average; compare against a conservative 7-lap rhythm before the next race.\r\n\r\nQuality: medium; no quality warnings."
+}
