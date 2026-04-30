@@ -94,8 +94,110 @@ public sealed class LiveTelemetryStoreTests
         Assert.Equal(approach, snapshot.Proximity.StrongestMulticlassApproach);
     }
 
+    [Fact]
+    public void RecordFrame_UsesFocusedCarForRadarAndGapWithoutReplacingTeamFuelContext()
+    {
+        var store = new LiveTelemetryStore();
+
+        store.RecordFrame(CreateSample(
+            playerCarIdx: 10,
+            teamLapDistPct: 0.50d,
+            teamEstimatedTimeSeconds: 50d,
+            teamCarClass: 4098,
+            focusCarIdx: 20,
+            focusLapDistPct: 0.20d,
+            focusEstimatedTimeSeconds: 20d,
+            focusF2TimeSeconds: 55d,
+            focusPosition: 4,
+            focusClassPosition: 2,
+            focusCarClass: 4099,
+            focusClassLeaderCarIdx: 51,
+            focusClassLeaderF2TimeSeconds: 12d,
+            nearbyCars:
+            [
+                new HistoricalCarProximity(
+                    CarIdx: 21,
+                    LapCompleted: 2,
+                    LapDistPct: 0.21d,
+                    F2TimeSeconds: 57d,
+                    EstimatedTimeSeconds: 21d,
+                    Position: 5,
+                    ClassPosition: 3,
+                    CarClass: 4099,
+                    TrackSurface: 3,
+                    OnPitRoad: false)
+            ],
+            classCars:
+            [
+                new HistoricalCarProximity(
+                    CarIdx: 21,
+                    LapCompleted: 2,
+                    LapDistPct: 0.21d,
+                    F2TimeSeconds: 57d,
+                    EstimatedTimeSeconds: 21d,
+                    Position: 5,
+                    ClassPosition: 3,
+                    CarClass: 4099,
+                    TrackSurface: 3,
+                    OnPitRoad: false)
+            ]));
+
+        var snapshot = store.Snapshot();
+
+        Assert.Equal(10, snapshot.TeamCar.CarIdx);
+        Assert.Equal(20, snapshot.FocusCar.CarIdx);
+        Assert.False(snapshot.FocusCar.IsTeamCar);
+        Assert.Equal(21, snapshot.Proximity.NearestAhead?.CarIdx);
+        Assert.Equal(1d, snapshot.Proximity.NearestAhead!.RelativeSeconds!.Value, precision: 6);
+        Assert.Equal(20, snapshot.LeaderGap.ClassCars.Single(car => car.IsTeamCar).CarIdx);
+        Assert.Equal(43d, snapshot.LeaderGap.ClassLeaderGap.Seconds!.Value);
+    }
+
+    [Fact]
+    public void RecordFrame_TracksFocusedRivalStintFromObservedPitExit()
+    {
+        var store = new LiveTelemetryStore();
+
+        store.RecordFrame(CreateSample(
+            capturedAtUtc: DateTimeOffset.UtcNow,
+            sessionTime: 100d,
+            playerCarIdx: 10,
+            teamLapDistPct: 0.50d,
+            focusCarIdx: 20,
+            focusLapCompleted: 5,
+            focusLapDistPct: 0.00d,
+            focusOnPitRoad: true));
+        store.RecordFrame(CreateSample(
+            capturedAtUtc: DateTimeOffset.UtcNow.AddSeconds(10),
+            sessionTime: 110d,
+            playerCarIdx: 10,
+            teamLapDistPct: 0.50d,
+            focusCarIdx: 20,
+            focusLapCompleted: 5,
+            focusLapDistPct: 0.05d,
+            focusOnPitRoad: false));
+        store.RecordFrame(CreateSample(
+            capturedAtUtc: DateTimeOffset.UtcNow.AddSeconds(20),
+            sessionTime: 200d,
+            playerCarIdx: 10,
+            teamLapDistPct: 0.50d,
+            focusCarIdx: 20,
+            focusLapCompleted: 5,
+            focusLapDistPct: 0.55d,
+            focusOnPitRoad: false));
+
+        var focus = store.Snapshot().FocusCar;
+
+        Assert.Equal(20, focus.CarIdx);
+        Assert.Equal(0.5d, focus.CurrentStintLaps!.Value, precision: 6);
+        Assert.Equal(90d, focus.CurrentStintSeconds!.Value, precision: 6);
+        Assert.Equal(1, focus.ObservedPitStopCount);
+        Assert.Equal("observed pit exit", focus.StintSource);
+    }
+
     private static HistoricalTelemetrySample CreateSample(
         DateTimeOffset? capturedAtUtc = null,
+        double sessionTime = 123d,
         double fuelLevelLiters = 42d,
         double fuelLevelPercent = 0.4d,
         double fuelUsePerHourKg = 60d,
@@ -103,11 +205,23 @@ public sealed class LiveTelemetryStoreTests
         double? teamLapDistPct = null,
         double? teamEstimatedTimeSeconds = null,
         int? teamCarClass = null,
-        IReadOnlyList<HistoricalCarProximity>? nearbyCars = null)
+        IReadOnlyList<HistoricalCarProximity>? nearbyCars = null,
+        IReadOnlyList<HistoricalCarProximity>? classCars = null,
+        int? focusCarIdx = null,
+        int? focusLapCompleted = null,
+        double? focusLapDistPct = null,
+        double? focusEstimatedTimeSeconds = null,
+        double? focusF2TimeSeconds = null,
+        int? focusPosition = null,
+        int? focusClassPosition = null,
+        int? focusCarClass = null,
+        bool? focusOnPitRoad = null,
+        int? focusClassLeaderCarIdx = null,
+        double? focusClassLeaderF2TimeSeconds = null)
     {
         return new HistoricalTelemetrySample(
             CapturedAtUtc: capturedAtUtc ?? DateTimeOffset.UtcNow,
-            SessionTime: 123d,
+            SessionTime: sessionTime,
             SessionTick: 100,
             SessionInfoUpdate: 1,
             IsOnTrack: true,
@@ -134,6 +248,18 @@ public sealed class LiveTelemetryStoreTests
             TeamLapDistPct: teamLapDistPct,
             TeamEstimatedTimeSeconds: teamEstimatedTimeSeconds,
             TeamCarClass: teamCarClass,
-            NearbyCars: nearbyCars);
+            NearbyCars: nearbyCars,
+            ClassCars: classCars,
+            FocusCarIdx: focusCarIdx,
+            FocusLapCompleted: focusLapCompleted,
+            FocusLapDistPct: focusLapDistPct,
+            FocusEstimatedTimeSeconds: focusEstimatedTimeSeconds,
+            FocusF2TimeSeconds: focusF2TimeSeconds,
+            FocusPosition: focusPosition,
+            FocusClassPosition: focusClassPosition,
+            FocusCarClass: focusCarClass,
+            FocusOnPitRoad: focusOnPitRoad,
+            FocusClassLeaderCarIdx: focusClassLeaderCarIdx,
+            FocusClassLeaderF2TimeSeconds: focusClassLeaderF2TimeSeconds);
     }
 }

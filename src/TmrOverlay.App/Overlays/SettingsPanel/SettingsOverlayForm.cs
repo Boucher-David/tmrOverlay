@@ -1,10 +1,14 @@
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Text;
 using TmrOverlay.App.Analysis;
+using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.Overlays.Abstractions;
 using TmrOverlay.App.Overlays.Styling;
+using TmrOverlay.App.Storage;
 using TmrOverlay.Core.Analysis;
+using TmrOverlay.Core.AppInfo;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 using TmrOverlay.App.Telemetry;
@@ -13,6 +17,13 @@ namespace TmrOverlay.App.Overlays.SettingsPanel;
 
 internal sealed class SettingsOverlayForm : PersistentOverlayForm
 {
+    private const string WindowsCleanCommand = "dotnet clean .\\tmrOverlay.sln -c Release; Remove-Item .\\src\\TmrOverlay.App\\bin, .\\src\\TmrOverlay.App\\obj, .\\src\\TmrOverlay.Core\\bin, .\\src\\TmrOverlay.Core\\obj, .\\artifacts\\TmrOverlay-win-x64, .\\artifacts\\TmrOverlay-win-x64.zip -Recurse -Force -ErrorAction SilentlyContinue";
+    private const string WindowsBuildCommand = "dotnet build .\\src\\TmrOverlay.App\\TmrOverlay.App.csproj -c Release";
+    private const string WindowsPublishCommand = "dotnet publish .\\src\\TmrOverlay.App\\TmrOverlay.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o .\\artifacts\\TmrOverlay-win-x64";
+    private const string WindowsZipCommand = "Compress-Archive -Path .\\artifacts\\TmrOverlay-win-x64\\* -DestinationPath .\\artifacts\\TmrOverlay-win-x64.zip -Force";
+    private const int SideTabThickness = 38;
+    private const int SideTabLength = 174;
+
     private static readonly string[] PreferredFontFamilies =
     [
         "Segoe UI",
@@ -31,6 +42,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private readonly IReadOnlyList<OverlayDefinition> _managedOverlays;
     private readonly PostRaceAnalysisStore _analysisStore;
     private readonly TelemetryCaptureState _captureState;
+    private readonly AppStorageOptions _storageOptions;
+    private readonly DiagnosticsBundleService _diagnosticsBundleService;
     private readonly AppEventRecorder _events;
     private readonly Action _saveSettings;
     private readonly Action _applyOverlaySettings;
@@ -47,12 +60,19 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private bool _loading = true;
     private bool _syncingRawCaptureCheckBox;
     private bool _syncingAnalysis;
+    private Label? _buildCommandStatusLabel;
+    private Label? _currentIssueLabel;
+    private Label? _runtimeInfoLabel;
+    private TextBox? _latestDiagnosticsBundleTextBox;
+    private Label? _supportStatusLabel;
 
     public SettingsOverlayForm(
         ApplicationSettings applicationSettings,
         IReadOnlyList<OverlayDefinition> managedOverlays,
         PostRaceAnalysisStore analysisStore,
         TelemetryCaptureState captureState,
+        AppStorageOptions storageOptions,
+        DiagnosticsBundleService diagnosticsBundleService,
         AppEventRecorder events,
         OverlaySettings settings,
         Action saveSettings,
@@ -67,6 +87,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _managedOverlays = managedOverlays;
         _analysisStore = analysisStore;
         _captureState = captureState;
+        _storageOptions = storageOptions;
+        _diagnosticsBundleService = diagnosticsBundleService;
         _events = events;
         _saveSettings = saveSettings;
         _applyOverlaySettings = applyOverlaySettings;
@@ -110,9 +132,11 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
         _tabs = new TabControl
         {
+            Alignment = TabAlignment.Left,
             DrawMode = TabDrawMode.OwnerDrawFixed,
-            ItemSize = new Size(126, 30),
+            ItemSize = new Size(SideTabThickness, SideTabLength),
             Location = new Point(OverlayTheme.Layout.SettingsTabInset, OverlayTheme.Layout.SettingsTabTop),
+            Multiline = true,
             SizeMode = TabSizeMode.Fixed,
             Size = new Size(ClientSize.Width - 24, ClientSize.Height - 66),
             TabIndex = 0
@@ -135,10 +159,12 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _refreshTimer.Tick += (_, _) =>
         {
             SyncRawCaptureCheckBox();
+            SyncErrorLoggingTab();
             SyncPostRaceAnalysis();
         };
         _refreshTimer.Start();
         SyncRawCaptureCheckBox();
+        SyncErrorLoggingTab();
         SyncPostRaceAnalysis(force: true);
         _loading = false;
     }
@@ -184,6 +210,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     {
         _tabs.TabPages.Clear();
         _tabs.TabPages.Add(CreateGeneralTab());
+        _tabs.TabPages.Add(CreateErrorLoggingTab());
 
         foreach (var overlay in _managedOverlays)
         {
@@ -210,14 +237,20 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         using var borderPen = new Pen(OverlayTheme.Colors.TabBorder);
         e.Graphics.FillRectangle(backgroundBrush, bounds);
         e.Graphics.DrawRectangle(borderPen, bounds.X, bounds.Y, bounds.Width - 1, bounds.Height - 1);
+        if (selected)
+        {
+            using var accentBrush = new SolidBrush(OverlayTheme.Colors.InfoText);
+            e.Graphics.FillRectangle(accentBrush, bounds.Left, bounds.Top + 4, 3, Math.Max(0, bounds.Height - 8));
+        }
 
+        var textBounds = Rectangle.Inflate(bounds, -12, 0);
         TextRenderer.DrawText(
             e.Graphics,
             _tabs.TabPages[e.Index].Text,
             _tabs.Font,
-            bounds,
+            textBounds,
             OverlayTheme.Colors.TextPrimary,
-            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
     }
 
     private TabPage CreateGeneralTab()
@@ -282,6 +315,94 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
         page.Controls.Add(unitsLabel);
         page.Controls.Add(unitsCombo);
+        AddWindowsBuildCommands(page);
+        return page;
+    }
+
+    private void AddWindowsBuildCommands(TabPage page)
+    {
+        var title = CreateSectionLabel("Windows local build", 18, 154, 500);
+        var note = CreateMutedLabel("PowerShell from the repo root. The app only copies these commands.", 22, 184, 510);
+        var cleanLabel = CreateLabel("Clean", 22, 224, 70);
+        var cleanCommand = CreateCommandTextBox(92, 220, 350, WindowsCleanCommand);
+        var cleanCopy = CreateCopyButton(452, 220, WindowsCleanCommand);
+        var buildLabel = CreateLabel("Build", 22, 270, 70);
+        var buildCommand = CreateCommandTextBox(92, 266, 350, WindowsBuildCommand);
+        var buildCopy = CreateCopyButton(452, 266, WindowsBuildCommand);
+        var publishLabel = CreateLabel("Publish", 22, 316, 70);
+        var publishCommand = CreateCommandTextBox(92, 312, 350, WindowsPublishCommand);
+        var publishCopy = CreateCopyButton(452, 312, WindowsPublishCommand);
+        var zipLabel = CreateLabel("Zip", 22, 362, 70);
+        var zipCommand = CreateCommandTextBox(92, 358, 350, WindowsZipCommand);
+        var zipCopy = CreateCopyButton(452, 358, WindowsZipCommand);
+        _buildCommandStatusLabel = CreateMutedLabel(string.Empty, 92, 398, 350);
+
+        page.Controls.Add(title);
+        page.Controls.Add(note);
+        page.Controls.Add(cleanLabel);
+        page.Controls.Add(cleanCommand);
+        page.Controls.Add(cleanCopy);
+        page.Controls.Add(buildLabel);
+        page.Controls.Add(buildCommand);
+        page.Controls.Add(buildCopy);
+        page.Controls.Add(publishLabel);
+        page.Controls.Add(publishCommand);
+        page.Controls.Add(publishCopy);
+        page.Controls.Add(zipLabel);
+        page.Controls.Add(zipCommand);
+        page.Controls.Add(zipCopy);
+        page.Controls.Add(_buildCommandStatusLabel);
+    }
+
+    private TabPage CreateErrorLoggingTab()
+    {
+        var page = CreateTabPage("Error Logging");
+        var title = CreateSectionLabel("Error Logging", 18, 18, 500);
+        var note = CreateMutedLabel("Use this tab when sharing logs for overlay or telemetry issues.", 22, 48, 510);
+        var issueLabel = CreateLabel("Current issue", 22, 88, 140);
+        _currentIssueLabel = CreateMultiLineValueLabel(string.Empty, 180, 82, 350, 58);
+
+        var logsLabel = CreateLabel("Logs folder", 22, 166, 140);
+        var logsPath = CreateCommandTextBox(180, 162, 250, _storageOptions.LogsRoot);
+        var openLogsButton = CreateActionButton("Open", 440, 162, 90);
+        openLogsButton.Click += (_, _) => OpenSupportDirectory(_storageOptions.LogsRoot, "logs");
+
+        var diagnosticsLabel = CreateLabel("Diagnostics folder", 22, 212, 140);
+        var diagnosticsPath = CreateCommandTextBox(180, 208, 250, _storageOptions.DiagnosticsRoot);
+        var openDiagnosticsButton = CreateActionButton("Open", 440, 208, 90);
+        openDiagnosticsButton.Click += (_, _) => OpenSupportDirectory(_storageOptions.DiagnosticsRoot, "diagnostics");
+
+        var latestBundleLabel = CreateLabel("Latest bundle", 22, 258, 140);
+        _latestDiagnosticsBundleTextBox = CreateCommandTextBox(180, 254, 250, LatestDiagnosticsBundlePath() ?? string.Empty);
+        var copyBundleButton = CreateActionButton("Copy Path", 440, 254, 90);
+        copyBundleButton.Click += (_, _) => CopyLatestDiagnosticsBundlePath();
+
+        var createBundleButton = CreateActionButton("Create Bundle", 180, 306, 140);
+        createBundleButton.Click += (_, _) => CreateDiagnosticsBundleFromTab();
+        _supportStatusLabel = CreateMutedLabel(string.Empty, 330, 308, 200);
+
+        var runtimeLabel = CreateLabel("Runtime", 22, 350, 140);
+        _runtimeInfoLabel = CreateMultiLineValueLabel(string.Empty, 180, 344, 350, 138);
+
+        page.Controls.Add(title);
+        page.Controls.Add(note);
+        page.Controls.Add(issueLabel);
+        page.Controls.Add(_currentIssueLabel);
+        page.Controls.Add(logsLabel);
+        page.Controls.Add(logsPath);
+        page.Controls.Add(openLogsButton);
+        page.Controls.Add(diagnosticsLabel);
+        page.Controls.Add(diagnosticsPath);
+        page.Controls.Add(openDiagnosticsButton);
+        page.Controls.Add(latestBundleLabel);
+        page.Controls.Add(_latestDiagnosticsBundleTextBox);
+        page.Controls.Add(copyBundleButton);
+        page.Controls.Add(createBundleButton);
+        page.Controls.Add(_supportStatusLabel);
+        page.Controls.Add(runtimeLabel);
+        page.Controls.Add(_runtimeInfoLabel);
+
+        SyncErrorLoggingTab();
         return page;
     }
 
@@ -446,6 +567,27 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _applyOverlaySettings();
     }
 
+    private void CopyBuildCommand(string command)
+    {
+        try
+        {
+            Clipboard.SetText(command);
+            if (_buildCommandStatusLabel is not null)
+            {
+                _buildCommandStatusLabel.ForeColor = OverlayTheme.Colors.SuccessText;
+                _buildCommandStatusLabel.Text = "Copied command.";
+            }
+        }
+        catch
+        {
+            if (_buildCommandStatusLabel is not null)
+            {
+                _buildCommandStatusLabel.ForeColor = OverlayTheme.Colors.WarningText;
+                _buildCommandStatusLabel.Text = "Clipboard unavailable. Select the command text instead.";
+            }
+        }
+    }
+
     private static TabPage CreateTabPage(string text)
     {
         return new TabPage(text)
@@ -480,6 +622,89 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             Text = text,
             TextAlign = ContentAlignment.MiddleLeft
         };
+    }
+
+    private static Label CreateMutedLabel(string text, int x, int y, int width)
+    {
+        return new Label
+        {
+            AutoSize = false,
+            ForeColor = OverlayTheme.Colors.TextMuted,
+            Font = OverlayTheme.Font(OverlayTheme.DefaultFontFamily, 8.5f),
+            Location = new Point(x, y),
+            Size = new Size(width, 24),
+            Text = text,
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+    }
+
+    private static Label CreateMultiLineValueLabel(string text, int x, int y, int width, int height)
+    {
+        return new Label
+        {
+            AutoSize = false,
+            BackColor = OverlayTheme.Colors.PanelBackground,
+            BorderStyle = BorderStyle.FixedSingle,
+            ForeColor = OverlayTheme.Colors.TextSecondary,
+            Font = OverlayTheme.Font(OverlayTheme.DefaultFontFamily, 8.75f),
+            Location = new Point(x, y),
+            Padding = new Padding(8),
+            Size = new Size(width, height),
+            Text = text,
+            TextAlign = ContentAlignment.TopLeft
+        };
+    }
+
+    private static TextBox CreateCommandTextBox(int x, int y, int width, string command)
+    {
+        return new TextBox
+        {
+            BackColor = OverlayTheme.Colors.PanelBackground,
+            BorderStyle = BorderStyle.FixedSingle,
+            ForeColor = OverlayTheme.Colors.TextSecondary,
+            Font = OverlayTheme.Font("Consolas", 8.25f),
+            Location = new Point(x, y),
+            ReadOnly = true,
+            Size = new Size(width, 28),
+            TabStop = true,
+            Text = command,
+            WordWrap = false
+        };
+    }
+
+    private Button CreateCopyButton(int x, int y, string command)
+    {
+        var button = new Button
+        {
+            BackColor = OverlayTheme.Colors.ButtonBackground,
+            FlatStyle = FlatStyle.Flat,
+            ForeColor = OverlayTheme.Colors.TextControl,
+            Location = new Point(x, y),
+            Size = new Size(78, 28),
+            TabStop = true,
+            Text = "Copy",
+            UseVisualStyleBackColor = false
+        };
+        button.FlatAppearance.BorderColor = OverlayTheme.Colors.TabBorder;
+        button.Click += (_, _) => CopyBuildCommand(command);
+        return button;
+    }
+
+    private static Button CreateActionButton(string text, int x, int y, int width)
+    {
+        var button = new Button
+        {
+            BackColor = OverlayTheme.Colors.ButtonBackground,
+            FlatStyle = FlatStyle.Flat,
+            ForeColor = OverlayTheme.Colors.TextControl,
+            Location = new Point(x, y),
+            Size = new Size(width, 28),
+            TabStop = true,
+            Text = text,
+            UseVisualStyleBackColor = false
+        };
+        button.FlatAppearance.BorderColor = OverlayTheme.Colors.TabBorder;
+        return button;
     }
 
     private static CheckBox CreateCheckBox(string text, bool isChecked, int x, int y, int width)
@@ -709,6 +934,175 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         {
             _syncingRawCaptureCheckBox = false;
         }
+    }
+
+    private void SyncErrorLoggingTab()
+    {
+        if (_currentIssueLabel is null && _latestDiagnosticsBundleTextBox is null && _runtimeInfoLabel is null)
+        {
+            return;
+        }
+
+        var captureSnapshot = _captureState.Snapshot();
+        if (_currentIssueLabel is not null)
+        {
+            _currentIssueLabel.Text = CurrentIssueText(captureSnapshot);
+        }
+
+        if (_latestDiagnosticsBundleTextBox is not null)
+        {
+            _latestDiagnosticsBundleTextBox.Text = LatestDiagnosticsBundlePath() ?? string.Empty;
+        }
+
+        if (_runtimeInfoLabel is not null)
+        {
+            _runtimeInfoLabel.Text = RuntimeInfoText(captureSnapshot, _storageOptions);
+        }
+    }
+
+    private void CreateDiagnosticsBundleFromTab()
+    {
+        try
+        {
+            var bundlePath = _diagnosticsBundleService.CreateBundle();
+            _events.Record("diagnostics_bundle_created", new Dictionary<string, string?>
+            {
+                ["bundlePath"] = bundlePath,
+                ["source"] = "settings_error_logging_tab"
+            });
+            if (_latestDiagnosticsBundleTextBox is not null)
+            {
+                _latestDiagnosticsBundleTextBox.Text = bundlePath;
+            }
+
+            SetSupportStatus("Created diagnostics bundle.", isError: false);
+            OpenSupportDirectory(Path.GetDirectoryName(bundlePath)!, "diagnostics");
+        }
+        catch (Exception exception)
+        {
+            _events.Record("diagnostics_bundle_failed", new Dictionary<string, string?>
+            {
+                ["error"] = exception.GetType().Name,
+                ["source"] = "settings_error_logging_tab"
+            });
+            SetSupportStatus($"Bundle failed: {exception.Message}", isError: true);
+        }
+    }
+
+    private void CopyLatestDiagnosticsBundlePath()
+    {
+        var bundlePath = _latestDiagnosticsBundleTextBox?.Text;
+        if (string.IsNullOrWhiteSpace(bundlePath))
+        {
+            SetSupportStatus("No diagnostics bundle yet.", isError: true);
+            return;
+        }
+
+        try
+        {
+            Clipboard.SetText(bundlePath);
+            SetSupportStatus("Copied bundle path.", isError: false);
+        }
+        catch
+        {
+            SetSupportStatus("Clipboard unavailable. Select the path instead.", isError: true);
+        }
+    }
+
+    private void OpenSupportDirectory(string path, string label)
+    {
+        try
+        {
+            Directory.CreateDirectory(path);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = path,
+                UseShellExecute = true
+            });
+            SetSupportStatus($"Opened {label} folder.", isError: false);
+        }
+        catch (Exception exception)
+        {
+            SetSupportStatus($"Open failed: {exception.Message}", isError: true);
+        }
+    }
+
+    private string? LatestDiagnosticsBundlePath()
+    {
+        if (!Directory.Exists(_storageOptions.DiagnosticsRoot))
+        {
+            return null;
+        }
+
+        return Directory
+            .EnumerateFiles(_storageOptions.DiagnosticsRoot, "tmroverlay-diagnostics-*.zip")
+            .Select(path => new FileInfo(path))
+            .OrderByDescending(file => file.LastWriteTimeUtc)
+            .FirstOrDefault()
+            ?.FullName;
+    }
+
+    private void SetSupportStatus(string message, bool isError)
+    {
+        if (_supportStatusLabel is null)
+        {
+            return;
+        }
+
+        _supportStatusLabel.ForeColor = isError ? OverlayTheme.Colors.WarningText : OverlayTheme.Colors.SuccessText;
+        _supportStatusLabel.Text = message;
+    }
+
+    private static string CurrentIssueText(TelemetryCaptureStatusSnapshot snapshot)
+    {
+        if (!string.IsNullOrWhiteSpace(snapshot.LastError))
+        {
+            return $"Error: {snapshot.LastError}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(snapshot.LastWarning))
+        {
+            return $"Warning: {snapshot.LastWarning}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(snapshot.AppWarning))
+        {
+            return $"App warning: {snapshot.AppWarning}";
+        }
+
+        return "No current error or warning recorded.";
+    }
+
+    private static string RuntimeInfoText(TelemetryCaptureStatusSnapshot capture, AppStorageOptions storage)
+    {
+        var version = AppVersionInfo.Current;
+        return string.Join(
+            Environment.NewLine,
+            $"app: {version.InformationalVersion}",
+            $"runtime: {version.RuntimeVersion}, {version.ProcessArchitecture}",
+            $"os: {version.OperatingSystem}",
+            $"telemetry: {capture.FrameCount:N0} frames, raw {capture.WrittenFrameCount:N0} written, {capture.DroppedFrameCount:N0} drops",
+            $"capture file: {FormatBytes(capture.TelemetryFileBytes)}",
+            $"storage: {(storage.UseRepositoryLocalStorage ? "repo-local" : "app-data")}");
+    }
+
+    private static string FormatBytes(long? bytes)
+    {
+        if (bytes is null)
+        {
+            return "n/a";
+        }
+
+        string[] units = ["B", "KB", "MB", "GB"];
+        var value = (double)Math.Max(0, bytes.Value);
+        var unitIndex = 0;
+        while (value >= 1024d && unitIndex < units.Length - 1)
+        {
+            value /= 1024d;
+            unitIndex++;
+        }
+
+        return $"{value:0.#} {units[unitIndex]}";
     }
 
     private static int ScaleDimension(int defaultDimension, double scale)

@@ -84,6 +84,35 @@ public sealed class FuelStrategyCalculatorTests
     }
 
     [Fact]
+    public void From_TreatsFuelAsModeledWhenLocalDriverIsNotOnTrack()
+    {
+        var live = CreateLiveSnapshot(
+            fuelLevelLiters: 50d,
+            fuelUsePerHourKg: 75d,
+            teamLastLapTimeSeconds: 100d,
+            sessionTimeRemain: 600d,
+            isOnTrack: false);
+        var aggregate = new HistoricalSessionAggregate
+        {
+            BaselineSessionCount = 1,
+            FuelPerLapLiters = new RunningHistoricalMetric
+            {
+                SampleCount = 1,
+                Mean = 10d,
+                Minimum = 10d,
+                Maximum = 10d
+            }
+        };
+
+        var strategy = FuelStrategyCalculator.From(live, new SessionHistoryLookupResult(live.Combo, null, aggregate));
+
+        Assert.Null(strategy.CurrentFuelLiters);
+        Assert.Null(strategy.FuelPercent);
+        Assert.Equal(10d, strategy.FuelPerLapLiters);
+        Assert.Equal("baseline history", strategy.FuelPerLapSource);
+    }
+
+    [Fact]
     public void From_UsesFourHourHistoryToPlanEightLapTargets()
     {
         var live = CreateLiveSnapshot(
@@ -342,7 +371,9 @@ public sealed class FuelStrategyCalculatorTests
         double teamLastLapTimeSeconds = 100d,
         double? leaderLastLapTimeSeconds = null,
         double fuelMaxLiters = 100d,
-        double estimatedLapSeconds = 100d)
+        double estimatedLapSeconds = 100d,
+        bool isOnTrack = true,
+        bool isInGarage = false)
     {
         var context = new HistoricalSessionContext
         {
@@ -367,8 +398,8 @@ public sealed class FuelStrategyCalculatorTests
             SessionTime: 120d,
             SessionTick: 100,
             SessionInfoUpdate: 1,
-            IsOnTrack: true,
-            IsInGarage: false,
+            IsOnTrack: isOnTrack,
+            IsInGarage: isInGarage,
             OnPitRoad: false,
             PitstopActive: false,
             PlayerCarInPitStall: false,

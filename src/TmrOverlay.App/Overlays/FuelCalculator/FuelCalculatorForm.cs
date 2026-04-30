@@ -16,6 +16,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
     private const int CompactHeight = 154;
     private const int CompactMinimumTableHeight = 70;
     private const int NormalMinimumTableHeight = 150;
+    private static readonly TimeSpan ModeledRefreshInterval = TimeSpan.FromSeconds(5);
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly SessionHistoryQueryService _historyQueryService;
     private readonly OverlaySettings _settings;
@@ -32,6 +33,8 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
     private readonly System.Windows.Forms.Timer _refreshTimer;
     private readonly int _normalClientHeight;
     private bool _compactLayout;
+    private DateTimeOffset? _lastModeledRefreshAtUtc;
+    private FuelRefreshSignature? _lastRefreshSignature;
 
     private bool ShowAdvice => _settings.GetBooleanOption(OverlayOptionKeys.FuelAdvice, defaultValue: true);
 
@@ -69,7 +72,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
             Font = OverlayTheme.Font(_fontFamily, 11f, FontStyle.Bold),
             Location = new Point(14, 10),
             Size = new Size(150, 24),
-            Text = "Fuel Calculator"
+            Text = "Fuel / Stint"
         };
 
         _statusLabel = new Label
@@ -204,9 +207,14 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
     private void RefreshOverlay()
     {
         var live = _liveTelemetrySource.Snapshot();
+        if (!ShouldRefresh(live))
+        {
+            return;
+        }
+
         var history = _historyQueryService.Lookup(live.Combo);
         var strategy = FuelStrategyCalculator.From(live, history);
-        var viewModel = FuelCalculatorViewModel.From(strategy, history, ShowAdvice, _unitSystem, StintRowCount);
+        var viewModel = FuelCalculatorViewModel.From(live, strategy, history, ShowAdvice, _unitSystem, StintRowCount);
 
         ApplyStatusColor(strategy);
         _statusLabel.Text = viewModel.Status;
@@ -234,7 +242,37 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
         }
 
         UpdateVisibleRows(rows.Count);
+        _lastRefreshSignature = FuelRefreshSignature.From(live);
+        if (!HasLocalLiveFuel(live))
+        {
+            _lastModeledRefreshAtUtc = DateTimeOffset.UtcNow;
+        }
+
         Invalidate();
+    }
+
+    private bool ShouldRefresh(LiveTelemetrySnapshot live)
+    {
+        if (HasLocalLiveFuel(live))
+        {
+            _lastModeledRefreshAtUtc = null;
+            return true;
+        }
+
+        var signature = FuelRefreshSignature.From(live);
+        if (_lastRefreshSignature is null || !_lastRefreshSignature.Equals(signature))
+        {
+            return true;
+        }
+
+        return _lastModeledRefreshAtUtc is null
+            || DateTimeOffset.UtcNow - _lastModeledRefreshAtUtc.Value >= ModeledRefreshInterval;
+    }
+
+    private static bool HasLocalLiveFuel(LiveTelemetrySnapshot live)
+    {
+        return live.Fuel.HasValidFuel
+            && live.LatestSample is { IsOnTrack: true, IsInGarage: false };
     }
 
     private void ApplyPreferredLayout(int rowCount)
@@ -311,4 +349,33 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
         };
     }
 
+    private sealed record FuelRefreshSignature(
+        bool IsConnected,
+        bool IsCollecting,
+        int? TeamCarIdx,
+        int? FocusCarIdx,
+        bool FocusIsTeamCar,
+        int? TeamClassPosition,
+        int? FocusClassPosition,
+        bool? TeamOnPitRoad,
+        bool? FocusOnPitRoad,
+        int TeamObservedPitStopCount,
+        int FocusObservedPitStopCount)
+    {
+        public static FuelRefreshSignature From(LiveTelemetrySnapshot live)
+        {
+            return new FuelRefreshSignature(
+                live.IsConnected,
+                live.IsCollecting,
+                live.TeamCar.CarIdx,
+                live.FocusCar.CarIdx,
+                live.FocusCar.IsTeamCar,
+                live.TeamCar.ClassPosition,
+                live.FocusCar.ClassPosition,
+                live.TeamCar.OnPitRoad,
+                live.FocusCar.OnPitRoad,
+                live.TeamCar.ObservedPitStopCount,
+                live.FocusCar.ObservedPitStopCount);
+        }
+    }
 }

@@ -48,6 +48,9 @@ internal sealed class CarRadarForm : PersistentOverlayForm
         _fontFamily = fontFamily;
         BackColor = TransparentColor;
         TransparencyKey = TransparentColor;
+        // Color-key transparency leaks the key color through the whole form when
+        // the form itself is alpha-blended, so keep radar opacity at 100%.
+        Opacity = 1d;
         Padding = Padding.Empty;
 
         _refreshTimer = new System.Windows.Forms.Timer

@@ -5,12 +5,14 @@ using TmrOverlay.App.Overlays.GapToLeader;
 using TmrOverlay.App.Overlays.SettingsPanel;
 using TmrOverlay.App.Overlays.Status;
 using TmrOverlay.App.Settings;
+using TmrOverlay.App.Storage;
 using TmrOverlay.Core.Settings;
 using TmrOverlay.App.Telemetry;
 using TmrOverlay.Core.Telemetry.Live;
 using TmrOverlay.App.History;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Analysis;
+using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
 
 namespace TmrOverlay.App.Overlays;
@@ -18,6 +20,8 @@ namespace TmrOverlay.App.Overlays;
 internal sealed class OverlayManager : IDisposable
 {
     private readonly AppSettingsStore _settingsStore;
+    private readonly AppStorageOptions _storageOptions;
+    private readonly DiagnosticsBundleService _diagnosticsBundleService;
     private readonly TelemetryCaptureState _telemetryCaptureState;
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly SessionHistoryQueryService _historyQueryService;
@@ -35,6 +39,8 @@ internal sealed class OverlayManager : IDisposable
 
     public OverlayManager(
         AppSettingsStore settingsStore,
+        AppStorageOptions storageOptions,
+        DiagnosticsBundleService diagnosticsBundleService,
         TelemetryCaptureState telemetryCaptureState,
         ILiveTelemetrySource liveTelemetrySource,
         SessionHistoryQueryService historyQueryService,
@@ -44,6 +50,8 @@ internal sealed class OverlayManager : IDisposable
         ILogger<GapToLeaderForm> gapToLeaderLogger)
     {
         _settingsStore = settingsStore;
+        _storageOptions = storageOptions;
+        _diagnosticsBundleService = diagnosticsBundleService;
         _telemetryCaptureState = telemetryCaptureState;
         _liveTelemetrySource = liveTelemetrySource;
         _historyQueryService = historyQueryService;
@@ -86,6 +94,11 @@ internal sealed class OverlayManager : IDisposable
             SettingsOverlayDefinition.Definition.DefaultHeight,
             defaultLocation.X,
             defaultLocation.Y);
+        var settingsSizeChanged = EnsureSettingsOverlayMinimumSize(settings);
+        if (settingsSizeChanged)
+        {
+            CenterSettingsOverlay(settings);
+        }
 
         var form = EnsureForm(
             SettingsOverlayDefinition.Definition.Id,
@@ -94,10 +107,17 @@ internal sealed class OverlayManager : IDisposable
                 ManagedOverlayDefinitions,
                 _postRaceAnalysisStore,
                 _telemetryCaptureState,
+                _storageOptions,
+                _diagnosticsBundleService,
                 _events,
                 settings,
                 SaveSettings,
                 ApplyOverlaySettings));
+        if (settingsSizeChanged)
+        {
+            SaveSettings();
+        }
+
         if (!form.Visible)
         {
             form.Show();
@@ -391,6 +411,31 @@ internal sealed class OverlayManager : IDisposable
     private static int ScaleDimension(int defaultDimension, double scale)
     {
         return Math.Max(80, (int)Math.Round(defaultDimension * Math.Clamp(scale, 0.6d, 2d)));
+    }
+
+    private static bool EnsureSettingsOverlayMinimumSize(OverlaySettings settings)
+    {
+        var minimumWidth = SettingsOverlayDefinition.Definition.DefaultWidth;
+        var minimumHeight = SettingsOverlayDefinition.Definition.DefaultHeight;
+        var width = Math.Max(settings.Width, minimumWidth);
+        var height = Math.Max(settings.Height, minimumHeight);
+        if (settings.Width == width && settings.Height == height)
+        {
+            return false;
+        }
+
+        settings.Width = width;
+        settings.Height = height;
+        return true;
+    }
+
+    private static void CenterSettingsOverlay(OverlaySettings settings)
+    {
+        var area = Screen.FromPoint(Cursor.Position).WorkingArea;
+        var width = Math.Max(SettingsOverlayDefinition.Definition.DefaultWidth, settings.Width);
+        var height = Math.Max(SettingsOverlayDefinition.Definition.DefaultHeight, settings.Height);
+        settings.X = area.Left + Math.Max(0, (area.Width - width) / 2);
+        settings.Y = area.Top + Math.Max(0, (area.Height - height) / 2);
     }
 
     private static Point CenteredDefaultLocation(OverlayDefinition definition)

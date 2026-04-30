@@ -511,7 +511,25 @@ internal sealed record HistoricalTelemetrySample(
     int? TireSetsUsed = null,
     int? FastRepairUsed = null,
     int? DriversSoFar = null,
-    int? DriverChangeLapStatus = null);
+    int? DriverChangeLapStatus = null,
+    int? FocusCarIdx = null,
+    int? FocusLapCompleted = null,
+    double? FocusLapDistPct = null,
+    double? FocusF2TimeSeconds = null,
+    double? FocusEstimatedTimeSeconds = null,
+    double? FocusLastLapTimeSeconds = null,
+    double? FocusBestLapTimeSeconds = null,
+    int? FocusPosition = null,
+    int? FocusClassPosition = null,
+    int? FocusCarClass = null,
+    bool? FocusOnPitRoad = null,
+    int? FocusClassLeaderCarIdx = null,
+    int? FocusClassLeaderLapCompleted = null,
+    double? FocusClassLeaderLapDistPct = null,
+    double? FocusClassLeaderF2TimeSeconds = null,
+    double? FocusClassLeaderEstimatedTimeSeconds = null,
+    double? FocusClassLeaderLastLapTimeSeconds = null,
+    double? FocusClassLeaderBestLapTimeSeconds = null);
 
 internal sealed record HistoricalCarProximity(
     int CarIdx,

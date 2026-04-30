@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-04-28
+Last updated: 2026-04-30
 
 ## Project Goal
 
@@ -39,10 +39,10 @@ Last updated: 2026-04-28
   - `Styling/OverlayTheme.cs` contains human-editable shared Windows overlay colors, font helpers, and common layout tokens; data-visualization-specific colors can remain near their drawing code
   - optional `overlay-theme.json` under the app settings root can override shared font/color tokens without recompiling
   - `Status/` contains the current collector status overlay
-  - `SettingsPanel/` contains a centered tabbed settings overlay for user-managed overlay visibility, scale, session filters, shared font/units, runtime raw-capture requests, placeholder Overlay Bridge controls, post-race analysis browsing, and overlay-specific display options
-  - `FuelCalculator/` contains the first strategy overlay, backed by live telemetry plus exact car/track/session history
-  - `CarRadar/` contains a transparent circular proximity overlay, backed by `CarLeftRight` and nearby `CarIdx*` progress/position telemetry
-  - `GapToLeader/` contains a rolling in-class gap trend graph, backed by `CarIdxF2Time` with progress fallback
+  - `SettingsPanel/` contains a centered tabbed settings overlay with left-side navigation for user-managed overlay visibility, scale, session filters, shared font/units, Windows build/dev commands, diagnostics bundle controls, runtime raw-capture requests, placeholder Overlay Bridge controls, post-race analysis browsing, and overlay-specific display options
+  - `FuelCalculator/` contains the first strategy/stint overlay, backed by local live fuel only while the local driver is in the car plus exact car/track/session history for modeled team/focus stint context
+  - `CarRadar/` contains a transparent circular proximity overlay, backed by `CarLeftRight` for the local car and focused-car nearby `CarIdx*` progress/position telemetry
+  - `GapToLeader/` contains a rolling focused-car in-class gap trend graph, backed by `CarIdxF2Time` with progress fallback
 
 - `src/TmrOverlay.App/Overlays/Status/StatusOverlayForm.cs`
   - tiny always-on-top overlay placed at `(24, 24)`
@@ -60,10 +60,11 @@ Last updated: 2026-04-28
   - new overlay features should log unexpected refresh/render failures and surface a compact visible error state, while normal telemetry gaps should degrade to waiting/unavailable
 
 - `src/TmrOverlay.App/Overlays/SettingsPanel/`
-  - square 600x600 settings overlay centered on the primary screen by default
+  - wide 1080x600 settings overlay centered on first open by default
   - opens on startup and can be reopened from the tray menu
-  - tabs include General, each current overlay, an Overlay Bridge placeholder for post-v1.0 controls, and Post-race Analysis with a past-session picker backed by saved analysis rows plus the built-in four-hour sample
-  - General exposes a shared overlay font-family selector from widely available fonts and a metric/imperial unit selector
+  - tabs are rendered as a left-side rail and include General, Error Logging, each current overlay, an Overlay Bridge placeholder for post-v1.0 controls, and Post-race Analysis with a past-session picker backed by saved analysis rows plus the built-in four-hour sample
+  - General exposes a shared overlay font-family selector from widely available fonts, a metric/imperial unit selector, and copyable Windows clean/build/publish/zip commands
+  - Error Logging exposes current issue text, log/diagnostics folders, latest diagnostics bundle path, manual bundle creation, and compact app/runtime/telemetry state
   - per-overlay tabs expose visibility, scale, test/practice/qualifying/race session filters, and descriptor-driven overlay-specific display options
   - the Collector Status tab owns the runtime `Raw capture` checkbox
   - visibility, scale, font, unit, and display-option changes apply to open overlays immediately; session filters are rechecked against live session type
@@ -79,13 +80,14 @@ Last updated: 2026-04-28
   - accounts for overall leader pace/progress for timed-race lap count, stores class-leader context, and shows leader/class gaps in the source row when available
   - can bias future stint targets toward historical team-stint evidence, currently 8 laps for the 4-hour Nürburgring baseline, without labeling teammate rows in the UI
   - warns when a target such as an 8-lap stint needs realistic fuel saving versus nominal tank range or avoids extra stops over longer races
+  - separates local live fuel from team/focused-car stint context so modeled stint information can continue while watching a teammate or rival, and refreshes the modeled view less often when local live fuel is not active
 
 - `src/TmrOverlay.App/Overlays/CarRadar/`
   - draggable 300px circular radar overlay placed to the right of the status overlay by default
   - transparent outside the circle and paints nothing when no cars are within proximity or multiclass warning range
   - uses `CarLeftRight` for side occupancy
-  - uses nearby `CarIdxEstTime`, `CarIdxLapDistPct`, and `CarIdxLapCompleted` progress for first-pass relative placement
-  - draws the team car as a white rectangle and nearby traffic from any class as car rectangles that fade from red to yellow to transparent as traffic moves away
+  - uses focused-car nearby `CarIdxEstTime`, `CarIdxLapDistPct`, and `CarIdxLapCompleted` progress for first-pass relative placement
+  - draws the focused/reference car as a white rectangle and nearby traffic from any class as car rectangles that fade from red to yellow to transparent as traffic moves away
   - tracks recent relative timing for other-class cars and can draw a short outer red arc with a live seconds gap when faster multiclass traffic is approaching from behind before it reaches close radar range
   - currently does not have true per-car lateral placement; side occupancy comes from the scalar iRacing left/right signal
 
@@ -139,7 +141,7 @@ Last updated: 2026-04-28
   - `LiveTelemetryStore` is the shared normalized live source for product overlays
   - `ILiveTelemetrySource` is the read boundary for overlays and the local bridge
   - `ILiveTelemetrySink` is the write boundary for live iRacing collection and replay/dev providers
-  - `LiveTelemetrySnapshot` now includes fuel, proximity, leader-gap, and same-class gap graph inputs derived from each frame
+  - `LiveTelemetrySnapshot` now includes local fuel, team-car context, focused-car context, proximity, leader-gap, and same-class gap graph inputs derived from each frame
 
 ### Session history
 

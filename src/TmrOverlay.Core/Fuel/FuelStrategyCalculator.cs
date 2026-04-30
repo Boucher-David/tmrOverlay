@@ -14,14 +14,17 @@ internal static class FuelStrategyCalculator
         var aggregate = history.PreferredAggregate;
         var aggregateSource = history.PreferredAggregateSource;
         var sample = live.LatestSample;
-        var currentFuelLiters = ValidPositive(live.Fuel.FuelLevelLiters);
+        var hasLocalLiveFuel = HasLocalLiveFuel(live);
+        var currentFuelLiters = hasLocalLiveFuel ? ValidPositive(live.Fuel.FuelLevelLiters) : null;
         var maxFuelLiters = FirstValidPositive(
             live.Context.Car.DriverCarFuelMaxLiters,
             aggregate?.Car?.DriverCarFuelMaxLiters);
         var lapTime = SelectLapTime(live, aggregate);
         var racePace = SelectRacePace(sample, lapTime);
-        var fuelPerLap = SelectFuelPerLap(live, aggregate, aggregateSource);
-        var fuelPerHour = FirstValidPositive(live.Fuel.FuelUsePerHourLiters, aggregate?.FuelPerHourLiters.Mean);
+        var fuelPerLap = SelectFuelPerLap(live, aggregate, aggregateSource, hasLocalLiveFuel);
+        var fuelPerHour = FirstValidPositive(
+            hasLocalLiveFuel ? live.Fuel.FuelUsePerHourLiters : null,
+            aggregate?.FuelPerHourLiters.Mean);
         var teammateStintTarget = SelectTeammateStintTarget(aggregate, aggregateSource, maxFuelLiters, fuelPerLap.Value);
         var completedStintCount = EstimateCompletedStintCount(live, maxFuelLiters, fuelPerLap.Value, teammateStintTarget.TargetLaps);
         var pitStrategy = SelectPitStrategy(aggregate, aggregateSource);
@@ -48,7 +51,7 @@ internal static class FuelStrategyCalculator
             HasData: currentFuelLiters is not null || fuelPerLap.Value is not null,
             Status: status,
             CurrentFuelLiters: currentFuelLiters,
-            FuelPercent: live.Fuel.FuelLevelPercent,
+            FuelPercent: hasLocalLiveFuel ? live.Fuel.FuelLevelPercent : null,
             FuelPerLapLiters: fuelPerLap.Value,
             FuelPerLapSource: fuelPerLap.Source,
             FuelPerLapMinimumLiters: fuelPerLap.Minimum,
@@ -95,10 +98,11 @@ internal static class FuelStrategyCalculator
     private static FuelPerLapSelection SelectFuelPerLap(
         LiveTelemetrySnapshot live,
         HistoricalSessionAggregate? aggregate,
-        string? aggregateSource)
+        string? aggregateSource,
+        bool hasLocalLiveFuel)
     {
         var historicalRange = aggregate?.FuelPerLapLiters;
-        if (ValidPositive(live.Fuel.FuelPerLapLiters) is { } liveFuelPerLap)
+        if (hasLocalLiveFuel && ValidPositive(live.Fuel.FuelPerLapLiters) is { } liveFuelPerLap)
         {
             return new FuelPerLapSelection(
                 liveFuelPerLap,
@@ -117,6 +121,12 @@ internal static class FuelStrategyCalculator
         }
 
         return new FuelPerLapSelection(null, "unavailable", null, null);
+    }
+
+    private static bool HasLocalLiveFuel(LiveTelemetrySnapshot live)
+    {
+        return live.Fuel.HasValidFuel
+            && live.LatestSample is { IsOnTrack: true, IsInGarage: false };
     }
 
     private static HistoricalStintTarget SelectTeammateStintTarget(

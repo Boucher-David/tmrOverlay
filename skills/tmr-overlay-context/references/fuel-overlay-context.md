@@ -1,6 +1,6 @@
 # Fuel Overlay Context
 
-Last updated: 2026-04-26
+Last updated: 2026-04-30
 
 ## Current Analyzed Captures
 
@@ -153,6 +153,8 @@ Current derivations:
 The overlay must keep live race telemetry as the primary source for strategy and fuel numbers. Live session time, leader/team progress, lap pace, fuel level, fuel burn, pit state, and completed-stint inference should continuously update the table. Exact user history is only a fallback/model until the current session has enough reliable live data. Baseline/sample history is opt-in for development and must not override live data.
 
 During teammate stints, local scalar fuel can be unavailable. In that mode the overlay should continue using team-car `CarIdx*` progress plus user/baseline fuel history, label the usage as a model rather than live burn, and keep completed stints in historical storage instead of rendering them as active table rows.
+
+The live overlay now treats scalar fuel as local-live fuel only when the latest local sample is on track and not in the garage. When the local driver is not in the car, the strategy calculation ignores scalar fuel level/burn, uses history as the modeled fuel source, and can still show observed team/focus stint context from `CarIdx*` progress and pit-road transitions.
 
 When historical completed-stint data shows team stints around 8 laps and the fuel-saving requirement stays within the realistic threshold, the calculator can bias projected rows to 8 laps. This is a planning hint, not proof that current live teammate fuel is directly available, and the UI intentionally does not label rows as teammate stints.
 

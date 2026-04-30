@@ -1,5 +1,6 @@
 using TmrOverlay.Core.Fuel;
 using TmrOverlay.Core.History;
+using TmrOverlay.Core.Telemetry.Live;
 
 namespace TmrOverlay.App.Overlays.FuelCalculator;
 
@@ -10,6 +11,7 @@ internal sealed record FuelCalculatorViewModel(
     IReadOnlyList<FuelDisplayRow> Rows)
 {
     public static FuelCalculatorViewModel From(
+        LiveTelemetrySnapshot live,
         FuelStrategySnapshot strategy,
         SessionHistoryLookupResult history,
         bool showAdvice,
@@ -19,8 +21,8 @@ internal sealed record FuelCalculatorViewModel(
         return new FuelCalculatorViewModel(
             Status: strategy.Status,
             Overview: BuildOverview(strategy, unitSystem),
-            Source: BuildSourceText(strategy, history, unitSystem),
-            Rows: BuildDisplayRows(strategy, showAdvice, unitSystem, maximumRows));
+            Source: BuildSourceText(live, strategy, history, unitSystem),
+            Rows: BuildDisplayRows(live, strategy, showAdvice, unitSystem, maximumRows));
     }
 
     private static string BuildOverview(FuelStrategySnapshot strategy, string unitSystem)
@@ -43,12 +45,18 @@ internal sealed record FuelCalculatorViewModel(
     }
 
     private static IReadOnlyList<FuelDisplayRow> BuildDisplayRows(
+        LiveTelemetrySnapshot live,
         FuelStrategySnapshot strategy,
         bool showAdvice,
         string unitSystem,
         int maximumRows)
     {
         var rows = new List<FuelDisplayRow>(maximumRows);
+        if (BuildFocusRow(live) is { } focusRow)
+        {
+            rows.Add(focusRow);
+        }
+
         if (strategy.RhythmComparison is { AdditionalStopCount: > 0 } comparison)
         {
             rows.Add(new FuelDisplayRow(
@@ -66,6 +74,38 @@ internal sealed record FuelCalculatorViewModel(
         }
 
         return rows;
+    }
+
+    private static FuelDisplayRow? BuildFocusRow(LiveTelemetrySnapshot live)
+    {
+        var focus = live.FocusCar;
+        if (!focus.HasData || focus.CarIdx is null)
+        {
+            return null;
+        }
+
+        var focusIsTeam = live.TeamCar.CarIdx is { } teamCarIdx && focus.CarIdx == teamCarIdx;
+        if (focusIsTeam && HasLocalLiveFuel(live))
+        {
+            return null;
+        }
+
+        var label = focusIsTeam ? "Team stint" : $"Focus #{focus.CarIdx}";
+        var value = focus.CurrentStintLaps is { } stintLaps
+            ? $"stint {stintLaps:0.0} laps"
+            : "stint tracking";
+        var position = FormatPosition(focus.ClassPosition ?? focus.OverallPosition);
+        if (!string.Equals(position, "--", StringComparison.Ordinal))
+        {
+            value = $"{value} | P{position}";
+        }
+
+        var advice = focus.OnPitRoad == true
+            ? "pit road"
+            : focusIsTeam
+                ? "model fuel"
+                : "no live fuel";
+        return new FuelDisplayRow(label, value, advice);
     }
 
     private static string BuildStintText(FuelStintEstimate stint, string unitSystem)
@@ -101,6 +141,7 @@ internal sealed record FuelCalculatorViewModel(
     }
 
     private static string BuildSourceText(
+        LiveTelemetrySnapshot live,
         FuelStrategySnapshot strategy,
         SessionHistoryLookupResult history,
         string unitSystem)
@@ -121,7 +162,35 @@ internal sealed record FuelCalculatorViewModel(
         var tireModel = strategy.TireChangeServiceSeconds is not null || strategy.FuelFillRateLitersPerSecond is not null
             ? $" | tires {strategy.TireModelSource}"
             : string.Empty;
-        return $"burn {fuelPerLap} ({strategy.FuelPerLapSource}) | {fullTank} | history {historySource}{historicalRange}{tireModel}{gaps}";
+        var focus = FormatFocusSource(live);
+        return $"burn {fuelPerLap} ({strategy.FuelPerLapSource}) | {fullTank} | history {historySource}{historicalRange}{tireModel}{gaps}{focus}";
+    }
+
+    private static string FormatFocusSource(LiveTelemetrySnapshot live)
+    {
+        var focus = live.FocusCar;
+        if (!focus.HasData || focus.CarIdx is null)
+        {
+            return string.Empty;
+        }
+
+        var focusIsTeam = live.TeamCar.CarIdx is { } teamCarIdx && focus.CarIdx == teamCarIdx;
+        if (focusIsTeam && HasLocalLiveFuel(live))
+        {
+            return string.Empty;
+        }
+
+        var role = focusIsTeam ? "team" : $"focus #{focus.CarIdx}";
+        var stint = focus.CurrentStintLaps is { } stintLaps
+            ? $"{stintLaps:0.0} laps"
+            : "tracking";
+        return $" | {role} stint {stint}";
+    }
+
+    private static bool HasLocalLiveFuel(LiveTelemetrySnapshot live)
+    {
+        return live.Fuel.HasValidFuel
+            && live.LatestSample is { IsOnTrack: true, IsInGarage: false };
     }
 
     private static string FormatTireAdvice(TireChangeAdvice? advice, string unitSystem)
@@ -184,6 +253,13 @@ internal sealed record FuelCalculatorViewModel(
         return value is null || double.IsNaN(value.Value) || double.IsInfinity(value.Value)
             ? "--"
             : FormattableString.Invariant($"{value.Value:0.0}");
+    }
+
+    private static string FormatPosition(int? position)
+    {
+        return position is { } value && value > 0
+            ? value.ToString("0")
+            : "--";
     }
 
     private static string Pluralize(string singular, int count)
