@@ -9,6 +9,10 @@ internal sealed class TelemetryEdgeCaseDetector
     private const double SideCandidateLapWindow = 0.0025d;
     private const double SideCandidateSecondsWindow = 0.5d;
     private const double TireWearResetPercent = 2.0d;
+    private const double EngineOffRpmThreshold = 500d;
+    private const double EngineOffOilPressureThreshold = 0.2d;
+    private const int RacingSessionState = 4;
+    private const double StartLapDistanceWindow = 0.05d;
 
     private readonly HashSet<string> _emittedOnce = new(StringComparer.OrdinalIgnoreCase);
     private HistoricalTelemetrySample? _previousSample;
@@ -125,6 +129,43 @@ internal sealed class TelemetryEdgeCaseDetector
         if (Math.Abs(delta) <= SuspiciousZeroTimingSeconds
             && Math.Abs(relativeLaps) >= SuspiciousZeroTimingLapsWithoutLapTime)
         {
+            if (IsNearZero(carSeconds)
+                && IsNearZero(focusSeconds))
+            {
+                var startContext = StartupGridOrTowContext(_previousSample, sample);
+                if (startContext is not null)
+                {
+                    EmitOnce(
+                        observations,
+                        $"timing.uninitialized-start-context.{source}.car-{car.CarIdx}",
+                        TelemetryEdgeCaseSeverity.Info,
+                        "Timing row appeared uninitialized during grid, start, pit, tow, or replay context while lap-distance progress showed physical separation.",
+                        sample,
+                        new Dictionary<string, string?>
+                        {
+                            ["source"] = source,
+                            ["carIdx"] = car.CarIdx.ToString(),
+                            ["context"] = startContext,
+                            ["relativeLaps"] = Format(relativeLaps),
+                            ["deltaSeconds"] = Format(delta),
+                            ["carEstimatedTimeSeconds"] = Format(car.EstimatedTimeSeconds),
+                            ["focusEstimatedTimeSeconds"] = Format(FocusEstimatedTimeSeconds(sample)),
+                            ["carLapCompleted"] = car.LapCompleted.ToString(),
+                            ["focusLapCompleted"] = sample.FocusLapCompleted?.ToString(),
+                            ["carLapDistPct"] = Format(car.LapDistPct),
+                            ["focusLapDistPct"] = Format(FocusLapDistPct(sample)),
+                            ["sessionState"] = sample.SessionState?.ToString(),
+                            ["isOnTrack"] = sample.IsOnTrack.ToString(),
+                            ["onPitRoad"] = sample.OnPitRoad.ToString(),
+                            ["speedMetersPerSecond"] = Format(sample.SpeedMetersPerSecond),
+                            ["carClass"] = car.CarClass?.ToString(),
+                            ["classPosition"] = car.ClassPosition?.ToString(),
+                            ["trackSurface"] = car.TrackSurface?.ToString()
+                        });
+                    return;
+                }
+            }
+
             EmitOnce(
                 observations,
                 $"timing.zero.{source}.car-{car.CarIdx}",
@@ -232,6 +273,27 @@ internal sealed class TelemetryEdgeCaseDetector
         HistoricalTelemetrySample sample,
         List<TelemetryEdgeCaseObservation> observations)
     {
+        if (_previousSample?.FocusCarIdx is { } previousChangedFocus
+            && sample.FocusCarIdx is { } currentChangedFocus
+            && previousChangedFocus != currentChangedFocus)
+        {
+            EmitOnce(
+                observations,
+                "focus.changed",
+                TelemetryEdgeCaseSeverity.Info,
+                "Camera/focus car changed during collection.",
+                sample,
+                new Dictionary<string, string?>
+                {
+                    ["previousFocusCarIdx"] = previousChangedFocus.ToString(),
+                    ["currentFocusCarIdx"] = currentChangedFocus.ToString(),
+                    ["playerCarIdx"] = sample.PlayerCarIdx?.ToString(),
+                    ["focusLapDistPct"] = Format(sample.FocusLapDistPct),
+                    ["focusF2TimeSeconds"] = Format(sample.FocusF2TimeSeconds),
+                    ["focusEstimatedTimeSeconds"] = Format(sample.FocusEstimatedTimeSeconds)
+                });
+        }
+
         if (sample.FocusCarIdx is { } focus
             && sample.PlayerCarIdx is { } player
             && focus != player
@@ -338,17 +400,24 @@ internal sealed class TelemetryEdgeCaseDetector
         var deltaSeconds = sample.SessionTime - _previousSample.SessionTime;
         if (deltaSeconds <= 0d || deltaSeconds > 2d)
         {
+            var duplicateStartupContext = Math.Abs(deltaSeconds) <= 0.000001d
+                && IsStartupGridOrTowContext(_previousSample, sample);
             EmitOnce(
                 observations,
-                "session-time.jump",
-                TelemetryEdgeCaseSeverity.Warning,
-                "SessionTime jumped or moved backward between frames.",
+                duplicateStartupContext ? "session-time.duplicate-startup" : "session-time.jump",
+                duplicateStartupContext ? TelemetryEdgeCaseSeverity.Info : TelemetryEdgeCaseSeverity.Warning,
+                duplicateStartupContext
+                    ? "SessionTime repeated during grid, pit, tow, or replay startup context."
+                    : "SessionTime jumped or moved backward between frames.",
                 sample,
                 new Dictionary<string, string?>
                 {
                     ["previousSessionTime"] = Format(_previousSample.SessionTime),
                     ["currentSessionTime"] = Format(sample.SessionTime),
-                    ["deltaSeconds"] = Format(deltaSeconds)
+                    ["deltaSeconds"] = Format(deltaSeconds),
+                    ["previousIsOnTrack"] = _previousSample.IsOnTrack.ToString(),
+                    ["currentIsOnTrack"] = sample.IsOnTrack.ToString(),
+                    ["onPitRoad"] = sample.OnPitRoad.ToString()
                 });
         }
 
@@ -423,16 +492,24 @@ internal sealed class TelemetryEdgeCaseDetector
                 && currentTireSets > previousTireSets
                 && !pitContext)
             {
+                var startupContext = previousTireSets == 0 && IsStartupGridOrTowContext(_previousSample, sample);
                 EmitOnce(
                     observations,
-                    "tires.set-count-increased-outside-pit-context",
-                    TelemetryEdgeCaseSeverity.Warning,
-                    "Tire set counter increased outside pit/service context.",
+                    startupContext ? "tires.set-count-initialized" : "tires.set-count-increased-outside-pit-context",
+                    startupContext ? TelemetryEdgeCaseSeverity.Info : TelemetryEdgeCaseSeverity.Warning,
+                    startupContext
+                        ? "Tire set counter initialized during grid, pit, tow, or collection startup context."
+                        : "Tire set counter increased outside pit/service context.",
                     sample,
                     new Dictionary<string, string?>
                     {
                         ["previousTireSetsUsed"] = previousTireSets.ToString(),
-                        ["currentTireSetsUsed"] = currentTireSets.ToString()
+                        ["currentTireSetsUsed"] = currentTireSets.ToString(),
+                        ["previousIsOnTrack"] = _previousSample.IsOnTrack.ToString(),
+                        ["currentIsOnTrack"] = sample.IsOnTrack.ToString(),
+                        ["onPitRoad"] = sample.OnPitRoad.ToString(),
+                        ["teamOnPitRoad"] = sample.TeamOnPitRoad?.ToString(),
+                        ["playerCarInPitStall"] = sample.PlayerCarInPitStall.ToString()
                     });
             }
 
@@ -441,36 +518,47 @@ internal sealed class TelemetryEdgeCaseDetector
                 && currentFastRepair > previousFastRepair
                 && !pitContext)
             {
+                var startupContext = previousFastRepair == 0 && IsStartupGridOrTowContext(_previousSample, sample);
                 EmitOnce(
                     observations,
-                    "repair.fast-repair-used-outside-pit-context",
-                    TelemetryEdgeCaseSeverity.Warning,
-                    "Fast repair counter increased outside pit/service context.",
+                    startupContext ? "repair.fast-repair-initialized" : "repair.fast-repair-used-outside-pit-context",
+                    startupContext ? TelemetryEdgeCaseSeverity.Info : TelemetryEdgeCaseSeverity.Warning,
+                    startupContext
+                        ? "Fast repair counter initialized during grid, pit, tow, or collection startup context."
+                        : "Fast repair counter increased outside pit/service context.",
                     sample,
                     new Dictionary<string, string?>
                     {
                         ["previousFastRepairUsed"] = previousFastRepair.ToString(),
-                        ["currentFastRepairUsed"] = currentFastRepair.ToString()
+                        ["currentFastRepairUsed"] = currentFastRepair.ToString(),
+                        ["previousIsOnTrack"] = _previousSample.IsOnTrack.ToString(),
+                        ["currentIsOnTrack"] = sample.IsOnTrack.ToString(),
+                        ["onPitRoad"] = sample.OnPitRoad.ToString(),
+                        ["teamOnPitRoad"] = sample.TeamOnPitRoad?.ToString(),
+                        ["playerCarInPitStall"] = sample.PlayerCarInPitStall.ToString()
                     });
             }
         }
 
-        foreach (var name in RawTelemetryWatchVariables.Groups["pit.commands"])
+        var activePitCommands = RawTelemetryWatchVariables.Groups["pit.commands"]
+            .Select(name => new { Name = name, Value = raw.Get(name) })
+            .Where(row => row.Value is { } value && Math.Abs(value) > 0.0001d)
+            .ToArray();
+        if (activePitCommands.Length > 0)
         {
-            if (raw.Get(name) is { } value && Math.Abs(value) > 0.0001d)
-            {
-                EmitOnce(
-                    observations,
-                    $"raw.pit-command.active.{name}",
-                    TelemetryEdgeCaseSeverity.Info,
-                    "A raw pit-service command channel became active.",
-                    sample,
-                    new Dictionary<string, string?>
-                    {
-                        ["variable"] = name,
-                        ["value"] = Format(value)
-                    });
-            }
+            var fields = activePitCommands
+                .ToDictionary(row => row.Name, row => (string?)Format(row.Value), StringComparer.OrdinalIgnoreCase);
+            fields["variables"] = string.Join(",", activePitCommands.Select(row => row.Name));
+            fields["onPitRoad"] = sample.OnPitRoad.ToString();
+            fields["teamOnPitRoad"] = sample.TeamOnPitRoad?.ToString();
+            fields["playerCarInPitStall"] = sample.PlayerCarInPitStall.ToString();
+            EmitOnce(
+                observations,
+                "raw.pit-commands.active",
+                TelemetryEdgeCaseSeverity.Info,
+                "Raw pit-service command channels became active.",
+                sample,
+                fields);
         }
 
         DetectTireWearReset(sample, raw, observations);
@@ -621,6 +709,38 @@ internal sealed class TelemetryEdgeCaseDetector
         RawTelemetryWatchSnapshot raw,
         List<TelemetryEdgeCaseObservation> observations)
     {
+        if (_previousSample is null)
+        {
+            var fields = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+            foreach (var group in new[] { "tires.wear", "tires.temperature", "tires.pressure", "tires.odometer", "suspension", "brakes", "wheels" })
+            {
+                var active = ActiveRawValues(group, raw);
+                if (active.Count == 0)
+                {
+                    continue;
+                }
+
+                fields[$"{group}.count"] = active.Count.ToString();
+                foreach (var pair in active.Take(3))
+                {
+                    fields[$"{group}.{pair.Key}"] = pair.Value;
+                }
+            }
+
+            if (fields.Count > 0)
+            {
+                EmitOnce(
+                    observations,
+                    "raw.startup-engineering-baseline",
+                    TelemetryEdgeCaseSeverity.Info,
+                    "Raw engineering channels were already populated at collection start.",
+                    sample,
+                    fields);
+            }
+
+            return;
+        }
+
         DetectRawGroupActive(sample, "tires.wear", raw, "Raw tire wear channels became finite/non-zero.", observations);
         DetectRawGroupActive(sample, "tires.temperature", raw, "Raw tire temperature channels became finite/non-zero.", observations);
         DetectRawGroupActive(sample, "tires.pressure", raw, "Raw tire pressure channels became finite/non-zero.", observations);
@@ -759,12 +879,7 @@ internal sealed class TelemetryEdgeCaseDetector
         string summary,
         List<TelemetryEdgeCaseObservation> observations)
     {
-        var names = RawTelemetryWatchVariables.Groups[group];
-        var active = names
-            .Select(name => new { Name = name, Value = raw.Get(name) })
-            .Where(row => row.Value is { } value && Math.Abs(value) > 0.0001d)
-            .Take(12)
-            .ToDictionary(row => row.Name, row => row.Value!.Value.ToString("0.###"), StringComparer.OrdinalIgnoreCase);
+        var active = ActiveRawValues(group, raw);
         if (active.Count == 0)
         {
             return;
@@ -779,6 +894,18 @@ internal sealed class TelemetryEdgeCaseDetector
             active.ToDictionary(pair => pair.Key, pair => (string?)pair.Value, StringComparer.OrdinalIgnoreCase));
     }
 
+    private static IReadOnlyDictionary<string, string> ActiveRawValues(
+        string group,
+        RawTelemetryWatchSnapshot raw)
+    {
+        var names = RawTelemetryWatchVariables.Groups[group];
+        return names
+            .Select(name => new { Name = name, Value = raw.Get(name) })
+            .Where(row => row.Value is { } value && Math.Abs(value) > 0.0001d)
+            .Take(12)
+            .ToDictionary(row => row.Name, row => row.Value!.Value.ToString("0.###"), StringComparer.OrdinalIgnoreCase);
+    }
+
     private void DetectRawRuntimeWarnings(
         HistoricalTelemetrySample sample,
         RawTelemetryWatchSnapshot raw,
@@ -786,33 +913,55 @@ internal sealed class TelemetryEdgeCaseDetector
     {
         if (raw.Get("EngineWarnings") is { } engineWarnings && engineWarnings != 0d)
         {
+            var startupContext = IsStartupGridOrTowContext(_previousSample, sample);
+            var engineOffContext = IsEngineOffContext(sample, raw);
             EmitOnce(
                 observations,
-                $"raw.engine-warning.{engineWarnings:0}",
-                TelemetryEdgeCaseSeverity.Warning,
-                "EngineWarnings became non-zero.",
+                engineOffContext
+                    ? "raw.engine-warning.engine-off"
+                    : startupContext
+                        ? "raw.engine-warning.startup"
+                        : $"raw.engine-warning.{engineWarnings:0}",
+                engineOffContext || startupContext
+                    ? TelemetryEdgeCaseSeverity.Info
+                    : TelemetryEdgeCaseSeverity.Warning,
+                engineOffContext
+                    ? "EngineWarnings was non-zero while the engine appeared off or not pressurized."
+                    : startupContext
+                        ? "EngineWarnings was non-zero during grid, pit, tow, or collection startup context."
+                        : "EngineWarnings became non-zero.",
                 sample,
                 new Dictionary<string, string?>
                 {
                     ["engineWarnings"] = Format(engineWarnings),
+                    ["rpm"] = Format(raw.Get("RPM")),
                     ["oilTemp"] = Format(raw.Get("OilTemp")),
                     ["oilPress"] = Format(raw.Get("OilPress")),
                     ["waterTemp"] = Format(raw.Get("WaterTemp")),
-                    ["waterLevel"] = Format(raw.Get("WaterLevel"))
+                    ["waterLevel"] = Format(raw.Get("WaterLevel")),
+                    ["voltage"] = Format(raw.Get("Voltage")),
+                    ["isOnTrack"] = sample.IsOnTrack.ToString(),
+                    ["speedMetersPerSecond"] = Format(sample.SpeedMetersPerSecond)
                 });
         }
 
         if (raw.Get("IsReplayPlaying") is { } replayPlaying && replayPlaying > 0.5d)
         {
+            var startupContext = IsStartupGridOrTowContext(_previousSample, sample);
             EmitOnce(
                 observations,
-                "raw.replay-playing-during-collection",
-                TelemetryEdgeCaseSeverity.Warning,
-                "Replay playback was active during telemetry collection.",
+                startupContext ? "raw.replay-playing-startup" : "raw.replay-playing-during-collection",
+                startupContext ? TelemetryEdgeCaseSeverity.Info : TelemetryEdgeCaseSeverity.Warning,
+                startupContext
+                    ? "Replay playback was active near collection start, which can happen when iRacing is a few seconds behind live coverage."
+                    : "Replay playback was active during telemetry collection.",
                 sample,
                 new Dictionary<string, string?>
                 {
-                    ["isReplayPlaying"] = Format(replayPlaying)
+                    ["isReplayPlaying"] = Format(replayPlaying),
+                    ["isOnTrack"] = sample.IsOnTrack.ToString(),
+                    ["onPitRoad"] = sample.OnPitRoad.ToString(),
+                    ["sessionState"] = sample.SessionState?.ToString()
                 });
         }
 
@@ -900,6 +1049,70 @@ internal sealed class TelemetryEdgeCaseDetector
             || current.PitstopActive
             || previous.PlayerCarInPitStall
             || current.PlayerCarInPitStall;
+    }
+
+    private static bool IsStartupGridOrTowContext(
+        HistoricalTelemetrySample? previous,
+        HistoricalTelemetrySample current)
+    {
+        return StartupGridOrTowContext(previous, current) is not null;
+    }
+
+    private static string? StartupGridOrTowContext(
+        HistoricalTelemetrySample? previous,
+        HistoricalTelemetrySample current)
+    {
+        if (previous is null)
+        {
+            return "collection-start";
+        }
+
+        if (previous.IsInGarage || current.IsInGarage)
+        {
+            return "garage";
+        }
+
+        if (!previous.IsOnTrack || !current.IsOnTrack)
+        {
+            return "off-track-or-replay";
+        }
+
+        if (previous.OnPitRoad
+            || current.OnPitRoad
+            || previous.TeamOnPitRoad == true
+            || current.TeamOnPitRoad == true
+            || previous.PlayerCarInPitStall
+            || current.PlayerCarInPitStall)
+        {
+            return "pit-or-tow";
+        }
+
+        if (current.SessionState is { } state && state < RacingSessionState)
+        {
+            return current.SpeedMetersPerSecond < 2d
+                ? "stationary-grid"
+                : "grid-or-parade";
+        }
+
+        if (current.LapCompleted <= 0
+            && current.LapDistPct >= 0d
+            && current.LapDistPct <= StartLapDistanceWindow)
+        {
+            return current.SpeedMetersPerSecond < 2d
+                ? "stationary-start-grid"
+                : "race-start";
+        }
+
+        return null;
+    }
+
+    private static bool IsEngineOffContext(
+        HistoricalTelemetrySample sample,
+        RawTelemetryWatchSnapshot raw)
+    {
+        return raw.Get("RPM") is { } rpm && rpm <= EngineOffRpmThreshold
+            || raw.Get("OilPress") is { } oilPress && oilPress <= EngineOffOilPressureThreshold
+            || (!sample.IsOnTrack && sample.SpeedMetersPerSecond < 1d);
     }
 
     private static double? FocusLapDistPct(HistoricalTelemetrySample sample)
@@ -1003,6 +1216,11 @@ internal sealed class TelemetryEdgeCaseDetector
     private static bool IsPositiveFinite(double? value)
     {
         return value is { } number && IsFinite(number) && number > 0d;
+    }
+
+    private static bool IsNearZero(double? value)
+    {
+        return value is { } number && IsFinite(number) && Math.Abs(number) <= SuspiciousZeroTimingSeconds;
     }
 
     private static bool IsFinite(double value)

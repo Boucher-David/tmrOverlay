@@ -116,6 +116,7 @@ internal static class Program
                 services.AddSingleton<OverlayManager>();
                 services.AddSingleton<NotifyIconApplicationContext>();
                 services.AddHostedService<RuntimeStateService>();
+                services.AddHostedService<HistoryMaintenanceService>();
                 services.AddHostedService<AppPerformanceHostedService>();
                 services.AddHostedService<RetentionHostedService>();
                 services.AddHostedService<OverlayBridgeHostedService>();

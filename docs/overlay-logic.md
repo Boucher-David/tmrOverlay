@@ -14,6 +14,7 @@ They should be updated whenever overlay behavior, telemetry derivation, analysis
 
 ## Related Analysis Logic
 
+- [Edge-Case Telemetry Logic](edge-case-telemetry-logic.md)
 - [Post-Race Analysis Logic](post-race-analysis-logic.md)
 
 ## Maintenance Rule
@@ -24,4 +25,3 @@ When implementation changes:
 2. Search docs, mocks, tests, skills, and the mac harness for old behavior names or old assumptions.
 3. Regenerate screenshots when visual overlay behavior changed.
 4. Run screenshot validation after regenerated artifacts are written.
-

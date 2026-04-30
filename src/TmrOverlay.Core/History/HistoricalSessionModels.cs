@@ -25,7 +25,9 @@ internal sealed class HistoricalSessionContext
 
 internal sealed class HistoricalSessionSummary
 {
-    public int SummaryVersion { get; init; } = 1;
+    public int SummaryVersion { get; init; } = HistoricalDataVersions.SummaryVersion;
+
+    public int CollectionModelVersion { get; init; } = HistoricalDataVersions.CollectionModelVersion;
 
     public required string SourceCaptureId { get; init; }
 

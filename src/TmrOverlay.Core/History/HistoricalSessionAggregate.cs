@@ -2,7 +2,7 @@ namespace TmrOverlay.Core.History;
 
 internal sealed class HistoricalSessionAggregate
 {
-    public int AggregateVersion { get; set; } = 1;
+    public int AggregateVersion { get; set; } = HistoricalDataVersions.AggregateVersion;
 
     public HistoricalComboIdentity? Combo { get; set; }
 

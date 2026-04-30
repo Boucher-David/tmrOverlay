@@ -266,6 +266,10 @@ internal sealed class DiagnosticsBundleService
             "*.json",
             "analysis",
             MaxRecentAnalysisFiles);
+        AddFileIfExists(
+            archive,
+            Path.Combine(_storageOptions.UserHistoryRoot, ".maintenance", "manifest.json"),
+            "history/user/.maintenance/manifest.json");
 
         var carsRoot = Path.Combine(_storageOptions.UserHistoryRoot, "cars");
         AddRecentRecursiveFiles(

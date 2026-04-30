@@ -73,6 +73,10 @@ public sealed class TelemetryEdgeCaseRecorderTests
             var rootElement = document.RootElement;
             Assert.Equal(1, rootElement.GetProperty("clipCount").GetInt32());
             Assert.Equal(1, rootElement.GetProperty("observationCount").GetInt32());
+            Assert.Equal(0, rootElement.GetProperty("droppedObservationCount").GetInt32());
+            Assert.Equal(3, rootElement.GetProperty("sampledFrameCount").GetInt32());
+            Assert.Equal(3, rootElement.GetProperty("finalContextFrames").GetArrayLength());
+            Assert.Single(rootElement.GetProperty("observationSummaries").EnumerateArray());
 
             var clip = rootElement.GetProperty("clips")[0];
             Assert.Equal("side-occupancy.no-adjacent-car", clip.GetProperty("trigger").GetProperty("key").GetString());
@@ -127,6 +131,15 @@ public sealed class TelemetryEdgeCaseRecorderTests
             Assert.NotNull(path);
             using var document = JsonDocument.Parse(File.ReadAllText(path));
             Assert.Equal(1, document.RootElement.GetProperty("clipCount").GetInt32());
+            Assert.Equal(2, document.RootElement.GetProperty("observationCount").GetInt32());
+            Assert.Equal(1, document.RootElement.GetProperty("droppedObservationCount").GetInt32());
+            Assert.Equal(2, document.RootElement.GetProperty("finalContextFrames").GetArrayLength());
+            Assert.Equal(2, document.RootElement.GetProperty("finalContextFrames")[1].GetProperty("sessionTick").GetInt32());
+            var summaries = document.RootElement.GetProperty("observationSummaries").EnumerateArray().ToArray();
+            Assert.Equal(2, summaries.Length);
+            Assert.Contains(summaries, summary =>
+                summary.GetProperty("key").GetString() == "raw.engine-warning.1"
+                && summary.GetProperty("droppedCount").GetInt32() == 1);
         }
         finally
         {

@@ -126,7 +126,7 @@ Last updated: 2026-04-30
   - records compact historical telemetry samples every frame
   - snapshots session YAML into the history accumulator whenever `SessionInfoUpdate` changes
   - creates raw capture directories and copies the raw telemetry buffer only when raw capture is enabled by startup configuration or runtime overlay request
-  - records bounded compact edge-case telemetry artifacts for every live session by combining normalized live samples with selected scalar raw watch channels for fuel, tires, suspension, brakes, wheel speed, pit service, weather, engine/replay/system/network state, incidents, and driver-control changes
+  - records bounded compact edge-case telemetry artifacts for every live session by combining normalized live samples with selected scalar raw watch channels for fuel, tires, suspension, brakes, wheel speed, pit service, weather, engine/replay/system/network state, incidents, and driver-control changes; artifacts also count observations dropped after the clip cap and include a final sampled context tail so long spectated/parked sessions still have late-session telemetry context
   - isolates raw-capture frame queue/write/read failures from live history, normalized live telemetry, and overlay performance recording so overlays can keep updating while capture diagnostics run
   - logs and records app events for runtime raw-capture start failures instead of silently failing
   - writes normalized live frames through `ILiveTelemetrySink`, not directly to overlays
@@ -168,6 +168,7 @@ Last updated: 2026-04-30
   - owns disk storage and lookup for compact end-of-session summaries
   - stores user summaries under `%LOCALAPPDATA%/TmrOverlay/history/user/cars/{car}/tracks/{track}/sessions/{session}/`
   - writes a per-capture summary plus an aggregate for baseline lookup
+  - runs startup history maintenance that normalizes compatible legacy summary metadata, backs up rewritten summaries, rebuilds session aggregates from compatible summaries, rejects incompatible aggregate versions during lookup, and writes `.maintenance/manifest.json`
   - low-confidence samples are still stored but do not contribute to baseline aggregate values
 
 - `src/TmrOverlay.Core/History/`
@@ -219,7 +220,7 @@ Last updated: 2026-04-30
 
 - `src/TmrOverlay.App/Diagnostics/`
   - creates support bundles with app/storage metadata, telemetry state, lightweight performance snapshots, recent performance logs, runtime state, settings, logs/events, and latest capture metadata
-  - includes recent compact edge-case telemetry artifacts under `edge-cases/`
+  - includes recent compact edge-case telemetry artifacts under `edge-cases/`, including their final context tail when present
   - includes recent post-race analysis JSON at top-level `analysis/` plus recent user-history summaries and aggregates so collected car/track/session metrics can be inspected for accuracy
   - creates a best-effort diagnostics bundle automatically when a live telemetry session finalizes, and the Error Logging tab reports the latest automatic bundle
   - intentionally excludes raw `telemetry.bin`
@@ -266,8 +267,10 @@ Last updated: 2026-04-30
 
 - `tests/TmrOverlay.App.Tests/`
   - xUnit test project for non-UI logic
-  - currently covers storage path resolution, bridge options, history path slugs, local file log writing, settings persistence/migration, diagnostics bundle contents, performance snapshot aggregation, retention cleanup, runtime-state markers, live fuel/proximity/gap derivation, fuel strategy calculations, and fuel view-model empty-state behavior
+  - currently covers storage path resolution, bridge options, history path slugs, history maintenance/rebuild behavior, local file log writing, settings persistence/migration, diagnostics bundle contents, performance snapshot aggregation, retention cleanup, runtime-state markers, live fuel/proximity/gap derivation, fuel strategy calculations, and fuel view-model empty-state behavior
 
+- `docs/edge-case-telemetry-logic.md`
+- `docs/history-data-evolution.md`
 - `docs/overlay-logic.md`
   - index for human-readable overlay and analysis logic notes; update the matching note whenever overlay derivation, display rules, visibility rules, or analysis rules change
 
@@ -281,6 +284,7 @@ Last updated: 2026-04-30
   - waiting/unavailable/error paths should be deterministic and isolated from local machine state unless the scenario explicitly tests history fallback or support-path display
   - the same fixture-driven approach applies to collectors, diagnostics bundles, retention, updater, settings, and performance telemetry paths
   - code changes should include a stale-reference sweep across docs, mocks, tests, the ignored mac harness, and repo skills before final validation so old behavior names/descriptions/API patterns do not survive alongside new implementation behavior
+  - durable user-data schema changes should be treated as backwards-compatibility validation work in the same sweep: update version constants, migrations or compatible readers, docs, and the schema-compatibility test
   - behavior, calculation, default, source-label, fixture-data, and validation-semantics changes should update affected build test assertions and fixtures in the same pass; stale passing or failing assertions are stale references
 
 - `.github/workflows/windows-dotnet.yml`
@@ -300,7 +304,7 @@ Short version for opt-in raw capture:
 
 Raw capture format is preserved for diagnostics and future deep-dive analysis, but it is no longer the default production data path.
 
-Compact edge-case telemetry artifacts are separate from this raw capture format. They live under `%LOCALAPPDATA%/TmrOverlay/logs/edge-cases` and are included in diagnostics bundles when present.
+Compact edge-case telemetry artifacts are separate from this raw capture format. They live under `%LOCALAPPDATA%/TmrOverlay/logs/edge-cases` and are included in diagnostics bundles when present. Their clip list is bounded, but they retain dropped-observation counts and a final sampled context tail for late-session diagnostics.
 
 ## Telemetry Summary
 
@@ -457,7 +461,7 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 5. Keep raw capture available for diagnostics, but avoid making it the normal user data path.
 6. Expand post-race strategy review/export beyond the first saved-analysis view; see `docs/post-race-strategy-analysis.md`.
 7. Start with update notification before self-update; see `docs/update-strategy.md`.
-8. Future branch idea: add a historical data maintenance flow that parses the user's stored history/analysis collection, detects schema or functionality-version gaps, and migrates/rebuilds data so older sessions stay compatible with newer app behavior.
+8. When summary or other durable history shapes change, add ordered migrations or compatible readers to the historical data maintenance flow, update `HistorySchemaCompatibilityTests`, and keep car/track/session history higher priority than performance/logging data.
 
 ## Files Most Likely To Change Next
 

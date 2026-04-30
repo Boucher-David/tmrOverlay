@@ -51,7 +51,10 @@ internal sealed class SessionHistoryQueryService
         try
         {
             using var stream = File.OpenRead(path);
-            return JsonSerializer.Deserialize<HistoricalSessionAggregate>(stream, JsonOptions);
+            var aggregate = JsonSerializer.Deserialize<HistoricalSessionAggregate>(stream, JsonOptions);
+            return aggregate?.AggregateVersion == HistoricalDataVersions.AggregateVersion
+                ? aggregate
+                : null;
         }
         catch
         {

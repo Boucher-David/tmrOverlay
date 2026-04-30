@@ -42,6 +42,8 @@
 - `tests/TmrOverlay.App.Tests/` contains the xUnit test project for non-UI logic.
 - `local-mac/TmrOverlayMac/` is the ignored local macOS harness. It mirrors the Windows structure for overlay iteration but uses mock telemetry.
 - `docs/capture-format.md` documents the binary frame format used by `telemetry.bin`.
+- `docs/edge-case-telemetry-logic.md` documents the compact edge-case detector/report rules.
+- `docs/history-data-evolution.md` documents how future app versions should migrate or rebuild user history written by older versions.
 - `docs/overlay-logic.md` is the human-readable index for how each overlay derives and displays its state.
 - `telemetry.md` summarizes the event/session/car schema exposed by the current raw capture model.
 
@@ -79,7 +81,7 @@ Edge-case telemetry capture is enabled by default and is separate from raw captu
 %LOCALAPPDATA%\TmrOverlay\logs\edge-cases
 ```
 
-Each `*-edge-cases.json` file includes the watched raw schema, missing watched variables, clip triggers, a short pre-trigger window, a short post-trigger window, selected nearby/class timing rows, and raw watch values for channels such as fuel, tires, suspension, brakes, wheel speed, pit service, weather, engine warnings, replay state, incidents, frame rate, and network latency. It intentionally does not include `telemetry.bin`.
+Each `*-edge-cases.json` file includes the watched raw schema, missing watched variables, clip triggers, a short pre-trigger window, a short post-trigger window, dropped-observation counts when the clip cap is reached, a final sampled context tail from the end of the session, selected nearby/class timing rows, and raw watch values for channels such as fuel, tires, suspension, brakes, wheel speed, pit service, weather, engine warnings, replay state, incidents, frame rate, and network latency. It intentionally does not include `telemetry.bin`.
 
 ## Build And Run On Windows
 
@@ -137,6 +139,8 @@ That data is intentionally much smaller than raw telemetry. It is meant to suppo
 The fuel calculator uses live race telemetry first, then exact car/track/session user history only as a fallback while the current session is still sparse. For timed races, it continuously estimates the likely lap count from session time, overall-leader pace/progress, class-leader context, and team-car progress, then converts that into whole-lap stint targets; it does not hard-code a four-hour race length in the production overlay. If completed user/team history shows an 8-lap stint is realistic, future rows can be biased toward that shape, such as `7/8/7/8` for the local Nürburgring development sample. The table also performs strategy analysis across race lengths by comparing a shorter conservative stint rhythm against the longest realistic target, then surfaces extra stops and estimated pit-time loss as a strategy row. Stint rows show target laps and target liters-per-lap, plus tire-change guidance based on historical fill-rate and tire-service timing. As live progress advances, completed stint rows roll off the top of the table while the table keeps its full row layout to avoid view changes during a run.
 
 Completed stint history is stored separately from the active/future fuel table so completed stints can improve future user-specific estimates without continuing to occupy overlay rows. Pit-service history is stored as derived stop summaries plus aggregate metrics, including average tire-change service time, no-tire service time when known, and observed fuel fill rate. Fuel fill rates are only treated as measured when local scalar fuel telemetry is valid; team-driver or inferred values carry confidence flags.
+
+On startup, session-history maintenance normalizes compatible legacy summary metadata, rebuilds `aggregate.json` from compatible per-session summaries, skips incompatible/corrupt summaries with a manifest entry, and keeps backups for rewritten summary files. This prioritizes car/track/session history that improves future overlay estimates over low-value operational logs.
 
 Tracked baseline/sample history may live under `history/baseline/` for development analysis, but production lookup is opt-in. By default the app uses only user-generated history so local development samples do not affect a fresh install.
 

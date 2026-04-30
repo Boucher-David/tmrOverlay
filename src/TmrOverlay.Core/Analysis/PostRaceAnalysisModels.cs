@@ -4,7 +4,7 @@ namespace TmrOverlay.Core.Analysis;
 
 internal sealed class PostRaceAnalysis
 {
-    public int AnalysisVersion { get; init; } = 1;
+    public int AnalysisVersion { get; init; } = HistoricalDataVersions.AnalysisVersion;
 
     public string Id { get; init; } = string.Empty;
 

@@ -41,7 +41,9 @@ public sealed class DiagnosticsBundleServiceTests
             var summariesDirectory = Path.Combine(historySessionDirectory, "summaries");
             Directory.CreateDirectory(analysisDirectory);
             Directory.CreateDirectory(summariesDirectory);
+            Directory.CreateDirectory(Path.Combine(storage.UserHistoryRoot, ".maintenance"));
             File.WriteAllText(Path.Combine(analysisDirectory, "20260426-race.json"), """{"title":"race analysis"}""");
+            File.WriteAllText(Path.Combine(storage.UserHistoryRoot, ".maintenance", "manifest.json"), """{"summaryFilesScanned":1}""");
             File.WriteAllText(Path.Combine(historySessionDirectory, "aggregate.json"), """{"sessionCount":1}""");
             File.WriteAllText(Path.Combine(summariesDirectory, "capture-20260426-120000-000.json"), """{"sourceCaptureId":"capture-20260426-120000-000"}""");
 
@@ -84,6 +86,7 @@ public sealed class DiagnosticsBundleServiceTests
             Assert.Contains("latest-capture/latest-session.yaml", entryNames);
             Assert.Contains("analysis/20260426-race.json", entryNames);
             Assert.DoesNotContain("history/user/analysis/20260426-race.json", entryNames);
+            Assert.Contains("history/user/.maintenance/manifest.json", entryNames);
             Assert.Contains("history/user/cars/car-156-mercedesamgevogt3/tracks/track-262-nurburgring-combinedshortb/sessions/race/aggregate.json", entryNames);
             Assert.Contains("history/user/cars/car-156-mercedesamgevogt3/tracks/track-262-nurburgring-combinedshortb/sessions/race/summaries/capture-20260426-120000-000.json", entryNames);
             Assert.DoesNotContain("latest-capture/telemetry.bin", entryNames);

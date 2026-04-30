@@ -25,11 +25,15 @@ internal sealed class TelemetryEdgeCaseRecorder
     private readonly List<TelemetryEdgeCaseFrame> _ring = [];
     private readonly List<EdgeCaseClipBuilder> _clips = [];
     private readonly List<EdgeCaseClipBuilder> _activeClips = [];
+    private readonly Dictionary<string, EdgeCaseObservationSummaryBuilder> _observationSummaries = new(StringComparer.OrdinalIgnoreCase);
     private string? _sourceId;
     private DateTimeOffset? _startedAtUtc;
     private RawTelemetrySchemaSnapshot _schema = RawTelemetrySchemaSnapshot.Empty;
     private DateTimeOffset? _lastSampledFrameAtUtc;
     private string? _lastArtifactPath;
+    private int _observationCount;
+    private int _droppedObservationCount;
+    private int _sampledFrameCount;
 
     public TelemetryEdgeCaseRecorder(
         TelemetryEdgeCaseOptions options,
@@ -64,11 +68,15 @@ internal sealed class TelemetryEdgeCaseRecorder
             _ring.Clear();
             _clips.Clear();
             _activeClips.Clear();
+            _observationSummaries.Clear();
             _sourceId = sourceId;
             _startedAtUtc = startedAtUtc;
             _schema = schema;
             _lastSampledFrameAtUtc = null;
             _lastArtifactPath = null;
+            _observationCount = 0;
+            _droppedObservationCount = 0;
+            _sampledFrameCount = 0;
         }
     }
 
@@ -87,6 +95,7 @@ internal sealed class TelemetryEdgeCaseRecorder
             }
 
             var observations = _detector.Analyze(sample, raw);
+            _observationCount += observations.Count;
             var shouldSample = ShouldSample(sample.CapturedAtUtc);
             var forceFrame = observations.Count > 0;
             TelemetryEdgeCaseFrame? frame = null;
@@ -95,11 +104,17 @@ internal sealed class TelemetryEdgeCaseRecorder
                 frame = TelemetryEdgeCaseFrame.From(sample, raw);
                 AddRingFrame(frame);
                 _lastSampledFrameAtUtc = sample.CapturedAtUtc;
+                _sampledFrameCount++;
             }
 
             foreach (var observation in observations)
             {
-                StartClip(observation, frame ?? TelemetryEdgeCaseFrame.From(sample, raw));
+                var clipStarted = StartClip(observation, frame ?? TelemetryEdgeCaseFrame.From(sample, raw));
+                RecordObservationSummary(observation, clipStarted);
+                if (!clipStarted)
+                {
+                    _droppedObservationCount++;
+                }
             }
 
             if (frame is not null)
@@ -146,7 +161,15 @@ internal sealed class TelemetryEdgeCaseRecorder
                     MinimumFrameSpacingSeconds: _options.MinimumFrameSpacingSeconds),
                 Schema: _schema,
                 ClipCount: _clips.Count,
-                ObservationCount: _clips.Count,
+                ObservationCount: _observationCount,
+                DroppedObservationCount: _droppedObservationCount,
+                SampledFrameCount: _sampledFrameCount,
+                ObservationSummaries: _observationSummaries.Values
+                    .OrderBy(summary => summary.FirstDetectedAtUtc)
+                    .ThenBy(summary => summary.Key, StringComparer.OrdinalIgnoreCase)
+                    .Select(summary => summary.Build())
+                    .ToArray(),
+                FinalContextFrames: _ring.ToArray(),
                 Clips: _clips.Select(clip => clip.Build()).ToArray());
 
             Directory.CreateDirectory(EdgeCaseRoot);
@@ -173,11 +196,11 @@ internal sealed class TelemetryEdgeCaseRecorder
             || (capturedAtUtc - _lastSampledFrameAtUtc.Value).TotalSeconds >= _options.MinimumFrameSpacingSeconds;
     }
 
-    private void StartClip(TelemetryEdgeCaseObservation observation, TelemetryEdgeCaseFrame triggerFrame)
+    private bool StartClip(TelemetryEdgeCaseObservation observation, TelemetryEdgeCaseFrame triggerFrame)
     {
         if (_clips.Count >= _options.MaxClipsPerSession)
         {
-            return;
+            return false;
         }
 
         var clip = new EdgeCaseClipBuilder(
@@ -195,6 +218,18 @@ internal sealed class TelemetryEdgeCaseRecorder
         clip.AddFrame(triggerFrame);
         _clips.Add(clip);
         _activeClips.Add(clip);
+        return true;
+    }
+
+    private void RecordObservationSummary(TelemetryEdgeCaseObservation observation, bool clipStarted)
+    {
+        if (!_observationSummaries.TryGetValue(observation.Key, out var summary))
+        {
+            summary = new EdgeCaseObservationSummaryBuilder(observation);
+            _observationSummaries[observation.Key] = summary;
+        }
+
+        summary.Record(observation, clipStarted);
     }
 
     private void AddRingFrame(TelemetryEdgeCaseFrame frame)
@@ -298,6 +333,59 @@ internal sealed class TelemetryEdgeCaseRecorder
                 _frames.ToArray());
         }
     }
+
+    private sealed class EdgeCaseObservationSummaryBuilder
+    {
+        private IReadOnlyDictionary<string, string?> _lastFields;
+
+        public EdgeCaseObservationSummaryBuilder(TelemetryEdgeCaseObservation observation)
+        {
+            Key = observation.Key;
+            Severity = observation.Severity;
+            Summary = observation.Summary;
+            FirstDetectedAtUtc = observation.DetectedAtUtc;
+            LastDetectedAtUtc = observation.DetectedAtUtc;
+            _lastFields = observation.Fields;
+        }
+
+        public string Key { get; }
+
+        public string Severity { get; }
+
+        public string Summary { get; }
+
+        public DateTimeOffset FirstDetectedAtUtc { get; }
+
+        public DateTimeOffset LastDetectedAtUtc { get; private set; }
+
+        public int Count { get; private set; }
+
+        public int DroppedCount { get; private set; }
+
+        public void Record(TelemetryEdgeCaseObservation observation, bool clipStarted)
+        {
+            Count++;
+            LastDetectedAtUtc = observation.DetectedAtUtc;
+            _lastFields = observation.Fields;
+            if (!clipStarted)
+            {
+                DroppedCount++;
+            }
+        }
+
+        public TelemetryEdgeCaseObservationSummary Build()
+        {
+            return new TelemetryEdgeCaseObservationSummary(
+                Key,
+                Severity,
+                Summary,
+                Count,
+                DroppedCount,
+                FirstDetectedAtUtc,
+                LastDetectedAtUtc,
+                _lastFields);
+        }
+    }
 }
 
 internal sealed record TelemetryEdgeCaseArtifact(
@@ -309,7 +397,21 @@ internal sealed record TelemetryEdgeCaseArtifact(
     RawTelemetrySchemaSnapshot Schema,
     int ClipCount,
     int ObservationCount,
+    int DroppedObservationCount,
+    int SampledFrameCount,
+    IReadOnlyList<TelemetryEdgeCaseObservationSummary> ObservationSummaries,
+    IReadOnlyList<TelemetryEdgeCaseFrame> FinalContextFrames,
     IReadOnlyList<TelemetryEdgeCaseClip> Clips);
+
+internal sealed record TelemetryEdgeCaseObservationSummary(
+    string Key,
+    string Severity,
+    string Summary,
+    int Count,
+    int DroppedCount,
+    DateTimeOffset FirstDetectedAtUtc,
+    DateTimeOffset LastDetectedAtUtc,
+    IReadOnlyDictionary<string, string?> LastFields);
 
 internal sealed record TelemetryEdgeCaseArtifactOptions(
     double PreTriggerSeconds,
