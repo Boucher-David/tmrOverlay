@@ -1,0 +1,15 @@
+{
+  "runtimeStateVersion": 1,
+  "startedAtUtc": "2026-04-30T17:12:42.7717256+00:00",
+  "lastHeartbeatAtUtc": "2026-04-30T18:34:42.7927343+00:00",
+  "stoppedAtUtc": null,
+  "stoppedCleanly": false,
+  "appVersion": {
+    "productName": "TmrOverlay.App",
+    "version": "1.0.0.0",
+    "informationalVersion": "1.0.0\u002B990882b01cec63b06687e664fbdc666ebac9407f",
+    "runtimeVersion": ".NET 8.0.26",
+    "operatingSystem": "Microsoft Windows 10.0.26200",
+    "processArchitecture": "X64"
+  }
+}
