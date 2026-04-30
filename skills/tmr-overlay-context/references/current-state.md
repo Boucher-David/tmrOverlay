@@ -97,6 +97,8 @@ Last updated: 2026-04-28
   - dynamically renders the class leader, team car, nearest five same-class cars ahead and behind, plus recently visible cars that need continuity as they enter/leave the nearby window
   - starts the X-axis at the first visible sample, scales the Y-axis to the visible field spread, keeps axis labels in a left gutter, highlights whole-lap gap reference lines when the field spreads far enough, draws vertical 5-lap duration markers, and labels current line endpoints with compact current `P<N>` class-position tags
   - draws subtle weather-condition bands behind the graph from live `TrackWetness` / `WeatherDeclaredWet`; non-team/non-leader context lines are intentionally dimmed to keep the team gap and position readable
+  - production graph now uses the focused view by default: a rolling 10-minute x-axis, range-filtered context cars, the team line in the iRacing class color when session info provides it, a bottom threat callout, and a right-side table showing 5-lap, 10-lap, and stint changes versus leader plus the strongest in-class car gaining from behind
+  - the trend table normally refreshes on lap buckets, but switches to a short cadence during pit-cycle evidence such as leader changes, fuel-stint reset, or rendered cars on pit road, then settles back to lap cadence
   - marks driver swaps as compact ticks/dots on the affected line while preserving line color; Windows uses real session-info driver-row changes by `CarIdx` plus the local `DCDriversSoFar` signal, while the mac harness can use named mock handoffs
   - marks leader changes and keeps old leader/currently exiting/missing-telemetry car lines visually continuous with fade/dash behavior instead of disappearing abruptly
   - can label current line endpoints with compact `P<N>` class-position text
@@ -227,7 +229,7 @@ Last updated: 2026-04-28
   - overlay windows use the shared mac `OverlayWindow` through `OverlayManager`, so each overlay id can restore its saved position/size
   - the mac fuel overlay uses live mock telemetry plus local user history, matching the Windows baseline-disabled default
   - the mac live mock uses the tracked four-hour Nürburgring baseline shape from race time zero at 4x speed for faster fuel/gap overlay iteration
-  - for overlay development, Windows should stay production-facing and real-data-driven; the ignored mac harness can use looser mock scenes, fixed offsets, named sample drivers, and exaggerated events for fast visual iteration
+  - for overlay development, Windows should stay production-facing and real-data-driven; the ignored mac harness can use looser mock scenes, fixed offsets, named sample drivers, exaggerated events, and multi-window overlay demo layouts for fast visual iteration
   - the mac mock race mirrors the Windows radar/gap feature behavior with synthetic all-class timing rows, multiclass approach traffic, weather bands, and driver handoff events, while Windows remains real telemetry only
   - the mac harness opens the same startup overlay set as Windows: status, fuel calculator, radar, and gap-to-leader
   - the mac status overlay is display-only, matching Windows; runtime raw-capture requests live in the settings overlay and still record logs/events

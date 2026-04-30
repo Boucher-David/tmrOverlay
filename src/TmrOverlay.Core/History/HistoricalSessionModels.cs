@@ -93,6 +93,8 @@ internal sealed class HistoricalCarIdentity
 
     public string? CarClassShortName { get; init; }
 
+    public string? CarClassColorHex { get; init; }
+
     public double? CarClassEstLapTimeSeconds { get; init; }
 
     public double? DriverCarFuelMaxLiters { get; init; }
@@ -198,6 +200,8 @@ internal sealed class HistoricalSessionDriver
     public int? CarClassId { get; init; }
 
     public string? CarClassShortName { get; init; }
+
+    public string? CarClassColorHex { get; init; }
 
     public bool? IsSpectator { get; init; }
 }

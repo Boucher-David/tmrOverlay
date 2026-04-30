@@ -109,7 +109,7 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
                 LatestSample: sample,
                 Fuel: fuel,
                 Proximity: proximity,
-                LeaderGap: LiveLeaderGapSnapshot.From(sample));
+                LeaderGap: LiveLeaderGapSnapshot.From(_context, sample));
         }
     }
 

@@ -25,6 +25,7 @@ internal static class SessionInfoSummaryParser
                 CarScreenNameShort = ReadString(driver, "CarScreenNameShort"),
                 CarClassId = ReadInt(driver, "CarClassID"),
                 CarClassShortName = ReadString(driver, "CarClassShortName"),
+                CarClassColorHex = ReadString(driver, "CarClassColor"),
                 CarClassEstLapTimeSeconds = ReadDouble(driver, "CarClassEstLapTime"),
                 DriverCarFuelMaxLiters = ReadDouble(parsed.DriverInfo, "DriverCarFuelMaxLtr"),
                 DriverCarFuelKgPerLiter = ReadDouble(parsed.DriverInfo, "DriverCarFuelKgPerLtr"),
@@ -253,6 +254,7 @@ internal static class SessionInfoSummaryParser
             CarNumber = ReadString(values, "CarNumber"),
             CarClassId = ReadInt(values, "CarClassID"),
             CarClassShortName = ReadString(values, "CarClassShortName"),
+            CarClassColorHex = ReadString(values, "CarClassColor"),
             IsSpectator = ReadBool(values, "IsSpectator")
         };
     }

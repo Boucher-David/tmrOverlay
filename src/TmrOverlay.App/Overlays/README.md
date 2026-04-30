@@ -29,9 +29,9 @@ Current modules:
 - `SettingsPanel/` - centered tabbed settings overlay for user-managed visibility, scale, session filters, shared font/units, runtime raw-capture requests, placeholder Overlay Bridge controls, post-race analysis browsing, and overlay-specific display options
 - `FuelCalculator/` - fuel/stint strategy overlay with tire-stop guidance from history
 - `CarRadar/` - transparent circular proximity radar from `CarLeftRight` plus `CarIdx*` track-position arrays, with car rectangles fading from red to yellow to transparent as traffic moves away
-- `GapToLeader/` - four-hour in-class gap trend graph from `CarIdxF2Time`, standings, and `CarIdx*` progress, with a bounded in-memory trace, adaptive Y-axis scaling, left-side axis labels, lap reference lines, weather bands, driver/leader-change markers, and endpoint position labels
+- `GapToLeader/` - focused in-class gap trend graph from `CarIdxF2Time`, standings, and `CarIdx*` progress, with a bounded four-hour in-memory trace, rolling focused x-axis, range-filtered context cars, adaptive Y-axis scaling, left-side axis labels, lap reference lines, weather bands, driver/leader-change markers, endpoint position labels, threat callout, and a right-side 5L/10L/stint trend table
 
-Windows overlay code is production-facing and should stay real-data-driven. Use the ignored mac harness for looser development scenes such as fixed race offsets, named mock drivers, synthetic weather windows, and exaggerated graph events.
+Windows overlay code is production-facing and should stay real-data-driven. Use the ignored mac harness for looser development scenes such as fixed race offsets, named mock drivers, synthetic weather windows, exaggerated graph events, and multi-window overlay demo layouts.
 
 Expected future modules:
 

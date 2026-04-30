@@ -264,6 +264,11 @@ internal sealed record LiveLeaderGapSnapshot(
 
     public static LiveLeaderGapSnapshot From(HistoricalTelemetrySample sample)
     {
+        return From(HistoricalSessionContext.Empty, sample);
+    }
+
+    public static LiveLeaderGapSnapshot From(HistoricalSessionContext context, HistoricalTelemetrySample sample)
+    {
         var teamProgress = TeamProgress(sample);
         var overallGap = BuildGap(
             position: sample.TeamPosition,
@@ -290,10 +295,11 @@ internal sealed record LiveLeaderGapSnapshot(
             ClassLeaderCarIdx: sample.ClassLeaderCarIdx,
             OverallLeaderGap: overallGap,
             ClassLeaderGap: classGap,
-            ClassCars: BuildClassCars(sample, teamProgress, classGap));
+            ClassCars: BuildClassCars(context, sample, teamProgress, classGap));
     }
 
     private static IReadOnlyList<LiveClassGapCar> BuildClassCars(
+        HistoricalSessionContext context,
         HistoricalTelemetrySample sample,
         double? teamProgress,
         LiveGapValue teamClassGap)
@@ -302,10 +308,21 @@ internal sealed record LiveLeaderGapSnapshot(
         var playerClass = sample.TeamCarClass;
         var classLeaderF2 = ValidGapSeconds(sample.ClassLeaderF2TimeSeconds);
         var classLeaderProgress = Progress(sample.ClassLeaderLapCompleted, sample.ClassLeaderLapDistPct);
+        var classCandidates = sample.ClassCars is { Count: > 0 }
+            ? sample.ClassCars
+            : sample.NearbyCars ?? [];
+        var requireExplicitClassMatch = sample.ClassCars is not { Count: > 0 };
+        var classColorByCarIdx = context.Drivers
+            .Where(driver => driver.CarIdx is not null && !string.IsNullOrWhiteSpace(driver.CarClassColorHex))
+            .GroupBy(driver => driver.CarIdx!.Value)
+            .ToDictionary(group => group.Key, group => group.First().CarClassColorHex);
+        var teamClassColorHex = context.Car.CarClassColorHex
+            ?? (playerCarIdx is { } teamCarIdx && classColorByCarIdx.TryGetValue(teamCarIdx, out var teamColor) ? teamColor : null);
         var cars = new List<LiveClassGapCar>();
 
         if (sample.ClassLeaderCarIdx is { } leaderIdx)
         {
+            var leaderOnPitRoad = classCandidates.FirstOrDefault(car => car.CarIdx == leaderIdx)?.OnPitRoad;
             cars.Add(new LiveClassGapCar(
                 CarIdx: leaderIdx,
                 IsTeamCar: playerCarIdx == leaderIdx,
@@ -313,7 +330,9 @@ internal sealed record LiveLeaderGapSnapshot(
                 ClassPosition: 1,
                 GapSecondsToClassLeader: 0d,
                 GapLapsToClassLeader: 0d,
-                DeltaSecondsToTeam: teamClassGap.Seconds is { } teamSeconds ? -teamSeconds : null));
+                DeltaSecondsToTeam: teamClassGap.Seconds is { } teamSeconds ? -teamSeconds : null,
+                CarClassColorHex: classColorByCarIdx.TryGetValue(leaderIdx, out var leaderColor) ? leaderColor : teamClassColorHex,
+                OnPitRoad: playerCarIdx == leaderIdx ? sample.TeamOnPitRoad ?? sample.OnPitRoad : leaderOnPitRoad));
         }
 
         if (playerCarIdx is { } teamIdx)
@@ -325,13 +344,10 @@ internal sealed record LiveLeaderGapSnapshot(
                 ClassPosition: sample.TeamClassPosition,
                 GapSecondsToClassLeader: teamClassGap.Seconds,
                 GapLapsToClassLeader: teamClassGap.Laps,
-                DeltaSecondsToTeam: 0d));
+                DeltaSecondsToTeam: 0d,
+                CarClassColorHex: teamClassColorHex,
+                OnPitRoad: sample.TeamOnPitRoad ?? sample.OnPitRoad));
         }
-
-        var classCandidates = sample.ClassCars is { Count: > 0 }
-            ? sample.ClassCars
-            : sample.NearbyCars ?? [];
-        var requireExplicitClassMatch = sample.ClassCars is not { Count: > 0 };
 
         foreach (var car in classCandidates)
         {
@@ -361,7 +377,9 @@ internal sealed record LiveLeaderGapSnapshot(
                 ClassPosition: car.ClassPosition,
                 GapSecondsToClassLeader: gapSeconds,
                 GapLapsToClassLeader: gapLaps,
-                DeltaSecondsToTeam: CalculateDeltaSecondsToTeam(gapSeconds, teamClassGap.Seconds)));
+                DeltaSecondsToTeam: CalculateDeltaSecondsToTeam(gapSeconds, teamClassGap.Seconds),
+                CarClassColorHex: classColorByCarIdx.TryGetValue(car.CarIdx, out var carColor) ? carColor : teamClassColorHex,
+                OnPitRoad: car.OnPitRoad));
         }
 
         return cars
@@ -519,7 +537,9 @@ internal sealed record LiveClassGapCar(
     int? ClassPosition,
     double? GapSecondsToClassLeader,
     double? GapLapsToClassLeader,
-    double? DeltaSecondsToTeam);
+    double? DeltaSecondsToTeam,
+    string? CarClassColorHex,
+    bool? OnPitRoad);
 
 internal sealed record LiveFuelSnapshot(
     bool HasValidFuel,
