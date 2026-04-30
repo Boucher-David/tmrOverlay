@@ -147,7 +147,7 @@ The built-in sample appears after saved analyses.
 The Error Logging tab:
 
 - Shows current app warning/error.
-- Shows performance summary text.
+- Shows performance summary text, including live iRacing channel/system values and overlay update-decision rates.
 - Opens local logs and diagnostics folders.
 - Can manually create/copy a diagnostics bundle.
 - Reports the latest automatic end-of-session diagnostics bundle.

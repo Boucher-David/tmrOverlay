@@ -1340,6 +1340,20 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 DriversSoFar: ReadInt32(sdk, "DCDriversSoFar"),
                 DriverChangeLapStatus: ReadInt32(sdk, "DCLapStatus"));
             rawWatch = ReadRawTelemetryWatchSnapshot(sdk, rawWatchVariableNames);
+            _performance.RecordIRacingSystemTelemetry(
+                capturedAtUtc,
+                chanQuality: rawWatch.Get("ChanQuality"),
+                chanPartnerQuality: rawWatch.Get("ChanPartnerQuality"),
+                chanLatency: rawWatch.Get("ChanLatency"),
+                chanAvgLatency: rawWatch.Get("ChanAvgLatency"),
+                chanClockSkew: rawWatch.Get("ChanClockSkew"),
+                frameRate: rawWatch.Get("FrameRate"),
+                cpuUsageForeground: rawWatch.Get("CpuUsageFG"),
+                gpuUsage: rawWatch.Get("GpuUsage"),
+                memPageFaultsPerSecond: rawWatch.Get("MemPageFaultSec"),
+                memSoftPageFaultsPerSecond: rawWatch.Get("MemSoftPageFaultSec"),
+                isReplayPlaying: rawWatch.Get("IsReplayPlaying"),
+                isOnTrack: rawWatch.Get("IsOnTrack"));
             buildSampleSucceeded = true;
         }
         finally

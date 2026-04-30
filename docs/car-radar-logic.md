@@ -143,7 +143,7 @@ It fades out when no signal exists.
 
 Settings preview mode is enabled while the radar settings tab is selected. Preview mode forces the radar visible even if normal visibility rules would hide it.
 
-The Windows form also clips the overlay window to a circular region and drives the form opacity to zero when the radar has fully faded. That is a defensive transparency fallback: if the WinForms transparency key fails to remove the fuchsia backing color in a particular desktop/compositor path, the hidden radar still cannot leave a purple square behind.
+The Windows form clips the overlay window to a circular region, uses a black transparency key instead of the old fuchsia key, and drives form opacity to zero when the radar has fully faded. That is a defensive transparency fallback: if the WinForms transparency key fails in a particular desktop/compositor path, the backing window is no longer purple and the hidden radar still fades out completely.
 
 ## Radar Range
 
@@ -186,6 +186,8 @@ Fade timing:
 - Fade out: 0.85 seconds.
 
 Cars are tracked by `CarIdx`. If a car disappears from current range, its visual alpha fades out before the visual state is removed.
+
+The refresh loop records whether the timer tick saw a new live snapshot sequence, how old that input was, and whether the tick actually needed a repaint because the snapshot, opacity, or fade state changed.
 
 ## Drawing
 

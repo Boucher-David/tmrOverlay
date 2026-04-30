@@ -13,7 +13,7 @@ namespace TmrOverlay.App.Overlays.CarRadar;
 
 internal sealed class CarRadarForm : PersistentOverlayForm
 {
-    private static readonly Color TransparentColor = Color.Fuchsia;
+    private static readonly Color TransparentColor = Color.Black;
     private readonly double _configuredOpacity;
     private const double RadarRangeSeconds = 2d;
     private const double FocusedCarLengthMeters = 4.746d;
@@ -54,6 +54,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
     private string? _overlayError;
     private string? _lastLoggedError;
     private DateTimeOffset? _lastLoggedErrorAtUtc;
+    private long? _lastRefreshSequence;
 
     private bool ShowMulticlassWarning =>
         _settings.GetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true);
@@ -205,11 +206,13 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             _lastRefreshAtUtc = now;
 
             LiveTelemetrySnapshot snapshot;
+            long? previousSequence;
             var snapshotStarted = Stopwatch.GetTimestamp();
             var snapshotSucceeded = false;
             try
             {
                 snapshot = _liveTelemetrySource.Snapshot();
+                previousSequence = _lastRefreshSequence;
                 _proximity = IsFresh(snapshot, now) ? snapshot.Proximity : LiveProximitySnapshot.Unavailable;
                 snapshotSucceeded = true;
             }
@@ -226,8 +229,25 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             var fadeSucceeded = false;
             try
             {
-                UpdateFadeState(now, elapsedSeconds);
-                ApplyWindowVisibilityOpacity();
+                var sequenceChanged = previousSequence != snapshot.Sequence;
+                var visualChanged = UpdateFadeState(now, elapsedSeconds);
+                var opacityChanged = ApplyWindowVisibilityOpacity();
+                var repaintNeeded = opacityChanged
+                    || visualChanged
+                    || (sequenceChanged && ShouldPaintRadar());
+                _performanceState.RecordOverlayRefreshDecision(
+                    CarRadarOverlayDefinition.Definition.Id,
+                    now,
+                    previousSequence,
+                    snapshot.Sequence,
+                    snapshot.LastUpdatedAtUtc,
+                    applied: repaintNeeded);
+                _lastRefreshSequence = snapshot.Sequence;
+                if (repaintNeeded)
+                {
+                    Invalidate();
+                }
+
                 fadeSucceeded = true;
             }
             finally
@@ -238,7 +258,6 @@ internal sealed class CarRadarForm : PersistentOverlayForm
                     fadeSucceeded);
             }
 
-            Invalidate();
             succeeded = true;
         }
         catch (Exception exception)
@@ -265,7 +284,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             || _carVisuals.Values.Any(visual => visual.Alpha > MinimumVisibleAlpha);
     }
 
-    private void ApplyWindowVisibilityOpacity()
+    private bool ApplyWindowVisibilityOpacity()
     {
         var visibleAlpha = _overlayError is not null || _settingsPreviewVisible
             ? 1d
@@ -274,9 +293,16 @@ internal sealed class CarRadarForm : PersistentOverlayForm
                 Math.Max(
                     Math.Max(_leftSideAlpha, _rightSideAlpha),
                     _carVisuals.Values.Select(visual => visual.Alpha).DefaultIfEmpty(0d).Max()));
-        Opacity = visibleAlpha <= MinimumVisibleAlpha
+        var nextOpacity = visibleAlpha <= MinimumVisibleAlpha
             ? 0d
             : Math.Clamp(_configuredOpacity * Math.Max(0.12d, visibleAlpha), 0d, 1d);
+        if (Math.Abs(Opacity - nextOpacity) <= 0.001d)
+        {
+            return false;
+        }
+
+        Opacity = nextOpacity;
+        return true;
     }
 
     private bool HasCurrentRadarSignal()
@@ -300,11 +326,24 @@ internal sealed class CarRadarForm : PersistentOverlayForm
         return ageSeconds >= 0d && ageSeconds <= SnapshotStaleSeconds;
     }
 
-    private void UpdateFadeState(DateTimeOffset now, double elapsedSeconds)
+    private bool UpdateFadeState(DateTimeOffset now, double elapsedSeconds)
     {
+        var previousRadarAlpha = _radarAlpha;
+        var previousLeftSideAlpha = _leftSideAlpha;
+        var previousRightSideAlpha = _rightSideAlpha;
+        var previousCarAlphas = _carVisuals.ToDictionary(pair => pair.Key, pair => pair.Value.Alpha);
+
         UpdateRadarAlpha(HasCurrentRadarSignal(), elapsedSeconds);
         UpdateSideWarningAlphas(elapsedSeconds);
         UpdateCarVisuals(now, elapsedSeconds);
+
+        return AlphaChanged(previousRadarAlpha, _radarAlpha)
+            || AlphaChanged(previousLeftSideAlpha, _leftSideAlpha)
+            || AlphaChanged(previousRightSideAlpha, _rightSideAlpha)
+            || previousCarAlphas.Count != _carVisuals.Count
+            || _carVisuals.Any(pair =>
+                !previousCarAlphas.TryGetValue(pair.Key, out var previousAlpha)
+                || AlphaChanged(previousAlpha, pair.Value.Alpha));
     }
 
     private void UpdateRadarAlpha(bool hasCurrentSignal, double elapsedSeconds)
@@ -413,6 +452,11 @@ internal sealed class CarRadarForm : PersistentOverlayForm
         return current < target
             ? Math.Min(target, current + delta)
             : Math.Max(target, current - delta);
+    }
+
+    private static bool AlphaChanged(double previous, double current)
+    {
+        return Math.Abs(previous - current) > 0.001d;
     }
 
     private void DrawRadar(Graphics graphics)

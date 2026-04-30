@@ -34,11 +34,13 @@ The Windows fuel overlay refreshes once per second.
 Each refresh:
 
 1. Reads the latest `LiveTelemetrySnapshot`.
-2. Looks up exact combo history with a 30 second cache.
-3. Builds a `FuelStrategySnapshot`.
-4. Converts the snapshot to display text and rows.
-5. Applies status color, source visibility, advice-column visibility, and row text.
-6. Keeps all six stint rows visible, using blank future rows when fewer rows are available.
+2. Skips the expensive path when the live snapshot sequence and relevant display options are unchanged.
+3. Looks up exact combo history with a 30 second cache.
+4. Builds a `FuelStrategySnapshot`.
+5. Converts the snapshot to display text and rows.
+6. Applies status color, source visibility, advice-column visibility, and row text only when the target UI value changed.
+7. Keeps all six stint rows visible, using blank future rows when fewer rows are available.
+8. Records whether the timer tick saw new input, how old that input was, and whether the tick actually changed UI state.
 
 ## Live Fuel Snapshot
 

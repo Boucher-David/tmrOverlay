@@ -10,6 +10,9 @@ internal sealed class AppPerformanceState
     private readonly object _sync = new();
     private readonly DateTimeOffset _startedAtUtc = DateTimeOffset.UtcNow;
     private readonly Dictionary<string, RollingPerformanceMetric> _metrics = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, RollingValueMetric> _iracingSystemMetrics = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, RollingValueMetric> _overlayUpdateMetrics = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DateTimeOffset> _lastOverlayRefreshAtUtc = new(StringComparer.OrdinalIgnoreCase);
     private long _telemetryFrameCount;
     private DateTimeOffset? _firstTelemetryFrameAtUtc;
     private DateTimeOffset? _lastTelemetryFrameAtUtc;
@@ -57,6 +60,83 @@ internal sealed class AppPerformanceState
         RecordOperation(metricId, Stopwatch.GetElapsedTime(startedTimestamp), succeeded);
     }
 
+    public void RecordIRacingSystemTelemetry(
+        DateTimeOffset timestampUtc,
+        double? chanQuality,
+        double? chanPartnerQuality,
+        double? chanLatency,
+        double? chanAvgLatency,
+        double? chanClockSkew,
+        double? frameRate,
+        double? cpuUsageForeground,
+        double? gpuUsage,
+        double? memPageFaultsPerSecond,
+        double? memSoftPageFaultsPerSecond,
+        double? isReplayPlaying,
+        double? isOnTrack)
+    {
+        lock (_sync)
+        {
+            RecordIRacingSystemValue(AppPerformanceValueIds.IRacingChanQuality, chanQuality, timestampUtc);
+            RecordIRacingSystemValue(AppPerformanceValueIds.IRacingChanPartnerQuality, chanPartnerQuality, timestampUtc);
+            RecordIRacingSystemValue(AppPerformanceValueIds.IRacingChanLatency, chanLatency, timestampUtc);
+            RecordIRacingSystemValue(AppPerformanceValueIds.IRacingChanAvgLatency, chanAvgLatency, timestampUtc);
+            RecordIRacingSystemValue(AppPerformanceValueIds.IRacingChanClockSkew, chanClockSkew, timestampUtc);
+            RecordIRacingSystemValue(AppPerformanceValueIds.IRacingFrameRate, frameRate, timestampUtc);
+            RecordIRacingSystemValue(AppPerformanceValueIds.IRacingCpuUsageForeground, cpuUsageForeground, timestampUtc);
+            RecordIRacingSystemValue(AppPerformanceValueIds.IRacingGpuUsage, gpuUsage, timestampUtc);
+            RecordIRacingSystemValue(AppPerformanceValueIds.IRacingMemPageFaultsPerSecond, memPageFaultsPerSecond, timestampUtc);
+            RecordIRacingSystemValue(AppPerformanceValueIds.IRacingMemSoftPageFaultsPerSecond, memSoftPageFaultsPerSecond, timestampUtc);
+            RecordIRacingSystemValue(AppPerformanceValueIds.IRacingIsReplayPlaying, isReplayPlaying, timestampUtc);
+            RecordIRacingSystemValue(AppPerformanceValueIds.IRacingIsOnTrack, isOnTrack, timestampUtc);
+        }
+    }
+
+    public void RecordOverlayRefreshDecision(
+        string overlayId,
+        DateTimeOffset timestampUtc,
+        long? previousSequence,
+        long currentSequence,
+        DateTimeOffset? latestInputAtUtc,
+        bool applied)
+    {
+        if (string.IsNullOrWhiteSpace(overlayId))
+        {
+            return;
+        }
+
+        lock (_sync)
+        {
+            var prefix = $"overlay.{NormalizeMetricSegment(overlayId)}.update";
+            if (_lastOverlayRefreshAtUtc.TryGetValue(overlayId, out var previousRefreshAtUtc))
+            {
+                RecordOverlayUpdateValue(
+                    $"{prefix}.refresh_interval_seconds",
+                    Math.Max(0d, (timestampUtc - previousRefreshAtUtc).TotalSeconds),
+                    timestampUtc);
+            }
+
+            _lastOverlayRefreshAtUtc[overlayId] = timestampUtc;
+
+            if (previousSequence is not null)
+            {
+                var sequenceDelta = Math.Max(0, currentSequence - previousSequence.Value);
+                RecordOverlayUpdateValue($"{prefix}.sequence_delta", sequenceDelta, timestampUtc);
+                RecordOverlayUpdateValue($"{prefix}.input_changed", sequenceDelta > 0 ? 1d : 0d, timestampUtc);
+            }
+
+            if (latestInputAtUtc is { } inputAtUtc)
+            {
+                RecordOverlayUpdateValue(
+                    $"{prefix}.input_age_seconds",
+                    Math.Max(0d, (timestampUtc - inputAtUtc).TotalSeconds),
+                    timestampUtc);
+            }
+
+            RecordOverlayUpdateValue($"{prefix}.applied", applied ? 1d : 0d, timestampUtc);
+        }
+    }
+
     public void RecordCaptureWrite(TelemetryCaptureWriteStatus writeStatus)
     {
         lock (_sync)
@@ -100,6 +180,16 @@ internal sealed class AppPerformanceState
                 TelemetryFrameCount: _telemetryFrameCount,
                 TelemetryFramesPerSecond: CalculateTelemetryFramesPerSecond(),
                 Metrics: metrics,
+                IRacingSystem: _iracingSystemMetrics
+                    .Values
+                    .Select(metric => metric.Snapshot())
+                    .OrderBy(metric => metric.Id, StringComparer.OrdinalIgnoreCase)
+                    .ToArray(),
+                OverlayUpdates: _overlayUpdateMetrics
+                    .Values
+                    .Select(metric => metric.Snapshot())
+                    .OrderBy(metric => metric.Id, StringComparer.OrdinalIgnoreCase)
+                    .ToArray(),
                 Capture: new CapturePerformanceSnapshot(
                     WriteStatusCount: _captureWriteStatusCount,
                     LastCaptureId: _lastCaptureId,
@@ -125,6 +215,43 @@ internal sealed class AppPerformanceState
         return elapsedSeconds <= 0d
             ? 0d
             : Math.Round((_telemetryFrameCount - 1) / elapsedSeconds, 2);
+    }
+
+    private void RecordIRacingSystemValue(string id, double? value, DateTimeOffset timestampUtc)
+    {
+        if (value is null || double.IsNaN(value.Value) || double.IsInfinity(value.Value))
+        {
+            return;
+        }
+
+        if (!_iracingSystemMetrics.TryGetValue(id, out var metric))
+        {
+            metric = new RollingValueMetric(id, RecentSampleCapacity);
+            _iracingSystemMetrics[id] = metric;
+        }
+
+        metric.Record(value.Value, timestampUtc);
+    }
+
+    private void RecordOverlayUpdateValue(string id, double? value, DateTimeOffset timestampUtc)
+    {
+        if (value is null || double.IsNaN(value.Value) || double.IsInfinity(value.Value))
+        {
+            return;
+        }
+
+        if (!_overlayUpdateMetrics.TryGetValue(id, out var metric))
+        {
+            metric = new RollingValueMetric(id, RecentSampleCapacity);
+            _overlayUpdateMetrics[id] = metric;
+        }
+
+        metric.Record(value.Value, timestampUtc);
+    }
+
+    private static string NormalizeMetricSegment(string value)
+    {
+        return value.Trim().Replace('-', '_').Replace(' ', '_').ToLowerInvariant();
     }
 
     private sealed class RollingPerformanceMetric
@@ -183,6 +310,75 @@ internal sealed class AppPerformanceState
                 MaxMilliseconds: Math.Round(_maxMilliseconds, 3),
                 P95Milliseconds: Math.Round(p95, 3),
                 LastRecordedAtUtc: _lastRecordedAtUtc);
+        }
+    }
+
+    private sealed class RollingValueMetric
+    {
+        private readonly string _id;
+        private readonly double[] _recentValues;
+        private int _nextSampleIndex;
+        private int _recentSampleCount;
+        private long _count;
+        private double _total;
+        private double _last;
+        private double _minimum = double.PositiveInfinity;
+        private double _maximum = double.NegativeInfinity;
+        private DateTimeOffset? _lastRecordedAtUtc;
+
+        public RollingValueMetric(string id, int sampleCapacity)
+        {
+            _id = id;
+            _recentValues = new double[sampleCapacity];
+        }
+
+        public void Record(double value, DateTimeOffset timestampUtc)
+        {
+            _count++;
+            _total += value;
+            _last = value;
+            _minimum = Math.Min(_minimum, value);
+            _maximum = Math.Max(_maximum, value);
+            _lastRecordedAtUtc = timestampUtc;
+
+            _recentValues[_nextSampleIndex] = value;
+            _nextSampleIndex = (_nextSampleIndex + 1) % _recentValues.Length;
+            _recentSampleCount = Math.Min(_recentSampleCount + 1, _recentValues.Length);
+        }
+
+        public PerformanceValueSnapshot Snapshot()
+        {
+            var recent = new double[_recentSampleCount];
+            Array.Copy(_recentValues, recent, _recentSampleCount);
+            Array.Sort(recent);
+
+            return new PerformanceValueSnapshot(
+                Id: _id,
+                Count: _count,
+                Average: _count == 0 ? null : Round(_total / _count),
+                Last: _count == 0 ? null : Round(_last),
+                Minimum: _count == 0 ? null : Round(_minimum),
+                Maximum: _count == 0 ? null : Round(_maximum),
+                P05: Percentile(recent, 0.05d),
+                P50: Percentile(recent, 0.50d),
+                P95: Percentile(recent, 0.95d),
+                LastRecordedAtUtc: _lastRecordedAtUtc);
+        }
+
+        private static double? Percentile(double[] sortedValues, double percentile)
+        {
+            if (sortedValues.Length == 0)
+            {
+                return null;
+            }
+
+            var index = Math.Clamp((int)Math.Ceiling(sortedValues.Length * percentile) - 1, 0, sortedValues.Length - 1);
+            return Round(sortedValues[index]);
+        }
+
+        private static double Round(double value)
+        {
+            return Math.Round(value, 6);
         }
     }
 }
@@ -261,12 +457,30 @@ internal static class AppPerformanceMetricIds
     public const string DiagnosticsBundleHistory = "diagnostics.bundle.history";
 }
 
+internal static class AppPerformanceValueIds
+{
+    public const string IRacingChanQuality = "iracing.chan_quality";
+    public const string IRacingChanPartnerQuality = "iracing.chan_partner_quality";
+    public const string IRacingChanLatency = "iracing.chan_latency";
+    public const string IRacingChanAvgLatency = "iracing.chan_avg_latency";
+    public const string IRacingChanClockSkew = "iracing.chan_clock_skew";
+    public const string IRacingFrameRate = "iracing.frame_rate";
+    public const string IRacingCpuUsageForeground = "iracing.cpu_usage_fg";
+    public const string IRacingGpuUsage = "iracing.gpu_usage";
+    public const string IRacingMemPageFaultsPerSecond = "iracing.mem_page_fault_sec";
+    public const string IRacingMemSoftPageFaultsPerSecond = "iracing.mem_soft_page_fault_sec";
+    public const string IRacingIsReplayPlaying = "iracing.is_replay_playing";
+    public const string IRacingIsOnTrack = "iracing.is_on_track";
+}
+
 internal sealed record AppPerformanceSnapshot(
     DateTimeOffset TimestampUtc,
     DateTimeOffset StartedAtUtc,
     long TelemetryFrameCount,
     double TelemetryFramesPerSecond,
     IReadOnlyList<PerformanceMetricSnapshot> Metrics,
+    IReadOnlyList<PerformanceValueSnapshot> IRacingSystem,
+    IReadOnlyList<PerformanceValueSnapshot> OverlayUpdates,
     CapturePerformanceSnapshot Capture,
     ProcessPerformanceSnapshot Process);
 
@@ -278,6 +492,18 @@ internal sealed record PerformanceMetricSnapshot(
     double LastMilliseconds,
     double MaxMilliseconds,
     double P95Milliseconds,
+    DateTimeOffset? LastRecordedAtUtc);
+
+internal sealed record PerformanceValueSnapshot(
+    string Id,
+    long Count,
+    double? Average,
+    double? Last,
+    double? Minimum,
+    double? Maximum,
+    double? P05,
+    double? P50,
+    double? P95,
     DateTimeOffset? LastRecordedAtUtc);
 
 internal sealed record CapturePerformanceSnapshot(

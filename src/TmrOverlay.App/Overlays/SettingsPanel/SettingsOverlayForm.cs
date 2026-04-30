@@ -1224,8 +1224,10 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             $"telemetry: {performance.TelemetryFrameCount:N0} frames, {performance.TelemetryFramesPerSecond:0.##} fps",
             $"data changed: {MetricSummary(performance, AppPerformanceMetricIds.TelemetryDataChanged)}",
             $"live/history: {MetricCompact(performance, AppPerformanceMetricIds.LiveTelemetrySink)} / {MetricCompact(performance, AppPerformanceMetricIds.HistoryRecordFrame)}",
+            $"iRacing: quality {ValueCompact(performance, AppPerformanceValueIds.IRacingChanQuality)}, latency {ValueCompact(performance, AppPerformanceValueIds.IRacingChanLatency, "s")}, fps {ValueCompact(performance, AppPerformanceValueIds.IRacingFrameRate)}",
             $"finalize: history {MetricCompact(performance, AppPerformanceMetricIds.TelemetryFinalizeSaveHistory)}, analysis {MetricCompact(performance, AppPerformanceMetricIds.TelemetryFinalizeSaveAnalysis)}, bundle {MetricCompact(performance, AppPerformanceMetricIds.TelemetryFinalizeDiagnosticsBundle)}",
             $"overlays avg: status {MetricAverage(performance, AppPerformanceMetricIds.OverlayStatusRefresh)}, fuel {MetricAverage(performance, AppPerformanceMetricIds.OverlayFuelRefresh)}, radar {MetricAverage(performance, AppPerformanceMetricIds.OverlayRadarRefresh)}, gap {MetricAverage(performance, AppPerformanceMetricIds.OverlayGapRefresh)}",
+            $"overlay input changed: status {ValuePercent(performance, "overlay.status.update.input_changed")}, fuel {ValuePercent(performance, "overlay.fuel_calculator.update.input_changed")}, radar {ValuePercent(performance, "overlay.car_radar.update.input_changed")}, gap {ValuePercent(performance, "overlay.gap_to_leader.update.input_changed")}",
             $"diagnostics: create {MetricCompact(performance, AppPerformanceMetricIds.DiagnosticsBundleCreate)}, files {MetricCompact(performance, AppPerformanceMetricIds.DiagnosticsBundlePerformanceFiles)}, history {MetricCompact(performance, AppPerformanceMetricIds.DiagnosticsBundleHistory)}",
             $"raw: written {capture.WrittenFrameCount:N0}, queue {performance.Capture.LastPendingMessageCount:N0}, drops {capture.DroppedFrameCount:N0}, file {FormatBytes(capture.TelemetryFileBytes)}",
             $"process: ws {FormatBytes(performance.Process.WorkingSetBytes)}, heap {FormatBytes(performance.Process.ManagedHeapBytes)}");
@@ -1258,6 +1260,34 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private static PerformanceMetricSnapshot? FindMetric(AppPerformanceSnapshot performance, string metricId)
     {
         return performance.Metrics.FirstOrDefault(metric => string.Equals(metric.Id, metricId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string ValueCompact(AppPerformanceSnapshot performance, string valueId, string suffix = "")
+    {
+        var value = FindValue(performance, valueId);
+        return value is null || value.Count == 0
+            ? "n/a"
+            : $"last {FormatValue(value.Last, suffix)}, p05 {FormatValue(value.P05, suffix)}, p95 {FormatValue(value.P95, suffix)}";
+    }
+
+    private static string ValuePercent(AppPerformanceSnapshot performance, string valueId)
+    {
+        var value = FindValue(performance, valueId);
+        return value?.Average is null
+            ? "n/a"
+            : $"{value.Average.Value * 100d:0.#}%";
+    }
+
+    private static PerformanceValueSnapshot? FindValue(AppPerformanceSnapshot performance, string valueId)
+    {
+        return performance.IRacingSystem
+            .Concat(performance.OverlayUpdates)
+            .FirstOrDefault(value => string.Equals(value.Id, valueId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string FormatValue(double? value, string suffix = "")
+    {
+        return value is null ? "n/a" : $"{value.Value:0.###}{suffix}";
     }
 
     private static string FormatBytes(long? bytes)

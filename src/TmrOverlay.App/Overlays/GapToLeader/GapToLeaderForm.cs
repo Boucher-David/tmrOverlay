@@ -47,6 +47,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
     private readonly Dictionary<int, DriverIdentity> _driverIdentities = [];
     private readonly System.Windows.Forms.Timer _refreshTimer;
     private long _lastSequence;
+    private long? _lastRefreshSequence;
     private LiveLeaderGapSnapshot _gap = LiveLeaderGapSnapshot.Unavailable;
     private DateTimeOffset? _latestPointAtUtc;
     private double? _latestAxisSeconds;
@@ -244,6 +245,8 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
                     snapshotSucceeded);
             }
 
+            var now = DateTimeOffset.UtcNow;
+            var previousSequence = _lastRefreshSequence;
             _gap = snapshot.LeaderGap;
             _lapReferenceSeconds = SelectLapReferenceSeconds(snapshot);
             if (snapshot.Sequence != _lastSequence)
@@ -266,7 +269,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
             }
 
             _overlayError = null;
-            ApplyStatusColor(_gap);
+            var uiChanged = ApplyStatusColor(_gap);
             IReadOnlyList<ChartSeriesSelection> selectedSeries = [];
             if (_gap.HasData)
             {
@@ -286,14 +289,31 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
                 }
             }
 
-            _statusLabel.Text = _gap.HasData
-                ? $"C{FormatPosition(_gap.ReferenceClassPosition)} {FormatGap(_gap.ClassLeaderGap)}"
-                : "waiting";
+            uiChanged |= SetTextIfChanged(
+                _statusLabel,
+                _gap.HasData
+                    ? $"C{FormatPosition(_gap.ReferenceClassPosition)} {FormatGap(_gap.ClassLeaderGap)}"
+                    : "waiting");
             var trendDomain = SelectTimeDomain(selectedSeries);
-            _sourceLabel.Text = _gap.HasData
-                ? $"{FormatTrendWindow(TimeSpan.FromSeconds(trendDomain.DurationSeconds))} class trend | cars {selectedSeries.Count}"
-                : "source: waiting";
-            Invalidate();
+            uiChanged |= SetTextIfChanged(
+                _sourceLabel,
+                _gap.HasData
+                    ? $"{FormatTrendWindow(TimeSpan.FromSeconds(trendDomain.DurationSeconds))} class trend | cars {selectedSeries.Count}"
+                    : "source: waiting");
+            var sequenceChanged = previousSequence != snapshot.Sequence;
+            _performanceState.RecordOverlayRefreshDecision(
+                GapToLeaderOverlayDefinition.Definition.Id,
+                now,
+                previousSequence,
+                snapshot.Sequence,
+                snapshot.LastUpdatedAtUtc,
+                applied: sequenceChanged || uiChanged);
+            _lastRefreshSequence = snapshot.Sequence;
+            if (sequenceChanged || uiChanged)
+            {
+                Invalidate();
+            }
+
             succeeded = true;
         }
         catch (Exception exception)
@@ -1240,23 +1260,58 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
             labelFormat);
     }
 
-    private void ApplyStatusColor(LiveLeaderGapSnapshot gap)
+    private bool ApplyStatusColor(LiveLeaderGapSnapshot gap)
     {
         if (!gap.HasData)
         {
-            BackColor = OverlayTheme.Colors.WindowBackground;
-            _statusLabel.ForeColor = OverlayTheme.Colors.TextSubtle;
-            return;
+            var changed = SetBackColorIfChanged(this, OverlayTheme.Colors.WindowBackground);
+            changed |= SetForeColorIfChanged(_statusLabel, OverlayTheme.Colors.TextSubtle);
+            return changed;
         }
 
-        BackColor = OverlayTheme.Colors.InfoBackground;
-        _statusLabel.ForeColor = OverlayTheme.Colors.InfoText;
+        var infoChanged = SetBackColorIfChanged(this, OverlayTheme.Colors.InfoBackground);
+        infoChanged |= SetForeColorIfChanged(_statusLabel, OverlayTheme.Colors.InfoText);
+        return infoChanged;
     }
 
     private void ApplyErrorStatusColor()
     {
         BackColor = OverlayTheme.Colors.ErrorGraphBackground;
         _statusLabel.ForeColor = OverlayTheme.Colors.ErrorText;
+    }
+
+    private static bool SetTextIfChanged(Label label, string? value)
+    {
+        var text = value ?? string.Empty;
+        if (string.Equals(label.Text, text, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        label.Text = text;
+        return true;
+    }
+
+    private static bool SetBackColorIfChanged(Control control, Color color)
+    {
+        if (control.BackColor == color)
+        {
+            return false;
+        }
+
+        control.BackColor = color;
+        return true;
+    }
+
+    private static bool SetForeColorIfChanged(Control control, Color color)
+    {
+        if (control.ForeColor == color)
+        {
+            return false;
+        }
+
+        control.ForeColor = color;
+        return true;
     }
 
     private void DrawError(Graphics graphics, Rectangle graphBounds)

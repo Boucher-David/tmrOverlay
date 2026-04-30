@@ -32,6 +32,20 @@ internal static class Program
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 
+        using var singleInstanceMutex = new Mutex(
+            initiallyOwned: true,
+            name: @"Local\TmrOverlay.App",
+            createdNew: out var isFirstInstance);
+        if (!isFirstInstance)
+        {
+            MessageBox.Show(
+                "TMR Overlay is already running.",
+                "TMR Overlay",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
         using var host = CreateHostBuilder().Build();
         var logger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("TmrOverlay.App");
         var storageOptions = host.Services.GetRequiredService<AppStorageOptions>();

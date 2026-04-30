@@ -36,6 +36,12 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
     private HistoricalComboIdentity? _cachedHistoryCombo;
     private SessionHistoryLookupResult? _cachedHistory;
     private DateTimeOffset _cachedHistoryAtUtc;
+    private int _lastVisibleStintRows = -1;
+    private bool? _lastAdviceColumnVisible;
+    private bool? _lastAdviceRowVisibility;
+    private long? _lastRefreshSequence;
+    private bool? _lastRefreshShowAdvice;
+    private bool? _lastRefreshShowSource;
 
     private bool ShowAdvice => _settings.GetBooleanOption(OverlayOptionKeys.FuelAdvice, defaultValue: true);
 
@@ -234,6 +240,25 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
                     snapshotSucceeded);
             }
 
+            var showAdvice = ShowAdvice;
+            var showSource = ShowSource;
+            var now = DateTimeOffset.UtcNow;
+            var previousSequence = _lastRefreshSequence;
+            if (previousSequence == live.Sequence
+                && _lastRefreshShowAdvice == showAdvice
+                && _lastRefreshShowSource == showSource)
+            {
+                _performanceState.RecordOverlayRefreshDecision(
+                    FuelCalculatorOverlayDefinition.Definition.Id,
+                    now,
+                    previousSequence,
+                    live.Sequence,
+                    live.LastUpdatedAtUtc,
+                    applied: false);
+                succeeded = true;
+                return;
+            }
+
             SessionHistoryLookupResult history;
             var historyStarted = Stopwatch.GetTimestamp();
             var historySucceeded = false;
@@ -271,7 +296,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
             var viewModelSucceeded = false;
             try
             {
-                viewModel = FuelCalculatorViewModel.From(strategy, history, ShowAdvice, _unitSystem, StintRowCount);
+                viewModel = FuelCalculatorViewModel.From(strategy, history, showAdvice, _unitSystem, StintRowCount);
                 viewModelSucceeded = true;
             }
             finally
@@ -282,16 +307,17 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
                     viewModelSucceeded);
             }
 
+            var uiChanged = false;
             var applyStarted = Stopwatch.GetTimestamp();
             var applySucceeded = false;
             try
             {
-                ApplyStatusColor(strategy);
-                _statusLabel.Text = viewModel.Status;
-                _overviewValueLabel.Text = viewModel.Overview;
-                _sourceLabel.Text = viewModel.Source;
-                _sourceLabel.Visible = ShowSource;
-                ApplyAdviceColumnVisibility();
+                uiChanged |= ApplyStatusColor(strategy);
+                uiChanged |= SetTextIfChanged(_statusLabel, viewModel.Status);
+                uiChanged |= SetTextIfChanged(_overviewValueLabel, viewModel.Overview);
+                uiChanged |= SetTextIfChanged(_sourceLabel, viewModel.Source);
+                uiChanged |= SetVisibleIfChanged(_sourceLabel, showSource);
+                uiChanged |= ApplyAdviceColumnVisibility(showAdvice);
                 applySucceeded = true;
             }
             finally
@@ -307,23 +333,34 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
             var rowsSucceeded = false;
             try
             {
-                for (var index = 0; index < StintRowCount; index++)
+                var layoutChanged = false;
+                _table.SuspendLayout();
+                try
                 {
-                    if (index < rows.Count)
+                    for (var index = 0; index < StintRowCount; index++)
                     {
-                        var row = rows[index];
-                        _stintNumberLabels[index].Text = row.Label;
-                        _stintLengthLabels[index].Text = row.Value;
-                        _stintTireLabels[index].Text = row.Advice;
-                        continue;
+                        if (index < rows.Count)
+                        {
+                            var row = rows[index];
+                            layoutChanged |= SetTextIfChanged(_stintNumberLabels[index], row.Label);
+                            layoutChanged |= SetTextIfChanged(_stintLengthLabels[index], row.Value);
+                            layoutChanged |= SetTextIfChanged(_stintTireLabels[index], row.Advice);
+                            continue;
+                        }
+
+                        layoutChanged |= SetTextIfChanged(_stintNumberLabels[index], $"Stint {index + 1}");
+                        layoutChanged |= SetTextIfChanged(_stintLengthLabels[index], string.Empty);
+                        layoutChanged |= SetTextIfChanged(_stintTireLabels[index], string.Empty);
                     }
 
-                    _stintNumberLabels[index].Text = $"Stint {index + 1}";
-                    _stintLengthLabels[index].Text = string.Empty;
-                    _stintTireLabels[index].Text = string.Empty;
+                    layoutChanged |= UpdateVisibleRows(rows.Count, showAdvice);
+                    uiChanged |= layoutChanged;
+                }
+                finally
+                {
+                    _table.ResumeLayout(layoutChanged);
                 }
 
-                UpdateVisibleRows(rows.Count);
                 rowsSucceeded = true;
             }
             finally
@@ -334,7 +371,21 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
                     rowsSucceeded);
             }
 
-            Invalidate();
+            _lastRefreshSequence = live.Sequence;
+            _lastRefreshShowAdvice = showAdvice;
+            _lastRefreshShowSource = showSource;
+            _performanceState.RecordOverlayRefreshDecision(
+                FuelCalculatorOverlayDefinition.Definition.Id,
+                now,
+                previousSequence,
+                live.Sequence,
+                live.LastUpdatedAtUtc,
+                applied: uiChanged);
+            if (uiChanged)
+            {
+                Invalidate();
+            }
+
             succeeded = true;
         }
         finally
@@ -370,52 +421,126 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
             && string.Equals(left.SessionKey, right.SessionKey, StringComparison.Ordinal);
     }
 
-    private void UpdateVisibleRows(int _)
+    private bool UpdateVisibleRows(int _, bool showAdvice)
     {
         var visibleStintRows = StintRowCount;
+        if (_lastVisibleStintRows == visibleStintRows && _lastAdviceRowVisibility == showAdvice)
+        {
+            return false;
+        }
+
+        var changed = false;
         var visibleRows = visibleStintRows + 1;
         for (var row = 0; row < _table.RowStyles.Count; row++)
         {
-            _table.RowStyles[row].SizeType = row < visibleRows ? SizeType.Percent : SizeType.Absolute;
-            _table.RowStyles[row].Height = row < visibleRows ? 100f / visibleRows : 0f;
+            var sizeType = row < visibleRows ? SizeType.Percent : SizeType.Absolute;
+            var height = row < visibleRows ? 100f / visibleRows : 0f;
+            if (_table.RowStyles[row].SizeType != sizeType)
+            {
+                _table.RowStyles[row].SizeType = sizeType;
+                changed = true;
+            }
+
+            if (Math.Abs(_table.RowStyles[row].Height - height) > 0.001f)
+            {
+                _table.RowStyles[row].Height = height;
+                changed = true;
+            }
         }
 
         for (var index = 0; index < StintRowCount; index++)
         {
             var visible = index < visibleStintRows;
-            _stintNumberLabels[index].Visible = visible;
-            _stintLengthLabels[index].Visible = visible;
-            _stintTireLabels[index].Visible = visible && ShowAdvice;
+            changed |= SetVisibleIfChanged(_stintNumberLabels[index], visible);
+            changed |= SetVisibleIfChanged(_stintLengthLabels[index], visible);
+            changed |= SetVisibleIfChanged(_stintTireLabels[index], visible && showAdvice);
         }
+
+        _lastVisibleStintRows = visibleStintRows;
+        _lastAdviceRowVisibility = showAdvice;
+        return changed;
     }
 
-    private void ApplyAdviceColumnVisibility()
+    private bool ApplyAdviceColumnVisibility(bool showAdvice)
     {
-        _table.ColumnStyles[0].Width = ShowAdvice ? 24f : 28f;
-        _table.ColumnStyles[1].Width = ShowAdvice ? 48f : 72f;
-        _table.ColumnStyles[2].Width = ShowAdvice ? 28f : 0f;
+        if (_lastAdviceColumnVisible == showAdvice)
+        {
+            return false;
+        }
+
+        _table.ColumnStyles[0].Width = showAdvice ? 24f : 28f;
+        _table.ColumnStyles[1].Width = showAdvice ? 48f : 72f;
+        _table.ColumnStyles[2].Width = showAdvice ? 28f : 0f;
+        _lastAdviceColumnVisible = showAdvice;
+        return true;
     }
 
-    private void ApplyStatusColor(FuelStrategySnapshot strategy)
+    private bool ApplyStatusColor(FuelStrategySnapshot strategy)
     {
         if (!strategy.HasData || strategy.FuelPerLapLiters is null)
         {
-            BackColor = OverlayTheme.Colors.WindowBackground;
-            _statusLabel.ForeColor = OverlayTheme.Colors.TextSubtle;
-            return;
+            var changed = SetBackColorIfChanged(this, OverlayTheme.Colors.WindowBackground);
+            changed |= SetForeColorIfChanged(_statusLabel, OverlayTheme.Colors.TextSubtle);
+            return changed;
         }
 
         if (strategy.RhythmComparison is { IsRealistic: true, AdditionalStopCount: > 0 }
             || strategy.RequiredFuelSavingPercent is > 0d and <= 0.05d
             || strategy.StopOptimization is { IsRealistic: true, RequiredSavingLitersPerLap: > 0d })
         {
-            BackColor = OverlayTheme.Colors.WarningStrongBackground;
-            _statusLabel.ForeColor = OverlayTheme.Colors.WarningText;
-            return;
+            var changed = SetBackColorIfChanged(this, OverlayTheme.Colors.WarningStrongBackground);
+            changed |= SetForeColorIfChanged(_statusLabel, OverlayTheme.Colors.WarningText);
+            return changed;
         }
 
-        BackColor = OverlayTheme.Colors.SuccessBackground;
-        _statusLabel.ForeColor = OverlayTheme.Colors.SuccessText;
+        var successChanged = SetBackColorIfChanged(this, OverlayTheme.Colors.SuccessBackground);
+        successChanged |= SetForeColorIfChanged(_statusLabel, OverlayTheme.Colors.SuccessText);
+        return successChanged;
+    }
+
+    private static bool SetTextIfChanged(Label label, string? value)
+    {
+        var text = value ?? string.Empty;
+        if (string.Equals(label.Text, text, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        label.Text = text;
+        return true;
+    }
+
+    private static bool SetVisibleIfChanged(Control control, bool visible)
+    {
+        if (control.Visible == visible)
+        {
+            return false;
+        }
+
+        control.Visible = visible;
+        return true;
+    }
+
+    private static bool SetBackColorIfChanged(Control control, Color color)
+    {
+        if (control.BackColor == color)
+        {
+            return false;
+        }
+
+        control.BackColor = color;
+        return true;
+    }
+
+    private static bool SetForeColorIfChanged(Control control, Color color)
+    {
+        if (control.ForeColor == color)
+        {
+            return false;
+        }
+
+        control.ForeColor = color;
+        return true;
     }
 
     private static Label CreateCellLabel(string fontFamily, string text, bool alignRight = false, bool bold = false)

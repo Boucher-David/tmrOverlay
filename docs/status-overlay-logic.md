@@ -18,9 +18,10 @@ Each refresh:
 
 1. Reads a `TelemetryCaptureStatusSnapshot` from `TelemetryCaptureState`.
 2. Converts that snapshot into a `CaptureHealth` object.
-3. Applies colors and labels from that health object.
+3. Applies colors and labels from that health object only when values changed.
 4. Shows or hides detail rows based on overlay settings.
-5. Records performance metrics for snapshot read, health derivation, UI apply, paint, and total refresh.
+5. Invalidates the overlay only when visible state changed.
+6. Records performance metrics for snapshot read, health derivation, UI apply, paint, total refresh, input age, input-change rate, and whether the tick actually changed UI state.
 
 ## Visible Rows
 
@@ -138,4 +139,3 @@ When raw capture is disabled:
 - It should warn for stale live frames even when raw capture is disabled.
 - Raw-capture disk warnings should only appear when raw capture is enabled.
 - Empty states should not show local machine history or cached session details as live data.
-

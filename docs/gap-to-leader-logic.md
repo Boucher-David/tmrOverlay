@@ -21,9 +21,9 @@ Each refresh:
 
 1. Reads the latest live telemetry snapshot.
 2. If the snapshot sequence changed, records a new gap snapshot.
-3. Updates labels and status.
-4. Invalidates for repaint.
-5. Records performance submetrics.
+3. Updates labels and status only when values changed.
+4. Invalidates for repaint only when the snapshot sequence, labels, or colors changed.
+5. Records performance submetrics plus input age, input-change rate, and whether the tick needed a repaint.
 
 Snapshots are ignored when no new sequence exists.
 

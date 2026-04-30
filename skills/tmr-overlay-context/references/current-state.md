@@ -17,6 +17,7 @@ Last updated: 2026-04-30
   - references `src/TmrOverlay.Core/` for platform-neutral settings, telemetry/history models, live read models, fuel strategy logic, overlay metadata, and post-race analysis models
 
 - `src/TmrOverlay.App/Program.cs`
+  - uses a local named mutex so a second Windows launch exits instead of starting another telemetry collector
   - builds a generic host
   - loads `appsettings.json`
   - starts the tray application context
@@ -67,7 +68,7 @@ Last updated: 2026-04-30
   - uses normal desktop z-order, taskbar, and Alt+Tab behavior instead of the product overlays' tool-window/always-on-top behavior
   - tabs include General, Error Logging, each current overlay, an Overlay Bridge placeholder for post-v1.0 controls, and Post-race Analysis with a past-session picker backed by saved analysis rows plus the built-in four-hour sample; refreshes default to the most recent analysis
   - General exposes a shared overlay font-family selector from widely available fonts, a metric/imperial unit selector, and copy-only Windows clean/build/publish/zip commands for local development
-  - Error Logging shows the current app warning/error from `TelemetryCaptureState`, opens local log/diagnostics folders, shows a lightweight performance summary, and can create/copy a diagnostics bundle using `DiagnosticsBundleService`
+  - Error Logging shows the current app warning/error from `TelemetryCaptureState`, opens local log/diagnostics folders, shows a lightweight performance summary with iRacing channel/system values and overlay update-decision rates, and can create/copy a diagnostics bundle using `DiagnosticsBundleService`
   - per-overlay tabs expose visibility, scale, test/practice/qualifying/race session filters, and descriptor-driven overlay-specific display options
   - opening the radar settings tab forces the radar overlay visible as a live preview even when user/session visibility would otherwise hide it
   - the Collector Status tab owns the runtime `Raw capture` checkbox
@@ -87,6 +88,7 @@ Last updated: 2026-04-30
   - warns when a target such as an 8-lap stint needs realistic fuel saving versus nominal tank range or avoids extra stops over longer races
   - uses blank future rows when no fuel stop is needed or fewer stints are known, instead of hiding rows based on noisy collection thresholds
   - caches exact history lookups briefly by car/track/session so live fuel refreshes do not reread aggregate JSON every tick
+  - skips expensive strategy/UI work when the live snapshot sequence and display options are unchanged, and only mutates labels/table layout when target values changed
 
 - `src/TmrOverlay.App/Overlays/CarRadar/`
   - draggable 300px circular radar overlay placed to the right of the status overlay by default
@@ -97,7 +99,7 @@ Last updated: 2026-04-30
   - excludes pit-road cars from radar proximity and hides the radar while the focused car is in pit-road states
   - draws the focused car as a white rectangle and nearby traffic from any class as neutral-white rectangles that fade in between radar entry and the yellow-warning threshold, then move through yellow toward saturated alert red only inside the close bumper-gap warning buffer, using physical distance inside a car-length-based radar window when possible with timing fallback labels on the rings
   - keeps per-car visual state by `CarIdx`, fades the whole radar and side-warning rectangles in/out, and treats stale live snapshots as unavailable so old proximity does not stay painted forever
-  - clips the Windows form to a circular region and drops form opacity to zero after fade-out so a transparency-key failure cannot leave the fuchsia/purple backing window visible
+  - clips the Windows form to a circular region, uses a black transparency key instead of fuchsia, and drops form opacity to zero after fade-out so a transparency-key failure cannot leave a purple backing window visible
   - tracks recent relative timing for other-class cars and can draw a short outer red arc with a live seconds gap when faster multiclass traffic is behind outside the 2-second timing fallback range but within 5 seconds
   - currently does not have true per-car lateral telemetry; side occupancy comes from the scalar iRacing left/right signal, and radar cars only occupy side slots when their distance or fallback timing gap is inside the side-overlap car-length window
 
@@ -150,7 +152,7 @@ Last updated: 2026-04-30
 
 - `src/TmrOverlay.App/Performance/AppPerformanceState.cs`
   - stores lightweight in-memory performance counters and rolling timing summaries
-  - tracks telemetry callback throughput, normalized live sink time, edge-case recorder time, history accumulation time, capture writer write time, capture queue depth, overlay refresh timings, dropped/written raw frames, process memory, and GC counts
+  - tracks telemetry callback throughput, normalized live sink time, edge-case recorder time, history accumulation time, continuous iRacing network/system values, capture writer write time, capture queue depth, overlay refresh timings, overlay update-decision rates, dropped/written raw frames, process memory, and GC counts
   - intentionally stores aggregate/recent-window metrics rather than every telemetry frame
   - `AppPerformanceHostedService` writes periodic JSONL snapshots under the logs performance folder regardless of raw-capture state
 
