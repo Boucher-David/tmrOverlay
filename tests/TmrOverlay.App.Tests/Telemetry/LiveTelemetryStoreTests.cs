@@ -61,6 +61,43 @@ public sealed class LiveTelemetryStoreTests
     }
 
     [Fact]
+    public void RecordFrame_CarriesSessionInfoClassColorToProximityCars()
+    {
+        var store = new LiveTelemetryStore();
+        store.ApplySessionInfo("""
+DriverInfo:
+ DriverCarIdx: 10
+ Drivers:
+ - CarIdx: 10
+   CarClassColor: 0xffda59
+ - CarIdx: 51
+   CarClassColor: 0x33ceff
+""");
+
+        store.RecordFrame(CreateSample(
+            playerCarIdx: 10,
+            teamLapDistPct: 0.50d,
+            teamEstimatedTimeSeconds: 50d,
+            nearbyCars:
+            [
+                new HistoricalCarProximity(
+                    CarIdx: 51,
+                    LapCompleted: 2,
+                    LapDistPct: 0.51d,
+                    F2TimeSeconds: null,
+                    EstimatedTimeSeconds: 51d,
+                    Position: 3,
+                    ClassPosition: 1,
+                    CarClass: 4099,
+                    TrackSurface: 3,
+                    OnPitRoad: false)
+            ]));
+
+        var car = Assert.Single(store.Snapshot().Proximity.NearbyCars);
+        Assert.Equal("#33CEFF", car.CarClassColorHex);
+    }
+
+    [Fact]
     public void RecordFrame_SurfacesMulticlassApproachOutsideCloseRadarRange()
     {
         var store = new LiveTelemetryStore();
@@ -92,6 +129,37 @@ public sealed class LiveTelemetryStoreTests
         Assert.Equal(4099, approach.CarClass);
         Assert.Equal(-4.5d, approach.RelativeSeconds!.Value, precision: 6);
         Assert.Equal(approach, snapshot.Proximity.StrongestMulticlassApproach);
+    }
+
+    [Fact]
+    public void RecordFrame_DoesNotSurfaceMulticlassApproachInsideCloseRadarRange()
+    {
+        var store = new LiveTelemetryStore();
+
+        store.RecordFrame(CreateSample(
+            playerCarIdx: 10,
+            teamLapDistPct: 0.50d,
+            teamEstimatedTimeSeconds: 50d,
+            teamCarClass: 4098,
+            nearbyCars:
+            [
+                new HistoricalCarProximity(
+                    CarIdx: 51,
+                    LapCompleted: 2,
+                    LapDistPct: 0.485d,
+                    F2TimeSeconds: 0d,
+                    EstimatedTimeSeconds: 48.5d,
+                    Position: 3,
+                    ClassPosition: 1,
+                    CarClass: 4099,
+                    TrackSurface: 3,
+                    OnPitRoad: false)
+            ]));
+
+        var snapshot = store.Snapshot();
+
+        Assert.Empty(snapshot.Proximity.MulticlassApproaches);
+        Assert.Null(snapshot.Proximity.StrongestMulticlassApproach);
     }
 
     [Fact]

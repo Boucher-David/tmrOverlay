@@ -16,10 +16,10 @@ It uses fresh live telemetry only:
 
 - `CamCarIdx` for the current camera/focus car when valid, falling back to `PlayerCarIdx`.
 - `CarLeftRight` for side occupancy.
-- Nearby `CarIdxLapDistPct` and lap completion for relative placement.
+- Nearby `CarIdxLapDistPct` and lap completion for physical-distance placement when track length is known.
 - Nearby `CarIdxEstTime` or `CarIdxF2Time` for live relative seconds when available and plausible.
 
-If live timing is missing, the radar may still place a car by current lap-distance progress, but it does not synthesize a seconds gap from fuel or history estimates.
+If live timing is missing or suspicious, the car may remain in the live proximity snapshot for diagnostics and non-radar consumers. When track length is known, the radar can still use current lap-distance progress as a physical distance; it does not synthesize a seconds gap from lap distance, fuel, or history estimates.
 
 ## Freshness
 
@@ -44,17 +44,21 @@ Stale snapshots are treated as unavailable so old traffic does not remain painte
 2. If focused-car lap distance is unavailable:
    - Keep side occupancy from `CarLeftRight` only when the focus car is the player car.
    - Mark nearby cars unavailable.
-3. Convert each nearby car:
+3. If the focused car is on pit road or in a pit track-surface state:
+   - Mark the radar unavailable.
+   - Hide side occupancy.
+4. Convert each nearby car:
    - `relativeLaps = car.LapDistPct - focusLapDistPct`
    - Wrap across start/finish so values stay within `-0.5` to `0.5`.
    - Preserve position, class, track surface, pit-road flag, F2 time, and estimated time.
    - Calculate relative meters when track length exists.
-4. Keep cars where absolute relative laps is at most `0.5` and not effectively zero.
-5. Sort by absolute relative laps.
-6. Nearest ahead is the smallest positive relative laps.
-7. Nearest behind is the largest negative relative laps.
+5. Exclude cars on pit road or in pit track-surface states.
+6. Keep cars where absolute relative laps is at most `0.5` and not effectively zero.
+7. Sort by absolute relative laps.
+8. Nearest ahead is the smallest positive relative laps.
+9. Nearest behind is the largest negative relative laps.
 
-Pit-road cars remain in the nearby set when live telemetry reports them, including when the focused car is also on pit road.
+Pit-road cars do not appear on radar. The gap overlay can still use separate timing rows for race context.
 
 ## Relative Seconds
 
@@ -76,6 +80,7 @@ The first valid source wins:
 Plausibility rules:
 
 - Delta must be finite.
+- Near-zero deltas are rejected when lap-distance progress says the car is meaningfully separated. This guards against uninitialized timing rows such as `CarIdxF2Time == 0` for multiple cars.
 - Delta sign must match relative lap sign when both are non-zero.
 - If live lap time exists:
   - Calculate lap-distance estimate: `abs(relativeLaps * lapTimeSeconds)`.
@@ -113,6 +118,16 @@ Right side is active for `3`, `4`, and `6`.
 
 `CarLeftRight` is a player-car scalar. When the camera is focused on another car, side occupancy is hidden instead of applying the player's side warning to the watched car.
 
+For side-by-side placement, `CarLeftRight` is authoritative. Timing never creates an alongside state by itself.
+
+When a side warning exists, the radar may attach that side slot to a rendered timed car only when:
+
+- The car has reliable relative meters inside the contact-length window, or it has reliable relative seconds inside the fallback timing window.
+
+The distance window uses a 4.746 m focused-car-length baseline. The seconds fallback is derived from that same assumed length divided by focused-car speed, clamped between 0.18 and 0.45 seconds. If speed is unavailable, the fallback window is 0.22 seconds.
+
+If no timed car qualifies, the radar still draws the generic side-warning rectangle from `CarLeftRight`. This keeps the actual spotter warning visible without pretending a random timed car is alongside.
+
 ## Radar Visibility
 
 The radar fades in when any current signal exists:
@@ -132,20 +147,27 @@ Settings preview mode is enabled while the radar settings tab is selected. Previ
 
 Radar range is:
 
-- 2 seconds for cars in the focused car's class when relative seconds exists.
-- 5 seconds for cars outside the focused car's class when relative seconds exists.
-- 0.02 laps for cars in the focused car's class when relative seconds is missing.
-- 0.05 laps for cars outside the focused car's class when relative seconds is missing.
+- 6 focused-car lengths, currently `4.746 m * 6 = 28.476 m`, when relative meters exists.
+- 2 seconds for cars without relative meters but with reliable relative seconds.
 
-A car is in range when its absolute relative value is within that range.
+Cars are in range when the best available live relative value is inside that range. Distance is preferred over seconds because it is a direct physical threshold and avoids showing multiple cars as overlapping simply because their timing rows are similar.
 
 Range ratio:
 
-- `relativeSeconds / classAwareSecondsRange` when seconds exists.
-- `relativeLaps / classAwareLapRange` otherwise.
+- `relativeMeters / RadarRangeMeters` when meters exists.
+- `relativeSeconds / RadarRangeSeconds` otherwise.
 - Clamped from `-1` to `1`.
 
-Negative ratio draws behind the focused car. Positive ratio draws ahead.
+Range ratio drives color and ordering.
+
+Longitudinal placement uses signed relative meters with a car-length contact window when possible, falling back to signed relative seconds:
+
+- `0.0 m` maps to the focused car rectangle.
+- A non-zero car whose absolute gap is at least the focused-car-length contact window is placed outside the focused car rectangle.
+- A car rectangle should overlap the focused car only when the reliable distance gap is inside that contact window. In practice, that visual overlap means contact, a near-contact stack, or an actual side-overlap/alongside condition.
+- Outside the contact window, remaining distance is scaled out to the radar edge.
+
+Negative values draw behind the focused car. Positive values draw ahead.
 
 ## Fade State
 
@@ -169,25 +191,33 @@ The radar draws:
 
 1. Circular dark radar background.
 2. Optional multiclass warning arc.
-3. Two time-gap rings with labels.
+3. Two range rings with labels.
 4. Nearby car rectangles.
 5. Side-warning rectangles.
 6. Focused car rectangle.
 
-Ring labels show approximate seconds:
+Ring labels show approximate seconds because timing is more useful to drivers than the internal physical range threshold:
 
-- Inner/outer labels show same-class and multiclass seconds at that ring, for example `1.3/3.3s`.
+- Inner/outer labels show seconds within the fallback timing window, for example `1.3s` and `0.7s`.
+- Distance remains an internal placement/range input when relative meters exists.
 
 ## Car Color
 
-The car color is based on closeness:
+The production car color is neutral proximity color, not iRacing class color. Class color is still parsed and carried in the live model for future overlays, but the radar does not use it because common yellow or red class colors can make normal traffic look like a warning.
 
-- `closeness = 1 - abs(rangeRatio)`
-- Far traffic starts white.
-- Mid traffic moves toward yellow.
-- Close traffic moves toward red.
+Proximity color does not begin across the full radar range; it begins only when bumper gap is inside the close warning buffer:
 
-The car alpha is based on visual fade and radar fade. The overlay itself fades in/out; cars do not turn purple as a proximity state.
+- With relative meters, bumper gap is `abs(relativeMeters) - 4.746 m`.
+- The warning buffer is currently `2.0 m`, roughly one rendered car width in the radar UI.
+- Outside that buffer, the car stays white.
+- Inside that buffer, the car blends from white toward yellow, then saturated alert red.
+- At nose-to-tail contact or overlap, the car reaches alert red.
+
+When only timing fallback exists, the same idea is approximated from the side-overlap timing window: the side-overlap seconds represent contact, and the extra warning seconds are scaled from the same 2.0 m buffer.
+
+The focused/user car remains white.
+
+The car alpha is based on visual fade, radar fade, and distance inside the radar range. A car entering at the outer radar range is faint, then fades toward full opacity by the time it reaches the yellow-warning threshold. The overlay itself fades in/out; cars do not turn purple as a proximity state.
 
 ## Lateral Placement
 
@@ -195,18 +225,19 @@ The radar does not have true lane-level lateral telemetry.
 
 Approximation:
 
-- If side occupancy is active and the car is nearest ahead/behind, place it left or right.
-- Otherwise distribute multiple cars across three simple lanes based on `CarIdx` and draw index.
+- `CarLeftRight` creates side slots: one left, one right, both sides, two left, or two right.
+- A rendered car can occupy a side slot only when it is within the side-overlap contact window.
+- Otherwise distribute multiple radar cars across three simple lanes based on `CarIdx` and draw index.
 - A single visible car is centered.
 
 ## Multiclass Warning
 
 `LiveTelemetryStore` tracks short per-car proximity history and can build early multiclass warnings from other-class traffic behind the focused car.
 
-The early-warning seconds range extends beyond the close radar range:
+The early-warning seconds range is outside the fallback timing proximity range:
 
-- Same-class radar range: 2 seconds.
-- Multiclass radar and warning range: 5 seconds.
+- Fallback timing proximity range: 2 seconds.
+- Multiclass warning range: greater than 2 seconds behind and up to 5 seconds behind.
 
 When camera focus changes, the short closing-rate history is reset so approach rates measured against the old reference car are not applied to the new focused car.
 
@@ -221,7 +252,9 @@ This is still live-only derived state. It is not persisted into compact history.
 
 - Keep radar logic live-only.
 - Do not use fuel estimates or historical lap times to invent radar seconds.
-- It is acceptable to show lap-distance placement without a seconds label.
-- Pit-road test cases are useful because they increase available proximity scenarios.
-- Color should communicate proximity only: white to yellow to red.
+- Prefer physical distance from lap-distance progress and track length for radar thresholds.
+- Use live relative seconds as a fallback and for multiclass warning timing.
+- Do not render pit-road traffic on radar.
+- Color should stay neutral white until close bumper-gap proximity, then move through yellow toward saturated alert red.
+- Car opacity should also communicate early proximity: faint at the radar edge, full near the yellow-warning threshold.
 - Visibility should be communicated by alpha fade only.

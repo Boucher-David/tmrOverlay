@@ -72,6 +72,8 @@ Live fuel confidence is:
 - `level-only` when fuel level exists but live burn does not.
 - `none` when fuel level is unavailable.
 
+When the selected/focused driver or team state cannot expose scalar fuel, the fuel calculator should not collapse to an empty table if history exists. It should still analyze completed stint history for the active car/track/session, render modeled stint rows and strategy comparison, and label the burn/stint source as historical/model rather than live measured fuel.
+
 ## History Lookup
 
 The fuel overlay queries `SessionHistoryQueryService` by the exact `HistoricalComboIdentity`.
@@ -364,6 +366,6 @@ The source row includes:
 - Live data must win over history.
 - Baseline history must stay opt-in.
 - Teammate stint targets are hints, not measured live teammate fuel.
+- Missing focused-driver fuel should still allow stint-history analysis rows when matching history exists.
 - Strategy suggestions should distinguish measured facts from model assumptions.
 - The table layout should stay stable during a run.
-

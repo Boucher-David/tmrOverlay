@@ -6,8 +6,6 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
 {
     private const double CloseRadarRangeSeconds = 2d;
     private const double MulticlassWarningRangeSeconds = 5d;
-    private const double CloseRadarRangeLaps = 0.02d;
-    private const double MulticlassWarningRangeLaps = 0.05d;
     private const double MinimumClosingRateSecondsPerSecond = 0.15d;
 
     private readonly object _sync = new();
@@ -191,8 +189,12 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
             return null;
         }
 
-        if (car.RelativeSeconds is { } currentSeconds && previous.RelativeSeconds is { } previousSeconds)
+        if (car.HasReliableRelativeSeconds
+            && previous.RelativeSeconds is { } previousSeconds
+            && !double.IsNaN(previousSeconds)
+            && !double.IsInfinity(previousSeconds))
         {
+            var currentSeconds = car.RelativeSeconds!.Value;
             return (currentSeconds - previousSeconds) / elapsedSeconds;
         }
 
@@ -220,30 +222,25 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
 
     private static bool IsBehind(LiveProximityCar car)
     {
-        return car.RelativeSeconds is { } seconds
-            ? seconds < 0d
-            : car.RelativeLaps < 0d;
+        return car.HasReliableRelativeSeconds && car.RelativeSeconds!.Value < 0d;
     }
 
     private static bool IsInMulticlassWarningRange(LiveProximityCar car)
     {
-        return car.RelativeSeconds is { } seconds
-            ? Math.Abs(seconds) <= MulticlassWarningRangeSeconds
-            : Math.Abs(car.RelativeLaps) <= MulticlassWarningRangeLaps;
+        return car.HasReliableRelativeSeconds
+            && car.RelativeSeconds!.Value < -CloseRadarRangeSeconds
+            && car.RelativeSeconds!.Value >= -MulticlassWarningRangeSeconds;
     }
 
     private static bool IsCloseEnoughForEarlyWarning(LiveProximityCar car)
     {
-        return car.RelativeSeconds is { } seconds
-            ? seconds >= -MulticlassWarningRangeSeconds
-            : car.RelativeLaps >= -MulticlassWarningRangeLaps;
+        return IsInMulticlassWarningRange(car);
     }
 
     private static double CalculateUrgency(LiveProximityCar car, double? closingRate)
     {
-        var ratio = car.RelativeSeconds is { } seconds
-            ? RangeUrgency(Math.Abs(seconds), CloseRadarRangeSeconds, MulticlassWarningRangeSeconds)
-            : RangeUrgency(Math.Abs(car.RelativeLaps), CloseRadarRangeLaps, MulticlassWarningRangeLaps);
+        var seconds = car.HasReliableRelativeSeconds ? car.RelativeSeconds!.Value : MulticlassWarningRangeSeconds;
+        var ratio = RangeUrgency(Math.Abs(seconds), CloseRadarRangeSeconds, MulticlassWarningRangeSeconds);
 
         var closingBoost = closingRate is { } rate
             ? Math.Clamp(rate / 1.5d, 0d, 0.25d)

@@ -14,7 +14,15 @@ public sealed class LiveProximitySnapshotTests
             Car = new HistoricalCarIdentity(),
             Track = new HistoricalTrackIdentity { TrackLengthKm = 5d },
             Session = new HistoricalSessionIdentity(),
-            Conditions = new HistoricalSessionInfoConditions()
+            Conditions = new HistoricalSessionInfoConditions(),
+            Drivers =
+            [
+                new HistoricalSessionDriver
+                {
+                    CarIdx = 12,
+                    CarClassColorHex = "#33CEFF"
+                }
+            ]
         };
         var sample = CreateSample(
             teamLapDistPct: 0.98d,
@@ -54,6 +62,7 @@ public sealed class LiveProximitySnapshotTests
         Assert.Equal("both sides", proximity.SideStatus);
         Assert.Equal(12, proximity.NearestAhead?.CarIdx);
         Assert.Equal(13, proximity.NearestBehind?.CarIdx);
+        Assert.Equal("#33CEFF", proximity.NearestAhead!.CarClassColorHex);
         Assert.Equal(3d, proximity.NearestAhead!.RelativeSeconds!.Value, precision: 6);
         Assert.Equal(-150d, proximity.NearestBehind!.RelativeMeters!.Value, precision: 6);
     }
@@ -218,7 +227,7 @@ public sealed class LiveProximitySnapshotTests
     }
 
     [Fact]
-    public void From_KeepsPitRoadCarsWhenPlayerIsAlsoInPits()
+    public void From_RejectsZeroTimingForLapSeparatedCars()
     {
         var context = new HistoricalSessionContext
         {
@@ -229,6 +238,43 @@ public sealed class LiveProximitySnapshotTests
         };
         var sample = CreateSample(
             teamLapDistPct: 0.50d,
+            teamF2TimeSeconds: 0d,
+            nearbyCars:
+            [
+                new HistoricalCarProximity(
+                    CarIdx: 12,
+                    LapCompleted: 5,
+                    LapDistPct: 0.53d,
+                    F2TimeSeconds: 0d,
+                    EstimatedTimeSeconds: null,
+                    Position: 3,
+                    ClassPosition: 3,
+                    CarClass: 1,
+                    TrackSurface: 3,
+                    OnPitRoad: false)
+            ]);
+
+        var proximity = LiveProximitySnapshot.From(context, sample);
+
+        var car = Assert.Single(proximity.NearbyCars);
+        Assert.Null(car.RelativeSeconds);
+        Assert.False(car.HasReliableRelativeSeconds);
+        Assert.Equal(0.03d, car.RelativeLaps, precision: 6);
+    }
+
+    [Fact]
+    public void From_ExcludesPitRoadCarsAndHidesRadarWhileFocusedCarIsInPits()
+    {
+        var context = new HistoricalSessionContext
+        {
+            Car = new HistoricalCarIdentity(),
+            Track = new HistoricalTrackIdentity(),
+            Session = new HistoricalSessionIdentity(),
+            Conditions = new HistoricalSessionInfoConditions()
+        };
+        var sample = CreateSample(
+            teamLapDistPct: 0.50d,
+            carLeftRight: 2,
             onPitRoad: true,
             nearbyCars:
             [
@@ -247,9 +293,54 @@ public sealed class LiveProximitySnapshotTests
 
         var proximity = LiveProximitySnapshot.From(context, sample);
 
+        Assert.False(proximity.HasData);
+        Assert.False(proximity.HasCarLeft);
+        Assert.Equal("waiting", proximity.SideStatus);
+        Assert.Empty(proximity.NearbyCars);
+    }
+
+    [Fact]
+    public void From_ExcludesNearbyPitRoadCarsWhenFocusedCarIsOnTrack()
+    {
+        var context = new HistoricalSessionContext
+        {
+            Car = new HistoricalCarIdentity(),
+            Track = new HistoricalTrackIdentity(),
+            Session = new HistoricalSessionIdentity(),
+            Conditions = new HistoricalSessionInfoConditions()
+        };
+        var sample = CreateSample(
+            teamLapDistPct: 0.50d,
+            nearbyCars:
+            [
+                new HistoricalCarProximity(
+                    CarIdx: 24,
+                    LapCompleted: 5,
+                    LapDistPct: 0.505d,
+                    F2TimeSeconds: 20d,
+                    EstimatedTimeSeconds: 50.5d,
+                    Position: 8,
+                    ClassPosition: 6,
+                    CarClass: 1,
+                    TrackSurface: 3,
+                    OnPitRoad: true),
+                new HistoricalCarProximity(
+                    CarIdx: 25,
+                    LapCompleted: 5,
+                    LapDistPct: 0.51d,
+                    F2TimeSeconds: 19d,
+                    EstimatedTimeSeconds: 51d,
+                    Position: 9,
+                    ClassPosition: 7,
+                    CarClass: 1,
+                    TrackSurface: 3,
+                    OnPitRoad: false)
+            ]);
+
+        var proximity = LiveProximitySnapshot.From(context, sample);
+
         var car = Assert.Single(proximity.NearbyCars);
-        Assert.Equal(24, car.CarIdx);
-        Assert.True(car.OnPitRoad);
+        Assert.Equal(25, car.CarIdx);
     }
 
     [Fact]

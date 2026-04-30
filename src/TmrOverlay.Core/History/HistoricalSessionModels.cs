@@ -199,6 +199,8 @@ internal sealed class HistoricalSessionDriver
 
     public string? CarClassShortName { get; init; }
 
+    public string? CarClassColorHex { get; init; }
+
     public bool? IsSpectator { get; init; }
 }
 

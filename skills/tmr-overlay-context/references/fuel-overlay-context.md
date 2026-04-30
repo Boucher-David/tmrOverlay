@@ -152,7 +152,9 @@ Current derivations:
 
 The overlay must keep live race telemetry as the primary source for strategy and fuel numbers. Live session time, leader/team progress, lap pace, fuel level, fuel burn, pit state, and completed-stint inference should continuously update the table. Exact user history is only a fallback/model until the current session has enough reliable live data. Baseline/sample history is opt-in for development and must not override live data.
 
-During teammate stints, local scalar fuel can be unavailable. In that mode the overlay should continue using team-car `CarIdx*` progress plus user/baseline fuel history, label the usage as a model rather than live burn, and keep completed stints in historical storage instead of rendering them as active table rows.
+During teammate stints, local scalar fuel can be unavailable. The same gap can happen when the user switches focus to another driver/car whose fuel scalars are not exposed. In that mode the overlay should continue using available team/focus progress plus user/baseline fuel and completed-stint history, label the usage as a model rather than live burn, and keep completed stints in historical storage instead of rendering them as active table rows.
+
+If matching history exists but live fuel is unavailable for the selected/focused driver, the table should still show modeled stint analysis and strategy comparison instead of becoming empty. The key UI distinction is source confidence: measured live fuel when available, historical/model stint analysis when fuel scalars are hidden or unavailable.
 
 When historical completed-stint data shows team stints around 8 laps and the fuel-saving requirement stays within the realistic threshold, the calculator can bias projected rows to 8 laps. This is a planning hint, not proof that current live teammate fuel is directly available, and the UI intentionally does not label rows as teammate stints.
 
@@ -167,6 +169,7 @@ The next implementation step is to harden the fuel/stint overlay by adding:
 - rolling smoothing around live fuel burn so instantaneous `FuelUsePerHour` spikes do not whipsaw stint targets
 - explicit reserve/margin settings
 - broader fallback lookup for same car or similar track when exact car/track/session history is missing
+- modeled stint-analysis rows when selected/focused-driver fuel is unavailable but completed-stint history exists
 - confidence/source flags in the overlay so teammate-stint fuel is never treated as direct measured fuel unless a future source exposes it
 
 ## Pit Service Timing Direction

@@ -44,8 +44,17 @@ internal sealed record LiveProximitySnapshot(
     LiveProximityCar? NearestAhead,
     LiveProximityCar? NearestBehind,
     IReadOnlyList<LiveMulticlassApproach> MulticlassApproaches,
-    LiveMulticlassApproach? StrongestMulticlassApproach)
+    LiveMulticlassApproach? StrongestMulticlassApproach,
+    double SideOverlapWindowSeconds)
 {
+    private const double SuspiciousZeroTimingSeconds = 0.05d;
+    private const double SuspiciousZeroTimingLapsWithoutLapTime = 0.001d;
+    private const double SuspiciousZeroTimingLapEstimateSeconds = 0.5d;
+    private const double AssumedCarLengthMeters = 4.746d;
+    private const double DefaultSideOverlapWindowSeconds = 0.22d;
+    private const double MinimumSideOverlapWindowSeconds = 0.18d;
+    private const double MaximumSideOverlapWindowSeconds = 0.45d;
+
     public static LiveProximitySnapshot Unavailable { get; } = new(
         HasData: false,
         ReferenceCarClass: null,
@@ -57,7 +66,8 @@ internal sealed record LiveProximitySnapshot(
         NearestAhead: null,
         NearestBehind: null,
         MulticlassApproaches: [],
-        StrongestMulticlassApproach: null);
+        StrongestMulticlassApproach: null,
+        SideOverlapWindowSeconds: DefaultSideOverlapWindowSeconds);
 
     public static LiveProximitySnapshot From(
         HistoricalSessionContext context,
@@ -65,8 +75,9 @@ internal sealed record LiveProximitySnapshot(
     {
         var focusLapDistPct = FocusLapDistPct(sample);
         var focusCarClass = FocusCarClass(sample);
-        var carLeftRight = CarLeftRightForFocus(sample);
-        if (focusLapDistPct is null)
+        var focusOnPitRoad = FocusOnPitRoad(sample);
+        var carLeftRight = focusOnPitRoad ? null : CarLeftRightForFocus(sample);
+        if (focusLapDistPct is null || focusOnPitRoad)
         {
             return Unavailable with
             {
@@ -74,7 +85,8 @@ internal sealed record LiveProximitySnapshot(
                 CarLeftRight = carLeftRight,
                 SideStatus = FormatSideStatus(carLeftRight),
                 HasCarLeft = DetectCarLeft(carLeftRight),
-                HasCarRight = DetectCarRight(carLeftRight)
+                HasCarRight = DetectCarRight(carLeftRight),
+                SideOverlapWindowSeconds = CalculateSideOverlapWindowSeconds(sample)
             };
         }
 
@@ -82,14 +94,20 @@ internal sealed record LiveProximitySnapshot(
             ? km * 1000d
             : (double?)null;
         var liveLapTimeSeconds = LiveLapTimeSeconds(sample);
+        var carClassColorsByCarIdx = context.Drivers
+            .Where(driver => driver.CarIdx is not null && !string.IsNullOrWhiteSpace(driver.CarClassColorHex))
+            .GroupBy(driver => driver.CarIdx!.Value)
+            .ToDictionary(group => group.Key, group => group.First().CarClassColorHex);
         var cars = (sample.NearbyCars ?? [])
+            .Where(car => !IsPitRoadCar(car))
             .Select(car => ToLiveCar(
                 car,
                 focusLapDistPct.Value,
                 FocusF2TimeSeconds(sample),
                 FocusEstimatedTimeSeconds(sample),
                 liveLapTimeSeconds,
-                trackLengthMeters))
+                trackLengthMeters,
+                carClassColorsByCarIdx.TryGetValue(car.CarIdx, out var colorHex) ? colorHex : null))
             .Where(car => Math.Abs(car.RelativeLaps) <= 0.5d && Math.Abs(car.RelativeLaps) > 0.00001d)
             .OrderBy(car => Math.Abs(car.RelativeLaps))
             .ToArray();
@@ -109,7 +127,8 @@ internal sealed record LiveProximitySnapshot(
                 .Where(car => car.RelativeLaps < 0d)
                 .MaxBy(car => car.RelativeLaps),
             MulticlassApproaches: [],
-            StrongestMulticlassApproach: null);
+            StrongestMulticlassApproach: null,
+            SideOverlapWindowSeconds: CalculateSideOverlapWindowSeconds(sample));
     }
 
     private static LiveProximityCar ToLiveCar(
@@ -118,7 +137,8 @@ internal sealed record LiveProximitySnapshot(
         double? focusF2TimeSeconds,
         double? focusEstimatedTimeSeconds,
         double? liveLapTimeSeconds,
-        double? trackLengthMeters)
+        double? trackLengthMeters,
+        string? carClassColorHex)
     {
         var relativeLaps = car.LapDistPct - focusLapDistPct;
         if (relativeLaps > 0.5d)
@@ -149,7 +169,8 @@ internal sealed record LiveProximitySnapshot(
             TrackSurface: car.TrackSurface,
             OnPitRoad: car.OnPitRoad,
             F2TimeSeconds: car.F2TimeSeconds,
-            EstimatedTimeSeconds: car.EstimatedTimeSeconds);
+            EstimatedTimeSeconds: car.EstimatedTimeSeconds,
+            CarClassColorHex: carClassColorHex);
     }
 
     private static double? CalculateRelativeSeconds(
@@ -224,6 +245,11 @@ internal sealed record LiveProximitySnapshot(
             return false;
         }
 
+        if (IsSuspiciousZeroTiming(seconds, relativeLaps, lapTimeSeconds))
+        {
+            return false;
+        }
+
         var timingSign = Math.Sign(seconds);
         var lapSign = Math.Sign(relativeLaps);
         if (timingSign != 0 && lapSign != 0 && timingSign != lapSign)
@@ -239,6 +265,35 @@ internal sealed record LiveProximitySnapshot(
         }
 
         return Math.Abs(seconds) <= 60d;
+    }
+
+    private static bool IsSuspiciousZeroTiming(double seconds, double relativeLaps, double? lapTimeSeconds)
+    {
+        if (Math.Abs(seconds) > SuspiciousZeroTimingSeconds)
+        {
+            return false;
+        }
+
+        if (lapTimeSeconds is { } lapSeconds && IsPositiveFinite(lapSeconds))
+        {
+            return Math.Abs(relativeLaps * lapSeconds) >= SuspiciousZeroTimingLapEstimateSeconds;
+        }
+
+        return Math.Abs(relativeLaps) >= SuspiciousZeroTimingLapsWithoutLapTime;
+    }
+
+    private static double CalculateSideOverlapWindowSeconds(HistoricalTelemetrySample sample)
+    {
+        var speedMetersPerSecond = sample.SpeedMetersPerSecond;
+        if (IsFinite(speedMetersPerSecond) && speedMetersPerSecond > 1d)
+        {
+            return Math.Clamp(
+                AssumedCarLengthMeters / speedMetersPerSecond,
+                MinimumSideOverlapWindowSeconds,
+                MaximumSideOverlapWindowSeconds);
+        }
+
+        return DefaultSideOverlapWindowSeconds;
     }
 
     private static double? FocusLapDistPct(HistoricalTelemetrySample sample)
@@ -296,6 +351,30 @@ internal sealed record LiveProximitySnapshot(
     private static int? CarLeftRightForFocus(HistoricalTelemetrySample sample)
     {
         return FocusUsesPlayerSideTelemetry(sample) ? sample.CarLeftRight : null;
+    }
+
+    private static bool FocusOnPitRoad(HistoricalTelemetrySample sample)
+    {
+        if (HasExplicitNonPlayerFocus(sample))
+        {
+            return sample.FocusOnPitRoad == true || IsPitRoadTrackSurface(sample.FocusTrackSurface);
+        }
+
+        return sample.FocusOnPitRoad == true
+            || sample.TeamOnPitRoad == true
+            || sample.OnPitRoad
+            || IsPitRoadTrackSurface(sample.FocusTrackSurface)
+            || IsPitRoadTrackSurface(sample.PlayerTrackSurface);
+    }
+
+    private static bool IsPitRoadCar(HistoricalCarProximity car)
+    {
+        return car.OnPitRoad == true || IsPitRoadTrackSurface(car.TrackSurface);
+    }
+
+    private static bool IsPitRoadTrackSurface(int? trackSurface)
+    {
+        return trackSurface is 1 or 2;
     }
 
     private static bool FocusUsesPlayerSideTelemetry(HistoricalTelemetrySample sample)
@@ -388,7 +467,12 @@ internal sealed record LiveProximityCar(
     int? TrackSurface,
     bool? OnPitRoad,
     double? F2TimeSeconds,
-    double? EstimatedTimeSeconds);
+    double? EstimatedTimeSeconds,
+    string? CarClassColorHex = null)
+{
+    public bool HasReliableRelativeSeconds =>
+        RelativeSeconds is { } seconds && !double.IsNaN(seconds) && !double.IsInfinity(seconds);
+}
 
 internal sealed record LiveMulticlassApproach(
     int CarIdx,

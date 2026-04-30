@@ -253,8 +253,34 @@ internal static class SessionInfoSummaryParser
             CarNumber = ReadString(values, "CarNumber"),
             CarClassId = ReadInt(values, "CarClassID"),
             CarClassShortName = ReadString(values, "CarClassShortName"),
+            CarClassColorHex = NormalizeColorHex(ReadString(values, "CarClassColor")),
             IsSpectator = ReadBool(values, "IsSpectator")
         };
+    }
+
+    private static string? NormalizeColorHex(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var token = ReadLeadingToken(value).Trim();
+        if (token.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+        {
+            token = token[2..];
+        }
+        else if (token.StartsWith('#'))
+        {
+            token = token[1..];
+        }
+
+        if (token.Length != 6 || token.Any(character => !Uri.IsHexDigit(character)))
+        {
+            return null;
+        }
+
+        return $"#{token.ToUpperInvariant()}";
     }
 
     private static bool TryReadKeyValue(string trimmedLine, out string key, out string value)

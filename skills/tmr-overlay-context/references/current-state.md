@@ -41,7 +41,7 @@ Last updated: 2026-04-29
   - `Status/` contains the current collector status overlay
   - `SettingsPanel/` contains a centered tabbed settings window for user-managed overlay visibility, scale, session filters, shared font/units, runtime raw-capture requests, placeholder Overlay Bridge controls, post-race analysis browsing, and overlay-specific display options
   - `FuelCalculator/` contains the first strategy overlay, backed by live telemetry plus exact car/track/session history
-  - `CarRadar/` contains a transparent circular proximity overlay, backed by `CamCarIdx`, player-only `CarLeftRight`, and nearby `CarIdx*` progress/position telemetry
+  - `CarRadar/` contains a transparent circular proximity overlay, backed by `CamCarIdx`, player-only `CarLeftRight`, reliable live timing gaps, and nearby `CarIdx*` progress/position telemetry
   - `GapToLeader/` contains a rolling in-class gap trend graph, backed by `CarIdxF2Time` with progress fallback
 
 - `src/TmrOverlay.App/Overlays/Status/StatusOverlayForm.cs`
@@ -77,6 +77,7 @@ Last updated: 2026-04-29
   - draggable three-column fuel strategy overlay placed below the status overlay by default
   - estimates timed-race laps from session time, selected lap time, and leader/team progress
   - uses live fuel burn first, then exact user history for car/track/session combos; tracked baseline/sample history is opt-in
+  - future fuel work should keep modeled stint-history analysis visible when a selected/focused driver lacks exposed live fuel scalars, instead of emptying the table
   - renders whole-lap stint targets, target liters-per-lap, planned stint/stop count, final stint length, laps-per-tank, and min/avg/max burn when history exists
   - keeps the full table row layout visible so strategy changes do not resize or switch the overlay view during live updates
   - adds an advice column that estimates whether tire service is likely free under refueling time or costs extra stationary time, using historical fill-rate and tire-service aggregates when available
@@ -92,12 +93,12 @@ Last updated: 2026-04-29
   - transparent outside the circle and paints nothing when no cars are within proximity or multiclass warning range
   - follows the active camera/focus car through `CamCarIdx` when valid, falling back to the player/team car
   - uses `CarLeftRight` for side occupancy only when focused on the player car
-  - uses only fresh live nearby-car telemetry for placement/timing around the focused car; `CarIdxEstTime` and `CarIdxF2Time` provide timing when available, while live `CarIdxLapDistPct` / `CarIdxLapCompleted` progress can still place cars without synthesizing a seconds gap from history or fuel estimates
-  - keeps pit-road cars in the nearby set when live telemetry reports them, including the test case where the player is also on pit road
-  - draws the focused car as a white rectangle and nearby traffic from any class as car rectangles that color from white to yellow to red as traffic gets closer, using 2-second same-class and 5-second multiclass radar windows with light time-gap labels on the rings
+  - uses only fresh live nearby-car telemetry for placement/timing around the focused car; live `CarIdxLapDistPct` plus track length provides preferred physical-distance placement, while `CarIdxEstTime` and `CarIdxF2Time` provide timing fallback and multiclass warning timing when reliable without inventing seconds from history or fuel estimates
+  - excludes pit-road cars from radar proximity and hides the radar while the focused car is in pit-road states
+  - draws the focused car as a white rectangle and nearby traffic from any class as neutral-white rectangles that fade in between radar entry and the yellow-warning threshold, then move through yellow toward saturated alert red only inside the close bumper-gap warning buffer, using physical distance inside a car-length-based radar window when possible with timing fallback labels on the rings
   - keeps per-car visual state by `CarIdx`, fades the whole radar and side-warning rectangles in/out, and treats stale live snapshots as unavailable so old proximity does not stay painted forever
-  - tracks recent relative timing for other-class cars and can draw a short outer red arc with a live seconds gap when faster multiclass traffic is approaching from behind before it reaches close radar range
-  - currently does not have true per-car lateral placement; side occupancy comes from the scalar iRacing left/right signal
+  - tracks recent relative timing for other-class cars and can draw a short outer red arc with a live seconds gap when faster multiclass traffic is behind outside the 2-second timing fallback range but within 5 seconds
+  - currently does not have true per-car lateral telemetry; side occupancy comes from the scalar iRacing left/right signal, and radar cars only occupy side slots when their distance or fallback timing gap is inside the side-overlap car-length window
 
 - `src/TmrOverlay.App/Overlays/GapToLeader/`
   - draggable in-class gap trend graph placed below the radar by default
