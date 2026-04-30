@@ -281,6 +281,7 @@ Last updated: 2026-04-30
   - waiting/unavailable/error paths should be deterministic and isolated from local machine state unless the scenario explicitly tests history fallback or support-path display
   - the same fixture-driven approach applies to collectors, diagnostics bundles, retention, updater, settings, and performance telemetry paths
   - code changes should include a stale-reference sweep across docs, mocks, tests, the ignored mac harness, and repo skills before final validation so old behavior names/descriptions/API patterns do not survive alongside new implementation behavior
+  - behavior, calculation, default, source-label, fixture-data, and validation-semantics changes should update affected build test assertions and fixtures in the same pass; stale passing or failing assertions are stale references
 
 - `.github/workflows/windows-dotnet.yml`
   - restores, builds, and tests `tmrOverlay.sln` on `windows-latest`

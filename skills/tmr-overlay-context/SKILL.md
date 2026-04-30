@@ -19,8 +19,9 @@ Use this repo-local skill when the task is about continuing or extending `tmrOve
 6. For overlay/settings changes, regenerate mac-harness screenshots and run `python3 tools/validate_overlay_screenshots.py`; still do visual review for text overlap and scenario correctness.
 7. Treat fixtures as contracts: assert visible data, assert absent data, and isolate waiting/unavailable/error states from local user history or cached telemetry unless the scenario explicitly tests those paths.
 8. After code changes, run a stale-reference sweep before final validation. Search docs, mocks, tests, the ignored mac harness, and repo skills for old behavior names/descriptions/API call patterns that no longer match the implementation, then patch those references in the same pass.
-9. If overlay behavior or analysis logic changes, update the matching English logic note under `docs/overlay-logic.md` so future design review can happen from readable rules.
-10. If you change product direction, validation assumptions, capture format, or analysis assumptions, update the relevant reference/docs file so future sessions inherit the new context.
+9. When implementation behavior, calculations, defaults, source labels, fixture data, or validation semantics change, update the affected build test assertions and test fixtures in the same pass. Treat stale passing or failing assertions as stale references, not as a separate cleanup task.
+10. If overlay behavior or analysis logic changes, update the matching English logic note under `docs/overlay-logic.md` so future design review can happen from readable rules.
+11. If you change product direction, validation assumptions, capture format, or analysis assumptions, update the relevant reference/docs file so future sessions inherit the new context.
 
 ## Primary Files
 

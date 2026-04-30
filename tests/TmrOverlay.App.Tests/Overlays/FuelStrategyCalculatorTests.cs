@@ -24,7 +24,7 @@ public sealed class FuelStrategyCalculatorTests
 
         Assert.NotNull(strategy.RaceLapsRemaining);
         Assert.Equal(2.8d, strategy.RaceLapsRemaining.Value, precision: 3);
-        Assert.Equal(10d, strategy.FuelPerLapLiters);
+        Assert.Equal(2.778d, strategy.FuelPerLapLiters!.Value, precision: 3);
         Assert.Equal("fuel covers finish", strategy.Status);
         Assert.Equal(2.8d, Assert.Single(strategy.Stints).LengthLaps, precision: 3);
         Assert.Equal("finish", strategy.Stints[0].Source);
