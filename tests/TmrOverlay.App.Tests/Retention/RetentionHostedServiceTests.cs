@@ -17,7 +17,9 @@ public sealed class RetentionHostedServiceTests
             Directory.CreateDirectory(storage.CaptureRoot);
             Directory.CreateDirectory(storage.DiagnosticsRoot);
             var performanceRoot = Path.Combine(storage.LogsRoot, "performance");
+            var edgeCaseRoot = Path.Combine(storage.LogsRoot, "edge-cases");
             Directory.CreateDirectory(performanceRoot);
+            Directory.CreateDirectory(edgeCaseRoot);
 
             var keepCapture = Directory.CreateDirectory(Path.Combine(storage.CaptureRoot, "capture-keep"));
             var deleteCapture = Directory.CreateDirectory(Path.Combine(storage.CaptureRoot, "capture-delete"));
@@ -25,10 +27,14 @@ public sealed class RetentionHostedServiceTests
             var deleteBundle = Path.Combine(storage.DiagnosticsRoot, "delete.zip");
             var keepPerformance = Path.Combine(performanceRoot, "performance-keep.jsonl");
             var deletePerformance = Path.Combine(performanceRoot, "performance-delete.jsonl");
+            var keepEdgeCase = Path.Combine(edgeCaseRoot, "session-keep-edge-cases.json");
+            var deleteEdgeCase = Path.Combine(edgeCaseRoot, "session-delete-edge-cases.json");
             File.WriteAllText(keepBundle, "keep");
             File.WriteAllText(deleteBundle, "delete");
             File.WriteAllText(keepPerformance, "keep");
             File.WriteAllText(deletePerformance, "delete");
+            File.WriteAllText(keepEdgeCase, "keep");
+            File.WriteAllText(deleteEdgeCase, "delete");
 
             Directory.SetLastWriteTimeUtc(keepCapture.FullName, DateTime.UtcNow);
             Directory.SetLastWriteTimeUtc(deleteCapture.FullName, DateTime.UtcNow.AddDays(-10));
@@ -36,6 +42,8 @@ public sealed class RetentionHostedServiceTests
             File.SetLastWriteTimeUtc(deleteBundle, DateTime.UtcNow.AddDays(-10));
             File.SetLastWriteTimeUtc(keepPerformance, DateTime.UtcNow);
             File.SetLastWriteTimeUtc(deletePerformance, DateTime.UtcNow.AddDays(-10));
+            File.SetLastWriteTimeUtc(keepEdgeCase, DateTime.UtcNow);
+            File.SetLastWriteTimeUtc(deleteEdgeCase, DateTime.UtcNow.AddDays(-10));
 
             var service = new RetentionHostedService(
                 storage,
@@ -47,7 +55,9 @@ public sealed class RetentionHostedServiceTests
                     DiagnosticsRetentionDays = 1,
                     MaxDiagnosticsBundles = 10,
                     PerformanceLogRetentionDays = 1,
-                    MaxPerformanceLogFiles = 10
+                    MaxPerformanceLogFiles = 10,
+                    EdgeCaseRetentionDays = 1,
+                    MaxEdgeCaseFiles = 10
                 },
                 NullLogger<RetentionHostedService>.Instance);
 
@@ -59,6 +69,8 @@ public sealed class RetentionHostedServiceTests
             Assert.False(File.Exists(deleteBundle));
             Assert.True(File.Exists(keepPerformance));
             Assert.False(File.Exists(deletePerformance));
+            Assert.True(File.Exists(keepEdgeCase));
+            Assert.False(File.Exists(deleteEdgeCase));
         }
         finally
         {

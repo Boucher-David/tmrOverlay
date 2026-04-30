@@ -20,6 +20,7 @@
 - Stores early pit-service history signals such as pit-lane time, pit-stall/service time, observed fuel fill rate, tire/repair indicators, and confidence flags.
 - Keeps raw capture as an opt-in diagnostic/development mode; the settings window can request raw capture at runtime if the app was started without the flag.
 - When raw capture is enabled, stores `telemetry.bin`, `telemetry-schema.json`, `latest-session.yaml`, optional `session-info/`, and `capture-manifest.json`.
+- Always records compact edge-case telemetry artifacts after a live session. These are bounded JSON clips around suspicious or newly exposed telemetry states, not full raw frame payloads.
 - Shows live-analysis health signals in the overlay, plus disk-write health when raw capture is enabled.
 - Writes rolling local logs, JSONL app events, runtime-state markers, persisted settings, lightweight performance snapshots, and diagnostics bundles for triage.
 - Includes retention cleanup for old captures and diagnostics bundles.
@@ -68,6 +69,16 @@ Each capture folder contains:
 - `telemetry.bin`
 - `latest-session.yaml`
 - `session-info/`
+
+## Edge-Case Telemetry Artifacts
+
+Edge-case telemetry capture is enabled by default and is separate from raw capture. It watches normalized live state plus a small set of scalar raw telemetry channels, then writes bounded JSON clips under:
+
+```text
+%LOCALAPPDATA%\TmrOverlay\logs\edge-cases
+```
+
+Each `*-edge-cases.json` file includes the watched raw schema, missing watched variables, clip triggers, a short pre-trigger window, a short post-trigger window, selected nearby/class timing rows, and raw watch values for channels such as fuel, tires, suspension, brakes, wheel speed, pit service, weather, engine warnings, replay state, incidents, frame rate, and network latency. It intentionally does not include `telemetry.bin`.
 
 ## Build And Run On Windows
 
@@ -137,6 +148,12 @@ Available settings:
 - `TelemetryCapture:StoreSessionInfoSnapshots`
 - `TelemetryCapture:RawCaptureEnabled`
 - `TelemetryCapture:QueueCapacity`
+- `TelemetryEdgeCases:Enabled`
+- `TelemetryEdgeCases:PreTriggerSeconds`
+- `TelemetryEdgeCases:PostTriggerSeconds`
+- `TelemetryEdgeCases:MaxClipsPerSession`
+- `TelemetryEdgeCases:MaxFramesPerClip`
+- `TelemetryEdgeCases:MinimumFrameSpacingSeconds`
 - `SessionHistory:Enabled`
 - `SessionHistory:UseBaselineHistory`
 - `Storage:UseRepositoryLocalStorage`
@@ -158,6 +175,10 @@ Available settings:
 - `Retention:MaxCaptureDirectories`
 - `Retention:DiagnosticsRetentionDays`
 - `Retention:MaxDiagnosticsBundles`
+- `Retention:PerformanceLogRetentionDays`
+- `Retention:MaxPerformanceLogFiles`
+- `Retention:EdgeCaseRetentionDays`
+- `Retention:MaxEdgeCaseFiles`
 - `Replay:Enabled`
 - `Replay:CaptureDirectory`
 - `Replay:SpeedMultiplier`
@@ -210,7 +231,7 @@ For repo-local development storage, set:
 $env:TMR_Storage__UseRepositoryLocalStorage = "true"
 ```
 
-Environment overrides use the `TMR_` prefix, for example `TMR_Storage__CaptureRoot`.
+Environment overrides use the `TMR_` prefix, for example `TMR_Storage__CaptureRoot` or `TMR_TelemetryEdgeCases__Enabled=false`.
 
 ## Logs
 
@@ -232,7 +253,7 @@ The tray menu can create a diagnostics bundle under:
 
 Performance diagnostics are always on, even when raw capture is disabled. The app writes periodic JSONL snapshots under `%LOCALAPPDATA%\TmrOverlay\logs\performance` with telemetry throughput, overlay refresh timing, capture writer state when available, process memory, and GC counts.
 
-Bundles include app/storage metadata, telemetry state, lightweight performance snapshots, recent performance logs, runtime state, settings, recent logs/events, latest capture metadata, recent post-race analysis JSON under top-level `analysis/`, and recent user-history summaries/aggregates for car/track/session accuracy checks. They intentionally exclude raw `telemetry.bin` payloads.
+Bundles include app/storage metadata, telemetry state, lightweight performance snapshots, recent performance logs, runtime state, settings, recent logs/events, compact edge-case telemetry JSON, latest capture metadata, recent post-race analysis JSON under top-level `analysis/`, and recent user-history summaries/aggregates for car/track/session accuracy checks. They intentionally exclude raw `telemetry.bin` payloads.
 
 See `docs/update-strategy.md` for the current update notification and self-update plan.
 

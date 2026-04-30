@@ -198,6 +198,7 @@ internal static class AppPerformanceMetricIds
     public const string TelemetryDataChangedStateFrame = "telemetry.data_changed.state_frame";
     public const string LiveTelemetrySink = "telemetry.live_sink";
     public const string HistoryRecordFrame = "telemetry.history_record_frame";
+    public const string TelemetryEdgeCaseRecordFrame = "telemetry.edge_cases.record_frame";
     public const string TelemetryHistoryBuildSample = "telemetry.history.build_sample";
     public const string TelemetryHistoryReadLeader = "telemetry.history.read_leader";
     public const string TelemetryHistoryReadClassLeader = "telemetry.history.read_class_leader";
@@ -213,6 +214,7 @@ internal static class AppPerformanceMetricIds
     public const string TelemetryFinalizeBuildSummary = "telemetry.finalize.build_summary";
     public const string TelemetryFinalizeSaveHistory = "telemetry.finalize.save_history";
     public const string TelemetryFinalizeSaveAnalysis = "telemetry.finalize.save_analysis";
+    public const string TelemetryFinalizeEdgeCases = "telemetry.finalize.edge_cases";
     public const string TelemetryFinalizeDiagnosticsBundle = "telemetry.finalize.diagnostics_bundle";
     public const string CaptureWriterWrite = "capture.writer_write";
     public const string CaptureWriteStatusCallback = "capture.write_status_callback";
@@ -254,6 +256,7 @@ internal static class AppPerformanceMetricIds
     public const string DiagnosticsBundleLogs = "diagnostics.bundle.logs";
     public const string DiagnosticsBundlePerformanceFiles = "diagnostics.bundle.performance_files";
     public const string DiagnosticsBundleEvents = "diagnostics.bundle.events";
+    public const string DiagnosticsBundleEdgeCases = "diagnostics.bundle.edge_cases";
     public const string DiagnosticsBundleLatestCapture = "diagnostics.bundle.latest_capture";
     public const string DiagnosticsBundleHistory = "diagnostics.bundle.history";
 }

@@ -13,6 +13,7 @@ internal sealed class DiagnosticsBundleService
     private const int MaxRecentAnalysisFiles = 12;
     private const int MaxRecentHistorySummaryFiles = 50;
     private const int MaxRecentHistoryAggregateFiles = 50;
+    private const int MaxRecentEdgeCaseFiles = 20;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -171,6 +172,26 @@ internal sealed class DiagnosticsBundleService
                     AppPerformanceMetricIds.DiagnosticsBundleLatestCapture,
                     latestCaptureStarted,
                     latestCaptureSucceeded);
+            }
+
+            var edgeCasesStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+            var edgeCasesSucceeded = false;
+            try
+            {
+                AddRecentFiles(
+                    archive,
+                    Path.Combine(_storageOptions.LogsRoot, "edge-cases"),
+                    "*-edge-cases.json",
+                    "edge-cases",
+                    MaxRecentEdgeCaseFiles);
+                edgeCasesSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.DiagnosticsBundleEdgeCases,
+                    edgeCasesStarted,
+                    edgeCasesSucceeded);
             }
 
             var historyStarted = System.Diagnostics.Stopwatch.GetTimestamp();

@@ -143,6 +143,8 @@ It fades out when no signal exists.
 
 Settings preview mode is enabled while the radar settings tab is selected. Preview mode forces the radar visible even if normal visibility rules would hide it.
 
+The Windows form also clips the overlay window to a circular region and drives the form opacity to zero when the radar has fully faded. That is a defensive transparency fallback: if the WinForms transparency key fails to remove the fuchsia backing color in a particular desktop/compositor path, the hidden radar still cannot leave a purple square behind.
+
 ## Radar Range
 
 Radar range is:

@@ -179,8 +179,9 @@ The trend window is four hours.
 Before four hours of data exists:
 
 - X-axis starts at the first visible or first recorded sample.
-- End is start plus four hours.
-- Lines begin at the left and grow horizontally over time.
+- End starts at a readable minimum window, currently at least 120 seconds or 1.5 valid reference laps.
+- The right edge adds a small look-ahead pad, currently at least 20 seconds or 0.15 valid reference laps.
+- The visible duration grows as the race develops, capped at four hours, so early-race lines stay readable instead of being compressed into a full endurance-race width.
 
 After more than four hours exists:
 

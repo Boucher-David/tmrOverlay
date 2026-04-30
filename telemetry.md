@@ -8,6 +8,8 @@ This file describes the current raw capture model in three layers:
 
 The current production path analyzes live SDK data and stores compact session history. Raw capture remains available as an opt-in diagnostic/development mode; when enabled it stores raw frame payloads in `telemetry.bin`, variable definitions in `telemetry-schema.json`, session YAML in `latest-session.yaml`, and capture metadata in `capture-manifest.json`.
 
+The app also writes compact edge-case telemetry artifacts after each live session under `logs/edge-cases/`. These JSON files are independent of raw capture and are meant to answer targeted diagnostics questions without storing full-frame payloads. They include short pre/post clips around detector triggers, selected normalized live fields, selected nearby/class timing rows, watched scalar raw values, watched-variable schema, and the watched variables that were missing for the current car/session.
+
 ## Event Schema
 
 Event-level data is the highest-level context for a capture. It combines the local capture manifest with the `WeekendInfo` block from the iRacing session YAML.
@@ -107,6 +109,7 @@ Session-level data explains what is happening in the current iRacing session and
 - How long was the car on track vs off track or on pit road?
 - How far through the lap or session did the driver get?
 - Did flags, wetness, or session status change mid-capture?
+- Did the compact edge-case detector see timing contradictions, side-occupancy mismatches, pit/fuel/tire service transitions, weather changes, replay state, incidents, engine warnings, low FPS, or high latency?
 
 ### Example from short diagnostic capture
 
@@ -256,7 +259,9 @@ Primary source:
 
 This schema summary is intentionally practical, not exhaustive. Not every iRacing variable is always present in every capture or every car/session combination.
 
-The captured diagnostic schema does **not** appear to expose richer engineering channels such as:
+The app now watches for richer engineering channels such as tire wear, tire temperature, tire pressure, tire odometer, suspension, brake pressure/temperature, and wheel speed. If any of those watched variables become exposed and non-zero in a future car/session, the edge-case artifact records a bounded clip around the first observation.
+
+The currently analyzed diagnostic schema did **not** appear to expose richer engineering channels such as:
 
 - tire wear
 - tire temperature distribution

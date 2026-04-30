@@ -9,6 +9,8 @@ Raw capture is an opt-in diagnostic/development mode. When `TelemetryCapture:Raw
 
 Optional historical session snapshots are stored under `session-info/`.
 
+Compact edge-case telemetry artifacts are not part of the raw capture format. They are written separately under the logs root as JSON and may be included in diagnostics bundles without including `telemetry.bin`.
+
 ## `telemetry-schema.json`
 
 This file is a JSON array describing every telemetry variable exposed by the SDK for the capture:

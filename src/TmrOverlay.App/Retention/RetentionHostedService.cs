@@ -34,6 +34,11 @@ internal sealed class RetentionHostedService : IHostedService
             "performance-*.jsonl",
             _options.PerformanceLogRetentionDays,
             _options.MaxPerformanceLogFiles);
+        CleanupFiles(
+            Path.Combine(_storageOptions.LogsRoot, "edge-cases"),
+            "*-edge-cases.json",
+            _options.EdgeCaseRetentionDays,
+            _options.MaxEdgeCaseFiles);
         return Task.CompletedTask;
     }
 

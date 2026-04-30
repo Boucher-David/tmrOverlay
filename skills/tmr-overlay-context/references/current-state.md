@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-04-29
+Last updated: 2026-04-30
 
 ## Project Goal
 
@@ -97,6 +97,7 @@ Last updated: 2026-04-29
   - excludes pit-road cars from radar proximity and hides the radar while the focused car is in pit-road states
   - draws the focused car as a white rectangle and nearby traffic from any class as neutral-white rectangles that fade in between radar entry and the yellow-warning threshold, then move through yellow toward saturated alert red only inside the close bumper-gap warning buffer, using physical distance inside a car-length-based radar window when possible with timing fallback labels on the rings
   - keeps per-car visual state by `CarIdx`, fades the whole radar and side-warning rectangles in/out, and treats stale live snapshots as unavailable so old proximity does not stay painted forever
+  - clips the Windows form to a circular region and drops form opacity to zero after fade-out so a transparency-key failure cannot leave the fuchsia/purple backing window visible
   - tracks recent relative timing for other-class cars and can draw a short outer red arc with a live seconds gap when faster multiclass traffic is behind outside the 2-second timing fallback range but within 5 seconds
   - currently does not have true per-car lateral telemetry; side occupancy comes from the scalar iRacing left/right signal, and radar cars only occupy side slots when their distance or fallback timing gap is inside the side-overlap car-length window
 
@@ -106,7 +107,7 @@ Last updated: 2026-04-29
   - keeps bounded overlay-local four-hour in-memory traces for all available same-class timing rows; these traces are only for rendering and are not persisted
   - consumes a separate same-class timing row list so cars with valid standings/F2 timing but invalid lap-distance progress can still appear in the graph without polluting radar proximity placement
   - dynamically renders the focused car's class leader, the focused car, nearest five same-class cars ahead and behind, plus recently visible cars that need continuity as they enter/leave the nearby window
-  - anchors the X-axis at the first visible sample and grows the line horizontally until the four-hour window is full, then slides the window; it scales the Y-axis to the visible field spread, keeps axis labels in a left gutter, highlights whole-lap gap reference lines when the field spreads far enough, draws vertical 5-lap duration markers, and labels current line endpoints with compact current `P<N>` class-position tags
+  - anchors the X-axis at the first visible sample, starts with a readable short window, grows toward the four-hour cap, then slides the window after four hours; it scales the Y-axis to the visible field spread, keeps axis labels in a left gutter, highlights whole-lap gap reference lines when the field spreads far enough, draws vertical 5-lap duration markers, and labels current line endpoints with compact current `P<N>` class-position tags
   - draws subtle weather-condition bands behind the graph from live `TrackWetness` / `WeatherDeclaredWet`; non-focused/non-leader context lines are intentionally dimmed to keep the focused-car gap and position readable
   - marks driver swaps as compact ticks/dots on the affected line while preserving line color; Windows uses real session-info driver-row changes by `CarIdx` plus the local `DCDriversSoFar` signal, while the mac harness can use named mock handoffs
   - marks leader changes and keeps old leader/currently exiting/missing-telemetry car lines visually continuous with fade/dash behavior instead of disappearing abruptly
@@ -123,6 +124,7 @@ Last updated: 2026-04-29
   - records compact historical telemetry samples every frame
   - snapshots session YAML into the history accumulator whenever `SessionInfoUpdate` changes
   - creates raw capture directories and copies the raw telemetry buffer only when raw capture is enabled by startup configuration or runtime overlay request
+  - records bounded compact edge-case telemetry artifacts for every live session by combining normalized live samples with selected scalar raw watch channels for fuel, tires, suspension, brakes, wheel speed, pit service, weather, engine/replay/system/network state, incidents, and driver-control changes
   - isolates raw-capture frame queue/write/read failures from live history, normalized live telemetry, and overlay performance recording so overlays can keep updating while capture diagnostics run
   - logs and records app events for runtime raw-capture start failures instead of silently failing
   - writes normalized live frames through `ILiveTelemetrySink`, not directly to overlays
@@ -148,7 +150,7 @@ Last updated: 2026-04-29
 
 - `src/TmrOverlay.App/Performance/AppPerformanceState.cs`
   - stores lightweight in-memory performance counters and rolling timing summaries
-  - tracks telemetry callback throughput, normalized live sink time, history accumulation time, capture writer write time, capture queue depth, overlay refresh timings, dropped/written raw frames, process memory, and GC counts
+  - tracks telemetry callback throughput, normalized live sink time, edge-case recorder time, history accumulation time, capture writer write time, capture queue depth, overlay refresh timings, dropped/written raw frames, process memory, and GC counts
   - intentionally stores aggregate/recent-window metrics rather than every telemetry frame
   - `AppPerformanceHostedService` writes periodic JSONL snapshots under the logs performance folder regardless of raw-capture state
 
@@ -215,13 +217,14 @@ Last updated: 2026-04-29
 
 - `src/TmrOverlay.App/Diagnostics/`
   - creates support bundles with app/storage metadata, telemetry state, lightweight performance snapshots, recent performance logs, runtime state, settings, logs/events, and latest capture metadata
+  - includes recent compact edge-case telemetry artifacts under `edge-cases/`
   - includes recent post-race analysis JSON at top-level `analysis/` plus recent user-history summaries and aggregates so collected car/track/session metrics can be inspected for accuracy
   - creates a best-effort diagnostics bundle automatically when a live telemetry session finalizes, and the Error Logging tab reports the latest automatic bundle
   - intentionally excludes raw `telemetry.bin`
 
 - `src/TmrOverlay.App/Retention/`
   - removes old capture directories and diagnostics bundles on startup
-  - removes old always-on performance JSONL logs on startup
+  - removes old always-on performance JSONL logs and compact edge-case telemetry artifacts on startup
 
 - `src/TmrOverlay.App/Replay/`
   - provides a replay-mode seam for overlay development against an existing capture
@@ -294,6 +297,8 @@ Short version for opt-in raw capture:
 
 Raw capture format is preserved for diagnostics and future deep-dive analysis, but it is no longer the default production data path.
 
+Compact edge-case telemetry artifacts are separate from this raw capture format. They live under `%LOCALAPPDATA%/TmrOverlay/logs/edge-cases` and are included in diagnostics bundles when present.
+
 ## Telemetry Summary
 
 See `telemetry.md`.
@@ -329,6 +334,12 @@ Current keys:
 - `TelemetryCapture:StoreSessionInfoSnapshots`
 - `TelemetryCapture:RawCaptureEnabled`
 - `TelemetryCapture:QueueCapacity`
+- `TelemetryEdgeCases:Enabled`
+- `TelemetryEdgeCases:PreTriggerSeconds`
+- `TelemetryEdgeCases:PostTriggerSeconds`
+- `TelemetryEdgeCases:MaxClipsPerSession`
+- `TelemetryEdgeCases:MaxFramesPerClip`
+- `TelemetryEdgeCases:MinimumFrameSpacingSeconds`
 - `SessionHistory:Enabled`
 - `SessionHistory:UseBaselineHistory`
 - `Storage:UseRepositoryLocalStorage`
@@ -350,6 +361,10 @@ Current keys:
 - `Retention:MaxCaptureDirectories`
 - `Retention:DiagnosticsRetentionDays`
 - `Retention:MaxDiagnosticsBundles`
+- `Retention:PerformanceLogRetentionDays`
+- `Retention:MaxPerformanceLogFiles`
+- `Retention:EdgeCaseRetentionDays`
+- `Retention:MaxEdgeCaseFiles`
 - `Replay:Enabled`
 - `Replay:CaptureDirectory`
 - `Replay:SpeedMultiplier`
@@ -373,6 +388,7 @@ Environment override pattern:
 
 - `TMR_Storage__UseRepositoryLocalStorage=true`
 - `TMR_TelemetryCapture__RawCaptureEnabled=true`
+- `TMR_TelemetryEdgeCases__Enabled=false`
 - `TMR_Storage__CaptureRoot`
 - `TMR_Storage__UserHistoryRoot`
 - `TMR_Storage__AppDataRoot`

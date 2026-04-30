@@ -80,6 +80,7 @@ internal static class Program
                 var replayOptions = ReplayOptions.FromConfiguration(context.Configuration);
                 services.AddSingleton(storageOptions);
                 services.AddSingleton(TelemetryCaptureOptions.FromConfiguration(context.Configuration, storageOptions));
+                services.AddSingleton(TelemetryEdgeCaseOptions.FromConfiguration(context.Configuration));
                 services.AddSingleton(SessionHistoryOptions.FromConfiguration(context.Configuration, storageOptions));
                 services.AddSingleton(RetentionOptions.FromConfiguration(context.Configuration));
                 services.AddSingleton(replayOptions);
@@ -92,6 +93,7 @@ internal static class Program
                 services.AddSingleton<PostRaceAnalysisPipeline>();
                 services.AddSingleton<DiagnosticsBundleService>();
                 services.AddSingleton<TelemetryCaptureState>();
+                services.AddSingleton<TelemetryEdgeCaseRecorder>();
                 services.AddSingleton<AppPerformanceState>();
                 services.AddSingleton<AppPerformanceSnapshotRecorder>();
                 services.AddSingleton<LiveTelemetryStore>();

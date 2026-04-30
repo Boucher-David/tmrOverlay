@@ -25,6 +25,10 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
     private const double EntryFadeSeconds = 45d;
     private const double MissingSegmentGapSeconds = 10d;
     private const double MissingTelemetryGraceSeconds = 5d;
+    private const double MinimumTrendDomainSeconds = 120d;
+    private const double MinimumTrendDomainLaps = 1.5d;
+    private const double TrendRightPaddingSeconds = 20d;
+    private const double TrendRightPaddingLaps = 0.15d;
 
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly ILogger<GapToLeaderForm> _logger;
@@ -263,14 +267,14 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
 
             _overlayError = null;
             ApplyStatusColor(_gap);
-            var selectedSeriesCount = 0;
+            IReadOnlyList<ChartSeriesSelection> selectedSeries = [];
             if (_gap.HasData)
             {
                 var selectStarted = Stopwatch.GetTimestamp();
                 var selectSucceeded = false;
                 try
                 {
-                    selectedSeriesCount = SelectChartSeries().Count;
+                    selectedSeries = SelectChartSeries();
                     selectSucceeded = true;
                 }
                 finally
@@ -285,8 +289,9 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
             _statusLabel.Text = _gap.HasData
                 ? $"C{FormatPosition(_gap.ReferenceClassPosition)} {FormatGap(_gap.ClassLeaderGap)}"
                 : "waiting";
+            var trendDomain = SelectTimeDomain(selectedSeries);
             _sourceLabel.Text = _gap.HasData
-                ? $"{FormatTrendWindow(TrendWindow)} class trend | cars {selectedSeriesCount}"
+                ? $"{FormatTrendWindow(TimeSpan.FromSeconds(trendDomain.DurationSeconds))} class trend | cars {selectedSeries.Count}"
                 : "source: waiting";
             Invalidate();
             succeeded = true;
@@ -755,10 +760,36 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
     {
         var latest = _latestAxisSeconds ?? SelectAxisSeconds(_latestPointAtUtc ?? DateTimeOffset.UtcNow, null);
         var anchor = _trendStartAxisSeconds ?? FirstVisibleAxisSeconds(selectedSeries) ?? latest;
-        var start = latest - anchor > TrendWindow.TotalSeconds
-            ? latest - TrendWindow.TotalSeconds
-            : anchor;
-        return new TrendDomain(start, start + TrendWindow.TotalSeconds);
+        var elapsed = Math.Max(0d, latest - anchor);
+        if (elapsed >= TrendWindow.TotalSeconds)
+        {
+            return new TrendDomain(latest - TrendWindow.TotalSeconds, latest);
+        }
+
+        var rightPadding = TrendRightPadding();
+        var minimumWindow = MinimumTrendDomain();
+        var duration = Math.Min(
+            TrendWindow.TotalSeconds,
+            Math.Max(minimumWindow, elapsed + rightPadding));
+        return new TrendDomain(anchor, anchor + duration);
+    }
+
+    private double MinimumTrendDomain()
+    {
+        return Math.Max(
+            MinimumTrendDomainSeconds,
+            _lapReferenceSeconds is { } lapSeconds && IsValidLapReference(lapSeconds)
+                ? lapSeconds * MinimumTrendDomainLaps
+                : 0d);
+    }
+
+    private double TrendRightPadding()
+    {
+        return Math.Max(
+            TrendRightPaddingSeconds,
+            _lapReferenceSeconds is { } lapSeconds && IsValidLapReference(lapSeconds)
+                ? lapSeconds * TrendRightPaddingLaps
+                : 0d);
     }
 
     private double? FirstVisibleAxisSeconds(IReadOnlyList<ChartSeriesSelection> selectedSeries)
@@ -1651,7 +1682,10 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         public double GapSortValue => LastGapSeconds;
     }
 
-    private sealed record TrendDomain(double StartSeconds, double EndSeconds);
+    private sealed record TrendDomain(double StartSeconds, double EndSeconds)
+    {
+        public double DurationSeconds => Math.Max(1d, EndSeconds - StartSeconds);
+    }
 
     private enum WeatherCondition
     {

@@ -8,6 +8,7 @@ using TmrOverlay.App.Events;
 using TmrOverlay.App.History;
 using TmrOverlay.App.Performance;
 using TmrOverlay.Core.History;
+using TmrOverlay.Core.Telemetry.EdgeCases;
 using TmrOverlay.Core.Telemetry.Live;
 
 namespace TmrOverlay.App.Telemetry;
@@ -23,6 +24,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     private readonly ILiveTelemetrySink _liveTelemetrySink;
     private readonly TelemetryCaptureState _state;
     private readonly AppPerformanceState _performance;
+    private readonly TelemetryEdgeCaseRecorder _edgeCaseRecorder;
     private readonly object _sync = new();
     private IRacingSDK? _sdk;
     private TelemetryCaptureSession? _activeCapture;
@@ -30,6 +32,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     private Task _finalizerTask = Task.CompletedTask;
     private string? _activeSourceId;
     private DateTimeOffset? _activeStartedAtUtc;
+    private IReadOnlyList<string> _activeRawWatchVariableNames = [];
     private int _sessionInfoSnapshotCount;
     private int _frameIndex;
     private int _lastSessionInfoUpdate = -1;
@@ -43,7 +46,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         DiagnosticsBundleService diagnosticsBundleService,
         ILiveTelemetrySink liveTelemetrySink,
         TelemetryCaptureState state,
-        AppPerformanceState performance)
+        AppPerformanceState performance,
+        TelemetryEdgeCaseRecorder edgeCaseRecorder)
     {
         _logger = logger;
         _options = options;
@@ -54,6 +58,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         _liveTelemetrySink = liveTelemetrySink;
         _state = state;
         _performance = performance;
+        _edgeCaseRecorder = edgeCaseRecorder;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -108,6 +113,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             _activeHistory = null;
             _activeSourceId = null;
             _activeStartedAtUtc = null;
+            _activeRawWatchVariableNames = [];
             _sessionInfoSnapshotCount = 0;
             _lastSessionInfoUpdate = -1;
         }
@@ -156,6 +162,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             _activeHistory = null;
             _activeSourceId = null;
             _activeStartedAtUtc = null;
+            _activeRawWatchVariableNames = [];
             _sessionInfoSnapshotCount = 0;
             _lastSessionInfoUpdate = -1;
             _frameIndex = 0;
@@ -322,11 +329,16 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             var sourceId = capture?.CaptureId ?? $"session-{startedAtUtc:yyyyMMdd-HHmmss-fff}";
             _activeSourceId = sourceId;
             _activeStartedAtUtc = capture?.StartedAtUtc ?? startedAtUtc;
+            var edgeCaseSchema = ReadEdgeCaseSchema(sdk);
+            _activeRawWatchVariableNames = edgeCaseSchema.WatchedVariables
+                .Select(variable => variable.Name)
+                .ToArray();
             _sessionInfoSnapshotCount = 0;
             _frameIndex = 0;
             _lastSessionInfoUpdate = -1;
             _state.MarkCollectionStarted(_activeStartedAtUtc.Value);
             _liveTelemetrySink.MarkCollectionStarted(sourceId, _activeStartedAtUtc.Value);
+            _edgeCaseRecorder.StartCollection(sourceId, _activeStartedAtUtc.Value, edgeCaseSchema);
 
             if (capture is not null)
             {
@@ -424,6 +436,101 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             sdk.Header.BufferLength,
             schema,
             RecordCaptureWriteStatus);
+    }
+
+    private static RawTelemetrySchemaSnapshot ReadEdgeCaseSchema(IRacingSDK sdk)
+    {
+        var headers = IRacingSDK.GetVarHeaders(sdk);
+        if (headers is null)
+        {
+            return RawTelemetrySchemaSnapshot.Empty;
+        }
+
+        var watched = headers.Values
+            .Where(header => RawTelemetryWatchVariables.Names.Contains(header.Name, StringComparer.OrdinalIgnoreCase))
+            .OrderBy(header => header.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(header => new RawTelemetryWatchedVariable(
+                Name: header.Name,
+                Group: RawTelemetryWatchVariables.GroupFor(header.Name),
+                TypeName: header.Type.ToString(),
+                Count: header.Count,
+                Unit: string.IsNullOrWhiteSpace(header.Unit) ? null : header.Unit,
+                Description: string.IsNullOrWhiteSpace(header.Desc) ? null : header.Desc))
+            .ToArray();
+        var found = watched.Select(variable => variable.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var missing = RawTelemetryWatchVariables.Names
+            .Where(name => !found.Contains(name))
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        return new RawTelemetrySchemaSnapshot(watched, missing);
+    }
+
+    private static RawTelemetryWatchSnapshot ReadRawTelemetryWatchSnapshot(
+        IRacingSDK sdk,
+        IReadOnlyCollection<string> variableNames)
+    {
+        var values = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        foreach (var name in variableNames)
+        {
+            if (TryReadRawWatchValue(sdk, name, out var value))
+            {
+                values[name] = value;
+            }
+        }
+
+        return values.Count == 0
+            ? RawTelemetryWatchSnapshot.Empty
+            : new RawTelemetryWatchSnapshot(values);
+    }
+
+    private static bool TryReadRawWatchValue(IRacingSDK sdk, string variableName, out double value)
+    {
+        value = 0d;
+        try
+        {
+            switch (sdk.GetData(variableName))
+            {
+                case bool boolValue:
+                    value = boolValue ? 1d : 0d;
+                    return true;
+                case byte byteValue:
+                    value = byteValue;
+                    return true;
+                case sbyte sbyteValue:
+                    value = sbyteValue;
+                    return true;
+                case short shortValue:
+                    value = shortValue;
+                    return true;
+                case ushort ushortValue:
+                    value = ushortValue;
+                    return true;
+                case int intValue:
+                    value = intValue;
+                    return true;
+                case uint uintValue:
+                    value = uintValue;
+                    return true;
+                case long longValue:
+                    value = longValue;
+                    return true;
+                case ulong ulongValue when ulongValue <= long.MaxValue:
+                    value = ulongValue;
+                    return true;
+                case float floatValue when !float.IsNaN(floatValue) && !float.IsInfinity(floatValue):
+                    value = floatValue;
+                    return true;
+                case double doubleValue when !double.IsNaN(doubleValue) && !double.IsInfinity(doubleValue):
+                    value = doubleValue;
+                    return true;
+                default:
+                    return false;
+            }
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private void RecordCaptureWriteStatus(TelemetryCaptureWriteStatus writeStatus)
@@ -1055,12 +1162,15 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     private void RecordHistoricalFrame(IRacingSDK sdk, DateTimeOffset capturedAtUtc, int sessionInfoUpdate)
     {
         HistoricalSessionAccumulator? history;
+        IReadOnlyList<string> rawWatchVariableNames;
         lock (_sync)
         {
             history = _activeHistory;
+            rawWatchVariableNames = _activeRawWatchVariableNames;
         }
 
         HistoricalTelemetrySample sample;
+        RawTelemetryWatchSnapshot rawWatch = RawTelemetryWatchSnapshot.Empty;
         var buildSampleStarted = Stopwatch.GetTimestamp();
         var buildSampleSucceeded = false;
         try
@@ -1229,6 +1339,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 FastRepairUsed: ReadInt32(sdk, "FastRepairUsed"),
                 DriversSoFar: ReadInt32(sdk, "DCDriversSoFar"),
                 DriverChangeLapStatus: ReadInt32(sdk, "DCLapStatus"));
+            rawWatch = ReadRawTelemetryWatchSnapshot(sdk, rawWatchVariableNames);
             buildSampleSucceeded = true;
         }
         finally
@@ -1252,6 +1363,25 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 AppPerformanceMetricIds.LiveTelemetrySink,
                 liveSinkStarted,
                 liveSinkSucceeded);
+        }
+
+        var edgeCaseStarted = Stopwatch.GetTimestamp();
+        var edgeCaseSucceeded = false;
+        try
+        {
+            _edgeCaseRecorder.RecordFrame(sample, rawWatch);
+            edgeCaseSucceeded = true;
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Failed to record telemetry edge-case frame.");
+        }
+        finally
+        {
+            _performance.RecordOperation(
+                AppPerformanceMetricIds.TelemetryEdgeCaseRecordFrame,
+                edgeCaseStarted,
+                edgeCaseSucceeded);
         }
 
         if (history is null)
@@ -1382,6 +1512,25 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                     ["confidence"] = summary.Quality.Confidence
                 });
                 _logger.LogInformation("Saved session history summary for {SourceId}.", finalization.SourceId);
+            }
+
+            var edgeCaseFinalizeStarted = Stopwatch.GetTimestamp();
+            var edgeCaseFinalizeSucceeded = false;
+            try
+            {
+                _edgeCaseRecorder.CompleteCollection(capture?.FinishedAtUtc ?? DateTimeOffset.UtcNow);
+                edgeCaseFinalizeSucceeded = true;
+            }
+            catch (Exception exception)
+            {
+                _logger.LogWarning(exception, "Failed to save telemetry edge-case artifact.");
+            }
+            finally
+            {
+                _performance.RecordOperation(
+                    AppPerformanceMetricIds.TelemetryFinalizeEdgeCases,
+                    edgeCaseFinalizeStarted,
+                    edgeCaseFinalizeSucceeded);
             }
 
             finalizeSucceeded = true;

@@ -14,6 +14,7 @@ namespace TmrOverlay.App.Overlays.CarRadar;
 internal sealed class CarRadarForm : PersistentOverlayForm
 {
     private static readonly Color TransparentColor = Color.Fuchsia;
+    private readonly double _configuredOpacity;
     private const double RadarRangeSeconds = 2d;
     private const double FocusedCarLengthMeters = 4.746d;
     private const double RadarRangeMeters = FocusedCarLengthMeters * 6d;
@@ -75,9 +76,11 @@ internal sealed class CarRadarForm : PersistentOverlayForm
         _performanceState = performanceState;
         _settings = settings;
         _fontFamily = fontFamily;
+        _configuredOpacity = Math.Clamp(settings.Opacity, 0d, 1d);
         BackColor = TransparentColor;
         TransparencyKey = TransparentColor;
         Padding = Padding.Empty;
+        ApplyCircularWindowRegion();
 
         _refreshTimer = new System.Windows.Forms.Timer
         {
@@ -102,6 +105,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             _radarAlpha = 1d;
         }
 
+        ApplyWindowVisibilityOpacity();
         Invalidate();
     }
 
@@ -109,11 +113,32 @@ internal sealed class CarRadarForm : PersistentOverlayForm
     {
         if (disposing)
         {
+            Region?.Dispose();
             _refreshTimer.Stop();
             _refreshTimer.Dispose();
         }
 
         base.Dispose(disposing);
+    }
+
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+        ApplyCircularWindowRegion();
+    }
+
+    protected override void PersistOverlayFrame()
+    {
+        var currentOpacity = Opacity;
+        try
+        {
+            Opacity = _configuredOpacity;
+            base.PersistOverlayFrame();
+        }
+        finally
+        {
+            Opacity = currentOpacity;
+        }
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -202,6 +227,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             try
             {
                 UpdateFadeState(now, elapsedSeconds);
+                ApplyWindowVisibilityOpacity();
                 fadeSucceeded = true;
             }
             finally
@@ -237,6 +263,20 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             || _leftSideAlpha > MinimumVisibleAlpha
             || _rightSideAlpha > MinimumVisibleAlpha
             || _carVisuals.Values.Any(visual => visual.Alpha > MinimumVisibleAlpha);
+    }
+
+    private void ApplyWindowVisibilityOpacity()
+    {
+        var visibleAlpha = _overlayError is not null || _settingsPreviewVisible
+            ? 1d
+            : Math.Max(
+                _radarAlpha,
+                Math.Max(
+                    Math.Max(_leftSideAlpha, _rightSideAlpha),
+                    _carVisuals.Values.Select(visual => visual.Alpha).DefaultIfEmpty(0d).Max()));
+        Opacity = visibleAlpha <= MinimumVisibleAlpha
+            ? 0d
+            : Math.Clamp(_configuredOpacity * Math.Max(0.12d, visibleAlpha), 0d, 1d);
     }
 
     private bool HasCurrentRadarSignal()
@@ -324,6 +364,26 @@ internal sealed class CarRadarForm : PersistentOverlayForm
         {
             _carVisuals.Remove(carIdx);
         }
+    }
+
+    private void ApplyCircularWindowRegion()
+    {
+        if (ClientSize.Width <= 0 || ClientSize.Height <= 0)
+        {
+            return;
+        }
+
+        var diameter = Math.Min(ClientSize.Width, ClientSize.Height);
+        var bounds = new Rectangle(
+            (ClientSize.Width - diameter) / 2,
+            (ClientSize.Height - diameter) / 2,
+            diameter,
+            diameter);
+        using var path = new GraphicsPath();
+        path.AddEllipse(bounds);
+        var previous = Region;
+        Region = new Region(path);
+        previous?.Dispose();
     }
 
     private IEnumerable<LiveProximityCar> CurrentRadarCars()

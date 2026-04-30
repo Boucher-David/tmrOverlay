@@ -21,7 +21,10 @@ public sealed class DiagnosticsBundleServiceTests
             Directory.CreateDirectory(storage.EventsRoot);
             Directory.CreateDirectory(storage.SettingsRoot);
             Directory.CreateDirectory(Path.GetDirectoryName(storage.RuntimeStatePath)!);
+            var edgeCaseDirectory = Path.Combine(storage.LogsRoot, "edge-cases");
+            Directory.CreateDirectory(edgeCaseDirectory);
             File.WriteAllText(Path.Combine(storage.LogsRoot, "tmroverlay-20260426.log"), "log line");
+            File.WriteAllText(Path.Combine(edgeCaseDirectory, "session-20260426-edge-cases.json"), """{"clipCount":1}""");
             File.WriteAllText(Path.Combine(storage.EventsRoot, "events-20260426.jsonl"), "{}");
             File.WriteAllText(Path.Combine(storage.SettingsRoot, "settings.json"), "{}");
             File.WriteAllText(storage.RuntimeStatePath, "{}");
@@ -73,6 +76,7 @@ public sealed class DiagnosticsBundleServiceTests
             Assert.Contains("runtime/runtime-state.json", entryNames);
             Assert.Contains("settings/settings.json", entryNames);
             Assert.Contains("logs/tmroverlay-20260426.log", entryNames);
+            Assert.Contains("edge-cases/session-20260426-edge-cases.json", entryNames);
             Assert.Contains(entryNames, entryName => entryName.StartsWith("performance/performance-", StringComparison.OrdinalIgnoreCase));
             Assert.Contains("events/events-20260426.jsonl", entryNames);
             Assert.Contains("latest-capture/capture-manifest.json", entryNames);
