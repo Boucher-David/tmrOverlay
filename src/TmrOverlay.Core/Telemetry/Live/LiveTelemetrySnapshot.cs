@@ -22,6 +22,23 @@ internal sealed record LiveTelemetrySnapshot(
 
     public LiveCarContextSnapshot FocusCar { get; init; } = LiveCarContextSnapshot.Unavailable;
 
+    public TelemetryAvailabilitySnapshot TelemetryAvailability { get; init; } = TelemetryAvailabilitySnapshot.Empty;
+
+    public bool IsLocalDriverInCar => LatestSample is { IsOnTrack: true, IsInGarage: false };
+
+    public bool IsSpectating => IsCollecting && !IsLocalDriverInCar && FocusCar.HasData;
+
+    public bool IsSpectatingFocusedCar => IsSpectating && !FocusCar.IsTeamCar;
+
+    public string LiveMode =>
+        !IsCollecting
+            ? "waiting"
+            : IsLocalDriverInCar
+                ? "driving"
+                : IsSpectating
+                    ? FocusCar.IsTeamCar ? "spectating-team" : "spectating-focus"
+                    : "local-idle";
+
     public static LiveTelemetrySnapshot Empty { get; } = new(
         IsConnected: false,
         IsCollecting: false,

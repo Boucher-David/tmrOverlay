@@ -5,12 +5,14 @@ using TmrOverlay.App.Overlays.Styling;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 using TmrOverlay.App.Telemetry;
+using TmrOverlay.Core.Telemetry.Live;
 
 namespace TmrOverlay.App.Overlays.Status;
 
 internal sealed class StatusOverlayForm : PersistentOverlayForm
 {
     private readonly TelemetryCaptureState _state;
+    private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly OverlaySettings _settings;
     private readonly Panel _indicatorPanel;
     private readonly Label _titleLabel;
@@ -22,6 +24,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
 
     public StatusOverlayForm(
         TelemetryCaptureState state,
+        ILiveTelemetrySource liveTelemetrySource,
         OverlaySettings settings,
         string fontFamily,
         Action saveSettings)
@@ -32,6 +35,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
             StatusOverlayDefinition.Definition.DefaultHeight)
     {
         _state = state;
+        _liveTelemetrySource = liveTelemetrySource;
         _settings = settings;
 
         BackColor = OverlayTheme.Colors.NeutralBackground;
@@ -153,7 +157,8 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
     private void RefreshOverlay()
     {
         var snapshot = _state.Snapshot();
-        var health = CaptureHealth.From(snapshot);
+        var live = _liveTelemetrySource.Snapshot();
+        var health = CaptureHealth.From(snapshot, live);
 
         if (health.Level == CaptureHealthLevel.Error)
         {
@@ -223,7 +228,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
         string CaptureText,
         string MessageText)
     {
-        public static CaptureHealth From(TelemetryCaptureStatusSnapshot snapshot)
+        public static CaptureHealth From(TelemetryCaptureStatusSnapshot snapshot, LiveTelemetrySnapshot live)
         {
             var now = DateTimeOffset.UtcNow;
             var capturePath = snapshot.CurrentCaptureDirectory ?? snapshot.LastCaptureDirectory ?? snapshot.CaptureRoot;
@@ -235,7 +240,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
             var bytes = FormatBytes(snapshot.TelemetryFileBytes);
             var detail = snapshot.RawCaptureEnabled
                 ? $"queued {snapshot.FrameCount,7:N0}  written {snapshot.WrittenFrameCount,7:N0}  drops {snapshot.DroppedFrameCount,4:N0}  file {bytes}"
-                : $"frames {snapshot.FrameCount,7:N0}  history on  raw off";
+                : $"frames {snapshot.FrameCount,7:N0}  {CompactLiveMode(live)}  raw off";
 
             if (!string.IsNullOrWhiteSpace(snapshot.LastError))
             {
@@ -346,10 +351,75 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
                 : $"health: live analysis ok; last frame {FormatAge(frameAge)}";
             return new CaptureHealth(
                 CaptureHealthLevel.Ok,
-                snapshot.RawCaptureEnabled ? "Collecting raw telemetry" : "Analyzing live telemetry",
+                OkStatusText(snapshot, live),
                 detail,
                 captureText,
-                healthMessage);
+                Combine(DescribeLiveMode(live), healthMessage));
+        }
+
+        private static string OkStatusText(TelemetryCaptureStatusSnapshot snapshot, LiveTelemetrySnapshot live)
+        {
+            if (live.IsSpectatingFocusedCar)
+            {
+                return "Spectating focus telemetry";
+            }
+
+            if (live.IsSpectating)
+            {
+                return "Spectating team telemetry";
+            }
+
+            if (live.IsLocalDriverInCar)
+            {
+                return snapshot.RawCaptureEnabled ? "Collecting raw telemetry" : "Analyzing live telemetry";
+            }
+
+            return "Analyzing session telemetry";
+        }
+
+        private static string CompactLiveMode(LiveTelemetrySnapshot live)
+        {
+            if (live.IsLocalDriverInCar)
+            {
+                return "driving";
+            }
+
+            if (live.FocusCar.HasData && live.FocusCar.CarIdx is { } focusCarIdx)
+            {
+                return live.FocusCar.IsTeamCar
+                    ? $"watching team #{focusCarIdx}"
+                    : $"watching #{focusCarIdx}";
+            }
+
+            return "local idle";
+        }
+
+        private static string DescribeLiveMode(LiveTelemetrySnapshot live)
+        {
+            if (live.IsLocalDriverInCar)
+            {
+                return "mode: local driver in car";
+            }
+
+            if (live.FocusCar.HasData && live.FocusCar.CarIdx is { } focusCarIdx)
+            {
+                var position = FormatPosition(live.FocusCar.ClassPosition ?? live.FocusCar.OverallPosition);
+                var suffix = position is null ? string.Empty : $" P{position}";
+                return live.FocusCar.IsTeamCar
+                    ? $"mode: spectating team #{focusCarIdx}{suffix}; local fuel/side telemetry unavailable"
+                    : $"mode: spectating focus #{focusCarIdx}{suffix}; local fuel/side telemetry unavailable";
+            }
+
+            return live.IsCollecting
+                ? "mode: local driver idle; waiting for in-car scalar telemetry"
+                : "mode: waiting";
+        }
+
+        private static string? FormatPosition(int? position)
+        {
+            return position is { } value && value > 0
+                ? value.ToString("0")
+                : null;
         }
 
         private static double? AgeSeconds(DateTimeOffset? timestampUtc, DateTimeOffset now)

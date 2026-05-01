@@ -75,6 +75,7 @@ Each capture folder contains:
 5. Look for the app in the Windows notification area.
 
 You can also double-click [TmrOverlay.cmd](/Users/davidboucher/Code/tmrOverlay/TmrOverlay.cmd) from the repo root after the app has been built once. It launches the built executable from the expected `Debug` or `Release` output folder.
+For copyable PowerShell build, test, run, publish, and zip commands, see [Windows .NET Commands](/Users/davidboucher/Code/tmrOverlay/docs/windows-dotnet-commands.md).
 
 The tray menu lets you open the raw capture folder, open the current raw capture when one exists, open logs, open the settings overlay, create a diagnostics bundle, or exit the app.
 The status overlay stays visible over the sim so you can confirm the app is running and whether live telemetry analysis has started. With raw capture disabled it shows live frame freshness and history-collection state. With raw capture enabled it also shows queued frames, written frames, dropped frames, telemetry file size, disk-write freshness, and explicit warning/error messages. The settings raw-capture checkbox records app events and local logs when toggled or rejected. You can drag overlays to new positions, and each overlay restores its saved frame on restart. Use the tray menu to reopen settings or exit the application.
@@ -227,7 +228,7 @@ The tray menu can create a diagnostics bundle under:
 %LOCALAPPDATA%\TmrOverlay\diagnostics
 ```
 
-Bundles include app/storage metadata, runtime state, settings, recent logs/events, and latest capture metadata. They intentionally exclude raw `telemetry.bin` payloads.
+Bundles include app/storage metadata, runtime state, live telemetry/overlay summaries, telemetry availability counters, settings, recent logs/events, and latest capture metadata. They intentionally exclude raw `telemetry.bin` payloads.
 
 ## Tests
 

@@ -20,13 +20,20 @@ internal sealed record FuelCalculatorViewModel(
     {
         return new FuelCalculatorViewModel(
             Status: strategy.Status,
-            Overview: BuildOverview(strategy, unitSystem),
+            Overview: BuildOverview(live, strategy, unitSystem),
             Source: BuildSourceText(live, strategy, history, unitSystem),
             Rows: BuildDisplayRows(live, strategy, showAdvice, unitSystem, maximumRows));
     }
 
-    private static string BuildOverview(FuelStrategySnapshot strategy, string unitSystem)
+    private static string BuildOverview(LiveTelemetrySnapshot live, FuelStrategySnapshot strategy, string unitSystem)
     {
+        if (!strategy.HasData)
+        {
+            return live.IsSpectating
+                ? "spectating | no live fuel"
+                : "waiting for live fuel";
+        }
+
         if (strategy.PlannedRaceLaps is { } plannedLaps
             && strategy.PlannedStintCount is { } stintCount
             && strategy.FinalStintTargetLaps is { } finalStintLaps)

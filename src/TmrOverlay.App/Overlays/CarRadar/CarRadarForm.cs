@@ -11,7 +11,7 @@ namespace TmrOverlay.App.Overlays.CarRadar;
 
 internal sealed class CarRadarForm : PersistentOverlayForm
 {
-    private static readonly Color TransparentColor = Color.Fuchsia;
+    private static readonly Color TransparentColor = Color.FromArgb(1, 2, 3);
     private const double RadarRangeSeconds = 7d;
     private const double RadarRangeLaps = 0.02d;
     private const float MulticlassWarningArcStartDegrees = 62.5f;
@@ -26,6 +26,8 @@ internal sealed class CarRadarForm : PersistentOverlayForm
     private string? _overlayError;
     private string? _lastLoggedError;
     private DateTimeOffset? _lastLoggedErrorAtUtc;
+    private bool _regionReady;
+    private bool? _regionShowsRadar;
 
     private bool ShowMulticlassWarning =>
         _settings.GetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true);
@@ -48,10 +50,12 @@ internal sealed class CarRadarForm : PersistentOverlayForm
         _fontFamily = fontFamily;
         BackColor = TransparentColor;
         TransparencyKey = TransparentColor;
-        // Color-key transparency leaks the key color through the whole form when
-        // the form itself is alpha-blended, so keep radar opacity at 100%.
+        // Color-key transparency can leak through the form on some Windows
+        // setups, so the window region is also collapsed when radar is idle.
         Opacity = 1d;
         Padding = Padding.Empty;
+        _regionReady = true;
+        UpdateWindowRegion();
 
         _refreshTimer = new System.Windows.Forms.Timer
         {
@@ -99,17 +103,31 @@ internal sealed class CarRadarForm : PersistentOverlayForm
         }
     }
 
+    protected override void OnClientSizeChanged(EventArgs e)
+    {
+        base.OnClientSizeChanged(e);
+        if (!_regionReady)
+        {
+            return;
+        }
+
+        _regionShowsRadar = null;
+        UpdateWindowRegion();
+    }
+
     private void RefreshOverlay()
     {
         try
         {
             _proximity = _liveTelemetrySource.Snapshot().Proximity;
             _overlayError = null;
+            UpdateWindowRegion();
             Invalidate();
         }
         catch (Exception exception)
         {
             ReportOverlayError(exception, "refresh");
+            UpdateWindowRegion();
             Invalidate();
         }
     }
@@ -121,6 +139,45 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             || _proximity.HasCarRight
             || _proximity.NearbyCars.Any(IsInRadarRange)
             || (ShowMulticlassWarning && _proximity.StrongestMulticlassApproach is not null);
+    }
+
+    private void UpdateWindowRegion()
+    {
+        var shouldShowRadar = ShouldShowRadar();
+        if (_regionShowsRadar == shouldShowRadar && Region is not null)
+        {
+            return;
+        }
+
+        var previousRegion = Region;
+        Region = shouldShowRadar ? CreateRadarRegion() : CreateEmptyRegion();
+        previousRegion?.Dispose();
+        _regionShowsRadar = shouldShowRadar;
+    }
+
+    private Region CreateRadarRegion()
+    {
+        var diameter = Math.Min(ClientSize.Width, ClientSize.Height) - 8;
+        if (diameter <= 0)
+        {
+            return CreateEmptyRegion();
+        }
+
+        var bounds = new RectangleF(
+            (ClientSize.Width - diameter) / 2f,
+            (ClientSize.Height - diameter) / 2f,
+            diameter,
+            diameter);
+        using var path = new GraphicsPath();
+        path.AddEllipse(bounds);
+        return new Region(path);
+    }
+
+    private static Region CreateEmptyRegion()
+    {
+        var region = new Region();
+        region.MakeEmpty();
+        return region;
     }
 
     private void DrawRadar(Graphics graphics)

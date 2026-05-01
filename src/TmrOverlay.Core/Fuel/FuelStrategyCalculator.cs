@@ -45,7 +45,7 @@ internal static class FuelStrategyCalculator
             teammateStintTarget.TargetLaps,
             pitStrategy,
             completedStintCount);
-        var status = BuildStatus(currentFuelLiters, fuelPerLap.Value, raceLapsRemaining, additionalFuelNeeded, stintPlan);
+        var status = BuildStatus(live, currentFuelLiters, fuelPerLap.Value, raceLapsRemaining, additionalFuelNeeded, stintPlan);
 
         return new FuelStrategySnapshot(
             HasData: currentFuelLiters is not null || fuelPerLap.Value is not null,
@@ -63,8 +63,8 @@ internal static class FuelStrategyCalculator
             RacePaceSource: racePace.Source,
             RaceLapsRemaining: raceLapsRemaining,
             RaceLapEstimateSource: raceLapEstimate.Source,
-            OverallLeaderGapLaps: CalculateGapLaps(OverallLeaderProgress(sample), BestCarProgress(sample)),
-            ClassLeaderGapLaps: CalculateGapLaps(ClassLeaderProgress(sample), BestCarProgress(sample)),
+            OverallLeaderGapLaps: CalculateGapLaps(OverallLeaderProgress(sample), ReferenceCarProgress(sample)),
+            ClassLeaderGapLaps: CalculateGapLaps(ClassLeaderProgress(sample), ReferenceCarProgress(sample)),
             TeamOverallPosition: sample?.TeamPosition,
             TeamClassPosition: sample?.TeamClassPosition,
             PlannedRaceLaps: stintPlan.PlannedRaceLaps,
@@ -184,6 +184,16 @@ internal static class FuelStrategyCalculator
             return new MetricSelection(fuelLapTime, live.Fuel.LapTimeSource);
         }
 
+        if (!live.IsLocalDriverInCar && ValidLapTime(live.LatestSample?.FocusLastLapTimeSeconds) is { } focusLapTime)
+        {
+            return new MetricSelection(focusLapTime, "focus last lap");
+        }
+
+        if (!live.IsLocalDriverInCar && ValidLapTime(live.LatestSample?.FocusBestLapTimeSeconds) is { } focusBestLapTime)
+        {
+            return new MetricSelection(focusBestLapTime, "focus best lap");
+        }
+
         if (ValidLapTime(live.LatestSample?.TeamLastLapTimeSeconds) is { } teamLapTime)
         {
             return new MetricSelection(teamLapTime, "team last lap");
@@ -257,7 +267,7 @@ internal static class FuelStrategyCalculator
 
         if (ValidLapCount(sample?.SessionLapsTotal) is { } liveLapTotal)
         {
-            var progress = BestCarProgress(sample);
+            var progress = ReferenceCarProgress(sample);
             return new RaceLapEstimate(
                 progress is not null
                     ? Math.Max(0d, liveLapTotal - progress.Value)
@@ -273,7 +283,7 @@ internal static class FuelStrategyCalculator
             if (leaderProgress is not null)
             {
                 var finishLap = Math.Ceiling(leaderProgress.Value + timeRemaining / racePaceSeconds);
-                var carProgress = BestCarProgress(sample) ?? leaderProgress.Value;
+                var carProgress = ReferenceCarProgress(sample) ?? leaderProgress.Value;
                 return new RaceLapEstimate(
                     Math.Max(0d, finishLap - carProgress),
                     $"timed race by {racePace.Source}");
@@ -447,6 +457,7 @@ internal static class FuelStrategyCalculator
     }
 
     private static string BuildStatus(
+        LiveTelemetrySnapshot live,
         double? currentFuelLiters,
         double? fuelPerLapLiters,
         double? raceLapsRemaining,
@@ -455,9 +466,18 @@ internal static class FuelStrategyCalculator
     {
         if (currentFuelLiters is null)
         {
-            if (fuelPerLapLiters is null || raceLapsRemaining is null || stintPlan.PlannedStintCount is null)
+            if (fuelPerLapLiters is null)
             {
-                return "waiting for fuel";
+                return live.IsSpectating
+                    ? "spectating: no fuel data"
+                    : "waiting for fuel";
+            }
+
+            if (raceLapsRemaining is null || stintPlan.PlannedStintCount is null)
+            {
+                return live.IsSpectating
+                    ? "spectating: model fuel"
+                    : "waiting for fuel";
             }
         }
 
@@ -497,7 +517,9 @@ internal static class FuelStrategyCalculator
 
         if (stintPlan.PlannedStintCount is { } stintCount && stintPlan.PlannedStopCount is { } stopCount)
         {
-            var prefix = currentFuelLiters is null ? "model: " : string.Empty;
+            var prefix = currentFuelLiters is null
+                ? live.IsSpectating ? "spectating model: " : "model: "
+                : string.Empty;
             return stintCount <= 1
                 ? $"{prefix}fuel covers finish"
                 : $"{prefix}{stintCount} stints / {stopCount} {Pluralize("stop", stopCount)}";
@@ -852,7 +874,7 @@ internal static class FuelStrategyCalculator
             return live.CompletedStintCount;
         }
 
-        var progress = BestCarProgress(live.LatestSample);
+        var progress = ReferenceCarProgress(live.LatestSample);
         if (progress is null || progress.Value <= 0d || fuelPerLapLiters is null || fuelPerLapLiters.Value <= 0d)
         {
             return 0;
@@ -888,11 +910,17 @@ internal static class FuelStrategyCalculator
         return new StintTargetSelection(targetLaps, saving, savingPercent);
     }
 
-    private static double? BestCarProgress(HistoricalTelemetrySample? sample)
+    private static double? ReferenceCarProgress(HistoricalTelemetrySample? sample)
     {
         if (sample is null)
         {
             return null;
+        }
+
+        if (HasNonTeamFocus(sample)
+            && Progress(sample.FocusLapCompleted, sample.FocusLapDistPct) is { } focusProgress)
+        {
+            return focusProgress;
         }
 
         if (sample.TeamLapCompleted is { } teamLapCompleted
@@ -915,6 +943,13 @@ internal static class FuelStrategyCalculator
         }
 
         return null;
+    }
+
+    private static bool HasNonTeamFocus(HistoricalTelemetrySample sample)
+    {
+        return sample.FocusCarIdx is { } focusCarIdx
+            && sample.PlayerCarIdx is { } playerCarIdx
+            && focusCarIdx != playerCarIdx;
     }
 
     private static double? OverallLeaderProgress(HistoricalTelemetrySample? sample)

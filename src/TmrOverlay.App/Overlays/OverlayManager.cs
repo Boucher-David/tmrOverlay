@@ -155,6 +155,7 @@ internal sealed class OverlayManager : IDisposable
             StatusOverlayDefinition.Definition,
             settings => new StatusOverlayForm(
                 _telemetryCaptureState,
+                _liveTelemetrySource,
                 settings,
                 SelectedFontFamily,
                 SaveSettings),

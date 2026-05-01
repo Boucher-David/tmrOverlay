@@ -13,6 +13,7 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
     private readonly object _sync = new();
     private readonly Dictionary<int, ProximityHistory> _proximityHistory = [];
     private readonly Dictionary<int, CarStintHistory> _carStintHistory = [];
+    private readonly TelemetryAvailabilityTracker _telemetryAvailability = new();
     private HistoricalSessionContext _context = HistoricalSessionContext.Empty;
     private LiveTelemetrySnapshot _snapshot = LiveTelemetrySnapshot.Empty;
     private long _sequence;
@@ -44,6 +45,7 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
         {
             _proximityHistory.Clear();
             _carStintHistory.Clear();
+            _telemetryAvailability.Reset();
             _snapshot = _snapshot with
             {
                 IsConnected = true,
@@ -63,6 +65,7 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
             _context = HistoricalSessionContext.Empty;
             _proximityHistory.Clear();
             _carStintHistory.Clear();
+            _telemetryAvailability.Reset();
             _snapshot = LiveTelemetrySnapshot.Empty with
             {
                 LastUpdatedAtUtc = DateTimeOffset.UtcNow,
@@ -101,6 +104,7 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
             };
             UpdateProximityHistory(sample.CapturedAtUtc, proximity);
             UpdateCarStintHistory(sample);
+            _telemetryAvailability.RecordFrame(sample);
             var teamCar = BuildTeamCarContext(sample);
             var focusCar = BuildFocusCarContext(sample, teamCar.CarIdx);
 
@@ -119,7 +123,8 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
                 LeaderGap: LiveLeaderGapSnapshot.From(_context, sample))
             {
                 TeamCar = teamCar,
-                FocusCar = focusCar
+                FocusCar = focusCar,
+                TelemetryAvailability = _telemetryAvailability.Snapshot()
             };
         }
     }

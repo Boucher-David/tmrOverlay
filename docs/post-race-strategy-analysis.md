@@ -25,6 +25,7 @@ The file stays compact and derived. It does not include raw telemetry frames.
 - Actual execution: stint lengths, stop count, pit-lane time, pit-stall/service time, tire-change indicators, fuel added, driver-role confidence.
 - Fuel model: live/user-history/baseline source, min/avg/max burn, fuel saving required for key targets.
 - Pace model: local/team lap pace, overall leader pace, class leader pace, gaps where available.
+- Telemetry availability: local driving/fuel scalar frames, focused-car timing frames, focus-car segments/changes, class/nearby timing rows, `CarLeftRight` availability/inactivity, and whether the session was spectated timing only.
 - Recommendation timeline: only meaningful recommendation changes, not every frame.
 - Alternative strategies: stop-count deltas, estimated time deltas, fuel-saving requirements, tire-service tradeoffs.
 - Confidence and caveats: teammate stint fuel unavailable, inferred tire changes, low-distance sample, stale/missing scalar fuel, dropped frames.
@@ -37,6 +38,7 @@ The file stays compact and derived. It does not include raw telemetry frames.
 - Did teammate/user stint lengths differ enough to change the optimal plan?
 - Did leader pace or class leader pace materially change the estimated lap count?
 - Did the app recommendation change early enough for the user to act?
+- Was this actually a race-driving sample, or a practice/spectated timing sample that should validate overlays without producing race-strategy conclusions?
 
 ## Shareable Feedback Artifact
 

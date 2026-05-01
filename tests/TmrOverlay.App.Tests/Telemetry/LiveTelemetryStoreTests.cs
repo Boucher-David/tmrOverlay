@@ -195,9 +195,82 @@ public sealed class LiveTelemetryStoreTests
         Assert.Equal("observed pit exit", focus.StintSource);
     }
 
+    [Fact]
+    public void RecordFrame_TracksTelemetryAvailabilityForSpectatedTiming()
+    {
+        var store = new LiveTelemetryStore();
+
+        store.MarkCollectionStarted("spectated-practice", DateTimeOffset.UtcNow);
+        store.RecordFrame(CreateSample(
+            isOnTrack: false,
+            speedMetersPerSecond: 0d,
+            fuelLevelLiters: 0d,
+            playerCarIdx: 10,
+            focusCarIdx: 61,
+            focusF2TimeSeconds: 23.6d,
+            focusPosition: 26,
+            focusClassPosition: 25,
+            classCars:
+            [
+                new HistoricalCarProximity(
+                    CarIdx: 2,
+                    LapCompleted: -1,
+                    LapDistPct: -1d,
+                    F2TimeSeconds: 0d,
+                    EstimatedTimeSeconds: null,
+                    Position: 1,
+                    ClassPosition: 1,
+                    CarClass: 4098,
+                    TrackSurface: null,
+                    OnPitRoad: null)
+            ]));
+        store.RecordFrame(CreateSample(
+            isOnTrack: false,
+            speedMetersPerSecond: 0d,
+            fuelLevelLiters: 0d,
+            playerCarIdx: 10,
+            focusCarIdx: 31,
+            focusF2TimeSeconds: 24.1d,
+            focusPosition: 27,
+            focusClassPosition: 26));
+
+        var availability = store.Snapshot().TelemetryAvailability;
+
+        Assert.Equal(2, availability.SampleFrameCount);
+        Assert.Equal(0, availability.LocalDrivingFrameCount);
+        Assert.Equal(0, availability.LocalFuelScalarFrameCount);
+        Assert.Equal(2, availability.LocalScalarIdleFrameCount);
+        Assert.Equal(2, availability.NonTeamFocusFrameCount);
+        Assert.Equal(1, availability.FocusCarChangeCount);
+        Assert.Equal(2, availability.UniqueFocusCarCount);
+        Assert.Equal(31, availability.CurrentFocusCarIdx);
+        Assert.Collection(
+            availability.FocusSegments,
+            first =>
+            {
+                Assert.Equal(61, first.CarIdx);
+                Assert.False(first.IsTeamCar);
+                Assert.Equal(1, first.FrameCount);
+                Assert.Equal(1, first.TimingFrameCount);
+            },
+            second =>
+            {
+                Assert.Equal(31, second.CarIdx);
+                Assert.False(second.IsTeamCar);
+                Assert.Equal(1, second.FrameCount);
+                Assert.Equal(1, second.TimingFrameCount);
+            });
+        Assert.Equal(2, availability.FocusTimingFrameCount);
+        Assert.Equal(1, availability.ClassTimingFrameCount);
+        Assert.True(availability.IsSpectatedTimingOnly);
+    }
+
     private static HistoricalTelemetrySample CreateSample(
         DateTimeOffset? capturedAtUtc = null,
         double sessionTime = 123d,
+        bool isOnTrack = true,
+        bool isInGarage = false,
+        double speedMetersPerSecond = 50d,
         double fuelLevelLiters = 42d,
         double fuelLevelPercent = 0.4d,
         double fuelUsePerHourKg = 60d,
@@ -224,15 +297,15 @@ public sealed class LiveTelemetryStoreTests
             SessionTime: sessionTime,
             SessionTick: 100,
             SessionInfoUpdate: 1,
-            IsOnTrack: true,
-            IsInGarage: false,
+            IsOnTrack: isOnTrack,
+            IsInGarage: isInGarage,
             OnPitRoad: false,
             PitstopActive: false,
             PlayerCarInPitStall: false,
             FuelLevelLiters: fuelLevelLiters,
             FuelLevelPercent: fuelLevelPercent,
             FuelUsePerHourKg: fuelUsePerHourKg,
-            SpeedMetersPerSecond: 50d,
+            SpeedMetersPerSecond: speedMetersPerSecond,
             Lap: 3,
             LapCompleted: 2,
             LapDistPct: 0.5d,

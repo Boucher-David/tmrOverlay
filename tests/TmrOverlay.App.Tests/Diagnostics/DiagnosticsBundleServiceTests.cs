@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
+using TmrOverlay.Core.Telemetry.Live;
 using Xunit;
 
 namespace TmrOverlay.App.Tests.Diagnostics;
@@ -37,6 +38,7 @@ public sealed class DiagnosticsBundleServiceTests
             var service = new DiagnosticsBundleService(
                 storage,
                 state,
+                new LiveTelemetryStore(),
                 NullLogger<DiagnosticsBundleService>.Instance);
 
             var bundlePath = service.CreateBundle();
@@ -46,6 +48,10 @@ public sealed class DiagnosticsBundleServiceTests
             Assert.Contains("metadata/app-version.json", entryNames);
             Assert.Contains("metadata/storage.json", entryNames);
             Assert.Contains("runtime/runtime-state.json", entryNames);
+            Assert.Contains("runtime/telemetry-capture-state.json", entryNames);
+            Assert.Contains("live/live-telemetry-snapshot.json", entryNames);
+            Assert.Contains("live/overlay-state-summary.json", entryNames);
+            Assert.Contains("live/telemetry-availability.json", entryNames);
             Assert.Contains("settings/settings.json", entryNames);
             Assert.Contains("logs/tmroverlay-20260426.log", entryNames);
             Assert.Contains("events/events-20260426.jsonl", entryNames);

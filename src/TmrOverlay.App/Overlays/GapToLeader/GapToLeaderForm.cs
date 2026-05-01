@@ -78,6 +78,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
     private string? _overlayError;
     private string? _lastLoggedError;
     private DateTimeOffset? _lastLoggedErrorAtUtc;
+    private bool _isPaceTimingMode;
 
     public GapToLeaderForm(
         ILiveTelemetrySource liveTelemetrySource,
@@ -215,6 +216,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         {
             var snapshot = _liveTelemetrySource.Snapshot();
             _gap = snapshot.LeaderGap;
+            _isPaceTimingMode = IsPaceTimingMode(snapshot, _gap);
             _lapReferenceSeconds = SelectLapReferenceSeconds(snapshot);
             if (snapshot.Sequence != _lastSequence)
             {
@@ -225,10 +227,10 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
             _overlayError = null;
             ApplyStatusColor(_gap);
             _statusLabel.Text = _gap.HasData
-                ? $"C{FormatPosition(_gap.ReferenceClassPosition)} {FormatGap(_gap.ClassLeaderGap)}"
+                ? BuildStatusText(snapshot, _gap)
                 : "waiting";
             _sourceLabel.Text = _gap.HasData
-                ? $"{FormatTrendWindow(TimeSpan.FromSeconds(VisibleTrendWindowSeconds))} {FocusDescriptor(snapshot)} | lap {FormatPlainSeconds(_lapReferenceSeconds)} | range +/-{FormatPlainSeconds(FilteredGapRangeSeconds())} | cars {SelectChartSeries().Count}"
+                ? $"{FormatTrendWindow(TimeSpan.FromSeconds(VisibleTrendWindowSeconds))} {TimingModeLabel(snapshot, _gap)} {FocusDescriptor(snapshot)} | lap {FormatPlainSeconds(_lapReferenceSeconds)} | range +/-{FormatPlainSeconds(FilteredGapRangeSeconds())} | cars {SelectChartSeries().Count}"
                 : "source: waiting";
             Invalidate();
         }
@@ -1676,7 +1678,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
             LineAlignment = StringAlignment.Center,
             Trimming = StringTrimming.EllipsisCharacter
         };
-        DrawAxisLabel(graphics, "leader", font, brush, axisBounds, plotBounds.Top, labelFormat);
+        DrawAxisLabel(graphics, _isPaceTimingMode ? "best" : "leader", font, brush, axisBounds, plotBounds.Top, labelFormat);
         DrawAxisLabel(graphics, FormatAxisSeconds(maxGapSeconds), font, brush, axisBounds, plotBounds.Bottom, labelFormat);
 
     }
@@ -1921,6 +1923,53 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         return !string.IsNullOrWhiteSpace(driverLabel)
             ? $"focus {carNumber} {driverLabel}"
             : $"focus {carNumber}";
+    }
+
+    private static string BuildStatusText(LiveTelemetrySnapshot snapshot, LiveLeaderGapSnapshot gap)
+    {
+        var paceMode = IsPaceTimingMode(snapshot, gap);
+        var position = FormatPosition(gap.ReferenceClassPosition);
+        var gapText = paceMode && gap.ClassLeaderGap.IsLeader
+            ? "best"
+            : FormatGap(gap.ClassLeaderGap);
+        var prefix = paceMode
+            ? "pace"
+            : snapshot.IsSpectating
+                ? "focus"
+                : "gap";
+
+        return $"{prefix} C{position} {gapText}";
+    }
+
+    private static string TimingModeLabel(LiveTelemetrySnapshot snapshot, LiveLeaderGapSnapshot gap)
+    {
+        var mode = IsPaceTimingMode(snapshot, gap)
+            ? "practice timing"
+            : "race gap";
+
+        return snapshot.IsSpectating
+            ? $"{mode} spectating"
+            : mode;
+    }
+
+    private static bool IsPaceTimingMode(LiveTelemetrySnapshot snapshot, LiveLeaderGapSnapshot gap)
+    {
+        if (!string.Equals(gap.ClassLeaderGap.Source, "CarIdxF2Time", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var sessionText = snapshot.Context.Session.SessionType
+            ?? snapshot.Context.Session.SessionName
+            ?? snapshot.Context.Session.EventType;
+        if (string.IsNullOrWhiteSpace(sessionText))
+        {
+            return false;
+        }
+
+        return sessionText.Contains("practice", StringComparison.OrdinalIgnoreCase)
+            || sessionText.Contains("qual", StringComparison.OrdinalIgnoreCase)
+            || sessionText.Contains("test", StringComparison.OrdinalIgnoreCase);
     }
 
     private static HistoricalSessionDriver? DriverForCar(HistoricalSessionContext context, int carIdx)

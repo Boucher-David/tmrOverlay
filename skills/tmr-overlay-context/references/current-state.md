@@ -153,10 +153,12 @@ Last updated: 2026-04-30
 
 - `src/TmrOverlay.Core/History/`
   - contains platform-neutral historical session context, telemetry samples, summary/aggregate models, slug/path helpers, session-info parsing, and the in-memory historical accumulator
+  - records telemetry availability in each compact summary so post-session analysis can distinguish local driving/fuel data, spectated focus timing, focus-car segments/changes, missing local scalar data, missing side-callout data, and non-race practice/test context
 
 - `src/TmrOverlay.App/Analysis/`
   - persists post-race analysis JSON under the user history root and populates the settings overlay dropdown
   - `PostRaceAnalysisPipeline` saves an analysis row after compact session history is saved and isolates analysis persistence/event failures from telemetry finalization
+  - analysis text includes a telemetry-mode line and avoids presenting spectated/non-race timing sessions as executed race strategy
 
 - `history/baseline/`
   - contains tracked, sanitized development/sample data from the 4-hour Nürburgring VLN Mercedes-AMG GT3 race capture
@@ -200,6 +202,7 @@ Last updated: 2026-04-30
 
 - `src/TmrOverlay.App/Diagnostics/`
   - creates support bundles with app/storage metadata, runtime state, settings, logs/events, and latest capture metadata
+  - includes live telemetry and overlay-state summaries, including telemetry availability counters for local scalar data, focus-car timing segments, focus changes, class/nearby timing rows, and `CarLeftRight` availability/inactivity
   - intentionally excludes raw `telemetry.bin`
 
 - `src/TmrOverlay.App/Retention/`

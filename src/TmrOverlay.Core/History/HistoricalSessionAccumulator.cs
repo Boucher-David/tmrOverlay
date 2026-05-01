@@ -13,6 +13,7 @@ internal sealed class HistoricalSessionAccumulator
     private readonly List<double> _completedLapTimesSeconds = [];
     private readonly List<HistoricalStintSummary> _stints = [];
     private readonly List<HistoricalPitStopSummary> _pitStops = [];
+    private readonly TelemetryAvailabilityTracker _telemetryAvailability = new();
     private StintBuilder? _activeStint;
     private PitStopBuilder? _activePitStop;
     private DateTimeOffset? _firstFrameAtUtc;
@@ -48,6 +49,7 @@ internal sealed class HistoricalSessionAccumulator
             _frameCount++;
             _firstFrameAtUtc ??= sample.CapturedAtUtc;
             _lastFrameAtUtc = sample.CapturedAtUtc;
+            _telemetryAvailability.RecordFrame(sample);
             TrackFuelExtremes(sample);
             TrackLapTime(sample);
 
@@ -125,6 +127,7 @@ internal sealed class HistoricalSessionAccumulator
                 SampleFrameCount = _frameCount,
                 DroppedFrameCount = droppedFrameCount,
                 SessionInfoSnapshotCount = sessionInfoSnapshotCount,
+                TelemetryAvailability = _telemetryAvailability.Snapshot(),
                 CaptureDurationSeconds = captureDurationSeconds,
                 OnTrackTimeSeconds = _onTrackTimeSeconds,
                 PitRoadTimeSeconds = _pitRoadTimeSeconds,

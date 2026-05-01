@@ -235,6 +235,8 @@ internal sealed class HistoricalSessionMetrics
 
     public int SessionInfoSnapshotCount { get; init; }
 
+    public TelemetryAvailabilitySnapshot TelemetryAvailability { get; init; } = TelemetryAvailabilitySnapshot.Empty;
+
     public double CaptureDurationSeconds { get; init; }
 
     public double OnTrackTimeSeconds { get; init; }
@@ -397,6 +399,41 @@ internal sealed class HistoricalDataQuality
             reasons.Add("no_reliable_fuel_per_lap");
         }
 
+        if (metrics.TelemetryAvailability.IsSpectatedTimingOnly)
+        {
+            reasons.Add("spectated_session");
+        }
+
+        if (metrics.TelemetryAvailability.LocalScalarsIdle)
+        {
+            reasons.Add("local_scalars_idle");
+        }
+
+        if (metrics.TelemetryAvailability.HasFocusTiming)
+        {
+            reasons.Add("focus_timing_available");
+        }
+
+        if (metrics.TelemetryAvailability.HasFocusChanges)
+        {
+            reasons.Add("focus_car_changed");
+        }
+
+        if (IsNonRaceSession(context))
+        {
+            reasons.Add("non_race_session");
+        }
+
+        if (metrics.TelemetryAvailability.CarLeftRightUnavailable)
+        {
+            reasons.Add("car_left_right_unavailable");
+        }
+
+        if (metrics.TelemetryAvailability.CarLeftRightAlwaysInactive)
+        {
+            reasons.Add("car_left_right_inactive");
+        }
+
         if (IsNonRaceTestSession(context))
         {
             reasons.Add("non_race_test_session");
@@ -441,6 +478,23 @@ internal sealed class HistoricalDataQuality
     {
         return string.Equals(context.Session.EventType, "Test", StringComparison.OrdinalIgnoreCase)
             || string.Equals(context.Session.SessionType, "Offline Testing", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsNonRaceSession(HistoricalSessionContext context)
+    {
+        var sessionType = context.Session.SessionType;
+        var eventType = context.Session.EventType;
+        if (string.IsNullOrWhiteSpace(sessionType) && string.IsNullOrWhiteSpace(eventType))
+        {
+            return false;
+        }
+
+        return !ContainsRace(sessionType) && !ContainsRace(eventType);
+    }
+
+    private static bool ContainsRace(string? value)
+    {
+        return value?.Contains("race", StringComparison.OrdinalIgnoreCase) == true;
     }
 }
 

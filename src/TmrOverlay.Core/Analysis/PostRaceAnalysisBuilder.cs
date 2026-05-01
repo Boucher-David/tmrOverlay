@@ -17,6 +17,9 @@ internal static class PostRaceAnalysisBuilder
             subtitle,
             string.Empty,
             $"Duration: {FormatDuration(summary.Metrics.CaptureDurationSeconds)} captured, {summary.Metrics.CompletedValidLaps} completed valid laps, {FormatNumber(summary.Metrics.ValidDistanceLaps)} valid distance laps.",
+            $"Telemetry mode: {BuildTelemetryMode(summary.Metrics.TelemetryAvailability)}.",
+            $"Focus coverage: {BuildFocusCoverage(summary.Metrics.TelemetryAvailability)}.",
+            $"Radar/gap inputs: {summary.Metrics.TelemetryAvailability.ClassTimingFrameCount} class-timing frames, {summary.Metrics.TelemetryAvailability.NearbyTimingFrameCount} nearby-timing frames, {summary.Metrics.TelemetryAvailability.CarLeftRightAvailableFrameCount} CarLeftRight frames ({summary.Metrics.TelemetryAvailability.CarLeftRightActiveFrameCount} active).",
             $"Fuel model: {FormatFuelPerLap(summary.Metrics.FuelPerLapLiters)} average, {FormatFuel(summary.Car.DriverCarFuelMaxLiters)} tank, {FormatLapsPerTank(summary)}."
         };
 
@@ -109,6 +112,20 @@ internal static class PostRaceAnalysisBuilder
     {
         var fuelPerLap = summary.Metrics.FuelPerLapLiters;
         var tank = summary.Car.DriverCarFuelMaxLiters;
+        if (IsNonRaceSession(summary))
+        {
+            return summary.Metrics.TelemetryAvailability.HasFocusTiming
+                ? "This was a non-race timing session: useful for overlay validation and pace context, but it should not be read as an executed race strategy."
+                : "This was a non-race session, so treat any fuel or stint numbers as practice context rather than race strategy.";
+        }
+
+        if (fuelPerLap is null && summary.Metrics.TelemetryAvailability.HasFocusTiming)
+        {
+            return summary.Metrics.TelemetryAvailability.IsSpectatedTimingOnly
+                ? "This was a spectated timing session: useful for gap/radar validation, but local fuel scalars were idle so no stint-rhythm recommendation was written."
+                : "Timing data was available, but fuel data was not strong enough for a stint-rhythm recommendation yet.";
+        }
+
         if (fuelPerLap is > 0d && tank is > 0d)
         {
             var tankLaps = tank.Value / fuelPerLap.Value;
@@ -120,6 +137,71 @@ internal static class PostRaceAnalysisBuilder
         }
 
         return "Fuel data was not strong enough for a stint-rhythm recommendation yet.";
+    }
+
+    private static bool IsNonRaceSession(HistoricalSessionSummary summary)
+    {
+        var sessionType = summary.Session.SessionType;
+        var eventType = summary.Session.EventType;
+        if (string.IsNullOrWhiteSpace(sessionType) && string.IsNullOrWhiteSpace(eventType))
+        {
+            return false;
+        }
+
+        return !ContainsRace(sessionType) && !ContainsRace(eventType);
+    }
+
+    private static bool ContainsRace(string? value)
+    {
+        return value?.Contains("race", StringComparison.OrdinalIgnoreCase) == true;
+    }
+
+    private static string BuildTelemetryMode(TelemetryAvailabilitySnapshot availability)
+    {
+        if (availability.SampleFrameCount == 0)
+        {
+            return "no telemetry frames";
+        }
+
+        if (availability.IsSpectatedTimingOnly)
+        {
+            return $"spectated focus timing, {availability.FocusCarFrameCount} focus frames across {availability.UniqueFocusCarCount} focus cars, {availability.FocusCarChangeCount} focus changes, local scalars idle";
+        }
+
+        if (availability.HasLocalDriving)
+        {
+            return $"local driving, {availability.LocalDrivingFrameCount} local frames, {availability.LocalFuelScalarFrameCount} fuel-scalar frames, {availability.FocusCarChangeCount} focus changes";
+        }
+
+        if (availability.HasFocusTiming)
+        {
+            return $"focus timing without local driving, {availability.FocusTimingFrameCount} focus-timing frames, {availability.ClassTimingFrameCount} class-timing frames";
+        }
+
+        if (availability.LocalScalarsIdle)
+        {
+            return "local scalars idle, no focus timing detected";
+        }
+
+        return $"partial telemetry, {availability.LocalDrivingFrameCount} local frames, {availability.FocusTimingFrameCount} focus-timing frames";
+    }
+
+    private static string BuildFocusCoverage(TelemetryAvailabilitySnapshot availability)
+    {
+        if (availability.SampleFrameCount == 0)
+        {
+            return "no telemetry frames";
+        }
+
+        if (availability.FocusCarFrameCount == 0)
+        {
+            return $"no focused car on {availability.MissingFocusCarFrameCount} frames";
+        }
+
+        var currentFocus = availability.CurrentFocusCarIdx is { } carIdx
+            ? $"current focus #{carIdx}"
+            : "current focus unknown";
+        return $"{currentFocus}, {availability.FocusSegments.Count} focus segments, {availability.FocusCarChangeCount} focus changes, {availability.NonTeamFocusFrameCount} non-team focus frames";
     }
 
     private static string FirstNonEmpty(params string?[] values)
