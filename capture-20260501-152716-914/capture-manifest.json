@@ -1,0 +1,25 @@
+{
+  "formatVersion": 1,
+  "captureId": "capture-20260501-152716-914",
+  "startedAtUtc": "2026-05-01T15:27:16.9143749+00:00",
+  "finishedAtUtc": "2026-05-01T15:28:27.3383593+00:00",
+  "telemetryFile": "telemetry.bin",
+  "schemaFile": "telemetry-schema.json",
+  "latestSessionInfoFile": "latest-session.yaml",
+  "sessionInfoDirectory": "session-info",
+  "sdkVersion": 2,
+  "tickRate": 60,
+  "bufferLength": 7823,
+  "variableCount": 334,
+  "frameCount": 4165,
+  "droppedFrameCount": 0,
+  "sessionInfoSnapshotCount": 2,
+  "appVersion": {
+    "productName": "TmrOverlay.App",
+    "version": "1.0.0.0",
+    "informationalVersion": "1.0.0\u002B3af4d0dec046846752aaa156d798048eaea9c0c5",
+    "runtimeVersion": ".NET 8.0.26",
+    "operatingSystem": "Microsoft Windows 10.0.26200",
+    "processArchitecture": "X64"
+  }
+}
