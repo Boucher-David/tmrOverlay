@@ -21,7 +21,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private const string WindowsBuildCommand = "dotnet build .\\src\\TmrOverlay.App\\TmrOverlay.App.csproj -c Release";
     private const string WindowsCleanBuildCommand = WindowsCleanCommand + "; " + WindowsBuildCommand;
     private const string WindowsPublishCommand = "dotnet publish .\\src\\TmrOverlay.App\\TmrOverlay.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o .\\artifacts\\TmrOverlay-win-x64";
-    private const string WindowsZipCommand = "Compress-Archive -Path .\\artifacts\\TmrOverlay-win-x64\\* -DestinationPath .\\artifacts\\TmrOverlay-win-x64.zip -Force";
+    private const string WindowsPackageCommand = "Remove-Item .\\artifacts\\TmrOverlay-win-x64, .\\artifacts\\TmrOverlay-win-x64.zip -Recurse -Force -ErrorAction SilentlyContinue; " + WindowsPublishCommand + "; if ($LASTEXITCODE -eq 0 -and (Test-Path .\\artifacts\\TmrOverlay-win-x64\\*)) { Compress-Archive -Path .\\artifacts\\TmrOverlay-win-x64\\* -DestinationPath .\\artifacts\\TmrOverlay-win-x64.zip -Force } else { throw \"Publish failed or produced no files; zip not created.\" }";
     private const int SideTabThickness = 38;
     private const int SideTabLength = 174;
 
@@ -334,9 +334,9 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         var publishLabel = CreateLabel("Publish", 22, 362, 70);
         var publishCommand = CreateCommandTextBox(92, 358, 350, WindowsPublishCommand);
         var publishCopy = CreateCopyButton(452, 358, WindowsPublishCommand);
-        var zipLabel = CreateLabel("Zip", 22, 408, 70);
-        var zipCommand = CreateCommandTextBox(92, 404, 350, WindowsZipCommand);
-        var zipCopy = CreateCopyButton(452, 404, WindowsZipCommand);
+        var zipLabel = CreateLabel("Package", 22, 408, 70);
+        var zipCommand = CreateCommandTextBox(92, 404, 350, WindowsPackageCommand);
+        var zipCopy = CreateCopyButton(452, 404, WindowsPackageCommand);
         _buildCommandStatusLabel = CreateMutedLabel(string.Empty, 92, 444, 350);
 
         page.Controls.Add(title);

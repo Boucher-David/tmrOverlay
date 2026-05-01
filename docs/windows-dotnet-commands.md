@@ -88,10 +88,10 @@ Publish:
 dotnet publish .\src\TmrOverlay.App\TmrOverlay.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o .\artifacts\TmrOverlay-win-x64
 ```
 
-Zip:
+Package:
 
 ```powershell
-Compress-Archive -Path .\artifacts\TmrOverlay-win-x64\* -DestinationPath .\artifacts\TmrOverlay-win-x64.zip -Force
+Remove-Item .\artifacts\TmrOverlay-win-x64, .\artifacts\TmrOverlay-win-x64.zip -Recurse -Force -ErrorAction SilentlyContinue; dotnet publish .\src\TmrOverlay.App\TmrOverlay.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o .\artifacts\TmrOverlay-win-x64; if ($LASTEXITCODE -eq 0 -and (Test-Path .\artifacts\TmrOverlay-win-x64\*)) { Compress-Archive -Path .\artifacts\TmrOverlay-win-x64\* -DestinationPath .\artifacts\TmrOverlay-win-x64.zip -Force } else { throw "Publish failed or produced no files; zip not created." }
 ```
 
 ## Useful Paths

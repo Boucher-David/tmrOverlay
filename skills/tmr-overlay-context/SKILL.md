@@ -13,7 +13,7 @@ Use this repo-local skill when the task is about continuing or extending `tmrOve
 2. If the task is about fuel, strategy, stint logic, or telemetry interpretation, read `references/fuel-overlay-context.md`.
 3. If the task is about overlay features, layout, or UI direction, read `references/overlay-research.md`.
 4. Inspect git status before editing because this repo may accumulate ongoing local changes.
-5. When validating C# changes, read `../tmr-overlay-validation/SKILL.md` and run its duplicate-member scanner before relying on a Windows-only `dotnet` build.
+5. When validating C# changes, read `../tmr-overlay-validation/SKILL.md` and run its compile-shape scanner before relying on a Windows-only `dotnet` build.
 6. Preserve the current split:
    tray shell,
    settings/customization overlay,
