@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.Core.AppInfo;
 using TmrOverlay.App.Storage;
@@ -49,6 +50,8 @@ internal sealed class DiagnosticsBundleService
         AddFileIfExists(archive, Path.Combine(_storageOptions.SettingsRoot, "settings.json"), "settings/settings.json");
         AddRecentFiles(archive, _storageOptions.LogsRoot, "*.log", "logs", maxFiles: 10);
         AddRecentFiles(archive, _storageOptions.EventsRoot, "*.jsonl", "events", maxFiles: 10);
+        AddRecentFiles(archive, Path.Combine(_storageOptions.LogsRoot, "performance"), "*.jsonl", "performance", maxFiles: 10);
+        AddRecentFiles(archive, Path.Combine(_storageOptions.LogsRoot, "edge-cases"), "*.json", "edge-cases", maxFiles: 5);
         AddLatestCaptureMetadata(archive);
 
         _logger.LogInformation("Created diagnostics bundle {DiagnosticsBundlePath}.", bundlePath);
@@ -72,6 +75,10 @@ internal sealed class DiagnosticsBundleService
                 archive,
                 "live/telemetry-availability.json",
                 JsonSerializer.Serialize(snapshot.TelemetryAvailability, JsonOptions));
+            AddTextEntry(
+                archive,
+                "live/weather-snapshot.json",
+                JsonSerializer.Serialize(BuildWeatherSnapshot(snapshot), JsonOptions));
         }
         catch (Exception exception)
         {
@@ -94,6 +101,10 @@ internal sealed class DiagnosticsBundleService
             telemetryAvailability = snapshot.TelemetryAvailability,
             teamCar = BuildCarSummary(snapshot.TeamCar),
             focusCar = BuildCarSummary(snapshot.FocusCar),
+            observedSessionCars = snapshot.ObservedCars
+                .Take(32)
+                .Select(BuildObservedCarSummary)
+                .ToArray(),
             local = new
             {
                 isOnTrack = snapshot.LatestSample?.IsOnTrack,
@@ -112,6 +123,7 @@ internal sealed class DiagnosticsBundleService
                 snapshot.Fuel.LapTimeSeconds,
                 snapshot.Fuel.LapTimeSource
             },
+            weather = BuildWeatherSnapshot(snapshot),
             radar = new
             {
                 snapshot.Proximity.HasData,
@@ -133,6 +145,57 @@ internal sealed class DiagnosticsBundleService
         };
     }
 
+    private static object BuildWeatherSnapshot(LiveTelemetrySnapshot snapshot)
+    {
+        var weather = snapshot.Weather;
+        return new
+        {
+            weather.HasData,
+            weather.CapturedAtUtc,
+            weather.SessionTime,
+            live = new
+            {
+                weather.TrackTempC,
+                weather.TrackTempCrewC,
+                weather.AirTempC,
+                weather.TrackWetness,
+                weather.SurfaceMoistureClass,
+                weather.WeatherDeclaredWet,
+                weather.DeclaredWetSurfaceMismatch,
+                weather.Skies,
+                weather.SkiesLabel,
+                weather.WindVelMetersPerSecond,
+                weather.WindDirRadians,
+                weather.RelativeHumidityPercent,
+                weather.FogLevelPercent,
+                weather.PrecipitationPercent,
+                weather.AirDensityKgPerCubicMeter,
+                weather.AirPressurePa,
+                weather.SolarAltitudeRadians,
+                weather.SolarAzimuthRadians
+            },
+            sessionInfo = new
+            {
+                weather.SessionTrackWeatherType,
+                weather.SessionTrackSkies,
+                weather.SessionTrackSurfaceTempC,
+                weather.SessionTrackSurfaceTempCrewC,
+                weather.SessionTrackAirTempC,
+                weather.SessionTrackWindVelMetersPerSecond,
+                weather.SessionTrackWindDirRadians,
+                weather.SessionTrackRelativeHumidityPercent,
+                weather.SessionTrackFogLevelPercent,
+                weather.SessionTrackPrecipitationPercent,
+                weather.SessionTrackRubberState
+            },
+            notes = new[]
+            {
+                "This is a scalar telemetry snapshot, not the iRacing on-screen radar image.",
+                "Use declaredWetSurfaceMismatch and the raw scalar values to compare iRacing's wet declaration with average surface wetness and precipitation."
+            }
+        };
+    }
+
     private static object BuildCarSummary(LiveCarContextSnapshot car)
     {
         return new
@@ -149,7 +212,28 @@ internal sealed class DiagnosticsBundleService
             car.CurrentStintLaps,
             car.CurrentStintSeconds,
             car.ObservedPitStopCount,
-            car.StintSource
+            car.StintSource,
+            car.CompletedStintCount,
+            car.AverageCompletedStintLaps
+        };
+    }
+
+    private static object BuildObservedCarSummary(LiveObservedCar car)
+    {
+        return new
+        {
+            car.CarIdx,
+            car.OverallPosition,
+            car.ClassPosition,
+            car.CarClass,
+            car.OnPitRoad,
+            car.ProgressLaps,
+            car.CurrentStintLaps,
+            car.CurrentStintSeconds,
+            car.ObservedPitStopCount,
+            car.StintSource,
+            car.CompletedStintCount,
+            car.AverageCompletedStintLaps
         };
     }
 
@@ -163,8 +247,165 @@ internal sealed class DiagnosticsBundleService
         }
 
         AddFileIfExists(archive, Path.Combine(captureDirectory, "capture-manifest.json"), "latest-capture/capture-manifest.json");
-        AddFileIfExists(archive, Path.Combine(captureDirectory, "telemetry-schema.json"), "latest-capture/telemetry-schema.json");
+        var schemaPath = Path.Combine(captureDirectory, "telemetry-schema.json");
+        AddFileIfExists(archive, schemaPath, "latest-capture/telemetry-schema.json");
+        AddTelemetrySchemaSummary(archive, schemaPath);
         AddFileIfExists(archive, Path.Combine(captureDirectory, "latest-session.yaml"), "latest-capture/latest-session.yaml");
+    }
+
+    private static void AddTelemetrySchemaSummary(ZipArchive archive, string schemaPath)
+    {
+        if (!File.Exists(schemaPath))
+        {
+            return;
+        }
+
+        using var document = JsonDocument.Parse(File.ReadAllText(schemaPath));
+        if (document.RootElement.ValueKind != JsonValueKind.Array)
+        {
+            return;
+        }
+
+        var fields = document.RootElement
+            .EnumerateArray()
+            .Select(ToSchemaFieldSummary)
+            .ToArray();
+        var weatherFields = fields
+            .Where(field => ContainsCandidateTerm(field.SearchText, WeatherTerms))
+            .ToArray();
+        var radarLikeFields = fields
+            .Where(field => ContainsCandidateTerm(field.SearchText, RadarTerms))
+            .ToArray();
+        var output = new
+        {
+            generatedAtUtc = DateTimeOffset.UtcNow,
+            totalFieldCount = fields.Length,
+            fieldTypeCounts = fields
+                .GroupBy(field => field.TypeName ?? "unknown")
+                .OrderBy(group => group.Key)
+                .ToDictionary(group => group.Key, group => group.Count()),
+            arrayFieldCount = fields.Count(field => field.Count > 1),
+            broadCategories = BuildSchemaCategoryCounts(fields),
+            weatherRelatedTelemetryFields = weatherFields,
+            radarLikeTelemetryFields = radarLikeFields,
+            hasExplicitRadarTelemetryField = radarLikeFields.Any(field => ContainsCandidateTerm(field.SearchText, ["radar"])),
+            notes = new[]
+            {
+                "This scans all telemetry variable names, units, and descriptions into broad debugging categories.",
+                "If no explicit radar field appears here, the iRacing screen radar is not exposed in the raw telemetry schema captured by this build."
+            }
+        };
+        AddTextEntry(
+            archive,
+            "latest-capture/telemetry-schema-summary.json",
+            JsonSerializer.Serialize(output, JsonOptions));
+    }
+
+    private static Dictionary<string, int> BuildSchemaCategoryCounts(IReadOnlyList<SchemaFieldSummary> fields)
+    {
+        var categories = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var field in fields)
+        {
+            foreach (var category in SchemaCategories)
+            {
+                if (ContainsCandidateTerm(field.SearchText, category.Value))
+                {
+                    categories[category.Key] = categories.GetValueOrDefault(category.Key) + 1;
+                }
+            }
+        }
+
+        return categories
+            .OrderBy(pair => pair.Key)
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static SchemaFieldSummary ToSchemaFieldSummary(JsonElement field)
+    {
+        return new SchemaFieldSummary(
+            ReadJsonString(field, "name"),
+            ReadJsonString(field, "typeName"),
+            ReadJsonInt(field, "count") ?? 1,
+            ReadJsonString(field, "unit"),
+            ReadJsonString(field, "description"));
+    }
+
+    private static string? ReadJsonString(JsonElement element, string propertyName)
+    {
+        return element.TryGetProperty(propertyName, out var property) && property.ValueKind == JsonValueKind.String
+            ? property.GetString()
+            : null;
+    }
+
+    private static int? ReadJsonInt(JsonElement element, string propertyName)
+    {
+        return element.TryGetProperty(propertyName, out var property) && property.TryGetInt32(out var value)
+            ? value
+            : null;
+    }
+
+    private static bool ContainsCandidateTerm(string? value, IReadOnlyList<string> terms)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        return terms.Any(term => value.Contains(term, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static readonly string[] WeatherTerms =
+    [
+        "weather",
+        "rain",
+        "precip",
+        "wet",
+        "moisture",
+        "skies",
+        "sky",
+        "cloud",
+        "fog",
+        "humidity",
+        "wind",
+        "airtemp",
+        "tracktemp",
+        "solar",
+        "radar"
+    ];
+
+    private static readonly string[] RadarTerms =
+    [
+        "radar",
+        "rain",
+        "precip",
+        "wet",
+        "moisture",
+        "cloud"
+    ];
+
+    private static readonly Dictionary<string, string[]> SchemaCategories = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["weather"] = WeatherTerms,
+        ["session"] = ["session", "flag", "pace", "caution"],
+        ["timing"] = ["lap", "time", "position", "distance", "estimated", "f2"],
+        ["cars"] = ["caridx", "player", "driver", "team", "class"],
+        ["pit"] = ["pit", "service", "repair", "tire", "fuel"],
+        ["controls"] = ["throttle", "brake", "clutch", "steering", "gear", "input"],
+        ["vehicle"] = ["rpm", "speed", "accel", "yaw", "pitch", "roll", "velocity"],
+        ["tires"] = ["tire", "tyre", "wheel"],
+        ["damage"] = ["damage", "repair"],
+        ["overlay-useful"] = ["carleft", "tracksurface", "lapdist", "classposition", "f2time", "esttime"]
+    };
+
+    private sealed record SchemaFieldSummary(
+        string? Name,
+        string? TypeName,
+        int Count,
+        string? Unit,
+        string? Description)
+    {
+        [JsonIgnore]
+        public string SearchText => $"{Name} {Unit} {Description}";
     }
 
     private static void AddRecentFiles(

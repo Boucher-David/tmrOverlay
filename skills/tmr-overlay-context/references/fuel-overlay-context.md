@@ -1,6 +1,6 @@
 # Fuel Overlay Context
 
-Last updated: 2026-04-30
+Last updated: 2026-05-01
 
 ## Current Analyzed Captures
 
@@ -155,6 +155,10 @@ The overlay must keep live race telemetry as the primary source for strategy and
 During teammate stints, local scalar fuel can be unavailable. In that mode the overlay should continue using team-car `CarIdx*` progress plus user/baseline fuel history, label the usage as a model rather than live burn, and keep completed stints in historical storage instead of rendering them as active table rows.
 
 The live overlay now treats scalar fuel as local-live fuel only when the latest local sample is on track and not in the garage. When the local driver is not in the car, the strategy calculation ignores scalar fuel level/burn, uses history as the modeled fuel source, and can still show observed team/focus stint context from `CarIdx*` progress and pit-road transitions.
+
+Long-lived fuel baselines should be conservative: only real local-driver distance plus local scalar fuel evidence should contribute measured car/track fuel burn. Spectated timing, idle garage fuel values, and teammate-only `CarIdx*` rows are useful for availability diagnostics and live modeling, but they must not become measured fuel-per-lap history.
+
+Current-session observed car stints should be modeled as shared live-session context, not as fuel-overlay-only state. The fuel calculator can use observed focus/team stint lengths to plan the current session when local fuel is unavailable, but those observations should also remain available for gap, radar, future relative/standings/map overlays, diagnostics, and bridge clients. Treat observed other-car stint length as race context unless paired with reliable direct fuel evidence.
 
 When historical completed-stint data shows team stints around 8 laps and the fuel-saving requirement stays within the realistic threshold, the calculator can bias projected rows to 8 laps. This is a planning hint, not proof that current live teammate fuel is directly available, and the UI intentionally does not label rows as teammate stints.
 

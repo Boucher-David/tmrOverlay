@@ -14,13 +14,18 @@ internal sealed record LiveTelemetrySnapshot(
     HistoricalTelemetrySample? LatestSample,
     LiveFuelSnapshot Fuel,
     LiveProximitySnapshot Proximity,
-    LiveLeaderGapSnapshot LeaderGap)
+    LiveLeaderGapSnapshot LeaderGap,
+    LiveWeatherSnapshot Weather)
 {
     public int CompletedStintCount { get; init; }
 
     public LiveCarContextSnapshot TeamCar { get; init; } = LiveCarContextSnapshot.Unavailable;
 
     public LiveCarContextSnapshot FocusCar { get; init; } = LiveCarContextSnapshot.Unavailable;
+
+    public IReadOnlyList<LiveObservedCar> ObservedCars { get; init; } = [];
+
+    public int ObservedCarCount => ObservedCars.Count;
 
     public TelemetryAvailabilitySnapshot TelemetryAvailability { get; init; } = TelemetryAvailabilitySnapshot.Empty;
 
@@ -51,7 +56,8 @@ internal sealed record LiveTelemetrySnapshot(
         LatestSample: null,
         Fuel: LiveFuelSnapshot.Unavailable,
         Proximity: LiveProximitySnapshot.Unavailable,
-        LeaderGap: LiveLeaderGapSnapshot.Unavailable);
+        LeaderGap: LiveLeaderGapSnapshot.Unavailable,
+        Weather: LiveWeatherSnapshot.Unavailable);
 }
 
 internal sealed record LiveCarContextSnapshot(
@@ -69,6 +75,14 @@ internal sealed record LiveCarContextSnapshot(
     int ObservedPitStopCount,
     string StintSource)
 {
+    public IReadOnlyList<LiveObservedStint> CompletedStints { get; init; } = [];
+
+    public int CompletedStintCount => CompletedStints.Count;
+
+    public double? AverageCompletedStintLaps => CompletedStints.Count > 0
+        ? CompletedStints.Average(stint => stint.DistanceLaps)
+        : null;
+
     public static LiveCarContextSnapshot Unavailable { get; } = new(
         HasData: false,
         CarIdx: null,
@@ -83,6 +97,214 @@ internal sealed record LiveCarContextSnapshot(
         CurrentStintSeconds: null,
         ObservedPitStopCount: 0,
         StintSource: "unavailable");
+}
+
+internal sealed record LiveObservedStint(
+    int Number,
+    double StartSessionTime,
+    double EndSessionTime,
+    double StartProgressLaps,
+    double EndProgressLaps,
+    double DistanceLaps,
+    double DurationSeconds,
+    string Source);
+
+internal sealed record LiveObservedCar(
+    int CarIdx,
+    int? OverallPosition,
+    int? ClassPosition,
+    int? CarClass,
+    bool? OnPitRoad,
+    double ProgressLaps,
+    double CurrentStintLaps,
+    double CurrentStintSeconds,
+    int ObservedPitStopCount,
+    string StintSource,
+    IReadOnlyList<LiveObservedStint> CompletedStints)
+{
+    public int CompletedStintCount => CompletedStints.Count;
+
+    public double? AverageCompletedStintLaps => CompletedStints.Count > 0
+        ? CompletedStints.Average(stint => stint.DistanceLaps)
+        : null;
+}
+
+internal sealed record LiveWeatherSnapshot(
+    bool HasData,
+    DateTimeOffset? CapturedAtUtc,
+    double? SessionTime,
+    double? TrackTempC,
+    double? TrackTempCrewC,
+    double? AirTempC,
+    int? TrackWetness,
+    string SurfaceMoistureClass,
+    bool? WeatherDeclaredWet,
+    int? Skies,
+    string? SkiesLabel,
+    double? WindVelMetersPerSecond,
+    double? WindDirRadians,
+    double? RelativeHumidityPercent,
+    double? FogLevelPercent,
+    double? PrecipitationPercent,
+    double? AirDensityKgPerCubicMeter,
+    double? AirPressurePa,
+    double? SolarAltitudeRadians,
+    double? SolarAzimuthRadians,
+    string? SessionTrackWeatherType,
+    string? SessionTrackSkies,
+    double? SessionTrackSurfaceTempC,
+    double? SessionTrackSurfaceTempCrewC,
+    double? SessionTrackAirTempC,
+    double? SessionTrackWindVelMetersPerSecond,
+    double? SessionTrackWindDirRadians,
+    double? SessionTrackRelativeHumidityPercent,
+    double? SessionTrackFogLevelPercent,
+    double? SessionTrackPrecipitationPercent,
+    string? SessionTrackRubberState,
+    bool? DeclaredWetSurfaceMismatch)
+{
+    public static LiveWeatherSnapshot Unavailable { get; } = new(
+        HasData: false,
+        CapturedAtUtc: null,
+        SessionTime: null,
+        TrackTempC: null,
+        TrackTempCrewC: null,
+        AirTempC: null,
+        TrackWetness: null,
+        SurfaceMoistureClass: "unknown",
+        WeatherDeclaredWet: null,
+        Skies: null,
+        SkiesLabel: null,
+        WindVelMetersPerSecond: null,
+        WindDirRadians: null,
+        RelativeHumidityPercent: null,
+        FogLevelPercent: null,
+        PrecipitationPercent: null,
+        AirDensityKgPerCubicMeter: null,
+        AirPressurePa: null,
+        SolarAltitudeRadians: null,
+        SolarAzimuthRadians: null,
+        SessionTrackWeatherType: null,
+        SessionTrackSkies: null,
+        SessionTrackSurfaceTempC: null,
+        SessionTrackSurfaceTempCrewC: null,
+        SessionTrackAirTempC: null,
+        SessionTrackWindVelMetersPerSecond: null,
+        SessionTrackWindDirRadians: null,
+        SessionTrackRelativeHumidityPercent: null,
+        SessionTrackFogLevelPercent: null,
+        SessionTrackPrecipitationPercent: null,
+        SessionTrackRubberState: null,
+        DeclaredWetSurfaceMismatch: null);
+
+    public static LiveWeatherSnapshot From(HistoricalSessionContext context, HistoricalTelemetrySample sample)
+    {
+        var trackTemp = Clean(sample.TrackTempC);
+        var trackTempCrew = Clean(sample.TrackTempCrewC);
+        var airTemp = Clean(sample.AirTempC);
+        var windVel = Clean(sample.WindVelMetersPerSecond);
+        var windDir = Clean(sample.WindDirRadians);
+        var humidity = Clean(sample.RelativeHumidityPercent);
+        var fog = Clean(sample.FogLevelPercent);
+        var precipitation = Clean(sample.PrecipitationPercent);
+        var airDensity = Clean(sample.AirDensityKgPerCubicMeter);
+        var airPressure = Clean(sample.AirPressurePa);
+        var solarAltitude = Clean(sample.SolarAltitudeRadians);
+        var solarAzimuth = Clean(sample.SolarAzimuthRadians);
+        var trackWetness = sample.TrackWetness >= 0 ? sample.TrackWetness : (int?)null;
+        var moistureClass = SurfaceClass(trackWetness);
+        var hasData = trackTemp is not null
+            || trackTempCrew is not null
+            || airTemp is not null
+            || trackWetness is not null
+            || sample.WeatherDeclaredWet
+            || sample.Skies is not null
+            || windVel is not null
+            || windDir is not null
+            || humidity is not null
+            || fog is not null
+            || precipitation is not null
+            || airDensity is not null
+            || airPressure is not null
+            || solarAltitude is not null
+            || solarAzimuth is not null;
+
+        return new LiveWeatherSnapshot(
+            HasData: hasData,
+            CapturedAtUtc: sample.CapturedAtUtc,
+            SessionTime: Clean(sample.SessionTime),
+            TrackTempC: trackTemp,
+            TrackTempCrewC: trackTempCrew,
+            AirTempC: airTemp,
+            TrackWetness: trackWetness,
+            SurfaceMoistureClass: moistureClass,
+            WeatherDeclaredWet: hasData ? sample.WeatherDeclaredWet : null,
+            Skies: sample.Skies,
+            SkiesLabel: SkiesLabel(sample.Skies),
+            WindVelMetersPerSecond: windVel,
+            WindDirRadians: windDir,
+            RelativeHumidityPercent: humidity,
+            FogLevelPercent: fog,
+            PrecipitationPercent: precipitation,
+            AirDensityKgPerCubicMeter: airDensity,
+            AirPressurePa: airPressure,
+            SolarAltitudeRadians: solarAltitude,
+            SolarAzimuthRadians: solarAzimuth,
+            SessionTrackWeatherType: context.Conditions.TrackWeatherType,
+            SessionTrackSkies: context.Conditions.TrackSkies,
+            SessionTrackSurfaceTempC: context.Conditions.TrackSurfaceTempC,
+            SessionTrackSurfaceTempCrewC: context.Conditions.TrackSurfaceTempCrewC,
+            SessionTrackAirTempC: context.Conditions.TrackAirTempC,
+            SessionTrackWindVelMetersPerSecond: context.Conditions.TrackWindVelMetersPerSecond,
+            SessionTrackWindDirRadians: context.Conditions.TrackWindDirRadians,
+            SessionTrackRelativeHumidityPercent: context.Conditions.TrackRelativeHumidityPercent,
+            SessionTrackFogLevelPercent: context.Conditions.TrackFogLevelPercent,
+            SessionTrackPrecipitationPercent: context.Conditions.TrackPrecipitationPercent,
+            SessionTrackRubberState: context.Conditions.SessionTrackRubberState,
+            DeclaredWetSurfaceMismatch: DeclaredWetSurfaceMismatch(sample.WeatherDeclaredWet, moistureClass));
+    }
+
+    private static bool? DeclaredWetSurfaceMismatch(bool declaredWet, string moistureClass)
+    {
+        return moistureClass switch
+        {
+            "dry" => declaredWet,
+            "wet" => !declaredWet,
+            _ => null
+        };
+    }
+
+    private static string SurfaceClass(int? trackWetness)
+    {
+        return trackWetness switch
+        {
+            null => "unknown",
+            < 0 => "unknown",
+            <= 1 => "dry",
+            <= 3 => "damp",
+            _ => "wet"
+        };
+    }
+
+    private static string? SkiesLabel(int? skies)
+    {
+        return skies switch
+        {
+            0 => "clear",
+            1 => "partly-cloudy",
+            2 => "mostly-cloudy",
+            3 => "overcast",
+            null => null,
+            _ => $"code-{skies.Value}"
+        };
+    }
+
+    private static double? Clean(double? value)
+    {
+        return value is { } number && !double.IsNaN(number) && !double.IsInfinity(number)
+            ? number
+            : null;
+    }
 }
 
 internal sealed record LiveProximitySnapshot(

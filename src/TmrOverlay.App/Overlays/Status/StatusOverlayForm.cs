@@ -18,6 +18,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
     private readonly Label _titleLabel;
     private readonly Label _statusLabel;
     private readonly Label _detailLabel;
+    private readonly Label _activityLabel;
     private readonly Label _captureLabel;
     private readonly Label _healthLabel;
     private readonly System.Windows.Forms.Timer _refreshTimer;
@@ -88,9 +89,21 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
             AutoSize = false,
             ForeColor = OverlayTheme.Colors.InfoText,
             Font = OverlayTheme.Font(fontFamily, 8.75f),
-            Location = new Point(16, 80),
+            Location = new Point(16, 104),
             Size = new Size(ClientSize.Width - 32, 18),
             Text = "capture: not started"
+        };
+
+        _activityLabel = new Label
+        {
+            AutoSize = false,
+            BackColor = OverlayTheme.Colors.NeutralBackground,
+            ForeColor = OverlayTheme.Colors.TextMuted,
+            Font = OverlayTheme.Font(fontFamily, 8f, FontStyle.Bold),
+            Location = new Point(16, 80),
+            Size = new Size(150, 20),
+            Text = "IDLE",
+            TextAlign = ContentAlignment.MiddleCenter
         };
 
         _healthLabel = new Label
@@ -98,7 +111,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
             AutoSize = false,
             ForeColor = OverlayTheme.Colors.TextSubtle,
             Font = OverlayTheme.Font(fontFamily, 8.75f),
-            Location = new Point(16, 102),
+            Location = new Point(16, 126),
             Size = new Size(ClientSize.Width - 32, 34),
             Text = "health: waiting for telemetry"
         };
@@ -107,6 +120,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
         Controls.Add(_titleLabel);
         Controls.Add(_statusLabel);
         Controls.Add(_detailLabel);
+        Controls.Add(_activityLabel);
         Controls.Add(_captureLabel);
         Controls.Add(_healthLabel);
 
@@ -115,6 +129,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
             _titleLabel,
             _statusLabel,
             _detailLabel,
+            _activityLabel,
             _captureLabel,
             _healthLabel);
 
@@ -137,6 +152,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
             _titleLabel.Dispose();
             _statusLabel.Dispose();
             _detailLabel.Dispose();
+            _activityLabel.Dispose();
             _captureLabel.Dispose();
             _healthLabel.Dispose();
             _indicatorPanel.Dispose();
@@ -192,6 +208,9 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
         }
 
         _detailLabel.Text = health.DetailText;
+        _activityLabel.Text = health.Activity.Text;
+        _activityLabel.BackColor = health.Activity.BackColor;
+        _activityLabel.ForeColor = health.Activity.ForeColor;
         _captureLabel.Text = health.CaptureText;
         _healthLabel.Text = health.MessageText;
         _captureLabel.Visible = _settings.GetBooleanOption(OverlayOptionKeys.StatusCaptureDetails, defaultValue: true);
@@ -210,6 +229,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
 
         _statusLabel.Size = new Size(Math.Max(220, ClientSize.Width - 32), 22);
         _detailLabel.Size = new Size(Math.Max(220, ClientSize.Width - 32), 18);
+        _activityLabel.Size = new Size(150, 20);
         _captureLabel.Size = new Size(Math.Max(220, ClientSize.Width - 32), 18);
         _healthLabel.Size = new Size(Math.Max(220, ClientSize.Width - 32), 34);
     }
@@ -225,12 +245,14 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
         CaptureHealthLevel Level,
         string StatusText,
         string DetailText,
+        ActivityBadge Activity,
         string CaptureText,
         string MessageText)
     {
         public static CaptureHealth From(TelemetryCaptureStatusSnapshot snapshot, LiveTelemetrySnapshot live)
         {
             var now = DateTimeOffset.UtcNow;
+            var activity = ActivityBadge.From(snapshot);
             var capturePath = snapshot.CurrentCaptureDirectory ?? snapshot.LastCaptureDirectory ?? snapshot.CaptureRoot;
             var captureText = snapshot.RawCaptureEnabled
                 ? $"raw: {CompactPath(capturePath)}"
@@ -248,6 +270,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
                     CaptureHealthLevel.Error,
                     "Capture error",
                     detail,
+                    activity,
                     captureText,
                     $"error: {Trim(snapshot.LastError)}");
             }
@@ -256,14 +279,29 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
                 ? null
                 : $"warning: {Trim(snapshot.AppWarning)}";
 
+            if (snapshot.IsHistoryFinalizing)
+            {
+                var savingAge = AgeSeconds(snapshot.HistoryFinalizationStartedAtUtc, now);
+                return new CaptureHealth(
+                    CaptureHealthLevel.Ok,
+                    "Saving session history",
+                    "finalizing compact session summary",
+                    activity,
+                    captureText,
+                    Combine(
+                        LastHistoryText(snapshot, now),
+                        $"health: writing compact session data for {FormatAge(savingAge)}"));
+            }
+
             if (!snapshot.IsConnected)
             {
                 return new CaptureHealth(
                     CaptureHealthLevel.Warning,
                     "Waiting for iRacing",
                     "collector idle",
+                    activity,
                     captureText,
-                    Combine(appWarning, "health: sim not connected; no live telemetry source"));
+                    Combine(appWarning, LastHistoryText(snapshot, now) ?? "health: sim not connected; no live telemetry source"));
             }
 
             if (!snapshot.IsCapturing)
@@ -272,6 +310,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
                     CaptureHealthLevel.Warning,
                     "Connected, waiting for telemetry",
                     "waiting for first telemetry frame",
+                    activity,
                     captureText,
                     Combine(appWarning, "health: SDK connected but no live telemetry frame has started collection"));
             }
@@ -282,6 +321,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
                     CaptureHealthLevel.Error,
                     "Frames queued, not written",
                     detail,
+                    activity,
                     captureText,
                     "error: telemetry frames arrived but disk writer has not confirmed writes");
             }
@@ -292,6 +332,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
                     CaptureHealthLevel.Warning,
                     "Capture counters inconsistent",
                     detail,
+                    activity,
                     captureText,
                     "warning: written frame count is ahead of queued frame count");
             }
@@ -302,6 +343,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
                     CaptureHealthLevel.Warning,
                     "Collecting with dropped frames",
                     detail,
+                    activity,
                     captureText,
                     "warning: capture queue overflowed; disk may be too slow");
             }
@@ -312,6 +354,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
                     CaptureHealthLevel.Error,
                     "Telemetry frames stalled",
                     detail,
+                    activity,
                     captureText,
                     $"error: no SDK frame for {frameAge:N0}s; sim may be paused/disconnected");
             }
@@ -322,6 +365,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
                     CaptureHealthLevel.Error,
                     "Disk writes stalled",
                     detail,
+                    activity,
                     captureText,
                     $"error: no telemetry.bin write confirmation for {diskAge:N0}s");
             }
@@ -332,6 +376,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
                     CaptureHealthLevel.Warning,
                     "Collecting with warning",
                     detail,
+                    activity,
                     captureText,
                     $"warning: {Trim(snapshot.LastWarning)}");
             }
@@ -342,6 +387,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
                     CaptureHealthLevel.Warning,
                     "Build may be stale",
                     detail,
+                    activity,
                     captureText,
                     appWarning);
             }
@@ -353,8 +399,22 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
                 CaptureHealthLevel.Ok,
                 OkStatusText(snapshot, live),
                 detail,
+                activity,
                 captureText,
                 Combine(DescribeLiveMode(live), healthMessage));
+        }
+
+        private static string? LastHistoryText(TelemetryCaptureStatusSnapshot snapshot, DateTimeOffset now)
+        {
+            if (snapshot.LastHistorySavedAtUtc is null)
+            {
+                return null;
+            }
+
+            var label = string.IsNullOrWhiteSpace(snapshot.LastHistorySummaryLabel)
+                ? "session history"
+                : Trim(snapshot.LastHistorySummaryLabel);
+            return $"history: saved {label} {FormatAge(AgeSeconds(snapshot.LastHistorySavedAtUtc, now))}";
         }
 
         private static string OkStatusText(TelemetryCaptureStatusSnapshot snapshot, LiveTelemetrySnapshot live)
@@ -485,6 +545,34 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
             return string.IsNullOrWhiteSpace(first)
                 ? second
                 : $"{first} | {second}";
+        }
+
+        public sealed record ActivityBadge(string Text, Color BackColor, Color ForeColor)
+        {
+            public static ActivityBadge From(TelemetryCaptureStatusSnapshot snapshot)
+            {
+                if (snapshot.IsHistoryFinalizing)
+                {
+                    return new ActivityBadge("SAVING HISTORY", OverlayTheme.Colors.InfoBackground, OverlayTheme.Colors.InfoText);
+                }
+
+                if (snapshot.IsCapturing && snapshot.RawCaptureEnabled)
+                {
+                    return new ActivityBadge("RAW WRITES", OverlayTheme.Colors.SuccessBackground, OverlayTheme.Colors.SuccessText);
+                }
+
+                if (snapshot.IsCapturing)
+                {
+                    return new ActivityBadge("SESSION HISTORY", OverlayTheme.Colors.SuccessBackground, OverlayTheme.Colors.SuccessText);
+                }
+
+                if (snapshot.IsConnected)
+                {
+                    return new ActivityBadge("CONNECTED", OverlayTheme.Colors.WarningStrongBackground, OverlayTheme.Colors.WarningText);
+                }
+
+                return new ActivityBadge("IDLE", OverlayTheme.Colors.NeutralBackground, OverlayTheme.Colors.TextMuted);
+            }
         }
     }
 }

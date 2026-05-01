@@ -20,6 +20,7 @@ internal static class PostRaceAnalysisBuilder
             $"Telemetry mode: {BuildTelemetryMode(summary.Metrics.TelemetryAvailability)}.",
             $"Focus coverage: {BuildFocusCoverage(summary.Metrics.TelemetryAvailability)}.",
             $"Radar/gap inputs: {summary.Metrics.TelemetryAvailability.ClassTimingFrameCount} class-timing frames, {summary.Metrics.TelemetryAvailability.NearbyTimingFrameCount} nearby-timing frames, {summary.Metrics.TelemetryAvailability.CarLeftRightAvailableFrameCount} CarLeftRight frames ({summary.Metrics.TelemetryAvailability.CarLeftRightActiveFrameCount} active).",
+            $"Weather: {BuildWeatherSummary(summary.Conditions)}.",
             $"Fuel model: {FormatFuelPerLap(summary.Metrics.FuelPerLapLiters)} average, {FormatFuel(summary.Car.DriverCarFuelMaxLiters)} tank, {FormatLapsPerTank(summary)}."
         };
 
@@ -165,7 +166,7 @@ internal static class PostRaceAnalysisBuilder
 
         if (availability.IsSpectatedTimingOnly)
         {
-            return $"spectated focus timing, {availability.FocusCarFrameCount} focus frames across {availability.UniqueFocusCarCount} focus cars, {availability.FocusCarChangeCount} focus changes, local scalars idle";
+            return $"spectated timing, {availability.FocusCarFrameCount} focus frames across {availability.UniqueFocusCarCount} focus cars, {availability.FocusCarChangeCount} focus changes, no local driving, {BuildIdleFuelScalarSummary(availability)}";
         }
 
         if (availability.HasLocalDriving)
@@ -186,6 +187,16 @@ internal static class PostRaceAnalysisBuilder
         return $"partial telemetry, {availability.LocalDrivingFrameCount} local frames, {availability.FocusTimingFrameCount} focus-timing frames";
     }
 
+    private static string BuildIdleFuelScalarSummary(TelemetryAvailabilitySnapshot availability)
+    {
+        if (availability.LocalFuelScalarWithoutDrivingFrameCount > 0)
+        {
+            return $"{availability.LocalFuelScalarWithoutDrivingFrameCount} idle fuel-scalar frames";
+        }
+
+        return "local fuel scalars unavailable";
+    }
+
     private static string BuildFocusCoverage(TelemetryAvailabilitySnapshot availability)
     {
         if (availability.SampleFrameCount == 0)
@@ -202,6 +213,52 @@ internal static class PostRaceAnalysisBuilder
             ? $"current focus #{carIdx}"
             : "current focus unknown";
         return $"{currentFocus}, {availability.FocusSegments.Count} focus segments, {availability.FocusCarChangeCount} focus changes, {availability.NonTeamFocusFrameCount} non-team focus frames";
+    }
+
+    private static string BuildWeatherSummary(HistoricalConditions conditions)
+    {
+        var declaredWet = conditions.WeatherDeclaredWet switch
+        {
+            true => "declared wet",
+            false => "not declared wet",
+            _ => "wet declaration unknown"
+        };
+        var surface = conditions.TrackWetness is { } wetness
+            ? $"{TrackWetnessLabel(wetness)} surface (wetness {wetness})"
+            : "surface wetness unknown";
+        var precipitation = conditions.PrecipitationPercent ?? conditions.TrackPrecipitationPercent;
+        var precipitationLabel = precipitation is { } percent
+            ? $"{percent:0.#}% precipitation"
+            : "precipitation unknown";
+        var skies = FirstNonEmpty(SkiesLabel(conditions.Skies), conditions.TrackSkies, "skies unknown");
+        var temperature = conditions.TrackTempCrewC is { } trackTemp
+            ? $", track {trackTemp:0.#} C"
+            : string.Empty;
+
+        return $"{declaredWet}, {surface}, {precipitationLabel}, {skies}{temperature}";
+    }
+
+    private static string TrackWetnessLabel(int trackWetness)
+    {
+        return trackWetness switch
+        {
+            <= 1 => "dry",
+            <= 3 => "damp",
+            _ => "wet"
+        };
+    }
+
+    private static string? SkiesLabel(int? skies)
+    {
+        return skies switch
+        {
+            0 => "clear",
+            1 => "partly cloudy",
+            2 => "mostly cloudy",
+            3 => "overcast",
+            null => null,
+            _ => $"skies code {skies.Value}"
+        };
     }
 
     private static string FirstNonEmpty(params string?[] values)

@@ -5,6 +5,7 @@ namespace TmrOverlay.App.Overlays.Abstractions;
 
 internal abstract class PersistentOverlayForm : Form
 {
+    private const int WsExAppWindow = 0x00040000;
     private const int WsExToolWindow = 0x00000080;
 
     private readonly OverlaySettings _settings;
@@ -33,19 +34,30 @@ internal abstract class PersistentOverlayForm : Form
         MinimizeBox = false;
         Opacity = _settings.Opacity;
         ShowIcon = false;
-        ShowInTaskbar = false;
+        ShowInTaskbar = ShowInTaskSwitcher;
         StartPosition = FormStartPosition.Manual;
         TopMost = _settings.AlwaysOnTop;
 
         RegisterDragSurface(this);
     }
 
+    protected virtual bool ShowInTaskSwitcher => false;
+
     protected override CreateParams CreateParams
     {
         get
         {
             var createParams = base.CreateParams;
-            createParams.ExStyle |= WsExToolWindow;
+            if (ShowInTaskSwitcher)
+            {
+                createParams.ExStyle &= ~WsExToolWindow;
+                createParams.ExStyle |= WsExAppWindow;
+            }
+            else
+            {
+                createParams.ExStyle |= WsExToolWindow;
+            }
+
             return createParams;
         }
     }

@@ -22,6 +22,24 @@ PRIMARY_CAPTURE_ID = "capture-20260426-130334-932"
 PRIMARY_CAPTURE = Path("captures") / PRIMARY_CAPTURE_ID
 DEFAULT_OUTPUT_ROOT = Path("history") / "baseline"
 
+WEATHER_FIELDS = [
+    ("trackTempC", "TrackTemp"),
+    ("trackTempCrewC", "TrackTempCrew"),
+    ("airTempC", "AirTemp"),
+    ("trackWetness", "TrackWetness"),
+    ("skies", "Skies"),
+    ("windVelMetersPerSecond", "WindVel"),
+    ("windDirRadians", "WindDir"),
+    ("relativeHumidityPercent", "RelativeHumidity"),
+    ("fogLevelPercent", "FogLevel"),
+    ("precipitationPercent", "Precipitation"),
+    ("airDensityKgPerCubicMeter", "AirDensity"),
+    ("airPressurePa", "AirPressure"),
+    ("solarAltitudeRadians", "SolarAltitude"),
+    ("solarAzimuthRadians", "SolarAzimuth"),
+    ("weatherDeclaredWet", "WeatherDeclaredWet"),
+]
+
 
 def slug(value: Any) -> str:
     text = str(value or "").strip().lower()
@@ -89,6 +107,12 @@ def read_value(payload: bytes, schema: dict[str, Any], name: str, index: int | N
     raise KeyError(f"Unsupported variable type for {name}: {type_name}")
 
 
+def read_optional_value(payload: bytes, schema: dict[str, Any], name: str, index: int | None = None) -> Any:
+    if name not in schema:
+        return None
+    return read_value(payload, schema, name, index)
+
+
 def clean_float(value: Any, digits: int = 6) -> float | None:
     if value is None:
         return None
@@ -131,6 +155,30 @@ def is_pit_context(previous: dict[str, Any], current: dict[str, Any]) -> bool:
         or previous["playerCarInPitStall"]
         or current["playerCarInPitStall"]
     )
+
+
+def surface_moisture_class(track_wetness: Any) -> str:
+    if track_wetness is None:
+        return "unknown"
+    if track_wetness <= 1:
+        return "dry"
+    if track_wetness <= 3:
+        return "damp"
+    return "wet"
+
+
+def weather_state(sample: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "trackWetness": sample.get("trackWetness"),
+        "surfaceMoistureClass": surface_moisture_class(sample.get("trackWetness")),
+        "weatherDeclaredWet": sample.get("weatherDeclaredWet"),
+        "skies": sample.get("skies"),
+        "precipitationPercent": clean_float(sample.get("precipitationPercent"), 2),
+        "relativeHumidityPercent": clean_float(sample.get("relativeHumidityPercent"), 2),
+        "fogLevelPercent": clean_float(sample.get("fogLevelPercent"), 2),
+        "trackTempCrewC": clean_float(sample.get("trackTempCrewC"), 1),
+        "airTempC": clean_float(sample.get("airTempC"), 1),
+    }
 
 
 def running_metric(value: float | int | None) -> dict[str, Any]:
@@ -239,9 +287,12 @@ def analyze_telemetry(capture_dir: Path, schema: dict[str, dict[str, Any]], car_
     update_timing: dict[int, dict[str, Any]] = {}
     team_lap_times: list[float] = []
     team_pit_windows: list[dict[str, Any]] = []
+    weather_timeline: list[dict[str, Any]] = []
+    weather_timeline_truncated = False
     current_pit_window: dict[str, Any] | None = None
     last_team_lap_time: float | None = None
     previous_team_on_pit_road: bool | None = None
+    previous_weather_state: dict[str, Any] | None = None
 
     metrics = {
         "sampleFrameCount": 0,
@@ -323,12 +374,10 @@ def analyze_telemetry(capture_dir: Path, schema: dict[str, dict[str, Any]], car_
                 "lapDistPct": read_value(payload, schema, "LapDistPct"),
                 "lapLastLapTimeSeconds": read_value(payload, schema, "LapLastLapTime"),
                 "lapBestLapTimeSeconds": read_value(payload, schema, "LapBestLapTime"),
-                "airTempC": read_value(payload, schema, "AirTemp"),
-                "trackTempCrewC": read_value(payload, schema, "TrackTempCrew"),
-                "trackWetness": read_value(payload, schema, "TrackWetness"),
-                "weatherDeclaredWet": read_value(payload, schema, "WeatherDeclaredWet"),
                 "playerTireCompound": read_value(payload, schema, "PlayerTireCompound"),
             }
+            for output_name, sdk_name in WEATHER_FIELDS:
+                sample[output_name] = read_optional_value(payload, schema, sdk_name)
             team = {
                 "lap": read_value(payload, schema, "CarIdxLap", car_idx),
                 "lapCompleted": read_value(payload, schema, "CarIdxLapCompleted", car_idx),
@@ -341,12 +390,38 @@ def analyze_telemetry(capture_dir: Path, schema: dict[str, dict[str, Any]], car_
             }
 
             latest_conditions = {
+                "trackTempC": sample["trackTempC"],
                 "airTempC": sample["airTempC"],
                 "trackTempCrewC": sample["trackTempCrewC"],
                 "trackWetness": sample["trackWetness"],
+                "surfaceMoistureClass": surface_moisture_class(sample["trackWetness"]),
                 "weatherDeclaredWet": sample["weatherDeclaredWet"],
+                "skies": sample["skies"],
+                "windVelMetersPerSecond": sample["windVelMetersPerSecond"],
+                "windDirRadians": sample["windDirRadians"],
+                "relativeHumidityPercent": sample["relativeHumidityPercent"],
+                "fogLevelPercent": sample["fogLevelPercent"],
+                "precipitationPercent": sample["precipitationPercent"],
+                "airDensityKgPerCubicMeter": sample["airDensityKgPerCubicMeter"],
+                "airPressurePa": sample["airPressurePa"],
+                "solarAltitudeRadians": sample["solarAltitudeRadians"],
+                "solarAzimuthRadians": sample["solarAzimuthRadians"],
                 "playerTireCompound": sample["playerTireCompound"],
             }
+
+            current_weather_state = weather_state(sample)
+            if current_weather_state != previous_weather_state:
+                if len(weather_timeline) < 1_000:
+                    weather_timeline.append(
+                        {
+                            "capturedMs": captured_ms,
+                            "sessionTime": clean_float(sample["sessionTime"], 3),
+                            **current_weather_state,
+                        }
+                    )
+                else:
+                    weather_timeline_truncated = True
+                previous_weather_state = current_weather_state
 
             if is_valid_fuel(sample["fuelLevelLiters"]):
                 metrics["startingFuelLiters"] = metrics["startingFuelLiters"] if metrics["startingFuelLiters"] is not None else sample["fuelLevelLiters"]
@@ -440,6 +515,8 @@ def analyze_telemetry(capture_dir: Path, schema: dict[str, dict[str, Any]], car_
         "teamLapTimes": [clean_float(value, 4) for value in team_lap_times],
         "teamPitWindows": team_pit_windows,
         "latestConditions": latest_conditions,
+        "weatherTimeline": weather_timeline,
+        "weatherTimelineTruncated": weather_timeline_truncated,
         "updateTiming": update_timing,
     }
 
@@ -534,13 +611,34 @@ def build_summary(capture_dir: Path, output_root: Path) -> tuple[Path, Path, dic
     }
     latest_conditions = telemetry["latestConditions"]
     conditions = {
+        "trackTempC": clean_float(latest_conditions.get("trackTempC")),
         "airTempC": clean_float(latest_conditions.get("airTempC")),
         "trackTempCrewC": clean_float(latest_conditions.get("trackTempCrewC")),
         "trackWetness": latest_conditions.get("trackWetness"),
+        "surfaceMoistureClass": latest_conditions.get("surfaceMoistureClass"),
         "weatherDeclaredWet": latest_conditions.get("weatherDeclaredWet"),
+        "skies": latest_conditions.get("skies"),
+        "windVelMetersPerSecond": clean_float(latest_conditions.get("windVelMetersPerSecond")),
+        "windDirRadians": clean_float(latest_conditions.get("windDirRadians")),
+        "relativeHumidityPercent": clean_float(latest_conditions.get("relativeHumidityPercent")),
+        "fogLevelPercent": clean_float(latest_conditions.get("fogLevelPercent")),
+        "precipitationPercent": clean_float(latest_conditions.get("precipitationPercent")),
+        "airDensityKgPerCubicMeter": clean_float(latest_conditions.get("airDensityKgPerCubicMeter")),
+        "airPressurePa": clean_float(latest_conditions.get("airPressurePa")),
+        "solarAltitudeRadians": clean_float(latest_conditions.get("solarAltitudeRadians")),
+        "solarAzimuthRadians": clean_float(latest_conditions.get("solarAzimuthRadians")),
         "playerTireCompound": latest_conditions.get("playerTireCompound"),
         "trackWeatherType": weekend.get("TrackWeatherType"),
         "trackSkies": weekend.get("TrackSkies"),
+        "sessionTrackSurfaceTempC": first_number(weekend.get("TrackSurfaceTemp")),
+        "sessionTrackSurfaceTempCrewC": first_number(weekend.get("TrackSurfaceTempCrew")),
+        "sessionTrackAirTempC": first_number(weekend.get("TrackAirTemp")),
+        "sessionTrackAirPressure": first_number(weekend.get("TrackAirPressure")),
+        "sessionTrackAirDensityKgPerCubicMeter": first_number(weekend.get("TrackAirDensity")),
+        "sessionTrackWindVelMetersPerSecond": first_number(weekend.get("TrackWindVel")),
+        "sessionTrackWindDirRadians": first_number(weekend.get("TrackWindDir")),
+        "sessionTrackRelativeHumidityPercent": first_number(weekend.get("TrackRelativeHumidity")),
+        "sessionTrackFogLevelPercent": first_number(weekend.get("TrackFogLevel")),
         "trackPrecipitationPercent": first_number(weekend.get("TrackPrecipitation")),
         "sessionTrackRubberState": session.get("SessionTrackRubberState"),
     }
@@ -576,6 +674,8 @@ def build_summary(capture_dir: Path, output_root: Path) -> tuple[Path, Path, dic
             "stints": stints,
             "pitWindows": telemetry["teamPitWindows"],
             "teamLapTimesSeconds": telemetry["teamLapTimes"],
+            "weatherTimeline": telemetry["weatherTimeline"],
+            "weatherTimelineTruncated": telemetry["weatherTimelineTruncated"],
         },
     }
 
@@ -623,11 +723,22 @@ def main() -> None:
     metrics = summary["metrics"]
     print(f"Wrote {summary_path}")
     print(f"Wrote {aggregate_path}")
+    fuel_per_lap = metrics.get("fuelPerLapLiters")
+    fuel_per_hour = metrics.get("fuelPerHourLiters")
+    valid_distance_laps = metrics.get("validDistanceLaps") or 0
+    if fuel_per_lap is None or fuel_per_hour is None:
+        print(
+            "Fuel baseline unavailable: "
+            f"{valid_distance_laps:.3f} local-driver valid laps, "
+            f"confidence={summary['quality']['confidence']}"
+        )
+        return
+
     print(
         "Fuel baseline: "
-        f"{metrics['fuelPerLapLiters']:.3f} L/lap, "
-        f"{metrics['fuelPerHourLiters']:.3f} L/h, "
-        f"{metrics['validDistanceLaps']:.3f} local-driver valid laps"
+        f"{fuel_per_lap:.3f} L/lap, "
+        f"{fuel_per_hour:.3f} L/h, "
+        f"{valid_distance_laps:.3f} local-driver valid laps"
     )
 
 

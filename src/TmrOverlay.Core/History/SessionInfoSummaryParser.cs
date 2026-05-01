@@ -70,6 +70,15 @@ internal static class SessionInfoSummaryParser
             {
                 TrackWeatherType = ReadString(parsed.WeekendInfo, "TrackWeatherType"),
                 TrackSkies = ReadString(parsed.WeekendInfo, "TrackSkies"),
+                TrackSurfaceTempC = ReadDouble(parsed.WeekendInfo, "TrackSurfaceTemp"),
+                TrackSurfaceTempCrewC = ReadDouble(parsed.WeekendInfo, "TrackSurfaceTempCrew"),
+                TrackAirTempC = ReadDouble(parsed.WeekendInfo, "TrackAirTemp"),
+                TrackAirPressure = ReadDouble(parsed.WeekendInfo, "TrackAirPressure"),
+                TrackAirDensityKgPerCubicMeter = ReadDouble(parsed.WeekendInfo, "TrackAirDensity"),
+                TrackWindVelMetersPerSecond = ReadDouble(parsed.WeekendInfo, "TrackWindVel"),
+                TrackWindDirRadians = ReadDouble(parsed.WeekendInfo, "TrackWindDir"),
+                TrackRelativeHumidityPercent = ReadDouble(parsed.WeekendInfo, "TrackRelativeHumidity"),
+                TrackFogLevelPercent = ReadDouble(parsed.WeekendInfo, "TrackFogLevel"),
                 TrackPrecipitationPercent = ReadDouble(parsed.WeekendInfo, "TrackPrecipitation"),
                 SessionTrackRubberState = ReadString(session, "SessionTrackRubberState")
             },

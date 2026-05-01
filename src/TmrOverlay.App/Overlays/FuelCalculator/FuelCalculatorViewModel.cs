@@ -101,6 +101,13 @@ internal sealed record FuelCalculatorViewModel(
         var value = focus.CurrentStintLaps is { } stintLaps
             ? $"stint {stintLaps:0.0} laps"
             : "stint tracking";
+        if (focus.CompletedStintCount > 0)
+        {
+            value = focus.AverageCompletedStintLaps is { } average
+                ? $"{value} | avg {average:0.0} laps x{focus.CompletedStintCount}"
+                : $"{value} | {focus.CompletedStintCount} done";
+        }
+
         var position = FormatPosition(focus.ClassPosition ?? focus.OverallPosition);
         if (!string.Equals(position, "--", StringComparison.Ordinal))
         {
@@ -170,7 +177,11 @@ internal sealed record FuelCalculatorViewModel(
             ? $" | tires {strategy.TireModelSource}"
             : string.Empty;
         var focus = FormatFocusSource(live);
-        return $"burn {fuelPerLap} ({strategy.FuelPerLapSource}) | {fullTank} | history {historySource}{historicalRange}{tireModel}{gaps}{focus}";
+        var observedTarget = strategy.TeammateStintTargetLaps is { } targetLaps
+            && !string.IsNullOrWhiteSpace(strategy.TeammateStintTargetSource)
+            ? $" | stint target {targetLaps} ({strategy.TeammateStintTargetSource})"
+            : string.Empty;
+        return $"burn {fuelPerLap} ({strategy.FuelPerLapSource}) | {fullTank} | history {historySource}{historicalRange}{tireModel}{gaps}{focus}{observedTarget}";
     }
 
     private static string FormatFocusSource(LiveTelemetrySnapshot live)
@@ -191,7 +202,12 @@ internal sealed record FuelCalculatorViewModel(
         var stint = focus.CurrentStintLaps is { } stintLaps
             ? $"{stintLaps:0.0} laps"
             : "tracking";
-        return $" | {role} stint {stint}";
+        var completed = focus.CompletedStintCount > 0
+            ? focus.AverageCompletedStintLaps is { } average
+                ? $", avg {average:0.0} laps x{focus.CompletedStintCount}"
+                : $", {focus.CompletedStintCount} done"
+            : string.Empty;
+        return $" | {role} stint {stint}{completed}";
     }
 
     private static bool HasLocalLiveFuel(LiveTelemetrySnapshot live)

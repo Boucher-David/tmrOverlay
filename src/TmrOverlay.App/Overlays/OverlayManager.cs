@@ -210,6 +210,11 @@ internal sealed class OverlayManager : IDisposable
                 overlay.Width = ScaleDimension(registration.Definition.DefaultWidth, overlay.Scale);
                 overlay.Height = ScaleDimension(registration.Definition.DefaultHeight, overlay.Scale);
             }
+            else if (string.Equals(registration.Definition.Id, StatusOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase)
+                && overlay.Height < ScaleDimension(registration.Definition.DefaultHeight, overlay.Scale))
+            {
+                overlay.Height = ScaleDimension(registration.Definition.DefaultHeight, overlay.Scale);
+            }
         }
     }
 

@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-04-30
+Last updated: 2026-05-01
 
 ## Project Goal
 
@@ -52,6 +52,7 @@ Last updated: 2026-04-30
   - persists position/size under app-owned settings
   - display-only; visibility, detail rows, and runtime raw-capture requests now live in the settings overlay
   - shows live telemetry analysis state, latest SDK-frame freshness, warning/error text, and raw capture write health only when raw capture is enabled
+  - has an explicit activity badge for connected/idle, session-history collection, raw writes, and end-of-session history saving so the user can see background analysis work
   - state colors:
     - gray: waiting for iRacing
     - amber: waiting, connected-without-capture, app warning, or dropped frames
@@ -105,6 +106,7 @@ Last updated: 2026-04-30
   - marks leader changes and keeps old leader/currently exiting/missing-telemetry car lines visually continuous with fade/dash behavior instead of disappearing abruptly
   - can label current line endpoints with compact `P<N>` class-position text
   - prefers `CarIdxF2Time` for timed gaps, with lap-progress fallback from `CarIdxLapCompleted` and `CarIdxLapDistPct`
+  - focus switching is useful for live race progression from the focused car's perspective, but any persisted/historical gap interpretation should come from real race history for that car/session rather than mock, practice-only, or timing-only diagnostic captures
 
 ### Telemetry collection pipeline
 
@@ -142,6 +144,7 @@ Last updated: 2026-04-30
   - `ILiveTelemetrySource` is the read boundary for overlays and the local bridge
   - `ILiveTelemetrySink` is the write boundary for live iRacing collection and replay/dev providers
   - `LiveTelemetrySnapshot` now includes local fuel, team-car context, focused-car context, proximity, leader-gap, and same-class gap graph inputs derived from each frame
+  - current-session per-car observations belong in shared live snapshots rather than a single overlay. Observed car progress, current stint, completed stint segments, pit-stop counts, timing availability, and weather context should be reusable by fuel, gap, radar, future relative/standings/map overlays, diagnostics, and the local bridge
 
 ### Session history
 
@@ -149,11 +152,13 @@ Last updated: 2026-04-30
   - owns disk storage and lookup for compact end-of-session summaries
   - stores user summaries under `%LOCALAPPDATA%/TmrOverlay/history/user/cars/{car}/tracks/{track}/sessions/{session}/`
   - writes a per-capture summary plus an aggregate for baseline lookup
-  - low-confidence samples are still stored but do not contribute to baseline aggregate values
+  - low-confidence samples and timing-only/spectated samples are still stored but do not contribute to baseline aggregate values
+  - baseline aggregate values must come from real local-driver distance/fuel evidence for the car/track/session combo; focus timing, idle fuel scalars, and teammate-only timing can describe availability but must not be treated as measured fuel
 
 - `src/TmrOverlay.Core/History/`
   - contains platform-neutral historical session context, telemetry samples, summary/aggregate models, slug/path helpers, session-info parsing, and the in-memory historical accumulator
   - records telemetry availability in each compact summary so post-session analysis can distinguish local driving/fuel data, spectated focus timing, focus-car segments/changes, missing local scalar data, missing side-callout data, and non-race practice/test context
+  - long-term historical aggregation remains conservative: local-driver scalar fuel/distance can become measured fuel baseline data, while observed teammate/focus stints and other-car timing are session context unless a future reliable source exposes direct fuel evidence for those cars
 
 - `src/TmrOverlay.App/Analysis/`
   - persists post-race analysis JSON under the user history root and populates the settings overlay dropdown
@@ -202,7 +207,8 @@ Last updated: 2026-04-30
 
 - `src/TmrOverlay.App/Diagnostics/`
   - creates support bundles with app/storage metadata, runtime state, settings, logs/events, and latest capture metadata
-  - includes live telemetry and overlay-state summaries, including telemetry availability counters for local scalar data, focus-car timing segments, focus changes, class/nearby timing rows, and `CarLeftRight` availability/inactivity
+  - includes live telemetry and overlay-state summaries, including telemetry availability counters for local scalar data, idle fuel scalars, focus-car timing segments, focus changes, lap-distance-only practice rows, class/nearby timing rows, and `CarLeftRight` availability/inactivity
+  - includes recent performance and edge-case logs so post-session bundles can explain overlay refresh/render stalls, replay collection, timing zeros, pit command toggles, and other raw telemetry anomalies
   - intentionally excludes raw `telemetry.bin`
 
 - `src/TmrOverlay.App/Retention/`
@@ -230,7 +236,7 @@ Last updated: 2026-04-30
   - mirrors the capture-health overlay fields and build freshness warning
   - can preview spoofed overlay states with `TMR_MAC_DEMO_STATES=true ./run.sh`
   - the mac menu exposes manual demo states for waiting, connected-without-capture, healthy live-analysis, healthy raw-capture, stale build, dropped frames, frames-not-written, disk-stalled, and capture-error
-  - going forward, shared product and app-boilerplate changes should be mirrored in both Windows and mac unless the change is explicitly Windows/iRacing-specific
+  - going forward, shared contracts, reusable overlay behavior, and app-boilerplate changes should be mirrored in both Windows and mac when practical. Production iRacing behavior stays Windows-first; demo/mock/screenshot-only behavior stays in the mac harness
   - overlay windows use the shared mac `OverlayWindow` through `OverlayManager`, so each overlay id can restore its saved position/size
   - the mac fuel overlay uses live mock telemetry plus local user history, matching the Windows baseline-disabled default
   - the mac live mock uses the tracked four-hour Nürburgring baseline shape from race time zero at 4x speed for faster fuel/gap overlay iteration
@@ -238,6 +244,7 @@ Last updated: 2026-04-30
   - the mac mock race mirrors the Windows radar/gap feature behavior with synthetic all-class timing rows, multiclass approach traffic, weather bands, and driver handoff events, while Windows remains real telemetry only
   - the mac harness opens the same startup overlay set as Windows: status, fuel calculator, radar, and gap-to-leader
   - the mac status overlay is display-only, matching Windows; runtime raw-capture requests live in the settings overlay and still record logs/events
+  - the mac app process can run as a regular app for local overlay inspection, but Windows remains the production/iRacing runtime
   - the mac harness mirrors the settings overlay schema and basic tabbed UI for visibility, scale, session filters, font/units, raw capture, placeholder Overlay Bridge controls, and overlay-specific display options
 
 ### Tests

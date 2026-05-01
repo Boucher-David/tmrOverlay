@@ -360,6 +360,62 @@ public sealed class FuelStrategyCalculatorTests
         Assert.Equal(7, strategy.Stints[2].Number);
     }
 
+    [Fact]
+    public void From_UsesObservedFocusStintsAsCurrentSessionTarget()
+    {
+        var live = CreateLiveSnapshot(
+            fuelLevelLiters: 53d,
+            fuelUsePerHourKg: 0d,
+            teamLapCompleted: 8,
+            leaderLapCompleted: 8,
+            sessionTimeRemain: 3_600d,
+            teamLastLapTimeSeconds: 480d,
+            fuelMaxLiters: 106d,
+            estimatedLapSeconds: 480d,
+            isOnTrack: false) with
+        {
+            FocusCar = new LiveCarContextSnapshot(
+                HasData: true,
+                CarIdx: 42,
+                Role: "focus",
+                IsTeamCar: false,
+                OverallPosition: 5,
+                ClassPosition: 3,
+                CarClass: 4099,
+                OnPitRoad: false,
+                ProgressLaps: 16d,
+                CurrentStintLaps: 1d,
+                CurrentStintSeconds: 480d,
+                ObservedPitStopCount: 2,
+                StintSource: "observed pit exit")
+            {
+                CompletedStints =
+                [
+                    new LiveObservedStint(1, 0d, 3_840d, 0d, 8d, 8d, 3_840d, "observed pit exit"),
+                    new LiveObservedStint(2, 3_900d, 7_740d, 8d, 16d, 8d, 3_840d, "observed pit exit")
+                ]
+            }
+        };
+        var aggregate = new HistoricalSessionAggregate
+        {
+            BaselineSessionCount = 1,
+            Car = live.Context.Car,
+            FuelPerLapLiters = new RunningHistoricalMetric
+            {
+                SampleCount = 1,
+                Mean = 13.0d,
+                Minimum = 13.0d,
+                Maximum = 13.0d
+            }
+        };
+
+        var strategy = FuelStrategyCalculator.From(live, new SessionHistoryLookupResult(live.Combo, null, aggregate));
+
+        Assert.Equal(8, strategy.TeammateStintTargetLaps);
+        Assert.Equal("observed focus stints", strategy.TeammateStintTargetSource);
+        Assert.Equal(3, strategy.Stints[0].Number);
+    }
+
     private static LiveTelemetrySnapshot CreateLiveSnapshot(
         double fuelLevelLiters,
         double fuelUsePerHourKg,
@@ -447,7 +503,8 @@ public sealed class FuelStrategyCalculatorTests
             LatestSample: sample,
             Fuel: LiveFuelSnapshot.From(context, sample),
             Proximity: LiveProximitySnapshot.From(context, sample, teamLastLapTimeSeconds),
-            LeaderGap: LiveLeaderGapSnapshot.From(sample));
+            LeaderGap: LiveLeaderGapSnapshot.From(sample),
+            Weather: LiveWeatherSnapshot.From(context, sample));
     }
 
     private static SessionHistoryLookupResult EmptyHistory(HistoricalComboIdentity combo)

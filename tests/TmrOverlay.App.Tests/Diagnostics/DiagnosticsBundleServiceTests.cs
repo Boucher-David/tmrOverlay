@@ -52,11 +52,13 @@ public sealed class DiagnosticsBundleServiceTests
             Assert.Contains("live/live-telemetry-snapshot.json", entryNames);
             Assert.Contains("live/overlay-state-summary.json", entryNames);
             Assert.Contains("live/telemetry-availability.json", entryNames);
+            Assert.Contains("live/weather-snapshot.json", entryNames);
             Assert.Contains("settings/settings.json", entryNames);
             Assert.Contains("logs/tmroverlay-20260426.log", entryNames);
             Assert.Contains("events/events-20260426.jsonl", entryNames);
             Assert.Contains("latest-capture/capture-manifest.json", entryNames);
             Assert.Contains("latest-capture/telemetry-schema.json", entryNames);
+            Assert.Contains("latest-capture/telemetry-schema-summary.json", entryNames);
             Assert.Contains("latest-capture/latest-session.yaml", entryNames);
             Assert.DoesNotContain("latest-capture/telemetry.bin", entryNames);
         }

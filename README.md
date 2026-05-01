@@ -18,6 +18,7 @@
 - Stores early pit-service history signals such as pit-lane time, pit-stall/service time, observed fuel fill rate, tire/repair indicators, and confidence flags.
 - Keeps raw capture as an opt-in diagnostic/development mode; the settings overlay can request raw capture at runtime if the app was started without the flag.
 - When raw capture is enabled, stores `telemetry.bin`, `telemetry-schema.json`, `latest-session.yaml`, optional `session-info/`, and `capture-manifest.json`.
+- Includes `tools/analysis/synthesize_capture.py` for turning a large raw capture into a GitHub-friendly all-telemetry JSON synthesis with a focused weather/rain/radar-candidate section.
 - Shows live-analysis health signals in the overlay, plus disk-write health when raw capture is enabled.
 - Writes rolling local logs, JSONL app events, runtime-state markers, persisted settings, and diagnostics bundles for triage.
 - Includes retention cleanup for old captures and diagnostics bundles.
@@ -66,6 +67,14 @@ Each capture folder contains:
 - `latest-session.yaml`
 - `session-info/`
 
+For sharing capture evidence without uploading `telemetry.bin`, synthesize the capture:
+
+```powershell
+python tools\analysis\synthesize_capture.py --capture .\captures\capture-YYYYMMDD-HHMMSS-mmm --output .\capture-synthesis.json
+```
+
+The synthesis summarizes every telemetry variable and defaults to a 24 MiB output budget so it stays below GitHub's browser upload cap. Use `--sample-stride 10` or lower `--max-timeline-events` if a future capture grows beyond that.
+
 ## Build And Run On Windows
 
 1. Install the .NET 8 SDK or Visual Studio 2022 with .NET desktop development tools.
@@ -78,7 +87,7 @@ You can also double-click [TmrOverlay.cmd](/Users/davidboucher/Code/tmrOverlay/T
 For copyable PowerShell build, test, run, publish, and zip commands, see [Windows .NET Commands](/Users/davidboucher/Code/tmrOverlay/docs/windows-dotnet-commands.md).
 
 The tray menu lets you open the raw capture folder, open the current raw capture when one exists, open logs, open the settings overlay, create a diagnostics bundle, or exit the app.
-The status overlay stays visible over the sim so you can confirm the app is running and whether live telemetry analysis has started. With raw capture disabled it shows live frame freshness and history-collection state. With raw capture enabled it also shows queued frames, written frames, dropped frames, telemetry file size, disk-write freshness, and explicit warning/error messages. The settings raw-capture checkbox records app events and local logs when toggled or rejected. You can drag overlays to new positions, and each overlay restores its saved frame on restart. Use the tray menu to reopen settings or exit the application.
+The status overlay stays visible over the sim so you can confirm the app is running and whether live telemetry analysis has started. With raw capture disabled it shows live frame freshness, session-history activity, and end-of-session summary saves. With raw capture enabled it also shows queued frames, written frames, dropped frames, telemetry file size, disk-write freshness, and explicit warning/error messages. The settings raw-capture checkbox records app events and local logs when toggled or rejected. You can drag overlays to new positions, and each overlay restores its saved frame on restart. Use the tray menu to reopen settings or exit the application.
 
 During local development, the overlay also warns when source files in this checkout are newer than the running build. That is a rebuild reminder only; it does not block capture.
 
@@ -122,7 +131,7 @@ That data is intentionally much smaller than raw telemetry. It is meant to suppo
 
 The fuel calculator uses live race telemetry first, then exact car/track/session user history only as a fallback while the current session is still sparse. For timed races, it continuously estimates the likely lap count from session time, overall-leader pace/progress, class-leader context, and team-car progress, then converts that into whole-lap stint targets. If completed user/team history shows an 8-lap stint is realistic, future rows can be biased toward that shape, such as `7/8/7/8` for the local Nürburgring development sample. The table also performs strategy analysis across race lengths by comparing a shorter conservative stint rhythm against the longest realistic target, then surfaces extra stops and estimated pit-time loss as a strategy row. Stint rows show target laps and target liters-per-lap, plus tire-change guidance based on historical fill-rate and tire-service timing. As live progress advances, completed stint rows roll off the top of the table. If no fuel stop is needed, the table collapses to a single `Stint 1` row that says no fuel stop is needed.
 
-Completed stint history is stored separately from the active/future fuel table so completed stints can improve future user-specific estimates without continuing to occupy overlay rows. Pit-service history is stored as derived stop summaries plus aggregate metrics, including average tire-change service time, no-tire service time when known, and observed fuel fill rate. Fuel fill rates are only treated as measured when local scalar fuel telemetry is valid; team-driver or inferred values carry confidence flags.
+Completed stint history is stored separately from the active/future fuel table so completed stints can improve future user-specific estimates without continuing to occupy overlay rows. Current-session observed stints for focused/team cars live in the shared live telemetry snapshot so fuel, gap, radar, diagnostics, and future relative/standings overlays can reason from the same car-session context. Pit-service history is stored as derived stop summaries plus aggregate metrics, including average tire-change service time, no-tire service time when known, and observed fuel fill rate. Fuel fill rates are only treated as measured when local scalar fuel telemetry is valid; team-driver or inferred values carry confidence flags.
 
 Tracked baseline/sample history may live under `history/baseline/` for development analysis, but production lookup is opt-in. By default the app uses only user-generated history so local development samples do not affect a fresh install.
 

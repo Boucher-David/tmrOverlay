@@ -360,7 +360,10 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
         bool? TeamOnPitRoad,
         bool? FocusOnPitRoad,
         int TeamObservedPitStopCount,
-        int FocusObservedPitStopCount)
+        int FocusObservedPitStopCount,
+        int TeamCompletedStintCount,
+        int FocusCompletedStintCount,
+        int ObservedCarCount)
     {
         public static FuelRefreshSignature From(LiveTelemetrySnapshot live)
         {
@@ -375,7 +378,10 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
                 live.TeamCar.OnPitRoad,
                 live.FocusCar.OnPitRoad,
                 live.TeamCar.ObservedPitStopCount,
-                live.FocusCar.ObservedPitStopCount);
+                live.FocusCar.ObservedPitStopCount,
+                live.TeamCar.CompletedStintCount,
+                live.FocusCar.CompletedStintCount,
+                live.ObservedCarCount);
         }
     }
 }

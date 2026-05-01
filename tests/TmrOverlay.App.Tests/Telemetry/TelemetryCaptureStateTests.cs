@@ -32,4 +32,28 @@ public sealed class TelemetryCaptureStateTests
         Assert.NotNull(snapshot.LastWarning);
         Assert.Contains("already active", snapshot.LastWarning!);
     }
+
+    [Fact]
+    public void HistoryFinalizationState_SurfacesBackgroundSaveProgress()
+    {
+        var state = new TelemetryCaptureState();
+        var startedAtUtc = DateTimeOffset.UtcNow.AddSeconds(-2);
+        var savedAtUtc = DateTimeOffset.UtcNow;
+
+        state.MarkHistoryFinalizationStarted(startedAtUtc);
+        var saving = state.Snapshot();
+
+        Assert.True(saving.IsHistoryFinalizing);
+        Assert.Equal(startedAtUtc, saving.HistoryFinalizationStartedAtUtc);
+
+        state.MarkHistorySummarySaved("GT3 / Nurburgring / Race", savedAtUtc);
+        state.MarkHistoryFinalizationStopped();
+        var saved = state.Snapshot();
+
+        Assert.False(saved.IsHistoryFinalizing);
+        Assert.Null(saved.HistoryFinalizationStartedAtUtc);
+        Assert.Equal(1, saved.HistorySummarySaveCount);
+        Assert.Equal(savedAtUtc, saved.LastHistorySavedAtUtc);
+        Assert.Equal("GT3 / Nurburgring / Race", saved.LastHistorySummaryLabel);
+    }
 }

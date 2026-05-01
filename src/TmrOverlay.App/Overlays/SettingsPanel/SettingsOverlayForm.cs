@@ -67,6 +67,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private TextBox? _latestDiagnosticsBundleTextBox;
     private Label? _supportStatusLabel;
 
+    protected override bool ShowInTaskSwitcher => true;
+
     public SettingsOverlayForm(
         ApplicationSettings applicationSettings,
         IReadOnlyList<OverlayDefinition> managedOverlays,

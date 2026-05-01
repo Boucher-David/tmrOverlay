@@ -96,6 +96,7 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
         {
             var fuel = LiveFuelSnapshot.From(_context, sample);
             var proximity = LiveProximitySnapshot.From(_context, sample, fuel.LapTimeSeconds);
+            var weather = LiveWeatherSnapshot.From(_context, sample);
             var multiclassApproaches = BuildMulticlassApproaches(sample, proximity);
             proximity = proximity with
             {
@@ -120,10 +121,13 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
                 LatestSample: sample,
                 Fuel: fuel,
                 Proximity: proximity,
-                LeaderGap: LiveLeaderGapSnapshot.From(_context, sample))
+                LeaderGap: LiveLeaderGapSnapshot.From(_context, sample),
+                Weather: weather)
             {
                 TeamCar = teamCar,
                 FocusCar = focusCar,
+                CompletedStintCount = Math.Max(teamCar.CompletedStintCount, focusCar.CompletedStintCount),
+                ObservedCars = BuildObservedCars(),
                 TelemetryAvailability = _telemetryAvailability.Snapshot()
             };
         }
@@ -234,12 +238,24 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
 
             if (!_carStintHistory.TryGetValue(observation.CarIdx, out var history))
             {
-                history = new CarStintHistory(sample.SessionTime, progressLaps, observation.OnPitRoad);
+                history = new CarStintHistory(
+                    sample.SessionTime,
+                    progressLaps,
+                    observation.OnPitRoad,
+                    observation.CarClass,
+                    observation.OverallPosition,
+                    observation.ClassPosition);
                 _carStintHistory[observation.CarIdx] = history;
                 continue;
             }
 
-            history.Update(sample.SessionTime, progressLaps, observation.OnPitRoad);
+            history.Update(
+                sample.SessionTime,
+                progressLaps,
+                observation.OnPitRoad,
+                observation.CarClass,
+                observation.OverallPosition,
+                observation.ClassPosition);
         }
     }
 
@@ -334,7 +350,10 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
             CurrentStintLaps: progress is { } progressLaps ? stintHistory?.CurrentStintLaps(progressLaps) : null,
             CurrentStintSeconds: stintHistory?.CurrentStintSeconds,
             ObservedPitStopCount: stintHistory?.ObservedPitStopCount ?? 0,
-            StintSource: stintHistory?.StintSource ?? "unavailable");
+            StintSource: stintHistory?.StintSource ?? "unavailable")
+        {
+            CompletedStints = stintHistory?.CompletedStints ?? []
+        };
     }
 
     private static CarObservation? TeamObservation(HistoricalTelemetrySample sample)
@@ -343,7 +362,10 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
             ? new CarObservation(
                 carIdx,
                 Progress(sample.TeamLapCompleted, sample.TeamLapDistPct) ?? Progress(sample.LapCompleted, sample.LapDistPct),
-                sample.TeamOnPitRoad ?? sample.OnPitRoad)
+                sample.TeamOnPitRoad ?? sample.OnPitRoad,
+                sample.TeamCarClass,
+                sample.TeamPosition,
+                sample.TeamClassPosition)
             : null;
     }
 
@@ -353,7 +375,10 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
             ? new CarObservation(
                 carIdx,
                 Progress(sample.FocusLapCompleted, sample.FocusLapDistPct),
-                sample.FocusOnPitRoad)
+                sample.FocusOnPitRoad,
+                sample.FocusCarClass,
+                sample.FocusPosition,
+                sample.FocusClassPosition)
             : null;
     }
 
@@ -362,7 +387,20 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
         return new CarObservation(
             car.CarIdx,
             Progress(car.LapCompleted, car.LapDistPct),
-            car.OnPitRoad);
+            car.OnPitRoad,
+            car.CarClass,
+            car.Position,
+            car.ClassPosition);
+    }
+
+    private IReadOnlyList<LiveObservedCar> BuildObservedCars()
+    {
+        return _carStintHistory
+            .Select(pair => pair.Value.ToSnapshot(pair.Key))
+            .OrderBy(car => car.ClassPosition ?? int.MaxValue)
+            .ThenBy(car => car.OverallPosition ?? int.MaxValue)
+            .ThenBy(car => car.CarIdx)
+            .ToArray();
     }
 
     private static double? Progress(int? lapCompleted, double? lapDistPct)
@@ -439,22 +477,42 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
     private sealed record CarObservation(
         int CarIdx,
         double? ProgressLaps,
-        bool? OnPitRoad);
+        bool? OnPitRoad,
+        int? CarClass,
+        int? OverallPosition,
+        int? ClassPosition);
 
     private sealed class CarStintHistory
     {
+        private const double MinimumCompletedStintSeconds = 30d;
+        private const double MinimumCompletedStintLaps = 0.1d;
+        private readonly List<LiveObservedStint> _completedStints = [];
         private double _startSessionTime;
         private double _startProgressLaps;
         private double _lastSessionTime;
+        private double _lastProgressLaps;
         private bool? _lastOnPitRoad;
+        private int? _lastCarClass;
+        private int? _lastOverallPosition;
+        private int? _lastClassPosition;
         private bool _observedPitExit;
 
-        public CarStintHistory(double sessionTime, double progressLaps, bool? onPitRoad)
+        public CarStintHistory(
+            double sessionTime,
+            double progressLaps,
+            bool? onPitRoad,
+            int? carClass,
+            int? overallPosition,
+            int? classPosition)
         {
             _startSessionTime = sessionTime;
             _startProgressLaps = progressLaps;
             _lastSessionTime = sessionTime;
+            _lastProgressLaps = progressLaps;
             _lastOnPitRoad = onPitRoad;
+            _lastCarClass = carClass;
+            _lastOverallPosition = overallPosition;
+            _lastClassPosition = classPosition;
         }
 
         public int ObservedPitStopCount { get; private set; }
@@ -463,12 +521,25 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
 
         public string StintSource => _observedPitExit ? "observed pit exit" : "observed since first seen";
 
-        public void Update(double sessionTime, double progressLaps, bool? onPitRoad)
+        public IReadOnlyList<LiveObservedStint> CompletedStints => _completedStints.ToArray();
+
+        public void Update(
+            double sessionTime,
+            double progressLaps,
+            bool? onPitRoad,
+            int? carClass,
+            int? overallPosition,
+            int? classPosition)
         {
             if (progressLaps + 0.25d < _startProgressLaps || sessionTime + 1d < _lastSessionTime)
             {
-                Reset(sessionTime, progressLaps, onPitRoad);
+                Reset(sessionTime, progressLaps, onPitRoad, carClass, overallPosition, classPosition);
                 return;
+            }
+
+            if (_lastOnPitRoad != true && onPitRoad == true)
+            {
+                RecordCompletedStint(_lastSessionTime, _lastProgressLaps, StintSource);
             }
 
             if (_lastOnPitRoad == true && onPitRoad != true)
@@ -480,7 +551,11 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
             }
 
             _lastSessionTime = sessionTime;
+            _lastProgressLaps = progressLaps;
             _lastOnPitRoad = onPitRoad;
+            _lastCarClass = carClass ?? _lastCarClass;
+            _lastOverallPosition = overallPosition ?? _lastOverallPosition;
+            _lastClassPosition = classPosition ?? _lastClassPosition;
         }
 
         public double? CurrentStintLaps(double currentProgressLaps)
@@ -489,14 +564,61 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
             return laps >= -0.05d ? Math.Max(0d, laps) : null;
         }
 
-        private void Reset(double sessionTime, double progressLaps, bool? onPitRoad)
+        public LiveObservedCar ToSnapshot(int carIdx)
         {
+            return new LiveObservedCar(
+                CarIdx: carIdx,
+                OverallPosition: _lastOverallPosition,
+                ClassPosition: _lastClassPosition,
+                CarClass: _lastCarClass,
+                OnPitRoad: _lastOnPitRoad,
+                ProgressLaps: _lastProgressLaps,
+                CurrentStintLaps: CurrentStintLaps(_lastProgressLaps) ?? 0d,
+                CurrentStintSeconds: CurrentStintSeconds,
+                ObservedPitStopCount: ObservedPitStopCount,
+                StintSource: StintSource,
+                CompletedStints: CompletedStints);
+        }
+
+        private void Reset(
+            double sessionTime,
+            double progressLaps,
+            bool? onPitRoad,
+            int? carClass,
+            int? overallPosition,
+            int? classPosition)
+        {
+            _completedStints.Clear();
             _startSessionTime = sessionTime;
             _startProgressLaps = progressLaps;
             _lastSessionTime = sessionTime;
+            _lastProgressLaps = progressLaps;
             _lastOnPitRoad = onPitRoad;
+            _lastCarClass = carClass;
+            _lastOverallPosition = overallPosition;
+            _lastClassPosition = classPosition;
             _observedPitExit = false;
             ObservedPitStopCount = 0;
+        }
+
+        private void RecordCompletedStint(double endSessionTime, double endProgressLaps, string source)
+        {
+            var durationSeconds = Math.Max(0d, endSessionTime - _startSessionTime);
+            var distanceLaps = Math.Max(0d, endProgressLaps - _startProgressLaps);
+            if (durationSeconds < MinimumCompletedStintSeconds && distanceLaps < MinimumCompletedStintLaps)
+            {
+                return;
+            }
+
+            _completedStints.Add(new LiveObservedStint(
+                Number: _completedStints.Count + 1,
+                StartSessionTime: _startSessionTime,
+                EndSessionTime: endSessionTime,
+                StartProgressLaps: _startProgressLaps,
+                EndProgressLaps: endProgressLaps,
+                DistanceLaps: distanceLaps,
+                DurationSeconds: durationSeconds,
+                Source: source));
         }
     }
 }

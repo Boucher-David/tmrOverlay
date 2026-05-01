@@ -35,5 +35,7 @@ Start here when continuing work in this repo.
 - If you change the raw capture format, update `docs/capture-format.md` and `README.md` in the same pass.
 - Prefer shared Core models/read services, descriptor-driven overlay options, and `OverlayTheme` tokens over one-off UI contracts.
 - Product overlays should read normalized live state through `ILiveTelemetrySource`; telemetry providers should write through `ILiveTelemetrySink`.
-- Mirror shared app/overlay/boilerplate changes in both the Windows app and ignored mac harness unless the work is explicitly Windows/iRacing-specific.
+- Mirror shared contracts, reusable overlay behavior, and app/boilerplate changes in both the Windows app and ignored mac harness when practical. Keep production-only iRacing behavior in Windows and keep demo/mock/screenshot-only behavior in the mac harness.
+- Long-lived fuel/history baselines must require measured local-driver distance plus local scalar fuel evidence. Spectated timing, idle fuel scalars, practice-only diagnostics, mock data, and teammate-only timing may inform live/session context but must not become measured fuel baseline data.
+- Focus switching should use real current-session per-car timing/stint context when available. Persisted historical gap or fuel interpretation for another team/car requires real race history for that car/session, not mock or timing-only captures.
 - The authoring machine used for the initial scaffold did not have `dotnet` installed, so build/test verification still needs to happen on Windows.

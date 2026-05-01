@@ -51,12 +51,14 @@ Event-level data is the highest-level context for a capture. It combines the loc
   - `TrackWeatherType`
   - `TrackSkies`
   - `TrackSurfaceTemp`
+  - `TrackSurfaceTempCrew`
   - `TrackAirTemp`
   - `TrackWindVel`
   - `TrackWindDir`
   - `TrackRelativeHumidity`
+  - `TrackFogLevel`
   - `TrackPrecipitation`
-  - `TrackWetness` from live telemetry
+  - live telemetry `TrackTemp`, `TrackTempCrew`, `AirTemp`, `TrackWetness`, `Skies`, `WindVel`, `WindDir`, `RelativeHumidity`, `FogLevel`, `Precipitation`, and `WeatherDeclaredWet`
 
 ### Example from short diagnostic capture
 

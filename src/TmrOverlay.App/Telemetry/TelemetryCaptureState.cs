@@ -16,6 +16,11 @@ internal sealed class TelemetryCaptureState
     private DateTimeOffset? _captureStartedAtUtc;
     private DateTimeOffset? _lastFrameCapturedAtUtc;
     private DateTimeOffset? _lastDiskWriteAtUtc;
+    private bool _isHistoryFinalizing;
+    private DateTimeOffset? _historyFinalizationStartedAtUtc;
+    private int _historySummarySaveCount;
+    private DateTimeOffset? _lastHistorySavedAtUtc;
+    private string? _lastHistorySummaryLabel;
     private string? _appWarning;
     private string? _lastWarning;
     private string? _lastError;
@@ -76,6 +81,8 @@ internal sealed class TelemetryCaptureState
             _telemetryFileBytes = null;
             _lastFrameCapturedAtUtc = null;
             _lastDiskWriteAtUtc = null;
+            _isHistoryFinalizing = false;
+            _historyFinalizationStartedAtUtc = null;
         }
     }
 
@@ -96,6 +103,8 @@ internal sealed class TelemetryCaptureState
             _lastWarning = null;
             _lastError = null;
             _lastIssueAtUtc = null;
+            _isHistoryFinalizing = false;
+            _historyFinalizationStartedAtUtc = null;
         }
     }
 
@@ -114,6 +123,8 @@ internal sealed class TelemetryCaptureState
             _lastWarning = null;
             _lastError = null;
             _lastIssueAtUtc = null;
+            _isHistoryFinalizing = false;
+            _historyFinalizationStartedAtUtc = null;
         }
     }
 
@@ -129,6 +140,34 @@ internal sealed class TelemetryCaptureState
             _droppedFrameCount = 0;
             _lastFrameCapturedAtUtc = null;
             _lastDiskWriteAtUtc = null;
+        }
+    }
+
+    public void MarkHistoryFinalizationStarted(DateTimeOffset startedAtUtc)
+    {
+        lock (_sync)
+        {
+            _isHistoryFinalizing = true;
+            _historyFinalizationStartedAtUtc = startedAtUtc;
+        }
+    }
+
+    public void MarkHistorySummarySaved(string summaryLabel, DateTimeOffset savedAtUtc)
+    {
+        lock (_sync)
+        {
+            _historySummarySaveCount++;
+            _lastHistorySavedAtUtc = savedAtUtc;
+            _lastHistorySummaryLabel = summaryLabel;
+        }
+    }
+
+    public void MarkHistoryFinalizationStopped()
+    {
+        lock (_sync)
+        {
+            _isHistoryFinalizing = false;
+            _historyFinalizationStartedAtUtc = null;
         }
     }
 
@@ -208,6 +247,11 @@ internal sealed class TelemetryCaptureState
                 CaptureStartedAtUtc: _captureStartedAtUtc,
                 LastFrameCapturedAtUtc: _lastFrameCapturedAtUtc,
                 LastDiskWriteAtUtc: _lastDiskWriteAtUtc,
+                IsHistoryFinalizing: _isHistoryFinalizing,
+                HistoryFinalizationStartedAtUtc: _historyFinalizationStartedAtUtc,
+                HistorySummarySaveCount: _historySummarySaveCount,
+                LastHistorySavedAtUtc: _lastHistorySavedAtUtc,
+                LastHistorySummaryLabel: _lastHistorySummaryLabel,
                 AppWarning: _appWarning,
                 LastWarning: _lastWarning,
                 LastError: _lastError,

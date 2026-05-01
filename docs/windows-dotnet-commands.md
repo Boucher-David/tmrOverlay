@@ -32,6 +32,12 @@ Run tests:
 dotnet test .\tmrOverlay.sln
 ```
 
+Create a compact telemetry synthesis from a raw capture:
+
+```powershell
+python .\tools\analysis\synthesize_capture.py --capture .\captures\capture-YYYYMMDD-HHMMSS-mmm --output .\capture-synthesis.json
+```
+
 ## Run Locally
 
 Run the app from source:

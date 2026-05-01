@@ -61,6 +61,54 @@ public sealed class LiveTelemetryStoreTests
     }
 
     [Fact]
+    public void RecordFrame_PublishesWeatherSnapshot()
+    {
+        var store = new LiveTelemetryStore();
+
+        store.ApplySessionInfo("""
+            WeekendInfo:
+             TrackWeatherType: Realistic
+             TrackSkies: Dynamic
+             TrackSurfaceTemp: 34.55 C
+             TrackSurfaceTempCrew: 34.55 C
+             TrackAirTemp: 20.30 C
+             TrackWindVel: 4.55 m/s
+             TrackWindDir: 3.75 rad
+             TrackRelativeHumidity: 53 %
+             TrackFogLevel: 0 %
+             TrackPrecipitation: 0 %
+            SessionInfo:
+             CurrentSessionNum: 0
+             Sessions:
+             - SessionNum: 0
+               SessionType: Practice
+               SessionTrackRubberState: moderately high usage
+            DriverInfo:
+             Drivers:
+             - CarIdx: 10
+            """);
+        store.RecordFrame(CreateSample(
+            trackWetness: 4,
+            weatherDeclaredWet: false,
+            skies: 3,
+            precipitationPercent: 12.5d,
+            relativeHumidityPercent: 72d,
+            trackTempC: 31d));
+
+        var weather = store.Snapshot().Weather;
+
+        Assert.True(weather.HasData);
+        Assert.Equal("wet", weather.SurfaceMoistureClass);
+        Assert.False(weather.WeatherDeclaredWet);
+        Assert.True(weather.DeclaredWetSurfaceMismatch);
+        Assert.Equal("overcast", weather.SkiesLabel);
+        Assert.Equal(12.5d, weather.PrecipitationPercent);
+        Assert.Equal(72d, weather.RelativeHumidityPercent);
+        Assert.Equal("Realistic", weather.SessionTrackWeatherType);
+        Assert.Equal(34.55d, weather.SessionTrackSurfaceTempC);
+    }
+
+    [Fact]
     public void RecordFrame_SurfacesMulticlassApproachOutsideCloseRadarRange()
     {
         var store = new LiveTelemetryStore();
@@ -196,6 +244,63 @@ public sealed class LiveTelemetryStoreTests
     }
 
     [Fact]
+    public void RecordFrame_StoresCompletedObservedStintsForSessionCars()
+    {
+        var store = new LiveTelemetryStore();
+        var startedAtUtc = DateTimeOffset.UtcNow;
+
+        store.RecordFrame(CreateSample(
+            capturedAtUtc: startedAtUtc,
+            sessionTime: 100d,
+            playerCarIdx: 10,
+            teamLapDistPct: 0.50d,
+            focusCarIdx: 20,
+            focusLapCompleted: 5,
+            focusLapDistPct: 0.00d,
+            focusPosition: 4,
+            focusClassPosition: 2,
+            focusCarClass: 4099,
+            focusOnPitRoad: false));
+        store.RecordFrame(CreateSample(
+            capturedAtUtc: startedAtUtc.AddSeconds(90),
+            sessionTime: 190d,
+            playerCarIdx: 10,
+            teamLapDistPct: 0.50d,
+            focusCarIdx: 20,
+            focusLapCompleted: 6,
+            focusLapDistPct: 0.40d,
+            focusPosition: 4,
+            focusClassPosition: 2,
+            focusCarClass: 4099,
+            focusOnPitRoad: false));
+        store.RecordFrame(CreateSample(
+            capturedAtUtc: startedAtUtc.AddSeconds(95),
+            sessionTime: 195d,
+            playerCarIdx: 10,
+            teamLapDistPct: 0.50d,
+            focusCarIdx: 20,
+            focusLapCompleted: 6,
+            focusLapDistPct: 0.42d,
+            focusPosition: 4,
+            focusClassPosition: 2,
+            focusCarClass: 4099,
+            focusOnPitRoad: true));
+
+        var snapshot = store.Snapshot();
+        var focus = snapshot.FocusCar;
+        var observedCar = Assert.Single(snapshot.ObservedCars.Where(car => car.CarIdx == 20));
+        var completed = Assert.Single(focus.CompletedStints);
+
+        Assert.Equal(1.4d, completed.DistanceLaps, precision: 6);
+        Assert.Equal(90d, completed.DurationSeconds, precision: 6);
+        Assert.Equal(1, focus.CompletedStintCount);
+        Assert.Equal(1, observedCar.CompletedStintCount);
+        Assert.Equal(1.4d, observedCar.AverageCompletedStintLaps!.Value, precision: 6);
+        Assert.Equal(4099, observedCar.CarClass);
+        Assert.Equal(2, observedCar.ClassPosition);
+    }
+
+    [Fact]
     public void RecordFrame_TracksTelemetryAvailabilityForSpectatedTiming()
     {
         var store = new LiveTelemetryStore();
@@ -290,7 +395,13 @@ public sealed class LiveTelemetryStoreTests
         int? focusCarClass = null,
         bool? focusOnPitRoad = null,
         int? focusClassLeaderCarIdx = null,
-        double? focusClassLeaderF2TimeSeconds = null)
+        double? focusClassLeaderF2TimeSeconds = null,
+        int trackWetness = 1,
+        bool weatherDeclaredWet = false,
+        int? skies = null,
+        double? precipitationPercent = null,
+        double? relativeHumidityPercent = null,
+        double? trackTempC = null)
     {
         return new HistoricalTelemetrySample(
             CapturedAtUtc: capturedAtUtc ?? DateTimeOffset.UtcNow,
@@ -313,8 +424,8 @@ public sealed class LiveTelemetryStoreTests
             LapBestLapTimeSeconds: 89d,
             AirTempC: 20d,
             TrackTempCrewC: 24d,
-            TrackWetness: 1,
-            WeatherDeclaredWet: false,
+            TrackWetness: trackWetness,
+            WeatherDeclaredWet: weatherDeclaredWet,
             PlayerTireCompound: 0,
             PlayerCarIdx: playerCarIdx,
             TeamLapCompleted: teamLapDistPct is null ? null : 2,
@@ -333,6 +444,10 @@ public sealed class LiveTelemetryStoreTests
             FocusCarClass: focusCarClass,
             FocusOnPitRoad: focusOnPitRoad,
             FocusClassLeaderCarIdx: focusClassLeaderCarIdx,
-            FocusClassLeaderF2TimeSeconds: focusClassLeaderF2TimeSeconds);
+            FocusClassLeaderF2TimeSeconds: focusClassLeaderF2TimeSeconds,
+            TrackTempC: trackTempC,
+            Skies: skies,
+            RelativeHumidityPercent: relativeHumidityPercent,
+            PrecipitationPercent: precipitationPercent);
     }
 }

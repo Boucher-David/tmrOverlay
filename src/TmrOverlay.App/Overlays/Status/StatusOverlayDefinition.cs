@@ -8,7 +8,7 @@ internal static class StatusOverlayDefinition
         Id: "status",
         DisplayName: "Collector Status",
         DefaultWidth: 520,
-        DefaultHeight: 150,
+        DefaultHeight: 176,
         Options:
         [
             OverlaySettingsOptionDescriptor.Boolean(

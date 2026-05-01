@@ -25,7 +25,7 @@ internal static class FuelStrategyCalculator
         var fuelPerHour = FirstValidPositive(
             hasLocalLiveFuel ? live.Fuel.FuelUsePerHourLiters : null,
             aggregate?.FuelPerHourLiters.Mean);
-        var teammateStintTarget = SelectTeammateStintTarget(aggregate, aggregateSource, maxFuelLiters, fuelPerLap.Value);
+        var teammateStintTarget = SelectTeammateStintTarget(live, aggregate, aggregateSource, maxFuelLiters, fuelPerLap.Value);
         var completedStintCount = EstimateCompletedStintCount(live, maxFuelLiters, fuelPerLap.Value, teammateStintTarget.TargetLaps);
         var pitStrategy = SelectPitStrategy(aggregate, aggregateSource);
         var raceLapEstimate = EstimateRaceLapsRemaining(live.Context, sample, lapTime.Value, racePace);
@@ -130,11 +130,22 @@ internal static class FuelStrategyCalculator
     }
 
     private static HistoricalStintTarget SelectTeammateStintTarget(
+        LiveTelemetrySnapshot live,
         HistoricalSessionAggregate? aggregate,
         string? aggregateSource,
         double? maxFuelLiters,
         double? fuelPerLapLiters)
     {
+        if (SelectObservedStintTarget(live.FocusCar, maxFuelLiters, fuelPerLapLiters) is { } focusTarget)
+        {
+            return focusTarget;
+        }
+
+        if (SelectObservedStintTarget(live.TeamCar, maxFuelLiters, fuelPerLapLiters) is { } teamTarget)
+        {
+            return teamTarget;
+        }
+
         if (ValidPositive(aggregate?.TeammateDriverStintLaps.Mean) is not { } teammateStintLaps)
         {
             return HistoricalStintTarget.Empty;
@@ -157,6 +168,45 @@ internal static class FuelStrategyCalculator
 
         var source = HistorySourceLabel(aggregateSource, "teammate stints");
         return new HistoricalStintTarget(targetLaps, source);
+    }
+
+    private static HistoricalStintTarget? SelectObservedStintTarget(
+        LiveCarContextSnapshot car,
+        double? maxFuelLiters,
+        double? fuelPerLapLiters)
+    {
+        if (car.CompletedStints.Count == 0)
+        {
+            return null;
+        }
+
+        var averageStintLaps = car.CompletedStints
+            .Where(stint => stint.DistanceLaps > 1d && stint.DistanceLaps < 30d)
+            .Select(stint => stint.DistanceLaps)
+            .DefaultIfEmpty()
+            .Average();
+        if (averageStintLaps <= 1d)
+        {
+            return null;
+        }
+
+        var targetLaps = (int)Math.Round(averageStintLaps, MidpointRounding.AwayFromZero);
+        if (targetLaps <= 1 || targetLaps > 20)
+        {
+            return null;
+        }
+
+        if (maxFuelLiters is { } maxFuel
+            && fuelPerLapLiters is { } fuelPerLap
+            && fuelPerLap > 0d
+            && CalculateRequiredSavingPerLap(targetLaps, fuelPerLap, maxFuel) is { } saving
+            && saving / fuelPerLap > RealisticFuelSaveThresholdPercent)
+        {
+            return null;
+        }
+
+        var role = car.IsTeamCar ? "team" : "focus";
+        return new HistoricalStintTarget(targetLaps, $"observed {role} stints");
     }
 
     private static PitStrategyEstimate SelectPitStrategy(HistoricalSessionAggregate? aggregate, string? aggregateSource)
@@ -869,9 +919,15 @@ internal static class FuelStrategyCalculator
         double? fuelPerLapLiters,
         int? preferredLongTargetLaps)
     {
-        if (live.CompletedStintCount > 0)
+        var observedCompletedStints = new[]
         {
-            return live.CompletedStintCount;
+            live.CompletedStintCount,
+            live.FocusCar.CompletedStintCount,
+            live.TeamCar.CompletedStintCount
+        }.Max();
+        if (observedCompletedStints > 0 && (maxFuelLiters is null || fuelPerLapLiters is null || fuelPerLapLiters.Value <= 0d))
+        {
+            return observedCompletedStints;
         }
 
         var progress = ReferenceCarProgress(live.LatestSample);
@@ -881,9 +937,10 @@ internal static class FuelStrategyCalculator
         }
 
         var target = SelectLongestRealisticStintTarget(maxFuelLiters, fuelPerLapLiters.Value, preferredLongTargetLaps).TargetLaps;
-        return target > 0
+        var estimatedFromProgress = target > 0
             ? Math.Max(0, (int)Math.Floor(progress.Value / target))
             : 0;
+        return Math.Max(observedCompletedStints, estimatedFromProgress);
     }
 
     private static StintTargetSelection SelectLongestRealisticStintTarget(

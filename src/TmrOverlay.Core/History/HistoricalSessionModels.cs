@@ -174,6 +174,24 @@ internal sealed class HistoricalSessionInfoConditions
 
     public string? TrackSkies { get; init; }
 
+    public double? TrackSurfaceTempC { get; init; }
+
+    public double? TrackSurfaceTempCrewC { get; init; }
+
+    public double? TrackAirTempC { get; init; }
+
+    public double? TrackAirPressure { get; init; }
+
+    public double? TrackAirDensityKgPerCubicMeter { get; init; }
+
+    public double? TrackWindVelMetersPerSecond { get; init; }
+
+    public double? TrackWindDirRadians { get; init; }
+
+    public double? TrackRelativeHumidityPercent { get; init; }
+
+    public double? TrackFogLevelPercent { get; init; }
+
     public double? TrackPrecipitationPercent { get; init; }
 
     public string? SessionTrackRubberState { get; init; }
@@ -210,17 +228,57 @@ internal sealed class HistoricalConditions
 {
     public double? AirTempC { get; init; }
 
+    public double? TrackTempC { get; init; }
+
     public double? TrackTempCrewC { get; init; }
 
     public int? TrackWetness { get; init; }
 
     public bool? WeatherDeclaredWet { get; init; }
 
+    public int? Skies { get; init; }
+
+    public double? WindVelMetersPerSecond { get; init; }
+
+    public double? WindDirRadians { get; init; }
+
+    public double? RelativeHumidityPercent { get; init; }
+
+    public double? FogLevelPercent { get; init; }
+
+    public double? PrecipitationPercent { get; init; }
+
+    public double? AirDensityKgPerCubicMeter { get; init; }
+
+    public double? AirPressurePa { get; init; }
+
+    public double? SolarAltitudeRadians { get; init; }
+
+    public double? SolarAzimuthRadians { get; init; }
+
     public int? PlayerTireCompound { get; init; }
 
     public string? TrackWeatherType { get; init; }
 
     public string? TrackSkies { get; init; }
+
+    public double? SessionTrackSurfaceTempC { get; init; }
+
+    public double? SessionTrackSurfaceTempCrewC { get; init; }
+
+    public double? SessionTrackAirTempC { get; init; }
+
+    public double? SessionTrackAirPressure { get; init; }
+
+    public double? SessionTrackAirDensityKgPerCubicMeter { get; init; }
+
+    public double? SessionTrackWindVelMetersPerSecond { get; init; }
+
+    public double? SessionTrackWindDirRadians { get; init; }
+
+    public double? SessionTrackRelativeHumidityPercent { get; init; }
+
+    public double? SessionTrackFogLevelPercent { get; init; }
 
     public double? TrackPrecipitationPercent { get; init; }
 
@@ -409,6 +467,17 @@ internal sealed class HistoricalDataQuality
             reasons.Add("local_scalars_idle");
         }
 
+        if (metrics.TelemetryAvailability.LocalFuelScalarsOnlyWhileIdle)
+        {
+            reasons.Add("local_fuel_scalar_without_driving");
+        }
+
+        if (metrics.FuelPerLapLiters is not null
+            && !metrics.TelemetryAvailability.HasLocalDrivingFuelScalars)
+        {
+            reasons.Add("baseline_requires_local_driving_fuel_scalar");
+        }
+
         if (metrics.TelemetryAvailability.HasFocusTiming)
         {
             reasons.Add("focus_timing_available");
@@ -445,11 +514,14 @@ internal sealed class HistoricalDataQuality
         }
 
         var confidence = DetermineConfidence(metrics);
+        var hasMeasuredLocalFuelModel = metrics.TelemetryAvailability.HasLocalDrivingFuelScalars
+            && !metrics.TelemetryAvailability.IsSpectatedTimingOnly;
 
         return new HistoricalDataQuality
         {
             Confidence = confidence,
-            ContributesToBaseline = confidence is "medium" or "high",
+            ContributesToBaseline = confidence is "medium" or "high"
+                && hasMeasuredLocalFuelModel,
             Reasons = reasons.Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
         };
     }
@@ -583,7 +655,18 @@ internal sealed record HistoricalTelemetrySample(
     double? FocusClassLeaderF2TimeSeconds = null,
     double? FocusClassLeaderEstimatedTimeSeconds = null,
     double? FocusClassLeaderLastLapTimeSeconds = null,
-    double? FocusClassLeaderBestLapTimeSeconds = null);
+    double? FocusClassLeaderBestLapTimeSeconds = null,
+    double? TrackTempC = null,
+    int? Skies = null,
+    double? WindVelMetersPerSecond = null,
+    double? WindDirRadians = null,
+    double? RelativeHumidityPercent = null,
+    double? FogLevelPercent = null,
+    double? PrecipitationPercent = null,
+    double? AirDensityKgPerCubicMeter = null,
+    double? AirPressurePa = null,
+    double? SolarAltitudeRadians = null,
+    double? SolarAzimuthRadians = null);
 
 internal sealed record HistoricalCarProximity(
     int CarIdx,

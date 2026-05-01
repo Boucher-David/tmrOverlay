@@ -416,6 +416,12 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         return double.IsNaN(value) || double.IsInfinity(value) || value < 0d ? null : value;
     }
 
+    private static double? ReadFiniteDouble(IRacingSDK sdk, string variableName)
+    {
+        var value = ReadDouble(sdk, variableName);
+        return double.IsNaN(value) || double.IsInfinity(value) ? null : value;
+    }
+
     private static int? ReadInt32ArrayElement(IRacingSDK sdk, string variableName, int index)
     {
         if (index < 0)
@@ -605,14 +611,14 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 
             var lapCompleted = ReadInt32ArrayElement(sdk, "CarIdxLapCompleted", carIdx);
             var lapDistPct = ReadDoubleArrayElement(sdk, "CarIdxLapDistPct", carIdx);
-            if (!HasLapProgress(lapCompleted, lapDistPct))
+            if (!HasLapDistancePct(lapDistPct))
             {
                 continue;
             }
 
             cars.Add(new HistoricalCarProximity(
                 CarIdx: carIdx,
-                LapCompleted: lapCompleted!.Value,
+                LapCompleted: lapCompleted is >= 0 ? lapCompleted.Value : -1,
                 LapDistPct: Math.Clamp(lapDistPct!.Value, 0d, 1d),
                 F2TimeSeconds: ReadNullableDoubleArrayElement(sdk, "CarIdxF2Time", carIdx),
                 EstimatedTimeSeconds: ReadNullableDoubleArrayElement(sdk, "CarIdxEstTime", carIdx),
@@ -679,7 +685,12 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     private static bool HasLapProgress(int? lapCompleted, double? lapDistPct)
     {
         return lapCompleted is >= 0
-            && lapDistPct is { } pct
+            && HasLapDistancePct(lapDistPct);
+    }
+
+    private static bool HasLapDistancePct(double? lapDistPct)
+    {
+        return lapDistPct is { } pct
             && !double.IsNaN(pct)
             && !double.IsInfinity(pct)
             && pct >= 0d;
@@ -867,7 +878,18 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             FocusClassLeaderF2TimeSeconds: focusClassLeaderProgress?.F2TimeSeconds,
             FocusClassLeaderEstimatedTimeSeconds: focusClassLeaderProgress?.EstimatedTimeSeconds,
             FocusClassLeaderLastLapTimeSeconds: focusClassLeaderProgress?.LastLapTimeSeconds,
-            FocusClassLeaderBestLapTimeSeconds: focusClassLeaderProgress?.BestLapTimeSeconds);
+            FocusClassLeaderBestLapTimeSeconds: focusClassLeaderProgress?.BestLapTimeSeconds,
+            TrackTempC: ReadFiniteDouble(sdk, "TrackTemp"),
+            Skies: ReadNullableInt32(sdk, "Skies"),
+            WindVelMetersPerSecond: ReadFiniteDouble(sdk, "WindVel"),
+            WindDirRadians: ReadFiniteDouble(sdk, "WindDir"),
+            RelativeHumidityPercent: ReadFiniteDouble(sdk, "RelativeHumidity"),
+            FogLevelPercent: ReadFiniteDouble(sdk, "FogLevel"),
+            PrecipitationPercent: ReadFiniteDouble(sdk, "Precipitation"),
+            AirDensityKgPerCubicMeter: ReadFiniteDouble(sdk, "AirDensity"),
+            AirPressurePa: ReadFiniteDouble(sdk, "AirPressure"),
+            SolarAltitudeRadians: ReadFiniteDouble(sdk, "SolarAltitude"),
+            SolarAzimuthRadians: ReadFiniteDouble(sdk, "SolarAzimuth"));
 
         _liveTelemetrySink.RecordFrame(sample);
         history?.RecordFrame(sample);
@@ -887,6 +909,12 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         HistoricalSessionAccumulator? history,
         CaptureFinalizationContext finalization)
     {
+        var willSaveHistory = history is not null && finalization.SourceId is not null && finalization.StartedAtUtc is not null;
+        if (willSaveHistory)
+        {
+            _state.MarkHistoryFinalizationStarted(DateTimeOffset.UtcNow);
+        }
+
         try
         {
             _state.MarkCaptureStopped();
@@ -914,6 +942,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 
                 await _sessionHistoryStore.SaveAsync(summary, CancellationToken.None).ConfigureAwait(false);
                 await _postRaceAnalysisPipeline.SaveFromSummaryAsync(summary, CancellationToken.None).ConfigureAwait(false);
+                _state.MarkHistorySummarySaved(FormatHistorySummaryLabel(summary), DateTimeOffset.UtcNow);
                 _events.Record("history_summary_saved", new Dictionary<string, string?>
                 {
                     ["sourceId"] = finalization.SourceId,
@@ -930,6 +959,34 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             _state.RecordError($"Telemetry collection finalization failed: {exception.Message}");
             _logger.LogError(exception, "Failed to finalize telemetry collection.");
         }
+        finally
+        {
+            if (willSaveHistory)
+            {
+                _state.MarkHistoryFinalizationStopped();
+            }
+        }
+    }
+
+    private static string FormatHistorySummaryLabel(HistoricalSessionSummary summary)
+    {
+        var car = FirstNonEmpty(summary.Car.CarScreenNameShort, summary.Car.CarScreenName, summary.Combo.CarKey);
+        var track = FirstNonEmpty(summary.Track.TrackDisplayName, summary.Track.TrackName, summary.Combo.TrackKey);
+        var session = FirstNonEmpty(summary.Session.SessionType, summary.Session.EventType, summary.Combo.SessionKey);
+        return $"{car} / {track} / {session}";
+    }
+
+    private static string FirstNonEmpty(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value.Trim();
+            }
+        }
+
+        return "unknown";
     }
 
     private sealed record CaptureFinalizationContext(

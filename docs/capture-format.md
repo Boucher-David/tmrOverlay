@@ -9,6 +9,24 @@ Raw capture is an opt-in diagnostic/development mode. When `TelemetryCapture:Raw
 
 Optional historical session snapshots are stored under `session-info/`.
 
+## Compact Synthesis
+
+Raw captures can get large enough that sharing `telemetry.bin` is inconvenient. For GitHub-friendly analysis, create a compact all-telemetry synthesis instead:
+
+```bash
+python3 tools/analysis/synthesize_capture.py --capture captures/capture-YYYYMMDD-HHMMSS-mmm --output /tmp/capture-synthesis.json
+```
+
+The synthesis reads every field in `telemetry-schema.json` across `telemetry.bin` and writes a bounded JSON summary with:
+
+- capture/frame counts and session-info update counts
+- type/category counts for all telemetry variables
+- per-field first/last values, min/max/mean, change counts, distinct scalar values, and active array indexes
+- short timelines for scalar state changes
+- a focused weather section derived from the same all-field summary
+
+The tool defaults to a 24 MiB output budget so the artifact stays below GitHub's browser upload cap. If a longer capture or richer timeline exceeds that budget, rerun with `--sample-stride`, lower `--max-timeline-events`, or lower `--top-indexes`.
+
 ## `telemetry-schema.json`
 
 This file is a JSON array describing every telemetry variable exposed by the SDK for the capture:
