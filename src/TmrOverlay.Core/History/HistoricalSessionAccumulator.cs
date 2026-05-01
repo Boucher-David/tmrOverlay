@@ -280,7 +280,7 @@ internal sealed class HistoricalSessionAccumulator
     private void TrackLapTime(HistoricalTelemetrySample sample)
     {
         var lapTime = sample.LapLastLapTimeSeconds;
-        if (lapTime is null || lapTime <= 20d || lapTime > 1800d)
+        if (lapTime is null || !IsFinite(lapTime.Value) || lapTime <= 20d || lapTime > 1800d)
         {
             return;
         }
@@ -354,6 +354,7 @@ internal sealed class HistoricalSessionAccumulator
         return sample.TeamLapCompleted is { } teamLapCompleted
             && teamLapCompleted >= 0
             && sample.TeamLapDistPct is { } teamLapDistPct
+            && IsFinite(teamLapDistPct)
             && teamLapDistPct >= 0d;
     }
 
@@ -413,6 +414,7 @@ internal sealed class HistoricalSessionAccumulator
         if (sample.TeamLapCompleted is { } teamLapCompleted
             && teamLapCompleted >= 0
             && sample.TeamLapDistPct is { } teamLapDistPct
+            && IsFinite(teamLapDistPct)
             && teamLapDistPct >= 0d)
         {
             return teamLapCompleted + Math.Clamp(teamLapDistPct, 0d, 1d);
@@ -424,7 +426,15 @@ internal sealed class HistoricalSessionAccumulator
     private static double LapPosition(HistoricalTelemetrySample sample)
     {
         var lap = sample.Lap >= 0 ? sample.Lap : 0;
-        return lap + Math.Clamp(sample.LapDistPct, 0d, 1d);
+        var lapDistPct = IsFinite(sample.LapDistPct) && sample.LapDistPct >= 0d
+            ? Math.Clamp(sample.LapDistPct, 0d, 1d)
+            : 0d;
+        return lap + lapDistPct;
+    }
+
+    private static bool IsFinite(double value)
+    {
+        return !double.IsNaN(value) && !double.IsInfinity(value);
     }
 
     private static double Median(List<double> values)

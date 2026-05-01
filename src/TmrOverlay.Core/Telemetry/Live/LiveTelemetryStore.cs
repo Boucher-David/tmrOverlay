@@ -5,7 +5,7 @@ namespace TmrOverlay.Core.Telemetry.Live;
 internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetrySink
 {
     private const double CloseRadarRangeSeconds = 7d;
-    private const double MulticlassWarningRangeSeconds = 5d;
+    private const double MulticlassWarningRangeSeconds = 25d;
     private const double CloseRadarRangeLaps = 0.02d;
     private const double MulticlassWarningRangeLaps = 0.14d;
     private const double MinimumClosingRateSecondsPerSecond = 0.15d;

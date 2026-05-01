@@ -898,12 +898,13 @@ internal static class FuelStrategyCalculator
         if (sample.TeamLapCompleted is { } teamLapCompleted
             && teamLapCompleted >= 0
             && sample.TeamLapDistPct is { } teamLapDistPct
+            && IsFinite(teamLapDistPct)
             && teamLapDistPct >= 0d)
         {
             return teamLapCompleted + Math.Clamp(teamLapDistPct, 0d, 1d);
         }
 
-        if (sample.LapCompleted >= 0 && sample.LapDistPct >= 0d)
+        if (sample.LapCompleted >= 0 && IsFinite(sample.LapDistPct) && sample.LapDistPct >= 0d)
         {
             return sample.LapCompleted + Math.Clamp(sample.LapDistPct, 0d, 1d);
         }
@@ -931,6 +932,7 @@ internal static class FuelStrategyCalculator
         return lapCompleted is { } completed
             && completed >= 0
             && lapDistPct is { } distance
+            && IsFinite(distance)
             && distance >= 0d
             ? completed + Math.Clamp(distance, 0d, 1d)
             : null;

@@ -345,7 +345,7 @@ internal sealed record LiveLeaderGapSnapshot(
             teamProgress: referenceProgress,
             leaderProgress: Progress(sample.LeaderLapCompleted, sample.LeaderLapDistPct));
         var classGap = BuildGap(
-            position: ReferenceClassPosition(sample),
+            position: GetReferenceClassPosition(sample),
             leaderCarIdx: referenceClassLeaderCarIdx,
             playerCarIdx: referenceCarIdx,
             teamF2TimeSeconds: ReferenceF2TimeSeconds(sample),
@@ -356,7 +356,7 @@ internal sealed record LiveLeaderGapSnapshot(
         return new LiveLeaderGapSnapshot(
             HasData: overallGap.HasData || classGap.HasData,
             ReferenceOverallPosition: ReferencePosition(sample),
-            ReferenceClassPosition: ReferenceClassPosition(sample),
+            ReferenceClassPosition: GetReferenceClassPosition(sample),
             OverallLeaderCarIdx: sample.LeaderCarIdx,
             ClassLeaderCarIdx: referenceClassLeaderCarIdx,
             OverallLeaderGap: overallGap,
@@ -408,7 +408,7 @@ internal sealed record LiveLeaderGapSnapshot(
                 CarIdx: referenceIdxForRow,
                 IsReferenceCar: true,
                 IsClassLeader: referenceClassGap.IsLeader,
-                ClassPosition: ReferenceClassPosition(sample),
+                ClassPosition: GetReferenceClassPosition(sample),
                 GapSecondsToClassLeader: referenceClassGap.Seconds,
                 GapLapsToClassLeader: referenceClassGap.Laps,
                 DeltaSecondsToReference: 0d,
@@ -560,7 +560,7 @@ internal sealed record LiveLeaderGapSnapshot(
         return HasNonTeamFocus(sample) ? sample.FocusPosition : sample.FocusPosition ?? sample.TeamPosition;
     }
 
-    private static int? ReferenceClassPosition(HistoricalTelemetrySample sample)
+    private static int? GetReferenceClassPosition(HistoricalTelemetrySample sample)
     {
         return HasNonTeamFocus(sample) ? sample.FocusClassPosition : sample.FocusClassPosition ?? sample.TeamClassPosition;
     }
