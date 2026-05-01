@@ -240,7 +240,7 @@ internal sealed record LiveWeatherSnapshot(
             SurfaceMoistureClass: moistureClass,
             WeatherDeclaredWet: hasData ? sample.WeatherDeclaredWet : null,
             Skies: sample.Skies,
-            SkiesLabel: SkiesLabel(sample.Skies),
+            SkiesLabel: FormatSkiesLabel(sample.Skies),
             WindVelMetersPerSecond: windVel,
             WindDirRadians: windDir,
             RelativeHumidityPercent: humidity,
@@ -261,10 +261,10 @@ internal sealed record LiveWeatherSnapshot(
             SessionTrackFogLevelPercent: context.Conditions.TrackFogLevelPercent,
             SessionTrackPrecipitationPercent: context.Conditions.TrackPrecipitationPercent,
             SessionTrackRubberState: context.Conditions.SessionTrackRubberState,
-            DeclaredWetSurfaceMismatch: DeclaredWetSurfaceMismatch(sample.WeatherDeclaredWet, moistureClass));
+            DeclaredWetSurfaceMismatch: DetermineDeclaredWetSurfaceMismatch(sample.WeatherDeclaredWet, moistureClass));
     }
 
-    private static bool? DeclaredWetSurfaceMismatch(bool declaredWet, string moistureClass)
+    private static bool? DetermineDeclaredWetSurfaceMismatch(bool declaredWet, string moistureClass)
     {
         return moistureClass switch
         {
@@ -286,7 +286,7 @@ internal sealed record LiveWeatherSnapshot(
         };
     }
 
-    private static string? SkiesLabel(int? skies)
+    private static string? FormatSkiesLabel(int? skies)
     {
         return skies switch
         {
