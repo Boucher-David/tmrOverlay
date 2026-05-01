@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import math
 import os
+import platform
+import subprocess
 import struct
 from collections import Counter
 from datetime import datetime, timezone
@@ -17,6 +20,12 @@ import yaml
 FILE_HEADER = struct.Struct("<8siiiiq")
 FRAME_HEADER = struct.Struct("<qiiidi")
 FILE_HEADER_BYTES = 32
+DEFAULT_AUTO_SAMPLE_TARGET = 20_000
+IRACING_SIM_PROCESS_NAMES = {
+    "iracingsim64dx11.exe",
+    "iracingsim64.exe",
+    "iracingsim.exe",
+}
 
 NUMERIC_TYPES = {"irInt", "irFloat", "irDouble", "irBitField"}
 SCALAR_TIMELINE_TYPES = {"irBool", "irInt", "irBitField"}
@@ -111,6 +120,31 @@ def load_yaml(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     return yaml.safe_load(path.read_text(encoding="utf-8-sig")) or {}
+
+
+def running_iracing_sim_processes() -> list[str]:
+    if platform.system().lower() != "windows":
+        return []
+    try:
+        result = subprocess.run(
+            ["tasklist", "/fo", "csv", "/nh"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return []
+    if result.returncode != 0:
+        return []
+
+    processes: set[str] = set()
+    for row in csv.reader(result.stdout.splitlines()):
+        if not row:
+            continue
+        image_name = row[0].strip()
+        if image_name.lower() in IRACING_SIM_PROCESS_NAMES:
+            processes.add(image_name)
+    return sorted(processes, key=str.lower)
 
 
 def read_scalar(payload: bytes, variable: dict[str, Any], index: int = 0) -> Any:
@@ -379,6 +413,7 @@ def frame_context(captured_ms: int, frame_index: int, session_tick: int, session
 def synthesize_capture(
     capture_dir: Path,
     sample_stride: int,
+    auto_sample_target: int,
     max_frames: int | None,
     max_distinct: int,
     max_timeline_events: int,
@@ -394,6 +429,11 @@ def synthesize_capture(
     latest_session = load_yaml(capture_dir / "latest-session.yaml")
     telemetry_path = capture_dir / "telemetry.bin"
     file_size = telemetry_path.stat().st_size
+    frame_count_hint = int(manifest.get("frameCount") or 0)
+    resolved_sample_stride = sample_stride
+    if resolved_sample_stride == 0:
+        target = max(1, auto_sample_target)
+        resolved_sample_stride = max(1, math.ceil(frame_count_hint / target)) if frame_count_hint > target else 1
 
     total_frames = 0
     sampled_frames = 0
@@ -421,7 +461,7 @@ def synthesize_capture(
             last_frame_context = context
             session_info_updates[session_info_update] += 1
 
-            if sample_stride > 1 and (total_frames - 1) % sample_stride != 0:
+            if resolved_sample_stride > 1 and (total_frames - 1) % resolved_sample_stride != 0:
                 continue
             if max_frames is not None and sampled_frames >= max_frames:
                 continue
@@ -482,8 +522,9 @@ def synthesize_capture(
         "captureHeader": capture_header,
         "frameScan": {
             "totalFrameRecords": total_frames,
-            "sampleStride": sample_stride,
+            "sampleStride": resolved_sample_stride,
             "sampledFrameCount": sampled_frames,
+            "autoSampleTarget": auto_sample_target if sample_stride == 0 else None,
             "maxFrames": max_frames,
             "firstFrame": first_frame_context,
             "lastFrame": last_frame_context,
@@ -539,21 +580,33 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Create a compact all-telemetry synthesis from a raw TmrOverlay capture.")
     parser.add_argument("--capture", type=Path, required=True, help="Path to a capture-* directory.")
     parser.add_argument("--output", type=Path, help="Output JSON path. Defaults to <capture>/capture-synthesis.json.")
-    parser.add_argument("--sample-stride", type=int, default=1, help="Sample every Nth frame. Use larger values for multi-gig captures.")
+    parser.add_argument("--sample-stride", type=int, default=0, help="Sample every Nth frame. Defaults to 0, which auto-strides large captures.")
+    parser.add_argument("--auto-sample-target", type=int, default=DEFAULT_AUTO_SAMPLE_TARGET, help="Target sampled frame count when --sample-stride is 0.")
     parser.add_argument("--max-frames", type=int, default=None, help="Optional maximum sampled frame count.")
     parser.add_argument("--max-distinct", type=int, default=32, help="Maximum scalar distinct values to keep per field.")
     parser.add_argument("--max-timeline-events", type=int, default=200, help="Maximum scalar timeline events per eligible field.")
     parser.add_argument("--top-indexes", type=int, default=12, help="Maximum active indexes to keep for array fields.")
     parser.add_argument("--max-output-mib", type=float, default=24.0, help="Fail if the JSON output exceeds this size. Default stays below GitHub's 25 MiB browser upload cap.")
+    parser.add_argument("--allow-while-iracing-running", action="store_true", help="Override the Windows safety guard that refuses to synthesize while the iRacing sim process is running.")
     args = parser.parse_args()
 
-    if args.sample_stride < 1:
-        raise SystemExit("--sample-stride must be >= 1")
+    if args.sample_stride < 0:
+        raise SystemExit("--sample-stride must be >= 0")
+    if args.auto_sample_target < 1:
+        raise SystemExit("--auto-sample-target must be >= 1")
+    running_processes = running_iracing_sim_processes()
+    if running_processes and not args.allow_while_iracing_running:
+        raise SystemExit(
+            "Refusing to synthesize while the iRacing sim process is running: "
+            f"{', '.join(running_processes)}. Close the sim first, or pass "
+            "--allow-while-iracing-running only for an intentional offline/debug run."
+        )
 
     output_path = args.output or (args.capture / "capture-synthesis.json")
     synthesis = synthesize_capture(
         capture_dir=args.capture,
         sample_stride=args.sample_stride,
+        auto_sample_target=args.auto_sample_target,
         max_frames=args.max_frames,
         max_distinct=args.max_distinct,
         max_timeline_events=args.max_timeline_events,
@@ -568,7 +621,8 @@ def main() -> None:
         "Telemetry synthesis: "
         f"{synthesis['frameScan']['sampledFrameCount']} sampled frames from "
         f"{synthesis['frameScan']['totalFrameRecords']} records, "
-        f"{synthesis['schemaSummary']['fieldCount']} fields"
+        f"{synthesis['schemaSummary']['fieldCount']} fields, "
+        f"sample stride {synthesis['frameScan']['sampleStride']}"
     )
     print(f"Output size: {size_label(output_size)} / {args.max_output_mib:.2f} MiB budget")
     if synthesis["weather"]["hasExplicitRadarTelemetryField"]:

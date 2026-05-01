@@ -31,6 +31,7 @@ public sealed class DiagnosticsBundleServiceTests
             File.WriteAllText(Path.Combine(captureDirectory, "capture-manifest.json"), "{}");
             File.WriteAllText(Path.Combine(captureDirectory, "telemetry-schema.json"), "[]");
             File.WriteAllText(Path.Combine(captureDirectory, "latest-session.yaml"), "WeekendInfo: {}");
+            File.WriteAllText(Path.Combine(captureDirectory, "capture-synthesis.json"), "{}");
             File.WriteAllText(Path.Combine(captureDirectory, "telemetry.bin"), "raw");
 
             var state = new TelemetryCaptureState();
@@ -49,9 +50,12 @@ public sealed class DiagnosticsBundleServiceTests
             Assert.Contains("metadata/storage.json", entryNames);
             Assert.Contains("runtime/runtime-state.json", entryNames);
             Assert.Contains("runtime/telemetry-capture-state.json", entryNames);
+            Assert.Contains("runtime/capture-performance.json", entryNames);
+            Assert.Contains("runtime/capture-synthesis-metrics.json", entryNames);
             Assert.Contains("live/live-telemetry-snapshot.json", entryNames);
             Assert.Contains("live/overlay-state-summary.json", entryNames);
             Assert.Contains("live/telemetry-availability.json", entryNames);
+            Assert.Contains("live/degradation-codes.json", entryNames);
             Assert.Contains("live/weather-snapshot.json", entryNames);
             Assert.Contains("settings/settings.json", entryNames);
             Assert.Contains("logs/tmroverlay-20260426.log", entryNames);
@@ -60,6 +64,7 @@ public sealed class DiagnosticsBundleServiceTests
             Assert.Contains("latest-capture/telemetry-schema.json", entryNames);
             Assert.Contains("latest-capture/telemetry-schema-summary.json", entryNames);
             Assert.Contains("latest-capture/latest-session.yaml", entryNames);
+            Assert.Contains("latest-capture/capture-synthesis.json", entryNames);
             Assert.DoesNotContain("latest-capture/telemetry.bin", entryNames);
         }
         finally

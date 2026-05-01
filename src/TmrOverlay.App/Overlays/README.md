@@ -25,8 +25,8 @@ Shared data sources intended for overlays:
 
 Current modules:
 
-- `Status/` - tiny display-only collector status overlay
-- `SettingsPanel/` - centered tabbed settings overlay with left-side navigation for user-managed visibility, scale, session filters, shared font/units, Windows build/dev commands, diagnostics bundle controls, runtime raw-capture requests, placeholder Overlay Bridge controls, post-race analysis browsing, and overlay-specific display options
+- `Status/` - tiny collector status overlay with runtime raw-capture start/stop controls and live collection/synthesis health
+- `SettingsPanel/` - centered tabbed settings overlay with left-side navigation for user-managed visibility, scale, session filters, shared font/units, Windows build/dev commands, diagnostics bundle controls, placeholder Overlay Bridge controls, post-race analysis browsing, and overlay-specific display options
 - `FuelCalculator/` - fuel/stint strategy overlay with tire-stop guidance from history, local-live fuel only while the local driver is in the car, and modeled team/focus stint context otherwise
 - `CarRadar/` - transparent circular proximity radar from `CarLeftRight` plus focused `CarIdx*` track-position arrays, with car rectangles fading from red to yellow to transparent as traffic moves away
 - `GapToLeader/` - focused-car in-class gap trend graph from `CarIdxF2Time`, standings, and `CarIdx*` progress, with a bounded four-hour in-memory trace, rolling focused x-axis, range-filtered context cars, adaptive Y-axis scaling, left-side axis labels, lap reference lines, weather bands, driver/leader-change markers, endpoint position labels, threat callout, and a right-side 5L/10L/stint trend table

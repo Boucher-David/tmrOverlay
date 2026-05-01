@@ -12,15 +12,16 @@
 - Connects to iRacing through the `irsdkSharp` wrapper.
 - Starts live telemetry analysis whenever iRacing sends usable frame data.
 - Writes compact per-combo session history under app-owned local storage.
+- Stitches reconnect/rejoin segments from the same iRacing session into one historical session group while keeping each raw capture immutable.
 - Shows an early fuel calculator overlay that estimates race laps, whole-lap stint targets, final-stint length, realistic fuel-saving alerts, and stop-by-stop tire-change timing guidance.
 - Shows first-pass radar and gap-to-leader overlays backed by live `CarLeftRight`, `CarIdxF2Time`, `CarIdxEstTime`, and `CarIdx*` progress/position telemetry.
   The radar is a transparent circular proximity view that only paints when traffic is nearby, fades car rectangles from red to yellow to transparent as traffic moves away, and can show an outer-ring multiclass approaching warning with a live seconds gap. The gap overlay is a four-hour in-class trend graph with the class leader as the top baseline, adaptive Y-axis scaling, left-side axis labels, lap reference lines, subtle weather bands, driver/leader-change markers, dimmed non-team context lines, and endpoint `P<N>` labels. It keeps bounded in-memory traces for all available same-class timing rows, while dynamically rendering the leader, the team car, nearby class traffic, and recently visible cars.
 - Stores early pit-service history signals such as pit-lane time, pit-stall/service time, observed fuel fill rate, tire/repair indicators, and confidence flags.
-- Keeps raw capture as an opt-in diagnostic/development mode; the settings overlay can request raw capture at runtime if the app was started without the flag.
+- Keeps raw capture as an opt-in diagnostic/development mode; the status overlay can start or deliberately stop raw capture at runtime while live analysis/history collection continues.
 - When raw capture is enabled, stores `telemetry.bin`, `telemetry-schema.json`, `latest-session.yaml`, optional `session-info/`, and `capture-manifest.json`.
 - Includes `tools/analysis/synthesize_capture.py` for turning a large raw capture into a GitHub-friendly all-telemetry JSON synthesis with a focused weather/rain/radar-candidate section.
-- Shows live-analysis health signals in the overlay, plus disk-write health when raw capture is enabled.
-- Writes rolling local logs, JSONL app events, runtime-state markers, persisted settings, and diagnostics bundles for triage.
+- Shows live-analysis health signals in the overlay, plus disk-write health while raw capture is active.
+- Writes rolling local logs, versioned JSONL app events with `appRunId` / `collectionId` correlation, runtime-state markers, persisted settings, and diagnostics bundles for triage.
 - Includes retention cleanup for old captures and diagnostics bundles.
 - Includes a replay-mode seam for overlay development against an existing capture.
 
@@ -57,7 +58,7 @@ When enabled, captures are written under the user-local application data directo
 
 For development, set `TMR_Storage__UseRepositoryLocalStorage=true` to write under this checkout instead.
 
-If the app is already running and you forgot the startup flag, check `Raw capture` in the Collector Status settings tab. That requests raw capture for the current process and starts a raw capture on the next live SDK frame. Active raw captures cannot be disabled mid-collection; the checkbox is locked until the current collection ends.
+If the app is already running and you forgot the startup flag, use the `Capture` button on the Collector Status overlay. That requests raw capture for the current process and starts a raw segment on the next live SDK frame. Press `Stop raw` to close only the raw writer; live telemetry analysis, compact history, and post-race analysis continue.
 
 Each capture folder contains:
 
@@ -73,7 +74,9 @@ For sharing capture evidence without uploading `telemetry.bin`, synthesize the c
 python tools\analysis\synthesize_capture.py --capture .\captures\capture-YYYYMMDD-HHMMSS-mmm --output .\capture-synthesis.json
 ```
 
-The synthesis summarizes every telemetry variable and defaults to a 24 MiB output budget so it stays below GitHub's browser upload cap. Use `--sample-stride 10` or lower `--max-timeline-events` if a future capture grows beyond that.
+The synthesis summarizes every telemetry variable and defaults to a 24 MiB output budget so it stays below GitHub's browser upload cap. The standalone tool and app-side synthesis auto-stride large captures to keep CPU/output bounded, while `--sample-stride 1` remains available when every frame is required. The app defers synthesis while iRacing is still connected or a known iRacing sim process is still running, then starts as soon as the sim closes; if the app itself is shutting down while iRacing is still active, synthesis is skipped rather than blocking exit. On startup, the app scans for raw capture folders that still have no stable `capture-synthesis.json` and queues them for the same guarded synthesis path. The standalone tool refuses on Windows unless `--allow-while-iracing-running` is passed intentionally. The app writes a stable `capture-synthesis.json` plus a context-named copy when session/car/track metadata is available. It also records raw-capture write timing and synthesis process CPU metrics in status snapshots, app events, diagnostics bundles, and newer capture manifests. Use a larger `--sample-stride` or lower `--max-timeline-events` if a future capture grows beyond that.
+
+Diagnostics bundles include explicit degradation codes for design/analysis work, such as spectated timing only, idle local scalars, missing local driving fuel scalars, focus-car changes, side-callout availability, fuel-model availability, and weather wetness mismatches. These codes are meant to separate expected telemetry gaps from real failures.
 
 ## Build And Run On Windows
 
@@ -84,10 +87,10 @@ The synthesis summarizes every telemetry variable and defaults to a 24 MiB outpu
 5. Look for the app in the Windows notification area.
 
 You can also double-click [TmrOverlay.cmd](/Users/davidboucher/Code/tmrOverlay/TmrOverlay.cmd) from the repo root after the app has been built once. It launches the built executable from the expected `Debug` or `Release` output folder.
-For copyable PowerShell build, test, run, publish, and zip commands, see [Windows .NET Commands](/Users/davidboucher/Code/tmrOverlay/docs/windows-dotnet-commands.md).
+For copyable PowerShell build, test, run, publish, and zip commands, see [build.md](/Users/davidboucher/Code/tmrOverlay/build.md) or [Windows .NET Commands](/Users/davidboucher/Code/tmrOverlay/docs/windows-dotnet-commands.md).
 
 The tray menu lets you open the raw capture folder, open the current raw capture when one exists, open logs, open the settings overlay, create a diagnostics bundle, or exit the app.
-The status overlay stays visible over the sim so you can confirm the app is running and whether live telemetry analysis has started. With raw capture disabled it shows live frame freshness, session-history activity, and end-of-session summary saves. With raw capture enabled it also shows queued frames, written frames, dropped frames, telemetry file size, disk-write freshness, and explicit warning/error messages. The settings raw-capture checkbox records app events and local logs when toggled or rejected. You can drag overlays to new positions, and each overlay restores its saved frame on restart. Use the tray menu to reopen settings or exit the application.
+The status overlay stays visible over the sim so you can confirm the app is running and whether live telemetry analysis has started. With raw capture disabled it shows live frame freshness, session-history activity, and end-of-session summary saves. With raw capture enabled it also shows queued frames, written frames, dropped frames, telemetry file size, disk-write freshness, write latency, and explicit warning/error messages. The status overlay raw-capture button records app events and local logs when raw capture is armed, stopped, or cancelled. You can drag overlays to new positions, and each overlay restores its saved frame on restart. Use the tray menu to reopen settings or exit the application.
 
 During local development, the overlay also warns when source files in this checkout are newer than the running build. That is a rebuild reminder only; it does not block capture.
 
@@ -128,6 +131,8 @@ At the end of each live telemetry collection, the app writes a compact historica
 ```
 
 That data is intentionally much smaller than raw telemetry. It is meant to support future startup estimates for fuel usage, lap time, stint length, and pit behavior for a known car/track/session combo before the current live session has enough data.
+
+Each finalized collection still writes its own compact summary. When iRacing exposes a stable `SubSessionID` or `SessionID`, those summaries are also grouped under `session-groups/` so quitting/rejoining the same race or restarting after an app crash can update one historical session and one post-race analysis instead of creating separate race records. Raw capture folders are not merged or rewritten; grouping happens only in derived history and analysis metadata. Segment records include the capture source id, end reason, reconnect gap, and previous app runtime state when the previous run was not clean.
 
 The fuel calculator uses live race telemetry first, then exact car/track/session user history only as a fallback while the current session is still sparse. For timed races, it continuously estimates the likely lap count from session time, overall-leader pace/progress, class-leader context, and team-car progress, then converts that into whole-lap stint targets. If completed user/team history shows an 8-lap stint is realistic, future rows can be biased toward that shape, such as `7/8/7/8` for the local Nürburgring development sample. The table also performs strategy analysis across race lengths by comparing a shorter conservative stint rhythm against the longest realistic target, then surfaces extra stops and estimated pit-time loss as a strategy row. Stint rows show target laps and target liters-per-lap, plus tire-change guidance based on historical fill-rate and tire-service timing. As live progress advances, completed stint rows roll off the top of the table. If no fuel stop is needed, the table collapses to a single `Stint 1` row that says no fuel stop is needed.
 

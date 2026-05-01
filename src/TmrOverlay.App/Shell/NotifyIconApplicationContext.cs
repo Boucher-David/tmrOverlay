@@ -116,13 +116,13 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
     private void RefreshMenu()
     {
         var snapshot = _state.Snapshot();
-        _rootItem.Text = snapshot.RawCaptureEnabled ? "Open Capture Root" : "Open Raw Capture Root";
+        _rootItem.Text = snapshot.RawCaptureEnabled || snapshot.RawCaptureActive ? "Open Capture Root" : "Open Raw Capture Root";
 
         if (!string.IsNullOrWhiteSpace(snapshot.LastError))
         {
-            _statusItem.Text = snapshot.RawCaptureEnabled ? "Capture error" : "Telemetry error";
+            _statusItem.Text = snapshot.RawCaptureEnabled || snapshot.RawCaptureActive ? "Capture error" : "Telemetry error";
             _captureItem.Enabled = !string.IsNullOrWhiteSpace(snapshot.CurrentCaptureDirectory ?? snapshot.LastCaptureDirectory);
-            _captureItem.Text = snapshot.RawCaptureEnabled && snapshot.RawCaptureActive
+            _captureItem.Text = snapshot.RawCaptureActive
                 ? "Open Current Capture"
                 : "Open Latest Raw Capture";
             return;
@@ -130,12 +130,20 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
 
         if (!string.IsNullOrWhiteSpace(snapshot.LastWarning))
         {
-            _statusItem.Text = snapshot.RawCaptureEnabled ? "Capture warning" : "Telemetry warning";
+            _statusItem.Text = snapshot.RawCaptureEnabled || snapshot.RawCaptureActive ? "Capture warning" : "Telemetry warning";
         }
 
         if (snapshot.IsCapturing)
         {
-            if (!snapshot.RawCaptureEnabled)
+            if (snapshot.RawCaptureStopRequested)
+            {
+                _statusItem.Text = $"Stopping raw capture: {snapshot.FrameCount:N0} frames";
+                _captureItem.Enabled = !string.IsNullOrWhiteSpace(snapshot.CurrentCaptureDirectory ?? snapshot.LastCaptureDirectory);
+                _captureItem.Text = snapshot.RawCaptureActive ? "Open Current Capture" : "Open Latest Raw Capture";
+                return;
+            }
+
+            if (!snapshot.RawCaptureActive)
             {
                 _statusItem.Text = $"Analyzing live telemetry: {snapshot.FrameCount:N0} frames";
                 _captureItem.Enabled = !string.IsNullOrWhiteSpace(snapshot.LastCaptureDirectory);
@@ -147,7 +155,7 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
                 ? "Warning"
                 : "Capturing";
             _statusItem.Text = $"{statusPrefix}: {snapshot.FrameCount:N0} queued / {snapshot.WrittenFrameCount:N0} written";
-            _captureItem.Enabled = snapshot.RawCaptureActive && !string.IsNullOrWhiteSpace(snapshot.CurrentCaptureDirectory);
+            _captureItem.Enabled = !string.IsNullOrWhiteSpace(snapshot.CurrentCaptureDirectory);
             _captureItem.Text = "Open Current Capture";
             return;
         }
@@ -162,7 +170,7 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
         }
 
         _captureItem.Enabled = !string.IsNullOrWhiteSpace(snapshot.LastCaptureDirectory);
-        _captureItem.Text = snapshot.RawCaptureEnabled ? "Open Latest Capture" : "Open Latest Raw Capture";
+        _captureItem.Text = snapshot.RawCaptureEnabled || snapshot.RawCaptureActive ? "Open Latest Capture" : "Open Latest Raw Capture";
     }
 
     private void OpenCapture()
@@ -195,7 +203,7 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
             _events.Record("diagnostics_bundle_failed", new Dictionary<string, string?>
             {
                 ["error"] = exception.GetType().Name
-            });
+            }, severity: "error");
             _logger.LogError(exception, "Failed to create diagnostics bundle.");
         }
     }

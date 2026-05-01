@@ -23,11 +23,12 @@ internal sealed class PostRaceAnalysisPipeline
 
     public async Task<PostRaceAnalysis?> SaveFromSummaryAsync(
         HistoricalSessionSummary summary,
+        HistoricalSessionGroup? sessionGroup,
         CancellationToken cancellationToken)
     {
         try
         {
-            var analysis = await _store.SaveFromSummaryAsync(summary, cancellationToken).ConfigureAwait(false);
+            var analysis = await _store.SaveFromSummaryAsync(summary, sessionGroup, cancellationToken).ConfigureAwait(false);
             if (analysis is null)
             {
                 return null;
@@ -35,22 +36,27 @@ internal sealed class PostRaceAnalysisPipeline
 
             _events.Record("post_race_analysis_saved", new Dictionary<string, string?>
             {
+                ["collectionId"] = summary.CollectionId,
                 ["sourceId"] = summary.SourceCaptureId,
+                ["sessionGroupId"] = sessionGroup?.GroupId,
+                ["sessionSegmentCount"] = sessionGroup?.Segments.Count.ToString(),
                 ["analysisId"] = analysis.Id
             });
             _logger.LogInformation(
-                "Saved post-race analysis {AnalysisId} for {SourceId}.",
+                "Saved post-race analysis {AnalysisId} for {SourceId} in session group {SessionGroupId}.",
                 analysis.Id,
-                summary.SourceCaptureId);
+                summary.SourceCaptureId,
+                sessionGroup?.GroupId ?? "none");
             return analysis;
         }
         catch (Exception exception)
         {
             _events.Record("post_race_analysis_failed", new Dictionary<string, string?>
             {
+                ["collectionId"] = summary.CollectionId,
                 ["sourceId"] = summary.SourceCaptureId,
                 ["error"] = exception.GetType().Name
-            });
+            }, severity: "warning");
             _logger.LogWarning(
                 exception,
                 "Failed to save post-race analysis for {SourceId}.",

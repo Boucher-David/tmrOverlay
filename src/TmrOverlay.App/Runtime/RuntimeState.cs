@@ -6,6 +6,8 @@ internal sealed class RuntimeState
 {
     public int RuntimeStateVersion { get; init; } = 1;
 
+    public string? AppRunId { get; init; }
+
     public required DateTimeOffset StartedAtUtc { get; init; }
 
     public DateTimeOffset? LastHeartbeatAtUtc { get; set; }

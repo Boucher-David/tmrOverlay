@@ -1,9 +1,12 @@
+using System.Diagnostics;
 using irsdkSharp;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Analysis;
+using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.History;
+using TmrOverlay.App.Runtime;
 using TmrOverlay.Core.History;
 using TmrOverlay.Core.Telemetry.Live;
 
@@ -14,16 +17,24 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     private readonly ILogger<TelemetryCaptureHostedService> _logger;
     private readonly TelemetryCaptureOptions _options;
     private readonly AppEventRecorder _events;
+    private readonly TelemetryDiagnosticContext _diagnosticContext;
     private readonly SessionHistoryStore _sessionHistoryStore;
     private readonly PostRaceAnalysisPipeline _postRaceAnalysisPipeline;
+    private readonly RuntimeStateService _runtimeState;
     private readonly ILiveTelemetrySink _liveTelemetrySink;
     private readonly TelemetryCaptureState _state;
     private readonly object _sync = new();
+    private readonly object _rawFinalizerSync = new();
+    private readonly SemaphoreSlim _synthesisSemaphore = new(1, 1);
+    private readonly CancellationTokenSource _startupSynthesisCancellation = new();
     private IRacingSDK? _sdk;
     private TelemetryCaptureSession? _activeCapture;
     private HistoricalSessionAccumulator? _activeHistory;
     private Task _finalizerTask = Task.CompletedTask;
+    private Task _rawFinalizerTask = Task.CompletedTask;
+    private Task _startupSynthesisTask = Task.CompletedTask;
     private string? _activeSourceId;
+    private string? _activeCollectionId;
     private DateTimeOffset? _activeStartedAtUtc;
     private int _sessionInfoSnapshotCount;
     private int _frameIndex;
@@ -33,16 +44,20 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         ILogger<TelemetryCaptureHostedService> logger,
         TelemetryCaptureOptions options,
         AppEventRecorder events,
+        TelemetryDiagnosticContext diagnosticContext,
         SessionHistoryStore sessionHistoryStore,
         PostRaceAnalysisPipeline postRaceAnalysisPipeline,
+        RuntimeStateService runtimeState,
         ILiveTelemetrySink liveTelemetrySink,
         TelemetryCaptureState state)
     {
         _logger = logger;
         _options = options;
         _events = events;
+        _diagnosticContext = diagnosticContext;
         _sessionHistoryStore = sessionHistoryStore;
         _postRaceAnalysisPipeline = postRaceAnalysisPipeline;
+        _runtimeState = runtimeState;
         _liveTelemetrySink = liveTelemetrySink;
         _state = state;
     }
@@ -50,6 +65,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     public Task StartAsync(CancellationToken cancellationToken)
     {
         _state.SetCaptureRoot(_options.ResolvedCaptureRoot);
+        _state.SetAppRunId(_diagnosticContext.AppRunId);
         _state.SetRawCaptureEnabled(_options.RawCaptureEnabled);
 
         if (_options.RawCaptureEnabled)
@@ -75,6 +91,9 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             "Telemetry collection service started. Raw capture enabled: {RawCaptureEnabled}. Capture root: {CaptureRoot}.",
             _options.RawCaptureEnabled,
             _options.ResolvedCaptureRoot);
+        _startupSynthesisTask = Task.Run(
+            () => SynthesizePendingCapturesFromStartupAsync(_startupSynthesisCancellation.Token),
+            CancellationToken.None);
         return Task.CompletedTask;
     }
 
@@ -94,18 +113,39 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         {
             captureToFinalize = _activeCapture;
             historyToFinalize = _activeHistory;
-            finalization = BuildFinalizationContext(captureToFinalize);
+            finalization = BuildFinalizationContext(captureToFinalize, "app_stopped");
             _activeCapture = null;
             _activeHistory = null;
             _activeSourceId = null;
+            _activeCollectionId = null;
             _activeStartedAtUtc = null;
             _sessionInfoSnapshotCount = 0;
             _lastSessionInfoUpdate = -1;
         }
 
+        _startupSynthesisCancellation.Cancel();
+
         if (captureToFinalize is not null || historyToFinalize is not null)
         {
             await FinalizeCollectionAsync(captureToFinalize, historyToFinalize, finalization).ConfigureAwait(false);
+        }
+
+        try
+        {
+            await _rawFinalizerTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The raw writer finalizer is best-effort during app shutdown; startup recovery will pick up unfinished synthesis.
+        }
+
+        try
+        {
+            await _startupSynthesisTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested || _startupSynthesisCancellation.IsCancellationRequested)
+        {
+            // Startup synthesis recovery may be waiting for iRacing to close; do not block application shutdown.
         }
 
         try
@@ -142,10 +182,11 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         {
             captureToFinalize = _activeCapture;
             historyToFinalize = _activeHistory;
-            finalization = BuildFinalizationContext(captureToFinalize);
+            finalization = BuildFinalizationContext(captureToFinalize, "iracing_disconnected");
             _activeCapture = null;
             _activeHistory = null;
             _activeSourceId = null;
+            _activeCollectionId = null;
             _activeStartedAtUtc = null;
             _sessionInfoSnapshotCount = 0;
             _lastSessionInfoUpdate = -1;
@@ -200,15 +241,21 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                         _state.RecordError($"Capture writer failed: {writerFault.Message}");
                         _events.Record("capture_writer_failed", new Dictionary<string, string?>
                         {
+                            ["collectionId"] = _activeCollectionId,
                             ["captureId"] = capture.CaptureId,
                             ["error"] = writerFault.Message
-                        });
+                        }, severity: "error");
                         _logger.LogError(writerFault, "Dropped telemetry frame because the capture writer failed.");
                         return;
                     }
 
                     _state.RecordWarning("Dropped telemetry frame because the capture queue is full.");
-                    _events.Record("capture_dropped_frame");
+                    _events.Record("capture_dropped_frame", new Dictionary<string, string?>
+                    {
+                        ["collectionId"] = _activeCollectionId,
+                        ["captureId"] = capture.CaptureId,
+                        ["reason"] = "capture_queue_full"
+                    }, severity: "warning");
                     _logger.LogWarning("Dropped telemetry frame because the capture queue is full.");
                     return;
                 }
@@ -226,61 +273,100 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 
     private TelemetryCaptureSession? GetOrCreateCollection(IRacingSDK sdk, DateTimeOffset startedAtUtc)
     {
+        TelemetryCaptureSession? captureToStop = null;
+        string? captureToStopCollectionId = null;
+        string? captureToStopSourceId = null;
+        TelemetryCaptureSession? activeCapture = null;
+
         lock (_sync)
         {
             if (_activeHistory is not null)
             {
-                if (_activeCapture is null && _state.IsRawCaptureEnabled())
+                if (_activeCapture is not null && _state.IsRawCaptureStopRequested())
                 {
-                    _activeCapture = TryStartRawCaptureLocked(sdk, startedAtUtc, queueCurrentSessionInfo: true);
+                    captureToStop = _activeCapture;
+                    captureToStopCollectionId = _activeCollectionId;
+                    captureToStopSourceId = _activeSourceId;
+                    _activeCapture = null;
+                }
+                else if (_activeCapture is null && _state.IsRawCaptureEnabled())
+                {
+                    _activeCollectionId ??= _diagnosticContext.NewCollectionId(startedAtUtc);
+                    _activeCapture = TryStartRawCaptureLocked(
+                        sdk,
+                        startedAtUtc,
+                        queueCurrentSessionInfo: true,
+                        _activeCollectionId);
                 }
 
-                return _activeCapture;
+                activeCapture = _activeCapture;
             }
-
-            TelemetryCaptureSession? capture = null;
-            if (_state.IsRawCaptureEnabled())
+            else
             {
-                capture = TryStartRawCaptureLocked(sdk, startedAtUtc, queueCurrentSessionInfo: false);
+                var collectionId = _diagnosticContext.NewCollectionId(startedAtUtc);
+                TelemetryCaptureSession? capture = null;
+                if (_state.IsRawCaptureEnabled())
+                {
+                    capture = TryStartRawCaptureLocked(
+                        sdk,
+                        startedAtUtc,
+                        queueCurrentSessionInfo: false,
+                        collectionId);
+                }
+
+                _activeHistory = new HistoricalSessionAccumulator();
+                var sourceId = capture?.CaptureId ?? $"session-{startedAtUtc:yyyyMMdd-HHmmss-fff}";
+                _activeCollectionId = collectionId;
+                _activeSourceId = sourceId;
+                _activeStartedAtUtc = capture?.StartedAtUtc ?? startedAtUtc;
+                _sessionInfoSnapshotCount = 0;
+                _frameIndex = 0;
+                _lastSessionInfoUpdate = -1;
+                _state.MarkCollectionStarted(collectionId, sourceId, _activeStartedAtUtc.Value);
+                _liveTelemetrySink.MarkCollectionStarted(sourceId, _activeStartedAtUtc.Value);
+
+                if (capture is not null)
+                {
+                    _activeCapture = capture;
+                }
+
+                _events.Record("telemetry_collection_started", new Dictionary<string, string?>
+                {
+                    ["collectionId"] = _activeCollectionId,
+                    ["sourceId"] = _activeSourceId,
+                    ["rawCaptureEnabled"] = _state.IsRawCaptureEnabled().ToString()
+                });
+                _logger.LogInformation(
+                    "Started live telemetry collection {SourceId}. Raw capture enabled: {RawCaptureEnabled}.",
+                    _activeSourceId,
+                    _state.IsRawCaptureEnabled());
+
+                activeCapture = capture;
             }
-
-            _activeHistory = new HistoricalSessionAccumulator();
-            var sourceId = capture?.CaptureId ?? $"session-{startedAtUtc:yyyyMMdd-HHmmss-fff}";
-            _activeSourceId = sourceId;
-            _activeStartedAtUtc = capture?.StartedAtUtc ?? startedAtUtc;
-            _sessionInfoSnapshotCount = 0;
-            _frameIndex = 0;
-            _lastSessionInfoUpdate = -1;
-            _state.MarkCollectionStarted(_activeStartedAtUtc.Value);
-            _liveTelemetrySink.MarkCollectionStarted(sourceId, _activeStartedAtUtc.Value);
-
-            if (capture is not null)
-            {
-                _activeCapture = capture;
-            }
-
-            _events.Record("telemetry_collection_started", new Dictionary<string, string?>
-            {
-                ["sourceId"] = _activeSourceId,
-                ["rawCaptureEnabled"] = _state.IsRawCaptureEnabled().ToString()
-            });
-            _logger.LogInformation(
-                "Started live telemetry collection {SourceId}. Raw capture enabled: {RawCaptureEnabled}.",
-                _activeSourceId,
-                _state.IsRawCaptureEnabled());
-
-            return capture;
         }
+
+        if (captureToStop is not null)
+        {
+            QueueRawCaptureWriterFinalization(
+                captureToStop,
+                captureToStopCollectionId,
+                captureToStopSourceId,
+                endedReason: "manual_stop",
+                allowWaitingForIRacing: true);
+        }
+
+        return activeCapture;
     }
 
     private TelemetryCaptureSession? TryStartRawCaptureLocked(
         IRacingSDK sdk,
         DateTimeOffset capturedAtUtc,
-        bool queueCurrentSessionInfo)
+        bool queueCurrentSessionInfo,
+        string collectionId)
     {
         try
         {
-            return StartRawCaptureLocked(sdk, capturedAtUtc, queueCurrentSessionInfo);
+            return StartRawCaptureLocked(sdk, capturedAtUtc, queueCurrentSessionInfo, collectionId);
         }
         catch (Exception exception)
         {
@@ -288,8 +374,9 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             _state.SetRawCaptureEnabled(false);
             _events.Record("capture_start_failed", new Dictionary<string, string?>
             {
+                ["collectionId"] = collectionId,
                 ["error"] = exception.GetType().Name
-            });
+            }, severity: "error");
             _logger.LogError(exception, "Failed to start raw telemetry capture.");
             return null;
         }
@@ -298,14 +385,21 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     private TelemetryCaptureSession StartRawCaptureLocked(
         IRacingSDK sdk,
         DateTimeOffset capturedAtUtc,
-        bool queueCurrentSessionInfo)
+        bool queueCurrentSessionInfo,
+        string collectionId)
     {
         Directory.CreateDirectory(_options.ResolvedCaptureRoot);
-        var capture = CreateCaptureSession(sdk);
+        var capture = CreateCaptureSession(sdk, collectionId);
         _activeCapture = capture;
-        _state.MarkCaptureStarted(capture.DirectoryPath, capture.StartedAtUtc);
+        _state.MarkCaptureStarted(
+            capture.DirectoryPath,
+            capture.StartedAtUtc,
+            capture.CaptureId,
+            collectionId,
+            _activeSourceId ?? capture.CaptureId);
         _events.Record("capture_started", new Dictionary<string, string?>
         {
+            ["collectionId"] = collectionId,
             ["captureId"] = capture.CaptureId,
             ["captureDirectory"] = capture.DirectoryPath
         });
@@ -319,7 +413,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         return capture;
     }
 
-    private TelemetryCaptureSession CreateCaptureSession(IRacingSDK sdk)
+    private TelemetryCaptureSession CreateCaptureSession(IRacingSDK sdk, string collectionId)
     {
         var headers = IRacingSDK.GetVarHeaders(sdk);
         if (headers is null || sdk.Header is null)
@@ -349,7 +443,9 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             sdk.Header.TickRate,
             sdk.Header.BufferLength,
             schema,
-            _state.RecordCaptureWrite);
+            _state.RecordCaptureWrite,
+            _diagnosticContext.AppRunId,
+            collectionId);
     }
 
     private bool UpdateSessionInfoVersion(int sessionInfoUpdate)
@@ -895,13 +991,17 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         history?.RecordFrame(sample);
     }
 
-    private CaptureFinalizationContext BuildFinalizationContext(TelemetryCaptureSession? capture)
+    private CaptureFinalizationContext BuildFinalizationContext(
+        TelemetryCaptureSession? capture,
+        string endedReason)
     {
         return new CaptureFinalizationContext(
+            CollectionId: _activeCollectionId,
             SourceId: _activeSourceId ?? capture?.CaptureId,
             StartedAtUtc: _activeStartedAtUtc ?? capture?.StartedAtUtc,
             DroppedFrameCount: capture?.DroppedFrameCount ?? 0,
-            SessionInfoSnapshotCount: capture?.SessionInfoSnapshotCount ?? _sessionInfoSnapshotCount);
+            SessionInfoSnapshotCount: capture?.SessionInfoSnapshotCount ?? _sessionInfoSnapshotCount,
+            EndedReason: endedReason);
     }
 
     private async Task FinalizeCollectionAsync(
@@ -909,62 +1009,427 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         HistoricalSessionAccumulator? history,
         CaptureFinalizationContext finalization)
     {
-        var willSaveHistory = history is not null && finalization.SourceId is not null && finalization.StartedAtUtc is not null;
-        if (willSaveHistory)
-        {
-            _state.MarkHistoryFinalizationStarted(DateTimeOffset.UtcNow);
-        }
+        var historyFinalizationStarted = false;
 
         try
         {
             _state.MarkCaptureStopped();
             if (capture is not null)
             {
+                capture.SetEndedReason(finalization.EndedReason);
                 await capture.DisposeAsync().ConfigureAwait(false);
                 _logger.LogInformation("Finalized raw capture {CaptureDirectory}.", capture.DirectoryPath);
                 _events.Record("capture_finalized", new Dictionary<string, string?>
                 {
+                    ["collectionId"] = finalization.CollectionId,
                     ["captureId"] = capture.CaptureId,
                     ["captureDirectory"] = capture.DirectoryPath,
+                    ["endedReason"] = finalization.EndedReason,
                     ["frameCount"] = capture.FrameCount.ToString(),
-                    ["droppedFrameCount"] = capture.DroppedFrameCount.ToString()
+                    ["droppedFrameCount"] = capture.DroppedFrameCount.ToString(),
+                    ["rawCaptureElapsedMilliseconds"] = capture.ManifestPerformance.RawCaptureElapsedMilliseconds?.ToString(),
+                    ["processCpuMilliseconds"] = capture.ManifestPerformance.ProcessCpuMilliseconds?.ToString(),
+                    ["processCpuPercentOfOneCore"] = capture.ManifestPerformance.ProcessCpuPercentOfOneCore?.ToString("0.0"),
+                    ["writeOperationCount"] = capture.ManifestPerformance.WriteOperationCount?.ToString(),
+                    ["averageWriteElapsedMilliseconds"] = capture.ManifestPerformance.AverageWriteElapsedMilliseconds?.ToString("0.###"),
+                    ["maxWriteElapsedMilliseconds"] = capture.ManifestPerformance.MaxWriteElapsedMilliseconds?.ToString()
                 });
             }
 
             if (history is not null && finalization.SourceId is not null && finalization.StartedAtUtc is not null)
             {
+                historyFinalizationStarted = true;
+                _state.MarkHistoryFinalizationStarted(DateTimeOffset.UtcNow);
                 var summary = history.BuildSummary(
                     finalization.SourceId,
                     finalization.StartedAtUtc.Value,
                     capture?.FinishedAtUtc ?? DateTimeOffset.UtcNow,
                     capture?.DroppedFrameCount ?? finalization.DroppedFrameCount,
                     capture?.SessionInfoSnapshotCount ?? finalization.SessionInfoSnapshotCount);
+                summary = WithCorrelation(summary, finalization);
 
-                await _sessionHistoryStore.SaveAsync(summary, CancellationToken.None).ConfigureAwait(false);
-                await _postRaceAnalysisPipeline.SaveFromSummaryAsync(summary, CancellationToken.None).ConfigureAwait(false);
-                _state.MarkHistorySummarySaved(FormatHistorySummaryLabel(summary), DateTimeOffset.UtcNow);
+                var segmentContext = BuildSegmentContext(finalization);
+                var finalizationStartedTimestamp = Stopwatch.GetTimestamp();
+                var historySaveStartedTimestamp = Stopwatch.GetTimestamp();
+                var sessionGroup = await _sessionHistoryStore
+                    .SaveAsync(summary, segmentContext, CancellationToken.None)
+                    .ConfigureAwait(false);
+                var historySaveElapsedMilliseconds = ElapsedMilliseconds(historySaveStartedTimestamp);
+                var analysisSaveStartedTimestamp = Stopwatch.GetTimestamp();
+                await _postRaceAnalysisPipeline
+                    .SaveFromSummaryAsync(summary, sessionGroup, CancellationToken.None)
+                    .ConfigureAwait(false);
+                var analysisSaveElapsedMilliseconds = ElapsedMilliseconds(analysisSaveStartedTimestamp);
+                var finalizationElapsedMilliseconds = ElapsedMilliseconds(finalizationStartedTimestamp);
+                _state.MarkHistorySummarySaved(
+                    FormatHistorySummaryLabel(summary),
+                    DateTimeOffset.UtcNow,
+                    historySaveElapsedMilliseconds,
+                    analysisSaveElapsedMilliseconds);
                 _events.Record("history_summary_saved", new Dictionary<string, string?>
                 {
+                    ["collectionId"] = finalization.CollectionId,
                     ["sourceId"] = finalization.SourceId,
+                    ["sessionGroupId"] = sessionGroup?.GroupId,
+                    ["sessionSegmentCount"] = sessionGroup?.Segments.Count.ToString(),
+                    ["endedReason"] = segmentContext.EndedReason,
+                    ["previousAppRunUnclean"] = segmentContext.PreviousAppRunUnclean.ToString(),
+                    ["historySaveElapsedMilliseconds"] = historySaveElapsedMilliseconds.ToString(),
+                    ["analysisSaveElapsedMilliseconds"] = analysisSaveElapsedMilliseconds.ToString(),
+                    ["finalizationElapsedMilliseconds"] = finalizationElapsedMilliseconds.ToString(),
                     ["carKey"] = summary.Combo.CarKey,
                     ["trackKey"] = summary.Combo.TrackKey,
                     ["sessionKey"] = summary.Combo.SessionKey,
                     ["confidence"] = summary.Quality.Confidence
                 });
-                _logger.LogInformation("Saved session history summary for {SourceId}.", finalization.SourceId);
+                _logger.LogInformation(
+                    "Saved session history summary for {SourceId} in session group {SessionGroupId}.",
+                    finalization.SourceId,
+                    sessionGroup?.GroupId ?? "none");
+                _state.MarkHistoryFinalizationStopped(finalizationElapsedMilliseconds);
+                historyFinalizationStarted = false;
+            }
+
+            if (capture is not null)
+            {
+                await WriteCaptureSynthesisAsync(
+                        capture.DirectoryPath,
+                        finalization.CollectionId,
+                        allowWaitingForIRacing: !string.Equals(finalization.EndedReason, "app_stopped", StringComparison.OrdinalIgnoreCase),
+                        cancellationToken: CancellationToken.None)
+                    .ConfigureAwait(false);
             }
         }
         catch (Exception exception)
         {
             _state.RecordError($"Telemetry collection finalization failed: {exception.Message}");
+            _events.Record("telemetry_collection_finalization_failed", new Dictionary<string, string?>
+            {
+                ["collectionId"] = finalization.CollectionId,
+                ["sourceId"] = finalization.SourceId,
+                ["error"] = exception.GetType().Name
+            }, severity: "error");
             _logger.LogError(exception, "Failed to finalize telemetry collection.");
         }
         finally
         {
-            if (willSaveHistory)
+            if (historyFinalizationStarted)
             {
                 _state.MarkHistoryFinalizationStopped();
             }
+        }
+    }
+
+    private void QueueRawCaptureWriterFinalization(
+        TelemetryCaptureSession capture,
+        string? collectionId,
+        string? sourceId,
+        string endedReason,
+        bool allowWaitingForIRacing)
+    {
+        lock (_rawFinalizerSync)
+        {
+            _rawFinalizerTask = _rawFinalizerTask
+                .ContinueWith(
+                    _ => FinalizeRawCaptureWriterAsync(
+                        capture,
+                        collectionId,
+                        sourceId,
+                        endedReason,
+                        allowWaitingForIRacing),
+                    CancellationToken.None,
+                    TaskContinuationOptions.None,
+                    TaskScheduler.Default)
+                .Unwrap();
+        }
+    }
+
+    private async Task FinalizeRawCaptureWriterAsync(
+        TelemetryCaptureSession capture,
+        string? collectionId,
+        string? sourceId,
+        string endedReason,
+        bool allowWaitingForIRacing)
+    {
+        try
+        {
+            capture.SetEndedReason(endedReason);
+            await capture.DisposeAsync().ConfigureAwait(false);
+            _logger.LogInformation(
+                "Finalized raw capture {CaptureDirectory} with reason {EndedReason}.",
+                capture.DirectoryPath,
+                endedReason);
+            _events.Record("capture_finalized", new Dictionary<string, string?>
+            {
+                ["collectionId"] = collectionId,
+                ["sourceId"] = sourceId,
+                ["captureId"] = capture.CaptureId,
+                ["captureDirectory"] = capture.DirectoryPath,
+                ["endedReason"] = endedReason,
+                ["frameCount"] = capture.FrameCount.ToString(),
+                ["droppedFrameCount"] = capture.DroppedFrameCount.ToString(),
+                ["rawCaptureElapsedMilliseconds"] = capture.ManifestPerformance.RawCaptureElapsedMilliseconds?.ToString(),
+                ["processCpuMilliseconds"] = capture.ManifestPerformance.ProcessCpuMilliseconds?.ToString(),
+                ["processCpuPercentOfOneCore"] = capture.ManifestPerformance.ProcessCpuPercentOfOneCore?.ToString("0.0"),
+                ["writeOperationCount"] = capture.ManifestPerformance.WriteOperationCount?.ToString(),
+                ["averageWriteElapsedMilliseconds"] = capture.ManifestPerformance.AverageWriteElapsedMilliseconds?.ToString("0.###"),
+                ["maxWriteElapsedMilliseconds"] = capture.ManifestPerformance.MaxWriteElapsedMilliseconds?.ToString()
+            });
+
+            _ = Task.Run(
+                () => WriteCaptureSynthesisAsync(
+                    capture.DirectoryPath,
+                    collectionId,
+                    allowWaitingForIRacing,
+                    CancellationToken.None),
+                CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            _state.RecordError($"Raw capture stop failed: {exception.Message}");
+            _events.Record("capture_manual_stop_failed", new Dictionary<string, string?>
+            {
+                ["collectionId"] = collectionId,
+                ["sourceId"] = sourceId,
+                ["captureId"] = capture.CaptureId,
+                ["captureDirectory"] = capture.DirectoryPath,
+                ["error"] = exception.GetType().Name
+            }, severity: "error");
+            _logger.LogError(exception, "Failed to finalize manually stopped raw capture {CaptureDirectory}.", capture.DirectoryPath);
+        }
+        finally
+        {
+            _state.MarkRawCaptureStopped(capture.FinishedAtUtc ?? DateTimeOffset.UtcNow);
+        }
+    }
+
+    private async Task SynthesizePendingCapturesFromStartupAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var pendingCaptures = CaptureSynthesisService.FindPendingSynthesisCaptures(_options.ResolvedCaptureRoot);
+            if (pendingCaptures.Count == 0)
+            {
+                return;
+            }
+
+            _events.Record("capture_synthesis_startup_scan_found_pending", new Dictionary<string, string?>
+            {
+                ["pendingCount"] = pendingCaptures.Count.ToString(),
+                ["captureRoot"] = _options.ResolvedCaptureRoot
+            });
+            _logger.LogInformation(
+                "Startup synthesis scan found {PendingCaptureCount} raw captures without capture-synthesis.json.",
+                pendingCaptures.Count);
+
+            foreach (var pending in pendingCaptures)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                _events.Record("capture_synthesis_startup_recovery_started", new Dictionary<string, string?>
+                {
+                    ["collectionId"] = pending.CollectionId,
+                    ["captureId"] = pending.CaptureId,
+                    ["captureDirectory"] = pending.DirectoryPath,
+                    ["reason"] = pending.Reason
+                });
+                await WriteCaptureSynthesisAsync(
+                        pending.DirectoryPath,
+                        pending.CollectionId,
+                        allowWaitingForIRacing: true,
+                        cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogDebug("Startup capture synthesis recovery was cancelled.");
+        }
+        catch (Exception exception)
+        {
+            _state.RecordWarning($"Startup capture synthesis recovery failed: {exception.Message}");
+            _events.Record("capture_synthesis_startup_recovery_failed", new Dictionary<string, string?>
+            {
+                ["captureRoot"] = _options.ResolvedCaptureRoot,
+                ["error"] = exception.GetType().Name
+            }, severity: "warning");
+            _logger.LogWarning(exception, "Startup capture synthesis recovery failed.");
+        }
+    }
+
+    private async Task WriteCaptureSynthesisAsync(
+        string captureDirectory,
+        string? collectionId,
+        bool allowWaitingForIRacing,
+        CancellationToken cancellationToken)
+    {
+        await _synthesisSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (CaptureSynthesisService.HasStableSynthesis(captureDirectory))
+            {
+                _state.MarkCaptureSynthesisPendingCleared();
+                _events.Record("capture_synthesis_already_exists", new Dictionary<string, string?>
+                {
+                    ["collectionId"] = collectionId,
+                    ["captureDirectory"] = captureDirectory
+                });
+                return;
+            }
+
+            if (allowWaitingForIRacing)
+            {
+                await WaitForIRacingToCloseBeforeSynthesisAsync(captureDirectory, collectionId, cancellationToken).ConfigureAwait(false);
+            }
+            else if (IsIRacingStillRunning(out var reason))
+            {
+                _state.MarkCaptureSynthesisPendingCleared();
+                _events.Record("capture_synthesis_skipped_app_stopping_iracing_running", new Dictionary<string, string?>
+                {
+                    ["collectionId"] = collectionId,
+                    ["captureDirectory"] = captureDirectory,
+                    ["reason"] = reason
+                }, severity: "warning");
+                _logger.LogInformation(
+                    "Skipped capture synthesis for {CaptureDirectory} during app shutdown because iRacing is still running. Current blocker: {IRacingBlocker}.",
+                    captureDirectory,
+                    reason);
+                return;
+            }
+
+            _state.MarkCaptureSynthesisStarted(DateTimeOffset.UtcNow);
+            try
+            {
+                var result = await CaptureSynthesisService.WriteAsync(captureDirectory, cancellationToken).ConfigureAwait(false);
+                _state.MarkCaptureSynthesisSaved(result);
+                _events.Record("capture_synthesis_saved", new Dictionary<string, string?>
+                {
+                    ["collectionId"] = collectionId,
+                    ["captureDirectory"] = captureDirectory,
+                    ["synthesisPath"] = result.Path,
+                    ["stableSynthesisPath"] = result.StablePath,
+                    ["synthesisBytes"] = result.Bytes.ToString(),
+                    ["telemetryBytes"] = result.TelemetryBytes.ToString(),
+                    ["elapsedMilliseconds"] = result.ElapsedMilliseconds.ToString(),
+                    ["processCpuMilliseconds"] = result.ProcessCpuMilliseconds.ToString(),
+                    ["processCpuPercentOfOneCore"] = result.ProcessCpuPercentOfOneCore?.ToString("0.0"),
+                    ["totalFrameRecords"] = result.TotalFrameRecords.ToString(),
+                    ["sampledFrameCount"] = result.SampledFrameCount.ToString(),
+                    ["sampleStride"] = result.SampleStride.ToString(),
+                    ["fieldCount"] = result.FieldCount.ToString()
+                });
+                _logger.LogInformation(
+                    "Saved capture synthesis {CaptureSynthesisPath} ({CaptureSynthesisBytes} bytes) in {ElapsedMilliseconds} ms with {ProcessCpuMilliseconds} ms process CPU from {TelemetryBytes} telemetry bytes, {TotalFrameRecords} frames, {FieldCount} fields.",
+                    result.Path,
+                    result.Bytes,
+                    result.ElapsedMilliseconds,
+                    result.ProcessCpuMilliseconds,
+                    result.TelemetryBytes,
+                    result.TotalFrameRecords,
+                    result.FieldCount);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                _state.RecordWarning($"Capture synthesis failed: {exception.Message}");
+                _events.Record("capture_synthesis_failed", new Dictionary<string, string?>
+                {
+                    ["collectionId"] = collectionId,
+                    ["captureDirectory"] = captureDirectory,
+                    ["error"] = exception.Message
+                }, severity: "warning");
+                _logger.LogWarning(exception, "Failed to write capture synthesis for {CaptureDirectory}.", captureDirectory);
+            }
+            finally
+            {
+                _state.MarkCaptureSynthesisStopped();
+            }
+        }
+        finally
+        {
+            _synthesisSemaphore.Release();
+        }
+    }
+
+    private async Task WaitForIRacingToCloseBeforeSynthesisAsync(
+        string captureDirectory,
+        string? collectionId,
+        CancellationToken cancellationToken)
+    {
+        var deferred = false;
+        var pendingSinceUtc = DateTimeOffset.UtcNow;
+
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!IsIRacingStillRunning(out var reason))
+            {
+                if (deferred)
+                {
+                    _state.MarkCaptureSynthesisPendingCleared();
+                    _events.Record("capture_synthesis_deferred_released", new Dictionary<string, string?>
+                    {
+                        ["collectionId"] = collectionId,
+                        ["captureDirectory"] = captureDirectory
+                    });
+                    _logger.LogInformation(
+                        "iRacing has closed; starting deferred capture synthesis for {CaptureDirectory}.",
+                        captureDirectory);
+                }
+
+                return;
+            }
+
+            _state.MarkCaptureSynthesisPending(pendingSinceUtc, reason);
+            if (!deferred)
+            {
+                _events.Record("capture_synthesis_deferred_iracing_running", new Dictionary<string, string?>
+                {
+                    ["collectionId"] = collectionId,
+                    ["captureDirectory"] = captureDirectory,
+                    ["reason"] = reason
+                });
+                _logger.LogInformation(
+                    "Deferring capture synthesis for {CaptureDirectory} until iRacing closes. Current blocker: {IRacingBlocker}.",
+                    captureDirectory,
+                    reason);
+                deferred = true;
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private bool IsIRacingStillRunning(out string reason)
+    {
+        var runningSimProcesses = CaptureSynthesisService.FindRunningIRacingSimProcesses();
+        if (runningSimProcesses.Count > 0)
+        {
+            reason = string.Join(", ", runningSimProcesses);
+            return true;
+        }
+
+        if (IsSdkStillConnected())
+        {
+            reason = "SDK still connected";
+            return true;
+        }
+
+        reason = string.Empty;
+        return false;
+    }
+
+    private bool IsSdkStillConnected()
+    {
+        try
+        {
+            return _sdk?.IsConnected() == true;
+        }
+        catch
+        {
+            return false;
         }
     }
 
@@ -974,6 +1439,54 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         var track = FirstNonEmpty(summary.Track.TrackDisplayName, summary.Track.TrackName, summary.Combo.TrackKey);
         var session = FirstNonEmpty(summary.Session.SessionType, summary.Session.EventType, summary.Combo.SessionKey);
         return $"{car} / {track} / {session}";
+    }
+
+    private HistoricalSessionSegmentContext BuildSegmentContext(CaptureFinalizationContext finalization)
+    {
+        var previousState = _runtimeState.PreviousState;
+        return new HistoricalSessionSegmentContext
+        {
+            EndedReason = string.IsNullOrWhiteSpace(finalization.EndedReason)
+                ? "unknown"
+                : finalization.EndedReason,
+            AppRunId = _diagnosticContext.AppRunId,
+            CollectionId = finalization.CollectionId,
+            PreviousAppRunUnclean = previousState?.StoppedCleanly == false,
+            PreviousAppStartedAtUtc = previousState?.StartedAtUtc,
+            PreviousAppLastHeartbeatAtUtc = previousState?.LastHeartbeatAtUtc,
+            PreviousAppStoppedAtUtc = previousState?.StoppedAtUtc
+        };
+    }
+
+    private HistoricalSessionSummary WithCorrelation(
+        HistoricalSessionSummary summary,
+        CaptureFinalizationContext finalization)
+    {
+        return new HistoricalSessionSummary
+        {
+            SummaryVersion = summary.SummaryVersion,
+            SourceCaptureId = summary.SourceCaptureId,
+            AppRunId = _diagnosticContext.AppRunId,
+            CollectionId = finalization.CollectionId,
+            StartedAtUtc = summary.StartedAtUtc,
+            FinishedAtUtc = summary.FinishedAtUtc,
+            Combo = summary.Combo,
+            Car = summary.Car,
+            Track = summary.Track,
+            Session = summary.Session,
+            Conditions = summary.Conditions,
+            Metrics = summary.Metrics,
+            Stints = summary.Stints,
+            PitStops = summary.PitStops,
+            Quality = summary.Quality,
+            AppVersion = summary.AppVersion
+        };
+    }
+
+    private static long ElapsedMilliseconds(long startedTimestamp)
+    {
+        var elapsedTicks = Stopwatch.GetTimestamp() - startedTimestamp;
+        return (long)Math.Round(elapsedTicks * 1000d / Stopwatch.Frequency);
     }
 
     private static string FirstNonEmpty(params string?[] values)
@@ -991,11 +1504,13 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 
     private sealed record CaptureFinalizationContext(
         string? SourceId,
+        string? CollectionId,
         DateTimeOffset? StartedAtUtc,
         int DroppedFrameCount,
-        int SessionInfoSnapshotCount)
+        int SessionInfoSnapshotCount,
+        string EndedReason)
     {
-        public static CaptureFinalizationContext Empty { get; } = new(null, null, 0, 0);
+        public static CaptureFinalizationContext Empty { get; } = new(null, null, null, 0, 0, "unknown");
     }
 
     private sealed record CarProgress(

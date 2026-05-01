@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.Telemetry;
 using TmrOverlay.Core.Telemetry.Live;
@@ -13,6 +14,7 @@ internal sealed class ReplayTelemetryHostedService : IHostedService
     private readonly TelemetryCaptureState _state;
     private readonly ILiveTelemetrySink _liveTelemetrySink;
     private readonly AppEventRecorder _events;
+    private readonly TelemetryDiagnosticContext _diagnosticContext;
     private readonly ILogger<ReplayTelemetryHostedService> _logger;
     private CancellationTokenSource? _replayCancellation;
     private Task? _replayTask;
@@ -22,12 +24,14 @@ internal sealed class ReplayTelemetryHostedService : IHostedService
         TelemetryCaptureState state,
         ILiveTelemetrySink liveTelemetrySink,
         AppEventRecorder events,
+        TelemetryDiagnosticContext diagnosticContext,
         ILogger<ReplayTelemetryHostedService> logger)
     {
         _options = options;
         _state = state;
         _liveTelemetrySink = liveTelemetrySink;
         _events = events;
+        _diagnosticContext = diagnosticContext;
         _logger = logger;
     }
 
@@ -85,17 +89,24 @@ internal sealed class ReplayTelemetryHostedService : IHostedService
         try
         {
             _state.SetCaptureRoot(Path.GetDirectoryName(_options.CaptureDirectory!) ?? _options.CaptureDirectory!);
+            _state.SetAppRunId(_diagnosticContext.AppRunId);
             _state.SetRawCaptureEnabled(true);
             _state.MarkConnected();
             _liveTelemetrySink.MarkConnected();
             var startedAtUtc = DateTimeOffset.UtcNow;
+            var collectionId = _diagnosticContext.NewCollectionId(startedAtUtc);
             var sourceId = Path.GetFileName(_options.CaptureDirectory!);
             if (string.IsNullOrWhiteSpace(sourceId))
             {
                 sourceId = "replay";
             }
 
-            _state.MarkCaptureStarted(_options.CaptureDirectory!, startedAtUtc);
+            _state.MarkCaptureStarted(
+                _options.CaptureDirectory!,
+                startedAtUtc,
+                sourceId,
+                collectionId,
+                sourceId);
             _liveTelemetrySink.MarkCollectionStarted(sourceId, startedAtUtc);
 
             var frameCount = Math.Max(0, manifest?.FrameCount ?? 0);

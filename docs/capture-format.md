@@ -25,7 +25,43 @@ The synthesis reads every field in `telemetry-schema.json` across `telemetry.bin
 - short timelines for scalar state changes
 - a focused weather section derived from the same all-field summary
 
-The tool defaults to a 24 MiB output budget so the artifact stays below GitHub's browser upload cap. If a longer capture or richer timeline exceeds that budget, rerun with `--sample-stride`, lower `--max-timeline-events`, or lower `--top-indexes`.
+The tool defaults to a 24 MiB output budget so the artifact stays below GitHub's browser upload cap. It also auto-strides large captures to roughly 20,000 sampled frames by default; use `--sample-stride 1` only when you intentionally want every frame. If a longer capture or richer timeline exceeds that budget, rerun with a larger `--sample-stride`, lower `--max-timeline-events`, or lower `--top-indexes`.
+
+The app writes a stable `capture-synthesis.json` plus a context-named copy when session YAML has enough metadata, for example `capture-synthesis-race-mercedes-amg-gt3-2020-gesamtstrecke-vln.json`. App-side synthesis is deferred while the iRacing SDK is still connected or a known iRacing sim process is still running, then starts as soon as that blocker clears; this keeps post-session reduction from competing with the live sim. If the app itself is shutting down while iRacing is still active, synthesis is skipped rather than blocking exit. On startup, the app scans for raw capture folders with `telemetry.bin` and `telemetry-schema.json` but no stable `capture-synthesis.json`; those folders are queued for the same guarded synthesis path. The standalone tool has the same Windows process guard unless `--allow-while-iracing-running` is passed intentionally.
+
+The app also records synthesis timing and process CPU usage in app events, status snapshots, and diagnostics bundles so long post-session reduction can be reviewed without uploading `telemetry.bin`.
+
+## Session Stitching
+
+Raw capture directories are immutable segments. If the app exits, crashes, or the user leaves and rejoins the same iRacing session, the app does not concatenate `telemetry.bin` files.
+
+Instead, compact history writes a per-capture summary and also updates a derived session group when `SubSessionID` or `SessionID` is available from session YAML. Session group files live beside summaries under:
+
+```text
+history/user/cars/{car}/tracks/{track}/sessions/{session}/session-groups/{group-id}.json
+```
+
+Each segment records the source capture id, start/end time, duration, frame counts, quality confidence, whether it contributes to baseline history, the end reason, the reconnect gap from the previous segment, and previous app runtime state when the last app run was unclean. Post-race analysis uses the group id as its stable analysis id, so later reconnect segments update the same analysis row.
+
+## `capture-manifest.json`
+
+The manifest identifies the capture, SDK/header shape, frame counts, session-info snapshot counts, app version, and finalization timing. Newer captures also include correlation ids:
+
+- `appRunId` - current TmrOverlay process run id
+- `collectionId` - live telemetry collection id shared by raw capture, compact history, app events, diagnostics, and post-race analysis
+- `captureId` - immutable raw capture segment id
+- `endedReason` - why the raw segment closed, such as `iracing_disconnected`, `app_stopped`, or `manual_stop`
+
+Newer captures also include lightweight performance fields:
+
+- `rawCaptureElapsedMilliseconds`
+- `processCpuMilliseconds`
+- `processCpuPercentOfOneCore`
+- `writeOperationCount`
+- `averageWriteElapsedMilliseconds`
+- `maxWriteElapsedMilliseconds`
+
+These values are process-level diagnostics for the capture window. They are intended to show whether raw capture writes were slow or CPU-heavy while iRacing was active.
 
 ## `telemetry-schema.json`
 

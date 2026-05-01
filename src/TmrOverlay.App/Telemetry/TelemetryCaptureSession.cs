@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -28,9 +29,14 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
     private readonly string _sessionInfoDirectoryPath;
     private readonly CaptureManifest _manifest;
     private readonly Action<TelemetryCaptureWriteStatus>? _writeStatusChanged;
+    private readonly TimeSpan _startedProcessCpu;
+    private readonly long _startedTimestamp;
     private Exception? _writerFault;
     private int _droppedFrameCount;
     private int _disposed;
+    private int _writeOperationCount;
+    private long _totalWriteElapsedMilliseconds;
+    private long _maxWriteElapsedMilliseconds;
 
     private TelemetryCaptureSession(
         string directoryPath,
@@ -48,6 +54,8 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
         _manifestFilePath = Path.Combine(directoryPath, ManifestFileName);
         _latestSessionInfoPath = Path.Combine(directoryPath, LatestSessionInfoFileName);
         _sessionInfoDirectoryPath = Path.Combine(directoryPath, SessionInfoDirectoryName);
+        _startedProcessCpu = ReadCurrentProcessCpu();
+        _startedTimestamp = Stopwatch.GetTimestamp();
         _messages = Channel.CreateBounded<CaptureMessage>(new BoundedChannelOptions(queueCapacity)
         {
             SingleReader = true,
@@ -71,6 +79,14 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
 
     public int SessionInfoSnapshotCount => _manifest.SessionInfoSnapshotCount;
 
+    public CapturePerformanceSnapshot ManifestPerformance => new(
+        RawCaptureElapsedMilliseconds: _manifest.RawCaptureElapsedMilliseconds,
+        ProcessCpuMilliseconds: _manifest.ProcessCpuMilliseconds,
+        ProcessCpuPercentOfOneCore: _manifest.ProcessCpuPercentOfOneCore,
+        WriteOperationCount: _manifest.WriteOperationCount,
+        AverageWriteElapsedMilliseconds: _manifest.AverageWriteElapsedMilliseconds,
+        MaxWriteElapsedMilliseconds: _manifest.MaxWriteElapsedMilliseconds);
+
     public Exception? WriterFault => Volatile.Read(ref _writerFault);
 
     public static TelemetryCaptureSession Create(
@@ -81,7 +97,9 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
         int tickRate,
         int bufferLength,
         IReadOnlyCollection<TelemetryVariableSchema> schema,
-        Action<TelemetryCaptureWriteStatus>? writeStatusChanged = null)
+        Action<TelemetryCaptureWriteStatus>? writeStatusChanged = null,
+        string? appRunId = null,
+        string? collectionId = null)
     {
         var startedAtUtc = DateTimeOffset.UtcNow;
         var captureId = $"capture-{startedAtUtc:yyyyMMdd-HHmmss-fff}";
@@ -92,6 +110,8 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
         var manifest = new CaptureManifest
         {
             CaptureId = captureId,
+            AppRunId = appRunId,
+            CollectionId = collectionId,
             StartedAtUtc = startedAtUtc,
             TelemetryFile = TelemetryFileName,
             SchemaFile = SchemaFileName,
@@ -145,6 +165,14 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
         Interlocked.Increment(ref _droppedFrameCount);
     }
 
+    public void SetEndedReason(string endedReason)
+    {
+        if (!string.IsNullOrWhiteSpace(endedReason))
+        {
+            _manifest.EndedReason = endedReason;
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
@@ -170,24 +198,50 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
                 bufferSize: 64 * 1024,
                 useAsync: true);
 
+            var headerStarted = Stopwatch.GetTimestamp();
             await WriteFileHeaderAsync(telemetryStream).ConfigureAwait(false);
-            ReportWriteStatus(telemetryStream.Length);
+            var headerElapsed = ElapsedMilliseconds(headerStarted);
+            RecordWritePerformance(headerElapsed);
+            ReportWriteStatus(
+                telemetryStream.Length,
+                lastWriteBytes: telemetryStream.Length,
+                lastWriteElapsedMilliseconds: headerElapsed,
+                lastWriteKind: "header");
 
             await foreach (var message in _messages.Reader.ReadAllAsync())
             {
                 switch (message)
                 {
                     case CaptureFrameMessage frameMessage:
+                    {
+                        var beforeLength = telemetryStream.Length;
+                        var writeStarted = Stopwatch.GetTimestamp();
                         await WriteFrameAsync(telemetryStream, frameMessage.Frame).ConfigureAwait(false);
+                        var elapsedMilliseconds = ElapsedMilliseconds(writeStarted);
+                        RecordWritePerformance(elapsedMilliseconds);
                         _manifest.FrameCount++;
-                        ReportWriteStatus(telemetryStream.Length);
+                        ReportWriteStatus(
+                            telemetryStream.Length,
+                            lastWriteBytes: telemetryStream.Length - beforeLength,
+                            lastWriteElapsedMilliseconds: elapsedMilliseconds,
+                            lastWriteKind: "frame");
                         break;
+                    }
 
                     case CaptureSessionInfoMessage sessionInfoMessage:
+                    {
+                        var writeStarted = Stopwatch.GetTimestamp();
                         await WriteSessionInfoAsync(sessionInfoMessage.SessionInfo).ConfigureAwait(false);
+                        var elapsedMilliseconds = ElapsedMilliseconds(writeStarted);
+                        RecordWritePerformance(elapsedMilliseconds);
                         _manifest.SessionInfoSnapshotCount++;
-                        ReportWriteStatus(telemetryStream.Length);
+                        ReportWriteStatus(
+                            telemetryStream.Length,
+                            lastWriteBytes: Encoding.UTF8.GetByteCount(sessionInfoMessage.SessionInfo.Yaml),
+                            lastWriteElapsedMilliseconds: elapsedMilliseconds,
+                            lastWriteKind: "session-info");
                         break;
+                    }
                 }
             }
 
@@ -195,6 +249,7 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
 
             _manifest.FinishedAtUtc = DateTimeOffset.UtcNow;
             _manifest.DroppedFrameCount = Volatile.Read(ref _droppedFrameCount);
+            RecordCapturePerformance();
 
             await File.WriteAllTextAsync(
                     _manifestFilePath,
@@ -205,7 +260,7 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
         {
             Volatile.Write(ref _writerFault, exception);
             _messages.Writer.TryComplete(exception);
-            ReportWriteStatus(null, exception);
+            ReportWriteStatus(null, exception: exception);
             throw;
         }
     }
@@ -252,7 +307,47 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
         await File.WriteAllTextAsync(snapshotPath, sessionInfo.Yaml).ConfigureAwait(false);
     }
 
-    private void ReportWriteStatus(long? telemetryFileBytes, Exception? exception = null)
+    private void RecordWritePerformance(long elapsedMilliseconds)
+    {
+        _writeOperationCount++;
+        _totalWriteElapsedMilliseconds += elapsedMilliseconds;
+        _maxWriteElapsedMilliseconds = Math.Max(_maxWriteElapsedMilliseconds, elapsedMilliseconds);
+    }
+
+    private void RecordCapturePerformance()
+    {
+        var elapsedMilliseconds = ElapsedMilliseconds(_startedTimestamp);
+        var processCpuMilliseconds = Math.Max(0d, (ReadCurrentProcessCpu() - _startedProcessCpu).TotalMilliseconds);
+        _manifest.RawCaptureElapsedMilliseconds = elapsedMilliseconds;
+        _manifest.ProcessCpuMilliseconds = (long)Math.Round(processCpuMilliseconds);
+        _manifest.ProcessCpuPercentOfOneCore = elapsedMilliseconds > 0
+            ? Math.Round(processCpuMilliseconds / elapsedMilliseconds * 100d, 1)
+            : null;
+        _manifest.WriteOperationCount = _writeOperationCount;
+        _manifest.AverageWriteElapsedMilliseconds = _writeOperationCount > 0
+            ? Math.Round(_totalWriteElapsedMilliseconds / (double)_writeOperationCount, 3)
+            : null;
+        _manifest.MaxWriteElapsedMilliseconds = _writeOperationCount > 0 ? _maxWriteElapsedMilliseconds : null;
+    }
+
+    private static TimeSpan ReadCurrentProcessCpu()
+    {
+        using var process = Process.GetCurrentProcess();
+        return process.TotalProcessorTime;
+    }
+
+    private static long ElapsedMilliseconds(long startedTimestamp)
+    {
+        var elapsedTicks = Stopwatch.GetTimestamp() - startedTimestamp;
+        return (long)Math.Round(elapsedTicks * 1000d / Stopwatch.Frequency);
+    }
+
+    private void ReportWriteStatus(
+        long? telemetryFileBytes,
+        long? lastWriteBytes = null,
+        long? lastWriteElapsedMilliseconds = null,
+        string? lastWriteKind = null,
+        Exception? exception = null)
     {
         try
         {
@@ -263,6 +358,13 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
                 FramesWritten: _manifest.FrameCount,
                 SessionInfoSnapshotCount: _manifest.SessionInfoSnapshotCount,
                 TelemetryFileBytes: telemetryFileBytes,
+                LastWriteBytes: lastWriteBytes,
+                LastWriteElapsedMilliseconds: lastWriteElapsedMilliseconds,
+                LastWriteKind: lastWriteKind,
+                AverageWriteElapsedMilliseconds: _writeOperationCount > 0
+                    ? Math.Round(_totalWriteElapsedMilliseconds / (double)_writeOperationCount, 3)
+                    : null,
+                MaxWriteElapsedMilliseconds: _writeOperationCount > 0 ? _maxWriteElapsedMilliseconds : null,
                 Exception: exception));
         }
         catch
@@ -277,3 +379,11 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
 
     private sealed record CaptureSessionInfoMessage(SessionInfoSnapshot SessionInfo) : CaptureMessage;
 }
+
+internal sealed record CapturePerformanceSnapshot(
+    long? RawCaptureElapsedMilliseconds,
+    long? ProcessCpuMilliseconds,
+    double? ProcessCpuPercentOfOneCore,
+    int? WriteOperationCount,
+    double? AverageWriteElapsedMilliseconds,
+    long? MaxWriteElapsedMilliseconds);

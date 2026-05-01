@@ -18,11 +18,25 @@ internal sealed class SessionHistoryStore
         _options = options;
     }
 
-    public async Task SaveAsync(HistoricalSessionSummary summary, CancellationToken cancellationToken)
+    public async Task<HistoricalSessionGroup?> SaveAsync(
+        HistoricalSessionSummary summary,
+        CancellationToken cancellationToken)
+    {
+        return await SaveAsync(
+                summary,
+                HistoricalSessionSegmentContext.Normal("unknown"),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<HistoricalSessionGroup?> SaveAsync(
+        HistoricalSessionSummary summary,
+        HistoricalSessionSegmentContext segmentContext,
+        CancellationToken cancellationToken)
     {
         if (!_options.Enabled)
         {
-            return;
+            return null;
         }
 
         var sessionDirectory = GetSessionDirectory(summary);
@@ -41,6 +55,7 @@ internal sealed class SessionHistoryStore
             .ConfigureAwait(false);
 
         await UpdateAggregateAsync(sessionDirectory, summary, cancellationToken).ConfigureAwait(false);
+        return await UpdateSessionGroupAsync(sessionDirectory, summary, segmentContext, cancellationToken).ConfigureAwait(false);
     }
 
     private string GetSessionDirectory(HistoricalSessionSummary summary)
@@ -112,6 +127,145 @@ internal sealed class SessionHistoryStore
         await File.WriteAllTextAsync(
                 aggregatePath,
                 JsonSerializer.Serialize(aggregate, JsonOptions),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task<HistoricalSessionGroup> UpdateSessionGroupAsync(
+        string sessionDirectory,
+        HistoricalSessionSummary summary,
+        HistoricalSessionSegmentContext segmentContext,
+        CancellationToken cancellationToken)
+    {
+        var groupsDirectory = Path.Combine(sessionDirectory, "session-groups");
+        Directory.CreateDirectory(groupsDirectory);
+
+        var groupId = BuildGroupId(summary);
+        var groupPath = Path.Combine(groupsDirectory, $"{groupId}.json");
+        var existing = await ReadSessionGroupAsync(groupPath, cancellationToken).ConfigureAwait(false);
+        var segments = existing?.Segments.ToList() ?? [];
+        var segment = BuildSegment(summary, segmentContext);
+        var existingIndex = segments.FindIndex(
+            item => string.Equals(item.SourceCaptureId, segment.SourceCaptureId, StringComparison.OrdinalIgnoreCase));
+        if (existingIndex >= 0)
+        {
+            segments[existingIndex] = segment;
+        }
+        else
+        {
+            segments.Add(segment);
+        }
+
+        segments = CalculateSegmentGaps(segments);
+        var group = new HistoricalSessionGroup
+        {
+            GroupId = groupId,
+            CreatedAtUtc = existing?.CreatedAtUtc ?? DateTimeOffset.UtcNow,
+            UpdatedAtUtc = DateTimeOffset.UtcNow,
+            Combo = summary.Combo,
+            Car = summary.Car,
+            Track = summary.Track,
+            Session = summary.Session,
+            Segments = segments
+        };
+
+        await File.WriteAllTextAsync(
+                groupPath,
+                JsonSerializer.Serialize(group, JsonOptions),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return group;
+    }
+
+    private static HistoricalSessionSegment BuildSegment(
+        HistoricalSessionSummary summary,
+        HistoricalSessionSegmentContext context)
+    {
+        return new HistoricalSessionSegment
+        {
+            SourceCaptureId = summary.SourceCaptureId,
+            AppRunId = context.AppRunId ?? summary.AppRunId,
+            CollectionId = context.CollectionId ?? summary.CollectionId,
+            StartedAtUtc = summary.StartedAtUtc,
+            FinishedAtUtc = summary.FinishedAtUtc,
+            CaptureDurationSeconds = summary.Metrics.CaptureDurationSeconds,
+            SampleFrameCount = summary.Metrics.SampleFrameCount,
+            DroppedFrameCount = summary.Metrics.DroppedFrameCount,
+            QualityConfidence = summary.Quality.Confidence,
+            ContributesToBaseline = summary.Quality.ContributesToBaseline,
+            EndedReason = string.IsNullOrWhiteSpace(context.EndedReason) ? "unknown" : context.EndedReason,
+            PreviousAppRunUnclean = context.PreviousAppRunUnclean,
+            PreviousAppStartedAtUtc = context.PreviousAppStartedAtUtc,
+            PreviousAppLastHeartbeatAtUtc = context.PreviousAppLastHeartbeatAtUtc,
+            PreviousAppStoppedAtUtc = context.PreviousAppStoppedAtUtc
+        };
+    }
+
+    private static List<HistoricalSessionSegment> CalculateSegmentGaps(
+        IReadOnlyList<HistoricalSessionSegment> segments)
+    {
+        var ordered = segments
+            .OrderBy(segment => segment.StartedAtUtc)
+            .ThenBy(segment => segment.SourceCaptureId, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var result = new List<HistoricalSessionSegment>(ordered.Length);
+        HistoricalSessionSegment? previous = null;
+        foreach (var segment in ordered)
+        {
+            result.Add(new HistoricalSessionSegment
+            {
+                SourceCaptureId = segment.SourceCaptureId,
+                AppRunId = segment.AppRunId,
+                CollectionId = segment.CollectionId,
+                StartedAtUtc = segment.StartedAtUtc,
+                FinishedAtUtc = segment.FinishedAtUtc,
+                CaptureDurationSeconds = segment.CaptureDurationSeconds,
+                SampleFrameCount = segment.SampleFrameCount,
+                DroppedFrameCount = segment.DroppedFrameCount,
+                QualityConfidence = segment.QualityConfidence,
+                ContributesToBaseline = segment.ContributesToBaseline,
+                EndedReason = segment.EndedReason,
+                PreviousAppRunUnclean = segment.PreviousAppRunUnclean,
+                PreviousAppStartedAtUtc = segment.PreviousAppStartedAtUtc,
+                PreviousAppLastHeartbeatAtUtc = segment.PreviousAppLastHeartbeatAtUtc,
+                PreviousAppStoppedAtUtc = segment.PreviousAppStoppedAtUtc,
+                GapFromPreviousSegmentSeconds = previous is null
+                    ? null
+                    : Math.Max(0d, (segment.StartedAtUtc - previous.FinishedAtUtc).TotalSeconds)
+            });
+            previous = segment;
+        }
+
+        return result;
+    }
+
+    private static string BuildGroupId(HistoricalSessionSummary summary)
+    {
+        var sessionIdentity = summary.Session.SubSessionId is { } subSessionId
+            ? $"subsession-{subSessionId}"
+            : summary.Session.SessionId is { } sessionId
+                ? $"session-{sessionId}"
+                : $"local-{summary.StartedAtUtc:yyyyMMdd-HHmmss}-{summary.SourceCaptureId}";
+        var sessionNum = summary.Session.SessionNum is { } value
+            ? $"-s{value}"
+            : string.Empty;
+        return SessionHistoryPath.Slug(
+            $"{sessionIdentity}{sessionNum}-{summary.Combo.CarKey}-{summary.Combo.TrackKey}-{summary.Combo.SessionKey}");
+    }
+
+    private static async Task<HistoricalSessionGroup?> ReadSessionGroupAsync(
+        string groupPath,
+        CancellationToken cancellationToken)
+    {
+        if (!File.Exists(groupPath))
+        {
+            return null;
+        }
+
+        await using var stream = File.OpenRead(groupPath);
+        return await JsonSerializer.DeserializeAsync<HistoricalSessionGroup>(
+                stream,
+                JsonOptions,
                 cancellationToken)
             .ConfigureAwait(false);
     }

@@ -20,6 +20,8 @@ Event-level data is the highest-level context for a capture. It combines the loc
 ### Core fields
 
 - Capture identity:
+  - `appRunId`
+  - `collectionId`
   - `captureId`
   - `startedAtUtc`
   - `finishedAtUtc`
@@ -59,6 +61,23 @@ Event-level data is the highest-level context for a capture. It combines the loc
   - `TrackFogLevel`
   - `TrackPrecipitation`
   - live telemetry `TrackTemp`, `TrackTempCrew`, `AirTemp`, `TrackWetness`, `Skies`, `WindVel`, `WindDir`, `RelativeHumidity`, `FogLevel`, `Precipitation`, and `WeatherDeclaredWet`
+
+## Diagnostics Schema
+
+App events are JSONL records under the app events folder. New records use `eventVersion: 2`, a stable `name`, a severity string such as `info`, `warning`, or `error`, and structured `properties`. The recorder adds `appRunId` to every event; telemetry collection events also include `collectionId` when a collection exists, and raw-capture events include `captureId` when a raw segment exists.
+
+Runtime raw capture is controlled from the Collector Status overlay. `Capture` arms the raw writer for the next live SDK frame; `Stop raw` closes only the raw writer and leaves live analysis, compact history, and post-race analysis running. A stopped raw segment remains pending for synthesis until the iRacing SDK and sim process have closed. Startup recovery scans capture folders for missing `capture-synthesis.json` files and queues the same guarded synthesis path.
+
+Diagnostics bundles include `live/degradation-codes.json`. These codes are intentionally explicit about expected telemetry gaps versus real failures. Current examples include:
+
+- `spectated_timing_only`
+- `local_scalars_idle`
+- `missing_local_driving_fuel_scalars`
+- `focus_car_changed`
+- `car_left_right_unavailable`
+- `car_left_right_inactive`
+- `fuel_model_unavailable`
+- `weather_wetness_mismatch`
 
 ### Example from short diagnostic capture
 

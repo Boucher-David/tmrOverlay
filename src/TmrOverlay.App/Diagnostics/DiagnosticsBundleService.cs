@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using TmrOverlay.Core.AppInfo;
 using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
+using TmrOverlay.Core.History;
 using TmrOverlay.Core.Telemetry.Live;
 
 namespace TmrOverlay.App.Diagnostics;
@@ -37,15 +38,20 @@ internal sealed class DiagnosticsBundleService
     public string CreateBundle()
     {
         Directory.CreateDirectory(_storageOptions.DiagnosticsRoot);
+        var captureSnapshot = _captureState.Snapshot();
+        var captureDirectory = captureSnapshot.CurrentCaptureDirectory ?? captureSnapshot.LastCaptureDirectory;
+        var label = BuildDiagnosticsLabel(captureDirectory);
         var bundlePath = Path.Combine(
             _storageOptions.DiagnosticsRoot,
-            $"tmroverlay-diagnostics-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.zip");
+            $"tmroverlay-diagnostics-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}{label}.zip");
 
         using var archive = ZipFile.Open(bundlePath, ZipArchiveMode.Create);
         AddTextEntry(archive, "metadata/app-version.json", JsonSerializer.Serialize(AppVersionInfo.Current, JsonOptions));
         AddTextEntry(archive, "metadata/storage.json", JsonSerializer.Serialize(_storageOptions, JsonOptions));
         AddFileIfExists(archive, _storageOptions.RuntimeStatePath, "runtime/runtime-state.json");
-        AddTextEntry(archive, "runtime/telemetry-capture-state.json", JsonSerializer.Serialize(_captureState.Snapshot(), JsonOptions));
+        AddTextEntry(archive, "runtime/telemetry-capture-state.json", JsonSerializer.Serialize(captureSnapshot, JsonOptions));
+        AddTextEntry(archive, "runtime/capture-performance.json", JsonSerializer.Serialize(BuildCapturePerformance(captureSnapshot), JsonOptions));
+        AddTextEntry(archive, "runtime/capture-synthesis-metrics.json", JsonSerializer.Serialize(BuildCaptureSynthesisMetrics(captureSnapshot), JsonOptions));
         AddLiveTelemetrySnapshot(archive);
         AddFileIfExists(archive, Path.Combine(_storageOptions.SettingsRoot, "settings.json"), "settings/settings.json");
         AddRecentFiles(archive, _storageOptions.LogsRoot, "*.log", "logs", maxFiles: 10);
@@ -56,6 +62,112 @@ internal sealed class DiagnosticsBundleService
 
         _logger.LogInformation("Created diagnostics bundle {DiagnosticsBundlePath}.", bundlePath);
         return bundlePath;
+    }
+
+    private static object BuildCapturePerformance(TelemetryCaptureStatusSnapshot snapshot)
+    {
+        return new
+        {
+            generatedAtUtc = DateTimeOffset.UtcNow,
+            rawCapture = new
+            {
+                snapshot.AppRunId,
+                snapshot.CurrentCollectionId,
+                snapshot.LastCollectionId,
+                snapshot.CurrentSourceId,
+                snapshot.LastSourceId,
+                snapshot.CurrentCaptureId,
+                snapshot.LastCaptureId,
+                snapshot.RawCaptureEnabled,
+                snapshot.RawCaptureActive,
+                snapshot.RawCaptureStopRequested,
+                snapshot.RawCaptureStopRequestedAtUtc,
+                snapshot.LastRawCaptureStoppedAtUtc,
+                snapshot.FrameCount,
+                snapshot.WrittenFrameCount,
+                snapshot.DroppedFrameCount,
+                snapshot.TelemetryFileBytes,
+                snapshot.LastDiskWriteAtUtc,
+                snapshot.CaptureWriteStatusCount,
+                snapshot.LastCaptureWriteKind,
+                snapshot.LastCaptureWriteBytes,
+                snapshot.LastCaptureWriteElapsedMilliseconds,
+                snapshot.AverageCaptureWriteElapsedMilliseconds,
+                snapshot.MaxCaptureWriteElapsedMilliseconds
+            },
+            history = new
+            {
+                snapshot.IsHistoryFinalizing,
+                snapshot.HistoryFinalizationStartedAtUtc,
+                snapshot.HistorySummarySaveCount,
+                snapshot.LastHistorySavedAtUtc,
+                snapshot.LastHistorySummaryLabel,
+                snapshot.LastHistoryFinalizationElapsedMilliseconds,
+                snapshot.LastHistorySaveElapsedMilliseconds,
+                snapshot.LastAnalysisSaveElapsedMilliseconds
+            },
+            synthesis = new
+            {
+                snapshot.IsCaptureSynthesisPending,
+                snapshot.CaptureSynthesisPendingSinceUtc,
+                snapshot.CaptureSynthesisPendingReason,
+                snapshot.IsCaptureSynthesisRunning,
+                snapshot.CaptureSynthesisStartedAtUtc,
+                snapshot.CaptureSynthesisSaveCount,
+                snapshot.LastCaptureSynthesisSavedAtUtc,
+                snapshot.LastCaptureSynthesisBytes,
+                snapshot.LastCaptureSynthesisTelemetryBytes,
+                snapshot.LastCaptureSynthesisElapsedMilliseconds,
+                snapshot.LastCaptureSynthesisProcessCpuMilliseconds,
+                snapshot.LastCaptureSynthesisProcessCpuPercentOfOneCore,
+                snapshot.LastCaptureSynthesisTotalFrameRecords,
+                snapshot.LastCaptureSynthesisSampledFrameCount,
+                snapshot.LastCaptureSynthesisSampleStride,
+                snapshot.LastCaptureSynthesisFieldCount
+            },
+            notes = new[]
+            {
+                "Raw capture write timings are per app write operation and are intended to catch slow disk writes or queue pressure while iRacing is active.",
+                "History timings cover compact summary/group save and post-race analysis persistence during finalization.",
+                "Synthesis CPU is process-level CPU time consumed during compact artifact generation after raw capture finalization."
+            }
+        };
+    }
+
+    private static object BuildCaptureSynthesisMetrics(TelemetryCaptureStatusSnapshot snapshot)
+    {
+        return new
+        {
+            generatedAtUtc = DateTimeOffset.UtcNow,
+            snapshot.IsCaptureSynthesisRunning,
+            snapshot.CaptureSynthesisStartedAtUtc,
+            snapshot.CaptureSynthesisSaveCount,
+            pending = new
+            {
+                snapshot.IsCaptureSynthesisPending,
+                snapshot.CaptureSynthesisPendingSinceUtc,
+                snapshot.CaptureSynthesisPendingReason
+            },
+            lastSaved = new
+            {
+                snapshot.LastCaptureSynthesisSavedAtUtc,
+                snapshot.LastCaptureSynthesisPath,
+                synthesisBytes = snapshot.LastCaptureSynthesisBytes,
+                sourceTelemetryBytes = snapshot.LastCaptureSynthesisTelemetryBytes,
+                elapsedMilliseconds = snapshot.LastCaptureSynthesisElapsedMilliseconds,
+                processCpuMilliseconds = snapshot.LastCaptureSynthesisProcessCpuMilliseconds,
+                processCpuPercentOfOneCore = snapshot.LastCaptureSynthesisProcessCpuPercentOfOneCore,
+                totalFrameRecords = snapshot.LastCaptureSynthesisTotalFrameRecords,
+                sampledFrameCount = snapshot.LastCaptureSynthesisSampledFrameCount,
+                sampleStride = snapshot.LastCaptureSynthesisSampleStride,
+                fieldCount = snapshot.LastCaptureSynthesisFieldCount
+            },
+            notes = new[]
+            {
+                "This entry summarizes the compact capture synthesis pass so diagnostics can show whether post-session reduction finished and how expensive it was.",
+                "The full stable synthesis is included under latest-capture/capture-synthesis.json when available; raw telemetry.bin is intentionally excluded."
+            }
+        };
     }
 
     private void AddLiveTelemetrySnapshot(ZipArchive archive)
@@ -77,6 +189,10 @@ internal sealed class DiagnosticsBundleService
                 JsonSerializer.Serialize(snapshot.TelemetryAvailability, JsonOptions));
             AddTextEntry(
                 archive,
+                "live/degradation-codes.json",
+                JsonSerializer.Serialize(BuildDegradationCodes(snapshot), JsonOptions));
+            AddTextEntry(
+                archive,
                 "live/weather-snapshot.json",
                 JsonSerializer.Serialize(BuildWeatherSnapshot(snapshot), JsonOptions));
         }
@@ -95,6 +211,7 @@ internal sealed class DiagnosticsBundleService
         return new
         {
             snapshot.LiveMode,
+            degradationCodes = BuildDegradationCodes(snapshot),
             snapshot.IsLocalDriverInCar,
             snapshot.IsSpectating,
             snapshot.IsSpectatingFocusedCar,
@@ -143,6 +260,68 @@ internal sealed class DiagnosticsBundleService
                 classCarCount = snapshot.LeaderGap.ClassCars.Count
             }
         };
+    }
+
+    private static IReadOnlyList<object> BuildDegradationCodes(LiveTelemetrySnapshot snapshot)
+    {
+        var availability = snapshot.TelemetryAvailability;
+        var codes = new List<object>();
+
+        if (availability.SampleFrameCount == 0)
+        {
+            Add("no_telemetry_frames", "warning", "No telemetry frames have been observed in the current collection.");
+        }
+
+        if (availability.IsSpectatedTimingOnly)
+        {
+            Add("spectated_timing_only", "expected", "Focused-car timing exists, but the local driver is not driving.");
+        }
+
+        if (availability.LocalScalarsIdle)
+        {
+            Add("local_scalars_idle", "expected", "Local car scalars are idle, typical while spectating or out of the car.");
+        }
+
+        if (!availability.HasLocalDrivingFuelScalars)
+        {
+            Add("missing_local_driving_fuel_scalars", "expected", "No local-driver fuel scalar frames are available for measured fuel baseline updates.");
+        }
+
+        if (availability.HasFocusChanges)
+        {
+            Add("focus_car_changed", "info", "Focused car changed during this collection; overlays should interpret history from the focused-car perspective.");
+        }
+
+        if (availability.CarLeftRightUnavailable)
+        {
+            Add("car_left_right_unavailable", "warning", "The local side-callout signal is unavailable, so radar side occupancy may be limited.");
+        }
+        else if (availability.CarLeftRightAlwaysInactive)
+        {
+            Add("car_left_right_inactive", "info", "The side-callout signal exists but has not reported nearby side traffic.");
+        }
+
+        if (!snapshot.Fuel.HasValidFuel)
+        {
+            Add("fuel_model_unavailable", "expected", "The live fuel model is not valid yet; overlays should fall back to exact history when available.");
+        }
+
+        if (snapshot.Weather.DeclaredWetSurfaceMismatch == true)
+        {
+            Add("weather_wetness_mismatch", "info", "iRacing's declared wet state differs from the current surface wetness class.");
+        }
+
+        return codes;
+
+        void Add(string code, string severity, string description)
+        {
+            codes.Add(new
+            {
+                code,
+                severity,
+                description
+            });
+        }
     }
 
     private static object BuildWeatherSnapshot(LiveTelemetrySnapshot snapshot)
@@ -251,6 +430,32 @@ internal sealed class DiagnosticsBundleService
         AddFileIfExists(archive, schemaPath, "latest-capture/telemetry-schema.json");
         AddTelemetrySchemaSummary(archive, schemaPath);
         AddFileIfExists(archive, Path.Combine(captureDirectory, "latest-session.yaml"), "latest-capture/latest-session.yaml");
+        AddFileIfExists(archive, Path.Combine(captureDirectory, "capture-synthesis.json"), "latest-capture/capture-synthesis.json");
+    }
+
+    private static string BuildDiagnosticsLabel(string? captureDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(captureDirectory))
+        {
+            return string.Empty;
+        }
+
+        var sessionInfoPath = Path.Combine(captureDirectory, "latest-session.yaml");
+        if (!File.Exists(sessionInfoPath))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            var context = SessionInfoSummaryParser.Parse(File.ReadAllText(sessionInfoPath));
+            var label = CaptureSynthesisService.BuildContextLabel(context);
+            return string.IsNullOrWhiteSpace(label) ? string.Empty : $"-{label}";
+        }
+        catch
+        {
+            return string.Empty;
+        }
     }
 
     private static void AddTelemetrySchemaSummary(ZipArchive archive, string schemaPath)

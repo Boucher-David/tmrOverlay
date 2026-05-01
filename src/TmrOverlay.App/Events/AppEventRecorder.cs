@@ -1,4 +1,5 @@
 using System.Text.Json;
+using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Storage;
 
 namespace TmrOverlay.App.Events;
@@ -11,19 +12,29 @@ internal sealed class AppEventRecorder
     };
 
     private readonly AppStorageOptions _storageOptions;
+    private readonly TelemetryDiagnosticContext _diagnosticContext;
     private readonly object _sync = new();
 
-    public AppEventRecorder(AppStorageOptions storageOptions)
+    public AppEventRecorder(
+        AppStorageOptions storageOptions,
+        TelemetryDiagnosticContext? diagnosticContext = null)
     {
         _storageOptions = storageOptions;
+        _diagnosticContext = diagnosticContext ?? new TelemetryDiagnosticContext();
     }
 
-    public void Record(string name, IReadOnlyDictionary<string, string?>? properties = null)
+    public void Record(
+        string name,
+        IReadOnlyDictionary<string, string?>? properties = null,
+        string severity = "info")
     {
+        var normalizedProperties = NormalizeProperties(properties);
         var appEvent = new AppEvent(
+            EventVersion: 2,
             TimestampUtc: DateTimeOffset.UtcNow,
             Name: name,
-            Properties: properties ?? new Dictionary<string, string?>());
+            Severity: string.IsNullOrWhiteSpace(severity) ? "info" : severity,
+            Properties: normalizedProperties);
 
         try
         {
@@ -38,5 +49,15 @@ internal sealed class AppEventRecorder
         {
             // Event breadcrumbs are useful for triage, but must not affect the live app.
         }
+    }
+
+    private IReadOnlyDictionary<string, string?> NormalizeProperties(
+        IReadOnlyDictionary<string, string?>? properties)
+    {
+        var normalized = properties is null
+            ? new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, string?>(properties, StringComparer.OrdinalIgnoreCase);
+        normalized.TryAdd("appRunId", _diagnosticContext.AppRunId);
+        return normalized;
     }
 }

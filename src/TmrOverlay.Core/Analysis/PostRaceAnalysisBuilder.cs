@@ -4,13 +4,19 @@ namespace TmrOverlay.Core.Analysis;
 
 internal static class PostRaceAnalysisBuilder
 {
-    public static PostRaceAnalysis Build(HistoricalSessionSummary summary)
+    public static PostRaceAnalysis Build(
+        HistoricalSessionSummary summary,
+        HistoricalSessionGroup? sessionGroup = null)
     {
         var track = FirstNonEmpty(summary.Track.TrackDisplayName, summary.Track.TrackName, summary.Combo.TrackKey);
         var session = FirstNonEmpty(summary.Session.SessionType, summary.Session.EventType, summary.Session.SessionName, summary.Combo.SessionKey);
         var car = FirstNonEmpty(summary.Car.CarScreenName, summary.Car.CarScreenNameShort, summary.Car.CarPath, summary.Combo.CarKey);
         var title = $"{track} - {session}";
         var subtitle = $"{car} | {summary.Quality.Confidence} confidence";
+        var analysisId = sessionGroup?.GroupId ?? $"{summary.FinishedAtUtc:yyyyMMdd-HHmmss}-{summary.SourceCaptureId}";
+        var finishedAtUtc = sessionGroup?.Segments.Count > 0
+            ? sessionGroup.Segments.Max(segment => segment.FinishedAtUtc)
+            : summary.FinishedAtUtc;
         var lines = new List<string>
         {
             title,
@@ -23,6 +29,8 @@ internal static class PostRaceAnalysisBuilder
             $"Weather: {BuildWeatherSummary(summary.Conditions)}.",
             $"Fuel model: {FormatFuelPerLap(summary.Metrics.FuelPerLapLiters)} average, {FormatFuel(summary.Car.DriverCarFuelMaxLiters)} tank, {FormatLapsPerTank(summary)}."
         };
+
+        AddSessionGroupLines(lines, summary, sessionGroup);
 
         if (summary.Metrics.StintCount > 0)
         {
@@ -51,10 +59,13 @@ internal static class PostRaceAnalysisBuilder
 
         return new PostRaceAnalysis
         {
-            Id = $"{summary.FinishedAtUtc:yyyyMMdd-HHmmss}-{summary.SourceCaptureId}",
+            Id = analysisId,
             CreatedAtUtc = DateTimeOffset.UtcNow,
-            FinishedAtUtc = summary.FinishedAtUtc,
-            SourceId = summary.SourceCaptureId,
+            FinishedAtUtc = finishedAtUtc,
+            SourceId = sessionGroup?.GroupId ?? summary.SourceCaptureId,
+            AppRunId = summary.AppRunId,
+            CollectionId = summary.CollectionId,
+            SessionGroupId = sessionGroup?.GroupId,
             Title = title,
             Subtitle = subtitle,
             Combo = summary.Combo,
@@ -138,6 +149,46 @@ internal static class PostRaceAnalysisBuilder
         }
 
         return "Fuel data was not strong enough for a stint-rhythm recommendation yet.";
+    }
+
+    private static void AddSessionGroupLines(
+        List<string> lines,
+        HistoricalSessionSummary summary,
+        HistoricalSessionGroup? sessionGroup)
+    {
+        if (sessionGroup is null || sessionGroup.Segments.Count == 0)
+        {
+            return;
+        }
+
+        var segments = sessionGroup.Segments
+            .OrderBy(segment => segment.StartedAtUtc)
+            .ThenBy(segment => segment.SourceCaptureId, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var latestSegment = segments.LastOrDefault(
+            segment => string.Equals(segment.SourceCaptureId, summary.SourceCaptureId, StringComparison.OrdinalIgnoreCase))
+            ?? segments[^1];
+        var totalDurationSeconds = segments.Sum(segment => segment.CaptureDurationSeconds);
+        var gapCount = segments.Count(segment => segment.GapFromPreviousSegmentSeconds is > 0d);
+        var largestGapSeconds = segments
+            .Select(segment => segment.GapFromPreviousSegmentSeconds ?? 0d)
+            .DefaultIfEmpty(0d)
+            .Max();
+
+        var gapText = gapCount > 0
+            ? $", {gapCount} reconnect gap(s), largest {FormatDuration(largestGapSeconds)}"
+            : ", no reconnect gaps detected";
+        lines.Add($"Session stitching: {segments.Length} capture segment(s), {FormatDuration(totalDurationSeconds)} total captured{gapText}.");
+        lines.Add($"Latest segment: {latestSegment.SourceCaptureId}, ended by {FirstNonEmpty(latestSegment.EndedReason, "unknown")}.");
+
+        if (segments.Any(segment => segment.PreviousAppRunUnclean))
+        {
+            var unclean = segments.First(segment => segment.PreviousAppRunUnclean);
+            var heartbeat = unclean.PreviousAppLastHeartbeatAtUtc is { } lastHeartbeat
+                ? $" last heartbeat {lastHeartbeat:yyyy-MM-dd HH:mm:ss} UTC"
+                : " no previous heartbeat recorded";
+            lines.Add($"Crash/reload context: previous app run was unclean before segment {unclean.SourceCaptureId};{heartbeat}.");
+        }
     }
 
     private static bool IsNonRaceSession(HistoricalSessionSummary summary)

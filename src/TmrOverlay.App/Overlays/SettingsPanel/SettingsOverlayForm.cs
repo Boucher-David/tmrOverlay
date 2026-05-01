@@ -53,13 +53,11 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private readonly Button _hideButton;
     private readonly TabControl _tabs;
     private readonly System.Windows.Forms.Timer _refreshTimer;
-    private CheckBox? _rawCaptureCheckBox;
     private ComboBox? _analysisCombo;
     private Label? _analysisText;
     private DateTimeOffset _lastAnalysisRefreshUtc = DateTimeOffset.MinValue;
     private string _analysisFingerprint = string.Empty;
     private bool _loading = true;
-    private bool _syncingRawCaptureCheckBox;
     private bool _syncingAnalysis;
     private Label? _buildCommandStatusLabel;
     private Label? _currentIssueLabel;
@@ -161,12 +159,10 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         };
         _refreshTimer.Tick += (_, _) =>
         {
-            SyncRawCaptureCheckBox();
             SyncErrorLoggingTab();
             SyncPostRaceAnalysis();
         };
         _refreshTimer.Start();
-        SyncRawCaptureCheckBox();
         SyncErrorLoggingTab();
         SyncPostRaceAnalysis(force: true);
         _loading = false;
@@ -506,14 +502,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private void AddOverlaySpecificOptions(TabPage page, OverlayDefinition definition, OverlaySettings settings)
     {
         var top = 330;
-        if (string.Equals(definition.Id, "status", StringComparison.OrdinalIgnoreCase))
-        {
-            _rawCaptureCheckBox = CreateCheckBox("Raw capture", _captureState.Snapshot().RawCaptureEnabled, 22, top, 180);
-            _rawCaptureCheckBox.CheckedChanged += (_, _) => RawCaptureCheckBoxChanged();
-            page.Controls.Add(_rawCaptureCheckBox);
-            top += 40;
-        }
-
         AddDescriptorOptions(page, definition.SettingsOptions, settings, top);
     }
 
@@ -902,49 +890,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             : "Analysis will update after an iRacing session closes.";
     }
 
-    private void RawCaptureCheckBoxChanged()
-    {
-        if (_syncingRawCaptureCheckBox || _rawCaptureCheckBox is null)
-        {
-            return;
-        }
-
-        var requested = _rawCaptureCheckBox.Checked;
-        var accepted = _captureState.SetRawCaptureEnabled(requested);
-        _events.Record("raw_capture_runtime_toggle", new Dictionary<string, string?>
-        {
-            ["requested"] = requested.ToString(),
-            ["accepted"] = accepted.ToString(),
-            ["source"] = "settings_overlay"
-        });
-
-        if (!accepted)
-        {
-            SyncRawCaptureCheckBox();
-        }
-    }
-
-    private void SyncRawCaptureCheckBox()
-    {
-        if (_rawCaptureCheckBox is null)
-        {
-            return;
-        }
-
-        var snapshot = _captureState.Snapshot();
-        _syncingRawCaptureCheckBox = true;
-        try
-        {
-            _rawCaptureCheckBox.Checked = snapshot.RawCaptureEnabled || snapshot.RawCaptureActive;
-            _rawCaptureCheckBox.Enabled = !snapshot.RawCaptureActive;
-            _rawCaptureCheckBox.Text = snapshot.RawCaptureActive ? "Raw capture active" : "Raw capture";
-        }
-        finally
-        {
-            _syncingRawCaptureCheckBox = false;
-        }
-    }
-
     private void SyncErrorLoggingTab()
     {
         if (_currentIssueLabel is null && _latestDiagnosticsBundleTextBox is null && _runtimeInfoLabel is null)
@@ -993,7 +938,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             {
                 ["error"] = exception.GetType().Name,
                 ["source"] = "settings_error_logging_tab"
-            });
+            }, severity: "error");
             SetSupportStatus($"Bundle failed: {exception.Message}", isError: true);
         }
     }
@@ -1092,7 +1037,18 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             $"os: {version.OperatingSystem}",
             $"telemetry: {capture.FrameCount:N0} frames, raw {capture.WrittenFrameCount:N0} written, {capture.DroppedFrameCount:N0} drops",
             $"capture file: {FormatBytes(capture.TelemetryFileBytes)}",
+            $"capture write: last {FormatMilliseconds(capture.LastCaptureWriteElapsedMilliseconds)}, avg {FormatMilliseconds(capture.AverageCaptureWriteElapsedMilliseconds)}, max {FormatMilliseconds(capture.MaxCaptureWriteElapsedMilliseconds)}",
             $"storage: {(storage.UseRepositoryLocalStorage ? "repo-local" : "app-data")}");
+    }
+
+    private static string FormatMilliseconds(long? milliseconds)
+    {
+        return milliseconds is null ? "n/a" : $"{milliseconds.Value:N0} ms";
+    }
+
+    private static string FormatMilliseconds(double? milliseconds)
+    {
+        return milliseconds is null ? "n/a" : $"{milliseconds.Value:N1} ms";
     }
 
     private static string FormatBytes(long? bytes)

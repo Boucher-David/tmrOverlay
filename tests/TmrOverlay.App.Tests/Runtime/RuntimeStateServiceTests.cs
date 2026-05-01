@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.Runtime;
 using TmrOverlay.App.Storage;
@@ -15,14 +16,17 @@ public sealed class RuntimeStateServiceTests
         try
         {
             var storage = CreateStorage(root);
+            var diagnosticContext = new TelemetryDiagnosticContext();
             using var service = new RuntimeStateService(
                 storage,
-                new AppEventRecorder(storage),
+                diagnosticContext,
+                new AppEventRecorder(storage, diagnosticContext),
                 NullLogger<RuntimeStateService>.Instance);
 
             await service.StartAsync(CancellationToken.None);
             var startedState = File.ReadAllText(storage.RuntimeStatePath);
             Assert.Contains("\"stoppedCleanly\": false", startedState);
+            Assert.Contains(diagnosticContext.AppRunId, startedState);
 
             await service.StopAsync(CancellationToken.None);
             var stoppedState = File.ReadAllText(storage.RuntimeStatePath);
@@ -59,6 +63,7 @@ public sealed class RuntimeStateServiceTests
 
             using var service = new RuntimeStateService(
                 storage,
+                new TelemetryDiagnosticContext(),
                 new AppEventRecorder(storage),
                 NullLogger<RuntimeStateService>.Instance);
 

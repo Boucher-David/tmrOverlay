@@ -39,7 +39,7 @@ Last updated: 2026-05-01
   - `Styling/OverlayTheme.cs` contains human-editable shared Windows overlay colors, font helpers, and common layout tokens; data-visualization-specific colors can remain near their drawing code
   - optional `overlay-theme.json` under the app settings root can override shared font/color tokens without recompiling
   - `Status/` contains the current collector status overlay
-  - `SettingsPanel/` contains a centered tabbed settings overlay with left-side navigation for user-managed overlay visibility, scale, session filters, shared font/units, Windows build/dev commands, diagnostics bundle controls, runtime raw-capture requests, placeholder Overlay Bridge controls, post-race analysis browsing, and overlay-specific display options
+  - `SettingsPanel/` contains a centered tabbed settings overlay with left-side navigation for user-managed overlay visibility, scale, session filters, shared font/units, Windows build/dev commands, diagnostics bundle controls, placeholder Overlay Bridge controls, post-race analysis browsing, and overlay-specific display options
   - `FuelCalculator/` contains the first strategy/stint overlay, backed by local live fuel only while the local driver is in the car plus exact car/track/session history for modeled team/focus stint context
   - `CarRadar/` contains a transparent circular proximity overlay, backed by `CarLeftRight` for the local car and focused-car nearby `CarIdx*` progress/position telemetry
   - `GapToLeader/` contains a rolling focused-car in-class gap trend graph, backed by `CarIdxF2Time` with progress fallback
@@ -50,14 +50,14 @@ Last updated: 2026-05-01
   - no taskbar icon
   - draggable during runtime
   - persists position/size under app-owned settings
-  - display-only; visibility, detail rows, and runtime raw-capture requests now live in the settings overlay
-  - shows live telemetry analysis state, latest SDK-frame freshness, warning/error text, and raw capture write health only when raw capture is enabled
+  - owns the runtime raw-capture `Capture` / `Stop raw` button; stopping raw capture closes only the raw writer while live analysis/history collection continues
+  - shows live telemetry analysis state, latest SDK-frame freshness, warning/error text, raw capture write health when raw capture is active, and pending/running synthesis state after raw capture stops
   - has an explicit activity badge for connected/idle, session-history collection, raw writes, and end-of-session history saving so the user can see background analysis work
   - state colors:
     - gray: waiting for iRacing
     - amber: waiting, connected-without-capture, app warning, or dropped frames
     - green: actively analyzing live telemetry, or actively collecting raw telemetry with confirmed disk writes
-  - red: telemetry read errors, stale SDK frames, capture writer errors, queued frames not reaching disk, or stale disk writes when raw capture is enabled
+  - red: telemetry read errors, stale SDK frames, capture writer errors, queued frames not reaching disk, or stale disk writes while raw capture is active
   - new overlay features should log unexpected refresh/render failures and surface a compact visible error state, while normal telemetry gaps should degrade to waiting/unavailable
 
 - `src/TmrOverlay.App/Overlays/SettingsPanel/`
@@ -67,7 +67,7 @@ Last updated: 2026-05-01
   - General exposes a shared overlay font-family selector from widely available fonts, a metric/imperial unit selector, and copyable Windows clean/build/publish/zip commands
   - Error Logging exposes current issue text, log/diagnostics folders, latest diagnostics bundle path, manual bundle creation, and compact app/runtime/telemetry state
   - per-overlay tabs expose visibility, scale, test/practice/qualifying/race session filters, and descriptor-driven overlay-specific display options
-  - the Collector Status tab owns the runtime `Raw capture` checkbox
+  - raw capture is controlled from the Collector Status overlay rather than the settings overlay
   - visibility, scale, font, unit, and display-option changes apply to open overlays immediately; session filters are rechecked against live session type
 
 - `src/TmrOverlay.App/Overlays/FuelCalculator/`
@@ -116,7 +116,10 @@ Last updated: 2026-05-01
   - starts live telemetry collection on first usable live data
   - records compact historical telemetry samples every frame
   - snapshots session YAML into the history accumulator whenever `SessionInfoUpdate` changes
-  - creates raw capture directories and copies the raw telemetry buffer only when raw capture is enabled by startup configuration or runtime overlay request
+  - creates raw capture directories and copies the raw telemetry buffer only when raw capture is enabled by startup configuration or runtime status-overlay request
+  - supports deliberate manual raw-capture stop during an active session; this finalizes only the raw segment, marks synthesis pending, and keeps live telemetry/history collection running
+  - writes compact capture synthesis after raw capture finalization, but defers synthesis while the iRacing SDK is still connected or a known iRacing sim process is still running so synthesis does not compete with the live sim; if the app itself is shutting down while iRacing remains active, synthesis is skipped rather than blocking app exit
+  - on startup, scans raw capture folders for missing stable `capture-synthesis.json` files and queues them through the same guarded synthesis path
   - logs and records app events for runtime raw-capture start failures instead of silently failing
   - writes normalized live frames through `ILiveTelemetrySink`, not directly to overlays
 
@@ -135,9 +138,10 @@ Last updated: 2026-05-01
   - stores shared status for the tray and overlay
   - current connection state
   - current live-collection state
-  - current raw capture directory when raw capture is enabled
+  - current raw capture directory when raw capture is active
   - frame counts
   - dropped-frame counts
+  - raw capture write-latency diagnostics plus pending/running/saved capture-synthesis state, including elapsed time and process CPU metrics
 
 - `src/TmrOverlay.Core/Telemetry/Live/`
   - `LiveTelemetryStore` is the shared normalized live source for product overlays
@@ -151,6 +155,8 @@ Last updated: 2026-05-01
 - `src/TmrOverlay.App/History/`
   - owns disk storage and lookup for compact end-of-session summaries
   - stores user summaries under `%LOCALAPPDATA%/TmrOverlay/history/user/cars/{car}/tracks/{track}/sessions/{session}/`
+  - keeps raw captures immutable but groups compact same-session capture segments under `session-groups/{groupId}.json` using iRacing `SubSessionID` / `SessionID` when available, so quit/rejoin and crash/reload cases update one historical race record
+  - session group segments record source capture id, end reason, reconnect gap, frame/quality counts, baseline eligibility, and previous app runtime state when the previous run was unclean
   - writes a per-capture summary plus an aggregate for baseline lookup
   - low-confidence samples and timing-only/spectated samples are still stored but do not contribute to baseline aggregate values
   - baseline aggregate values must come from real local-driver distance/fuel evidence for the car/track/session combo; focus timing, idle fuel scalars, and teammate-only timing can describe availability but must not be treated as measured fuel
@@ -163,6 +169,7 @@ Last updated: 2026-05-01
 - `src/TmrOverlay.App/Analysis/`
   - persists post-race analysis JSON under the user history root and populates the settings overlay dropdown
   - `PostRaceAnalysisPipeline` saves an analysis row after compact session history is saved and isolates analysis persistence/event failures from telemetry finalization
+  - when a compact session group exists, post-race analysis uses the group id as the stable analysis id so reconnect/rejoin segments update the same row instead of creating one analysis per segment
   - analysis text includes a telemetry-mode line and avoids presenting spectated/non-race timing sessions as executed race strategy
 
 - `history/baseline/`
@@ -199,15 +206,18 @@ Last updated: 2026-05-01
   - settings are versioned and currently migrate legacy per-overlay boolean/integer fields into the keyed overlay option bag
 
 - `src/TmrOverlay.App/Events/`
-  - writes JSONL app-event breadcrumbs under `%LOCALAPPDATA%/TmrOverlay/logs/events`
+  - writes versioned JSONL app-event breadcrumbs under `%LOCALAPPDATA%/TmrOverlay/logs/events`
+  - current events include severity plus `appRunId`; telemetry/capture/history events also carry `collectionId`, `captureId`, and `sessionGroupId` when available so logs, manifests, summaries, and diagnostics can be joined during design analysis
 
 - `src/TmrOverlay.App/Runtime/`
   - writes a heartbeat/runtime-state file and detects the previous unclean shutdown
+  - stores the current `appRunId` so app crash/reload context can be tied back to events and session segments
   - includes a local-development build freshness check that warns when source files in the checkout are newer than the running build
 
 - `src/TmrOverlay.App/Diagnostics/`
   - creates support bundles with app/storage metadata, runtime state, settings, logs/events, and latest capture metadata
   - includes live telemetry and overlay-state summaries, including telemetry availability counters for local scalar data, idle fuel scalars, focus-car timing segments, focus changes, lap-distance-only practice rows, class/nearby timing rows, and `CarLeftRight` availability/inactivity
+  - includes `live/degradation-codes.json` to distinguish expected design-analysis cases such as spectated timing only, idle local scalars, missing local fuel baseline evidence, focus-car changes, side-callout gaps, unavailable fuel model, and weather wetness mismatch
   - includes recent performance and edge-case logs so post-session bundles can explain overlay refresh/render stalls, replay collection, timing zeros, pit command toggles, and other raw telemetry anomalies
   - intentionally excludes raw `telemetry.bin`
 
@@ -243,9 +253,9 @@ Last updated: 2026-05-01
   - for overlay development, Windows should stay production-facing and real-data-driven; the ignored mac harness can use looser mock scenes, fixed offsets, named sample drivers, exaggerated events, and multi-window overlay demo layouts for fast visual iteration
   - the mac mock race mirrors the Windows radar/gap feature behavior with synthetic all-class timing rows, multiclass approach traffic, weather bands, and driver handoff events, while Windows remains real telemetry only
   - the mac harness opens the same startup overlay set as Windows: status, fuel calculator, radar, and gap-to-leader
-  - the mac status overlay is display-only, matching Windows; runtime raw-capture requests live in the settings overlay and still record logs/events
+  - the mac status overlay remains a mock/development surface; Windows status-overlay raw controls are production behavior
   - the mac app process can run as a regular app for local overlay inspection, but Windows remains the production/iRacing runtime
-  - the mac harness mirrors the settings overlay schema and basic tabbed UI for visibility, scale, session filters, font/units, raw capture, placeholder Overlay Bridge controls, and overlay-specific display options
+  - the mac harness mirrors the settings overlay schema and basic tabbed UI for visibility, scale, session filters, font/units, placeholder Overlay Bridge controls, and overlay-specific display options
 
 ### Tests
 

@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.Core.AppInfo;
+using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.Storage;
 
@@ -16,6 +17,7 @@ internal sealed class RuntimeStateService : IHostedService, IDisposable
     };
 
     private readonly AppStorageOptions _storageOptions;
+    private readonly TelemetryDiagnosticContext _diagnosticContext;
     private readonly AppEventRecorder _events;
     private readonly ILogger<RuntimeStateService> _logger;
     private readonly object _sync = new();
@@ -24,10 +26,12 @@ internal sealed class RuntimeStateService : IHostedService, IDisposable
 
     public RuntimeStateService(
         AppStorageOptions storageOptions,
+        TelemetryDiagnosticContext diagnosticContext,
         AppEventRecorder events,
         ILogger<RuntimeStateService> logger)
     {
         _storageOptions = storageOptions;
+        _diagnosticContext = diagnosticContext;
         _events = events;
         _logger = logger;
     }
@@ -42,12 +46,14 @@ internal sealed class RuntimeStateService : IHostedService, IDisposable
             _logger.LogWarning("Previous TmrOverlay run did not stop cleanly. Started at {StartedAtUtc}.", PreviousState.StartedAtUtc);
             _events.Record("previous_run_unclean", new Dictionary<string, string?>
             {
+                ["previousAppRunId"] = PreviousState.AppRunId,
                 ["startedAtUtc"] = PreviousState.StartedAtUtc.ToString("O")
-            });
+            }, severity: "warning");
         }
 
         _currentState = new RuntimeState
         {
+            AppRunId = _diagnosticContext.AppRunId,
             StartedAtUtc = DateTimeOffset.UtcNow,
             LastHeartbeatAtUtc = DateTimeOffset.UtcNow,
             StoppedCleanly = false,

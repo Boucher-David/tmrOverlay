@@ -8,9 +8,15 @@ internal sealed class CaptureManifest
 
     public required string CaptureId { get; init; }
 
+    public string? AppRunId { get; init; }
+
+    public string? CollectionId { get; init; }
+
     public required DateTimeOffset StartedAtUtc { get; init; }
 
     public DateTimeOffset? FinishedAtUtc { get; set; }
+
+    public string? EndedReason { get; set; }
 
     public required string TelemetryFile { get; init; }
 
@@ -33,6 +39,18 @@ internal sealed class CaptureManifest
     public int DroppedFrameCount { get; set; }
 
     public int SessionInfoSnapshotCount { get; set; }
+
+    public long? RawCaptureElapsedMilliseconds { get; set; }
+
+    public long? ProcessCpuMilliseconds { get; set; }
+
+    public double? ProcessCpuPercentOfOneCore { get; set; }
+
+    public int? WriteOperationCount { get; set; }
+
+    public double? AverageWriteElapsedMilliseconds { get; set; }
+
+    public long? MaxWriteElapsedMilliseconds { get; set; }
 
     public AppVersionInfo? AppVersion { get; init; }
 }
@@ -68,4 +86,9 @@ internal sealed record TelemetryCaptureWriteStatus(
     int FramesWritten,
     int SessionInfoSnapshotCount,
     long? TelemetryFileBytes,
-    Exception? Exception);
+    long? LastWriteBytes = null,
+    long? LastWriteElapsedMilliseconds = null,
+    string? LastWriteKind = null,
+    double? AverageWriteElapsedMilliseconds = null,
+    long? MaxWriteElapsedMilliseconds = null,
+    Exception? Exception = null);

@@ -18,9 +18,12 @@ Current implementation stores post-race analysis JSON under:
 
 The file stays compact and derived. It does not include raw telemetry frames.
 
+If a race spans multiple capture segments because the user quit/rejoined, the sim disconnected, or the app restarted, the analysis should use the compact session group id rather than a single capture id. Segment-level summaries remain separate, but the settings overlay should show one updated analysis row for the race session.
+
 ## Data To Include
 
 - Session identity: car, track, session type, team-race flag, source id, app version.
+- Correlation: `appRunId`, `collectionId`, `captureId`, and `sessionGroupId` where available.
 - Race outcome context: estimated race laps, completed laps, overall/class position when available.
 - Actual execution: stint lengths, stop count, pit-lane time, pit-stall/service time, tire-change indicators, fuel added, driver-role confidence.
 - Fuel model: live/user-history/baseline source, min/avg/max burn, fuel saving required for key targets.
@@ -29,6 +32,7 @@ The file stays compact and derived. It does not include raw telemetry frames.
 - Recommendation timeline: only meaningful recommendation changes, not every frame.
 - Alternative strategies: stop-count deltas, estimated time deltas, fuel-saving requirements, tire-service tradeoffs.
 - Confidence and caveats: teammate stint fuel unavailable, inferred tire changes, low-distance sample, stale/missing scalar fuel, dropped frames.
+- Segment context: source capture ids, reconnect gaps, end reasons, and previous app crash/reload markers when a race was stitched from multiple captures.
 
 ## Example Questions To Answer
 
@@ -61,6 +65,7 @@ The export should exclude:
 - `src/TmrOverlay.App/Analysis/PostRaceAnalysisStore.cs` persists and loads analysis JSON.
 - `src/TmrOverlay.App/Analysis/PostRaceAnalysisPipeline.cs` isolates analysis persistence/event failures from telemetry finalization.
 - `src/TmrOverlay.App/Overlays/SettingsPanel/SettingsOverlayForm.cs` displays recent analyses in the Post-race Analysis tab.
+- Session groups live in compact history under `session-groups/` and keep raw capture segments immutable.
 - Record recommendation snapshots only when strategy output changes materially: stint count, stop count, target laps, required saving, tire advice, or confidence source.
 - Keep the live overlay independent from post-race analysis. The live path should publish derived strategy snapshots; the analysis writer can subscribe to or receive those snapshots.
 - Use the same source/confidence language as session history so teammate-mode model data is never treated as measured fuel.

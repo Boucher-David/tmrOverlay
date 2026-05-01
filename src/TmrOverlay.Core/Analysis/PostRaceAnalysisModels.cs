@@ -14,6 +14,12 @@ internal sealed class PostRaceAnalysis
 
     public string SourceId { get; init; } = string.Empty;
 
+    public string? AppRunId { get; init; }
+
+    public string? CollectionId { get; init; }
+
+    public string? SessionGroupId { get; init; }
+
     public string Title { get; init; } = string.Empty;
 
     public string Subtitle { get; init; } = string.Empty;

@@ -22,6 +22,7 @@ internal sealed class PostRaceAnalysisStore
 
     public async Task<PostRaceAnalysis?> SaveFromSummaryAsync(
         HistoricalSessionSummary summary,
+        HistoricalSessionGroup? sessionGroup,
         CancellationToken cancellationToken)
     {
         if (!_options.Enabled)
@@ -29,7 +30,7 @@ internal sealed class PostRaceAnalysisStore
             return null;
         }
 
-        var analysis = PostRaceAnalysisBuilder.Build(summary);
+        var analysis = PostRaceAnalysisBuilder.Build(summary, sessionGroup);
         Directory.CreateDirectory(AnalysisDirectory);
         var path = Path.Combine(AnalysisDirectory, $"{SessionHistoryPath.Slug(analysis.Id)}.json");
         await File.WriteAllTextAsync(

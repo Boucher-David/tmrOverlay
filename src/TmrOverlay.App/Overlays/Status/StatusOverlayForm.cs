@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using TmrOverlay.App.Overlays.Abstractions;
 using TmrOverlay.App.Overlays.Styling;
+using TmrOverlay.App.Events;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 using TmrOverlay.App.Telemetry;
@@ -13,6 +14,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
 {
     private readonly TelemetryCaptureState _state;
     private readonly ILiveTelemetrySource _liveTelemetrySource;
+    private readonly AppEventRecorder _events;
     private readonly OverlaySettings _settings;
     private readonly Panel _indicatorPanel;
     private readonly Label _titleLabel;
@@ -21,11 +23,13 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
     private readonly Label _activityLabel;
     private readonly Label _captureLabel;
     private readonly Label _healthLabel;
+    private readonly Button _rawCaptureButton;
     private readonly System.Windows.Forms.Timer _refreshTimer;
 
     public StatusOverlayForm(
         TelemetryCaptureState state,
         ILiveTelemetrySource liveTelemetrySource,
+        AppEventRecorder events,
         OverlaySettings settings,
         string fontFamily,
         Action saveSettings)
@@ -37,6 +41,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
     {
         _state = state;
         _liveTelemetrySource = liveTelemetrySource;
+        _events = events;
         _settings = settings;
 
         BackColor = OverlayTheme.Colors.NeutralBackground;
@@ -63,6 +68,23 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
             Location = new Point(36, 10),
             Text = "TmrOverlay"
         };
+
+        _rawCaptureButton = new Button
+        {
+            BackColor = OverlayTheme.Colors.ButtonBackground,
+            Cursor = Cursors.Hand,
+            FlatStyle = FlatStyle.Flat,
+            Font = OverlayTheme.Font(fontFamily, 8.25f, FontStyle.Bold),
+            ForeColor = OverlayTheme.Colors.TextControl,
+            Location = new Point(ClientSize.Width - 116, 8),
+            Size = new Size(100, 26),
+            TabStop = false,
+            Text = "Capture",
+            UseVisualStyleBackColor = false
+        };
+        _rawCaptureButton.FlatAppearance.BorderSize = 1;
+        _rawCaptureButton.FlatAppearance.BorderColor = OverlayTheme.Colors.WindowBorder;
+        _rawCaptureButton.Click += (_, _) => ToggleRawCapture();
 
         _statusLabel = new Label
         {
@@ -118,6 +140,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
 
         Controls.Add(_indicatorPanel);
         Controls.Add(_titleLabel);
+        Controls.Add(_rawCaptureButton);
         Controls.Add(_statusLabel);
         Controls.Add(_detailLabel);
         Controls.Add(_activityLabel);
@@ -155,6 +178,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
             _activityLabel.Dispose();
             _captureLabel.Dispose();
             _healthLabel.Dispose();
+            _rawCaptureButton.Dispose();
             _indicatorPanel.Dispose();
         }
 
@@ -188,6 +212,12 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
             _indicatorPanel.BackColor = OverlayTheme.Colors.WarningIndicator;
             _statusLabel.Text = health.StatusText;
         }
+        else if (snapshot.RawCaptureStopRequested || snapshot.IsCaptureSynthesisPending || snapshot.IsCaptureSynthesisRunning || snapshot.IsHistoryFinalizing)
+        {
+            BackColor = OverlayTheme.Colors.InfoBackground;
+            _indicatorPanel.BackColor = OverlayTheme.Colors.InfoText;
+            _statusLabel.Text = health.StatusText;
+        }
         else if (snapshot.IsCapturing)
         {
             BackColor = OverlayTheme.Colors.SuccessStrongBackground;
@@ -213,6 +243,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
         _activityLabel.ForeColor = health.Activity.ForeColor;
         _captureLabel.Text = health.CaptureText;
         _healthLabel.Text = health.MessageText;
+        SyncRawCaptureButton(snapshot);
         _captureLabel.Visible = _settings.GetBooleanOption(OverlayOptionKeys.StatusCaptureDetails, defaultValue: true);
         _healthLabel.Visible = _settings.GetBooleanOption(OverlayOptionKeys.StatusHealthDetails, defaultValue: true);
         _indicatorPanel.Invalidate();
@@ -228,10 +259,60 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
         }
 
         _statusLabel.Size = new Size(Math.Max(220, ClientSize.Width - 32), 22);
+        _rawCaptureButton.Location = new Point(Math.Max(16, ClientSize.Width - 116), 8);
         _detailLabel.Size = new Size(Math.Max(220, ClientSize.Width - 32), 18);
         _activityLabel.Size = new Size(150, 20);
         _captureLabel.Size = new Size(Math.Max(220, ClientSize.Width - 32), 18);
         _healthLabel.Size = new Size(Math.Max(220, ClientSize.Width - 32), 34);
+    }
+
+    private void ToggleRawCapture()
+    {
+        var snapshot = _state.Snapshot();
+        var requested = !(snapshot.RawCaptureEnabled || snapshot.RawCaptureActive);
+        var accepted = _state.SetRawCaptureEnabled(requested);
+        _events.Record("raw_capture_runtime_toggle", new Dictionary<string, string?>
+        {
+            ["requested"] = requested.ToString(),
+            ["accepted"] = accepted.ToString(),
+            ["source"] = "status_overlay",
+            ["rawCaptureActive"] = snapshot.RawCaptureActive.ToString(),
+            ["rawCaptureStopRequested"] = snapshot.RawCaptureStopRequested.ToString()
+        });
+        SyncRawCaptureButton(_state.Snapshot());
+    }
+
+    private void SyncRawCaptureButton(TelemetryCaptureStatusSnapshot snapshot)
+    {
+        if (snapshot.RawCaptureStopRequested)
+        {
+            _rawCaptureButton.Text = "Stopping";
+            _rawCaptureButton.Enabled = false;
+            _rawCaptureButton.BackColor = OverlayTheme.Colors.InfoBackground;
+            _rawCaptureButton.ForeColor = OverlayTheme.Colors.InfoText;
+            return;
+        }
+
+        _rawCaptureButton.Enabled = true;
+        if (snapshot.RawCaptureActive)
+        {
+            _rawCaptureButton.Text = "Stop raw";
+            _rawCaptureButton.BackColor = OverlayTheme.Colors.WarningStrongBackground;
+            _rawCaptureButton.ForeColor = OverlayTheme.Colors.WarningText;
+            return;
+        }
+
+        if (snapshot.RawCaptureEnabled)
+        {
+            _rawCaptureButton.Text = "Cancel raw";
+            _rawCaptureButton.BackColor = OverlayTheme.Colors.InfoBackground;
+            _rawCaptureButton.ForeColor = OverlayTheme.Colors.InfoText;
+            return;
+        }
+
+        _rawCaptureButton.Text = "Capture";
+        _rawCaptureButton.BackColor = OverlayTheme.Colors.ButtonBackground;
+        _rawCaptureButton.ForeColor = OverlayTheme.Colors.TextControl;
     }
 
     private enum CaptureHealthLevel
@@ -254,14 +335,15 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
             var now = DateTimeOffset.UtcNow;
             var activity = ActivityBadge.From(snapshot);
             var capturePath = snapshot.CurrentCaptureDirectory ?? snapshot.LastCaptureDirectory ?? snapshot.CaptureRoot;
-            var captureText = snapshot.RawCaptureEnabled
+            var rawWriting = snapshot.RawCaptureActive;
+            var captureText = snapshot.RawCaptureEnabled || snapshot.RawCaptureActive
                 ? $"raw: {CompactPath(capturePath)}"
                 : "raw: disabled; history ready";
             var frameAge = AgeSeconds(snapshot.LastFrameCapturedAtUtc, now);
             var diskAge = AgeSeconds(snapshot.LastDiskWriteAtUtc, now);
             var bytes = FormatBytes(snapshot.TelemetryFileBytes);
-            var detail = snapshot.RawCaptureEnabled
-                ? $"queued {snapshot.FrameCount,7:N0}  written {snapshot.WrittenFrameCount,7:N0}  drops {snapshot.DroppedFrameCount,4:N0}  file {bytes}"
+            var detail = rawWriting
+                ? $"queued {snapshot.FrameCount,7:N0}  written {snapshot.WrittenFrameCount,7:N0}  drops {snapshot.DroppedFrameCount,4:N0}  file {bytes}  write {FormatMilliseconds(snapshot.LastCaptureWriteElapsedMilliseconds)}/{FormatMilliseconds(snapshot.MaxCaptureWriteElapsedMilliseconds)}"
                 : $"frames {snapshot.FrameCount,7:N0}  {CompactLiveMode(live)}  raw off";
 
             if (!string.IsNullOrWhiteSpace(snapshot.LastError))
@@ -278,6 +360,46 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
             var appWarning = string.IsNullOrWhiteSpace(snapshot.AppWarning)
                 ? null
                 : $"warning: {Trim(snapshot.AppWarning)}";
+
+            if (snapshot.RawCaptureStopRequested && snapshot.RawCaptureActive)
+            {
+                return new CaptureHealth(
+                    CaptureHealthLevel.Ok,
+                    "Stopping raw capture",
+                    "closing raw writer; live analysis continues",
+                    activity,
+                    captureText,
+                    "health: raw capture will wait for synthesis after iRacing closes");
+            }
+
+            if (snapshot.IsCaptureSynthesisPending)
+            {
+                var pendingAge = AgeSeconds(snapshot.CaptureSynthesisPendingSinceUtc, now);
+                var reason = string.IsNullOrWhiteSpace(snapshot.CaptureSynthesisPendingReason)
+                    ? "iRacing still running"
+                    : Trim(snapshot.CaptureSynthesisPendingReason);
+                return new CaptureHealth(
+                    CaptureHealthLevel.Ok,
+                    "Waiting to synthesize",
+                    "iRacing still running",
+                    activity,
+                    captureText,
+                    $"health: compact capture synthesis will start after iRacing closes; waiting {FormatDuration(pendingAge)} ({reason})");
+            }
+
+            if (snapshot.IsCaptureSynthesisRunning)
+            {
+                var synthesisAge = AgeSeconds(snapshot.CaptureSynthesisStartedAtUtc, now);
+                return new CaptureHealth(
+                    CaptureHealthLevel.Ok,
+                    "Synthesizing capture",
+                    "writing compact telemetry summary",
+                    activity,
+                    captureText,
+                    Combine(
+                        LastCaptureSynthesisText(snapshot, now),
+                        $"health: please wait; writing compact capture synthesis for {FormatAge(synthesisAge)}"));
+            }
 
             if (snapshot.IsHistoryFinalizing)
             {
@@ -315,7 +437,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
                     Combine(appWarning, "health: SDK connected but no live telemetry frame has started collection"));
             }
 
-            if (snapshot.RawCaptureEnabled && snapshot.FrameCount > 0 && snapshot.WrittenFrameCount == 0)
+            if (rawWriting && snapshot.FrameCount > 0 && snapshot.WrittenFrameCount == 0)
             {
                 return new CaptureHealth(
                     CaptureHealthLevel.Error,
@@ -326,7 +448,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
                     "error: telemetry frames arrived but disk writer has not confirmed writes");
             }
 
-            if (snapshot.RawCaptureEnabled && snapshot.WrittenFrameCount > snapshot.FrameCount + 2)
+            if (rawWriting && snapshot.WrittenFrameCount > snapshot.FrameCount + 2)
             {
                 return new CaptureHealth(
                     CaptureHealthLevel.Warning,
@@ -359,7 +481,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
                     $"error: no SDK frame for {frameAge:N0}s; sim may be paused/disconnected");
             }
 
-            if (snapshot.RawCaptureEnabled && diskAge is not null && diskAge > 5)
+            if (rawWriting && diskAge is not null && diskAge > 5)
             {
                 return new CaptureHealth(
                     CaptureHealthLevel.Error,
@@ -392,7 +514,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
                     appWarning);
             }
 
-            var healthMessage = snapshot.RawCaptureEnabled
+            var healthMessage = rawWriting
                 ? $"health: live frames ok; last frame {FormatAge(frameAge)}, disk {FormatAge(diskAge)}"
                 : $"health: live analysis ok; last frame {FormatAge(frameAge)}";
             return new CaptureHealth(
@@ -417,6 +539,31 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
             return $"history: saved {label} {FormatAge(AgeSeconds(snapshot.LastHistorySavedAtUtc, now))}";
         }
 
+        private static string? LastCaptureSynthesisText(TelemetryCaptureStatusSnapshot snapshot, DateTimeOffset now)
+        {
+            if (snapshot.LastCaptureSynthesisSavedAtUtc is null)
+            {
+                return null;
+            }
+
+            var path = string.IsNullOrWhiteSpace(snapshot.LastCaptureSynthesisPath)
+                ? "capture-synthesis.json"
+                : CompactPath(snapshot.LastCaptureSynthesisPath);
+            var elapsed = snapshot.LastCaptureSynthesisElapsedMilliseconds is { } milliseconds
+                ? $"{milliseconds:N0} ms"
+                : "n/a";
+            var frames = snapshot.LastCaptureSynthesisTotalFrameRecords is { } totalFrames
+                ? $"{totalFrames:N0} frames"
+                : "n/a frames";
+            var stride = snapshot.LastCaptureSynthesisSampleStride is { } sampleStride && sampleStride > 1
+                ? $" stride {sampleStride:N0}"
+                : string.Empty;
+            var cpu = snapshot.LastCaptureSynthesisProcessCpuMilliseconds is { } cpuMilliseconds
+                ? $" cpu {cpuMilliseconds:N0} ms"
+                : string.Empty;
+            return $"synthesis: saved {path} ({FormatBytes(snapshot.LastCaptureSynthesisBytes)}) in {elapsed};{cpu} {frames}{stride} {FormatAge(AgeSeconds(snapshot.LastCaptureSynthesisSavedAtUtc, now))}";
+        }
+
         private static string OkStatusText(TelemetryCaptureStatusSnapshot snapshot, LiveTelemetrySnapshot live)
         {
             if (live.IsSpectatingFocusedCar)
@@ -431,7 +578,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
 
             if (live.IsLocalDriverInCar)
             {
-                return snapshot.RawCaptureEnabled ? "Collecting raw telemetry" : "Analyzing live telemetry";
+                return snapshot.RawCaptureActive ? "Collecting raw telemetry" : "Analyzing live telemetry";
             }
 
             return "Analyzing session telemetry";
@@ -494,6 +641,11 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
             return seconds is null ? "n/a" : $"{seconds.Value:N1}s ago";
         }
 
+        private static string FormatDuration(double? seconds)
+        {
+            return seconds is null ? "n/a" : $"{seconds.Value:N1}s";
+        }
+
         private static string FormatBytes(long? bytes)
         {
             if (bytes is null)
@@ -512,6 +664,11 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
             }
 
             return $"{bytes.Value / 1024d / 1024d:N1} MB";
+        }
+
+        private static string FormatMilliseconds(long? milliseconds)
+        {
+            return milliseconds is null ? "n/a" : $"{milliseconds.Value:N0}ms";
         }
 
         private static string CompactPath(string? path)
@@ -551,12 +708,27 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
         {
             public static ActivityBadge From(TelemetryCaptureStatusSnapshot snapshot)
             {
+                if (snapshot.IsCaptureSynthesisPending)
+                {
+                    return new ActivityBadge("WAITING SIM EXIT", OverlayTheme.Colors.InfoBackground, OverlayTheme.Colors.InfoText);
+                }
+
                 if (snapshot.IsHistoryFinalizing)
                 {
                     return new ActivityBadge("SAVING HISTORY", OverlayTheme.Colors.InfoBackground, OverlayTheme.Colors.InfoText);
                 }
 
-                if (snapshot.IsCapturing && snapshot.RawCaptureEnabled)
+                if (snapshot.IsCaptureSynthesisRunning)
+                {
+                    return new ActivityBadge("SYNTHESIZING", OverlayTheme.Colors.InfoBackground, OverlayTheme.Colors.InfoText);
+                }
+
+                if (snapshot.RawCaptureStopRequested)
+                {
+                    return new ActivityBadge("STOPPING RAW", OverlayTheme.Colors.InfoBackground, OverlayTheme.Colors.InfoText);
+                }
+
+                if (snapshot.IsCapturing && snapshot.RawCaptureActive)
                 {
                     return new ActivityBadge("RAW WRITES", OverlayTheme.Colors.SuccessBackground, OverlayTheme.Colors.SuccessText);
                 }

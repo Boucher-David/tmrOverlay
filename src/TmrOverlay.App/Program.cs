@@ -83,6 +83,7 @@ internal static class Program
                 services.AddSingleton(RetentionOptions.FromConfiguration(context.Configuration));
                 services.AddSingleton(replayOptions);
                 services.AddSingleton(OverlayBridgeOptions.FromConfiguration(context.Configuration));
+                services.AddSingleton<TelemetryDiagnosticContext>();
                 services.AddSingleton<AppEventRecorder>();
                 services.AddSingleton<AppSettingsStore>();
                 services.AddSingleton<SessionHistoryStore>();
@@ -90,13 +91,14 @@ internal static class Program
                 services.AddSingleton<PostRaceAnalysisStore>();
                 services.AddSingleton<PostRaceAnalysisPipeline>();
                 services.AddSingleton<DiagnosticsBundleService>();
+                services.AddSingleton<RuntimeStateService>();
                 services.AddSingleton<TelemetryCaptureState>();
                 services.AddSingleton<LiveTelemetryStore>();
                 services.AddSingleton<ILiveTelemetrySource>(services => services.GetRequiredService<LiveTelemetryStore>());
                 services.AddSingleton<ILiveTelemetrySink>(services => services.GetRequiredService<LiveTelemetryStore>());
                 services.AddSingleton<OverlayManager>();
                 services.AddSingleton<NotifyIconApplicationContext>();
-                services.AddHostedService<RuntimeStateService>();
+                services.AddHostedService(services => services.GetRequiredService<RuntimeStateService>());
                 services.AddHostedService<RetentionHostedService>();
                 services.AddHostedService<OverlayBridgeHostedService>();
                 services.AddTelemetryProvider(replayOptions);

@@ -29,6 +29,10 @@ internal sealed class HistoricalSessionSummary
 
     public required string SourceCaptureId { get; init; }
 
+    public string? AppRunId { get; init; }
+
+    public string? CollectionId { get; init; }
+
     public required DateTimeOffset StartedAtUtc { get; init; }
 
     public required DateTimeOffset FinishedAtUtc { get; init; }
@@ -52,6 +56,87 @@ internal sealed class HistoricalSessionSummary
     public required HistoricalDataQuality Quality { get; init; }
 
     public AppVersionInfo? AppVersion { get; init; }
+}
+
+internal sealed class HistoricalSessionGroup
+{
+    public int GroupVersion { get; init; } = 1;
+
+    public required string GroupId { get; init; }
+
+    public required DateTimeOffset CreatedAtUtc { get; init; }
+
+    public required DateTimeOffset UpdatedAtUtc { get; init; }
+
+    public required HistoricalComboIdentity Combo { get; init; }
+
+    public required HistoricalCarIdentity Car { get; init; }
+
+    public required HistoricalTrackIdentity Track { get; init; }
+
+    public required HistoricalSessionIdentity Session { get; init; }
+
+    public IReadOnlyList<HistoricalSessionSegment> Segments { get; init; } = [];
+}
+
+internal sealed class HistoricalSessionSegment
+{
+    public required string SourceCaptureId { get; init; }
+
+    public required DateTimeOffset StartedAtUtc { get; init; }
+
+    public required DateTimeOffset FinishedAtUtc { get; init; }
+
+    public double CaptureDurationSeconds { get; init; }
+
+    public int SampleFrameCount { get; init; }
+
+    public int DroppedFrameCount { get; init; }
+
+    public required string QualityConfidence { get; init; }
+
+    public bool ContributesToBaseline { get; init; }
+
+    public required string EndedReason { get; init; }
+
+    public string? AppRunId { get; init; }
+
+    public string? CollectionId { get; init; }
+
+    public bool PreviousAppRunUnclean { get; init; }
+
+    public DateTimeOffset? PreviousAppStartedAtUtc { get; init; }
+
+    public DateTimeOffset? PreviousAppLastHeartbeatAtUtc { get; init; }
+
+    public DateTimeOffset? PreviousAppStoppedAtUtc { get; init; }
+
+    public double? GapFromPreviousSegmentSeconds { get; init; }
+}
+
+internal sealed class HistoricalSessionSegmentContext
+{
+    public required string EndedReason { get; init; }
+
+    public string? AppRunId { get; init; }
+
+    public string? CollectionId { get; init; }
+
+    public bool PreviousAppRunUnclean { get; init; }
+
+    public DateTimeOffset? PreviousAppStartedAtUtc { get; init; }
+
+    public DateTimeOffset? PreviousAppLastHeartbeatAtUtc { get; init; }
+
+    public DateTimeOffset? PreviousAppStoppedAtUtc { get; init; }
+
+    public static HistoricalSessionSegmentContext Normal(string endedReason)
+    {
+        return new HistoricalSessionSegmentContext
+        {
+            EndedReason = endedReason
+        };
+    }
 }
 
 internal sealed class HistoricalComboIdentity
