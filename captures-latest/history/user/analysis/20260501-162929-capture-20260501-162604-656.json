@@ -1,0 +1,32 @@
+{
+  "analysisVersion": 1,
+  "id": "20260501-162929-capture-20260501-162604-656",
+  "createdAtUtc": "2026-05-01T16:29:29.5732281+00:00",
+  "finishedAtUtc": "2026-05-01T16:29:29.5368478+00:00",
+  "sourceId": "capture-20260501-162604-656",
+  "title": "Gesamtstrecke 24h - Practice",
+  "subtitle": "Mercedes-AMG GT3 2020 | none confidence",
+  "combo": {
+    "carKey": "car-156-mercedesamgevogt3",
+    "trackKey": "track-252-nurburgring-combined",
+    "sessionKey": "practice"
+  },
+  "lines": [
+    "Gesamtstrecke 24h - Practice",
+    "Mercedes-AMG GT3 2020 | none confidence",
+    "",
+    "Duration: 3.4m captured, 0 completed valid laps, 0.0 valid distance laps.",
+    "Telemetry mode: focus timing without local driving, 12228 focus-timing frames, 12228 class-timing frames.",
+    "Focus coverage: current focus #5, 10 focus segments, 9 focus changes, 11820 non-team focus frames.",
+    "Radar/gap inputs: 12228 class-timing frames, 0 nearby-timing frames, 408 CarLeftRight frames (0 active).",
+    "Fuel model: -- average, 106.0 L tank, laps/tank unavailable.",
+    "Pit service: no completed pit service detected in this summary.",
+    "",
+    "Strategy note:",
+    "This was a non-race timing session: useful for overlay validation and pace context, but it should not be read as an executed race strategy.",
+    "",
+    "Quality: none; short_green_sample, insufficient_distance, no_completed_laps, no_reliable_fuel_per_lap, focus_timing_available, focus_car_changed, non_race_session, car_left_right_inactive."
+  ],
+  "displayName": "2026-05-01 Gesamtstrecke 24h - Practice",
+  "body": "Gesamtstrecke 24h - Practice\r\nMercedes-AMG GT3 2020 | none confidence\r\n\r\nDuration: 3.4m captured, 0 completed valid laps, 0.0 valid distance laps.\r\nTelemetry mode: focus timing without local driving, 12228 focus-timing frames, 12228 class-timing frames.\r\nFocus coverage: current focus #5, 10 focus segments, 9 focus changes, 11820 non-team focus frames.\r\nRadar/gap inputs: 12228 class-timing frames, 0 nearby-timing frames, 408 CarLeftRight frames (0 active).\r\nFuel model: -- average, 106.0 L tank, laps/tank unavailable.\r\nPit service: no completed pit service detected in this summary.\r\n\r\nStrategy note:\r\nThis was a non-race timing session: useful for overlay validation and pace context, but it should not be read as an executed race strategy.\r\n\r\nQuality: none; short_green_sample, insufficient_distance, no_completed_laps, no_reliable_fuel_per_lap, focus_timing_available, focus_car_changed, non_race_session, car_left_right_inactive."
+}

@@ -1,0 +1,29 @@
+{
+  "analysisVersion": 1,
+  "id": "20260430-221049-session-20260430-220059-722",
+  "createdAtUtc": "2026-04-30T22:10:49.8617018+00:00",
+  "finishedAtUtc": "2026-04-30T22:10:49.8277317+00:00",
+  "sourceId": "session-20260430-220059-722",
+  "title": "Gesamtstrecke VLN - Race",
+  "subtitle": "Mercedes-AMG GT3 2020 | none confidence",
+  "combo": {
+    "carKey": "car-156-mercedesamgevogt3",
+    "trackKey": "track-262-nurburgring-combinedshortb",
+    "sessionKey": "race"
+  },
+  "lines": [
+    "Gesamtstrecke VLN - Race",
+    "Mercedes-AMG GT3 2020 | none confidence",
+    "",
+    "Duration: 9.8m captured, 0 completed valid laps, 0.0 valid distance laps.",
+    "Fuel model: -- average, 106.0 L tank, laps/tank unavailable.",
+    "Pit service: no completed pit service detected in this summary.",
+    "",
+    "Strategy note:",
+    "Fuel data was not strong enough for a stint-rhythm recommendation yet.",
+    "",
+    "Quality: none; short_green_sample, insufficient_distance, no_completed_laps, no_reliable_fuel_per_lap."
+  ],
+  "displayName": "2026-04-30 Gesamtstrecke VLN - Race",
+  "body": "Gesamtstrecke VLN - Race\r\nMercedes-AMG GT3 2020 | none confidence\r\n\r\nDuration: 9.8m captured, 0 completed valid laps, 0.0 valid distance laps.\r\nFuel model: -- average, 106.0 L tank, laps/tank unavailable.\r\nPit service: no completed pit service detected in this summary.\r\n\r\nStrategy note:\r\nFuel data was not strong enough for a stint-rhythm recommendation yet.\r\n\r\nQuality: none; short_green_sample, insufficient_distance, no_completed_laps, no_reliable_fuel_per_lap."
+}

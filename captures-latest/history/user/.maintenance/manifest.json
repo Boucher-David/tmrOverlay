@@ -1,0 +1,156 @@
+﻿{
+  "manifestVersion": 1,
+  "lastRunAtUtc": "2026-04-30T21:57:20.8662885+00:00",
+  "appVersion": {
+    "productName": "TmrOverlay.App",
+    "version": "1.0.0.0",
+    "informationalVersion": "1.0.0\u002B742578e6e5dfffbb555f1c3431c5178c61208ff7",
+    "runtimeVersion": ".NET 8.0.26",
+    "operatingSystem": "Microsoft Windows 10.0.26200",
+    "processArchitecture": "X64"
+  },
+  "currentSummaryVersion": 1,
+  "currentCollectionModelVersion": 1,
+  "currentAggregateVersion": 1,
+  "summaryFilesScanned": 16,
+  "summaryFilesCompatible": 16,
+  "summaryFilesMigrated": 16,
+  "summaryFilesSkipped": 0,
+  "summaryFilesBackedUp": 16,
+  "aggregateFilesRebuilt": 3,
+  "files": [
+    {
+      "relativePath": "cars/car-156-mercedesamgevogt3/tracks/track-252-nurburgring-combined/sessions/offline-testing/aggregate.json",
+      "action": "aggregate_rebuilt",
+      "reason": null,
+      "summaryVersion": null,
+      "collectionModelVersion": null
+    },
+    {
+      "relativePath": "cars/car-156-mercedesamgevogt3/tracks/track-252-nurburgring-combined/sessions/offline-testing/summaries/session-20260428-191252-615.json",
+      "action": "migrated",
+      "reason": "added_collection_model_version",
+      "summaryVersion": 1,
+      "collectionModelVersion": 1
+    },
+    {
+      "relativePath": "cars/car-156-mercedesamgevogt3/tracks/track-252-nurburgring-combined/sessions/offline-testing/summaries/session-20260428-191252-616.json",
+      "action": "migrated",
+      "reason": "added_collection_model_version",
+      "summaryVersion": 1,
+      "collectionModelVersion": 1
+    },
+    {
+      "relativePath": "cars/car-156-mercedesamgevogt3/tracks/track-252-nurburgring-combined/sessions/offline-testing/summaries/session-20260428-192735-082.json",
+      "action": "migrated",
+      "reason": "added_collection_model_version",
+      "summaryVersion": 1,
+      "collectionModelVersion": 1
+    },
+    {
+      "relativePath": "cars/car-156-mercedesamgevogt3/tracks/track-252-nurburgring-combined/sessions/offline-testing/summaries/session-20260428-192855-465.json",
+      "action": "migrated",
+      "reason": "added_collection_model_version",
+      "summaryVersion": 1,
+      "collectionModelVersion": 1
+    },
+    {
+      "relativePath": "cars/car-156-mercedesamgevogt3/tracks/track-252-nurburgring-combined/sessions/offline-testing/summaries/session-20260428-192903-533.json",
+      "action": "migrated",
+      "reason": "added_collection_model_version",
+      "summaryVersion": 1,
+      "collectionModelVersion": 1
+    },
+    {
+      "relativePath": "cars/car-156-mercedesamgevogt3/tracks/track-252-nurburgring-combined/sessions/practice/aggregate.json",
+      "action": "aggregate_rebuilt",
+      "reason": null,
+      "summaryVersion": null,
+      "collectionModelVersion": null
+    },
+    {
+      "relativePath": "cars/car-156-mercedesamgevogt3/tracks/track-252-nurburgring-combined/sessions/practice/summaries/capture-20260428-232504-925.json",
+      "action": "migrated",
+      "reason": "added_collection_model_version",
+      "summaryVersion": 1,
+      "collectionModelVersion": 1
+    },
+    {
+      "relativePath": "cars/car-156-mercedesamgevogt3/tracks/track-252-nurburgring-combined/sessions/practice/summaries/session-20260428-234116-033.json",
+      "action": "migrated",
+      "reason": "added_collection_model_version",
+      "summaryVersion": 1,
+      "collectionModelVersion": 1
+    },
+    {
+      "relativePath": "cars/car-156-mercedesamgevogt3/tracks/track-252-nurburgring-combined/sessions/practice/summaries/session-20260429-121610-470.json",
+      "action": "migrated",
+      "reason": "added_collection_model_version",
+      "summaryVersion": 1,
+      "collectionModelVersion": 1
+    },
+    {
+      "relativePath": "cars/car-156-mercedesamgevogt3/tracks/track-252-nurburgring-combined/sessions/practice/summaries/session-20260429-121900-610.json",
+      "action": "migrated",
+      "reason": "added_collection_model_version",
+      "summaryVersion": 1,
+      "collectionModelVersion": 1
+    },
+    {
+      "relativePath": "cars/car-156-mercedesamgevogt3/tracks/track-252-nurburgring-combined/sessions/practice/summaries/session-20260430-015614-967.json",
+      "action": "migrated",
+      "reason": "added_collection_model_version",
+      "summaryVersion": 1,
+      "collectionModelVersion": 1
+    },
+    {
+      "relativePath": "cars/car-156-mercedesamgevogt3/tracks/track-252-nurburgring-combined/sessions/race/aggregate.json",
+      "action": "aggregate_rebuilt",
+      "reason": null,
+      "summaryVersion": null,
+      "collectionModelVersion": null
+    },
+    {
+      "relativePath": "cars/car-156-mercedesamgevogt3/tracks/track-252-nurburgring-combined/sessions/race/summaries/capture-20260429-203921-005.json",
+      "action": "migrated",
+      "reason": "added_collection_model_version",
+      "summaryVersion": 1,
+      "collectionModelVersion": 1
+    },
+    {
+      "relativePath": "cars/car-156-mercedesamgevogt3/tracks/track-252-nurburgring-combined/sessions/race/summaries/capture-20260430-010437-471.json",
+      "action": "migrated",
+      "reason": "added_collection_model_version",
+      "summaryVersion": 1,
+      "collectionModelVersion": 1
+    },
+    {
+      "relativePath": "cars/car-156-mercedesamgevogt3/tracks/track-252-nurburgring-combined/sessions/race/summaries/session-20260429-182940-388.json",
+      "action": "migrated",
+      "reason": "added_collection_model_version",
+      "summaryVersion": 1,
+      "collectionModelVersion": 1
+    },
+    {
+      "relativePath": "cars/car-156-mercedesamgevogt3/tracks/track-252-nurburgring-combined/sessions/race/summaries/session-20260429-183031-673.json",
+      "action": "migrated",
+      "reason": "added_collection_model_version",
+      "summaryVersion": 1,
+      "collectionModelVersion": 1
+    },
+    {
+      "relativePath": "cars/car-156-mercedesamgevogt3/tracks/track-252-nurburgring-combined/sessions/race/summaries/session-20260429-190143-154.json",
+      "action": "migrated",
+      "reason": "added_collection_model_version",
+      "summaryVersion": 1,
+      "collectionModelVersion": 1
+    },
+    {
+      "relativePath": "cars/car-156-mercedesamgevogt3/tracks/track-252-nurburgring-combined/sessions/race/summaries/session-20260430-171517-296.json",
+      "action": "migrated",
+      "reason": "added_collection_model_version",
+      "summaryVersion": 1,
+      "collectionModelVersion": 1
+    }
+  ]
+}

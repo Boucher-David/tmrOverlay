@@ -1,0 +1,184 @@
+﻿{
+  "summaryVersion": 1,
+  "sourceCaptureId": "capture-20260428-232504-925",
+  "startedAtUtc": "2026-04-28T23:25:04.9250919\u002B00:00",
+  "finishedAtUtc": "2026-04-28T23:39:25.9021548\u002B00:00",
+  "combo": {
+    "carKey": "car-156-mercedesamgevogt3",
+    "trackKey": "track-252-nurburgring-combined",
+    "sessionKey": "practice"
+  },
+  "car": {
+    "carId": 156,
+    "carPath": "mercedesamgevogt3",
+    "carScreenName": "Mercedes-AMG GT3 2020",
+    "carScreenNameShort": "Mercedes GT3 2020",
+    "carClassId": 4098,
+    "carClassShortName": "NECGT3 2026",
+    "carClassEstLapTimeSeconds": 480.8602,
+    "driverCarFuelMaxLiters": 106,
+    "driverCarFuelKgPerLiter": 0.75,
+    "driverCarEstLapTimeSeconds": 480.8602,
+    "driverCarVersion": "2026.04.15.02",
+    "driverGearboxType": "Sequential",
+    "driverSetupName": "nurburgring combined\\26s2\\GO 26S2 Nords24hrs AMGGT3 Safe R .sto",
+    "driverSetupIsModified": true
+  },
+  "track": {
+    "trackId": 252,
+    "trackName": "nurburgring combined",
+    "trackDisplayName": "Gesamtstrecke 24h",
+    "trackConfigName": null,
+    "trackLengthKm": 25.1764,
+    "trackCity": "N\u00FCrburg",
+    "trackCountry": "Germany",
+    "trackNumTurns": 170,
+    "trackType": "road course",
+    "trackVersion": "2026.03.30.02"
+  },
+  "session": {
+    "currentSessionNum": 0,
+    "sessionNum": 0,
+    "sessionType": "Practice",
+    "sessionName": "PRACTICE",
+    "sessionTime": "7200.0000 sec",
+    "sessionLaps": "unlimited",
+    "eventType": "Practice",
+    "category": "SportsCar",
+    "official": true,
+    "teamRacing": true,
+    "seriesId": 279,
+    "seasonId": 6401,
+    "sessionId": 308012069,
+    "subSessionId": 85353208,
+    "buildVersion": "2026.04.21.01"
+  },
+  "conditions": {
+    "airTempC": 19.407997131347656,
+    "trackTempCrewC": 32.22222900390625,
+    "trackWetness": 1,
+    "weatherDeclaredWet": false,
+    "playerTireCompound": 0,
+    "trackWeatherType": "Realistic",
+    "trackSkies": "Dynamic",
+    "trackPrecipitationPercent": 0,
+    "sessionTrackRubberState": "moderate usage"
+  },
+  "metrics": {
+    "sampleFrameCount": 51599,
+    "droppedFrameCount": 0,
+    "sessionInfoSnapshotCount": 70,
+    "captureDurationSeconds": 859.9646097,
+    "onTrackTimeSeconds": 788.0499999992834,
+    "pitRoadTimeSeconds": 36.399999999966894,
+    "movingTimeSeconds": 783.8999999992872,
+    "validGreenTimeSeconds": 779.649999999291,
+    "validDistanceLaps": 1.533675228633001,
+    "completedValidLaps": 0,
+    "fuelUsedLiters": 22.0501708984375,
+    "fuelAddedLiters": 0,
+    "fuelPerHourLiters": 101.81570606611581,
+    "fuelPerLapLiters": 14.377340447815218,
+    "averageLapSeconds": null,
+    "medianLapSeconds": null,
+    "bestLapSeconds": null,
+    "startingFuelLiters": 53,
+    "endingFuelLiters": 104.94000244140625,
+    "minimumFuelLiters": 53,
+    "maximumFuelLiters": 104.94000244140625,
+    "pitRoadEntryCount": 2,
+    "pitServiceCount": 0,
+    "stintCount": 1,
+    "averageStintLaps": 0.5463098859563615,
+    "averageStintSeconds": 286.2833333330731,
+    "averageStintFuelPerLapLiters": 14.505181471816739,
+    "averagePitLaneSeconds": 18.199999999983447,
+    "averagePitStallSeconds": 16.216666666651918,
+    "averagePitServiceSeconds": null,
+    "observedFuelFillRateLitersPerSecond": null,
+    "averageTireChangePitServiceSeconds": null,
+    "averageNoTirePitServiceSeconds": 16.216666666651918
+  },
+  "stints": [
+    {
+      "stintNumber": 1,
+      "startRaceTimeSeconds": 795.4333404536143,
+      "endRaceTimeSeconds": 1081.7166737866874,
+      "durationSeconds": 286.2833333330731,
+      "startLapCompleted": 0,
+      "endLapCompleted": -1,
+      "distanceLaps": 0.5463098859563615,
+      "fuelStartLiters": 90.73660278320312,
+      "fuelEndLiters": 82.8122787475586,
+      "fuelUsedLiters": 7.924324035644531,
+      "fuelPerLapLiters": 14.505181471816739,
+      "driverRole": "local-driver-scalar",
+      "confidenceFlags": [
+        "team_car_array_distance",
+        "local_fuel_scalar"
+      ]
+    }
+  ],
+  "pitStops": [
+    {
+      "stopNumber": 1,
+      "entryRaceTimeSeconds": 293.6833404540706,
+      "exitRaceTimeSeconds": 300.30000712073127,
+      "pitLaneSeconds": 6.616666666660649,
+      "entryLapCompleted": -1,
+      "exitLapCompleted": -1,
+      "pitStallSeconds": 2.64999999999759,
+      "serviceActiveSeconds": null,
+      "fuelBeforeLiters": 104.94000244140625,
+      "fuelAfterLiters": 104.86507415771484,
+      "fuelAddedLiters": 0,
+      "fuelFillRateLitersPerSecond": null,
+      "tireSetChanged": false,
+      "fastRepairUsed": false,
+      "pitServiceFlags": 0,
+      "confidenceFlags": [
+        "team_car_array",
+        "local_fuel_scalar",
+        "pit_stall_signal"
+      ]
+    },
+    {
+      "stopNumber": 2,
+      "entryRaceTimeSeconds": 1081.733340453354,
+      "exitRaceTimeSeconds": 1111.5166737866602,
+      "pitLaneSeconds": 29.783333333306246,
+      "entryLapCompleted": 0,
+      "exitLapCompleted": 0,
+      "pitStallSeconds": 29.783333333306246,
+      "serviceActiveSeconds": null,
+      "fuelBeforeLiters": 104.94000244140625,
+      "fuelAfterLiters": 104.94000244140625,
+      "fuelAddedLiters": 0,
+      "fuelFillRateLitersPerSecond": null,
+      "tireSetChanged": false,
+      "fastRepairUsed": false,
+      "pitServiceFlags": 0,
+      "confidenceFlags": [
+        "team_car_array",
+        "local_fuel_scalar",
+        "pit_stall_signal"
+      ]
+    }
+  ],
+  "quality": {
+    "confidence": "medium",
+    "contributesToBaseline": true,
+    "reasons": [
+      "no_completed_laps"
+    ]
+  },
+  "appVersion": {
+    "productName": "TmrOverlay.App",
+    "version": "1.0.0.0",
+    "informationalVersion": "1.0.0\u002B10ddc9043c168f0f6dea252437cb928d9a638adf",
+    "runtimeVersion": ".NET 8.0.26",
+    "operatingSystem": "Microsoft Windows 10.0.26200",
+    "processArchitecture": "X64"
+  },
+  "collectionModelVersion": 1
+}

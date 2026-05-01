@@ -1,0 +1,159 @@
+{
+  "aggregateVersion": 1,
+  "combo": {
+    "carKey": "car-156-mercedesamgevogt3",
+    "trackKey": "track-252-nurburgring-combined",
+    "sessionKey": "practice"
+  },
+  "car": {
+    "carId": 156,
+    "carPath": "mercedesamgevogt3",
+    "carScreenName": "Mercedes-AMG GT3 2020",
+    "carScreenNameShort": "Mercedes GT3 2020",
+    "carClassId": 4098,
+    "carClassShortName": "NECGT3 2026",
+    "carClassColorHex": "0xffda59",
+    "carClassEstLapTimeSeconds": 480.8602,
+    "driverCarFuelMaxLiters": 106,
+    "driverCarFuelKgPerLiter": 0.75,
+    "driverCarEstLapTimeSeconds": 480.8602,
+    "driverCarVersion": "2026.04.15.02",
+    "driverGearboxType": "Sequential",
+    "driverSetupName": "nurburgring_combined.sto",
+    "driverSetupIsModified": false
+  },
+  "track": {
+    "trackId": 252,
+    "trackName": "nurburgring combined",
+    "trackDisplayName": "Gesamtstrecke 24h",
+    "trackConfigName": null,
+    "trackLengthKm": 25.1764,
+    "trackCity": "N\u00FCrburg",
+    "trackCountry": "Germany",
+    "trackNumTurns": 170,
+    "trackType": "road course",
+    "trackVersion": "2026.03.30.02"
+  },
+  "session": {
+    "currentSessionNum": 0,
+    "sessionNum": 0,
+    "sessionType": "Practice",
+    "sessionName": "PRACTICE",
+    "sessionTime": "7200.0000 sec",
+    "sessionLaps": "unlimited",
+    "eventType": "Practice",
+    "category": "SportsCar",
+    "official": true,
+    "teamRacing": true,
+    "seriesId": 279,
+    "seasonId": 6401,
+    "sessionId": 308296563,
+    "subSessionId": 85419555,
+    "buildVersion": "2026.04.21.01"
+  },
+  "updatedAtUtc": "2026-05-01T16:29:29.5689436+00:00",
+  "sessionCount": 10,
+  "baselineSessionCount": 4,
+  "fuelPerLapLiters": {
+    "sampleCount": 4,
+    "mean": 14.407540462177709,
+    "minimum": 14.377340447815218,
+    "maximum": 14.478035337845482
+  },
+  "fuelPerHourLiters": {
+    "sampleCount": 4,
+    "mean": 101.97404180679722,
+    "minimum": 101.46265950685044,
+    "maximum": 102.66898249002695
+  },
+  "averageLapSeconds": {
+    "sampleCount": 3,
+    "mean": 493.80600992838544,
+    "minimum": 491.1119079589844,
+    "maximum": 495.68701171875
+  },
+  "medianLapSeconds": {
+    "sampleCount": 3,
+    "mean": 493.80600992838544,
+    "minimum": 491.1119079589844,
+    "maximum": 495.68701171875
+  },
+  "pitRoadEntryCount": {
+    "sampleCount": 4,
+    "mean": 3.5,
+    "minimum": 1,
+    "maximum": 6
+  },
+  "pitServiceCount": {
+    "sampleCount": 4,
+    "mean": 0.75,
+    "minimum": 0,
+    "maximum": 3
+  },
+  "averageStintLaps": {
+    "sampleCount": 4,
+    "mean": 1.1064417506454873,
+    "minimum": 0.5463098859563615,
+    "maximum": 1.8153873672272312
+  },
+  "averageStintSeconds": {
+    "sampleCount": 4,
+    "mean": 560.1833333347624,
+    "minimum": 286.2833333330731,
+    "maximum": 917.9666666669166
+  },
+  "averageStintFuelPerLapLiters": {
+    "sampleCount": 4,
+    "mean": 14.429404778608102,
+    "minimum": 14.25730855521436,
+    "maximum": 14.505181471816739
+  },
+  "localDriverStintLaps": {
+    "sampleCount": 5,
+    "mean": 1.0968291828831525,
+    "minimum": 0.5463098859563615,
+    "maximum": 1.8153873672272312
+  },
+  "teammateDriverStintLaps": {
+    "sampleCount": 0,
+    "mean": null,
+    "minimum": null,
+    "maximum": null
+  },
+  "averagePitLaneSeconds": {
+    "sampleCount": 4,
+    "mean": 23.27638888893059,
+    "minimum": 10.466666666799483,
+    "maximum": 44.066666666720764
+  },
+  "averagePitStallSeconds": {
+    "sampleCount": 4,
+    "mean": 17.16041666671982,
+    "minimum": 7.816666666674526,
+    "maximum": 34.14166666675334
+  },
+  "averagePitServiceSeconds": {
+    "sampleCount": 1,
+    "mean": 36.908333333299765,
+    "minimum": 36.908333333299765,
+    "maximum": 36.908333333299765
+  },
+  "observedFuelFillRateLitersPerSecond": {
+    "sampleCount": 1,
+    "mean": 1.4445831321025109,
+    "minimum": 1.4445831321025109,
+    "maximum": 1.4445831321025109
+  },
+  "averageTireChangePitServiceSeconds": {
+    "sampleCount": 0,
+    "mean": null,
+    "minimum": null,
+    "maximum": null
+  },
+  "averageNoTirePitServiceSeconds": {
+    "sampleCount": 4,
+    "mean": 15.886458333387642,
+    "minimum": 7.816666666674526,
+    "maximum": 29.04583333342464
+  }
+}
