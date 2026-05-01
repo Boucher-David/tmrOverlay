@@ -1,0 +1,14 @@
+{"timestampUtc":"2026-05-01T14:29:01.2404852+00:00","name":"previous_run_unclean","properties":{"startedAtUtc":"2026-04-30T22:11:00.7244984\u002B00:00"}}
+{"timestampUtc":"2026-05-01T14:29:01.2497459+00:00","name":"app_started","properties":{}}
+{"timestampUtc":"2026-05-01T14:29:02.307163+00:00","name":"iracing_connected","properties":{}}
+{"timestampUtc":"2026-05-01T14:29:02.3107482+00:00","name":"telemetry_collection_started","properties":{"sourceId":"session-20260501-142902-309","rawCaptureEnabled":"False"}}
+{"timestampUtc":"2026-05-01T14:40:23.2546296+00:00","name":"iracing_disconnected","properties":{}}
+{"timestampUtc":"2026-05-01T14:40:23.2919535+00:00","name":"post_race_analysis_saved","properties":{"sourceId":"session-20260501-142902-309","analysisId":"20260501-144023-session-20260501-142902-309"}}
+{"timestampUtc":"2026-05-01T14:40:23.2926207+00:00","name":"history_summary_saved","properties":{"sourceId":"session-20260501-142902-309","carKey":"car-156-mercedesamgevogt3","trackKey":"track-252-nurburgring-combined","sessionKey":"practice","confidence":"none"}}
+{"timestampUtc":"2026-05-01T14:41:33.0868466+00:00","name":"app_stopped","properties":{}}
+{"timestampUtc":"2026-05-01T14:42:09.915825+00:00","name":"app_started","properties":{}}
+{"timestampUtc":"2026-05-01T14:42:43.2251965+00:00","name":"iracing_connected","properties":{}}
+{"timestampUtc":"2026-05-01T14:42:43.2285569+00:00","name":"telemetry_collection_started","properties":{"sourceId":"session-20260501-144243-227","rawCaptureEnabled":"False"}}
+{"timestampUtc":"2026-05-01T15:16:44.257479+00:00","name":"iracing_disconnected","properties":{}}
+{"timestampUtc":"2026-05-01T15:16:44.2970654+00:00","name":"post_race_analysis_saved","properties":{"sourceId":"session-20260501-144243-227","analysisId":"20260501-151644-session-20260501-144243-227"}}
+{"timestampUtc":"2026-05-01T15:16:44.2977739+00:00","name":"history_summary_saved","properties":{"sourceId":"session-20260501-144243-227","carKey":"car-156-mercedesamgevogt3","trackKey":"track-252-nurburgring-combined","sessionKey":"practice","confidence":"medium"}}

@@ -1,0 +1,135 @@
+{
+  "settingsVersion": 2,
+  "general": {
+    "fontFamily": "Segoe UI",
+    "unitSystem": "Metric"
+  },
+  "overlays": [
+    {
+      "id": "status",
+      "enabled": true,
+      "scale": 1,
+      "x": 24,
+      "y": 24,
+      "width": 520,
+      "height": 150,
+      "opacity": 0.88,
+      "alwaysOnTop": true,
+      "showInTest": true,
+      "showInPractice": true,
+      "showInQualifying": true,
+      "showInRace": true,
+      "options": {
+        "status.capture-details": "True",
+        "status.health-details": "True",
+        "fuel.advice": "True",
+        "fuel.source": "True",
+        "radar.multiclass-warning": "True",
+        "gap.cars-ahead": "5",
+        "gap.cars-behind": "5"
+      },
+      "screenId": null
+    },
+    {
+      "id": "fuel-calculator",
+      "enabled": true,
+      "scale": 1,
+      "x": 698,
+      "y": 1155,
+      "width": 600,
+      "height": 320,
+      "opacity": 0.88,
+      "alwaysOnTop": true,
+      "showInTest": true,
+      "showInPractice": true,
+      "showInQualifying": true,
+      "showInRace": true,
+      "options": {
+        "status.capture-details": "True",
+        "status.health-details": "True",
+        "fuel.advice": "True",
+        "fuel.source": "True",
+        "radar.multiclass-warning": "True",
+        "gap.cars-ahead": "5",
+        "gap.cars-behind": "5"
+      },
+      "screenId": null
+    },
+    {
+      "id": "car-radar",
+      "enabled": true,
+      "scale": 1,
+      "x": 2344,
+      "y": 217,
+      "width": 300,
+      "height": 300,
+      "opacity": 1,
+      "alwaysOnTop": true,
+      "showInTest": true,
+      "showInPractice": true,
+      "showInQualifying": true,
+      "showInRace": true,
+      "options": {
+        "status.capture-details": "True",
+        "status.health-details": "True",
+        "fuel.advice": "True",
+        "fuel.source": "True",
+        "radar.multiclass-warning": "True",
+        "gap.cars-ahead": "5",
+        "gap.cars-behind": "5"
+      },
+      "screenId": null
+    },
+    {
+      "id": "gap-to-leader",
+      "enabled": true,
+      "scale": 1,
+      "x": 615,
+      "y": 831,
+      "width": 660,
+      "height": 280,
+      "opacity": 0.88,
+      "alwaysOnTop": true,
+      "showInTest": false,
+      "showInPractice": true,
+      "showInQualifying": true,
+      "showInRace": true,
+      "options": {
+        "status.capture-details": "True",
+        "status.health-details": "True",
+        "fuel.advice": "True",
+        "fuel.source": "True",
+        "radar.multiclass-warning": "True",
+        "gap.cars-ahead": "5",
+        "gap.cars-behind": "5",
+        "gap.race-only-default-applied": "True"
+      },
+      "screenId": null
+    },
+    {
+      "id": "settings",
+      "enabled": true,
+      "scale": 1,
+      "x": 2021,
+      "y": 420,
+      "width": 1080,
+      "height": 600,
+      "opacity": 0.88,
+      "alwaysOnTop": false,
+      "showInTest": true,
+      "showInPractice": true,
+      "showInQualifying": true,
+      "showInRace": true,
+      "options": {
+        "status.capture-details": "True",
+        "status.health-details": "True",
+        "fuel.advice": "True",
+        "fuel.source": "True",
+        "radar.multiclass-warning": "True",
+        "gap.cars-ahead": "5",
+        "gap.cars-behind": "5"
+      },
+      "screenId": null
+    }
+  ]
+}
