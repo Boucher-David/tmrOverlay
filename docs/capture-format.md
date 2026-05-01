@@ -7,7 +7,7 @@ Raw capture is an opt-in diagnostic/development mode. When `TelemetryCapture:Raw
 - `telemetry.bin`
 - `latest-session.yaml`
 
-Optional historical session snapshots are stored under `session-info/`.
+Optional historical session snapshots are stored under `session-info/`. When IBT analysis is enabled, the app may also write compact derived files under `ibt-analysis/`; the source `.ibt` file remains in iRacing's telemetry folder by default.
 
 ## Compact Synthesis
 
@@ -30,6 +30,27 @@ The tool defaults to a 24 MiB output budget so the artifact stays below GitHub's
 The app writes a stable `capture-synthesis.json` plus a context-named copy when session YAML has enough metadata, for example `capture-synthesis-race-mercedes-amg-gt3-2020-gesamtstrecke-vln.json`. App-side synthesis is deferred while the iRacing SDK is still connected or a known iRacing sim process is still running, then starts as soon as that blocker clears; this keeps post-session reduction from competing with the live sim. If the app itself is shutting down while iRacing is still active, synthesis is skipped rather than blocking exit. On startup, the app scans for raw capture folders with `telemetry.bin` and `telemetry-schema.json` but no stable `capture-synthesis.json`; those folders are queued for the same guarded synthesis path. The standalone tool has the same Windows process guard unless `--allow-while-iracing-running` is passed intentionally.
 
 The app also records synthesis timing and process CPU usage in app events, status snapshots, and diagnostics bundles so long post-session reduction can be reviewed without uploading `telemetry.bin`.
+
+## IBT Analysis Sidecar
+
+IBT analysis is a derived post-session sidecar, not part of the raw `telemetry.bin` format. When `IbtAnalysis:TelemetryLoggingEnabled` is true, the same status-overlay/startup switch that starts raw capture also asks iRacing to start binary telemetry logging, and stopping or finalizing the raw segment asks iRacing to stop logging. After the same iRacing-closed guard used for capture synthesis, the app looks for a matching `.ibt` file under `IbtAnalysis:TelemetryRoot`.
+
+The default output directory inside a capture is:
+
+```text
+ibt-analysis/
+```
+
+Possible files are:
+
+- `status.json`
+- `ibt-schema-summary.json`
+- `ibt-vs-live-schema.json`
+- `ibt-field-summary.json`
+
+`status.json` is written for success, skip, and failure outcomes. Missing telemetry roots, missing candidates, oversized candidates, active/still-writing files, and analysis timeouts are recorded as skipped or failed sidecars; they do not fail compact history, post-race analysis, or `capture-synthesis.json`.
+
+The source `.ibt` is not copied into the capture directory unless `IbtAnalysis:CopyIbtIntoCaptureDirectory` is explicitly enabled.
 
 ## Session Stitching
 

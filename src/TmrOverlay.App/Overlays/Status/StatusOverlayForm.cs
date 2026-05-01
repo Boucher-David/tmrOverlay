@@ -76,15 +76,15 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
             FlatStyle = FlatStyle.Flat,
             Font = OverlayTheme.Font(fontFamily, 8.25f, FontStyle.Bold),
             ForeColor = OverlayTheme.Colors.TextControl,
-            Location = new Point(ClientSize.Width - 116, 8),
-            Size = new Size(100, 26),
+            Location = new Point(ClientSize.Width - 128, 8),
+            Size = new Size(112, 26),
             TabStop = false,
             Text = "Capture",
             UseVisualStyleBackColor = false
         };
         _rawCaptureButton.FlatAppearance.BorderSize = 1;
         _rawCaptureButton.FlatAppearance.BorderColor = OverlayTheme.Colors.WindowBorder;
-        _rawCaptureButton.Click += (_, _) => ToggleRawCapture();
+        _rawCaptureButton.Click += (_, _) => ToggleCaptureArtifacts();
 
         _statusLabel = new Label
         {
@@ -259,14 +259,14 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
         }
 
         _statusLabel.Size = new Size(Math.Max(220, ClientSize.Width - 32), 22);
-        _rawCaptureButton.Location = new Point(Math.Max(16, ClientSize.Width - 116), 8);
+        _rawCaptureButton.Location = new Point(Math.Max(16, ClientSize.Width - 128), 8);
         _detailLabel.Size = new Size(Math.Max(220, ClientSize.Width - 32), 18);
         _activityLabel.Size = new Size(150, 20);
         _captureLabel.Size = new Size(Math.Max(220, ClientSize.Width - 32), 18);
         _healthLabel.Size = new Size(Math.Max(220, ClientSize.Width - 32), 34);
     }
 
-    private void ToggleRawCapture()
+    private void ToggleCaptureArtifacts()
     {
         var snapshot = _state.Snapshot();
         var requested = !(snapshot.RawCaptureEnabled || snapshot.RawCaptureActive);
@@ -276,6 +276,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
             ["requested"] = requested.ToString(),
             ["accepted"] = accepted.ToString(),
             ["source"] = "status_overlay",
+            ["captureArtifacts"] = "raw_and_ibt_when_configured",
             ["rawCaptureActive"] = snapshot.RawCaptureActive.ToString(),
             ["rawCaptureStopRequested"] = snapshot.RawCaptureStopRequested.ToString()
         });
@@ -296,7 +297,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
         _rawCaptureButton.Enabled = true;
         if (snapshot.RawCaptureActive)
         {
-            _rawCaptureButton.Text = "Stop raw";
+            _rawCaptureButton.Text = "Stop capture";
             _rawCaptureButton.BackColor = OverlayTheme.Colors.WarningStrongBackground;
             _rawCaptureButton.ForeColor = OverlayTheme.Colors.WarningText;
             return;
@@ -304,7 +305,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
 
         if (snapshot.RawCaptureEnabled)
         {
-            _rawCaptureButton.Text = "Cancel raw";
+            _rawCaptureButton.Text = "Cancel";
             _rawCaptureButton.BackColor = OverlayTheme.Colors.InfoBackground;
             _rawCaptureButton.ForeColor = OverlayTheme.Colors.InfoText;
             return;
@@ -343,12 +344,12 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
 
             if (snapshot.RawCaptureStopRequested)
             {
-                return new ActivityBadge("STOPPING RAW", OverlayTheme.Colors.InfoBackground, OverlayTheme.Colors.InfoText);
+                return new ActivityBadge("STOPPING CAPTURE", OverlayTheme.Colors.InfoBackground, OverlayTheme.Colors.InfoText);
             }
 
             if (snapshot.IsCapturing && snapshot.RawCaptureActive)
             {
-                return new ActivityBadge("RAW WRITES", OverlayTheme.Colors.SuccessBackground, OverlayTheme.Colors.SuccessText);
+                return new ActivityBadge("CAPTURE WRITES", OverlayTheme.Colors.SuccessBackground, OverlayTheme.Colors.SuccessText);
             }
 
             if (snapshot.IsCapturing)
@@ -380,14 +381,14 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
             var capturePath = snapshot.CurrentCaptureDirectory ?? snapshot.LastCaptureDirectory ?? snapshot.CaptureRoot;
             var rawWriting = snapshot.RawCaptureActive;
             var captureText = snapshot.RawCaptureEnabled || snapshot.RawCaptureActive
-                ? $"raw: {CompactPath(capturePath)}"
-                : "raw: disabled; history ready";
+                ? $"capture: {CompactPath(capturePath)}"
+                : "capture: disabled; history ready";
             var frameAge = AgeSeconds(snapshot.LastFrameCapturedAtUtc, now);
             var diskAge = AgeSeconds(snapshot.LastDiskWriteAtUtc, now);
             var bytes = FormatBytes(snapshot.TelemetryFileBytes);
             var detail = rawWriting
                 ? $"queued {snapshot.FrameCount,7:N0}  written {snapshot.WrittenFrameCount,7:N0}  drops {snapshot.DroppedFrameCount,4:N0}  file {bytes}  write {FormatMilliseconds(snapshot.LastCaptureWriteElapsedMilliseconds)}/{FormatMilliseconds(snapshot.MaxCaptureWriteElapsedMilliseconds)}"
-                : $"frames {snapshot.FrameCount,7:N0}  {CompactLiveMode(live)}  raw off";
+                : $"frames {snapshot.FrameCount,7:N0}  {CompactLiveMode(live)}  capture off";
 
             if (!string.IsNullOrWhiteSpace(snapshot.LastError))
             {
@@ -408,11 +409,11 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
             {
                 return new CaptureHealth(
                     CaptureHealthLevel.Ok,
-                    "Stopping raw capture",
-                    "closing raw writer; live analysis continues",
+                    "Stopping capture",
+                    "closing raw writer and IBT logging; live analysis continues",
                     activity,
                     captureText,
-                    "health: raw capture will wait for synthesis after iRacing closes");
+                    "health: capture will wait for synthesis after iRacing closes");
             }
 
             if (snapshot.IsCaptureSynthesisPending)

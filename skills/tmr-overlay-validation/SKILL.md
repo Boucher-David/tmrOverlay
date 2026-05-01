@@ -81,5 +81,6 @@ The current local Command Line Tools setup may build but fail to run XCTest; rep
 - Keep public snapshot member names stable unless the requested change intentionally updates the contract.
 - If changing Windows build/release commands, keep `src/TmrOverlay.App/Overlays/SettingsPanel/SettingsOverlayForm.cs`, `build.md`, and `docs/windows-dotnet-commands.md` aligned. Copied release package commands should either create their required artifact directories themselves or state a clear precondition before `Compress-Archive`.
 - If changing raw capture format, verify `docs/capture-format.md`, `telemetry.md`, and `README.md` were updated in the same pass.
+- If changing IBT capture or analysis behavior, verify `docs/ibt-analysis.md`, `docs/capture-format.md`, `telemetry.md`, and `README.md` stay aligned. IBT analysis must remain a compact sidecar: no source `.ibt` copy by default, bounded candidate scanning, file-size and stability checks, timeout/sample limits, and skipped/failed status files instead of failures in compact history, post-race analysis, or capture synthesis.
 - If materially changing overlays, update or call out missing review images under `mocks/<overlay-id>/`.
 - If changing shared contracts, reusable overlay behavior, or app boilerplate, inspect whether both the Windows app and ignored mac harness need matching changes.

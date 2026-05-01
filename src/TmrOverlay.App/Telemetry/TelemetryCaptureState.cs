@@ -2,6 +2,8 @@ namespace TmrOverlay.App.Telemetry;
 
 internal sealed class TelemetryCaptureState
 {
+    private const string CaptureStopRequestedWarning = "Capture stop requested; live telemetry analysis will continue.";
+
     private readonly object _sync = new();
     private bool _isConnected;
     private bool _isCollecting;
@@ -97,7 +99,7 @@ internal sealed class TelemetryCaptureState
                 var now = DateTimeOffset.UtcNow;
                 _rawCaptureStopRequested = true;
                 _rawCaptureStopRequestedAtUtc ??= now;
-                _lastWarning = "Raw capture stop requested; live telemetry analysis will continue.";
+                _lastWarning = CaptureStopRequestedWarning;
                 _lastIssueAtUtc = now;
                 return true;
             }
@@ -261,10 +263,7 @@ internal sealed class TelemetryCaptureState
             _rawCaptureStopRequestedAtUtc = null;
             _lastRawCaptureStoppedAtUtc = stoppedAtUtc;
             _captureStartedAtUtc = null;
-            if (string.Equals(
-                    _lastWarning,
-                    "Raw capture stop requested; live telemetry analysis will continue.",
-                    StringComparison.Ordinal))
+            if (string.Equals(_lastWarning, CaptureStopRequestedWarning, StringComparison.Ordinal))
             {
                 _lastWarning = null;
                 _lastIssueAtUtc = null;

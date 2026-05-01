@@ -6,7 +6,7 @@ This file describes the current raw capture model in three layers:
 - `session`: the active iRacing session state
 - `car`: static vehicle identity plus dynamic usage telemetry
 
-The current production path analyzes live SDK data and stores compact session history. Raw capture remains available as an opt-in diagnostic/development mode; when enabled it stores raw frame payloads in `telemetry.bin`, variable definitions in `telemetry-schema.json`, session YAML in `latest-session.yaml`, and capture metadata in `capture-manifest.json`.
+The current production path analyzes live SDK data and stores compact session history. Raw capture remains available as an opt-in diagnostic/development mode; when enabled it stores raw frame payloads in `telemetry.bin`, variable definitions in `telemetry-schema.json`, session YAML in `latest-session.yaml`, and capture metadata in `capture-manifest.json`. When IBT logging is configured, the same capture control also requests iRacing's own `.ibt` telemetry log and writes compact post-session IBT investigation sidecars when a matching file is available.
 
 ## Event Schema
 
@@ -66,7 +66,9 @@ Event-level data is the highest-level context for a capture. It combines the loc
 
 App events are JSONL records under the app events folder. New records use `eventVersion: 2`, a stable `name`, a severity string such as `info`, `warning`, or `error`, and structured `properties`. The recorder adds `appRunId` to every event; telemetry collection events also include `collectionId` when a collection exists, and raw-capture events include `captureId` when a raw segment exists.
 
-Runtime raw capture is controlled from the Collector Status overlay. `Capture` arms the raw writer for the next live SDK frame; `Stop raw` closes only the raw writer and leaves live analysis, compact history, and post-race analysis running. A stopped raw segment remains pending for synthesis until the iRacing SDK and sim process have closed. Startup recovery scans capture folders for missing `capture-synthesis.json` files and queues the same guarded synthesis path.
+Runtime capture artifacts are controlled from the Collector Status overlay. `Capture` arms the raw writer for the next live SDK frame and, when configured, requests iRacing IBT logging for the same segment. `Stop capture` closes the raw writer, asks iRacing to stop IBT logging, and leaves live analysis, compact history, and post-race analysis running. A stopped raw segment remains pending for synthesis until the iRacing SDK and sim process have closed. Startup recovery scans capture folders for missing `capture-synthesis.json` files and queues the same guarded synthesis path.
+
+IBT analysis runs through the same post-session guard. It writes `ibt-analysis/status.json` for every attempted analysis and writes compact schema, schema-comparison, and bounded field-summary files on success. Missing telemetry roots or candidates, oversized files, files that still look active, timeouts, and parser failures are recorded as sidecar statuses and app events rather than failures in compact history or post-race analysis.
 
 Diagnostics bundles include `live/degradation-codes.json`. These codes are intentionally explicit about expected telemetry gaps versus real failures. Current examples include:
 

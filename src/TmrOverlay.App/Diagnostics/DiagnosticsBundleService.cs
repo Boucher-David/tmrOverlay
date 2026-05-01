@@ -21,17 +21,20 @@ internal sealed class DiagnosticsBundleService
     private readonly AppStorageOptions _storageOptions;
     private readonly TelemetryCaptureState _captureState;
     private readonly ILiveTelemetrySource _liveTelemetrySource;
+    private readonly IbtAnalysisOptions _ibtAnalysisOptions;
     private readonly ILogger<DiagnosticsBundleService> _logger;
 
     public DiagnosticsBundleService(
         AppStorageOptions storageOptions,
         TelemetryCaptureState captureState,
         ILiveTelemetrySource liveTelemetrySource,
+        IbtAnalysisOptions ibtAnalysisOptions,
         ILogger<DiagnosticsBundleService> logger)
     {
         _storageOptions = storageOptions;
         _captureState = captureState;
         _liveTelemetrySource = liveTelemetrySource;
+        _ibtAnalysisOptions = ibtAnalysisOptions;
         _logger = logger;
     }
 
@@ -431,6 +434,11 @@ internal sealed class DiagnosticsBundleService
         AddTelemetrySchemaSummary(archive, schemaPath);
         AddFileIfExists(archive, Path.Combine(captureDirectory, "latest-session.yaml"), "latest-capture/latest-session.yaml");
         AddFileIfExists(archive, Path.Combine(captureDirectory, "capture-synthesis.json"), "latest-capture/capture-synthesis.json");
+        var ibtAnalysisDirectory = Path.Combine(captureDirectory, _ibtAnalysisOptions.OutputDirectoryName);
+        AddFileIfExists(archive, Path.Combine(ibtAnalysisDirectory, "status.json"), "latest-capture/ibt-analysis/status.json");
+        AddFileIfExists(archive, Path.Combine(ibtAnalysisDirectory, "ibt-schema-summary.json"), "latest-capture/ibt-analysis/ibt-schema-summary.json");
+        AddFileIfExists(archive, Path.Combine(ibtAnalysisDirectory, "ibt-vs-live-schema.json"), "latest-capture/ibt-analysis/ibt-vs-live-schema.json");
+        AddFileIfExists(archive, Path.Combine(ibtAnalysisDirectory, "ibt-field-summary.json"), "latest-capture/ibt-analysis/ibt-field-summary.json");
     }
 
     private static string BuildDiagnosticsLabel(string? captureDirectory)

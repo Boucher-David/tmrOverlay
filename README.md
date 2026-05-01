@@ -11,6 +11,7 @@
 - Lets you drag overlays and remembers each overlay position between app launches.
 - Connects to iRacing through the `irsdkSharp` wrapper.
 - Starts live telemetry analysis whenever iRacing sends usable frame data.
+- Can request iRacing `.ibt` telemetry logging from the same capture control as raw capture and writes compact IBT investigation sidecars after sessions when a matching file is available.
 - Writes compact per-combo session history under app-owned local storage.
 - Stitches reconnect/rejoin segments from the same iRacing session into one historical session group while keeping each raw capture immutable.
 - Shows an early fuel calculator overlay that estimates race laps, whole-lap stint targets, final-stint length, realistic fuel-saving alerts, and stop-by-stop tire-change timing guidance.
@@ -19,6 +20,7 @@
 - Stores early pit-service history signals such as pit-lane time, pit-stall/service time, observed fuel fill rate, tire/repair indicators, and confidence flags.
 - Keeps raw capture as an opt-in diagnostic/development mode; the status overlay can start or deliberately stop raw capture at runtime while live analysis/history collection continues.
 - When raw capture is enabled, stores `telemetry.bin`, `telemetry-schema.json`, `latest-session.yaml`, optional `session-info/`, and `capture-manifest.json`.
+- Writes optional `ibt-analysis/` sidecars beside capture artifacts without copying the source `.ibt` by default.
 - Includes `tools/analysis/synthesize_capture.py` for turning a large raw capture into a GitHub-friendly all-telemetry JSON synthesis with a focused weather/rain/radar-candidate section.
 - Shows live-analysis health signals in the overlay, plus disk-write health while raw capture is active.
 - Writes rolling local logs, versioned JSONL app events with `appRunId` / `collectionId` correlation, runtime-state markers, persisted settings, and diagnostics bundles for triage.
@@ -58,7 +60,7 @@ When enabled, captures are written under the user-local application data directo
 
 For development, set `TMR_Storage__UseRepositoryLocalStorage=true` to write under this checkout instead.
 
-If the app is already running and you forgot the startup flag, use the `Capture` button on the Collector Status overlay. That requests raw capture for the current process and starts a raw segment on the next live SDK frame. Press `Stop raw` to close only the raw writer; live telemetry analysis, compact history, and post-race analysis continue.
+If the app is already running and you forgot the startup flag, use the `Capture` button on the Collector Status overlay. That requests capture artifacts for the current process and starts a raw segment on the next live SDK frame. When `IbtAnalysis:TelemetryLoggingEnabled` is true, the same raw segment also asks iRacing to start an `.ibt` log. Press `Stop capture` to close the raw writer and request IBT logging stop; live telemetry analysis, compact history, and post-race analysis continue.
 
 Each capture folder contains:
 
@@ -78,6 +80,25 @@ The synthesis summarizes every telemetry variable and defaults to a 24 MiB outpu
 
 Diagnostics bundles include explicit degradation codes for design/analysis work, such as spectated timing only, idle local scalars, missing local driving fuel scalars, focus-car changes, side-callout availability, fuel-model availability, and weather wetness mismatches. These codes are meant to separate expected telemetry gaps from real failures.
 
+## IBT Investigation Output
+
+IBT analysis is enabled by default for Windows. IBT logging is allowed by default, but it follows the same capture-artifacts switch as raw capture: the startup raw-capture flag or the Collector Status `Capture` button starts both the raw writer and iRacing's `.ibt` logging request. After the session ends and iRacing has closed, the app looks for a matching `.ibt` under:
+
+```text
+%USERPROFILE%\Documents\iRacing\telemetry
+```
+
+When a match is found, compact derived files are written under the capture directory:
+
+```text
+ibt-analysis/status.json
+ibt-analysis/ibt-schema-summary.json
+ibt-analysis/ibt-vs-live-schema.json
+ibt-analysis/ibt-field-summary.json
+```
+
+The source `.ibt` is not copied by default. Missing roots or candidates, oversized files, active files, parser failures, and timeouts are recorded in `status.json` and app events instead of failing compact history, post-race analysis, or capture synthesis. See [IBT Analysis](/Users/davidboucher/Code/tmrOverlay/docs/ibt-analysis.md) for details.
+
 ## Build And Run On Windows
 
 1. Install the .NET 8 SDK or Visual Studio 2022 with .NET desktop development tools.
@@ -90,7 +111,7 @@ You can also double-click [TmrOverlay.cmd](/Users/davidboucher/Code/tmrOverlay/T
 For copyable PowerShell build, test, run, publish, and zip commands, see [build.md](/Users/davidboucher/Code/tmrOverlay/build.md) or [Windows .NET Commands](/Users/davidboucher/Code/tmrOverlay/docs/windows-dotnet-commands.md).
 
 The tray menu lets you open the raw capture folder, open the current raw capture when one exists, open logs, open the settings overlay, create a diagnostics bundle, or exit the app.
-The status overlay stays visible over the sim so you can confirm the app is running and whether live telemetry analysis has started. With raw capture disabled it shows live frame freshness, session-history activity, and end-of-session summary saves. With raw capture enabled it also shows queued frames, written frames, dropped frames, telemetry file size, disk-write freshness, write latency, and explicit warning/error messages. The status overlay raw-capture button records app events and local logs when raw capture is armed, stopped, or cancelled. You can drag overlays to new positions, and each overlay restores its saved frame on restart. Use the tray menu to reopen settings or exit the application.
+The status overlay stays visible over the sim so you can confirm the app is running and whether live telemetry analysis has started. With capture artifacts disabled it shows live frame freshness, session-history activity, and end-of-session summary saves. With capture artifacts enabled it also shows queued frames, written frames, dropped frames, telemetry file size, disk-write freshness, write latency, and explicit warning/error messages. The status overlay `Capture` button records app events and local logs when raw/IBT artifact capture is armed, stopped, or cancelled. You can drag overlays to new positions, and each overlay restores its saved frame on restart. Use the tray menu to reopen settings or exit the application.
 
 During local development, the overlay also warns when source files in this checkout are newer than the running build. That is a rebuild reminder only; it does not block capture.
 
@@ -149,6 +170,17 @@ Available settings:
 - `TelemetryCapture:StoreSessionInfoSnapshots`
 - `TelemetryCapture:RawCaptureEnabled`
 - `TelemetryCapture:QueueCapacity`
+- `IbtAnalysis:Enabled`
+- `IbtAnalysis:TelemetryLoggingEnabled`
+- `IbtAnalysis:TelemetryRoot`
+- `IbtAnalysis:MaxCandidateAgeMinutes`
+- `IbtAnalysis:MaxCandidateBytes`
+- `IbtAnalysis:MaxAnalysisMilliseconds`
+- `IbtAnalysis:MaxSampledRecords`
+- `IbtAnalysis:MinStableAgeSeconds`
+- `IbtAnalysis:MaxCandidateFiles`
+- `IbtAnalysis:CopyIbtIntoCaptureDirectory`
+- `IbtAnalysis:OutputDirectoryName`
 - `SessionHistory:Enabled`
 - `SessionHistory:UseBaselineHistory`
 - `Storage:UseRepositoryLocalStorage`
@@ -242,7 +274,7 @@ The tray menu can create a diagnostics bundle under:
 %LOCALAPPDATA%\TmrOverlay\diagnostics
 ```
 
-Bundles include app/storage metadata, runtime state, live telemetry/overlay summaries, telemetry availability counters, settings, recent logs/events, and latest capture metadata. They intentionally exclude raw `telemetry.bin` payloads.
+Bundles include app/storage metadata, runtime state, live telemetry/overlay summaries, telemetry availability counters, settings, recent logs/events, latest capture metadata, and compact IBT analysis sidecars when available. They intentionally exclude raw `telemetry.bin` payloads and source `.ibt` files.
 
 ## Tests
 

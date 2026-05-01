@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using irsdkSharp;
+using irsdkSharp.Enums;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Analysis;
@@ -16,6 +17,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 {
     private readonly ILogger<TelemetryCaptureHostedService> _logger;
     private readonly TelemetryCaptureOptions _options;
+    private readonly IbtAnalysisOptions _ibtOptions;
+    private readonly IbtAnalysisService _ibtAnalysis;
     private readonly AppEventRecorder _events;
     private readonly TelemetryDiagnosticContext _diagnosticContext;
     private readonly SessionHistoryStore _sessionHistoryStore;
@@ -43,6 +46,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     public TelemetryCaptureHostedService(
         ILogger<TelemetryCaptureHostedService> logger,
         TelemetryCaptureOptions options,
+        IbtAnalysisOptions ibtOptions,
+        IbtAnalysisService ibtAnalysis,
         AppEventRecorder events,
         TelemetryDiagnosticContext diagnosticContext,
         SessionHistoryStore sessionHistoryStore,
@@ -53,6 +58,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     {
         _logger = logger;
         _options = options;
+        _ibtOptions = ibtOptions;
+        _ibtAnalysis = ibtAnalysis;
         _events = events;
         _diagnosticContext = diagnosticContext;
         _sessionHistoryStore = sessionHistoryStore;
@@ -88,9 +95,12 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         _sdk.OnDataChanged += HandleDataChanged;
 
         _logger.LogInformation(
-            "Telemetry collection service started. Raw capture enabled: {RawCaptureEnabled}. Capture root: {CaptureRoot}.",
+            "Telemetry collection service started. Raw capture enabled: {RawCaptureEnabled}. IBT analysis enabled: {IbtAnalysisEnabled}. IBT telemetry logging enabled: {IbtTelemetryLoggingEnabled}. Capture root: {CaptureRoot}. IBT root: {IbtTelemetryRoot}.",
             _options.RawCaptureEnabled,
-            _options.ResolvedCaptureRoot);
+            _ibtOptions.Enabled,
+            _ibtOptions.TelemetryLoggingEnabled,
+            _options.ResolvedCaptureRoot,
+            _ibtOptions.TelemetryRoot);
         _startupSynthesisTask = Task.Run(
             () => SynthesizePendingCapturesFromStartupAsync(_startupSynthesisCancellation.Token),
             CancellationToken.None);
@@ -124,6 +134,15 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         }
 
         _startupSynthesisCancellation.Cancel();
+
+        if (captureToFinalize is not null)
+        {
+            TryStopIbtTelemetryLogging(
+                _sdk,
+                finalization.CollectionId,
+                finalization.SourceId,
+                finalization.EndedReason);
+        }
 
         if (captureToFinalize is not null || historyToFinalize is not null)
         {
@@ -191,6 +210,15 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             _sessionInfoSnapshotCount = 0;
             _lastSessionInfoUpdate = -1;
             _frameIndex = 0;
+        }
+
+        if (captureToFinalize is not null)
+        {
+            TryStopIbtTelemetryLogging(
+                _sdk,
+                finalization.CollectionId,
+                finalization.SourceId,
+                finalization.EndedReason);
         }
 
         if (captureToFinalize is not null || historyToFinalize is not null)
@@ -347,6 +375,11 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 
         if (captureToStop is not null)
         {
+            TryStopIbtTelemetryLogging(
+                sdk,
+                captureToStopCollectionId,
+                captureToStopSourceId,
+                endedReason: "manual_stop");
             QueueRawCaptureWriterFinalization(
                 captureToStop,
                 captureToStopCollectionId,
@@ -356,6 +389,97 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         }
 
         return activeCapture;
+    }
+
+    private void TryStartIbtTelemetryLogging(
+        IRacingSDK sdk,
+        string collectionId,
+        string sourceId)
+    {
+        if (!_ibtOptions.Enabled || !_ibtOptions.TelemetryLoggingEnabled)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = sdk.BroadcastMessage(
+                BroadcastMessageTypes.TelemCommand,
+                (int)TelemCommandModeTypes.Start,
+                0);
+            _events.Record("ibt_telemetry_logging_start_requested", new Dictionary<string, string?>
+            {
+                ["collectionId"] = collectionId,
+                ["sourceId"] = sourceId,
+                ["telemetryRoot"] = _ibtOptions.TelemetryRoot,
+                ["broadcastResult"] = result.ToString()
+            });
+            _logger.LogInformation(
+                "Requested iRacing IBT telemetry logging for collection {CollectionId}. Broadcast result: {BroadcastResult}.",
+                collectionId,
+                result);
+        }
+        catch (Exception exception)
+        {
+            _state.RecordWarning($"IBT telemetry logging start failed: {exception.Message}");
+            _events.Record("ibt_telemetry_logging_start_failed", new Dictionary<string, string?>
+            {
+                ["collectionId"] = collectionId,
+                ["sourceId"] = sourceId,
+                ["error"] = exception.GetType().Name
+            }, severity: "warning");
+            _logger.LogWarning(exception, "Failed to request iRacing IBT telemetry logging for collection {CollectionId}.", collectionId);
+        }
+    }
+
+    private void TryStopIbtTelemetryLogging(
+        IRacingSDK? sdk,
+        string? collectionId,
+        string? sourceId,
+        string endedReason)
+    {
+        if (!_ibtOptions.Enabled || !_ibtOptions.TelemetryLoggingEnabled || sdk is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!sdk.IsConnected())
+            {
+                return;
+            }
+
+            var result = sdk.BroadcastMessage(
+                BroadcastMessageTypes.TelemCommand,
+                (int)TelemCommandModeTypes.Stop,
+                0);
+            _events.Record("ibt_telemetry_logging_stop_requested", new Dictionary<string, string?>
+            {
+                ["collectionId"] = collectionId,
+                ["sourceId"] = sourceId,
+                ["telemetryRoot"] = _ibtOptions.TelemetryRoot,
+                ["endedReason"] = endedReason,
+                ["broadcastResult"] = result.ToString()
+            });
+            _logger.LogInformation(
+                "Requested iRacing IBT telemetry logging stop for collection {CollectionId}. Reason: {EndedReason}. Broadcast result: {BroadcastResult}.",
+                collectionId,
+                endedReason,
+                result);
+        }
+        catch (Exception exception)
+        {
+            _state.RecordWarning($"IBT telemetry logging stop failed: {exception.Message}");
+            _events.Record("ibt_telemetry_logging_stop_failed", new Dictionary<string, string?>
+            {
+                ["collectionId"] = collectionId,
+                ["sourceId"] = sourceId,
+                ["endedReason"] = endedReason,
+                ["error"] = exception.GetType().Name
+            }, severity: "warning");
+            _logger.LogWarning(exception, "Failed to request iRacing IBT telemetry logging stop for collection {CollectionId}.", collectionId);
+        }
     }
 
     private TelemetryCaptureSession? TryStartRawCaptureLocked(
@@ -410,6 +534,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             RecordCaptureSessionInfoSnapshot(capture, sdk, capturedAtUtc, sdk.Header.SessionInfoUpdate);
         }
 
+        TryStartIbtTelemetryLogging(sdk, collectionId, _activeSourceId ?? capture.CaptureId);
         return capture;
     }
 
@@ -1208,24 +1333,66 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         try
         {
             var pendingCaptures = CaptureSynthesisService.FindPendingSynthesisCaptures(_options.ResolvedCaptureRoot);
-            if (pendingCaptures.Count == 0)
+            var pendingIbtAnalyses = _ibtAnalysis.FindPendingAnalysisCaptures(_options.ResolvedCaptureRoot);
+            if (pendingCaptures.Count == 0 && pendingIbtAnalyses.Count == 0)
             {
                 return;
             }
 
-            _events.Record("capture_synthesis_startup_scan_found_pending", new Dictionary<string, string?>
+            if (pendingCaptures.Count > 0)
             {
-                ["pendingCount"] = pendingCaptures.Count.ToString(),
-                ["captureRoot"] = _options.ResolvedCaptureRoot
-            });
-            _logger.LogInformation(
-                "Startup synthesis scan found {PendingCaptureCount} raw captures without capture-synthesis.json.",
-                pendingCaptures.Count);
+                _events.Record("capture_synthesis_startup_scan_found_pending", new Dictionary<string, string?>
+                {
+                    ["pendingCount"] = pendingCaptures.Count.ToString(),
+                    ["captureRoot"] = _options.ResolvedCaptureRoot
+                });
+                _logger.LogInformation(
+                    "Startup synthesis scan found {PendingCaptureCount} raw captures without capture-synthesis.json.",
+                    pendingCaptures.Count);
+            }
 
+            if (pendingIbtAnalyses.Count > 0)
+            {
+                _events.Record("ibt_analysis_startup_scan_found_pending", new Dictionary<string, string?>
+                {
+                    ["pendingCount"] = pendingIbtAnalyses.Count.ToString(),
+                    ["captureRoot"] = _options.ResolvedCaptureRoot,
+                    ["telemetryRoot"] = _ibtOptions.TelemetryRoot
+                });
+                _logger.LogInformation(
+                    "Startup IBT analysis scan found {PendingIbtAnalysisCount} raw captures without IBT analysis status.",
+                    pendingIbtAnalyses.Count);
+            }
+
+            var synthesisDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var pending in pendingCaptures)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                synthesisDirectories.Add(pending.DirectoryPath);
                 _events.Record("capture_synthesis_startup_recovery_started", new Dictionary<string, string?>
+                {
+                    ["collectionId"] = pending.CollectionId,
+                    ["captureId"] = pending.CaptureId,
+                    ["captureDirectory"] = pending.DirectoryPath,
+                    ["reason"] = pending.Reason
+                });
+                await WriteCaptureSynthesisAsync(
+                        pending.DirectoryPath,
+                        pending.CollectionId,
+                        allowWaitingForIRacing: true,
+                        cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            foreach (var pending in pendingIbtAnalyses)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (synthesisDirectories.Contains(pending.DirectoryPath))
+                {
+                    continue;
+                }
+
+                _events.Record("ibt_analysis_startup_recovery_started", new Dictionary<string, string?>
                 {
                     ["collectionId"] = pending.CollectionId,
                     ["captureId"] = pending.CaptureId,
@@ -1265,7 +1432,9 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         await _synthesisSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (CaptureSynthesisService.HasStableSynthesis(captureDirectory))
+            var needsSynthesis = !CaptureSynthesisService.HasStableSynthesis(captureDirectory);
+            var needsIbtAnalysis = _ibtOptions.Enabled && !_ibtAnalysis.HasAnalysisStatus(captureDirectory);
+            if (!needsSynthesis && !needsIbtAnalysis)
             {
                 _state.MarkCaptureSynthesisPendingCleared();
                 _events.Record("capture_synthesis_already_exists", new Dictionary<string, string?>
@@ -1296,60 +1465,151 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 return;
             }
 
-            _state.MarkCaptureSynthesisStarted(DateTimeOffset.UtcNow);
-            try
+            if (needsSynthesis)
             {
-                var result = await CaptureSynthesisService.WriteAsync(captureDirectory, cancellationToken).ConfigureAwait(false);
-                _state.MarkCaptureSynthesisSaved(result);
-                _events.Record("capture_synthesis_saved", new Dictionary<string, string?>
+                _state.MarkCaptureSynthesisStarted(DateTimeOffset.UtcNow);
+                try
+                {
+                    var result = await CaptureSynthesisService.WriteAsync(captureDirectory, cancellationToken).ConfigureAwait(false);
+                    _state.MarkCaptureSynthesisSaved(result);
+                    _events.Record("capture_synthesis_saved", new Dictionary<string, string?>
+                    {
+                        ["collectionId"] = collectionId,
+                        ["captureDirectory"] = captureDirectory,
+                        ["synthesisPath"] = result.Path,
+                        ["stableSynthesisPath"] = result.StablePath,
+                        ["synthesisBytes"] = result.Bytes.ToString(),
+                        ["telemetryBytes"] = result.TelemetryBytes.ToString(),
+                        ["elapsedMilliseconds"] = result.ElapsedMilliseconds.ToString(),
+                        ["processCpuMilliseconds"] = result.ProcessCpuMilliseconds.ToString(),
+                        ["processCpuPercentOfOneCore"] = result.ProcessCpuPercentOfOneCore?.ToString("0.0"),
+                        ["totalFrameRecords"] = result.TotalFrameRecords.ToString(),
+                        ["sampledFrameCount"] = result.SampledFrameCount.ToString(),
+                        ["sampleStride"] = result.SampleStride.ToString(),
+                        ["fieldCount"] = result.FieldCount.ToString()
+                    });
+                    _logger.LogInformation(
+                        "Saved capture synthesis {CaptureSynthesisPath} ({CaptureSynthesisBytes} bytes) in {ElapsedMilliseconds} ms with {ProcessCpuMilliseconds} ms process CPU from {TelemetryBytes} telemetry bytes, {TotalFrameRecords} frames, {FieldCount} fields.",
+                        result.Path,
+                        result.Bytes,
+                        result.ElapsedMilliseconds,
+                        result.ProcessCpuMilliseconds,
+                        result.TelemetryBytes,
+                        result.TotalFrameRecords,
+                        result.FieldCount);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    _state.RecordWarning($"Capture synthesis failed: {exception.Message}");
+                    _events.Record("capture_synthesis_failed", new Dictionary<string, string?>
+                    {
+                        ["collectionId"] = collectionId,
+                        ["captureDirectory"] = captureDirectory,
+                        ["error"] = exception.Message
+                    }, severity: "warning");
+                    _logger.LogWarning(exception, "Failed to write capture synthesis for {CaptureDirectory}.", captureDirectory);
+                }
+                finally
+                {
+                    _state.MarkCaptureSynthesisStopped();
+                }
+            }
+            else
+            {
+                _state.MarkCaptureSynthesisPendingCleared();
+                _events.Record("capture_synthesis_already_exists", new Dictionary<string, string?>
                 {
                     ["collectionId"] = collectionId,
-                    ["captureDirectory"] = captureDirectory,
-                    ["synthesisPath"] = result.Path,
-                    ["stableSynthesisPath"] = result.StablePath,
-                    ["synthesisBytes"] = result.Bytes.ToString(),
-                    ["telemetryBytes"] = result.TelemetryBytes.ToString(),
-                    ["elapsedMilliseconds"] = result.ElapsedMilliseconds.ToString(),
-                    ["processCpuMilliseconds"] = result.ProcessCpuMilliseconds.ToString(),
-                    ["processCpuPercentOfOneCore"] = result.ProcessCpuPercentOfOneCore?.ToString("0.0"),
-                    ["totalFrameRecords"] = result.TotalFrameRecords.ToString(),
-                    ["sampledFrameCount"] = result.SampledFrameCount.ToString(),
-                    ["sampleStride"] = result.SampleStride.ToString(),
-                    ["fieldCount"] = result.FieldCount.ToString()
+                    ["captureDirectory"] = captureDirectory
                 });
-                _logger.LogInformation(
-                    "Saved capture synthesis {CaptureSynthesisPath} ({CaptureSynthesisBytes} bytes) in {ElapsedMilliseconds} ms with {ProcessCpuMilliseconds} ms process CPU from {TelemetryBytes} telemetry bytes, {TotalFrameRecords} frames, {FieldCount} fields.",
-                    result.Path,
-                    result.Bytes,
-                    result.ElapsedMilliseconds,
-                    result.ProcessCpuMilliseconds,
-                    result.TelemetryBytes,
-                    result.TotalFrameRecords,
-                    result.FieldCount);
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+
+            if (needsIbtAnalysis)
             {
-                throw;
-            }
-            catch (Exception exception)
-            {
-                _state.RecordWarning($"Capture synthesis failed: {exception.Message}");
-                _events.Record("capture_synthesis_failed", new Dictionary<string, string?>
-                {
-                    ["collectionId"] = collectionId,
-                    ["captureDirectory"] = captureDirectory,
-                    ["error"] = exception.Message
-                }, severity: "warning");
-                _logger.LogWarning(exception, "Failed to write capture synthesis for {CaptureDirectory}.", captureDirectory);
-            }
-            finally
-            {
-                _state.MarkCaptureSynthesisStopped();
+                await WriteIbtAnalysisAsync(captureDirectory, collectionId, cancellationToken).ConfigureAwait(false);
             }
         }
         finally
         {
             _synthesisSemaphore.Release();
+        }
+    }
+
+    private async Task WriteIbtAnalysisAsync(
+        string captureDirectory,
+        string? collectionId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _ibtAnalysis.WriteAsync(captureDirectory, cancellationToken).ConfigureAwait(false);
+            var properties = new Dictionary<string, string?>
+            {
+                ["collectionId"] = collectionId,
+                ["captureDirectory"] = captureDirectory,
+                ["status"] = result.Status,
+                ["reason"] = result.Reason,
+                ["statusPath"] = result.StatusPath,
+                ["outputDirectory"] = result.OutputDirectory,
+                ["sourcePath"] = result.SourcePath,
+                ["sourceBytes"] = result.SourceBytes?.ToString(),
+                ["elapsedMilliseconds"] = result.ElapsedMilliseconds.ToString(),
+                ["fieldCount"] = result.FieldCount?.ToString(),
+                ["totalRecordCount"] = result.TotalRecordCount?.ToString(),
+                ["sampledRecordCount"] = result.SampledRecordCount?.ToString()
+            };
+
+            if (string.Equals(result.Status, IbtAnalysisStatus.Succeeded, StringComparison.OrdinalIgnoreCase))
+            {
+                _events.Record("ibt_analysis_saved", properties);
+                _logger.LogInformation(
+                    "Saved IBT analysis for {CaptureDirectory} from {IbtPath} in {ElapsedMilliseconds} ms.",
+                    captureDirectory,
+                    result.SourcePath,
+                    result.ElapsedMilliseconds);
+                return;
+            }
+
+            var eventName = string.Equals(result.Status, IbtAnalysisStatus.Failed, StringComparison.OrdinalIgnoreCase)
+                ? "ibt_analysis_failed"
+                : "ibt_analysis_skipped";
+            var severity = string.Equals(result.Status, IbtAnalysisStatus.Failed, StringComparison.OrdinalIgnoreCase)
+                ? "warning"
+                : "info";
+            _events.Record(eventName, properties, severity);
+            if (string.Equals(result.Status, IbtAnalysisStatus.Failed, StringComparison.OrdinalIgnoreCase))
+            {
+                _state.RecordWarning($"IBT analysis failed: {result.Reason ?? "unknown"}");
+                _logger.LogWarning(
+                    "IBT analysis failed for {CaptureDirectory}. Reason: {Reason}.",
+                    captureDirectory,
+                    result.Reason);
+                return;
+            }
+
+            _logger.LogInformation(
+                "Skipped IBT analysis for {CaptureDirectory}. Reason: {Reason}.",
+                captureDirectory,
+                result.Reason);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _state.RecordWarning($"IBT analysis failed: {exception.Message}");
+            _events.Record("ibt_analysis_failed", new Dictionary<string, string?>
+            {
+                ["collectionId"] = collectionId,
+                ["captureDirectory"] = captureDirectory,
+                ["error"] = exception.GetType().Name
+            }, severity: "warning");
+            _logger.LogWarning(exception, "Failed to write IBT analysis for {CaptureDirectory}.", captureDirectory);
         }
     }
 

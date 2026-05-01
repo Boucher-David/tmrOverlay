@@ -4,7 +4,7 @@ Last updated: 2026-05-01
 
 ## Project Goal
 
-`tmrOverlay` is being built as a Windows-native iRacing companion. The product direction has shifted from always-on raw capture toward live telemetry analysis plus compact historical session summaries. Raw capture remains available as an opt-in diagnostic/development mode.
+`tmrOverlay` is being built as a Windows-native iRacing companion. The product direction has shifted from always-on TmrOverlay raw capture toward live telemetry analysis plus compact historical session summaries. Raw capture remains available as an opt-in diagnostic/development mode. When capture artifacts are requested, iRacing `.ibt` telemetry logging can be requested from the same control, and compact IBT investigation sidecars are enabled by default so we can evaluate whether IBT is a better post-race source than app-owned raw frame capture.
 
 ## Implemented So Far
 
@@ -50,7 +50,7 @@ Last updated: 2026-05-01
   - no taskbar icon
   - draggable during runtime
   - persists position/size under app-owned settings
-  - owns the runtime raw-capture `Capture` / `Stop raw` button; stopping raw capture closes only the raw writer while live analysis/history collection continues
+  - owns the runtime capture-artifacts `Capture` / `Stop capture` button; when configured, the same button starts/stops both the raw writer and iRacing IBT telemetry logging while live analysis/history collection continues
   - shows live telemetry analysis state, latest SDK-frame freshness, warning/error text, raw capture write health when raw capture is active, and pending/running synthesis state after raw capture stops
   - has an explicit activity badge for connected/idle, session-history collection, raw writes, and end-of-session history saving so the user can see background analysis work
   - state colors:
@@ -117,10 +117,12 @@ Last updated: 2026-05-01
   - records compact historical telemetry samples every frame
   - snapshots session YAML into the history accumulator whenever `SessionInfoUpdate` changes
   - creates raw capture directories and copies the raw telemetry buffer only when raw capture is enabled by startup configuration or runtime status-overlay request
-  - supports deliberate manual raw-capture stop during an active session; this finalizes only the raw segment, marks synthesis pending, and keeps live telemetry/history collection running
+  - supports deliberate manual capture-artifacts stop during an active session; this finalizes only the raw segment, requests IBT logging stop when enabled, marks synthesis pending, and keeps live telemetry/history collection running
   - writes compact capture synthesis after raw capture finalization, but defers synthesis while the iRacing SDK is still connected or a known iRacing sim process is still running so synthesis does not compete with the live sim; if the app itself is shutting down while iRacing remains active, synthesis is skipped rather than blocking app exit
+  - requests iRacing IBT telemetry logging when a raw capture segment starts by startup configuration or runtime status-overlay request, then writes compact `ibt-analysis/` sidecars after the same iRacing-closed guard used by capture synthesis
+  - keeps IBT analysis best-effort with root/candidate/size/stability/time/sample guardrails; skipped or failed IBT analysis writes `ibt-analysis/status.json` and app events instead of failing compact history, post-race analysis, or capture synthesis
   - on startup, scans raw capture folders for missing stable `capture-synthesis.json` files and queues them through the same guarded synthesis path
-  - logs and records app events for runtime raw-capture start failures instead of silently failing
+  - logs and records app events for runtime capture-artifact start failures instead of silently failing
   - writes normalized live frames through `ILiveTelemetrySink`, not directly to overlays
 
 - `src/TmrOverlay.App/Telemetry/TelemetryCaptureSession.cs`

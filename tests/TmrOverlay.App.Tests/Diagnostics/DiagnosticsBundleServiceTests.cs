@@ -33,6 +33,12 @@ public sealed class DiagnosticsBundleServiceTests
             File.WriteAllText(Path.Combine(captureDirectory, "latest-session.yaml"), "WeekendInfo: {}");
             File.WriteAllText(Path.Combine(captureDirectory, "capture-synthesis.json"), "{}");
             File.WriteAllText(Path.Combine(captureDirectory, "telemetry.bin"), "raw");
+            var ibtAnalysisDirectory = Path.Combine(captureDirectory, "ibt-analysis");
+            Directory.CreateDirectory(ibtAnalysisDirectory);
+            File.WriteAllText(Path.Combine(ibtAnalysisDirectory, "status.json"), "{}");
+            File.WriteAllText(Path.Combine(ibtAnalysisDirectory, "ibt-schema-summary.json"), "{}");
+            File.WriteAllText(Path.Combine(ibtAnalysisDirectory, "ibt-vs-live-schema.json"), "{}");
+            File.WriteAllText(Path.Combine(ibtAnalysisDirectory, "ibt-field-summary.json"), "{}");
 
             var state = new TelemetryCaptureState();
             state.MarkCaptureStarted(captureDirectory, DateTimeOffset.UtcNow);
@@ -40,6 +46,7 @@ public sealed class DiagnosticsBundleServiceTests
                 storage,
                 state,
                 new LiveTelemetryStore(),
+                new IbtAnalysisOptions { TelemetryRoot = Path.Combine(root, "ibt") },
                 NullLogger<DiagnosticsBundleService>.Instance);
 
             var bundlePath = service.CreateBundle();
@@ -65,6 +72,10 @@ public sealed class DiagnosticsBundleServiceTests
             Assert.Contains("latest-capture/telemetry-schema-summary.json", entryNames);
             Assert.Contains("latest-capture/latest-session.yaml", entryNames);
             Assert.Contains("latest-capture/capture-synthesis.json", entryNames);
+            Assert.Contains("latest-capture/ibt-analysis/status.json", entryNames);
+            Assert.Contains("latest-capture/ibt-analysis/ibt-schema-summary.json", entryNames);
+            Assert.Contains("latest-capture/ibt-analysis/ibt-vs-live-schema.json", entryNames);
+            Assert.Contains("latest-capture/ibt-analysis/ibt-field-summary.json", entryNames);
             Assert.DoesNotContain("latest-capture/telemetry.bin", entryNames);
         }
         finally

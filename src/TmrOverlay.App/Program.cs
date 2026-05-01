@@ -77,8 +77,10 @@ internal static class Program
             {
                 var storageOptions = AppStorageOptions.FromConfiguration(context.Configuration);
                 var replayOptions = ReplayOptions.FromConfiguration(context.Configuration);
+                var ibtAnalysisOptions = IbtAnalysisOptions.FromConfiguration(context.Configuration);
                 services.AddSingleton(storageOptions);
                 services.AddSingleton(TelemetryCaptureOptions.FromConfiguration(context.Configuration, storageOptions));
+                services.AddSingleton(ibtAnalysisOptions);
                 services.AddSingleton(SessionHistoryOptions.FromConfiguration(context.Configuration, storageOptions));
                 services.AddSingleton(RetentionOptions.FromConfiguration(context.Configuration));
                 services.AddSingleton(replayOptions);
@@ -90,6 +92,7 @@ internal static class Program
                 services.AddSingleton<SessionHistoryQueryService>();
                 services.AddSingleton<PostRaceAnalysisStore>();
                 services.AddSingleton<PostRaceAnalysisPipeline>();
+                services.AddSingleton<IbtAnalysisService>();
                 services.AddSingleton<DiagnosticsBundleService>();
                 services.AddSingleton<RuntimeStateService>();
                 services.AddSingleton<TelemetryCaptureState>();
