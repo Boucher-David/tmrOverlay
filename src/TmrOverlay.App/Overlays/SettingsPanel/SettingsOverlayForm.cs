@@ -48,9 +48,11 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private readonly AppEventRecorder _events;
     private readonly Action _saveSettings;
     private readonly Action _applyOverlaySettings;
+    private readonly Action _requestApplicationExit;
     private readonly Panel _titleBar;
     private readonly Label _titleLabel;
-    private readonly Button _hideButton;
+    private readonly Button _minimizeButton;
+    private readonly Button _closeButton;
     private readonly TabControl _tabs;
     private readonly System.Windows.Forms.Timer _refreshTimer;
     private ComboBox? _analysisCombo;
@@ -77,7 +79,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         AppEventRecorder events,
         OverlaySettings settings,
         Action saveSettings,
-        Action applyOverlaySettings)
+        Action applyOverlaySettings,
+        Action requestApplicationExit)
         : base(
             settings,
             saveSettings,
@@ -93,6 +96,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _events = events;
         _saveSettings = saveSettings;
         _applyOverlaySettings = applyOverlaySettings;
+        _requestApplicationExit = requestApplicationExit;
 
         BackColor = OverlayTheme.Colors.SettingsBackground;
         Padding = Padding.Empty;
@@ -110,12 +114,28 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             ForeColor = OverlayTheme.Colors.TextPrimary,
             Font = OverlayTheme.Font(OverlayTheme.DefaultFontFamily, 11f, FontStyle.Bold),
             Location = new Point(14, 9),
-            Size = new Size(ClientSize.Width - 60, 24),
+            Size = new Size(ClientSize.Width - 92, 24),
             Text = "Settings",
             TextAlign = ContentAlignment.MiddleLeft
         };
 
-        _hideButton = new Button
+        _minimizeButton = new Button
+        {
+            BackColor = OverlayTheme.Colors.ButtonBackground,
+            FlatStyle = FlatStyle.Flat,
+            Font = OverlayTheme.Font(OverlayTheme.DefaultFontFamily, 9.5f, FontStyle.Bold),
+            ForeColor = OverlayTheme.Colors.TextSecondary,
+            Location = new Point(ClientSize.Width - 68, 8),
+            Size = new Size(26, 24),
+            TabStop = false,
+            Text = "-",
+            UseVisualStyleBackColor = false
+        };
+        _minimizeButton.FlatAppearance.BorderSize = 0;
+        _minimizeButton.Cursor = Cursors.Hand;
+        _minimizeButton.Click += (_, _) => Hide();
+
+        _closeButton = new Button
         {
             BackColor = OverlayTheme.Colors.ButtonBackground,
             FlatStyle = FlatStyle.Flat,
@@ -127,9 +147,9 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             Text = "X",
             UseVisualStyleBackColor = false
         };
-        _hideButton.FlatAppearance.BorderSize = 0;
-        _hideButton.Cursor = Cursors.Hand;
-        _hideButton.Click += (_, _) => Hide();
+        _closeButton.FlatAppearance.BorderSize = 0;
+        _closeButton.Cursor = Cursors.Hand;
+        _closeButton.Click += (_, _) => _requestApplicationExit();
 
         _tabs = new TabControl
         {
@@ -145,7 +165,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _tabs.DrawItem += DrawSettingsTab;
 
         _titleBar.Controls.Add(_titleLabel);
-        _titleBar.Controls.Add(_hideButton);
+        _titleBar.Controls.Add(_minimizeButton);
+        _titleBar.Controls.Add(_closeButton);
         Controls.Add(_titleBar);
         Controls.Add(_tabs);
 
@@ -175,7 +196,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             _refreshTimer.Stop();
             _refreshTimer.Dispose();
             _tabs.Dispose();
-            _hideButton.Dispose();
+            _minimizeButton.Dispose();
+            _closeButton.Dispose();
             _titleLabel.Dispose();
             _titleBar.Dispose();
         }
@@ -186,14 +208,15 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
-        if (_titleBar is null || _titleLabel is null || _hideButton is null || _tabs is null)
+        if (_titleBar is null || _titleLabel is null || _minimizeButton is null || _closeButton is null || _tabs is null)
         {
             return;
         }
 
         _titleBar.Size = new Size(ClientSize.Width, OverlayTheme.Layout.SettingsTitleBarHeight);
-        _titleLabel.Size = new Size(Math.Max(120, ClientSize.Width - 60), 24);
-        _hideButton.Location = new Point(ClientSize.Width - 36, 8);
+        _titleLabel.Size = new Size(Math.Max(120, ClientSize.Width - 92), 24);
+        _minimizeButton.Location = new Point(ClientSize.Width - 68, 8);
+        _closeButton.Location = new Point(ClientSize.Width - 36, 8);
         _tabs.Location = new Point(OverlayTheme.Layout.SettingsTabInset, OverlayTheme.Layout.SettingsTabTop);
         _tabs.Size = new Size(Math.Max(360, ClientSize.Width - 24), Math.Max(320, ClientSize.Height - 66));
     }

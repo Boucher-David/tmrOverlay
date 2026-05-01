@@ -35,6 +35,7 @@ internal sealed class OverlayManager : IDisposable
     private ApplicationSettings? _settings;
     private string? _appliedFontFamily;
     private string? _appliedUnitSystem;
+    private Action _requestApplicationExit = Application.Exit;
     private bool _startupShown;
 
     public OverlayManager(
@@ -83,6 +84,11 @@ internal sealed class OverlayManager : IDisposable
         _startupShown = true;
     }
 
+    public void SetApplicationExitRequest(Action requestApplicationExit)
+    {
+        _requestApplicationExit = requestApplicationExit;
+    }
+
     public void OpenSettingsOverlay()
     {
         _settings ??= _settingsStore.Load();
@@ -112,7 +118,8 @@ internal sealed class OverlayManager : IDisposable
                 _events,
                 settings,
                 SaveSettings,
-                ApplyOverlaySettings));
+                ApplyOverlaySettings,
+                _requestApplicationExit));
         if (settingsSizeChanged)
         {
             SaveSettings();

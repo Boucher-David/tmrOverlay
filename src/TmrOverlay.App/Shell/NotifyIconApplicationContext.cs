@@ -87,6 +87,7 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
             Visible = true
         };
         _notifyIcon.DoubleClick += (_, _) => OpenCapture();
+        _overlayManager.SetApplicationExitRequest(ExitApplication);
         _overlayManager.ShowStartupOverlays();
 
         _refreshTimer = new System.Windows.Forms.Timer
