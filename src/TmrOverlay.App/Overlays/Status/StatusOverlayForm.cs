@@ -322,6 +322,49 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
         Error
     }
 
+    private sealed record ActivityBadge(string Text, Color BackColor, Color ForeColor)
+    {
+        public static ActivityBadge From(TelemetryCaptureStatusSnapshot snapshot)
+        {
+            if (snapshot.IsCaptureSynthesisPending)
+            {
+                return new ActivityBadge("WAITING SIM EXIT", OverlayTheme.Colors.InfoBackground, OverlayTheme.Colors.InfoText);
+            }
+
+            if (snapshot.IsHistoryFinalizing)
+            {
+                return new ActivityBadge("SAVING HISTORY", OverlayTheme.Colors.InfoBackground, OverlayTheme.Colors.InfoText);
+            }
+
+            if (snapshot.IsCaptureSynthesisRunning)
+            {
+                return new ActivityBadge("SYNTHESIZING", OverlayTheme.Colors.InfoBackground, OverlayTheme.Colors.InfoText);
+            }
+
+            if (snapshot.RawCaptureStopRequested)
+            {
+                return new ActivityBadge("STOPPING RAW", OverlayTheme.Colors.InfoBackground, OverlayTheme.Colors.InfoText);
+            }
+
+            if (snapshot.IsCapturing && snapshot.RawCaptureActive)
+            {
+                return new ActivityBadge("RAW WRITES", OverlayTheme.Colors.SuccessBackground, OverlayTheme.Colors.SuccessText);
+            }
+
+            if (snapshot.IsCapturing)
+            {
+                return new ActivityBadge("SESSION HISTORY", OverlayTheme.Colors.SuccessBackground, OverlayTheme.Colors.SuccessText);
+            }
+
+            if (snapshot.IsConnected)
+            {
+                return new ActivityBadge("CONNECTED", OverlayTheme.Colors.WarningStrongBackground, OverlayTheme.Colors.WarningText);
+            }
+
+            return new ActivityBadge("IDLE", OverlayTheme.Colors.NeutralBackground, OverlayTheme.Colors.TextMuted);
+        }
+    }
+
     private sealed record CaptureHealth(
         CaptureHealthLevel Level,
         string StatusText,
@@ -704,47 +747,5 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
                 : $"{first} | {second}";
         }
 
-        public sealed record ActivityBadge(string Text, Color BackColor, Color ForeColor)
-        {
-            public static ActivityBadge From(TelemetryCaptureStatusSnapshot snapshot)
-            {
-                if (snapshot.IsCaptureSynthesisPending)
-                {
-                    return new ActivityBadge("WAITING SIM EXIT", OverlayTheme.Colors.InfoBackground, OverlayTheme.Colors.InfoText);
-                }
-
-                if (snapshot.IsHistoryFinalizing)
-                {
-                    return new ActivityBadge("SAVING HISTORY", OverlayTheme.Colors.InfoBackground, OverlayTheme.Colors.InfoText);
-                }
-
-                if (snapshot.IsCaptureSynthesisRunning)
-                {
-                    return new ActivityBadge("SYNTHESIZING", OverlayTheme.Colors.InfoBackground, OverlayTheme.Colors.InfoText);
-                }
-
-                if (snapshot.RawCaptureStopRequested)
-                {
-                    return new ActivityBadge("STOPPING RAW", OverlayTheme.Colors.InfoBackground, OverlayTheme.Colors.InfoText);
-                }
-
-                if (snapshot.IsCapturing && snapshot.RawCaptureActive)
-                {
-                    return new ActivityBadge("RAW WRITES", OverlayTheme.Colors.SuccessBackground, OverlayTheme.Colors.SuccessText);
-                }
-
-                if (snapshot.IsCapturing)
-                {
-                    return new ActivityBadge("SESSION HISTORY", OverlayTheme.Colors.SuccessBackground, OverlayTheme.Colors.SuccessText);
-                }
-
-                if (snapshot.IsConnected)
-                {
-                    return new ActivityBadge("CONNECTED", OverlayTheme.Colors.WarningStrongBackground, OverlayTheme.Colors.WarningText);
-                }
-
-                return new ActivityBadge("IDLE", OverlayTheme.Colors.NeutralBackground, OverlayTheme.Colors.TextMuted);
-            }
-        }
     }
 }

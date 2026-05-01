@@ -21,6 +21,7 @@ Start here when continuing work in this repo.
 ## Read Next
 
 - `skills/tmr-overlay-context/SKILL.md`
+- `skills/tmr-overlay-validation/SKILL.md`
 - `skills/tmr-overlay-context/references/current-state.md`
 - `skills/tmr-overlay-context/references/fuel-overlay-context.md`
 - `skills/tmr-overlay-context/references/overlay-research.md`
