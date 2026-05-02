@@ -25,7 +25,9 @@ internal sealed class HistoricalSessionContext
 
 internal sealed class HistoricalSessionSummary
 {
-    public int SummaryVersion { get; init; } = 1;
+    public int SummaryVersion { get; init; } = HistoricalDataVersions.SummaryVersion;
+
+    public int CollectionModelVersion { get; init; } = HistoricalDataVersions.CollectionModelVersion;
 
     public required string SourceCaptureId { get; init; }
 
@@ -198,6 +200,8 @@ internal sealed class HistoricalSessionDriver
     public int? CarClassId { get; init; }
 
     public string? CarClassShortName { get; init; }
+
+    public string? CarClassColorHex { get; init; }
 
     public bool? IsSpectator { get; init; }
 }
@@ -471,6 +475,18 @@ internal sealed record HistoricalTelemetrySample(
     int? SessionState = null,
     int? RaceLaps = null,
     int? PlayerCarIdx = null,
+    int? FocusCarIdx = null,
+    int? FocusLapCompleted = null,
+    double? FocusLapDistPct = null,
+    double? FocusF2TimeSeconds = null,
+    double? FocusEstimatedTimeSeconds = null,
+    double? FocusLastLapTimeSeconds = null,
+    double? FocusBestLapTimeSeconds = null,
+    int? FocusPosition = null,
+    int? FocusClassPosition = null,
+    int? FocusCarClass = null,
+    bool? FocusOnPitRoad = null,
+    int? FocusTrackSurface = null,
     int? TeamLapCompleted = null,
     double? TeamLapDistPct = null,
     double? TeamF2TimeSeconds = null,
@@ -494,10 +510,18 @@ internal sealed record HistoricalTelemetrySample(
     double? ClassLeaderEstimatedTimeSeconds = null,
     double? ClassLeaderLastLapTimeSeconds = null,
     double? ClassLeaderBestLapTimeSeconds = null,
+    int? FocusClassLeaderCarIdx = null,
+    int? FocusClassLeaderLapCompleted = null,
+    double? FocusClassLeaderLapDistPct = null,
+    double? FocusClassLeaderF2TimeSeconds = null,
+    double? FocusClassLeaderEstimatedTimeSeconds = null,
+    double? FocusClassLeaderLastLapTimeSeconds = null,
+    double? FocusClassLeaderBestLapTimeSeconds = null,
     int? PlayerTrackSurface = null,
     int? CarLeftRight = null,
     IReadOnlyList<HistoricalCarProximity>? NearbyCars = null,
     IReadOnlyList<HistoricalCarProximity>? ClassCars = null,
+    IReadOnlyList<HistoricalCarProximity>? FocusClassCars = null,
     bool? TeamOnPitRoad = null,
     int? TeamFastRepairsUsed = null,
     int? PitServiceFlags = null,

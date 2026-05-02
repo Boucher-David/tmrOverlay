@@ -1,10 +1,14 @@
+using System.Diagnostics;
 using irsdkSharp;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Analysis;
+using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.History;
+using TmrOverlay.App.Performance;
 using TmrOverlay.Core.History;
+using TmrOverlay.Core.Telemetry.EdgeCases;
 using TmrOverlay.Core.Telemetry.Live;
 
 namespace TmrOverlay.App.Telemetry;
@@ -16,8 +20,11 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     private readonly AppEventRecorder _events;
     private readonly SessionHistoryStore _sessionHistoryStore;
     private readonly PostRaceAnalysisPipeline _postRaceAnalysisPipeline;
+    private readonly DiagnosticsBundleService _diagnosticsBundleService;
     private readonly ILiveTelemetrySink _liveTelemetrySink;
     private readonly TelemetryCaptureState _state;
+    private readonly AppPerformanceState _performance;
+    private readonly TelemetryEdgeCaseRecorder _edgeCaseRecorder;
     private readonly object _sync = new();
     private IRacingSDK? _sdk;
     private TelemetryCaptureSession? _activeCapture;
@@ -25,6 +32,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     private Task _finalizerTask = Task.CompletedTask;
     private string? _activeSourceId;
     private DateTimeOffset? _activeStartedAtUtc;
+    private IReadOnlyList<string> _activeRawWatchVariableNames = [];
     private int _sessionInfoSnapshotCount;
     private int _frameIndex;
     private int _lastSessionInfoUpdate = -1;
@@ -35,16 +43,22 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         AppEventRecorder events,
         SessionHistoryStore sessionHistoryStore,
         PostRaceAnalysisPipeline postRaceAnalysisPipeline,
+        DiagnosticsBundleService diagnosticsBundleService,
         ILiveTelemetrySink liveTelemetrySink,
-        TelemetryCaptureState state)
+        TelemetryCaptureState state,
+        AppPerformanceState performance,
+        TelemetryEdgeCaseRecorder edgeCaseRecorder)
     {
         _logger = logger;
         _options = options;
         _events = events;
         _sessionHistoryStore = sessionHistoryStore;
         _postRaceAnalysisPipeline = postRaceAnalysisPipeline;
+        _diagnosticsBundleService = diagnosticsBundleService;
         _liveTelemetrySink = liveTelemetrySink;
         _state = state;
+        _performance = performance;
+        _edgeCaseRecorder = edgeCaseRecorder;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -99,6 +113,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             _activeHistory = null;
             _activeSourceId = null;
             _activeStartedAtUtc = null;
+            _activeRawWatchVariableNames = [];
             _sessionInfoSnapshotCount = 0;
             _lastSessionInfoUpdate = -1;
         }
@@ -147,6 +162,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             _activeHistory = null;
             _activeSourceId = null;
             _activeStartedAtUtc = null;
+            _activeRawWatchVariableNames = [];
             _sessionInfoSnapshotCount = 0;
             _lastSessionInfoUpdate = -1;
             _frameIndex = 0;
@@ -160,6 +176,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 
     private void HandleDataChanged()
     {
+        var dataChangedStarted = Stopwatch.GetTimestamp();
+        var succeeded = false;
         var sdk = _sdk;
 
         if (sdk is null || !sdk.IsConnected() || sdk.Header is null)
@@ -170,57 +188,120 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         try
         {
             var capturedAtUtc = DateTimeOffset.UtcNow;
-            var capture = GetOrCreateCollection(sdk, capturedAtUtc);
+            TelemetryCaptureSession? capture;
+            var collectionStarted = Stopwatch.GetTimestamp();
+            var collectionSucceeded = false;
+            try
+            {
+                capture = GetOrCreateCollection(sdk, capturedAtUtc);
+                collectionSucceeded = true;
+            }
+            finally
+            {
+                _performance.RecordOperation(
+                    AppPerformanceMetricIds.TelemetryDataChangedGetCollection,
+                    collectionStarted,
+                    collectionSucceeded);
+            }
+
             var sessionInfoUpdate = sdk.Header.SessionInfoUpdate;
 
-            var latestSessionInfoUpdate = UpdateSessionInfoVersion(sessionInfoUpdate);
+            bool latestSessionInfoUpdate;
+            var sessionVersionStarted = Stopwatch.GetTimestamp();
+            var sessionVersionSucceeded = false;
+            try
+            {
+                latestSessionInfoUpdate = UpdateSessionInfoVersion(sessionInfoUpdate);
+                sessionVersionSucceeded = true;
+            }
+            finally
+            {
+                _performance.RecordOperation(
+                    AppPerformanceMetricIds.TelemetryDataChangedSessionInfoVersion,
+                    sessionVersionStarted,
+                    sessionVersionSucceeded);
+            }
+
             if (latestSessionInfoUpdate)
             {
-                RecordSessionInfoSnapshot(capture, sdk, capturedAtUtc, sessionInfoUpdate);
+                var sessionInfoStarted = Stopwatch.GetTimestamp();
+                var sessionInfoSucceeded = false;
+                try
+                {
+                    RecordSessionInfoSnapshot(capture, sdk, capturedAtUtc, sessionInfoUpdate);
+                    sessionInfoSucceeded = true;
+                }
+                finally
+                {
+                    _performance.RecordOperation(
+                        AppPerformanceMetricIds.TelemetryDataChangedSessionInfoSnapshot,
+                        sessionInfoStarted,
+                        sessionInfoSucceeded);
+                }
             }
 
             if (capture is not null)
             {
-                var payload = ReadTelemetryBuffer(sdk);
-                var frame = new TelemetryFrameEnvelope(
-                    CapturedAtUtc: capturedAtUtc,
-                    FrameIndex: Interlocked.Increment(ref _frameIndex),
-                    SessionTick: ReadInt32(sdk, "SessionTick"),
-                    SessionInfoUpdate: sessionInfoUpdate,
-                    SessionTime: ReadDouble(sdk, "SessionTime"),
-                    Payload: payload);
-
-                if (!capture.TryQueueFrame(frame))
+                var rawCaptureStarted = Stopwatch.GetTimestamp();
+                var rawCaptureSucceeded = false;
+                try
                 {
-                    capture.RecordDroppedFrame();
-                    _state.RecordDroppedFrame();
-                    var writerFault = capture.WriterFault;
-                    if (writerFault is not null)
-                    {
-                        _state.RecordError($"Capture writer failed: {writerFault.Message}");
-                        _events.Record("capture_writer_failed", new Dictionary<string, string?>
-                        {
-                            ["captureId"] = capture.CaptureId,
-                            ["error"] = writerFault.Message
-                        });
-                        _logger.LogError(writerFault, "Dropped telemetry frame because the capture writer failed.");
-                        return;
-                    }
-
-                    _state.RecordWarning("Dropped telemetry frame because the capture queue is full.");
-                    _events.Record("capture_dropped_frame");
-                    _logger.LogWarning("Dropped telemetry frame because the capture queue is full.");
-                    return;
+                    RecordRawCaptureFrame(capture, sdk, capturedAtUtc, sessionInfoUpdate);
+                    rawCaptureSucceeded = true;
+                }
+                finally
+                {
+                    _performance.RecordOperation(
+                        AppPerformanceMetricIds.TelemetryDataChangedRawCaptureFrame,
+                        rawCaptureStarted,
+                        rawCaptureSucceeded);
                 }
             }
 
-            RecordHistoricalFrame(sdk, capturedAtUtc, sessionInfoUpdate);
-            _state.RecordFrame(capturedAtUtc);
+            var historicalFrameStarted = Stopwatch.GetTimestamp();
+            var historicalFrameSucceeded = false;
+            try
+            {
+                RecordHistoricalFrame(sdk, capturedAtUtc, sessionInfoUpdate);
+                historicalFrameSucceeded = true;
+            }
+            finally
+            {
+                _performance.RecordOperation(
+                    AppPerformanceMetricIds.TelemetryDataChangedHistoricalFrame,
+                    historicalFrameStarted,
+                    historicalFrameSucceeded);
+            }
+
+            var stateFrameStarted = Stopwatch.GetTimestamp();
+            var stateFrameSucceeded = false;
+            try
+            {
+                _state.RecordFrame(capturedAtUtc);
+                _performance.RecordTelemetryFrame(capturedAtUtc);
+                stateFrameSucceeded = true;
+            }
+            finally
+            {
+                _performance.RecordOperation(
+                    AppPerformanceMetricIds.TelemetryDataChangedStateFrame,
+                    stateFrameStarted,
+                    stateFrameSucceeded);
+            }
+
+            succeeded = true;
         }
         catch (Exception exception)
         {
             _state.RecordError($"Telemetry read failed: {exception.Message}");
             _logger.LogError(exception, "An error occurred while reading telemetry from iRacing.");
+        }
+        finally
+        {
+            _performance.RecordOperation(
+                AppPerformanceMetricIds.TelemetryDataChanged,
+                dataChangedStarted,
+                succeeded);
         }
     }
 
@@ -248,11 +329,16 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             var sourceId = capture?.CaptureId ?? $"session-{startedAtUtc:yyyyMMdd-HHmmss-fff}";
             _activeSourceId = sourceId;
             _activeStartedAtUtc = capture?.StartedAtUtc ?? startedAtUtc;
+            var edgeCaseSchema = ReadEdgeCaseSchema(sdk);
+            _activeRawWatchVariableNames = edgeCaseSchema.WatchedVariables
+                .Select(variable => variable.Name)
+                .ToArray();
             _sessionInfoSnapshotCount = 0;
             _frameIndex = 0;
             _lastSessionInfoUpdate = -1;
             _state.MarkCollectionStarted(_activeStartedAtUtc.Value);
             _liveTelemetrySink.MarkCollectionStarted(sourceId, _activeStartedAtUtc.Value);
+            _edgeCaseRecorder.StartCollection(sourceId, _activeStartedAtUtc.Value, edgeCaseSchema);
 
             if (capture is not null)
             {
@@ -313,7 +399,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 
         if (queueCurrentSessionInfo && sdk.Header is not null)
         {
-            RecordCaptureSessionInfoSnapshot(capture, sdk, capturedAtUtc, sdk.Header.SessionInfoUpdate);
+            RecordCurrentCaptureSessionInfoSnapshot(capture, sdk, capturedAtUtc, sdk.Header.SessionInfoUpdate);
         }
 
         return capture;
@@ -349,7 +435,121 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             sdk.Header.TickRate,
             sdk.Header.BufferLength,
             schema,
-            _state.RecordCaptureWrite);
+            RecordCaptureWriteStatus);
+    }
+
+    private static RawTelemetrySchemaSnapshot ReadEdgeCaseSchema(IRacingSDK sdk)
+    {
+        var headers = IRacingSDK.GetVarHeaders(sdk);
+        if (headers is null)
+        {
+            return RawTelemetrySchemaSnapshot.Empty;
+        }
+
+        var watched = headers.Values
+            .Where(header => RawTelemetryWatchVariables.Names.Contains(header.Name, StringComparer.OrdinalIgnoreCase))
+            .OrderBy(header => header.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(header => new RawTelemetryWatchedVariable(
+                Name: header.Name,
+                Group: RawTelemetryWatchVariables.GroupFor(header.Name),
+                TypeName: header.Type.ToString(),
+                Count: header.Count,
+                Unit: string.IsNullOrWhiteSpace(header.Unit) ? null : header.Unit,
+                Description: string.IsNullOrWhiteSpace(header.Desc) ? null : header.Desc))
+            .ToArray();
+        var found = watched.Select(variable => variable.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var missing = RawTelemetryWatchVariables.Names
+            .Where(name => !found.Contains(name))
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        return new RawTelemetrySchemaSnapshot(watched, missing);
+    }
+
+    private static RawTelemetryWatchSnapshot ReadRawTelemetryWatchSnapshot(
+        IRacingSDK sdk,
+        IReadOnlyCollection<string> variableNames)
+    {
+        var values = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        foreach (var name in variableNames)
+        {
+            if (TryReadRawWatchValue(sdk, name, out var value))
+            {
+                values[name] = value;
+            }
+        }
+
+        return values.Count == 0
+            ? RawTelemetryWatchSnapshot.Empty
+            : new RawTelemetryWatchSnapshot(values);
+    }
+
+    private static bool TryReadRawWatchValue(IRacingSDK sdk, string variableName, out double value)
+    {
+        value = 0d;
+        try
+        {
+            switch (sdk.GetData(variableName))
+            {
+                case bool boolValue:
+                    value = boolValue ? 1d : 0d;
+                    return true;
+                case byte byteValue:
+                    value = byteValue;
+                    return true;
+                case sbyte sbyteValue:
+                    value = sbyteValue;
+                    return true;
+                case short shortValue:
+                    value = shortValue;
+                    return true;
+                case ushort ushortValue:
+                    value = ushortValue;
+                    return true;
+                case int intValue:
+                    value = intValue;
+                    return true;
+                case uint uintValue:
+                    value = uintValue;
+                    return true;
+                case long longValue:
+                    value = longValue;
+                    return true;
+                case ulong ulongValue when ulongValue <= long.MaxValue:
+                    value = ulongValue;
+                    return true;
+                case float floatValue when !float.IsNaN(floatValue) && !float.IsInfinity(floatValue):
+                    value = floatValue;
+                    return true;
+                case double doubleValue when !double.IsNaN(doubleValue) && !double.IsInfinity(doubleValue):
+                    value = doubleValue;
+                    return true;
+                default:
+                    return false;
+            }
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void RecordCaptureWriteStatus(TelemetryCaptureWriteStatus writeStatus)
+    {
+        var started = Stopwatch.GetTimestamp();
+        var succeeded = false;
+        try
+        {
+            _state.RecordCaptureWrite(writeStatus);
+            _performance.RecordCaptureWrite(writeStatus);
+            succeeded = true;
+        }
+        finally
+        {
+            _performance.RecordOperation(
+                AppPerformanceMetricIds.CaptureWriteStatusCallback,
+                started,
+                succeeded);
+        }
     }
 
     private bool UpdateSessionInfoVersion(int sessionInfoUpdate)
@@ -503,10 +703,10 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         return bestProgress;
     }
 
-    private static CarProgress? ReadClassLeaderProgress(IRacingSDK sdk, int playerCarIdx)
+    private static CarProgress? ReadClassLeaderProgress(IRacingSDK sdk, int referenceCarIdx)
     {
-        var playerClass = ReadInt32ArrayElement(sdk, "CarIdxClass", playerCarIdx);
-        if (playerClass is null)
+        var referenceClass = ReadInt32ArrayElement(sdk, "CarIdxClass", referenceCarIdx);
+        if (referenceClass is null)
         {
             return null;
         }
@@ -515,7 +715,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         for (var carIdx = 0; carIdx < 64; carIdx++)
         {
             var carClass = ReadInt32ArrayElement(sdk, "CarIdxClass", carIdx);
-            if (carClass != playerClass)
+            if (carClass != referenceClass)
             {
                 continue;
             }
@@ -543,6 +743,17 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         }
 
         return bestClassProgress;
+    }
+
+    private static int ReadFocusCarIdx(IRacingSDK sdk, int playerCarIdx)
+    {
+        var camCarIdx = ReadNullableInt32(sdk, "CamCarIdx");
+        if (camCarIdx is >= 0 and < 64 && ReadCarProgress(sdk, camCarIdx.Value, requireLapProgress: false) is not null)
+        {
+            return camCarIdx.Value;
+        }
+
+        return playerCarIdx;
     }
 
     private static CarProgress? ReadCarProgress(IRacingSDK sdk, int carIdx, bool requireLapProgress = true)
@@ -577,9 +788,9 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             CarClass: ReadInt32ArrayElement(sdk, "CarIdxClass", carIdx));
     }
 
-    private static IReadOnlyList<HistoricalCarProximity> ReadNearbyCars(IRacingSDK sdk, int playerCarIdx)
+    private static IReadOnlyList<HistoricalCarProximity> ReadNearbyCars(IRacingSDK sdk, int referenceCarIdx)
     {
-        if (playerCarIdx < 0)
+        if (referenceCarIdx < 0)
         {
             return [];
         }
@@ -587,7 +798,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         var cars = new List<HistoricalCarProximity>();
         for (var carIdx = 0; carIdx < 64; carIdx++)
         {
-            if (carIdx == playerCarIdx)
+            if (carIdx == referenceCarIdx)
             {
                 continue;
             }
@@ -615,15 +826,15 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         return cars;
     }
 
-    private static IReadOnlyList<HistoricalCarProximity> ReadClassCars(IRacingSDK sdk, int playerCarIdx)
+    private static IReadOnlyList<HistoricalCarProximity> ReadClassCars(IRacingSDK sdk, int referenceCarIdx)
     {
-        if (playerCarIdx < 0)
+        if (referenceCarIdx < 0)
         {
             return [];
         }
 
-        var playerClass = ReadInt32ArrayElement(sdk, "CarIdxClass", playerCarIdx);
-        if (playerClass is null)
+        var referenceClass = ReadInt32ArrayElement(sdk, "CarIdxClass", referenceCarIdx);
+        if (referenceClass is null)
         {
             return [];
         }
@@ -632,7 +843,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         for (var carIdx = 0; carIdx < 64; carIdx++)
         {
             var carClass = ReadInt32ArrayElement(sdk, "CarIdxClass", carIdx);
-            if (carClass != playerClass)
+            if (carClass != referenceClass)
             {
                 continue;
             }
@@ -696,13 +907,131 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         };
     }
 
+    private void RecordRawCaptureFrame(
+        TelemetryCaptureSession capture,
+        IRacingSDK sdk,
+        DateTimeOffset capturedAtUtc,
+        int sessionInfoUpdate)
+    {
+        try
+        {
+            TelemetryFrameEnvelope frame;
+            var rawReadStarted = Stopwatch.GetTimestamp();
+            var rawReadSucceeded = false;
+            try
+            {
+                var payload = ReadTelemetryBuffer(sdk);
+                frame = new TelemetryFrameEnvelope(
+                    CapturedAtUtc: capturedAtUtc,
+                    FrameIndex: Interlocked.Increment(ref _frameIndex),
+                    SessionTick: ReadInt32(sdk, "SessionTick"),
+                    SessionInfoUpdate: sessionInfoUpdate,
+                    SessionTime: ReadDouble(sdk, "SessionTime"),
+                    Payload: payload);
+                rawReadSucceeded = true;
+            }
+            finally
+            {
+                _performance.RecordOperation(
+                    AppPerformanceMetricIds.TelemetryRawFrameRead,
+                    rawReadStarted,
+                    rawReadSucceeded);
+            }
+
+            var queueStarted = Stopwatch.GetTimestamp();
+            var queueSucceeded = false;
+            try
+            {
+                if (capture.TryQueueFrame(frame))
+                {
+                    queueSucceeded = true;
+                    return;
+                }
+
+                RecordRawCaptureDroppedFrame(capture);
+                queueSucceeded = true;
+            }
+            finally
+            {
+                _performance.RecordOperation(
+                    AppPerformanceMetricIds.TelemetryRawFrameQueue,
+                    queueStarted,
+                    queueSucceeded);
+            }
+        }
+        catch (Exception exception)
+        {
+            capture.RecordDroppedFrame();
+            _state.RecordDroppedFrame();
+            _state.RecordError($"Raw capture frame read failed: {exception.Message}");
+            _events.Record("capture_frame_read_failed", new Dictionary<string, string?>
+            {
+                ["captureId"] = capture.CaptureId,
+                ["error"] = exception.GetType().Name
+            });
+            _logger.LogError(
+                exception,
+                "Failed to read a raw telemetry frame. Live telemetry will continue from SDK variables.");
+        }
+    }
+
+    private void RecordRawCaptureDroppedFrame(TelemetryCaptureSession capture)
+    {
+        capture.RecordDroppedFrame();
+        _state.RecordDroppedFrame();
+        var writerFault = capture.WriterFault;
+        if (writerFault is not null)
+        {
+            _state.RecordError($"Capture writer failed: {writerFault.Message}");
+            _events.Record("capture_writer_failed", new Dictionary<string, string?>
+            {
+                ["captureId"] = capture.CaptureId,
+                ["error"] = writerFault.Message
+            });
+            _logger.LogError(writerFault, "Dropped telemetry frame because the capture writer failed. Live telemetry will continue.");
+            return;
+        }
+
+        _state.RecordWarning("Dropped telemetry frame because the capture queue is full.");
+        _events.Record("capture_dropped_frame", new Dictionary<string, string?>
+        {
+            ["captureId"] = capture.CaptureId
+        });
+        _logger.LogWarning("Dropped telemetry frame because the capture queue is full. Live telemetry will continue.");
+    }
+
     private void RecordSessionInfoSnapshot(
         TelemetryCaptureSession? capture,
         IRacingSDK sdk,
         DateTimeOffset capturedAtUtc,
         int sessionInfoUpdate)
     {
-        var sessionInfoYaml = sdk.GetSessionInfo();
+        string sessionInfoYaml;
+        var readStarted = Stopwatch.GetTimestamp();
+        var readSucceeded = false;
+        try
+        {
+            sessionInfoYaml = sdk.GetSessionInfo();
+            readSucceeded = true;
+        }
+        catch (Exception exception)
+        {
+            _state.RecordWarning($"Session info read failed: {exception.Message}");
+            _events.Record("session_info_read_failed", new Dictionary<string, string?>
+            {
+                ["error"] = exception.GetType().Name
+            });
+            _logger.LogWarning(exception, "Failed to read session info. Live telemetry frames will continue with the previous session context.");
+            return;
+        }
+        finally
+        {
+            _performance.RecordOperation(
+                AppPerformanceMetricIds.TelemetrySessionInfoRead,
+                readStarted,
+                readSucceeded);
+        }
+
         if (string.IsNullOrWhiteSpace(sessionInfoYaml))
         {
             return;
@@ -710,27 +1039,101 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 
         if (capture is not null)
         {
-            RecordCaptureSessionInfoSnapshot(capture, sdk, capturedAtUtc, sessionInfoUpdate);
+            var captureQueueStarted = Stopwatch.GetTimestamp();
+            var captureQueueSucceeded = false;
+            try
+            {
+                RecordCaptureSessionInfoSnapshot(capture, capturedAtUtc, sessionInfoUpdate, sessionInfoYaml);
+                captureQueueSucceeded = true;
+            }
+            finally
+            {
+                _performance.RecordOperation(
+                    AppPerformanceMetricIds.TelemetrySessionInfoCaptureQueue,
+                    captureQueueStarted,
+                    captureQueueSucceeded);
+            }
         }
 
-        HistoricalSessionAccumulator? history;
-        lock (_sync)
+        var applyStarted = Stopwatch.GetTimestamp();
+        var applySucceeded = false;
+        try
         {
-            history = _activeHistory;
-            _sessionInfoSnapshotCount++;
-        }
+            HistoricalSessionAccumulator? history;
+            lock (_sync)
+            {
+                history = _activeHistory;
+                _sessionInfoSnapshotCount++;
+            }
 
-        _liveTelemetrySink.ApplySessionInfo(sessionInfoYaml);
-        history?.ApplySessionInfo(sessionInfoYaml);
+            _liveTelemetrySink.ApplySessionInfo(sessionInfoYaml);
+            history?.ApplySessionInfo(sessionInfoYaml);
+            applySucceeded = true;
+        }
+        finally
+        {
+            _performance.RecordOperation(
+                AppPerformanceMetricIds.TelemetrySessionInfoApply,
+                applyStarted,
+                applySucceeded);
+        }
     }
 
-    private void RecordCaptureSessionInfoSnapshot(
+    private void RecordCurrentCaptureSessionInfoSnapshot(
         TelemetryCaptureSession capture,
         IRacingSDK sdk,
         DateTimeOffset capturedAtUtc,
         int sessionInfoUpdate)
     {
-        var sessionInfoYaml = sdk.GetSessionInfo();
+        string sessionInfoYaml;
+        var readStarted = Stopwatch.GetTimestamp();
+        var readSucceeded = false;
+        try
+        {
+            sessionInfoYaml = sdk.GetSessionInfo();
+            readSucceeded = true;
+        }
+        catch (Exception exception)
+        {
+            _state.RecordWarning($"Raw capture session info read failed: {exception.Message}");
+            _events.Record("capture_session_info_read_failed", new Dictionary<string, string?>
+            {
+                ["captureId"] = capture.CaptureId,
+                ["error"] = exception.GetType().Name
+            });
+            _logger.LogWarning(exception, "Failed to read current session info for raw capture. Raw frame capture and live telemetry will continue.");
+            return;
+        }
+        finally
+        {
+            _performance.RecordOperation(
+                AppPerformanceMetricIds.TelemetrySessionInfoRead,
+                readStarted,
+                readSucceeded);
+        }
+
+        var captureQueueStarted = Stopwatch.GetTimestamp();
+        var captureQueueSucceeded = false;
+        try
+        {
+            RecordCaptureSessionInfoSnapshot(capture, capturedAtUtc, sessionInfoUpdate, sessionInfoYaml);
+            captureQueueSucceeded = true;
+        }
+        finally
+        {
+            _performance.RecordOperation(
+                AppPerformanceMetricIds.TelemetrySessionInfoCaptureQueue,
+                captureQueueStarted,
+                captureQueueSucceeded);
+        }
+    }
+
+    private void RecordCaptureSessionInfoSnapshot(
+        TelemetryCaptureSession capture,
+        DateTimeOffset capturedAtUtc,
+        int sessionInfoUpdate,
+        string sessionInfoYaml)
+    {
         if (string.IsNullOrWhiteSpace(sessionInfoYaml))
         {
             return;
@@ -759,85 +1162,261 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     private void RecordHistoricalFrame(IRacingSDK sdk, DateTimeOffset capturedAtUtc, int sessionInfoUpdate)
     {
         HistoricalSessionAccumulator? history;
+        IReadOnlyList<string> rawWatchVariableNames;
         lock (_sync)
         {
             history = _activeHistory;
+            rawWatchVariableNames = _activeRawWatchVariableNames;
         }
 
-        var playerCarIdx = ReadInt32(sdk, "PlayerCarIdx");
-        var leaderProgress = ReadLeaderProgress(sdk);
-        var classLeaderProgress = ReadClassLeaderProgress(sdk, playerCarIdx);
-        var sample = new HistoricalTelemetrySample(
-            CapturedAtUtc: capturedAtUtc,
-            SessionTime: ReadDouble(sdk, "SessionTime"),
-            SessionTick: ReadInt32(sdk, "SessionTick"),
-            SessionInfoUpdate: sessionInfoUpdate,
-            IsOnTrack: ReadBoolean(sdk, "IsOnTrack"),
-            IsInGarage: ReadBoolean(sdk, "IsInGarage"),
-            OnPitRoad: ReadBoolean(sdk, "OnPitRoad"),
-            PitstopActive: ReadBoolean(sdk, "PitstopActive"),
-            PlayerCarInPitStall: ReadBoolean(sdk, "PlayerCarInPitStall"),
-            FuelLevelLiters: ReadDouble(sdk, "FuelLevel"),
-            FuelLevelPercent: ReadDouble(sdk, "FuelLevelPct"),
-            FuelUsePerHourKg: ReadDouble(sdk, "FuelUsePerHour"),
-            SpeedMetersPerSecond: ReadDouble(sdk, "Speed"),
-            Lap: ReadInt32(sdk, "Lap"),
-            LapCompleted: ReadInt32(sdk, "LapCompleted"),
-            LapDistPct: ReadDouble(sdk, "LapDistPct"),
-            LapLastLapTimeSeconds: ReadNullableDouble(sdk, "LapLastLapTime"),
-            LapBestLapTimeSeconds: ReadNullableDouble(sdk, "LapBestLapTime"),
-            AirTempC: ReadDouble(sdk, "AirTemp"),
-            TrackTempCrewC: ReadDouble(sdk, "TrackTempCrew"),
-            TrackWetness: ReadInt32(sdk, "TrackWetness"),
-            WeatherDeclaredWet: ReadBoolean(sdk, "WeatherDeclaredWet"),
-            PlayerTireCompound: ReadInt32(sdk, "PlayerTireCompound"),
-            SessionTimeRemain: ReadNullableDouble(sdk, "SessionTimeRemain"),
-            SessionTimeTotal: ReadNullableDouble(sdk, "SessionTimeTotal"),
-            SessionLapsRemainEx: ReadInt32(sdk, "SessionLapsRemainEx"),
-            SessionLapsTotal: ReadInt32(sdk, "SessionLapsTotal"),
-            SessionState: ReadInt32(sdk, "SessionState"),
-            RaceLaps: ReadInt32(sdk, "RaceLaps"),
-            PlayerCarIdx: playerCarIdx,
-            TeamLapCompleted: ReadInt32ArrayElement(sdk, "CarIdxLapCompleted", playerCarIdx),
-            TeamLapDistPct: ReadDoubleArrayElement(sdk, "CarIdxLapDistPct", playerCarIdx),
-            TeamF2TimeSeconds: ReadNullableDoubleArrayElement(sdk, "CarIdxF2Time", playerCarIdx),
-            TeamEstimatedTimeSeconds: ReadNullableDoubleArrayElement(sdk, "CarIdxEstTime", playerCarIdx),
-            TeamLastLapTimeSeconds: ReadNullableDoubleArrayElement(sdk, "CarIdxLastLapTime", playerCarIdx),
-            TeamBestLapTimeSeconds: ReadNullableDoubleArrayElement(sdk, "CarIdxBestLapTime", playerCarIdx),
-            TeamPosition: ReadInt32ArrayElement(sdk, "CarIdxPosition", playerCarIdx),
-            TeamClassPosition: ReadInt32ArrayElement(sdk, "CarIdxClassPosition", playerCarIdx),
-            TeamCarClass: ReadInt32ArrayElement(sdk, "CarIdxClass", playerCarIdx),
-            LeaderCarIdx: leaderProgress?.CarIdx,
-            LeaderLapCompleted: leaderProgress?.LapCompleted,
-            LeaderLapDistPct: leaderProgress?.LapDistPct,
-            LeaderF2TimeSeconds: leaderProgress?.F2TimeSeconds,
-            LeaderEstimatedTimeSeconds: leaderProgress?.EstimatedTimeSeconds,
-            LeaderLastLapTimeSeconds: leaderProgress?.LastLapTimeSeconds,
-            LeaderBestLapTimeSeconds: leaderProgress?.BestLapTimeSeconds,
-            ClassLeaderCarIdx: classLeaderProgress?.CarIdx,
-            ClassLeaderLapCompleted: classLeaderProgress?.LapCompleted,
-            ClassLeaderLapDistPct: classLeaderProgress?.LapDistPct,
-            ClassLeaderF2TimeSeconds: classLeaderProgress?.F2TimeSeconds,
-            ClassLeaderEstimatedTimeSeconds: classLeaderProgress?.EstimatedTimeSeconds,
-            ClassLeaderLastLapTimeSeconds: classLeaderProgress?.LastLapTimeSeconds,
-            ClassLeaderBestLapTimeSeconds: classLeaderProgress?.BestLapTimeSeconds,
-            PlayerTrackSurface: ReadNullableInt32(sdk, "PlayerTrackSurface"),
-            CarLeftRight: ReadNullableInt32(sdk, "CarLeftRight"),
-            NearbyCars: ReadNearbyCars(sdk, playerCarIdx),
-            ClassCars: ReadClassCars(sdk, playerCarIdx),
-            TeamOnPitRoad: ReadBooleanArrayElement(sdk, "CarIdxOnPitRoad", playerCarIdx),
-            TeamFastRepairsUsed: ReadInt32ArrayElement(sdk, "CarIdxFastRepairsUsed", playerCarIdx),
-            PitServiceFlags: ReadInt32(sdk, "PitSvFlags"),
-            PitServiceFuelLiters: ReadNullableDouble(sdk, "PitSvFuel"),
-            PitRepairLeftSeconds: ReadNullableDouble(sdk, "PitRepairLeft"),
-            PitOptRepairLeftSeconds: ReadNullableDouble(sdk, "PitOptRepairLeft"),
-            TireSetsUsed: ReadInt32(sdk, "TireSetsUsed"),
-            FastRepairUsed: ReadInt32(sdk, "FastRepairUsed"),
-            DriversSoFar: ReadInt32(sdk, "DCDriversSoFar"),
-            DriverChangeLapStatus: ReadInt32(sdk, "DCLapStatus"));
+        HistoricalTelemetrySample sample;
+        RawTelemetryWatchSnapshot rawWatch = RawTelemetryWatchSnapshot.Empty;
+        var buildSampleStarted = Stopwatch.GetTimestamp();
+        var buildSampleSucceeded = false;
+        try
+        {
+            var playerCarIdx = ReadInt32(sdk, "PlayerCarIdx");
+            var focusCarIdx = ReadFocusCarIdx(sdk, playerCarIdx);
+            var focusProgress = ReadCarProgress(sdk, focusCarIdx, requireLapProgress: false);
 
-        _liveTelemetrySink.RecordFrame(sample);
-        history?.RecordFrame(sample);
+            CarProgress? leaderProgress;
+            var leaderStarted = Stopwatch.GetTimestamp();
+            var leaderSucceeded = false;
+            try
+            {
+                leaderProgress = ReadLeaderProgress(sdk);
+                leaderSucceeded = true;
+            }
+            finally
+            {
+                _performance.RecordOperation(
+                    AppPerformanceMetricIds.TelemetryHistoryReadLeader,
+                    leaderStarted,
+                    leaderSucceeded);
+            }
+
+            CarProgress? classLeaderProgress;
+            var classLeaderStarted = Stopwatch.GetTimestamp();
+            var classLeaderSucceeded = false;
+            try
+            {
+                classLeaderProgress = ReadClassLeaderProgress(sdk, playerCarIdx);
+                classLeaderSucceeded = true;
+            }
+            finally
+            {
+                _performance.RecordOperation(
+                    AppPerformanceMetricIds.TelemetryHistoryReadClassLeader,
+                    classLeaderStarted,
+                    classLeaderSucceeded);
+            }
+
+            var focusClassLeaderProgress = focusCarIdx == playerCarIdx
+                ? classLeaderProgress
+                : ReadClassLeaderProgress(sdk, focusCarIdx);
+
+            IReadOnlyList<HistoricalCarProximity> nearbyCars;
+            var nearbyStarted = Stopwatch.GetTimestamp();
+            var nearbySucceeded = false;
+            try
+            {
+                nearbyCars = ReadNearbyCars(sdk, focusCarIdx);
+                nearbySucceeded = true;
+            }
+            finally
+            {
+                _performance.RecordOperation(
+                    AppPerformanceMetricIds.TelemetryHistoryReadNearbyCars,
+                    nearbyStarted,
+                    nearbySucceeded);
+            }
+
+            IReadOnlyList<HistoricalCarProximity> classCars;
+            var classCarsStarted = Stopwatch.GetTimestamp();
+            var classCarsSucceeded = false;
+            try
+            {
+                classCars = ReadClassCars(sdk, playerCarIdx);
+                classCarsSucceeded = true;
+            }
+            finally
+            {
+                _performance.RecordOperation(
+                    AppPerformanceMetricIds.TelemetryHistoryReadClassCars,
+                    classCarsStarted,
+                    classCarsSucceeded);
+            }
+
+            var focusClassCars = focusCarIdx == playerCarIdx
+                ? classCars
+                : ReadClassCars(sdk, focusCarIdx);
+
+            sample = new HistoricalTelemetrySample(
+                CapturedAtUtc: capturedAtUtc,
+                SessionTime: ReadDouble(sdk, "SessionTime"),
+                SessionTick: ReadInt32(sdk, "SessionTick"),
+                SessionInfoUpdate: sessionInfoUpdate,
+                IsOnTrack: ReadBoolean(sdk, "IsOnTrack"),
+                IsInGarage: ReadBoolean(sdk, "IsInGarage"),
+                OnPitRoad: ReadBoolean(sdk, "OnPitRoad"),
+                PitstopActive: ReadBoolean(sdk, "PitstopActive"),
+                PlayerCarInPitStall: ReadBoolean(sdk, "PlayerCarInPitStall"),
+                FuelLevelLiters: ReadDouble(sdk, "FuelLevel"),
+                FuelLevelPercent: ReadDouble(sdk, "FuelLevelPct"),
+                FuelUsePerHourKg: ReadDouble(sdk, "FuelUsePerHour"),
+                SpeedMetersPerSecond: ReadDouble(sdk, "Speed"),
+                Lap: ReadInt32(sdk, "Lap"),
+                LapCompleted: ReadInt32(sdk, "LapCompleted"),
+                LapDistPct: ReadDouble(sdk, "LapDistPct"),
+                LapLastLapTimeSeconds: ReadNullableDouble(sdk, "LapLastLapTime"),
+                LapBestLapTimeSeconds: ReadNullableDouble(sdk, "LapBestLapTime"),
+                AirTempC: ReadDouble(sdk, "AirTemp"),
+                TrackTempCrewC: ReadDouble(sdk, "TrackTempCrew"),
+                TrackWetness: ReadInt32(sdk, "TrackWetness"),
+                WeatherDeclaredWet: ReadBoolean(sdk, "WeatherDeclaredWet"),
+                PlayerTireCompound: ReadInt32(sdk, "PlayerTireCompound"),
+                SessionTimeRemain: ReadNullableDouble(sdk, "SessionTimeRemain"),
+                SessionTimeTotal: ReadNullableDouble(sdk, "SessionTimeTotal"),
+                SessionLapsRemainEx: ReadInt32(sdk, "SessionLapsRemainEx"),
+                SessionLapsTotal: ReadInt32(sdk, "SessionLapsTotal"),
+                SessionState: ReadInt32(sdk, "SessionState"),
+                RaceLaps: ReadInt32(sdk, "RaceLaps"),
+                PlayerCarIdx: playerCarIdx,
+                FocusCarIdx: focusCarIdx,
+                FocusLapCompleted: focusProgress?.LapCompleted,
+                FocusLapDistPct: focusProgress?.LapDistPct,
+                FocusF2TimeSeconds: focusProgress?.F2TimeSeconds,
+                FocusEstimatedTimeSeconds: focusProgress?.EstimatedTimeSeconds,
+                FocusLastLapTimeSeconds: focusProgress?.LastLapTimeSeconds,
+                FocusBestLapTimeSeconds: focusProgress?.BestLapTimeSeconds,
+                FocusPosition: focusProgress?.Position,
+                FocusClassPosition: focusProgress?.ClassPosition,
+                FocusCarClass: focusProgress?.CarClass,
+                FocusOnPitRoad: ReadBooleanArrayElement(sdk, "CarIdxOnPitRoad", focusCarIdx),
+                FocusTrackSurface: ReadInt32ArrayElement(sdk, "CarIdxTrackSurface", focusCarIdx),
+                TeamLapCompleted: ReadInt32ArrayElement(sdk, "CarIdxLapCompleted", playerCarIdx),
+                TeamLapDistPct: ReadDoubleArrayElement(sdk, "CarIdxLapDistPct", playerCarIdx),
+                TeamF2TimeSeconds: ReadNullableDoubleArrayElement(sdk, "CarIdxF2Time", playerCarIdx),
+                TeamEstimatedTimeSeconds: ReadNullableDoubleArrayElement(sdk, "CarIdxEstTime", playerCarIdx),
+                TeamLastLapTimeSeconds: ReadNullableDoubleArrayElement(sdk, "CarIdxLastLapTime", playerCarIdx),
+                TeamBestLapTimeSeconds: ReadNullableDoubleArrayElement(sdk, "CarIdxBestLapTime", playerCarIdx),
+                TeamPosition: ReadInt32ArrayElement(sdk, "CarIdxPosition", playerCarIdx),
+                TeamClassPosition: ReadInt32ArrayElement(sdk, "CarIdxClassPosition", playerCarIdx),
+                TeamCarClass: ReadInt32ArrayElement(sdk, "CarIdxClass", playerCarIdx),
+                LeaderCarIdx: leaderProgress?.CarIdx,
+                LeaderLapCompleted: leaderProgress?.LapCompleted,
+                LeaderLapDistPct: leaderProgress?.LapDistPct,
+                LeaderF2TimeSeconds: leaderProgress?.F2TimeSeconds,
+                LeaderEstimatedTimeSeconds: leaderProgress?.EstimatedTimeSeconds,
+                LeaderLastLapTimeSeconds: leaderProgress?.LastLapTimeSeconds,
+                LeaderBestLapTimeSeconds: leaderProgress?.BestLapTimeSeconds,
+                ClassLeaderCarIdx: classLeaderProgress?.CarIdx,
+                ClassLeaderLapCompleted: classLeaderProgress?.LapCompleted,
+                ClassLeaderLapDistPct: classLeaderProgress?.LapDistPct,
+                ClassLeaderF2TimeSeconds: classLeaderProgress?.F2TimeSeconds,
+                ClassLeaderEstimatedTimeSeconds: classLeaderProgress?.EstimatedTimeSeconds,
+                ClassLeaderLastLapTimeSeconds: classLeaderProgress?.LastLapTimeSeconds,
+                ClassLeaderBestLapTimeSeconds: classLeaderProgress?.BestLapTimeSeconds,
+                FocusClassLeaderCarIdx: focusClassLeaderProgress?.CarIdx,
+                FocusClassLeaderLapCompleted: focusClassLeaderProgress?.LapCompleted,
+                FocusClassLeaderLapDistPct: focusClassLeaderProgress?.LapDistPct,
+                FocusClassLeaderF2TimeSeconds: focusClassLeaderProgress?.F2TimeSeconds,
+                FocusClassLeaderEstimatedTimeSeconds: focusClassLeaderProgress?.EstimatedTimeSeconds,
+                FocusClassLeaderLastLapTimeSeconds: focusClassLeaderProgress?.LastLapTimeSeconds,
+                FocusClassLeaderBestLapTimeSeconds: focusClassLeaderProgress?.BestLapTimeSeconds,
+                PlayerTrackSurface: ReadNullableInt32(sdk, "PlayerTrackSurface"),
+                CarLeftRight: ReadNullableInt32(sdk, "CarLeftRight"),
+                NearbyCars: nearbyCars,
+                ClassCars: classCars,
+                FocusClassCars: focusClassCars,
+                TeamOnPitRoad: ReadBooleanArrayElement(sdk, "CarIdxOnPitRoad", playerCarIdx),
+                TeamFastRepairsUsed: ReadInt32ArrayElement(sdk, "CarIdxFastRepairsUsed", playerCarIdx),
+                PitServiceFlags: ReadInt32(sdk, "PitSvFlags"),
+                PitServiceFuelLiters: ReadNullableDouble(sdk, "PitSvFuel"),
+                PitRepairLeftSeconds: ReadNullableDouble(sdk, "PitRepairLeft"),
+                PitOptRepairLeftSeconds: ReadNullableDouble(sdk, "PitOptRepairLeft"),
+                TireSetsUsed: ReadInt32(sdk, "TireSetsUsed"),
+                FastRepairUsed: ReadInt32(sdk, "FastRepairUsed"),
+                DriversSoFar: ReadInt32(sdk, "DCDriversSoFar"),
+                DriverChangeLapStatus: ReadInt32(sdk, "DCLapStatus"));
+            rawWatch = ReadRawTelemetryWatchSnapshot(sdk, rawWatchVariableNames);
+            _performance.RecordIRacingSystemTelemetry(
+                capturedAtUtc,
+                chanQuality: rawWatch.Get("ChanQuality"),
+                chanPartnerQuality: rawWatch.Get("ChanPartnerQuality"),
+                chanLatency: rawWatch.Get("ChanLatency"),
+                chanAvgLatency: rawWatch.Get("ChanAvgLatency"),
+                chanClockSkew: rawWatch.Get("ChanClockSkew"),
+                frameRate: rawWatch.Get("FrameRate"),
+                cpuUsageForeground: rawWatch.Get("CpuUsageFG"),
+                gpuUsage: rawWatch.Get("GpuUsage"),
+                memPageFaultsPerSecond: rawWatch.Get("MemPageFaultSec"),
+                memSoftPageFaultsPerSecond: rawWatch.Get("MemSoftPageFaultSec"),
+                isReplayPlaying: rawWatch.Get("IsReplayPlaying"),
+                isOnTrack: rawWatch.Get("IsOnTrack"));
+            buildSampleSucceeded = true;
+        }
+        finally
+        {
+            _performance.RecordOperation(
+                AppPerformanceMetricIds.TelemetryHistoryBuildSample,
+                buildSampleStarted,
+                buildSampleSucceeded);
+        }
+
+        var liveSinkStarted = Stopwatch.GetTimestamp();
+        var liveSinkSucceeded = false;
+        try
+        {
+            _liveTelemetrySink.RecordFrame(sample);
+            liveSinkSucceeded = true;
+        }
+        finally
+        {
+            _performance.RecordOperation(
+                AppPerformanceMetricIds.LiveTelemetrySink,
+                liveSinkStarted,
+                liveSinkSucceeded);
+        }
+
+        var edgeCaseStarted = Stopwatch.GetTimestamp();
+        var edgeCaseSucceeded = false;
+        try
+        {
+            _edgeCaseRecorder.RecordFrame(sample, rawWatch);
+            edgeCaseSucceeded = true;
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Failed to record telemetry edge-case frame.");
+        }
+        finally
+        {
+            _performance.RecordOperation(
+                AppPerformanceMetricIds.TelemetryEdgeCaseRecordFrame,
+                edgeCaseStarted,
+                edgeCaseSucceeded);
+        }
+
+        if (history is null)
+        {
+            return;
+        }
+
+        var historyStarted = Stopwatch.GetTimestamp();
+        var historySucceeded = false;
+        try
+        {
+            history.RecordFrame(sample);
+            historySucceeded = true;
+        }
+        finally
+        {
+            _performance.RecordOperation(
+                AppPerformanceMetricIds.HistoryRecordFrame,
+                historyStarted,
+                historySucceeded);
+        }
     }
 
     private CaptureFinalizationContext BuildFinalizationContext(TelemetryCaptureSession? capture)
@@ -854,33 +1433,90 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         HistoricalSessionAccumulator? history,
         CaptureFinalizationContext finalization)
     {
+        var finalizeStarted = Stopwatch.GetTimestamp();
+        var finalizeSucceeded = false;
         try
         {
             _state.MarkCaptureStopped();
             if (capture is not null)
             {
-                await capture.DisposeAsync().ConfigureAwait(false);
-                _logger.LogInformation("Finalized raw capture {CaptureDirectory}.", capture.DirectoryPath);
-                _events.Record("capture_finalized", new Dictionary<string, string?>
+                var captureFinalizeStarted = Stopwatch.GetTimestamp();
+                var captureFinalizeSucceeded = false;
+                try
                 {
-                    ["captureId"] = capture.CaptureId,
-                    ["captureDirectory"] = capture.DirectoryPath,
-                    ["frameCount"] = capture.FrameCount.ToString(),
-                    ["droppedFrameCount"] = capture.DroppedFrameCount.ToString()
-                });
+                    await capture.DisposeAsync().ConfigureAwait(false);
+                    _logger.LogInformation("Finalized raw capture {CaptureDirectory}.", capture.DirectoryPath);
+                    _events.Record("capture_finalized", new Dictionary<string, string?>
+                    {
+                        ["captureId"] = capture.CaptureId,
+                        ["captureDirectory"] = capture.DirectoryPath,
+                        ["frameCount"] = capture.FrameCount.ToString(),
+                        ["droppedFrameCount"] = capture.DroppedFrameCount.ToString()
+                    });
+                    captureFinalizeSucceeded = true;
+                }
+                finally
+                {
+                    _performance.RecordOperation(
+                        AppPerformanceMetricIds.TelemetryFinalizeCapture,
+                        captureFinalizeStarted,
+                        captureFinalizeSucceeded);
+                }
             }
 
             if (history is not null && finalization.SourceId is not null && finalization.StartedAtUtc is not null)
             {
-                var summary = history.BuildSummary(
-                    finalization.SourceId,
-                    finalization.StartedAtUtc.Value,
-                    capture?.FinishedAtUtc ?? DateTimeOffset.UtcNow,
-                    capture?.DroppedFrameCount ?? finalization.DroppedFrameCount,
-                    capture?.SessionInfoSnapshotCount ?? finalization.SessionInfoSnapshotCount);
+                HistoricalSessionSummary summary;
+                var buildSummaryStarted = Stopwatch.GetTimestamp();
+                var buildSummarySucceeded = false;
+                try
+                {
+                    summary = history.BuildSummary(
+                        finalization.SourceId,
+                        finalization.StartedAtUtc.Value,
+                        capture?.FinishedAtUtc ?? DateTimeOffset.UtcNow,
+                        capture?.DroppedFrameCount ?? finalization.DroppedFrameCount,
+                        capture?.SessionInfoSnapshotCount ?? finalization.SessionInfoSnapshotCount);
+                    buildSummarySucceeded = true;
+                }
+                finally
+                {
+                    _performance.RecordOperation(
+                        AppPerformanceMetricIds.TelemetryFinalizeBuildSummary,
+                        buildSummaryStarted,
+                        buildSummarySucceeded);
+                }
 
-                await _sessionHistoryStore.SaveAsync(summary, CancellationToken.None).ConfigureAwait(false);
-                await _postRaceAnalysisPipeline.SaveFromSummaryAsync(summary, CancellationToken.None).ConfigureAwait(false);
+                var saveHistoryStarted = Stopwatch.GetTimestamp();
+                var saveHistorySucceeded = false;
+                try
+                {
+                    await _sessionHistoryStore.SaveAsync(summary, CancellationToken.None).ConfigureAwait(false);
+                    saveHistorySucceeded = true;
+                }
+                finally
+                {
+                    _performance.RecordOperation(
+                        AppPerformanceMetricIds.TelemetryFinalizeSaveHistory,
+                        saveHistoryStarted,
+                        saveHistorySucceeded);
+                }
+
+                var saveAnalysisStarted = Stopwatch.GetTimestamp();
+                var saveAnalysisSucceeded = false;
+                try
+                {
+                    await _postRaceAnalysisPipeline.SaveFromSummaryAsync(summary, CancellationToken.None).ConfigureAwait(false);
+                    saveAnalysisSucceeded = true;
+                }
+                finally
+                {
+                    _performance.RecordOperation(
+                        AppPerformanceMetricIds.TelemetryFinalizeSaveAnalysis,
+                        saveAnalysisStarted,
+                        saveAnalysisSucceeded);
+                }
+
                 _events.Record("history_summary_saved", new Dictionary<string, string?>
                 {
                     ["sourceId"] = finalization.SourceId,
@@ -891,11 +1527,82 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 });
                 _logger.LogInformation("Saved session history summary for {SourceId}.", finalization.SourceId);
             }
+
+            var edgeCaseFinalizeStarted = Stopwatch.GetTimestamp();
+            var edgeCaseFinalizeSucceeded = false;
+            try
+            {
+                _edgeCaseRecorder.CompleteCollection(capture?.FinishedAtUtc ?? DateTimeOffset.UtcNow);
+                edgeCaseFinalizeSucceeded = true;
+            }
+            catch (Exception exception)
+            {
+                _logger.LogWarning(exception, "Failed to save telemetry edge-case artifact.");
+            }
+            finally
+            {
+                _performance.RecordOperation(
+                    AppPerformanceMetricIds.TelemetryFinalizeEdgeCases,
+                    edgeCaseFinalizeStarted,
+                    edgeCaseFinalizeSucceeded);
+            }
+
+            finalizeSucceeded = true;
         }
         catch (Exception exception)
         {
             _state.RecordError($"Telemetry collection finalization failed: {exception.Message}");
             _logger.LogError(exception, "Failed to finalize telemetry collection.");
+        }
+        finally
+        {
+            _performance.RecordOperation(
+                AppPerformanceMetricIds.TelemetryFinalizeCollection,
+                finalizeStarted,
+                finalizeSucceeded);
+        }
+
+        CreateEndOfSessionDiagnosticsBundle(finalization);
+    }
+
+    private void CreateEndOfSessionDiagnosticsBundle(CaptureFinalizationContext finalization)
+    {
+        var diagnosticsStarted = Stopwatch.GetTimestamp();
+        var diagnosticsSucceeded = false;
+        try
+        {
+            var bundlePath = _diagnosticsBundleService.CreateBundle(DiagnosticsBundleSources.SessionFinalization);
+            _events.Record("diagnostics_bundle_created", new Dictionary<string, string?>
+            {
+                ["bundlePath"] = bundlePath,
+                ["source"] = DiagnosticsBundleSources.SessionFinalization,
+                ["sourceId"] = finalization.SourceId
+            });
+            _logger.LogInformation(
+                "Created end-of-session diagnostics bundle {DiagnosticsBundlePath} for {SourceId}.",
+                bundlePath,
+                finalization.SourceId);
+            diagnosticsSucceeded = true;
+        }
+        catch (Exception exception)
+        {
+            _events.Record("diagnostics_bundle_failed", new Dictionary<string, string?>
+            {
+                ["error"] = exception.GetType().Name,
+                ["source"] = DiagnosticsBundleSources.SessionFinalization,
+                ["sourceId"] = finalization.SourceId
+            });
+            _logger.LogWarning(
+                exception,
+                "Failed to create end-of-session diagnostics bundle for {SourceId}.",
+                finalization.SourceId);
+        }
+        finally
+        {
+            _performance.RecordOperation(
+                AppPerformanceMetricIds.TelemetryFinalizeDiagnosticsBundle,
+                diagnosticsStarted,
+                diagnosticsSucceeded);
         }
     }
 

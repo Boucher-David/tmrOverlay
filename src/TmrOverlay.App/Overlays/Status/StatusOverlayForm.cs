@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using TmrOverlay.App.Overlays.Abstractions;
 using TmrOverlay.App.Overlays.Styling;
+using TmrOverlay.App.Performance;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 using TmrOverlay.App.Telemetry;
@@ -11,6 +13,7 @@ namespace TmrOverlay.App.Overlays.Status;
 internal sealed class StatusOverlayForm : PersistentOverlayForm
 {
     private readonly TelemetryCaptureState _state;
+    private readonly AppPerformanceState _performanceState;
     private readonly OverlaySettings _settings;
     private readonly Panel _indicatorPanel;
     private readonly Label _titleLabel;
@@ -19,9 +22,11 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
     private readonly Label _captureLabel;
     private readonly Label _healthLabel;
     private readonly System.Windows.Forms.Timer _refreshTimer;
+    private long? _lastRefreshFrameCount;
 
     public StatusOverlayForm(
         TelemetryCaptureState state,
+        AppPerformanceState performanceState,
         OverlaySettings settings,
         string fontFamily,
         Action saveSettings)
@@ -32,6 +37,7 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
             StatusOverlayDefinition.Definition.DefaultHeight)
     {
         _state = state;
+        _performanceState = performanceState;
         _settings = settings;
 
         BackColor = OverlayTheme.Colors.NeutralBackground;
@@ -143,56 +149,149 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
 
     protected override void OnPaint(PaintEventArgs e)
     {
-        base.OnPaint(e);
+        var started = Stopwatch.GetTimestamp();
+        var succeeded = false;
+        try
+        {
+            base.OnPaint(e);
 
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        using var borderPen = new Pen(OverlayTheme.Colors.WindowBorder);
-        e.Graphics.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using var borderPen = new Pen(OverlayTheme.Colors.WindowBorder);
+            e.Graphics.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
+            succeeded = true;
+        }
+        finally
+        {
+            _performanceState.RecordOperation(
+                AppPerformanceMetricIds.OverlayStatusPaint,
+                started,
+                succeeded);
+        }
     }
 
     private void RefreshOverlay()
     {
-        var snapshot = _state.Snapshot();
-        var health = CaptureHealth.From(snapshot);
+        var started = Stopwatch.GetTimestamp();
+        var succeeded = false;
+        try
+        {
+            TelemetryCaptureStatusSnapshot snapshot;
+            var snapshotStarted = Stopwatch.GetTimestamp();
+            var snapshotSucceeded = false;
+            try
+            {
+                snapshot = _state.Snapshot();
+                snapshotSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayStatusSnapshot,
+                    snapshotStarted,
+                    snapshotSucceeded);
+            }
 
-        if (health.Level == CaptureHealthLevel.Error)
-        {
-            BackColor = OverlayTheme.Colors.ErrorBackground;
-            _indicatorPanel.BackColor = OverlayTheme.Colors.ErrorIndicator;
-            _statusLabel.Text = health.StatusText;
-        }
-        else if (health.Level == CaptureHealthLevel.Warning)
-        {
-            BackColor = OverlayTheme.Colors.WarningBackground;
-            _indicatorPanel.BackColor = OverlayTheme.Colors.WarningIndicator;
-            _statusLabel.Text = health.StatusText;
-        }
-        else if (snapshot.IsCapturing)
-        {
-            BackColor = OverlayTheme.Colors.SuccessStrongBackground;
-            _indicatorPanel.BackColor = OverlayTheme.Colors.SuccessIndicator;
-            _statusLabel.Text = health.StatusText;
-        }
-        else if (snapshot.IsConnected)
-        {
-            BackColor = OverlayTheme.Colors.WarningBackground;
-            _indicatorPanel.BackColor = OverlayTheme.Colors.WarningIndicator;
-            _statusLabel.Text = health.StatusText;
-        }
-        else
-        {
-            BackColor = OverlayTheme.Colors.NeutralBackground;
-            _indicatorPanel.BackColor = OverlayTheme.Colors.NeutralIndicator;
-            _statusLabel.Text = health.StatusText;
-        }
+            CaptureHealth health;
+            var healthStarted = Stopwatch.GetTimestamp();
+            var healthSucceeded = false;
+            try
+            {
+                health = CaptureHealth.From(snapshot);
+                healthSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayStatusHealth,
+                    healthStarted,
+                    healthSucceeded);
+            }
 
-        _detailLabel.Text = health.DetailText;
-        _captureLabel.Text = health.CaptureText;
-        _healthLabel.Text = health.MessageText;
-        _captureLabel.Visible = _settings.GetBooleanOption(OverlayOptionKeys.StatusCaptureDetails, defaultValue: true);
-        _healthLabel.Visible = _settings.GetBooleanOption(OverlayOptionKeys.StatusHealthDetails, defaultValue: true);
-        _indicatorPanel.Invalidate();
-        Invalidate();
+            var now = DateTimeOffset.UtcNow;
+            var previousFrameCount = _lastRefreshFrameCount;
+            var applyStarted = Stopwatch.GetTimestamp();
+            var applySucceeded = false;
+            var uiChanged = false;
+            try
+            {
+                Color nextBackColor;
+                Color nextIndicatorColor;
+                if (health.Level == CaptureHealthLevel.Error)
+                {
+                    nextBackColor = OverlayTheme.Colors.ErrorBackground;
+                    nextIndicatorColor = OverlayTheme.Colors.ErrorIndicator;
+                }
+                else if (health.Level == CaptureHealthLevel.Warning)
+                {
+                    nextBackColor = OverlayTheme.Colors.WarningBackground;
+                    nextIndicatorColor = OverlayTheme.Colors.WarningIndicator;
+                }
+                else if (snapshot.IsCapturing)
+                {
+                    nextBackColor = OverlayTheme.Colors.SuccessStrongBackground;
+                    nextIndicatorColor = OverlayTheme.Colors.SuccessIndicator;
+                }
+                else if (snapshot.IsConnected)
+                {
+                    nextBackColor = OverlayTheme.Colors.WarningBackground;
+                    nextIndicatorColor = OverlayTheme.Colors.WarningIndicator;
+                }
+                else
+                {
+                    nextBackColor = OverlayTheme.Colors.NeutralBackground;
+                    nextIndicatorColor = OverlayTheme.Colors.NeutralIndicator;
+                }
+
+                uiChanged |= SetBackColorIfChanged(this, nextBackColor);
+                var indicatorChanged = SetBackColorIfChanged(_indicatorPanel, nextIndicatorColor);
+                uiChanged |= indicatorChanged;
+                uiChanged |= SetTextIfChanged(_statusLabel, health.StatusText);
+                uiChanged |= SetTextIfChanged(_detailLabel, health.DetailText);
+                uiChanged |= SetTextIfChanged(_captureLabel, health.CaptureText);
+                uiChanged |= SetTextIfChanged(_healthLabel, health.MessageText);
+                uiChanged |= SetVisibleIfChanged(
+                    _captureLabel,
+                    _settings.GetBooleanOption(OverlayOptionKeys.StatusCaptureDetails, defaultValue: true));
+                uiChanged |= SetVisibleIfChanged(
+                    _healthLabel,
+                    _settings.GetBooleanOption(OverlayOptionKeys.StatusHealthDetails, defaultValue: true));
+                if (indicatorChanged)
+                {
+                    _indicatorPanel.Invalidate();
+                }
+
+                if (uiChanged)
+                {
+                    Invalidate();
+                }
+
+                applySucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayStatusApplyUi,
+                    applyStarted,
+                    applySucceeded);
+            }
+
+            _lastRefreshFrameCount = snapshot.FrameCount;
+            _performanceState.RecordOverlayRefreshDecision(
+                StatusOverlayDefinition.Definition.Id,
+                now,
+                previousFrameCount,
+                snapshot.FrameCount,
+                snapshot.LastFrameCapturedAtUtc,
+                applied: uiChanged);
+            succeeded = true;
+        }
+        finally
+        {
+            _performanceState.RecordOperation(
+                AppPerformanceMetricIds.OverlayStatusRefresh,
+                started,
+                succeeded);
+        }
     }
 
     protected override void OnResize(EventArgs e)
@@ -207,6 +306,40 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
         _detailLabel.Size = new Size(Math.Max(220, ClientSize.Width - 32), 18);
         _captureLabel.Size = new Size(Math.Max(220, ClientSize.Width - 32), 18);
         _healthLabel.Size = new Size(Math.Max(220, ClientSize.Width - 32), 34);
+    }
+
+    private static bool SetTextIfChanged(Label label, string? value)
+    {
+        var text = value ?? string.Empty;
+        if (string.Equals(label.Text, text, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        label.Text = text;
+        return true;
+    }
+
+    private static bool SetVisibleIfChanged(Control control, bool visible)
+    {
+        if (control.Visible == visible)
+        {
+            return false;
+        }
+
+        control.Visible = visible;
+        return true;
+    }
+
+    private static bool SetBackColorIfChanged(Control control, Color color)
+    {
+        if (control.BackColor == color)
+        {
+            return false;
+        }
+
+        control.BackColor = color;
+        return true;
     }
 
     private enum CaptureHealthLevel

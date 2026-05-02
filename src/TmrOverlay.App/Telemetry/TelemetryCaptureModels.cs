@@ -67,5 +67,7 @@ internal sealed record TelemetryCaptureWriteStatus(
     string DirectoryPath,
     int FramesWritten,
     int SessionInfoSnapshotCount,
+    int PendingMessageCount,
     long? TelemetryFileBytes,
-    Exception? Exception);
+    Exception? Exception,
+    TimeSpan? LastWriteDuration = null);

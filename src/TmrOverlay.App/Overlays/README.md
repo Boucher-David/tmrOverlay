@@ -9,7 +9,7 @@ Overlay modules own presentation-specific code:
 - overlay-specific labels and layout
 - overlay-specific persisted settings
 
-Every user-visible overlay should be draggable and should remember its position, size, opacity, and always-on-top preference by overlay id. On Windows, derive overlay forms from `Abstractions/PersistentOverlayForm` and register child controls that should act as drag handles. In the mac harness, create overlay windows through `OverlayManager` so shared `OverlayWindow` frame persistence is used.
+Every driving overlay should be draggable and should remember its position, size, opacity, and always-on-top preference by overlay id. On Windows, derive overlay forms from `Abstractions/PersistentOverlayForm` and register child controls that should act as drag handles. Product overlays should keep the tool-window/always-on-top behavior that lets them sit over the sim; the settings window opts out so it behaves like a normal desktop window, recenters whenever it opens, and does not persist user placement. In the mac harness, create overlay windows through `OverlayManager` so shared `OverlayWindow` frame persistence is used for driving overlays.
 
 Put common Windows overlay colors, typography, and chrome/layout constants in `Styling/OverlayTheme.cs`. User-editable overrides can live in `overlay-theme.json` under the app settings root. Keep chart/car-specific palette decisions next to the drawing code when the color is part of the data visualization itself. The mac harness mirrors this convention with `Overlays/Styling/OverlayTheme.swift`.
 
@@ -26,10 +26,10 @@ Shared data sources intended for overlays:
 Current modules:
 
 - `Status/` - tiny display-only collector status overlay
-- `SettingsPanel/` - centered tabbed settings overlay for user-managed visibility, scale, session filters, shared font/units, runtime raw-capture requests, placeholder Overlay Bridge controls, post-race analysis browsing, and overlay-specific display options
+- `SettingsPanel/` - centered tabbed settings window with a `TMR Overlay` header and vertical left tabs for user-managed visibility, scale, session filters, shared font/units, runtime raw-capture requests, support/log/performance access, placeholder Overlay Bridge controls, post-race analysis browsing, and overlay-specific display options
 - `FuelCalculator/` - fuel/stint strategy overlay with tire-stop guidance from history
-- `CarRadar/` - transparent circular proximity radar from `CarLeftRight` plus `CarIdx*` track-position arrays, with car rectangles fading from red to yellow to transparent as traffic moves away
-- `GapToLeader/` - four-hour in-class gap trend graph from `CarIdxF2Time`, standings, and `CarIdx*` progress, with a bounded in-memory trace, adaptive Y-axis scaling, left-side axis labels, lap reference lines, weather bands, driver/leader-change markers, and endpoint position labels
+- `CarRadar/` - transparent circular proximity radar from fresh live `CamCarIdx`, `CarLeftRight`, `CarIdxF2Time`, `CarIdxEstTime`, and `CarIdx*` progress arrays, with car rectangles placed from physical lap-distance meters when available, timing fallback when needed, side occupancy anchored by `CarLeftRight`, neutral-white car rectangles fading in between radar entry and the yellow-warning threshold, and proximity color moving through yellow toward saturated alert red only inside the close bumper-gap warning buffer around the focused car
+- `GapToLeader/` - four-hour in-class gap trend graph from `CamCarIdx`, `CarIdxF2Time`, standings, and `CarIdx*` progress, with a bounded in-memory trace, adaptive Y-axis scaling, left-side axis labels, lap reference lines, weather bands, driver/leader-change markers, and endpoint position labels for the focused car context
 
 Windows overlay code is production-facing and should stay real-data-driven. Use the ignored mac harness for looser development scenes such as fixed race offsets, named mock drivers, synthetic weather windows, and exaggerated graph events.
 

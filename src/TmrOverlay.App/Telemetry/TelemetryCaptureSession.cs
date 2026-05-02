@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -30,6 +31,7 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
     private readonly Action<TelemetryCaptureWriteStatus>? _writeStatusChanged;
     private Exception? _writerFault;
     private int _droppedFrameCount;
+    private int _pendingMessageCount;
     private int _disposed;
 
     private TelemetryCaptureSession(
@@ -70,6 +72,8 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
     public int DroppedFrameCount => _manifest.DroppedFrameCount;
 
     public int SessionInfoSnapshotCount => _manifest.SessionInfoSnapshotCount;
+
+    public int PendingMessageCount => Volatile.Read(ref _pendingMessageCount);
 
     public Exception? WriterFault => Volatile.Read(ref _writerFault);
 
@@ -127,7 +131,14 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
             return false;
         }
 
-        return _messages.Writer.TryWrite(new CaptureFrameMessage(frame));
+        Interlocked.Increment(ref _pendingMessageCount);
+        if (!_messages.Writer.TryWrite(new CaptureFrameMessage(frame)))
+        {
+            Interlocked.Decrement(ref _pendingMessageCount);
+            return false;
+        }
+
+        return true;
     }
 
     public bool TryQueueSessionInfo(SessionInfoSnapshot sessionInfo)
@@ -137,7 +148,14 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
             return false;
         }
 
-        return _messages.Writer.TryWrite(new CaptureSessionInfoMessage(sessionInfo));
+        Interlocked.Increment(ref _pendingMessageCount);
+        if (!_messages.Writer.TryWrite(new CaptureSessionInfoMessage(sessionInfo)))
+        {
+            Interlocked.Decrement(ref _pendingMessageCount);
+            return false;
+        }
+
+        return true;
     }
 
     public void RecordDroppedFrame()
@@ -175,19 +193,26 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
 
             await foreach (var message in _messages.Reader.ReadAllAsync())
             {
+                Interlocked.Decrement(ref _pendingMessageCount);
                 switch (message)
                 {
                     case CaptureFrameMessage frameMessage:
+                    {
+                        var writeStarted = Stopwatch.GetTimestamp();
                         await WriteFrameAsync(telemetryStream, frameMessage.Frame).ConfigureAwait(false);
                         _manifest.FrameCount++;
-                        ReportWriteStatus(telemetryStream.Length);
+                        ReportWriteStatus(telemetryStream.Length, Stopwatch.GetElapsedTime(writeStarted));
                         break;
+                    }
 
                     case CaptureSessionInfoMessage sessionInfoMessage:
+                    {
+                        var writeStarted = Stopwatch.GetTimestamp();
                         await WriteSessionInfoAsync(sessionInfoMessage.SessionInfo).ConfigureAwait(false);
                         _manifest.SessionInfoSnapshotCount++;
-                        ReportWriteStatus(telemetryStream.Length);
+                        ReportWriteStatus(telemetryStream.Length, Stopwatch.GetElapsedTime(writeStarted));
                         break;
+                    }
                 }
             }
 
@@ -205,7 +230,7 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
         {
             Volatile.Write(ref _writerFault, exception);
             _messages.Writer.TryComplete(exception);
-            ReportWriteStatus(null, exception);
+            ReportWriteStatus(null, exception: exception);
             throw;
         }
     }
@@ -252,7 +277,7 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
         await File.WriteAllTextAsync(snapshotPath, sessionInfo.Yaml).ConfigureAwait(false);
     }
 
-    private void ReportWriteStatus(long? telemetryFileBytes, Exception? exception = null)
+    private void ReportWriteStatus(long? telemetryFileBytes, TimeSpan? lastWriteDuration = null, Exception? exception = null)
     {
         try
         {
@@ -262,8 +287,10 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
                 DirectoryPath: DirectoryPath,
                 FramesWritten: _manifest.FrameCount,
                 SessionInfoSnapshotCount: _manifest.SessionInfoSnapshotCount,
+                PendingMessageCount: PendingMessageCount,
                 TelemetryFileBytes: telemetryFileBytes,
-                Exception: exception));
+                Exception: exception,
+                LastWriteDuration: lastWriteDuration));
         }
         catch
         {

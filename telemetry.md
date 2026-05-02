@@ -8,6 +8,8 @@ This file describes the current raw capture model in three layers:
 
 The current production path analyzes live SDK data and stores compact session history. Raw capture remains available as an opt-in diagnostic/development mode; when enabled it stores raw frame payloads in `telemetry.bin`, variable definitions in `telemetry-schema.json`, session YAML in `latest-session.yaml`, and capture metadata in `capture-manifest.json`.
 
+The app also writes compact edge-case telemetry artifacts after each live session under `logs/edge-cases/`. These JSON files are independent of raw capture and are meant to answer targeted diagnostics questions without storing full-frame payloads. They include short pre/post clips around detector triggers, selected normalized live fields, selected nearby/class timing rows, watched scalar raw values, watched-variable schema, and the watched variables that were missing for the current car/session.
+
 ## Event Schema
 
 Event-level data is the highest-level context for a capture. It combines the local capture manifest with the `WeekendInfo` block from the iRacing session YAML.
@@ -107,6 +109,7 @@ Session-level data explains what is happening in the current iRacing session and
 - How long was the car on track vs off track or on pit road?
 - How far through the lap or session did the driver get?
 - Did flags, wetness, or session status change mid-capture?
+- Did the compact edge-case detector see timing contradictions, side-occupancy mismatches, pit/fuel/tire service transitions, weather changes, replay state, incidents, engine warnings, low FPS, or high latency?
 
 ### Example from short diagnostic capture
 
@@ -225,15 +228,17 @@ Primary source:
 - `CarIdxGear`
 - `CarIdxBestLapTime`
 - `CarIdxTireCompound`
+- `CamCarIdx`
 - `CarLeftRight`
 
 #### Proximity and leader-gap fields
 
-- `CarLeftRight` is the scalar side-warning signal for cars to the left, right, or both sides of the driver.
+- `CamCarIdx` is the active camera/focus car index. Live visual overlays use it when valid so radar and class-gap context can follow a watched car; fuel/history remain anchored to the player/team car.
+- `CarLeftRight` is the authoritative scalar side-warning signal for cars to the left, right, or both sides of the driver. Radar placement can choose which rendered car occupies a side slot only when its reliable relative meters, or fallback timing gap, is inside the side-overlap window.
 - `CarIdxF2Time` is used for race gap timing to the overall leader, class leader, and same-class cars in the gap trend graph when race-position data is available.
 - Gap graph class rows are kept separate from radar proximity rows: cars with valid standings/F2 timing can remain graphable even when `CarIdxLapCompleted` or `CarIdxLapDistPct` is unavailable.
-- `CarIdxEstTime`, `CarIdxLapCompleted`, and `CarIdxLapDistPct` provide the first-pass relative track-position model for nearby cars.
-- `CarIdxTrackSurface` and `CarIdxOnPitRoad` help distinguish cars physically on track from pit-road or off-track cars as the radar model gets refined.
+- `CarIdxEstTime`, `CarIdxLapCompleted`, and `CarIdxLapDistPct` provide the first-pass relative track-position model for nearby cars. Radar prefers `CarIdxLapDistPct` with track length for physical close-range distance and uses reliable estimated/F2 timing as fallback.
+- `CarIdxTrackSurface` and `CarIdxOnPitRoad` distinguish cars physically on track from pit-road or off-track cars. Radar excludes pit-road cars and hides while the focused car is in pit-road states.
 - The live radar model keeps a short in-memory proximity history so different-class cars approaching from behind can raise a multiclass warning before they reach the close-range radar circle. This derived warning is not persisted in compact history.
 
 ### Example from short diagnostic capture
@@ -254,7 +259,9 @@ Primary source:
 
 This schema summary is intentionally practical, not exhaustive. Not every iRacing variable is always present in every capture or every car/session combination.
 
-The captured diagnostic schema does **not** appear to expose richer engineering channels such as:
+The app now watches for richer engineering channels such as tire wear, tire temperature, tire pressure, tire odometer, suspension, brake pressure/temperature, and wheel speed. If any of those watched variables become exposed and non-zero in a future car/session, the edge-case artifact records a bounded clip around the first observation.
+
+The currently analyzed diagnostic schema did **not** appear to expose richer engineering channels such as:
 
 - tire wear
 - tire temperature distribution

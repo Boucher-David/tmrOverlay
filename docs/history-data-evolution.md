@@ -1,0 +1,161 @@
+# History Data Evolution
+
+This note defines how newer app versions should handle user data written by older versions.
+
+## Goals
+
+- Preserve useful user car/track/session history across app upgrades.
+- Give highest migration priority to data that strengthens future user-facing overlay behavior, such as car/track combo history, stint shape, pit-service timing, fuel usage, lap pace, and confidence/source metadata.
+- Prefer deterministic rebuilds over lossy aggregate mutation.
+- Keep live telemetry collection and overlays resilient when legacy data is corrupt, incomplete, or unsupported.
+- Make maintenance visible in diagnostics without putting modal upgrade prompts over the sim.
+
+## Priority
+
+Not every persisted file deserves the same upgrade effort.
+
+High-priority data is user-focused history that makes the app better for that user later:
+
+- car/track/session summaries
+- fuel burn and stint history
+- pit lane, pit stall, tire-service, repair, and fill-rate history
+- lap pace and leader/context metrics used by overlays
+- confidence flags and source labels that explain whether a metric came from local-driver telemetry, team-car telemetry, inference, or baseline samples
+
+Medium-priority data is user preference and app behavior state:
+
+- overlay visibility, position, scale, units, and display options
+- update channel or future bridge settings
+
+Low-priority data is operational telemetry:
+
+- performance snapshots
+- debug logs
+- runtime heartbeats
+- diagnostics bundles
+
+Low-priority data should usually stay readable or disposable, not migrated, unless it becomes an input to a user-facing historical model.
+
+## Data Categories
+
+### Source Data
+
+Session summaries under `history/user/cars/.../summaries/` are the canonical compact history records. They should carry enough schema and collection metadata for future migration:
+
+- `summaryVersion`
+- `collectionModelVersion`
+- `appVersion`
+- `sourceCaptureId`
+- combo identity
+- quality/confidence flags
+
+When a future collection model changes, migrate these records first when the old fields can be mapped honestly.
+
+### Derived Data
+
+These files should be rebuilt from source data instead of patched in place:
+
+- `aggregate.json`
+- post-race analysis JSON generated from a summary
+
+Aggregates are running metrics and lose per-session detail. Rebuilding from migrated summaries avoids compounding old calculation mistakes.
+
+### Immutable Diagnostics
+
+These artifacts should remain readable as diagnostics but should not be migrated into the current history model:
+
+- raw capture folders
+- `telemetry.bin`
+- raw telemetry schemas
+- edge-case reports
+- diagnostics bundles
+- performance logs
+
+If a tool needs to inspect them later, it should read their own `formatVersion` or schema metadata.
+
+### Runtime Data
+
+Runtime state and caches may be dropped or overwritten when incompatible. They should not affect user history compatibility.
+
+## Versioning Rules
+
+Every durable user-data schema should have an explicit current version constant in code and a matching migration path.
+
+Use these version scopes:
+
+- `summaryVersion`: JSON shape of a stored session summary.
+- `collectionModelVersion`: meaning of derived history metrics, quality rules, stint/pit-stop extraction, and confidence flags.
+- `aggregateVersion`: JSON shape of aggregate files.
+- `analysisVersion`: JSON shape of post-race analysis files.
+
+The app should write only the current versions. Readers may accept older versions only through migration or explicit compatibility adapters.
+
+## Validation Sweep
+
+Schema changes are compatibility events. If a durable user-data model changes shape or meaning, the same sweep that checks stale docs and tests must also verify backwards compatibility:
+
+- decide whether to bump `summaryVersion`, `collectionModelVersion`, `aggregateVersion`, or `analysisVersion`
+- add or update migrations, rebuild logic, or compatible readers before overlays consume the data
+- add tests for old data, unsupported future data, and degraded/corrupt data where the change can affect user history
+- update `HistorySchemaCompatibilityTests` so the durable schema snapshot changes only after the compatibility decision is explicit
+- update this note, repo context, and any user-facing docs that describe persisted history
+
+## Maintenance Flow
+
+Add a `HistoryMaintenanceService` before relying on history for overlays:
+
+1. Read a maintenance manifest from `history/user/.maintenance/manifest.json`.
+2. Inventory summary, aggregate, and analysis files.
+3. Detect schema and collection model versions.
+4. Run ordered migrations for supported summary versions.
+5. Rebuild aggregates from compatible migrated summaries.
+6. Rebuild or mark stale generated analysis files when the source summary changed.
+7. Write a new manifest with counts, migrated versions, skipped files, failures, and timestamps.
+8. Record an app event and include the manifest in diagnostics.
+
+The service should be best-effort. If it fails, overlays should behave as if no compatible history exists.
+
+## Write Safety
+
+Migration writes must be atomic:
+
+- write to a temp file in the same directory
+- flush and replace the target file
+- keep a timestamped backup for major migrations under `history/user/.backups/{yyyyMMdd-HHmmss}/`
+
+Do not delete legacy source files in the same release that first migrates them.
+
+## Compatibility Policy
+
+Migrate when:
+
+- required old fields are present
+- units and meanings are known
+- a confidence flag can honestly describe degraded precision
+- aggregates can be rebuilt from source summaries
+
+Skip when:
+
+- a required field was never collected
+- the old metric had a different meaning that cannot be mapped
+- source data is corrupt or partial
+- migration would require raw telemetry that is not present
+
+Skipped files should remain on disk and be excluded from current aggregates. The manifest should include a reason such as `unsupported_schema`, `missing_required_field`, or `corrupt_json`.
+
+## Implemented Slice
+
+The current implementation is intentionally narrow:
+
+- new session summaries include `collectionModelVersion`
+- `HistoryMaintenanceService` runs at startup when session history is enabled
+- legacy summaries missing version metadata are normalized and backed up
+- `aggregate.json` is rebuilt from all compatible summaries in each car/track/session folder
+- corrupt, unsupported, or future-version summaries are skipped and recorded in the maintenance manifest
+- `SessionHistoryQueryService` rejects incompatible aggregate versions instead of feeding them to overlays
+- diagnostics bundles include `history/user/.maintenance/manifest.json` when present
+- `HistorySchemaCompatibilityTests` snapshots durable summary, aggregate, and analysis model shapes so schema changes force a compatibility review during test validation
+
+Settings already use `AppSettingsMigrator`; history maintenance should follow that pattern but operate on directories of files instead of one settings document.
+
+Future summary shape changes should add ordered summary migrations to the maintenance service, then keep aggregate rebuild logic derived from migrated summaries.

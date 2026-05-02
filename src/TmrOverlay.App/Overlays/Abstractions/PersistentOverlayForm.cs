@@ -45,10 +45,16 @@ internal abstract class PersistentOverlayForm : Form
         get
         {
             var createParams = base.CreateParams;
-            createParams.ExStyle |= WsExToolWindow;
+            if (UseToolWindowStyle)
+            {
+                createParams.ExStyle |= WsExToolWindow;
+            }
+
             return createParams;
         }
     }
+
+    protected virtual bool UseToolWindowStyle => true;
 
     protected void RegisterDragSurfaces(params Control[] controls)
     {
@@ -113,7 +119,7 @@ internal abstract class PersistentOverlayForm : Form
         PersistOverlayFrame();
     }
 
-    private void PersistOverlayFrame()
+    protected virtual void PersistOverlayFrame()
     {
         var persistedSize = GetPersistedOverlaySize();
         _settings.X = Location.X;

@@ -5,21 +5,25 @@
 ## What It Does Today
 
 - Starts as a WinForms tray application with no main window.
+- Uses a local single-instance mutex so a second launch exits instead of attaching another telemetry collector to the same iRacing session.
 - Shows a tiny always-on-top status overlay in the top-left corner.
-- Shows a centered tabbed settings overlay for managing overlay visibility, scale, session filters, shared overlay font, units, and overlay-specific display options.
+- Shows a centered tabbed settings window for managing overlay visibility, scale, session filters, shared overlay font, units, copyable Windows local clean/build commands, support/log access, and overlay-specific display options.
+- Treats the settings window as the main UI: clicking its `X` exits the application instead of hiding it to the tray.
+- Keeps the settings window on the normal desktop layer with a taskbar/Alt+Tab entry, while driving overlays can stay above the sim.
 - Includes a placeholder Overlay Bridge settings tab for post-v1.0 bridge controls.
 - Lets you drag overlays and remembers each overlay position between app launches.
 - Connects to iRacing through the `irsdkSharp` wrapper.
 - Starts live telemetry analysis whenever iRacing sends usable frame data.
 - Writes compact per-combo session history under app-owned local storage.
 - Shows an early fuel calculator overlay that estimates race laps, whole-lap stint targets, final-stint length, realistic fuel-saving alerts, and stop-by-stop tire-change timing guidance.
-- Shows first-pass radar and gap-to-leader overlays backed by live `CarLeftRight`, `CarIdxF2Time`, `CarIdxEstTime`, and `CarIdx*` progress/position telemetry.
-  The radar is a transparent circular proximity view that only paints when traffic is nearby, fades car rectangles from red to yellow to transparent as traffic moves away, and can show an outer-ring multiclass approaching warning with a live seconds gap. The gap overlay is a four-hour in-class trend graph with the class leader as the top baseline, adaptive Y-axis scaling, left-side axis labels, lap reference lines, subtle weather bands, driver/leader-change markers, dimmed non-team context lines, and endpoint `P<N>` labels. It keeps bounded in-memory traces for all available same-class timing rows, while dynamically rendering the leader, the team car, nearby class traffic, and recently visible cars.
+- Shows first-pass radar and gap-to-leader overlays backed by live `CamCarIdx`, `CarLeftRight`, `CarIdxF2Time`, `CarIdxEstTime`, and `CarIdx*` progress/position telemetry.
+  The radar is a transparent circular proximity view that only paints from fresh live telemetry, follows the current camera/focus car when available, prefers physical distance from `CarIdxLapDistPct` and track length for close-range placement, falls back to reliable live time gaps when distance is unavailable, uses `CarLeftRight` as the authoritative alongside signal, fades nearby neutral-white car rectangles in between radar entry and the yellow-warning threshold, moves them through yellow toward saturated alert red only inside the close bumper-gap warning buffer, labels its range rings, and can show an outer-ring multiclass warning for cars behind outside the 2-second timing fallback but within 5 seconds. The gap overlay is a four-hour in-class trend graph with the focused car's class leader as the top baseline, adaptive Y-axis scaling, left-side axis labels, lap reference lines, subtle weather bands, driver/leader-change markers, dimmed context lines, and endpoint `P<N>` labels. It keeps bounded in-memory traces for all available same-class timing rows, while dynamically rendering the leader, the focused car, nearby class traffic, and recently visible cars.
 - Stores early pit-service history signals such as pit-lane time, pit-stall/service time, observed fuel fill rate, tire/repair indicators, and confidence flags.
-- Keeps raw capture as an opt-in diagnostic/development mode; the settings overlay can request raw capture at runtime if the app was started without the flag.
+- Keeps raw capture as an opt-in diagnostic/development mode; the settings window can request raw capture at runtime if the app was started without the flag.
 - When raw capture is enabled, stores `telemetry.bin`, `telemetry-schema.json`, `latest-session.yaml`, optional `session-info/`, and `capture-manifest.json`.
+- Always records compact edge-case telemetry artifacts after a live session. These are bounded JSON clips around suspicious or newly exposed telemetry states, not full raw frame payloads.
 - Shows live-analysis health signals in the overlay, plus disk-write health when raw capture is enabled.
-- Writes rolling local logs, JSONL app events, runtime-state markers, persisted settings, and diagnostics bundles for triage.
+- Writes rolling local logs, JSONL app events, runtime-state markers, persisted settings, lightweight performance snapshots, and diagnostics bundles for triage.
 - Includes retention cleanup for old captures and diagnostics bundles.
 - Includes a replay-mode seam for overlay development against an existing capture.
 
@@ -38,6 +42,9 @@
 - `tests/TmrOverlay.App.Tests/` contains the xUnit test project for non-UI logic.
 - `local-mac/TmrOverlayMac/` is the ignored local macOS harness. It mirrors the Windows structure for overlay iteration but uses mock telemetry.
 - `docs/capture-format.md` documents the binary frame format used by `telemetry.bin`.
+- `docs/edge-case-telemetry-logic.md` documents the compact edge-case detector/report rules.
+- `docs/history-data-evolution.md` documents how future app versions should migrate or rebuild user history written by older versions.
+- `docs/overlay-logic.md` is the human-readable index for how each overlay derives and displays its state.
 - `telemetry.md` summarizes the event/session/car schema exposed by the current raw capture model.
 
 ## Raw Capture Output
@@ -66,6 +73,16 @@ Each capture folder contains:
 - `latest-session.yaml`
 - `session-info/`
 
+## Edge-Case Telemetry Artifacts
+
+Edge-case telemetry capture is enabled by default and is separate from raw capture. It watches normalized live state plus a small set of scalar raw telemetry channels, then writes bounded JSON clips under:
+
+```text
+%LOCALAPPDATA%\TmrOverlay\logs\edge-cases
+```
+
+Each `*-edge-cases.json` file includes the watched raw schema, missing watched variables, clip triggers, a short pre-trigger window, a short post-trigger window, dropped-observation counts when the clip cap is reached, a final sampled context tail from the end of the session, selected nearby/class timing rows, and raw watch values for channels such as fuel, tires, suspension, brakes, wheel speed, pit service, weather, engine warnings, replay state, incidents, frame rate, and network latency. It intentionally does not include `telemetry.bin`.
+
 ## Build And Run On Windows
 
 1. Install the .NET 8 SDK or Visual Studio 2022 with .NET desktop development tools.
@@ -76,8 +93,8 @@ Each capture folder contains:
 
 You can also double-click [TmrOverlay.cmd](/Users/davidboucher/Code/tmrOverlay/TmrOverlay.cmd) from the repo root after the app has been built once. It launches the built executable from the expected `Debug` or `Release` output folder.
 
-The tray menu lets you open the raw capture folder, open the current raw capture when one exists, open logs, open the settings overlay, create a diagnostics bundle, or exit the app.
-The status overlay stays visible over the sim so you can confirm the app is running and whether live telemetry analysis has started. With raw capture disabled it shows live frame freshness and history-collection state. With raw capture enabled it also shows queued frames, written frames, dropped frames, telemetry file size, disk-write freshness, and explicit warning/error messages. The settings raw-capture checkbox records app events and local logs when toggled or rejected. You can drag overlays to new positions, and each overlay restores its saved frame on restart. Use the tray menu to reopen settings or exit the application.
+The tray menu lets you open the raw capture folder, open the current raw capture when one exists, open logs, open the settings window, create a diagnostics bundle, or exit the app. Closing the settings window with its `X` also exits the app.
+The status overlay stays visible over the sim so you can confirm the app is running and whether live telemetry analysis has started. With raw capture disabled it shows live frame freshness and history-collection state. With raw capture enabled it also shows queued frames, written frames, dropped frames, telemetry file size, disk-write freshness, and explicit warning/error messages. The settings raw-capture checkbox records app events and local logs when toggled or rejected. You can drag overlays to new positions, and each overlay restores its saved frame on restart.
 
 During local development, the overlay also warns when source files in this checkout are newer than the running build. That is a rebuild reminder only; it does not block capture.
 
@@ -119,9 +136,11 @@ At the end of each live telemetry collection, the app writes a compact historica
 
 That data is intentionally much smaller than raw telemetry. It is meant to support future startup estimates for fuel usage, lap time, stint length, and pit behavior for a known car/track/session combo before the current live session has enough data.
 
-The fuel calculator uses live race telemetry first, then exact car/track/session user history only as a fallback while the current session is still sparse. For timed races, it continuously estimates the likely lap count from session time, overall-leader pace/progress, class-leader context, and team-car progress, then converts that into whole-lap stint targets. If completed user/team history shows an 8-lap stint is realistic, future rows can be biased toward that shape, such as `7/8/7/8` for the local Nürburgring development sample. The table also performs strategy analysis across race lengths by comparing a shorter conservative stint rhythm against the longest realistic target, then surfaces extra stops and estimated pit-time loss as a strategy row. Stint rows show target laps and target liters-per-lap, plus tire-change guidance based on historical fill-rate and tire-service timing. As live progress advances, completed stint rows roll off the top of the table. If no fuel stop is needed, the table collapses to a single `Stint 1` row that says no fuel stop is needed.
+The fuel calculator uses live race telemetry first, then exact car/track/session user history only as a fallback while the current session is still sparse. For timed races, it continuously estimates the likely lap count from session time, overall-leader pace/progress, class-leader context, and team-car progress, then converts that into whole-lap stint targets; it does not hard-code a four-hour race length in the production overlay. If completed user/team history shows an 8-lap stint is realistic, future rows can be biased toward that shape, such as `7/8/7/8` for the local Nürburgring development sample. The table also performs strategy analysis across race lengths by comparing a shorter conservative stint rhythm against the longest realistic target, then surfaces extra stops and estimated pit-time loss as a strategy row. Stint rows show target laps and target liters-per-lap, plus tire-change guidance based on historical fill-rate and tire-service timing. As live progress advances, completed stint rows roll off the top of the table while the table keeps its full row layout to avoid view changes during a run.
 
 Completed stint history is stored separately from the active/future fuel table so completed stints can improve future user-specific estimates without continuing to occupy overlay rows. Pit-service history is stored as derived stop summaries plus aggregate metrics, including average tire-change service time, no-tire service time when known, and observed fuel fill rate. Fuel fill rates are only treated as measured when local scalar fuel telemetry is valid; team-driver or inferred values carry confidence flags.
+
+On startup, session-history maintenance normalizes compatible legacy summary metadata, rebuilds `aggregate.json` from compatible per-session summaries, skips incompatible/corrupt summaries with a manifest entry, and keeps backups for rewritten summary files. This prioritizes car/track/session history that improves future overlay estimates over low-value operational logs.
 
 Tracked baseline/sample history may live under `history/baseline/` for development analysis, but production lookup is opt-in. By default the app uses only user-generated history so local development samples do not affect a fresh install.
 
@@ -134,6 +153,12 @@ Available settings:
 - `TelemetryCapture:StoreSessionInfoSnapshots`
 - `TelemetryCapture:RawCaptureEnabled`
 - `TelemetryCapture:QueueCapacity`
+- `TelemetryEdgeCases:Enabled`
+- `TelemetryEdgeCases:PreTriggerSeconds`
+- `TelemetryEdgeCases:PostTriggerSeconds`
+- `TelemetryEdgeCases:MaxClipsPerSession`
+- `TelemetryEdgeCases:MaxFramesPerClip`
+- `TelemetryEdgeCases:MinimumFrameSpacingSeconds`
 - `SessionHistory:Enabled`
 - `SessionHistory:UseBaselineHistory`
 - `Storage:UseRepositoryLocalStorage`
@@ -155,6 +180,10 @@ Available settings:
 - `Retention:MaxCaptureDirectories`
 - `Retention:DiagnosticsRetentionDays`
 - `Retention:MaxDiagnosticsBundles`
+- `Retention:PerformanceLogRetentionDays`
+- `Retention:MaxPerformanceLogFiles`
+- `Retention:EdgeCaseRetentionDays`
+- `Retention:MaxEdgeCaseFiles`
 - `Replay:Enabled`
 - `Replay:CaptureDirectory`
 - `Replay:SpeedMultiplier`
@@ -171,7 +200,7 @@ $env:TMR_SessionHistory__UseBaselineHistory = "true"
 
 Path settings may be absolute or relative. Relative path settings resolve under the selected app data root.
 
-User-facing overlay preferences are stored in the local settings file under the app settings root. The settings overlay can update each current overlay's visibility, scale, test/practice/qualifying/race session filters, shared font family, metric/imperial units, and overlay-specific display options. It also includes a placeholder Overlay Bridge tab for post-v1.0 bridge controls. Settings files are versioned and normalized on load so older local files receive safe defaults as customization expands.
+User-facing overlay preferences are stored in the local settings file under the app settings root. The settings window can update each current overlay's visibility, scale, test/practice/qualifying/race session filters, shared font family, metric/imperial units, and overlay-specific display options. It appears on the normal desktop layer so it can sit behind the sim when the user switches away. The General tab also includes copyable Windows clean, build, publish, and zip commands for local development; it does not execute builds from inside the running app. The clean command clears normal .NET build outputs plus the custom `artifacts/TmrOverlay-win-x64` publish folder so a rebuilt local app or republished tester build cannot silently reuse stale output. The Error Logging tab shows the current app warning/error, opens the local logs and diagnostics folders, shows a lightweight performance summary with iRacing channel/system values and overlay update-decision rates, and can create/copy a diagnostics bundle for sharing. It also includes a placeholder Overlay Bridge tab for post-v1.0 bridge controls. Settings files are versioned and normalized on load so older local files receive safe defaults as customization expands.
 
 ### Overlay Theme Overrides
 
@@ -207,7 +236,7 @@ For repo-local development storage, set:
 $env:TMR_Storage__UseRepositoryLocalStorage = "true"
 ```
 
-Environment overrides use the `TMR_` prefix, for example `TMR_Storage__CaptureRoot`.
+Environment overrides use the `TMR_` prefix, for example `TMR_Storage__CaptureRoot` or `TMR_TelemetryEdgeCases__Enabled=false`.
 
 ## Logs
 
@@ -227,7 +256,11 @@ The tray menu can create a diagnostics bundle under:
 %LOCALAPPDATA%\TmrOverlay\diagnostics
 ```
 
-Bundles include app/storage metadata, runtime state, settings, recent logs/events, and latest capture metadata. They intentionally exclude raw `telemetry.bin` payloads.
+Performance diagnostics are always on, even when raw capture is disabled. The app writes periodic JSONL snapshots under `%LOCALAPPDATA%\TmrOverlay\logs\performance` with telemetry throughput, iRacing network/system values such as channel quality, latency, frame rate, CPU/GPU use, replay/on-track state, overlay refresh timing, overlay update-decision counters, capture writer state when available, process memory, and GC counts.
+
+Bundles include app/storage metadata, telemetry state, lightweight performance snapshots, recent performance logs, runtime state, settings, recent logs/events, compact edge-case telemetry JSON, latest capture metadata, recent post-race analysis JSON under top-level `analysis/`, and recent user-history summaries/aggregates for car/track/session accuracy checks. They intentionally exclude raw `telemetry.bin` payloads.
+
+See `docs/update-strategy.md` for the current update notification and self-update plan.
 
 ## Tests
 
@@ -248,8 +281,22 @@ swift test
 
 The current Command Line Tools-only setup on this Mac can run `swift build`, but `swift test` requires an XCTest-capable Xcode toolchain.
 
+Generated overlay screenshots are also part of review. From the mac harness:
+
+```bash
+cd local-mac/TmrOverlayMac
+swift run TmrOverlayMacScreenshots
+cd ../..
+python3 tools/validate_overlay_screenshots.py
+```
+
+That keeps the contact sheets and per-state PNGs under `mocks/` current and catches missing, wrong-size, or blank artifacts before visual review.
+
+When overlay behavior changes, update the matching English logic note under [docs/overlay-logic.md](/Users/davidboucher/Code/tmrOverlay/docs/overlay-logic.md) in the same pass so later design tweaks can be made from readable rules instead of code spelunking.
+
 ## Next Steps
 
 - Add a replay tool that can decode `telemetry.bin` with `telemetry-schema.json`.
 - Harden the radar and gap overlays against longer multi-class traffic captures.
-- Design the post-race strategy review/export flow described in [docs/post-race-strategy-analysis.md](/Users/davidboucher/Code/tmrOverlay/docs/post-race-strategy-analysis.md).
+- Expand the post-race strategy review/export flow described in [docs/post-race-strategy-analysis.md](/Users/davidboucher/Code/tmrOverlay/docs/post-race-strategy-analysis.md) and [docs/post-race-analysis-logic.md](/Users/davidboucher/Code/tmrOverlay/docs/post-race-analysis-logic.md).
+- Start with update notification before self-update; see [docs/update-strategy.md](/Users/davidboucher/Code/tmrOverlay/docs/update-strategy.md).

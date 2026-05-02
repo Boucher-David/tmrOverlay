@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using System.Drawing;
 using TmrOverlay.App.History;
 using TmrOverlay.App.Overlays.Abstractions;
 using TmrOverlay.App.Overlays.Styling;
+using TmrOverlay.App.Performance;
 using TmrOverlay.Core.Fuel;
 using TmrOverlay.Core.History;
 using TmrOverlay.Core.Overlays;
@@ -13,11 +15,12 @@ namespace TmrOverlay.App.Overlays.FuelCalculator;
 internal sealed class FuelCalculatorForm : PersistentOverlayForm
 {
     private const int StintRowCount = 6;
-    private const int CompactHeight = 154;
-    private const int CompactMinimumTableHeight = 70;
     private const int NormalMinimumTableHeight = 150;
+    private const int RefreshIntervalMilliseconds = 1000;
+    private static readonly TimeSpan HistoryLookupCacheDuration = TimeSpan.FromSeconds(30);
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly SessionHistoryQueryService _historyQueryService;
+    private readonly AppPerformanceState _performanceState;
     private readonly OverlaySettings _settings;
     private readonly Label _titleLabel;
     private readonly Label _statusLabel;
@@ -30,8 +33,15 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
     private readonly Label[] _stintLengthLabels = new Label[StintRowCount];
     private readonly Label[] _stintTireLabels = new Label[StintRowCount];
     private readonly System.Windows.Forms.Timer _refreshTimer;
-    private readonly int _normalClientHeight;
-    private bool _compactLayout;
+    private HistoricalComboIdentity? _cachedHistoryCombo;
+    private SessionHistoryLookupResult? _cachedHistory;
+    private DateTimeOffset _cachedHistoryAtUtc;
+    private int _lastVisibleStintRows = -1;
+    private bool? _lastAdviceColumnVisible;
+    private bool? _lastAdviceRowVisibility;
+    private long? _lastRefreshSequence;
+    private bool? _lastRefreshShowAdvice;
+    private bool? _lastRefreshShowSource;
 
     private bool ShowAdvice => _settings.GetBooleanOption(OverlayOptionKeys.FuelAdvice, defaultValue: true);
 
@@ -40,6 +50,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
     public FuelCalculatorForm(
         ILiveTelemetrySource liveTelemetrySource,
         SessionHistoryQueryService historyQueryService,
+        AppPerformanceState performanceState,
         OverlaySettings settings,
         string fontFamily,
         string unitSystem,
@@ -52,12 +63,12 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
     {
         _liveTelemetrySource = liveTelemetrySource;
         _historyQueryService = historyQueryService;
+        _performanceState = performanceState;
         _settings = settings;
         _fontFamily = fontFamily;
         _unitSystem = string.Equals(unitSystem, "Imperial", StringComparison.OrdinalIgnoreCase)
             ? "Imperial"
             : "Metric";
-        _normalClientHeight = Math.Max(ClientSize.Height, FuelCalculatorOverlayDefinition.Definition.DefaultHeight);
 
         BackColor = OverlayTheme.Colors.WindowBackground;
         Padding = new Padding(12);
@@ -146,7 +157,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
 
         _refreshTimer = new System.Windows.Forms.Timer
         {
-            Interval = 500
+            Interval = RefreshIntervalMilliseconds
         };
         _refreshTimer.Tick += (_, _) => RefreshOverlay();
         _refreshTimer.Start();
@@ -167,16 +178,9 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
         _table.Location = new Point(14, 42);
         _table.Size = new Size(
             Math.Max(250, ClientSize.Width - 28),
-            Math.Max(_compactLayout ? CompactMinimumTableHeight : NormalMinimumTableHeight, ClientSize.Height - 76));
+            Math.Max(NormalMinimumTableHeight, ClientSize.Height - 76));
         _sourceLabel.Location = new Point(14, ClientSize.Height - 28);
         _sourceLabel.Size = new Size(Math.Max(250, ClientSize.Width - 28), 18);
-    }
-
-    protected override Size GetPersistedOverlaySize()
-    {
-        return _compactLayout
-            ? new Size(Width, _normalClientHeight)
-            : base.GetPersistedOverlaySize();
     }
 
     protected override void Dispose(bool disposing)
@@ -196,104 +200,347 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
 
     protected override void OnPaint(PaintEventArgs e)
     {
-        base.OnPaint(e);
-        using var borderPen = new Pen(OverlayTheme.Colors.WindowBorder);
-        e.Graphics.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
+        var started = Stopwatch.GetTimestamp();
+        var succeeded = false;
+        try
+        {
+            base.OnPaint(e);
+            using var borderPen = new Pen(OverlayTheme.Colors.WindowBorder);
+            e.Graphics.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
+            succeeded = true;
+        }
+        finally
+        {
+            _performanceState.RecordOperation(
+                AppPerformanceMetricIds.OverlayFuelPaint,
+                started,
+                succeeded);
+        }
     }
 
     private void RefreshOverlay()
     {
-        var live = _liveTelemetrySource.Snapshot();
-        var history = _historyQueryService.Lookup(live.Combo);
-        var strategy = FuelStrategyCalculator.From(live, history);
-        var viewModel = FuelCalculatorViewModel.From(strategy, history, ShowAdvice, _unitSystem, StintRowCount);
-
-        ApplyStatusColor(strategy);
-        _statusLabel.Text = viewModel.Status;
-        _overviewValueLabel.Text = viewModel.Overview;
-        _sourceLabel.Text = viewModel.Source;
-        _sourceLabel.Visible = ShowSource;
-        ApplyAdviceColumnVisibility();
-
-        var rows = viewModel.Rows;
-        ApplyPreferredLayout(rows.Count);
-        for (var index = 0; index < StintRowCount; index++)
+        var started = Stopwatch.GetTimestamp();
+        var succeeded = false;
+        try
         {
-            if (index < rows.Count)
+            LiveTelemetrySnapshot live;
+            var snapshotStarted = Stopwatch.GetTimestamp();
+            var snapshotSucceeded = false;
+            try
             {
-                var row = rows[index];
-                _stintNumberLabels[index].Text = row.Label;
-                _stintLengthLabels[index].Text = row.Value;
-                _stintTireLabels[index].Text = row.Advice;
-                continue;
+                live = _liveTelemetrySource.Snapshot();
+                snapshotSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayFuelSnapshot,
+                    snapshotStarted,
+                    snapshotSucceeded);
             }
 
-            _stintNumberLabels[index].Text = $"Stint {index + 1}";
-            _stintLengthLabels[index].Text = string.Empty;
-            _stintTireLabels[index].Text = string.Empty;
+            var showAdvice = ShowAdvice;
+            var showSource = ShowSource;
+            var now = DateTimeOffset.UtcNow;
+            var previousSequence = _lastRefreshSequence;
+            if (previousSequence == live.Sequence
+                && _lastRefreshShowAdvice == showAdvice
+                && _lastRefreshShowSource == showSource)
+            {
+                _performanceState.RecordOverlayRefreshDecision(
+                    FuelCalculatorOverlayDefinition.Definition.Id,
+                    now,
+                    previousSequence,
+                    live.Sequence,
+                    live.LastUpdatedAtUtc,
+                    applied: false);
+                succeeded = true;
+                return;
+            }
+
+            SessionHistoryLookupResult history;
+            var historyStarted = Stopwatch.GetTimestamp();
+            var historySucceeded = false;
+            try
+            {
+                history = LookupHistory(live.Combo);
+                historySucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayFuelHistoryLookup,
+                    historyStarted,
+                    historySucceeded);
+            }
+
+            FuelStrategySnapshot strategy;
+            var strategyStarted = Stopwatch.GetTimestamp();
+            var strategySucceeded = false;
+            try
+            {
+                strategy = FuelStrategyCalculator.From(live, history);
+                strategySucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayFuelStrategy,
+                    strategyStarted,
+                    strategySucceeded);
+            }
+
+            FuelCalculatorViewModel viewModel;
+            var viewModelStarted = Stopwatch.GetTimestamp();
+            var viewModelSucceeded = false;
+            try
+            {
+                viewModel = FuelCalculatorViewModel.From(strategy, history, showAdvice, _unitSystem, StintRowCount);
+                viewModelSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayFuelViewModel,
+                    viewModelStarted,
+                    viewModelSucceeded);
+            }
+
+            var uiChanged = false;
+            var applyStarted = Stopwatch.GetTimestamp();
+            var applySucceeded = false;
+            try
+            {
+                uiChanged |= ApplyStatusColor(strategy);
+                uiChanged |= SetTextIfChanged(_statusLabel, viewModel.Status);
+                uiChanged |= SetTextIfChanged(_overviewValueLabel, viewModel.Overview);
+                uiChanged |= SetTextIfChanged(_sourceLabel, viewModel.Source);
+                uiChanged |= SetVisibleIfChanged(_sourceLabel, showSource);
+                uiChanged |= ApplyAdviceColumnVisibility(showAdvice);
+                applySucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayFuelApplyUi,
+                    applyStarted,
+                    applySucceeded);
+            }
+
+            var rows = viewModel.Rows;
+            var rowsStarted = Stopwatch.GetTimestamp();
+            var rowsSucceeded = false;
+            try
+            {
+                var layoutChanged = false;
+                _table.SuspendLayout();
+                try
+                {
+                    for (var index = 0; index < StintRowCount; index++)
+                    {
+                        if (index < rows.Count)
+                        {
+                            var row = rows[index];
+                            layoutChanged |= SetTextIfChanged(_stintNumberLabels[index], row.Label);
+                            layoutChanged |= SetTextIfChanged(_stintLengthLabels[index], row.Value);
+                            layoutChanged |= SetTextIfChanged(_stintTireLabels[index], row.Advice);
+                            continue;
+                        }
+
+                        layoutChanged |= SetTextIfChanged(_stintNumberLabels[index], $"Stint {index + 1}");
+                        layoutChanged |= SetTextIfChanged(_stintLengthLabels[index], string.Empty);
+                        layoutChanged |= SetTextIfChanged(_stintTireLabels[index], string.Empty);
+                    }
+
+                    layoutChanged |= UpdateVisibleRows(rows.Count, showAdvice);
+                    uiChanged |= layoutChanged;
+                }
+                finally
+                {
+                    _table.ResumeLayout(layoutChanged);
+                }
+
+                rowsSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayFuelRows,
+                    rowsStarted,
+                    rowsSucceeded);
+            }
+
+            _lastRefreshSequence = live.Sequence;
+            _lastRefreshShowAdvice = showAdvice;
+            _lastRefreshShowSource = showSource;
+            _performanceState.RecordOverlayRefreshDecision(
+                FuelCalculatorOverlayDefinition.Definition.Id,
+                now,
+                previousSequence,
+                live.Sequence,
+                live.LastUpdatedAtUtc,
+                applied: uiChanged);
+            if (uiChanged)
+            {
+                Invalidate();
+            }
+
+            succeeded = true;
         }
-
-        UpdateVisibleRows(rows.Count);
-        Invalidate();
-    }
-
-    private void ApplyPreferredLayout(int rowCount)
-    {
-        var shouldCompact = rowCount <= 1;
-        var targetHeight = shouldCompact ? CompactHeight : _normalClientHeight;
-        _compactLayout = shouldCompact;
-        if (ClientSize.Height != targetHeight)
+        finally
         {
-            ClientSize = new Size(ClientSize.Width, targetHeight);
+            _performanceState.RecordOperation(
+                AppPerformanceMetricIds.OverlayFuelRefresh,
+                started,
+                succeeded);
         }
     }
 
-    private void UpdateVisibleRows(int stintCount)
+    private SessionHistoryLookupResult LookupHistory(HistoricalComboIdentity combo)
     {
-        var visibleStintRows = Math.Clamp(stintCount, 1, StintRowCount);
+        var now = DateTimeOffset.UtcNow;
+        if (_cachedHistory is not null
+            && SameCombo(_cachedHistoryCombo, combo)
+            && now - _cachedHistoryAtUtc <= HistoryLookupCacheDuration)
+        {
+            return _cachedHistory;
+        }
+
+        _cachedHistory = _historyQueryService.Lookup(combo);
+        _cachedHistoryCombo = combo;
+        _cachedHistoryAtUtc = now;
+        return _cachedHistory;
+    }
+
+    private static bool SameCombo(HistoricalComboIdentity? left, HistoricalComboIdentity right)
+    {
+        return left is not null
+            && string.Equals(left.CarKey, right.CarKey, StringComparison.Ordinal)
+            && string.Equals(left.TrackKey, right.TrackKey, StringComparison.Ordinal)
+            && string.Equals(left.SessionKey, right.SessionKey, StringComparison.Ordinal);
+    }
+
+    private bool UpdateVisibleRows(int _, bool showAdvice)
+    {
+        var visibleStintRows = StintRowCount;
+        if (_lastVisibleStintRows == visibleStintRows && _lastAdviceRowVisibility == showAdvice)
+        {
+            return false;
+        }
+
+        var changed = false;
         var visibleRows = visibleStintRows + 1;
         for (var row = 0; row < _table.RowStyles.Count; row++)
         {
-            _table.RowStyles[row].SizeType = row < visibleRows ? SizeType.Percent : SizeType.Absolute;
-            _table.RowStyles[row].Height = row < visibleRows ? 100f / visibleRows : 0f;
+            var sizeType = row < visibleRows ? SizeType.Percent : SizeType.Absolute;
+            var height = row < visibleRows ? 100f / visibleRows : 0f;
+            if (_table.RowStyles[row].SizeType != sizeType)
+            {
+                _table.RowStyles[row].SizeType = sizeType;
+                changed = true;
+            }
+
+            if (Math.Abs(_table.RowStyles[row].Height - height) > 0.001f)
+            {
+                _table.RowStyles[row].Height = height;
+                changed = true;
+            }
         }
 
         for (var index = 0; index < StintRowCount; index++)
         {
             var visible = index < visibleStintRows;
-            _stintNumberLabels[index].Visible = visible;
-            _stintLengthLabels[index].Visible = visible;
-            _stintTireLabels[index].Visible = visible && ShowAdvice;
+            changed |= SetVisibleIfChanged(_stintNumberLabels[index], visible);
+            changed |= SetVisibleIfChanged(_stintLengthLabels[index], visible);
+            changed |= SetVisibleIfChanged(_stintTireLabels[index], visible && showAdvice);
         }
+
+        _lastVisibleStintRows = visibleStintRows;
+        _lastAdviceRowVisibility = showAdvice;
+        return changed;
     }
 
-    private void ApplyAdviceColumnVisibility()
+    private bool ApplyAdviceColumnVisibility(bool showAdvice)
     {
-        _table.ColumnStyles[0].Width = ShowAdvice ? 24f : 28f;
-        _table.ColumnStyles[1].Width = ShowAdvice ? 48f : 72f;
-        _table.ColumnStyles[2].Width = ShowAdvice ? 28f : 0f;
+        if (_lastAdviceColumnVisible == showAdvice)
+        {
+            return false;
+        }
+
+        _table.ColumnStyles[0].Width = showAdvice ? 24f : 28f;
+        _table.ColumnStyles[1].Width = showAdvice ? 48f : 72f;
+        _table.ColumnStyles[2].Width = showAdvice ? 28f : 0f;
+        _lastAdviceColumnVisible = showAdvice;
+        return true;
     }
 
-    private void ApplyStatusColor(FuelStrategySnapshot strategy)
+    private bool ApplyStatusColor(FuelStrategySnapshot strategy)
     {
         if (!strategy.HasData || strategy.FuelPerLapLiters is null)
         {
-            BackColor = OverlayTheme.Colors.WindowBackground;
-            _statusLabel.ForeColor = OverlayTheme.Colors.TextSubtle;
-            return;
+            var changed = SetBackColorIfChanged(this, OverlayTheme.Colors.WindowBackground);
+            changed |= SetForeColorIfChanged(_statusLabel, OverlayTheme.Colors.TextSubtle);
+            return changed;
         }
 
         if (strategy.RhythmComparison is { IsRealistic: true, AdditionalStopCount: > 0 }
             || strategy.RequiredFuelSavingPercent is > 0d and <= 0.05d
             || strategy.StopOptimization is { IsRealistic: true, RequiredSavingLitersPerLap: > 0d })
         {
-            BackColor = OverlayTheme.Colors.WarningStrongBackground;
-            _statusLabel.ForeColor = OverlayTheme.Colors.WarningText;
-            return;
+            var changed = SetBackColorIfChanged(this, OverlayTheme.Colors.WarningStrongBackground);
+            changed |= SetForeColorIfChanged(_statusLabel, OverlayTheme.Colors.WarningText);
+            return changed;
         }
 
-        BackColor = OverlayTheme.Colors.SuccessBackground;
-        _statusLabel.ForeColor = OverlayTheme.Colors.SuccessText;
+        var successChanged = SetBackColorIfChanged(this, OverlayTheme.Colors.SuccessBackground);
+        successChanged |= SetForeColorIfChanged(_statusLabel, OverlayTheme.Colors.SuccessText);
+        return successChanged;
+    }
+
+    private static bool SetTextIfChanged(Label label, string? value)
+    {
+        var text = value ?? string.Empty;
+        if (string.Equals(label.Text, text, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        label.Text = text;
+        return true;
+    }
+
+    private static bool SetVisibleIfChanged(Control control, bool visible)
+    {
+        if (control.Visible == visible)
+        {
+            return false;
+        }
+
+        control.Visible = visible;
+        return true;
+    }
+
+    private static bool SetBackColorIfChanged(Control control, Color color)
+    {
+        if (control.BackColor == color)
+        {
+            return false;
+        }
+
+        control.BackColor = color;
+        return true;
+    }
+
+    private static bool SetForeColorIfChanged(Control control, Color color)
+    {
+        if (control.ForeColor == color)
+        {
+            return false;
+        }
+
+        control.ForeColor = color;
+        return true;
     }
 
     private static Label CreateCellLabel(string fontFamily, string text, bool alignRight = false, bool bold = false)

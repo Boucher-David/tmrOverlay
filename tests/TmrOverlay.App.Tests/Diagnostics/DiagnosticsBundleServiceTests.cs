@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using Microsoft.Extensions.Logging.Abstractions;
 using TmrOverlay.App.Diagnostics;
+using TmrOverlay.App.Performance;
 using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
 using Xunit;
@@ -20,10 +21,31 @@ public sealed class DiagnosticsBundleServiceTests
             Directory.CreateDirectory(storage.EventsRoot);
             Directory.CreateDirectory(storage.SettingsRoot);
             Directory.CreateDirectory(Path.GetDirectoryName(storage.RuntimeStatePath)!);
+            var edgeCaseDirectory = Path.Combine(storage.LogsRoot, "edge-cases");
+            Directory.CreateDirectory(edgeCaseDirectory);
             File.WriteAllText(Path.Combine(storage.LogsRoot, "tmroverlay-20260426.log"), "log line");
+            File.WriteAllText(Path.Combine(edgeCaseDirectory, "session-20260426-edge-cases.json"), """{"clipCount":1}""");
             File.WriteAllText(Path.Combine(storage.EventsRoot, "events-20260426.jsonl"), "{}");
             File.WriteAllText(Path.Combine(storage.SettingsRoot, "settings.json"), "{}");
             File.WriteAllText(storage.RuntimeStatePath, "{}");
+
+            var analysisDirectory = Path.Combine(storage.UserHistoryRoot, "analysis");
+            var historySessionDirectory = Path.Combine(
+                storage.UserHistoryRoot,
+                "cars",
+                "car-156-mercedesamgevogt3",
+                "tracks",
+                "track-262-nurburgring-combinedshortb",
+                "sessions",
+                "race");
+            var summariesDirectory = Path.Combine(historySessionDirectory, "summaries");
+            Directory.CreateDirectory(analysisDirectory);
+            Directory.CreateDirectory(summariesDirectory);
+            Directory.CreateDirectory(Path.Combine(storage.UserHistoryRoot, ".maintenance"));
+            File.WriteAllText(Path.Combine(analysisDirectory, "20260426-race.json"), """{"title":"race analysis"}""");
+            File.WriteAllText(Path.Combine(storage.UserHistoryRoot, ".maintenance", "manifest.json"), """{"summaryFilesScanned":1}""");
+            File.WriteAllText(Path.Combine(historySessionDirectory, "aggregate.json"), """{"sessionCount":1}""");
+            File.WriteAllText(Path.Combine(summariesDirectory, "capture-20260426-120000-000.json"), """{"sourceCaptureId":"capture-20260426-120000-000"}""");
 
             var captureDirectory = Path.Combine(storage.CaptureRoot, "capture-20260426-120000-000");
             Directory.CreateDirectory(captureDirectory);
@@ -34,9 +56,15 @@ public sealed class DiagnosticsBundleServiceTests
 
             var state = new TelemetryCaptureState();
             state.MarkCaptureStarted(captureDirectory, DateTimeOffset.UtcNow);
+            var performance = new AppPerformanceState();
+            performance.RecordOperation("test.operation", TimeSpan.FromMilliseconds(3));
+            var performanceRecorder = new AppPerformanceSnapshotRecorder(storage);
+            performanceRecorder.Record(performance.Snapshot());
             var service = new DiagnosticsBundleService(
                 storage,
                 state,
+                performance,
+                performanceRecorder,
                 NullLogger<DiagnosticsBundleService>.Instance);
 
             var bundlePath = service.CreateBundle();
@@ -45,13 +73,22 @@ public sealed class DiagnosticsBundleServiceTests
             var entryNames = archive.Entries.Select(entry => entry.FullName).ToHashSet(StringComparer.OrdinalIgnoreCase);
             Assert.Contains("metadata/app-version.json", entryNames);
             Assert.Contains("metadata/storage.json", entryNames);
+            Assert.Contains("metadata/telemetry-state.json", entryNames);
+            Assert.Contains("metadata/performance.json", entryNames);
             Assert.Contains("runtime/runtime-state.json", entryNames);
             Assert.Contains("settings/settings.json", entryNames);
             Assert.Contains("logs/tmroverlay-20260426.log", entryNames);
+            Assert.Contains("edge-cases/session-20260426-edge-cases.json", entryNames);
+            Assert.Contains(entryNames, entryName => entryName.StartsWith("performance/performance-", StringComparison.OrdinalIgnoreCase));
             Assert.Contains("events/events-20260426.jsonl", entryNames);
             Assert.Contains("latest-capture/capture-manifest.json", entryNames);
             Assert.Contains("latest-capture/telemetry-schema.json", entryNames);
             Assert.Contains("latest-capture/latest-session.yaml", entryNames);
+            Assert.Contains("analysis/20260426-race.json", entryNames);
+            Assert.DoesNotContain("history/user/analysis/20260426-race.json", entryNames);
+            Assert.Contains("history/user/.maintenance/manifest.json", entryNames);
+            Assert.Contains("history/user/cars/car-156-mercedesamgevogt3/tracks/track-262-nurburgring-combinedshortb/sessions/race/aggregate.json", entryNames);
+            Assert.Contains("history/user/cars/car-156-mercedesamgevogt3/tracks/track-262-nurburgring-combinedshortb/sessions/race/summaries/capture-20260426-120000-000.json", entryNames);
             Assert.DoesNotContain("latest-capture/telemetry.bin", entryNames);
         }
         finally

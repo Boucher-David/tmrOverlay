@@ -14,6 +14,14 @@ internal sealed class RetentionOptions
 
     public int MaxDiagnosticsBundles { get; init; } = 20;
 
+    public int PerformanceLogRetentionDays { get; init; } = 30;
+
+    public int MaxPerformanceLogFiles { get; init; } = 30;
+
+    public int EdgeCaseRetentionDays { get; init; } = 30;
+
+    public int MaxEdgeCaseFiles { get; init; } = 50;
+
     public static RetentionOptions FromConfiguration(IConfiguration configuration)
     {
         var section = configuration.GetSection("Retention");
@@ -24,7 +32,11 @@ internal sealed class RetentionOptions
             CaptureRetentionDays = ParseInt32(section["CaptureRetentionDays"], defaultValue: 30, minimumValue: 1),
             MaxCaptureDirectories = ParseInt32(section["MaxCaptureDirectories"], defaultValue: 50, minimumValue: 1),
             DiagnosticsRetentionDays = ParseInt32(section["DiagnosticsRetentionDays"], defaultValue: 14, minimumValue: 1),
-            MaxDiagnosticsBundles = ParseInt32(section["MaxDiagnosticsBundles"], defaultValue: 20, minimumValue: 1)
+            MaxDiagnosticsBundles = ParseInt32(section["MaxDiagnosticsBundles"], defaultValue: 20, minimumValue: 1),
+            PerformanceLogRetentionDays = ParseInt32(section["PerformanceLogRetentionDays"], defaultValue: 30, minimumValue: 1),
+            MaxPerformanceLogFiles = ParseInt32(section["MaxPerformanceLogFiles"], defaultValue: 30, minimumValue: 1),
+            EdgeCaseRetentionDays = ParseInt32(section["EdgeCaseRetentionDays"], defaultValue: 30, minimumValue: 1),
+            MaxEdgeCaseFiles = ParseInt32(section["MaxEdgeCaseFiles"], defaultValue: 50, minimumValue: 1)
         };
     }
 
