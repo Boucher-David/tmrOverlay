@@ -17,23 +17,31 @@ git diff --check
 rg -n "^(<<<<<<<|>>>>>>>|=======)$" --glob '!captures/**' --glob '!captures-latest/**' --glob '!local-mac/TmrOverlayMac/.build/**' --glob '!**/*.png' --glob '!**/*.jpg' --glob '!**/*.bin'
 ```
 
-## C# Compile-Shape Check
+## Local C# Compile-Shape Check
 
-When any `.cs` file changes, run the local scanner before relying on Windows-only build feedback:
+When any `.cs` file changes, run the local scanner. This is the main C# validation available on machines without `dotnet`:
 
 ```bash
 python3 skills/tmr-overlay-validation/scripts/check-csharp-member-duplicates.py
 ```
 
-This is a broad static pass for type-local C# name and scope hazards that compile catches but plain source review often misses. It should look for generated or implicit members colliding with explicitly declared members, and for primary-constructor signatures that reference declarations that are only available inside the type body.
+This is a broad static pass for C# compile-shape hazards that compile catches but plain source review often misses. It should look for generated or implicit members colliding with explicitly declared members, primary-constructor signatures that reference declarations that are only available inside the type body, targetless nullable conditional expressions, and known external enum member typos for third-party APIs used by the app.
 
 Examples of the kind of issue this should catch:
 
 - A positional record parameter creates `SkiesLabel`, then the same record declares a helper method named `SkiesLabel`.
 - A nested record primary constructor takes `ActivityBadge`, but `ActivityBadge` is declared inside that nested record body, outside primary-constructor scope.
 - A field, property, event, nested type, or primary-constructor generated property reuses a member name in the same type in a way that is not ordinary method overloads.
+- A `var` local uses a conditional expression with a value-type-looking branch and a plain `null` branch, such as `var meters = trackKm is { } km ? km * 1000d : null;`. Use an explicit nullable local type or cast the null branch, such as `: (double?)null`.
+- A known third-party enum reference uses a member not present in the local validation contract, such as `TelemCommandModeTypes.ToStart` instead of `TelemCommandModeTypes.Start` for `irsdkSharp` 0.9.0.
 
 When editing snapshots/read models, prefer helper names that describe the operation, such as `FormatSkiesLabel` or `DetermineDeclaredWetSurfaceMismatch`, instead of names identical to public generated properties.
+
+Before trusting this scanner after changing it, run:
+
+```bash
+python3 skills/tmr-overlay-validation/scripts/check-csharp-member-duplicates.py --self-test
+```
 
 ## Windows .NET Gate
 
@@ -52,7 +60,7 @@ dotnet build .\src\TmrOverlay.App\TmrOverlay.App.csproj -c Debug
 dotnet test .\tmrOverlay.sln
 ```
 
-If `dotnet` is not available locally, state that clearly. The local scanner is a fallback, not a replacement for Windows build/test verification.
+If `dotnet` is not available locally, state that clearly. The local scanner is a fallback, not a replacement for Windows build/test verification; Windows compile errors can still appear for API surface mismatches the scanner does not model.
 
 ## Python Tools
 

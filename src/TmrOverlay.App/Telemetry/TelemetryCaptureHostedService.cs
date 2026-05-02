@@ -456,7 +456,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         {
             var result = sdk.BroadcastMessage(
                 BroadcastMessageTypes.TelemCommand,
-                (int)TelemCommandModeTypes.ToStart,
+                (int)TelemCommandModeTypes.Start,
                 0);
             _events.Record("ibt_telemetry_logging_start_requested", new Dictionary<string, string?>
             {
