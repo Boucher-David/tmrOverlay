@@ -51,3 +51,31 @@ Current default columns cover:
 - pit state
 
 The registry keeps display keys stable before any standings or relative overlay exists, so future UI can share column settings and tests can validate table semantics without copying formatter logic.
+
+## Parity Mode
+
+The current product overlays still read the existing overlay-specific snapshot slices. Model v2 is observed in parallel, not yet authoritative.
+
+`LiveModelParityAnalyzer` compares those existing slices against equivalent values in `LiveTelemetrySnapshot.Models` for fuel/pit, proximity/relative/spatial, timing/leader-gap, weather, session, and race-event state. The Windows collector records sampled parity frames and mismatch summaries through `LiveModelParityRecorder`.
+
+At session finalization the app writes `live-model-parity.json`. When raw capture is active, the file is written beside the raw capture sidecars. When raw capture is not active, it is written under the logs model-parity folder. The artifact includes:
+
+- sampled parity frames
+- aggregate mismatch counts by family/key
+- model-v2 coverage counts versus legacy overlay-input coverage
+- `promotionReadiness`, which marks a session as a model-v2 promotion candidate only after it has enough frames, low enough mismatch rate, and enough model coverage for the legacy overlay inputs observed in that session
+- post-session signal availability from `capture-synthesis.json`, `telemetry-schema.json`, and `ibt-analysis/*.json`
+
+When `promotionReadiness.isCandidate` is true, the recorder also emits a `live_model_v2_promotion_candidate` app event. Treat that as a review signal, not an automatic migration: overlays should move to model v2 only after several candidate artifacts cover the normal session types and edge cases we care about.
+
+This lets collected raw/IBT sessions evaluate whether model v2 matches current overlay behavior before any overlay is migrated to the new model.
+
+## Deferred Overlay UI V2
+
+Model v2 is data-contract work, not a visual architecture rewrite. A separate overlay UI/style v2 pass should eventually standardize shared visual primitives across the WinForms overlays:
+
+- semantic theme tokens for spacing, typography, borders, severity, table, and graph roles
+- reusable header, status badge, source footer, metric row, table cell, graph panel, and empty/error/waiting-state helpers
+- shared text fitting, border drawing, severity color, class-color, and stale-data styling helpers
+
+That work should be additive first and migrate one overlay at a time with screenshot validation, keeping overlay-specific domain layout local.

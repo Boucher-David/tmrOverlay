@@ -19,6 +19,10 @@ They should be updated whenever overlay behavior, telemetry derivation, analysis
 - [IBT Analysis](ibt-analysis.md)
 - [Post-Race Analysis Logic](post-race-analysis-logic.md)
 
+## Deferred UI Style V2
+
+The current model-v2 work standardizes live data, not visual structure. A future overlay UI/style v2 pass should standardize shared WinForms theme tokens and reusable overlay primitives so status, fuel, radar, gap, and future timing overlays share visual language without copying label, border, severity, table, graph, and empty-state code. Keep that migration additive and validate one overlay at a time with screenshots.
+
 ## Maintenance Rule
 
 When implementation changes:

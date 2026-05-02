@@ -330,6 +330,96 @@ DriverInfo:
     }
 
     [Fact]
+    public void LiveModelParityAnalyzer_HasNoMismatchesForCurrentOverlayInputs()
+    {
+        var store = new LiveTelemetryStore();
+
+        store.RecordFrame(CreateSample(
+            playerCarIdx: 10,
+            teamLapDistPct: 0.50d,
+            teamEstimatedTimeSeconds: 50d,
+            teamCarClass: 4098,
+            teamPosition: 7,
+            teamClassPosition: 3,
+            classLeaderCarIdx: 11,
+            classLeaderLapDistPct: 0.53d,
+            classLeaderF2TimeSeconds: 0d,
+            focusClassCars:
+            [
+                new HistoricalCarProximity(
+                    CarIdx: 11,
+                    LapCompleted: 2,
+                    LapDistPct: 0.53d,
+                    F2TimeSeconds: 0d,
+                    EstimatedTimeSeconds: 53d,
+                    Position: 1,
+                    ClassPosition: 1,
+                    CarClass: 4098,
+                    TrackSurface: 3,
+                    OnPitRoad: false),
+                new HistoricalCarProximity(
+                    CarIdx: 12,
+                    LapCompleted: 2,
+                    LapDistPct: 0.49d,
+                    F2TimeSeconds: 4d,
+                    EstimatedTimeSeconds: 49d,
+                    Position: 8,
+                    ClassPosition: 4,
+                    CarClass: 4098,
+                    TrackSurface: 3,
+                    OnPitRoad: false)
+            ],
+            nearbyCars:
+            [
+                new HistoricalCarProximity(
+                    CarIdx: 12,
+                    LapCompleted: 2,
+                    LapDistPct: 0.49d,
+                    F2TimeSeconds: 4d,
+                    EstimatedTimeSeconds: 49d,
+                    Position: 8,
+                    ClassPosition: 4,
+                    CarClass: 4098,
+                    TrackSurface: 3,
+                    OnPitRoad: false)
+            ]));
+
+        var parity = LiveModelParityAnalyzer.Analyze(store.Snapshot());
+
+        Assert.False(parity.HasMismatch);
+        Assert.Empty(parity.Observations);
+        Assert.True(parity.Coverage.HasLegacyFuel);
+        Assert.True(parity.Coverage.HasModelTiming);
+    }
+
+    [Fact]
+    public void LiveModelParityAnalyzer_ReportsModelMismatch()
+    {
+        var store = new LiveTelemetryStore();
+        store.RecordFrame(CreateSample());
+        var snapshot = store.Snapshot();
+        var mismatched = snapshot with
+        {
+            Models = snapshot.Models with
+            {
+                Weather = snapshot.Models.Weather with
+                {
+                    TrackWetness = 6
+                }
+            }
+        };
+
+        var parity = LiveModelParityAnalyzer.Analyze(mismatched);
+
+        Assert.True(parity.HasMismatch);
+        Assert.Contains(parity.Observations, observation =>
+            observation.Family == "weather"
+            && observation.Key == "track-wetness"
+            && observation.LegacyValue == "1"
+            && observation.ModelValue == "6");
+    }
+
+    [Fact]
     public void RecordFrame_KeepsModelsBackwardCompatibleWhenTimingIsUnavailable()
     {
         var store = new LiveTelemetryStore();

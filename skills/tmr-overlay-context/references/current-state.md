@@ -74,6 +74,11 @@ Last updated: 2026-05-02
   - the Collector Status tab owns the runtime `Raw capture` checkbox
   - visibility, scale, font, unit, and display-option changes apply to open overlays immediately; session filters are rechecked against live session type
 
+- Deferred overlay UI/style v2:
+  - current model-v2 work standardizes live data, not visual structure
+  - future style groundwork should add semantic theme tokens and reusable WinForms primitives for headers, status badges, source footers, metric rows, table cells, graph panels, shared borders, severity colors, class colors, text fitting, and empty/error/waiting states
+  - migrate this additively one overlay at a time with screenshot validation, keeping overlay-specific domain layout local
+
 - `src/TmrOverlay.App/Overlays/FuelCalculator/`
   - draggable three-column fuel strategy overlay placed below the status overlay by default
   - estimates timed-race laps from session time, selected lap time, and leader/team progress
@@ -128,6 +133,7 @@ Last updated: 2026-05-02
   - creates raw capture directories and copies the raw telemetry buffer only when raw capture is enabled by startup configuration or runtime overlay request
   - ties IBT telemetry logging to the same raw-capture switch by default, so raw capture start/stop requests also ask iRacing to start/stop `.ibt` logging
   - writes post-session sidecars after raw capture finalization: `capture-synthesis.json` runs immediately from the closed TmrOverlay capture with a timeout, while `ibt-analysis/*.json` waits only a bounded time for iRacing to stop writing before skipping and leaving the capture eligible for startup recovery
+  - records live model-v2 parity in observer mode so current overlays keep using existing fuel/proximity/gap slices while `LiveTelemetrySnapshot.Models` is compared against them and summarized in `live-model-parity.json`
   - records bounded compact edge-case telemetry artifacts for every live session by combining normalized live samples with selected scalar raw watch channels for fuel, tires, suspension, brakes, wheel speed, pit service, weather, engine/replay/system/network state, incidents, and driver-control changes; artifacts also count observations dropped after the clip cap and include a final sampled context tail so long spectated/parked sessions still have late-session telemetry context
   - isolates raw-capture frame queue/write/read failures from live history, normalized live telemetry, and overlay performance recording so overlays can keep updating while capture diagnostics run
   - logs and records app events for runtime raw-capture start failures instead of silently failing
@@ -143,6 +149,7 @@ Last updated: 2026-05-02
     - optional historical `session-info/*.yaml`
     - post-session `capture-synthesis.json` is written by `CaptureSynthesisService`, not by the live writer
     - post-session `ibt-analysis/*.json` is written by `IbtAnalysisService` when enabled and a candidate `.ibt` can be selected or a skipped/failed status is recorded
+    - post-session `live-model-parity.json` is written by `LiveModelParityRecorder` for model-v2 parity and raw/IBT signal availability review
   - uses a bounded channel to decouple SDK callbacks from disk writes
   - drops frames when the queue fills instead of blocking the SDK callback path
 
@@ -227,6 +234,7 @@ Last updated: 2026-05-02
 - `src/TmrOverlay.App/Diagnostics/`
   - creates support bundles with app/storage metadata, telemetry state, lightweight performance snapshots, recent performance logs, runtime state, settings, logs/events, and latest capture metadata plus compact capture/IBT sidecars
   - includes recent compact edge-case telemetry artifacts under `edge-cases/`, including their final context tail when present
+  - includes recent model-v2 parity artifacts under `model-parity/` plus the latest capture's `live-model-parity.json` when present
   - includes recent post-race analysis JSON at top-level `analysis/` plus recent user-history summaries and aggregates so collected car/track/session metrics can be inspected for accuracy
   - creates a best-effort diagnostics bundle automatically when a live telemetry session finalizes, and the Error Logging tab reports the latest automatic bundle
   - intentionally excludes raw `telemetry.bin` and source `.ibt` payloads
@@ -310,6 +318,8 @@ Short version for opt-in raw capture:
 - `session-info/` preserves session-history snapshots
 - `capture-synthesis.json` is an additive compact sidecar written after finalization when possible and bounded by `TelemetryCapture:MaxSynthesisMilliseconds`
 - `ibt-analysis/*.json` is an additive compact sidecar set written when IBT analysis is enabled; missing sidecars on older captures are expected and startup recovery can fill them later
+- `live-model-parity.json` is an additive compact sidecar/log artifact written after finalization; it compares current overlay inputs with model v2, summarizes raw/IBT signal availability, and includes `promotionReadiness`
+- `live_model_v2_promotion_candidate` app events are emitted when a session-level parity artifact passes the configured frame-count, mismatch-rate, and coverage thresholds; treat this as a review signal before migrating overlays, not an automatic cutover
 
 Raw capture format is preserved for diagnostics and future deep-dive analysis, but it is no longer the default production data path.
 
@@ -357,6 +367,16 @@ Current keys:
 - `TelemetryEdgeCases:MaxClipsPerSession`
 - `TelemetryEdgeCases:MaxFramesPerClip`
 - `TelemetryEdgeCases:MinimumFrameSpacingSeconds`
+- `LiveModelParity:Enabled`
+- `LiveModelParity:MinimumFrameSpacingSeconds`
+- `LiveModelParity:MaxFramesPerSession`
+- `LiveModelParity:MaxObservationsPerFrame`
+- `LiveModelParity:MaxObservationSummaries`
+- `LiveModelParity:PromotionCandidateMinimumFrames`
+- `LiveModelParity:PromotionCandidateMaxMismatchFrameRate`
+- `LiveModelParity:PromotionCandidateMinimumCoverageRatio`
+- `LiveModelParity:OutputFileName`
+- `LiveModelParity:LogDirectoryName`
 - `IbtAnalysis:Enabled`
 - `IbtAnalysis:TelemetryLoggingEnabled`
 - `IbtAnalysis:TelemetryRoot`
@@ -404,6 +424,7 @@ Current default:
 
 - writable storage resolves under `%LOCALAPPDATA%/TmrOverlay`
 - raw captures default to `%LOCALAPPDATA%/TmrOverlay/captures` but are disabled unless `TelemetryCapture:RawCaptureEnabled=true`; post-session capture synthesis defaults to a 60-second timeout
+- live model-v2 parity defaults on, samples clean frames at most once per second, keeps up to 600 sampled frames and 200 mismatch summaries, writes `live-model-parity.json` beside raw captures or under `%LOCALAPPDATA%/TmrOverlay/logs/model-parity` when no raw capture exists, and marks a session as a promotion candidate after at least 10,000 frames, mismatch-frame rate at or below 0.1%, and model coverage at or above 98% for observed legacy overlay-input families
 - IBT analysis defaults on for raw captures, requests iRacing telemetry logging with the raw-capture switch, reads candidates from `%USERPROFILE%/Documents/iRacing/telemetry`, waits at most 60 seconds for iRacing to stop writing before skipping, and does not copy source `.ibt` files by default
 - user history defaults to `%LOCALAPPDATA%/TmrOverlay/history/user`
 - local logs default to `%LOCALAPPDATA%/TmrOverlay/logs`

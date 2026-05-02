@@ -25,9 +25,11 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     private readonly PostRaceAnalysisPipeline _postRaceAnalysisPipeline;
     private readonly DiagnosticsBundleService _diagnosticsBundleService;
     private readonly ILiveTelemetrySink _liveTelemetrySink;
+    private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly TelemetryCaptureState _state;
     private readonly AppPerformanceState _performance;
     private readonly TelemetryEdgeCaseRecorder _edgeCaseRecorder;
+    private readonly LiveModelParityRecorder _liveModelParityRecorder;
     private readonly object _sync = new();
     private readonly SemaphoreSlim _postSessionArtifactSemaphore = new(1, 1);
     private readonly CancellationTokenSource _startupArtifactCancellation = new();
@@ -53,9 +55,11 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         PostRaceAnalysisPipeline postRaceAnalysisPipeline,
         DiagnosticsBundleService diagnosticsBundleService,
         ILiveTelemetrySink liveTelemetrySink,
+        ILiveTelemetrySource liveTelemetrySource,
         TelemetryCaptureState state,
         AppPerformanceState performance,
-        TelemetryEdgeCaseRecorder edgeCaseRecorder)
+        TelemetryEdgeCaseRecorder edgeCaseRecorder,
+        LiveModelParityRecorder liveModelParityRecorder)
     {
         _logger = logger;
         _options = options;
@@ -66,9 +70,11 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         _postRaceAnalysisPipeline = postRaceAnalysisPipeline;
         _diagnosticsBundleService = diagnosticsBundleService;
         _liveTelemetrySink = liveTelemetrySink;
+        _liveTelemetrySource = liveTelemetrySource;
         _state = state;
         _performance = performance;
         _edgeCaseRecorder = edgeCaseRecorder;
+        _liveModelParityRecorder = liveModelParityRecorder;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -367,6 +373,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             _state.MarkCollectionStarted(_activeStartedAtUtc.Value);
             _liveTelemetrySink.MarkCollectionStarted(sourceId, _activeStartedAtUtc.Value);
             _edgeCaseRecorder.StartCollection(sourceId, _activeStartedAtUtc.Value, edgeCaseSchema);
+            _liveModelParityRecorder.StartCollection(sourceId, _activeStartedAtUtc.Value);
 
             if (capture is not null)
             {
@@ -1483,6 +1490,15 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         {
             _liveTelemetrySink.RecordFrame(sample);
             liveSinkSucceeded = true;
+
+            try
+            {
+                _liveModelParityRecorder.RecordFrame(_liveTelemetrySource.Snapshot());
+            }
+            catch (Exception exception)
+            {
+                _logger.LogWarning(exception, "Failed to record live model parity frame.");
+            }
         }
         finally
         {
@@ -1548,6 +1564,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     {
         var finalizeStarted = Stopwatch.GetTimestamp();
         var finalizeSucceeded = false;
+        var parityCompleted = false;
         try
         {
             _state.MarkCaptureStopped();
@@ -1669,6 +1686,9 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                     CancellationToken.None).ConfigureAwait(false);
             }
 
+            CompleteLiveModelParity(capture?.DirectoryPath, capture?.FinishedAtUtc ?? DateTimeOffset.UtcNow);
+            parityCompleted = true;
+
             finalizeSucceeded = true;
         }
         catch (Exception exception)
@@ -1678,6 +1698,11 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         }
         finally
         {
+            if (!parityCompleted)
+            {
+                CompleteLiveModelParity(capture?.DirectoryPath, capture?.FinishedAtUtc ?? DateTimeOffset.UtcNow);
+            }
+
             _performance.RecordOperation(
                 AppPerformanceMetricIds.TelemetryFinalizeCollection,
                 finalizeStarted,
@@ -1685,6 +1710,18 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         }
 
         CreateEndOfSessionDiagnosticsBundle(finalization);
+    }
+
+    private void CompleteLiveModelParity(string? captureDirectory, DateTimeOffset finishedAtUtc)
+    {
+        try
+        {
+            _liveModelParityRecorder.CompleteCollection(finishedAtUtc, captureDirectory);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Failed to complete live model parity artifact.");
+        }
     }
 
     private async Task RecoverPendingPostSessionArtifactsAsync(CancellationToken cancellationToken)

@@ -60,6 +60,7 @@ IBT analysis is deliberately best-effort:
 
 - It is separate from `capture-synthesis.json`; synthesis can run as soon as the TmrOverlay raw capture closes.
 - Capture synthesis is bounded by `TelemetryCapture:MaxSynthesisMilliseconds`.
+- `live-model-parity.json` consumes the resulting raw/IBT sidecar metadata after finalization so model-v2 review can see which live-model signals were available in raw capture, common with IBT, IBT-only, live-only, or missing; it also carries `promotionReadiness` so clean sessions can be flagged for model-v2 cutover review.
 - It waits only up to `IbtAnalysis:MaxIRacingExitWaitSeconds` for the simulator process to exit before skipping the current run and leaving the capture eligible for startup recovery.
 - It has an analysis timeout.
 - It samples at most `IbtAnalysis:MaxSampledRecords` records.

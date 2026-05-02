@@ -15,6 +15,7 @@ internal sealed class DiagnosticsBundleService
     private const int MaxRecentHistoryAggregateFiles = 50;
     private const int MaxRecentEdgeCaseFiles = 20;
     private const int MaxLatestCaptureIbtAnalysisFiles = 12;
+    private const int MaxRecentModelParityFiles = 10;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -23,6 +24,7 @@ internal sealed class DiagnosticsBundleService
     };
 
     private readonly AppStorageOptions _storageOptions;
+    private readonly LiveModelParityOptions _liveModelParityOptions;
     private readonly TelemetryCaptureState _captureState;
     private readonly AppPerformanceState _performanceState;
     private readonly AppPerformanceSnapshotRecorder _performanceRecorder;
@@ -37,12 +39,14 @@ internal sealed class DiagnosticsBundleService
 
     public DiagnosticsBundleService(
         AppStorageOptions storageOptions,
+        LiveModelParityOptions liveModelParityOptions,
         TelemetryCaptureState captureState,
         AppPerformanceState performanceState,
         AppPerformanceSnapshotRecorder performanceRecorder,
         ILogger<DiagnosticsBundleService> logger)
     {
         _storageOptions = storageOptions;
+        _liveModelParityOptions = liveModelParityOptions;
         _captureState = captureState;
         _performanceState = performanceState;
         _performanceRecorder = performanceRecorder;
@@ -190,9 +194,29 @@ internal sealed class DiagnosticsBundleService
             finally
             {
                 _performanceState.RecordOperation(
-                    AppPerformanceMetricIds.DiagnosticsBundleEdgeCases,
-                    edgeCasesStarted,
-                    edgeCasesSucceeded);
+                AppPerformanceMetricIds.DiagnosticsBundleEdgeCases,
+                edgeCasesStarted,
+                edgeCasesSucceeded);
+            }
+
+            var modelParityStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+            var modelParitySucceeded = false;
+            try
+            {
+                AddRecentFiles(
+                    archive,
+                    Path.Combine(_storageOptions.LogsRoot, _liveModelParityOptions.LogDirectoryName),
+                    $"*{_liveModelParityOptions.OutputFileName}",
+                    "model-parity",
+                    MaxRecentModelParityFiles);
+                modelParitySucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    "diagnostics.bundle.model-parity",
+                    modelParityStarted,
+                    modelParitySucceeded);
             }
 
             var historyStarted = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -300,6 +324,10 @@ internal sealed class DiagnosticsBundleService
         AddFileIfExists(archive, Path.Combine(captureDirectory, "telemetry-schema.json"), "latest-capture/telemetry-schema.json");
         AddFileIfExists(archive, Path.Combine(captureDirectory, "latest-session.yaml"), "latest-capture/latest-session.yaml");
         AddFileIfExists(archive, Path.Combine(captureDirectory, "capture-synthesis.json"), "latest-capture/capture-synthesis.json");
+        AddFileIfExists(
+            archive,
+            Path.Combine(captureDirectory, _liveModelParityOptions.OutputFileName),
+            $"latest-capture/{_liveModelParityOptions.OutputFileName}");
         AddRecentFiles(
             archive,
             Path.Combine(captureDirectory, "ibt-analysis"),
