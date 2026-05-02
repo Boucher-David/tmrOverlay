@@ -9,7 +9,16 @@ Raw capture is an opt-in diagnostic/development mode. When `TelemetryCapture:Raw
 
 Optional historical session snapshots are stored under `session-info/`.
 
-Compact edge-case telemetry artifacts are not part of the raw capture format. They are written separately under the logs root as JSON and may be included in diagnostics bundles without including `telemetry.bin`.
+After capture finalization, the app also writes compact post-session sidecars when possible:
+
+- `capture-synthesis.json` summarizes the raw capture schema and sampled frame values for investigation without reopening the full binary payload. It is bounded by `TelemetryCapture:MaxSynthesisMilliseconds`.
+- `ibt-analysis/*.json` summarizes the best matching iRacing `.ibt` file when IBT analysis is enabled and a stable candidate is available. The sidecars include schema comparison, bounded field stats, and a local-car summary for trajectory/fuel/vehicle-dynamics investigation.
+- `live-model-parity.json` summarizes whether the additive model-v2 live state matched the legacy overlay inputs during the session, records raw/IBT signal availability for later model review, and includes `promotionReadiness` so enough clean evidence can be flagged for model-v2 cutover review.
+- `live-overlay-diagnostics.json` summarizes passive gap/radar/fuel/position-cadence assumptions observed from the normalized live snapshots that powered the current overlays.
+
+These sidecars are additive. Existing raw captures without them remain readable, startup recovery can fill missing sidecars later, and source `.ibt` files are not copied into capture directories by default.
+
+Compact edge-case telemetry artifacts and live overlay diagnostics collected without raw capture are not part of the raw capture format. They are written separately under the logs root as JSON and may be included in diagnostics bundles without including `telemetry.bin`.
 
 ## `telemetry-schema.json`
 

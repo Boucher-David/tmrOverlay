@@ -66,6 +66,13 @@ For overall and class leader gaps, the first valid rule wins:
 
 Valid F2 gap seconds must be finite, non-negative, and less than 86400.
 
+Data review note from the May 2026 capture analysis:
+
+- Long raw captures confirmed `CarIdxF2Time` is the best available source for class-gap seconds when leader and reference rows are both valid.
+- Some sampled frames had a valid reference `CarIdxF2Time` while the leader F2 row was missing or not trustworthy. Treating the missing leader as zero can overstate or jump the displayed gap.
+- Same-class timing rows can have standings/F2 data while lap-distance progress is missing. The graph should keep accepting those rows for timing, but it should flag the source as partial and avoid using them for radar-style placement.
+- Large class-gap jumps can happen around leader changes, session transitions, pit windows, and stale/uninitialized timing rows. Model-v2 should carry source quality and missing-leader reasons so the overlay can segment or de-emphasize those points instead of drawing them as normal continuity.
+
 ## Same-Class Car List
 
 The graph list always attempts to include:
@@ -281,3 +288,12 @@ When no gap data exists:
 - Use lap progress fallback for trend participation when seconds are unavailable.
 - Keep old leaders and recently visible cars understandable instead of disappearing abruptly.
 - Make early-race graphs grow from the left until four hours are filled.
+
+## 24-Hour Race Findings
+
+Live endurance-race review found several product issues that should guide the model-v2 migration:
+
+- Practice, qualifying, and test sessions make this graph misleading because the useful comparison is not race-position gap to class leader. Keep the race-gap view race-oriented unless a dedicated non-race timing mode exists.
+- Multi-lap leader gaps can make local position battles unreadable, especially on long laps. Future graph modes should separate leader-gap context from local fight readability, or use lap-normalized/segmented Y-axis behavior.
+- Threat and leader summary text did not handle pit cycles and on-track pace differences well. That interpretation may belong in future relative, standings, or strategy overlays rather than in this graph.
+- The graph should be tested for more frequent update cadence. The collector reads `CarIdxPosition` and `CarIdxClassPosition` every frame, but we still need to verify from race captures whether iRacing updates those positions continuously or only around lap/scoring events.

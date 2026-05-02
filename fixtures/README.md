@@ -10,3 +10,6 @@ Raw captures stay under `captures/` and are intentionally ignored because they c
   - Synthetic iRacing endurance session-info shape.
   - Includes weekend, session, driver, result, setup, split, radio, and camera data.
   - Adds a fixture-only `SyntheticTelemetryFrames` block because live fuel/input values come from `telemetry.bin`, not from iRacing session YAML.
+- `telemetry-analysis/*.example.json`
+  - Compact, sanitized examples derived from raw capture and IBT investigation artifacts.
+  - Preserve source-availability and model-v2 evidence assumptions without committing source `.ibt` or `telemetry.bin` payloads.

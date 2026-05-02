@@ -20,8 +20,9 @@
   The radar is a transparent circular proximity view that only paints from fresh live telemetry, follows the current camera/focus car when available, prefers physical distance from `CarIdxLapDistPct` and track length for close-range placement, falls back to reliable live time gaps when distance is unavailable, uses `CarLeftRight` as the authoritative alongside signal, fades nearby neutral-white car rectangles in between radar entry and the yellow-warning threshold, moves them through yellow toward saturated alert red only inside the close bumper-gap warning buffer, labels its range rings, and can show an outer-ring multiclass warning for cars behind outside the 2-second timing fallback but within 5 seconds. The gap overlay is a four-hour in-class trend graph with the focused car's class leader as the top baseline, adaptive Y-axis scaling, left-side axis labels, lap reference lines, subtle weather bands, driver/leader-change markers, dimmed context lines, and endpoint `P<N>` labels. It keeps bounded in-memory traces for all available same-class timing rows, while dynamically rendering the leader, the focused car, nearby class traffic, and recently visible cars.
 - Stores early pit-service history signals such as pit-lane time, pit-stall/service time, observed fuel fill rate, tire/repair indicators, and confidence flags.
 - Keeps raw capture as an opt-in diagnostic/development mode; the settings window can request raw capture at runtime if the app was started without the flag.
-- When raw capture is enabled, stores `telemetry.bin`, `telemetry-schema.json`, `latest-session.yaml`, optional `session-info/`, and `capture-manifest.json`.
+- When raw capture is enabled, stores `telemetry.bin`, `telemetry-schema.json`, `latest-session.yaml`, optional `session-info/`, and `capture-manifest.json`, then writes compact `capture-synthesis.json`, `live-model-parity.json`, `live-overlay-diagnostics.json`, and optional `ibt-analysis/*.json` sidecars after the session.
 - Always records compact edge-case telemetry artifacts after a live session. These are bounded JSON clips around suspicious or newly exposed telemetry states, not full raw frame payloads.
+- Always records compact live-overlay diagnostics after a live session. These are bounded observer-mode summaries for gap/radar/fuel/position-cadence assumptions, not overlay behavior changes.
 - Shows live-analysis health signals in the overlay, plus disk-write health when raw capture is enabled.
 - Writes rolling local logs, JSONL app events, runtime-state markers, persisted settings, lightweight performance snapshots, and diagnostics bundles for triage.
 - Includes retention cleanup for old captures and diagnostics bundles.
@@ -44,6 +45,7 @@
 - `docs/capture-format.md` documents the binary frame format used by `telemetry.bin`.
 - `docs/edge-case-telemetry-logic.md` documents the compact edge-case detector/report rules.
 - `docs/history-data-evolution.md` documents how future app versions should migrate or rebuild user history written by older versions.
+- `docs/ibt-analysis.md` documents the compact IBT sidecar investigation path.
 - `docs/overlay-logic.md` is the human-readable index for how each overlay derives and displays its state.
 - `telemetry.md` summarizes the event/session/car schema exposed by the current raw capture model.
 
@@ -72,6 +74,12 @@ Each capture folder contains:
 - `telemetry.bin`
 - `latest-session.yaml`
 - `session-info/`
+- `capture-synthesis.json` after post-session synthesis succeeds
+- `live-model-parity.json` after post-session model-v2 parity evaluation
+- `live-overlay-diagnostics.json` after passive overlay-assumption diagnostics are saved
+- `ibt-analysis/*.json` when IBT analysis is enabled and a matching iRacing `.ibt` file can be selected or skipped/failure status is recorded
+
+Model-v2 parity runs in observer mode: current overlays still use their existing fuel/proximity/gap inputs, while the collector compares those inputs with `LiveTelemetrySnapshot.Models` and records compact mismatch/coverage evidence. `LiveTelemetrySnapshot.Models` also carries source evidence for timing, spatial/radar placement, gap, and fuel-baseline usability so future overlays can distinguish reliable raw signals from diagnostic or partial signals. `live-model-parity.json` includes `promotionReadiness`; when a session passes the configured data-volume, mismatch-rate, and coverage thresholds, the app also writes a `live_model_v2_promotion_candidate` event. `live-overlay-diagnostics.json` is a separate observer artifact for the 24-hour findings: non-race gap semantics, multi-lap gap scaling, radar focus/side evidence, fuel source stitching, and position cadence. IBT logging uses the same raw-capture switch by default. Starting raw capture requests iRacing telemetry logging, and capture finalization requests logging to stop. The post-session analyzer writes compact JSON sidecars only, including `ibt-local-car-summary.json` for bounded local-car trajectory/fuel/vehicle-dynamics investigation, enforces a timeout for capture synthesis, scans a bounded set of recent `.ibt` candidates, enforces size/stability/sample/time limits, and does not copy source `.ibt` files into the capture directory unless `IbtAnalysis:CopyIbtIntoCaptureDirectory=true`.
 
 ## Edge-Case Telemetry Artifacts
 
@@ -82,6 +90,16 @@ Edge-case telemetry capture is enabled by default and is separate from raw captu
 ```
 
 Each `*-edge-cases.json` file includes the watched raw schema, missing watched variables, clip triggers, a short pre-trigger window, a short post-trigger window, dropped-observation counts when the clip cap is reached, a final sampled context tail from the end of the session, selected nearby/class timing rows, and raw watch values for channels such as fuel, tires, suspension, brakes, wheel speed, pit service, weather, engine warnings, replay state, incidents, frame rate, and network latency. It intentionally does not include `telemetry.bin`.
+
+## Live Overlay Diagnostics
+
+Live overlay diagnostics are enabled by default and are separate from raw capture. Without raw capture they are written under:
+
+```text
+%LOCALAPPDATA%\TmrOverlay\logs\overlay-diagnostics
+```
+
+Each `*-live-overlay-diagnostics.json` file summarizes current-overlay assumptions observed from normalized live snapshots: gap source/session semantics, large gap and jump examples, radar side/focus/placement evidence, fuel level/burn/source evidence, and sampled intra-lap position/class-position changes. Event examples are duplicate-suppressed and capped per kind so one stable condition cannot fill the whole sample budget. The mac harness mirrors this for mock/demo overlay runs.
 
 ## Build And Run On Windows
 
@@ -153,12 +171,35 @@ Available settings:
 - `TelemetryCapture:StoreSessionInfoSnapshots`
 - `TelemetryCapture:RawCaptureEnabled`
 - `TelemetryCapture:QueueCapacity`
+- `TelemetryCapture:MaxSynthesisMilliseconds`
 - `TelemetryEdgeCases:Enabled`
 - `TelemetryEdgeCases:PreTriggerSeconds`
 - `TelemetryEdgeCases:PostTriggerSeconds`
 - `TelemetryEdgeCases:MaxClipsPerSession`
 - `TelemetryEdgeCases:MaxFramesPerClip`
 - `TelemetryEdgeCases:MinimumFrameSpacingSeconds`
+- `LiveModelParity:Enabled`
+- `LiveModelParity:MinimumFrameSpacingSeconds`
+- `LiveModelParity:MaxFramesPerSession`
+- `LiveModelParity:MaxObservationsPerFrame`
+- `LiveModelParity:MaxObservationSummaries`
+- `LiveModelParity:PromotionCandidateMinimumFrames`
+- `LiveModelParity:PromotionCandidateMaxMismatchFrameRate`
+- `LiveModelParity:PromotionCandidateMinimumCoverageRatio`
+- `LiveModelParity:OutputFileName`
+- `LiveModelParity:LogDirectoryName`
+- `IbtAnalysis:Enabled`
+- `IbtAnalysis:TelemetryLoggingEnabled`
+- `IbtAnalysis:TelemetryRoot`
+- `IbtAnalysis:MaxCandidateAgeMinutes`
+- `IbtAnalysis:MaxCandidateBytes`
+- `IbtAnalysis:MaxAnalysisMilliseconds`
+- `IbtAnalysis:MaxSampledRecords`
+- `IbtAnalysis:MinStableAgeSeconds`
+- `IbtAnalysis:MaxIRacingExitWaitSeconds`
+- `IbtAnalysis:MaxCandidateFiles`
+- `IbtAnalysis:CopyIbtIntoCaptureDirectory`
+- `IbtAnalysis:OutputDirectoryName`
 - `SessionHistory:Enabled`
 - `SessionHistory:UseBaselineHistory`
 - `Storage:UseRepositoryLocalStorage`
@@ -200,7 +241,7 @@ $env:TMR_SessionHistory__UseBaselineHistory = "true"
 
 Path settings may be absolute or relative. Relative path settings resolve under the selected app data root.
 
-User-facing overlay preferences are stored in the local settings file under the app settings root. The settings window can update each current overlay's visibility, scale, test/practice/qualifying/race session filters, shared font family, metric/imperial units, and overlay-specific display options. It appears on the normal desktop layer so it can sit behind the sim when the user switches away. The General tab also includes copyable Windows clean, build, publish, and zip commands for local development; it does not execute builds from inside the running app. The clean command clears normal .NET build outputs plus the custom `artifacts/TmrOverlay-win-x64` publish folder so a rebuilt local app or republished tester build cannot silently reuse stale output. The Error Logging tab shows the current app warning/error, opens the local logs and diagnostics folders, shows a lightweight performance summary with iRacing channel/system values and overlay update-decision rates, and can create/copy a diagnostics bundle for sharing. It also includes a placeholder Overlay Bridge tab for post-v1.0 bridge controls. Settings files are versioned and normalized on load so older local files receive safe defaults as customization expands.
+User-facing overlay preferences are stored in the local settings file under the app settings root. The settings window can update each current overlay's visibility, scale, test/practice/qualifying/race session filters, shared font family, metric/imperial units, and overlay-specific display options. It appears on the normal desktop layer so it can sit behind the sim when the user switches away. The General tab also includes copyable Windows clean, build, publish, and zip commands for local development; it does not execute builds from inside the running app. The clean command clears normal .NET build outputs plus the custom `artifacts/TmrOverlay-win-x64` publish folder so a rebuilt local app or republished tester build cannot silently reuse stale output. The zip command checks for that publish folder first and tells the user to run Publish when it is missing. The Error Logging tab shows the current app warning/error, opens the local logs and diagnostics folders, shows a lightweight performance summary with iRacing channel/system values and overlay update-decision rates, and can create/copy a diagnostics bundle for sharing. It also includes a placeholder Overlay Bridge tab for post-v1.0 bridge controls. Settings files are versioned and normalized on load so older local files receive safe defaults as customization expands.
 
 ### Overlay Theme Overrides
 
@@ -258,7 +299,7 @@ The tray menu can create a diagnostics bundle under:
 
 Performance diagnostics are always on, even when raw capture is disabled. The app writes periodic JSONL snapshots under `%LOCALAPPDATA%\TmrOverlay\logs\performance` with telemetry throughput, iRacing network/system values such as channel quality, latency, frame rate, CPU/GPU use, replay/on-track state, overlay refresh timing, overlay update-decision counters, capture writer state when available, process memory, and GC counts.
 
-Bundles include app/storage metadata, telemetry state, lightweight performance snapshots, recent performance logs, runtime state, settings, recent logs/events, compact edge-case telemetry JSON, latest capture metadata, recent post-race analysis JSON under top-level `analysis/`, and recent user-history summaries/aggregates for car/track/session accuracy checks. They intentionally exclude raw `telemetry.bin` payloads.
+Bundles include app/storage metadata, telemetry state, lightweight performance snapshots, recent performance logs, runtime state, settings, recent logs/events, compact edge-case telemetry JSON, recent model-v2 parity JSON, latest capture metadata and compact sidecars, recent post-race analysis JSON under top-level `analysis/`, and recent user-history summaries/aggregates for car/track/session accuracy checks. They intentionally exclude raw `telemetry.bin` and source `.ibt` payloads.
 
 See `docs/update-strategy.md` for the current update notification and self-update plan.
 

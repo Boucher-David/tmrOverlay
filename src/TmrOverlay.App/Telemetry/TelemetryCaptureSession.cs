@@ -96,6 +96,7 @@ internal sealed class TelemetryCaptureSession : IAsyncDisposable
         var manifest = new CaptureManifest
         {
             CaptureId = captureId,
+            CollectionId = captureId,
             StartedAtUtc = startedAtUtc,
             TelemetryFile = TelemetryFileName,
             SchemaFile = SchemaFileName,

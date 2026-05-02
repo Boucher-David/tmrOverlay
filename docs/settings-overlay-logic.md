@@ -61,7 +61,7 @@ The General tab exposes copyable Windows PowerShell commands for local developme
 - Clean clears Release build intermediates, app/core `bin` and `obj` folders, the custom `artifacts/TmrOverlay-win-x64` publish folder, and its zip.
 - Build compiles the WinForms app in Release.
 - Publish writes the self-contained `win-x64` tester build to `artifacts/TmrOverlay-win-x64`.
-- Zip packages the current publish folder.
+- Zip packages the current publish folder and throws a clear "Run Publish first" error when the publish output folder is missing.
 
 The settings UI only copies these commands. It never runs builds from inside the app.
 

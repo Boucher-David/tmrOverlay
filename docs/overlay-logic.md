@@ -14,8 +14,17 @@ They should be updated whenever overlay behavior, telemetry derivation, analysis
 
 ## Related Analysis Logic
 
+- [Live Model Groundwork](live-model-groundwork.md)
+- [Live Overlay Diagnostics](live-overlay-diagnostics.md)
+- [24-Hour Live Overlay Findings](live-overlay-24h-findings.md)
+- [Model V2 Future Branch Notes](model-v2-future-branches.md)
 - [Edge-Case Telemetry Logic](edge-case-telemetry-logic.md)
+- [IBT Analysis](ibt-analysis.md)
 - [Post-Race Analysis Logic](post-race-analysis-logic.md)
+
+## Deferred UI Style V2
+
+The current model-v2 work standardizes live data, not visual structure. A future overlay UI/style v2 pass should standardize shared WinForms theme tokens and reusable overlay primitives so status, fuel, radar, gap, and future timing overlays share visual language without copying label, border, severity, table, graph, and empty-state code. Keep that migration additive and validate one overlay at a time with screenshots.
 
 ## Maintenance Rule
 

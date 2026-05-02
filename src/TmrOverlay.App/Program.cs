@@ -95,6 +95,9 @@ internal static class Program
                 services.AddSingleton(storageOptions);
                 services.AddSingleton(TelemetryCaptureOptions.FromConfiguration(context.Configuration, storageOptions));
                 services.AddSingleton(TelemetryEdgeCaseOptions.FromConfiguration(context.Configuration));
+                services.AddSingleton(LiveModelParityOptions.FromConfiguration(context.Configuration));
+                services.AddSingleton(LiveOverlayDiagnosticsOptions.FromConfiguration(context.Configuration));
+                services.AddSingleton(IbtAnalysisOptions.FromConfiguration(context.Configuration));
                 services.AddSingleton(SessionHistoryOptions.FromConfiguration(context.Configuration, storageOptions));
                 services.AddSingleton(RetentionOptions.FromConfiguration(context.Configuration));
                 services.AddSingleton(replayOptions);
@@ -105,9 +108,12 @@ internal static class Program
                 services.AddSingleton<SessionHistoryQueryService>();
                 services.AddSingleton<PostRaceAnalysisStore>();
                 services.AddSingleton<PostRaceAnalysisPipeline>();
+                services.AddSingleton<IbtAnalysisService>();
                 services.AddSingleton<DiagnosticsBundleService>();
                 services.AddSingleton<TelemetryCaptureState>();
                 services.AddSingleton<TelemetryEdgeCaseRecorder>();
+                services.AddSingleton<LiveModelParityRecorder>();
+                services.AddSingleton<LiveOverlayDiagnosticsRecorder>();
                 services.AddSingleton<AppPerformanceState>();
                 services.AddSingleton<AppPerformanceSnapshotRecorder>();
                 services.AddSingleton<LiveTelemetryStore>();

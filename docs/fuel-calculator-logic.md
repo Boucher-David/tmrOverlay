@@ -74,6 +74,12 @@ Live fuel confidence is:
 - `level-only` when fuel level exists but live burn does not.
 - `none` when fuel level is unavailable.
 
+Data review note from the May 2026 capture analysis:
+
+- `FuelUsePerHour` is not stable enough to treat as lap-average burn by itself. In the 4-hour Nürburgring raw capture, sampled valid-level `FuelUsePerHour` commonly implied about 18-19 L/lap even though the historical fuel-delta baseline for the same combo is about 13.4 L/lap.
+- Some frames expose positive `FuelUsePerHour` while `FuelLevel` is zero or unavailable. That must not become a measured fuel baseline.
+- Future live fuel work should prefer a rolling measured fuel-level delta over valid green-flag distance/time, using the instantaneous burn channel as an activity/diagnostic signal or short-term hint only after smoothing and confidence checks.
+
 When the selected/focused driver or team state cannot expose scalar fuel, the fuel calculator should not collapse to an empty table if history exists. It should still analyze completed stint history for the active car/track/session, render modeled stint rows and strategy comparison, and label the burn/stint source as historical/model rather than live measured fuel.
 
 ## History Lookup
@@ -108,6 +114,13 @@ The calculator selects fuel per lap in this order:
 3. Unavailable.
 
 When live fuel per lap is selected, history min/max can still appear as context in the source row.
+
+Planned hardening:
+
+- Add a live measured-burn estimator based on fuel-level deltas over valid on-track distance/time.
+- Require minimum evidence windows before measured live burn can drive stint targets.
+- Reject samples around pits, refuels, session resets, zero/unavailable fuel levels, and implausible fuel deltas.
+- Keep `FuelUsePerHour` out of primary strategy selection until it is smoothed and agrees with measured fuel-level behavior.
 
 ## Lap Time Selection
 
@@ -371,3 +384,12 @@ The source row includes:
 - Missing focused-driver fuel should still allow stint-history analysis rows when matching history exists.
 - Strategy suggestions should distinguish measured facts from model assumptions.
 - The table layout should stay stable during a run.
+
+## 24-Hour Race Findings
+
+Live endurance-race review found that fuel strategy needs a team-stint model rather than stitching scalar contexts through driver changes:
+
+- When a teammate got in the car, the overlay stitched contexts instead of showing a holistic view that combined detailed local-driver fuel evidence with teammate stint-length evidence.
+- It suggested impossible or unhelpful stint-length options, including 5-lap "time-saving" style options during a race where the team consistently ran 7-lap stints.
+
+Future fuel work should keep local measured fuel windows, teammate stint lengths, pit/service history, and model assumptions as separate evidence families. Strategy suggestions should be gated by completed-stint history, max fuel, current stint phase, and realistic endurance-race feasibility before they are promoted to user-facing advice.

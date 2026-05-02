@@ -13,6 +13,8 @@ internal sealed class TelemetryCaptureOptions
 
     public int QueueCapacity { get; init; } = 2048;
 
+    public int MaxSynthesisMilliseconds { get; init; } = 60_000;
+
     public static TelemetryCaptureOptions FromConfiguration(
         IConfiguration configuration,
         AppStorageOptions storageOptions)
@@ -24,7 +26,8 @@ internal sealed class TelemetryCaptureOptions
             ResolvedCaptureRoot = storageOptions.CaptureRoot,
             RawCaptureEnabled = ParseBoolean(section["RawCaptureEnabled"], defaultValue: false),
             StoreSessionInfoSnapshots = ParseBoolean(section["StoreSessionInfoSnapshots"], defaultValue: true),
-            QueueCapacity = ParseInt32(section["QueueCapacity"], defaultValue: 2048, minimumValue: 128)
+            QueueCapacity = ParseInt32(section["QueueCapacity"], defaultValue: 2048, minimumValue: 128),
+            MaxSynthesisMilliseconds = ParseInt32(section["MaxSynthesisMilliseconds"], defaultValue: 60_000, minimumValue: 5_000)
         };
     }
 
