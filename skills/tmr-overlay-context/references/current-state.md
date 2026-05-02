@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-04-30
+Last updated: 2026-05-02
 
 ## Project Goal
 
@@ -126,6 +126,8 @@ Last updated: 2026-04-30
   - records compact historical telemetry samples every frame
   - snapshots session YAML into the history accumulator whenever `SessionInfoUpdate` changes
   - creates raw capture directories and copies the raw telemetry buffer only when raw capture is enabled by startup configuration or runtime overlay request
+  - ties IBT telemetry logging to the same raw-capture switch by default, so raw capture start/stop requests also ask iRacing to start/stop `.ibt` logging
+  - writes post-session sidecars after raw capture finalization: `capture-synthesis.json` runs immediately from the closed TmrOverlay capture with a timeout, while `ibt-analysis/*.json` waits only a bounded time for iRacing to stop writing before skipping and leaving the capture eligible for startup recovery
   - records bounded compact edge-case telemetry artifacts for every live session by combining normalized live samples with selected scalar raw watch channels for fuel, tires, suspension, brakes, wheel speed, pit service, weather, engine/replay/system/network state, incidents, and driver-control changes; artifacts also count observations dropped after the clip cap and include a final sampled context tail so long spectated/parked sessions still have late-session telemetry context
   - isolates raw-capture frame queue/write/read failures from live history, normalized live telemetry, and overlay performance recording so overlays can keep updating while capture diagnostics run
   - logs and records app events for runtime raw-capture start failures instead of silently failing
@@ -139,6 +141,8 @@ Last updated: 2026-04-30
     - `capture-manifest.json`
     - `latest-session.yaml`
     - optional historical `session-info/*.yaml`
+    - post-session `capture-synthesis.json` is written by `CaptureSynthesisService`, not by the live writer
+    - post-session `ibt-analysis/*.json` is written by `IbtAnalysisService` when enabled and a candidate `.ibt` can be selected or a skipped/failed status is recorded
   - uses a bounded channel to decouple SDK callbacks from disk writes
   - drops frames when the queue fills instead of blocking the SDK callback path
 
@@ -160,7 +164,9 @@ Last updated: 2026-04-30
   - `LiveTelemetryStore` is the shared normalized live source for product overlays
   - `ILiveTelemetrySource` is the read boundary for overlays and the local bridge
   - `ILiveTelemetrySink` is the write boundary for live iRacing collection and replay/dev providers
-  - `LiveTelemetrySnapshot` now includes fuel, proximity, leader-gap, and same-class gap graph inputs derived from each frame
+  - `LiveTelemetrySnapshot` includes fuel, proximity, leader-gap, and same-class gap graph inputs derived from each frame
+  - `LiveTelemetrySnapshot.Models` is an additive live-only model layer with session, driver-directory, timing, relative, spatial, weather, fuel/pit, race-event, and input availability families; it is derived from existing normalized samples and keeps raw capture, compact history, post-race analysis, and existing synthesized data backwards-compatible
+  - `TimingColumnRegistry` defines reusable table-column keys and formatters for future standings/relative-style overlays without registering new overlays yet
 
 ### Session history
 
@@ -219,11 +225,11 @@ Last updated: 2026-04-30
   - includes a local-development build freshness check that warns when source files in the checkout are newer than the running build
 
 - `src/TmrOverlay.App/Diagnostics/`
-  - creates support bundles with app/storage metadata, telemetry state, lightweight performance snapshots, recent performance logs, runtime state, settings, logs/events, and latest capture metadata
+  - creates support bundles with app/storage metadata, telemetry state, lightweight performance snapshots, recent performance logs, runtime state, settings, logs/events, and latest capture metadata plus compact capture/IBT sidecars
   - includes recent compact edge-case telemetry artifacts under `edge-cases/`, including their final context tail when present
   - includes recent post-race analysis JSON at top-level `analysis/` plus recent user-history summaries and aggregates so collected car/track/session metrics can be inspected for accuracy
   - creates a best-effort diagnostics bundle automatically when a live telemetry session finalizes, and the Error Logging tab reports the latest automatic bundle
-  - intentionally excludes raw `telemetry.bin`
+  - intentionally excludes raw `telemetry.bin` and source `.ibt` payloads
 
 - `src/TmrOverlay.App/Retention/`
   - removes old capture directories and diagnostics bundles on startup
@@ -280,6 +286,7 @@ Last updated: 2026-04-30
 
 - Validation standard going forward:
   - rendered screenshots are validation artifacts as well as design artifacts
+  - `skills/tmr-overlay-validation/SKILL.md` contains the repo validation checklist, including the local C# duplicate-member / primary-constructor scope scanner for Windows-only compile-shape hazards
   - each scenario fixture should make both positive expectations and negative expectations obvious
   - waiting/unavailable/error paths should be deterministic and isolated from local machine state unless the scenario explicitly tests history fallback or support-path display
   - the same fixture-driven approach applies to collectors, diagnostics bundles, retention, updater, settings, and performance telemetry paths
@@ -301,6 +308,8 @@ Short version for opt-in raw capture:
 - `telemetry.bin` stores raw frame payloads with a small per-frame header
 - `latest-session.yaml` stores the latest raw session string
 - `session-info/` preserves session-history snapshots
+- `capture-synthesis.json` is an additive compact sidecar written after finalization when possible and bounded by `TelemetryCapture:MaxSynthesisMilliseconds`
+- `ibt-analysis/*.json` is an additive compact sidecar set written when IBT analysis is enabled; missing sidecars on older captures are expected and startup recovery can fill them later
 
 Raw capture format is preserved for diagnostics and future deep-dive analysis, but it is no longer the default production data path.
 
@@ -341,12 +350,25 @@ Current keys:
 - `TelemetryCapture:StoreSessionInfoSnapshots`
 - `TelemetryCapture:RawCaptureEnabled`
 - `TelemetryCapture:QueueCapacity`
+- `TelemetryCapture:MaxSynthesisMilliseconds`
 - `TelemetryEdgeCases:Enabled`
 - `TelemetryEdgeCases:PreTriggerSeconds`
 - `TelemetryEdgeCases:PostTriggerSeconds`
 - `TelemetryEdgeCases:MaxClipsPerSession`
 - `TelemetryEdgeCases:MaxFramesPerClip`
 - `TelemetryEdgeCases:MinimumFrameSpacingSeconds`
+- `IbtAnalysis:Enabled`
+- `IbtAnalysis:TelemetryLoggingEnabled`
+- `IbtAnalysis:TelemetryRoot`
+- `IbtAnalysis:MaxCandidateAgeMinutes`
+- `IbtAnalysis:MaxCandidateBytes`
+- `IbtAnalysis:MaxAnalysisMilliseconds`
+- `IbtAnalysis:MaxSampledRecords`
+- `IbtAnalysis:MinStableAgeSeconds`
+- `IbtAnalysis:MaxIRacingExitWaitSeconds`
+- `IbtAnalysis:MaxCandidateFiles`
+- `IbtAnalysis:CopyIbtIntoCaptureDirectory`
+- `IbtAnalysis:OutputDirectoryName`
 - `SessionHistory:Enabled`
 - `SessionHistory:UseBaselineHistory`
 - `Storage:UseRepositoryLocalStorage`
@@ -381,7 +403,8 @@ Current keys:
 Current default:
 
 - writable storage resolves under `%LOCALAPPDATA%/TmrOverlay`
-- raw captures default to `%LOCALAPPDATA%/TmrOverlay/captures` but are disabled unless `TelemetryCapture:RawCaptureEnabled=true`
+- raw captures default to `%LOCALAPPDATA%/TmrOverlay/captures` but are disabled unless `TelemetryCapture:RawCaptureEnabled=true`; post-session capture synthesis defaults to a 60-second timeout
+- IBT analysis defaults on for raw captures, requests iRacing telemetry logging with the raw-capture switch, reads candidates from `%USERPROFILE%/Documents/iRacing/telemetry`, waits at most 60 seconds for iRacing to stop writing before skipping, and does not copy source `.ibt` files by default
 - user history defaults to `%LOCALAPPDATA%/TmrOverlay/history/user`
 - local logs default to `%LOCALAPPDATA%/TmrOverlay/logs`
 - app events default to `%LOCALAPPDATA%/TmrOverlay/logs/events`

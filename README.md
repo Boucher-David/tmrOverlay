@@ -20,7 +20,7 @@
   The radar is a transparent circular proximity view that only paints from fresh live telemetry, follows the current camera/focus car when available, prefers physical distance from `CarIdxLapDistPct` and track length for close-range placement, falls back to reliable live time gaps when distance is unavailable, uses `CarLeftRight` as the authoritative alongside signal, fades nearby neutral-white car rectangles in between radar entry and the yellow-warning threshold, moves them through yellow toward saturated alert red only inside the close bumper-gap warning buffer, labels its range rings, and can show an outer-ring multiclass warning for cars behind outside the 2-second timing fallback but within 5 seconds. The gap overlay is a four-hour in-class trend graph with the focused car's class leader as the top baseline, adaptive Y-axis scaling, left-side axis labels, lap reference lines, subtle weather bands, driver/leader-change markers, dimmed context lines, and endpoint `P<N>` labels. It keeps bounded in-memory traces for all available same-class timing rows, while dynamically rendering the leader, the focused car, nearby class traffic, and recently visible cars.
 - Stores early pit-service history signals such as pit-lane time, pit-stall/service time, observed fuel fill rate, tire/repair indicators, and confidence flags.
 - Keeps raw capture as an opt-in diagnostic/development mode; the settings window can request raw capture at runtime if the app was started without the flag.
-- When raw capture is enabled, stores `telemetry.bin`, `telemetry-schema.json`, `latest-session.yaml`, optional `session-info/`, and `capture-manifest.json`.
+- When raw capture is enabled, stores `telemetry.bin`, `telemetry-schema.json`, `latest-session.yaml`, optional `session-info/`, and `capture-manifest.json`, then writes compact `capture-synthesis.json` and optional `ibt-analysis/*.json` sidecars after the session.
 - Always records compact edge-case telemetry artifacts after a live session. These are bounded JSON clips around suspicious or newly exposed telemetry states, not full raw frame payloads.
 - Shows live-analysis health signals in the overlay, plus disk-write health when raw capture is enabled.
 - Writes rolling local logs, JSONL app events, runtime-state markers, persisted settings, lightweight performance snapshots, and diagnostics bundles for triage.
@@ -44,6 +44,7 @@
 - `docs/capture-format.md` documents the binary frame format used by `telemetry.bin`.
 - `docs/edge-case-telemetry-logic.md` documents the compact edge-case detector/report rules.
 - `docs/history-data-evolution.md` documents how future app versions should migrate or rebuild user history written by older versions.
+- `docs/ibt-analysis.md` documents the compact IBT sidecar investigation path.
 - `docs/overlay-logic.md` is the human-readable index for how each overlay derives and displays its state.
 - `telemetry.md` summarizes the event/session/car schema exposed by the current raw capture model.
 
@@ -72,6 +73,10 @@ Each capture folder contains:
 - `telemetry.bin`
 - `latest-session.yaml`
 - `session-info/`
+- `capture-synthesis.json` after post-session synthesis succeeds
+- `ibt-analysis/*.json` when IBT analysis is enabled and a matching iRacing `.ibt` file can be selected or skipped/failure status is recorded
+
+IBT logging uses the same raw-capture switch by default. Starting raw capture requests iRacing telemetry logging, and capture finalization requests logging to stop. The post-session analyzer writes compact JSON sidecars only, enforces a timeout for capture synthesis, scans a bounded set of recent `.ibt` candidates, enforces size/stability/sample/time limits, and does not copy source `.ibt` files into the capture directory unless `IbtAnalysis:CopyIbtIntoCaptureDirectory=true`.
 
 ## Edge-Case Telemetry Artifacts
 
@@ -258,7 +263,7 @@ The tray menu can create a diagnostics bundle under:
 
 Performance diagnostics are always on, even when raw capture is disabled. The app writes periodic JSONL snapshots under `%LOCALAPPDATA%\TmrOverlay\logs\performance` with telemetry throughput, iRacing network/system values such as channel quality, latency, frame rate, CPU/GPU use, replay/on-track state, overlay refresh timing, overlay update-decision counters, capture writer state when available, process memory, and GC counts.
 
-Bundles include app/storage metadata, telemetry state, lightweight performance snapshots, recent performance logs, runtime state, settings, recent logs/events, compact edge-case telemetry JSON, latest capture metadata, recent post-race analysis JSON under top-level `analysis/`, and recent user-history summaries/aggregates for car/track/session accuracy checks. They intentionally exclude raw `telemetry.bin` payloads.
+Bundles include app/storage metadata, telemetry state, lightweight performance snapshots, recent performance logs, runtime state, settings, recent logs/events, compact edge-case telemetry JSON, latest capture metadata and compact sidecars, recent post-race analysis JSON under top-level `analysis/`, and recent user-history summaries/aggregates for car/track/session accuracy checks. They intentionally exclude raw `telemetry.bin` and source `.ibt` payloads.
 
 See `docs/update-strategy.md` for the current update notification and self-update plan.
 

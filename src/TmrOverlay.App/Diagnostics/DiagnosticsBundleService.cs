@@ -14,6 +14,7 @@ internal sealed class DiagnosticsBundleService
     private const int MaxRecentHistorySummaryFiles = 50;
     private const int MaxRecentHistoryAggregateFiles = 50;
     private const int MaxRecentEdgeCaseFiles = 20;
+    private const int MaxLatestCaptureIbtAnalysisFiles = 12;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -298,6 +299,13 @@ internal sealed class DiagnosticsBundleService
         AddFileIfExists(archive, Path.Combine(captureDirectory, "capture-manifest.json"), "latest-capture/capture-manifest.json");
         AddFileIfExists(archive, Path.Combine(captureDirectory, "telemetry-schema.json"), "latest-capture/telemetry-schema.json");
         AddFileIfExists(archive, Path.Combine(captureDirectory, "latest-session.yaml"), "latest-capture/latest-session.yaml");
+        AddFileIfExists(archive, Path.Combine(captureDirectory, "capture-synthesis.json"), "latest-capture/capture-synthesis.json");
+        AddRecentFiles(
+            archive,
+            Path.Combine(captureDirectory, "ibt-analysis"),
+            "*.json",
+            "latest-capture/ibt-analysis",
+            MaxLatestCaptureIbtAnalysisFiles);
     }
 
     private static void AddRecentFiles(

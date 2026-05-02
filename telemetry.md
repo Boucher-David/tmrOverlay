@@ -6,7 +6,7 @@ This file describes the current raw capture model in three layers:
 - `session`: the active iRacing session state
 - `car`: static vehicle identity plus dynamic usage telemetry
 
-The current production path analyzes live SDK data and stores compact session history. Raw capture remains available as an opt-in diagnostic/development mode; when enabled it stores raw frame payloads in `telemetry.bin`, variable definitions in `telemetry-schema.json`, session YAML in `latest-session.yaml`, and capture metadata in `capture-manifest.json`.
+The current production path analyzes live SDK data and stores compact session history. Raw capture remains available as an opt-in diagnostic/development mode; when enabled it stores raw frame payloads in `telemetry.bin`, variable definitions in `telemetry-schema.json`, session YAML in `latest-session.yaml`, and capture metadata in `capture-manifest.json`. Post-session tooling can also add compact sidecars: `capture-synthesis.json` for sampled raw-capture investigation and `ibt-analysis/*.json` for bounded analysis of the best matching iRacing `.ibt` file.
 
 The app also writes compact edge-case telemetry artifacts after each live session under `logs/edge-cases/`. These JSON files are independent of raw capture and are meant to answer targeted diagnostics questions without storing full-frame payloads. They include short pre/post clips around detector triggers, selected normalized live fields, selected nearby/class timing rows, watched scalar raw values, watched-variable schema, and the watched variables that were missing for the current car/session.
 

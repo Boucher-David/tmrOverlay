@@ -9,6 +9,13 @@ Raw capture is an opt-in diagnostic/development mode. When `TelemetryCapture:Raw
 
 Optional historical session snapshots are stored under `session-info/`.
 
+After capture finalization, the app also writes compact post-session sidecars when possible:
+
+- `capture-synthesis.json` summarizes the raw capture schema and sampled frame values for investigation without reopening the full binary payload. It is bounded by `TelemetryCapture:MaxSynthesisMilliseconds`.
+- `ibt-analysis/*.json` summarizes the best matching iRacing `.ibt` file when IBT analysis is enabled and a stable candidate is available.
+
+These sidecars are additive. Existing raw captures without them remain readable, startup recovery can fill missing sidecars later, and source `.ibt` files are not copied into capture directories by default.
+
 Compact edge-case telemetry artifacts are not part of the raw capture format. They are written separately under the logs root as JSON and may be included in diagnostics bundles without including `telemetry.bin`.
 
 ## `telemetry-schema.json`

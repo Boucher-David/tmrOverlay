@@ -23,6 +23,7 @@ Start here when continuing work in this repo.
 `AGENTS.md` is the authoritative repo-level contract. The repo skill below is supplemental context for deeper product/current-state details.
 
 - `skills/tmr-overlay-context/SKILL.md`
+- `skills/tmr-overlay-validation/SKILL.md`
 - `skills/tmr-overlay-context/references/current-state.md`
 - `skills/tmr-overlay-context/references/fuel-overlay-context.md`
 - `skills/tmr-overlay-context/references/overlay-research.md`

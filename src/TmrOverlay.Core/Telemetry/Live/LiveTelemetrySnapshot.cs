@@ -18,6 +18,8 @@ internal sealed record LiveTelemetrySnapshot(
 {
     public int CompletedStintCount { get; init; }
 
+    public LiveRaceModels Models { get; init; } = LiveRaceModels.Empty;
+
     public static LiveTelemetrySnapshot Empty { get; } = new(
         IsConnected: false,
         IsCollecting: false,

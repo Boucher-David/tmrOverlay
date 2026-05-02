@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using irsdkSharp;
+using irsdkSharp.Enums;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Analysis;
@@ -17,6 +18,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 {
     private readonly ILogger<TelemetryCaptureHostedService> _logger;
     private readonly TelemetryCaptureOptions _options;
+    private readonly IbtAnalysisOptions _ibtOptions;
+    private readonly IbtAnalysisService _ibtAnalysis;
     private readonly AppEventRecorder _events;
     private readonly SessionHistoryStore _sessionHistoryStore;
     private readonly PostRaceAnalysisPipeline _postRaceAnalysisPipeline;
@@ -26,10 +29,13 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     private readonly AppPerformanceState _performance;
     private readonly TelemetryEdgeCaseRecorder _edgeCaseRecorder;
     private readonly object _sync = new();
+    private readonly SemaphoreSlim _postSessionArtifactSemaphore = new(1, 1);
+    private readonly CancellationTokenSource _startupArtifactCancellation = new();
     private IRacingSDK? _sdk;
     private TelemetryCaptureSession? _activeCapture;
     private HistoricalSessionAccumulator? _activeHistory;
     private Task _finalizerTask = Task.CompletedTask;
+    private Task _startupArtifactTask = Task.CompletedTask;
     private string? _activeSourceId;
     private DateTimeOffset? _activeStartedAtUtc;
     private IReadOnlyList<string> _activeRawWatchVariableNames = [];
@@ -40,6 +46,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     public TelemetryCaptureHostedService(
         ILogger<TelemetryCaptureHostedService> logger,
         TelemetryCaptureOptions options,
+        IbtAnalysisOptions ibtOptions,
+        IbtAnalysisService ibtAnalysis,
         AppEventRecorder events,
         SessionHistoryStore sessionHistoryStore,
         PostRaceAnalysisPipeline postRaceAnalysisPipeline,
@@ -51,6 +59,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     {
         _logger = logger;
         _options = options;
+        _ibtOptions = ibtOptions;
+        _ibtAnalysis = ibtAnalysis;
         _events = events;
         _sessionHistoryStore = sessionHistoryStore;
         _postRaceAnalysisPipeline = postRaceAnalysisPipeline;
@@ -86,9 +96,15 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         _sdk.OnDataChanged += HandleDataChanged;
 
         _logger.LogInformation(
-            "Telemetry collection service started. Raw capture enabled: {RawCaptureEnabled}. Capture root: {CaptureRoot}.",
+            "Telemetry collection service started. Raw capture enabled: {RawCaptureEnabled}. IBT analysis enabled: {IbtAnalysisEnabled}. IBT telemetry logging enabled: {IbtTelemetryLoggingEnabled}. Capture root: {CaptureRoot}. IBT root: {IbtTelemetryRoot}.",
             _options.RawCaptureEnabled,
-            _options.ResolvedCaptureRoot);
+            _ibtOptions.Enabled,
+            _ibtOptions.TelemetryLoggingEnabled,
+            _options.ResolvedCaptureRoot,
+            _ibtOptions.TelemetryRoot);
+        _startupArtifactTask = Task.Run(
+            () => RecoverPendingPostSessionArtifactsAsync(_startupArtifactCancellation.Token),
+            CancellationToken.None);
         return Task.CompletedTask;
     }
 
@@ -118,8 +134,19 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             _lastSessionInfoUpdate = -1;
         }
 
+        _startupArtifactCancellation.Cancel();
+        try
+        {
+            await _startupArtifactTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested || _startupArtifactCancellation.IsCancellationRequested)
+        {
+            // Startup artifact recovery is best-effort and must not block app shutdown.
+        }
+
         if (captureToFinalize is not null || historyToFinalize is not null)
         {
+            TryStopIbtTelemetryLogging(_sdk, captureToFinalize, "app_stopped");
             await FinalizeCollectionAsync(captureToFinalize, historyToFinalize, finalization).ConfigureAwait(false);
         }
 
@@ -170,6 +197,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 
         if (captureToFinalize is not null || historyToFinalize is not null)
         {
+            TryStopIbtTelemetryLogging(_sdk, captureToFinalize, "iracing_disconnected");
             _finalizerTask = FinalizeCollectionAsync(captureToFinalize, historyToFinalize, finalization);
         }
     }
@@ -402,7 +430,92 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             RecordCurrentCaptureSessionInfoSnapshot(capture, sdk, capturedAtUtc, sdk.Header.SessionInfoUpdate);
         }
 
+        TryStartIbtTelemetryLogging(sdk, capture);
         return capture;
+    }
+
+    private void TryStartIbtTelemetryLogging(IRacingSDK sdk, TelemetryCaptureSession capture)
+    {
+        if (!_ibtOptions.Enabled || !_ibtOptions.TelemetryLoggingEnabled)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = sdk.BroadcastMessage(
+                BroadcastMessageTypes.TelemCommand,
+                (int)TelemCommandModeTypes.ToStart,
+                0);
+            _events.Record("ibt_telemetry_logging_start_requested", new Dictionary<string, string?>
+            {
+                ["captureId"] = capture.CaptureId,
+                ["captureDirectory"] = capture.DirectoryPath,
+                ["telemetryRoot"] = _ibtOptions.TelemetryRoot,
+                ["broadcastResult"] = result.ToString()
+            });
+            _logger.LogInformation(
+                "Requested iRacing IBT telemetry logging for raw capture {CaptureId}. Broadcast result: {BroadcastResult}.",
+                capture.CaptureId,
+                result);
+        }
+        catch (Exception exception)
+        {
+            _state.RecordWarning($"IBT telemetry logging start failed: {exception.Message}");
+            _events.Record("ibt_telemetry_logging_start_failed", new Dictionary<string, string?>
+            {
+                ["captureId"] = capture.CaptureId,
+                ["captureDirectory"] = capture.DirectoryPath,
+                ["error"] = exception.GetType().Name
+            });
+            _logger.LogWarning(exception, "Failed to request iRacing IBT telemetry logging for raw capture {CaptureId}.", capture.CaptureId);
+        }
+    }
+
+    private void TryStopIbtTelemetryLogging(IRacingSDK? sdk, TelemetryCaptureSession? capture, string endedReason)
+    {
+        if (!_ibtOptions.Enabled || !_ibtOptions.TelemetryLoggingEnabled || sdk is null || capture is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!sdk.IsConnected())
+            {
+                return;
+            }
+
+            var result = sdk.BroadcastMessage(
+                BroadcastMessageTypes.TelemCommand,
+                (int)TelemCommandModeTypes.Stop,
+                0);
+            _events.Record("ibt_telemetry_logging_stop_requested", new Dictionary<string, string?>
+            {
+                ["captureId"] = capture.CaptureId,
+                ["captureDirectory"] = capture.DirectoryPath,
+                ["telemetryRoot"] = _ibtOptions.TelemetryRoot,
+                ["endedReason"] = endedReason,
+                ["broadcastResult"] = result.ToString()
+            });
+            _logger.LogInformation(
+                "Requested iRacing IBT telemetry logging stop for raw capture {CaptureId}. Reason: {EndedReason}. Broadcast result: {BroadcastResult}.",
+                capture.CaptureId,
+                endedReason,
+                result);
+        }
+        catch (Exception exception)
+        {
+            _state.RecordWarning($"IBT telemetry logging stop failed: {exception.Message}");
+            _events.Record("ibt_telemetry_logging_stop_failed", new Dictionary<string, string?>
+            {
+                ["captureId"] = capture.CaptureId,
+                ["captureDirectory"] = capture.DirectoryPath,
+                ["endedReason"] = endedReason,
+                ["error"] = exception.GetType().Name
+            });
+            _logger.LogWarning(exception, "Failed to request iRacing IBT telemetry logging stop for raw capture {CaptureId}.", capture.CaptureId);
+        }
     }
 
     private TelemetryCaptureSession CreateCaptureSession(IRacingSDK sdk)
@@ -1547,6 +1660,15 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                     edgeCaseFinalizeSucceeded);
             }
 
+            if (capture is not null)
+            {
+                await WritePostSessionArtifactsAsync(
+                    capture.DirectoryPath,
+                    capture.CaptureId,
+                    waitForIRacingExit: _sdk?.IsConnected() != true,
+                    CancellationToken.None).ConfigureAwait(false);
+            }
+
             finalizeSucceeded = true;
         }
         catch (Exception exception)
@@ -1563,6 +1685,336 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         }
 
         CreateEndOfSessionDiagnosticsBundle(finalization);
+    }
+
+    private async Task RecoverPendingPostSessionArtifactsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var pendingSynthesis = CaptureSynthesisService.FindPendingSynthesisCaptures(_options.ResolvedCaptureRoot);
+            var pendingIbt = _ibtAnalysis.FindPendingAnalysisCaptures(_options.ResolvedCaptureRoot);
+            var pendingDirectories = pendingSynthesis
+                .Select(item => new PendingArtifactDirectory(
+                    item.DirectoryPath,
+                    item.CaptureId,
+                    item.StartedAtUtc,
+                    item.Reason))
+                .Concat(pendingIbt.Select(item => new PendingArtifactDirectory(
+                    item.DirectoryPath,
+                    item.CaptureId,
+                    item.StartedAtUtc,
+                    item.Reason)))
+                .GroupBy(item => item.DirectoryPath, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group
+                    .OrderBy(item => item.StartedAtUtc ?? DateTimeOffset.MaxValue)
+                    .First())
+                .OrderBy(item => item.StartedAtUtc ?? DateTimeOffset.MaxValue)
+                .ThenBy(item => item.DirectoryPath, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (pendingDirectories.Length == 0)
+            {
+                return;
+            }
+
+            _events.Record("post_session_artifact_recovery_found", new Dictionary<string, string?>
+            {
+                ["pendingCount"] = pendingDirectories.Length.ToString(),
+                ["captureRoot"] = _options.ResolvedCaptureRoot
+            });
+            _logger.LogInformation(
+                "Startup artifact recovery found {PendingCount} raw captures missing capture synthesis or IBT analysis sidecars.",
+                pendingDirectories.Length);
+
+            foreach (var pending in pendingDirectories)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await WritePostSessionArtifactsAsync(
+                    pending.DirectoryPath,
+                    pending.CaptureId,
+                    waitForIRacingExit: true,
+                    cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Startup recovery is best-effort and may be cancelled during app shutdown.
+        }
+        catch (Exception exception)
+        {
+            _events.Record("post_session_artifact_recovery_failed", new Dictionary<string, string?>
+            {
+                ["captureRoot"] = _options.ResolvedCaptureRoot,
+                ["error"] = exception.GetType().Name
+            });
+            _logger.LogWarning(exception, "Startup post-session artifact recovery failed.");
+        }
+    }
+
+    private async Task WritePostSessionArtifactsAsync(
+        string captureDirectory,
+        string? captureId,
+        bool waitForIRacingExit,
+        CancellationToken cancellationToken)
+    {
+        await _postSessionArtifactSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!Directory.Exists(captureDirectory))
+            {
+                return;
+            }
+
+            if (!CaptureSynthesisService.HasStableSynthesis(captureDirectory))
+            {
+                await WriteCaptureSynthesisAsync(captureDirectory, captureId, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (_ibtOptions.Enabled && !_ibtAnalysis.HasAnalysisStatus(captureDirectory))
+            {
+                if (waitForIRacingExit)
+                {
+                    var ibtReady = await WaitForIRacingExitAsync(captureDirectory, captureId, cancellationToken).ConfigureAwait(false);
+                    if (!ibtReady)
+                    {
+                        return;
+                    }
+                }
+                else if (IsIRacingStillRunning(out var blocker))
+                {
+                    RecordIbtAnalysisSkippedForRunningSim(captureDirectory, captureId, blocker, "sim_running");
+                    return;
+                }
+
+                await WriteIbtAnalysisAsync(captureDirectory, captureId, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _postSessionArtifactSemaphore.Release();
+        }
+    }
+
+    private async Task WriteCaptureSynthesisAsync(
+        string captureDirectory,
+        string? captureId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromMilliseconds(_options.MaxSynthesisMilliseconds));
+            var result = await CaptureSynthesisService.WriteAsync(captureDirectory, timeout.Token).ConfigureAwait(false);
+            _events.Record("capture_synthesis_saved", new Dictionary<string, string?>
+            {
+                ["captureId"] = captureId,
+                ["captureDirectory"] = captureDirectory,
+                ["synthesisPath"] = result.Path,
+                ["stableSynthesisPath"] = result.StablePath,
+                ["synthesisBytes"] = result.Bytes.ToString(),
+                ["telemetryBytes"] = result.TelemetryBytes.ToString(),
+                ["elapsedMilliseconds"] = result.ElapsedMilliseconds.ToString(),
+                ["processCpuMilliseconds"] = result.ProcessCpuMilliseconds.ToString(),
+                ["totalFrameRecords"] = result.TotalFrameRecords.ToString(),
+                ["sampledFrameCount"] = result.SampledFrameCount.ToString(),
+                ["sampleStride"] = result.SampleStride.ToString(),
+                ["fieldCount"] = result.FieldCount.ToString()
+            });
+            _logger.LogInformation(
+                "Saved capture synthesis {CaptureSynthesisPath} ({CaptureSynthesisBytes} bytes) in {ElapsedMilliseconds} ms from {TelemetryBytes} telemetry bytes.",
+                result.Path,
+                result.Bytes,
+                result.ElapsedMilliseconds,
+                result.TelemetryBytes);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            _state.RecordWarning("Capture synthesis timed out.");
+            _events.Record("capture_synthesis_failed", new Dictionary<string, string?>
+            {
+                ["captureId"] = captureId,
+                ["captureDirectory"] = captureDirectory,
+                ["error"] = "Timeout",
+                ["maxSynthesisMilliseconds"] = _options.MaxSynthesisMilliseconds.ToString()
+            });
+            _logger.LogWarning(
+                "Capture synthesis timed out after {MaxSynthesisMilliseconds} ms for {CaptureDirectory}.",
+                _options.MaxSynthesisMilliseconds,
+                captureDirectory);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _state.RecordWarning($"Capture synthesis failed: {exception.Message}");
+            _events.Record("capture_synthesis_failed", new Dictionary<string, string?>
+            {
+                ["captureId"] = captureId,
+                ["captureDirectory"] = captureDirectory,
+                ["error"] = exception.GetType().Name
+            });
+            _logger.LogWarning(exception, "Failed to write capture synthesis for {CaptureDirectory}.", captureDirectory);
+        }
+    }
+
+    private async Task WriteIbtAnalysisAsync(
+        string captureDirectory,
+        string? captureId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _ibtAnalysis.WriteAsync(captureDirectory, cancellationToken).ConfigureAwait(false);
+            var properties = new Dictionary<string, string?>
+            {
+                ["captureId"] = captureId,
+                ["captureDirectory"] = captureDirectory,
+                ["status"] = result.Status,
+                ["reason"] = result.Reason,
+                ["statusPath"] = result.StatusPath,
+                ["outputDirectory"] = result.OutputDirectory,
+                ["sourcePath"] = result.SourcePath,
+                ["sourceBytes"] = result.SourceBytes?.ToString(),
+                ["elapsedMilliseconds"] = result.ElapsedMilliseconds.ToString(),
+                ["fieldCount"] = result.FieldCount?.ToString(),
+                ["totalRecordCount"] = result.TotalRecordCount?.ToString(),
+                ["sampledRecordCount"] = result.SampledRecordCount?.ToString()
+            };
+
+            if (string.Equals(result.Status, IbtAnalysisStatus.Succeeded, StringComparison.OrdinalIgnoreCase))
+            {
+                _events.Record("ibt_analysis_saved", properties);
+                _logger.LogInformation(
+                    "Saved IBT analysis for {CaptureDirectory} from {IbtPath} in {ElapsedMilliseconds} ms.",
+                    captureDirectory,
+                    result.SourcePath,
+                    result.ElapsedMilliseconds);
+                return;
+            }
+
+            _events.Record(
+                string.Equals(result.Status, IbtAnalysisStatus.Failed, StringComparison.OrdinalIgnoreCase)
+                    ? "ibt_analysis_failed"
+                    : "ibt_analysis_skipped",
+                properties);
+            if (string.Equals(result.Status, IbtAnalysisStatus.Failed, StringComparison.OrdinalIgnoreCase))
+            {
+                _state.RecordWarning($"IBT analysis failed: {result.Reason ?? "unknown"}");
+                _logger.LogWarning(
+                    "IBT analysis failed for {CaptureDirectory}. Reason: {Reason}.",
+                    captureDirectory,
+                    result.Reason);
+                return;
+            }
+
+            _logger.LogInformation(
+                "Skipped IBT analysis for {CaptureDirectory}. Reason: {Reason}.",
+                captureDirectory,
+                result.Reason);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _state.RecordWarning($"IBT analysis failed: {exception.Message}");
+            _events.Record("ibt_analysis_failed", new Dictionary<string, string?>
+            {
+                ["captureId"] = captureId,
+                ["captureDirectory"] = captureDirectory,
+                ["error"] = exception.GetType().Name
+            });
+            _logger.LogWarning(exception, "Failed to write IBT analysis for {CaptureDirectory}.", captureDirectory);
+        }
+    }
+
+    private async Task<bool> WaitForIRacingExitAsync(
+        string captureDirectory,
+        string? captureId,
+        CancellationToken cancellationToken)
+    {
+        if (!IsIRacingStillRunning(out var blocker))
+        {
+            return true;
+        }
+
+        var timeout = TimeSpan.FromSeconds(_ibtOptions.MaxIRacingExitWaitSeconds);
+        if (timeout <= TimeSpan.Zero)
+        {
+            RecordIbtAnalysisSkippedForRunningSim(captureDirectory, captureId, blocker, "sim_running");
+            return false;
+        }
+
+        _events.Record("ibt_analysis_waiting_for_iracing_exit", new Dictionary<string, string?>
+        {
+            ["captureId"] = captureId,
+            ["captureDirectory"] = captureDirectory,
+            ["blocker"] = blocker,
+            ["maxWaitSeconds"] = _ibtOptions.MaxIRacingExitWaitSeconds.ToString()
+        });
+        _logger.LogInformation(
+            "Waiting up to {MaxWaitSeconds} seconds before IBT analysis for {CaptureDirectory} because iRacing is still running: {Blocker}.",
+            _ibtOptions.MaxIRacingExitWaitSeconds,
+            captureDirectory,
+            blocker);
+
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var remaining = deadline - DateTimeOffset.UtcNow;
+            if (remaining <= TimeSpan.Zero)
+            {
+                break;
+            }
+
+            await Task.Delay(
+                remaining < TimeSpan.FromSeconds(5) ? remaining : TimeSpan.FromSeconds(5),
+                cancellationToken).ConfigureAwait(false);
+
+            if (!IsIRacingStillRunning(out blocker))
+            {
+                return true;
+            }
+        }
+
+        RecordIbtAnalysisSkippedForRunningSim(captureDirectory, captureId, blocker, "sim_exit_wait_timeout");
+        return false;
+    }
+
+    private static bool IsIRacingStillRunning(out string reason)
+    {
+        var running = CaptureSynthesisService.FindRunningIRacingSimProcesses();
+        if (running.Count == 0)
+        {
+            reason = string.Empty;
+            return false;
+        }
+
+        reason = string.Join(", ", running);
+        return true;
+    }
+
+    private void RecordIbtAnalysisSkippedForRunningSim(
+        string captureDirectory,
+        string? captureId,
+        string blocker,
+        string reason)
+    {
+        _events.Record("ibt_analysis_skipped_iracing_running", new Dictionary<string, string?>
+        {
+            ["captureId"] = captureId,
+            ["captureDirectory"] = captureDirectory,
+            ["blocker"] = blocker,
+            ["reason"] = reason
+        });
+        _logger.LogInformation(
+            "Skipped IBT analysis for {CaptureDirectory} because iRacing is still running: {Blocker}. Reason: {Reason}.",
+            captureDirectory,
+            blocker,
+            reason);
     }
 
     private void CreateEndOfSessionDiagnosticsBundle(CaptureFinalizationContext finalization)
@@ -1614,6 +2066,12 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     {
         public static CaptureFinalizationContext Empty { get; } = new(null, null, 0, 0);
     }
+
+    private sealed record PendingArtifactDirectory(
+        string DirectoryPath,
+        string? CaptureId,
+        DateTimeOffset? StartedAtUtc,
+        string Reason);
 
     private sealed record CarProgress(
         int CarIdx,

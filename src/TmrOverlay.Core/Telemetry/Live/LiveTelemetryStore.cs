@@ -98,6 +98,9 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
             };
             UpdateProximityHistory(sample.CapturedAtUtc, proximity);
 
+            var leaderGap = LiveLeaderGapSnapshot.From(sample);
+            var models = LiveRaceModelBuilder.From(_context, sample, fuel, proximity, leaderGap);
+
             _snapshot = new LiveTelemetrySnapshot(
                 IsConnected: true,
                 IsCollecting: true,
@@ -110,7 +113,10 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
                 LatestSample: sample,
                 Fuel: fuel,
                 Proximity: proximity,
-                LeaderGap: LiveLeaderGapSnapshot.From(sample));
+                LeaderGap: leaderGap)
+            {
+                Models = models
+            };
         }
     }
 

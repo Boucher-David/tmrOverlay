@@ -14,7 +14,9 @@ They should be updated whenever overlay behavior, telemetry derivation, analysis
 
 ## Related Analysis Logic
 
+- [Live Model Groundwork](live-model-groundwork.md)
 - [Edge-Case Telemetry Logic](edge-case-telemetry-logic.md)
+- [IBT Analysis](ibt-analysis.md)
 - [Post-Race Analysis Logic](post-race-analysis-logic.md)
 
 ## Maintenance Rule

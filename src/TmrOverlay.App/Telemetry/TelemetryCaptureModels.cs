@@ -8,6 +8,8 @@ internal sealed class CaptureManifest
 
     public required string CaptureId { get; init; }
 
+    public string? CollectionId { get; init; }
+
     public required DateTimeOffset StartedAtUtc { get; init; }
 
     public DateTimeOffset? FinishedAtUtc { get; set; }

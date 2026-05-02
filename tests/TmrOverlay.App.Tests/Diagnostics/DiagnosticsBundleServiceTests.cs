@@ -52,7 +52,13 @@ public sealed class DiagnosticsBundleServiceTests
             File.WriteAllText(Path.Combine(captureDirectory, "capture-manifest.json"), "{}");
             File.WriteAllText(Path.Combine(captureDirectory, "telemetry-schema.json"), "[]");
             File.WriteAllText(Path.Combine(captureDirectory, "latest-session.yaml"), "WeekendInfo: {}");
+            File.WriteAllText(Path.Combine(captureDirectory, "capture-synthesis.json"), "{}");
             File.WriteAllText(Path.Combine(captureDirectory, "telemetry.bin"), "raw");
+            var ibtAnalysisDirectory = Path.Combine(captureDirectory, "ibt-analysis");
+            Directory.CreateDirectory(ibtAnalysisDirectory);
+            File.WriteAllText(Path.Combine(ibtAnalysisDirectory, "status.json"), """{"status":"skipped"}""");
+            File.WriteAllText(Path.Combine(ibtAnalysisDirectory, "ibt-schema-summary.json"), "{}");
+            File.WriteAllText(Path.Combine(ibtAnalysisDirectory, "source.ibt"), "raw ibt");
 
             var state = new TelemetryCaptureState();
             state.MarkCaptureStarted(captureDirectory, DateTimeOffset.UtcNow);
@@ -84,12 +90,16 @@ public sealed class DiagnosticsBundleServiceTests
             Assert.Contains("latest-capture/capture-manifest.json", entryNames);
             Assert.Contains("latest-capture/telemetry-schema.json", entryNames);
             Assert.Contains("latest-capture/latest-session.yaml", entryNames);
+            Assert.Contains("latest-capture/capture-synthesis.json", entryNames);
+            Assert.Contains("latest-capture/ibt-analysis/status.json", entryNames);
+            Assert.Contains("latest-capture/ibt-analysis/ibt-schema-summary.json", entryNames);
             Assert.Contains("analysis/20260426-race.json", entryNames);
             Assert.DoesNotContain("history/user/analysis/20260426-race.json", entryNames);
             Assert.Contains("history/user/.maintenance/manifest.json", entryNames);
             Assert.Contains("history/user/cars/car-156-mercedesamgevogt3/tracks/track-262-nurburgring-combinedshortb/sessions/race/aggregate.json", entryNames);
             Assert.Contains("history/user/cars/car-156-mercedesamgevogt3/tracks/track-262-nurburgring-combinedshortb/sessions/race/summaries/capture-20260426-120000-000.json", entryNames);
             Assert.DoesNotContain("latest-capture/telemetry.bin", entryNames);
+            Assert.DoesNotContain("latest-capture/ibt-analysis/source.ibt", entryNames);
         }
         finally
         {
