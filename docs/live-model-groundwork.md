@@ -33,6 +33,17 @@ Older data collected on Windows remains readable because the new models are deri
 - `LiveRaceEventModel`: basic on-track, garage, lap, and driver-change context.
 - `LiveInputTelemetryModel`: currently exposes only speed/tire-compound availability from normalized samples; pedal/steering channels can be added later without changing current consumers.
 
+Model rows now carry explicit `LiveSignalEvidence` for source, quality, usability, and missing reason. Timing rows distinguish timing availability from spatial progress and radar placement eligibility, so a same-class F2 row can remain usable for gap/timing while staying unavailable for map/radar placement. Fuel/pit models distinguish valid fuel level, instantaneous burn diagnostics, rolling measured burn, and measured-baseline eligibility. This keeps model-v2 consumers from treating first-pass overlay heuristics as equally reliable raw facts.
+
+Current long-capture findings reflected in the v2 contract:
+
+- `FuelUsePerHour` is diagnostic until smoothed or confirmed by rolling fuel-level deltas.
+- `CarLeftRight` side occupancy is separate from decoded nearby-car placement.
+- Leader gaps with missing leader F2 timing are partial evidence, not reliable zero-based gaps.
+- IBT can enrich local-car post-race trajectory and vehicle dynamics, but raw/live capture remains the source for opponent timing, radar side state, focus, and class-gap context.
+
+The 24-hour live-overlay review adds product semantics on top of those source findings: race-gap graphs should not pretend practice/qualifying/test timing is the same thing as race-position gap; radar focus and multiclass warning need focus-safe evidence; and endurance fuel strategy needs team-stint evidence rather than stitched local scalar fuel.
+
 ## Timing Columns
 
 `TimingColumnRegistry` defines reusable column metadata and formatters for table-style overlays. It is groundwork only: no new overlay is registered by this change.
@@ -56,7 +67,7 @@ The registry keeps display keys stable before any standings or relative overlay 
 
 The current product overlays still read the existing overlay-specific snapshot slices. Model v2 is observed in parallel, not yet authoritative.
 
-`LiveModelParityAnalyzer` compares those existing slices against equivalent values in `LiveTelemetrySnapshot.Models` for fuel/pit, proximity/relative/spatial, timing/leader-gap, weather, session, and race-event state. The Windows collector records sampled parity frames and mismatch summaries through `LiveModelParityRecorder`.
+`LiveModelParityAnalyzer` compares those existing slices against equivalent values in `LiveTelemetrySnapshot.Models` for fuel/pit, proximity/relative/spatial, timing/leader-gap, weather, session, and race-event state. The Windows collector records sampled parity frames and mismatch summaries through `LiveModelParityRecorder`. A separate `LiveOverlayDiagnosticsRecorder` watches the same normalized snapshots for product assumptions found during the 24-hour race, including non-race gap semantics, large gap scaling, radar focus/side evidence, fuel source stitching, and intra-lap position cadence.
 
 At session finalization the app writes `live-model-parity.json`. When raw capture is active, the file is written beside the raw capture sidecars. When raw capture is not active, it is written under the logs model-parity folder. The artifact includes:
 
@@ -69,6 +80,8 @@ At session finalization the app writes `live-model-parity.json`. When raw captur
 When `promotionReadiness.isCandidate` is true, the recorder also emits a `live_model_v2_promotion_candidate` app event. Treat that as a review signal, not an automatic migration: overlays should move to model v2 only after several candidate artifacts cover the normal session types and edge cases we care about.
 
 This lets collected raw/IBT sessions evaluate whether model v2 matches current overlay behavior before any overlay is migrated to the new model.
+
+`live-overlay-diagnostics.json` is not a parity artifact and should not be used as a pass/fail gate. It is a bounded evidence artifact for deciding which model-v2 behavior branches to do next.
 
 ## Deferred Overlay UI V2
 

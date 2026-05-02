@@ -10,17 +10,20 @@ internal sealed class RetentionHostedService : IHostedService
     private readonly AppStorageOptions _storageOptions;
     private readonly RetentionOptions _options;
     private readonly LiveModelParityOptions _liveModelParityOptions;
+    private readonly LiveOverlayDiagnosticsOptions _liveOverlayDiagnosticsOptions;
     private readonly ILogger<RetentionHostedService> _logger;
 
     public RetentionHostedService(
         AppStorageOptions storageOptions,
         RetentionOptions options,
         LiveModelParityOptions liveModelParityOptions,
+        LiveOverlayDiagnosticsOptions liveOverlayDiagnosticsOptions,
         ILogger<RetentionHostedService> logger)
     {
         _storageOptions = storageOptions;
         _options = options;
         _liveModelParityOptions = liveModelParityOptions;
+        _liveOverlayDiagnosticsOptions = liveOverlayDiagnosticsOptions;
         _logger = logger;
     }
 
@@ -46,6 +49,11 @@ internal sealed class RetentionHostedService : IHostedService
         CleanupFiles(
             Path.Combine(_storageOptions.LogsRoot, _liveModelParityOptions.LogDirectoryName),
             $"*{_liveModelParityOptions.OutputFileName}",
+            _options.EdgeCaseRetentionDays,
+            _options.MaxEdgeCaseFiles);
+        CleanupFiles(
+            Path.Combine(_storageOptions.LogsRoot, _liveOverlayDiagnosticsOptions.LogDirectoryName),
+            $"*{_liveOverlayDiagnosticsOptions.OutputFileName}",
             _options.EdgeCaseRetentionDays,
             _options.MaxEdgeCaseFiles);
         return Task.CompletedTask;

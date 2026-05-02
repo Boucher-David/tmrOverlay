@@ -1,0 +1,58 @@
+{
+  "generatedAtUtc": "2026-05-02T00:00:00+00:00",
+  "ibtInventory": {
+    "fileCount": 876,
+    "parsedFileCount": 876,
+    "totalBytes": 22998876100,
+    "uniqueSchemaCount": 19,
+    "filesWithLatLonAlt": 876,
+    "filesWithCarIdxArrays": 0,
+    "filesWithCarLeftRight": 0
+  },
+  "sourceRecommendation": {
+    "localTrajectory": "ibt",
+    "localFuelAndVehicleDynamics": "ibt-plus-raw-live",
+    "opponentTiming": "raw-live",
+    "radarSideOccupancy": "raw-live",
+    "classGapAndStandings": "raw-live"
+  },
+  "ibtLocalCandidateFields": [
+    "Alt",
+    "FuelLevel",
+    "FuelLevelPct",
+    "FuelUsePerHour",
+    "Lap",
+    "LapCompleted",
+    "LapDist",
+    "LapDistPct",
+    "Lat",
+    "LatAccel",
+    "Lon",
+    "LongAccel",
+    "Pitch",
+    "Roll",
+    "Speed",
+    "VelocityX",
+    "VelocityY",
+    "VelocityZ",
+    "VertAccel",
+    "Yaw"
+  ],
+  "rawLiveOnlyExpectedFields": [
+    "CamCarIdx",
+    "CarLeftRight",
+    "CarIdxBestLapTime",
+    "CarIdxClass",
+    "CarIdxClassPosition",
+    "CarIdxEstTime",
+    "CarIdxF2Time",
+    "CarIdxLap",
+    "CarIdxLapCompleted",
+    "CarIdxLapDistPct",
+    "CarIdxLastLapTime",
+    "CarIdxOnPitRoad",
+    "CarIdxPosition",
+    "CarIdxTrackSurface"
+  ],
+  "modelV2Implication": "Model v2 should carry source evidence per signal family so future overlays can combine IBT local-car data with raw/live opponent context without pretending either source is complete."
+}

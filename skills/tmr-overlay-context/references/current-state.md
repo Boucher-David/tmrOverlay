@@ -133,7 +133,9 @@ Last updated: 2026-05-02
   - creates raw capture directories and copies the raw telemetry buffer only when raw capture is enabled by startup configuration or runtime overlay request
   - ties IBT telemetry logging to the same raw-capture switch by default, so raw capture start/stop requests also ask iRacing to start/stop `.ibt` logging
   - writes post-session sidecars after raw capture finalization: `capture-synthesis.json` runs immediately from the closed TmrOverlay capture with a timeout, while `ibt-analysis/*.json` waits only a bounded time for iRacing to stop writing before skipping and leaving the capture eligible for startup recovery
+  - IBT analysis now includes `ibt-local-car-summary.json`, a bounded local-car trajectory/fuel/vehicle-dynamics summary with track-map readiness and explicit missing opponent-context fields; source `.ibt` files still stay out of capture directories by default
   - records live model-v2 parity in observer mode so current overlays keep using existing fuel/proximity/gap slices while `LiveTelemetrySnapshot.Models` is compared against them and summarized in `live-model-parity.json`
+  - records passive live overlay diagnostics in observer mode so 24-hour findings can be measured without changing overlay behavior; `live-overlay-diagnostics.json` summarizes gap session semantics, large gap/jump evidence, radar side/focus/placement evidence, fuel source evidence, and sampled position cadence
   - records bounded compact edge-case telemetry artifacts for every live session by combining normalized live samples with selected scalar raw watch channels for fuel, tires, suspension, brakes, wheel speed, pit service, weather, engine/replay/system/network state, incidents, and driver-control changes; artifacts also count observations dropped after the clip cap and include a final sampled context tail so long spectated/parked sessions still have late-session telemetry context
   - isolates raw-capture frame queue/write/read failures from live history, normalized live telemetry, and overlay performance recording so overlays can keep updating while capture diagnostics run
   - logs and records app events for runtime raw-capture start failures instead of silently failing
@@ -150,6 +152,7 @@ Last updated: 2026-05-02
     - post-session `capture-synthesis.json` is written by `CaptureSynthesisService`, not by the live writer
     - post-session `ibt-analysis/*.json` is written by `IbtAnalysisService` when enabled and a candidate `.ibt` can be selected or a skipped/failed status is recorded
     - post-session `live-model-parity.json` is written by `LiveModelParityRecorder` for model-v2 parity and raw/IBT signal availability review
+    - post-session `live-overlay-diagnostics.json` is written by `LiveOverlayDiagnosticsRecorder` when raw capture is active; otherwise the same observer artifact is written under `logs/overlay-diagnostics`
   - uses a bounded channel to decouple SDK callbacks from disk writes
   - drops frames when the queue fills instead of blocking the SDK callback path
 
@@ -173,7 +176,12 @@ Last updated: 2026-05-02
   - `ILiveTelemetrySink` is the write boundary for live iRacing collection and replay/dev providers
   - `LiveTelemetrySnapshot` includes fuel, proximity, leader-gap, and same-class gap graph inputs derived from each frame
   - `LiveTelemetrySnapshot.Models` is an additive live-only model layer with session, driver-directory, timing, relative, spatial, weather, fuel/pit, race-event, and input availability families; it is derived from existing normalized samples and keeps raw capture, compact history, post-race analysis, and existing synthesized data backwards-compatible
+  - model-v2 rows carry `LiveSignalEvidence` so future overlays can distinguish reliable timing, timing-only rows, spatial/radar placement eligibility, partial leader-gap timing, diagnostic instantaneous fuel burn, and rolling measured-fuel baseline eligibility before the current overlays are migrated
   - `TimingColumnRegistry` defines reusable table-column keys and formatters for future standings/relative-style overlays without registering new overlays yet
+
+- `local-mac/TmrOverlayMac/`
+  - mirrors the live overlay diagnostics recorder for mock/demo runs so the four-hour preview and capture-derived radar/gap demos can emit `live-overlay-diagnostics.json`
+  - does not yet replay arbitrary 24-hour raw captures through every overlay; that is tracked as future harness work in `docs/model-v2-future-branches.md`
 
 ### Session history
 
@@ -287,6 +295,8 @@ Last updated: 2026-05-02
 - `docs/history-data-evolution.md`
 - `docs/overlay-logic.md`
   - index for human-readable overlay and analysis logic notes; update the matching note whenever overlay derivation, display rules, visibility rules, or analysis rules change
+- `docs/live-overlay-24h-findings.md`
+  - live 24-hour race findings mapped to model-v2, fuel, radar, and gap follow-up work
 
 - `tools/validate_overlay_screenshots.py`
   - validates that expected screenshot PNG artifacts exist, match fixed dimensions where appropriate, and are not blank

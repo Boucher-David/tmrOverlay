@@ -1,0 +1,130 @@
+{
+  "analysisVersion": 1,
+  "generatedAtUtc": "2026-05-02T00:00:00+00:00",
+  "source": {
+    "path": "sanitized/example-local-car.ibt",
+    "bytes": 64548331,
+    "createdAtUtc": "2026-05-02T00:00:00+00:00",
+    "lastWriteAtUtc": "2026-05-02T00:17:00+00:00",
+    "diskStartedAtUtc": "2026-05-02T00:00:00+00:00"
+  },
+  "combo": {
+    "carKey": "car-156-mercedesamgevogt3",
+    "trackKey": "track-262-nurburgring-combinedshortb",
+    "sessionKey": "race"
+  },
+  "totalRecordCount": 60199,
+  "sampledRecordCount": 3909,
+  "sampleStride": 15,
+  "trackMapReadiness": {
+    "hasLatitudeLongitude": true,
+    "hasAltitude": true,
+    "hasLapDistance": true,
+    "hasLapCompleted": true,
+    "sampledCoordinateRecordCount": 3909,
+    "isCandidate": true,
+    "missingReasons": []
+  },
+  "coordinateBounds": {
+    "minLatitude": 50.324,
+    "maxLatitude": 50.3809,
+    "minLongitude": 6.92,
+    "maxLongitude": 7.0056,
+    "minAltitudeMeters": 553.7255,
+    "maxAltitudeMeters": 616.8421
+  },
+  "lapProgress": {
+    "lapMinimum": 2.0,
+    "lapMaximum": 3.0,
+    "lapCompletedMinimum": 1.0,
+    "lapCompletedMaximum": 2.0,
+    "lapDistMinimum": 2.7075,
+    "lapDistMaximum": 25168.0059,
+    "lapDistPctMinimum": 0.0001,
+    "lapDistPctMaximum": 0.9997
+  },
+  "signalGroups": [
+    {
+      "name": "trajectory",
+      "presentFields": ["Alt", "Lap", "LapCompleted", "LapDist", "LapDistPct", "Lat", "Lon"],
+      "missingFields": []
+    },
+    {
+      "name": "fuel",
+      "presentFields": ["FuelLevel", "FuelLevelPct", "FuelUsePerHour"],
+      "missingFields": []
+    },
+    {
+      "name": "vehicle-dynamics",
+      "presentFields": ["LatAccel", "LongAccel", "Pitch", "Roll", "Speed", "VelocityX", "VelocityY", "VelocityZ", "VertAccel", "Yaw"],
+      "missingFields": ["PitchRate", "RollRate", "YawNorth", "YawRate"]
+    },
+    {
+      "name": "opponent-context",
+      "presentFields": [],
+      "missingFields": ["CamCarIdx", "CarIdxClass", "CarIdxClassPosition", "CarIdxEstTime", "CarIdxF2Time", "CarIdxLapDistPct", "CarIdxOnPitRoad", "CarIdxPosition", "CarIdxTrackSurface", "CarLeftRight"]
+    }
+  ],
+  "keyFields": [
+    {
+      "name": "Lat",
+      "typeName": "irDouble",
+      "count": 1,
+      "unit": "deg",
+      "description": "Latitude in decimal degrees",
+      "sampledRecordCount": 3909,
+      "nonDefaultRecordCount": 3909,
+      "changeCount": 3323,
+      "finiteValueCount": 3909,
+      "minimum": 50.324,
+      "maximum": 50.3809,
+      "mean": 50.3492,
+      "firstValue": 50.3519,
+      "lastValue": 50.3265,
+      "byteSize": 8,
+      "offset": 120
+    },
+    {
+      "name": "Lon",
+      "typeName": "irDouble",
+      "count": 1,
+      "unit": "deg",
+      "description": "Longitude in decimal degrees",
+      "sampledRecordCount": 3909,
+      "nonDefaultRecordCount": 3909,
+      "changeCount": 3333,
+      "finiteValueCount": 3909,
+      "minimum": 6.92,
+      "maximum": 7.0056,
+      "mean": 6.9536,
+      "firstValue": 6.981,
+      "lastValue": 6.9269,
+      "byteSize": 8,
+      "offset": 128
+    },
+    {
+      "name": "FuelUsePerHour",
+      "typeName": "irFloat",
+      "count": 1,
+      "unit": "kg/h",
+      "description": "Instantaneous fuel use",
+      "sampledRecordCount": 3909,
+      "nonDefaultRecordCount": 3207,
+      "changeCount": 2685,
+      "finiteValueCount": 3909,
+      "minimum": 0.0,
+      "maximum": 110.2595,
+      "mean": 63.003,
+      "firstValue": 0.0,
+      "lastValue": 87.986,
+      "byteSize": 4,
+      "offset": 72
+    }
+  ],
+  "missingLocalCandidateFields": ["LFrideHeight", "RFrideHeight"],
+  "missingOpponentContextFields": ["CamCarIdx", "CarIdxClass", "CarIdxClassPosition", "CarIdxEstTime", "CarIdxF2Time", "CarIdxLapDistPct", "CarIdxOnPitRoad", "CarIdxPosition", "CarIdxTrackSurface", "CarLeftRight"],
+  "notes": [
+    "No live opponent arrays were present; use the matching raw/live capture for standings, radar, and class-gap context.",
+    "IBT has enough local-car trajectory fields for future track-map investigation, subject to lap filtering and coordinate cleanup."
+  ]
+}

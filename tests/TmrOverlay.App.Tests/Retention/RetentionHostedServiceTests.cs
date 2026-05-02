@@ -20,9 +20,11 @@ public sealed class RetentionHostedServiceTests
             var performanceRoot = Path.Combine(storage.LogsRoot, "performance");
             var edgeCaseRoot = Path.Combine(storage.LogsRoot, "edge-cases");
             var modelParityRoot = Path.Combine(storage.LogsRoot, "model-parity");
+            var overlayDiagnosticsRoot = Path.Combine(storage.LogsRoot, "overlay-diagnostics");
             Directory.CreateDirectory(performanceRoot);
             Directory.CreateDirectory(edgeCaseRoot);
             Directory.CreateDirectory(modelParityRoot);
+            Directory.CreateDirectory(overlayDiagnosticsRoot);
 
             var keepCapture = Directory.CreateDirectory(Path.Combine(storage.CaptureRoot, "capture-keep"));
             var deleteCapture = Directory.CreateDirectory(Path.Combine(storage.CaptureRoot, "capture-delete"));
@@ -34,6 +36,8 @@ public sealed class RetentionHostedServiceTests
             var deleteEdgeCase = Path.Combine(edgeCaseRoot, "session-delete-edge-cases.json");
             var keepModelParity = Path.Combine(modelParityRoot, "session-keep-live-model-parity.json");
             var deleteModelParity = Path.Combine(modelParityRoot, "session-delete-live-model-parity.json");
+            var keepOverlayDiagnostics = Path.Combine(overlayDiagnosticsRoot, "session-keep-live-overlay-diagnostics.json");
+            var deleteOverlayDiagnostics = Path.Combine(overlayDiagnosticsRoot, "session-delete-live-overlay-diagnostics.json");
             File.WriteAllText(keepBundle, "keep");
             File.WriteAllText(deleteBundle, "delete");
             File.WriteAllText(keepPerformance, "keep");
@@ -42,6 +46,8 @@ public sealed class RetentionHostedServiceTests
             File.WriteAllText(deleteEdgeCase, "delete");
             File.WriteAllText(keepModelParity, "keep");
             File.WriteAllText(deleteModelParity, "delete");
+            File.WriteAllText(keepOverlayDiagnostics, "keep");
+            File.WriteAllText(deleteOverlayDiagnostics, "delete");
 
             Directory.SetLastWriteTimeUtc(keepCapture.FullName, DateTime.UtcNow);
             Directory.SetLastWriteTimeUtc(deleteCapture.FullName, DateTime.UtcNow.AddDays(-10));
@@ -53,6 +59,8 @@ public sealed class RetentionHostedServiceTests
             File.SetLastWriteTimeUtc(deleteEdgeCase, DateTime.UtcNow.AddDays(-10));
             File.SetLastWriteTimeUtc(keepModelParity, DateTime.UtcNow);
             File.SetLastWriteTimeUtc(deleteModelParity, DateTime.UtcNow.AddDays(-10));
+            File.SetLastWriteTimeUtc(keepOverlayDiagnostics, DateTime.UtcNow);
+            File.SetLastWriteTimeUtc(deleteOverlayDiagnostics, DateTime.UtcNow.AddDays(-10));
 
             var service = new RetentionHostedService(
                 storage,
@@ -69,6 +77,7 @@ public sealed class RetentionHostedServiceTests
                     MaxEdgeCaseFiles = 10
                 },
                 new LiveModelParityOptions(),
+                new LiveOverlayDiagnosticsOptions(),
                 NullLogger<RetentionHostedService>.Instance);
 
             await service.StartAsync(CancellationToken.None);
@@ -83,6 +92,8 @@ public sealed class RetentionHostedServiceTests
             Assert.False(File.Exists(deleteEdgeCase));
             Assert.True(File.Exists(keepModelParity));
             Assert.False(File.Exists(deleteModelParity));
+            Assert.True(File.Exists(keepOverlayDiagnostics));
+            Assert.False(File.Exists(deleteOverlayDiagnostics));
         }
         finally
         {

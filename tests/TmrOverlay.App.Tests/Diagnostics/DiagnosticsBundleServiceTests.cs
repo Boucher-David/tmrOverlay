@@ -23,11 +23,14 @@ public sealed class DiagnosticsBundleServiceTests
             Directory.CreateDirectory(Path.GetDirectoryName(storage.RuntimeStatePath)!);
             var edgeCaseDirectory = Path.Combine(storage.LogsRoot, "edge-cases");
             var modelParityDirectory = Path.Combine(storage.LogsRoot, "model-parity");
+            var overlayDiagnosticsDirectory = Path.Combine(storage.LogsRoot, "overlay-diagnostics");
             Directory.CreateDirectory(edgeCaseDirectory);
             Directory.CreateDirectory(modelParityDirectory);
+            Directory.CreateDirectory(overlayDiagnosticsDirectory);
             File.WriteAllText(Path.Combine(storage.LogsRoot, "tmroverlay-20260426.log"), "log line");
             File.WriteAllText(Path.Combine(edgeCaseDirectory, "session-20260426-edge-cases.json"), """{"clipCount":1}""");
             File.WriteAllText(Path.Combine(modelParityDirectory, "session-20260426-live-model-parity.json"), """{"frameCount":1}""");
+            File.WriteAllText(Path.Combine(overlayDiagnosticsDirectory, "session-20260426-live-overlay-diagnostics.json"), """{"frameCount":1}""");
             File.WriteAllText(Path.Combine(storage.EventsRoot, "events-20260426.jsonl"), "{}");
             File.WriteAllText(Path.Combine(storage.SettingsRoot, "settings.json"), "{}");
             File.WriteAllText(storage.RuntimeStatePath, "{}");
@@ -57,6 +60,7 @@ public sealed class DiagnosticsBundleServiceTests
             File.WriteAllText(Path.Combine(captureDirectory, "latest-session.yaml"), "WeekendInfo: {}");
             File.WriteAllText(Path.Combine(captureDirectory, "capture-synthesis.json"), "{}");
             File.WriteAllText(Path.Combine(captureDirectory, "live-model-parity.json"), "{}");
+            File.WriteAllText(Path.Combine(captureDirectory, "live-overlay-diagnostics.json"), "{}");
             File.WriteAllText(Path.Combine(captureDirectory, "telemetry.bin"), "raw");
             var ibtAnalysisDirectory = Path.Combine(captureDirectory, "ibt-analysis");
             Directory.CreateDirectory(ibtAnalysisDirectory);
@@ -73,6 +77,7 @@ public sealed class DiagnosticsBundleServiceTests
             var service = new DiagnosticsBundleService(
                 storage,
                 new LiveModelParityOptions(),
+                new LiveOverlayDiagnosticsOptions(),
                 state,
                 performance,
                 performanceRecorder,
@@ -91,6 +96,7 @@ public sealed class DiagnosticsBundleServiceTests
             Assert.Contains("logs/tmroverlay-20260426.log", entryNames);
             Assert.Contains("edge-cases/session-20260426-edge-cases.json", entryNames);
             Assert.Contains("model-parity/session-20260426-live-model-parity.json", entryNames);
+            Assert.Contains("overlay-diagnostics/session-20260426-live-overlay-diagnostics.json", entryNames);
             Assert.Contains(entryNames, entryName => entryName.StartsWith("performance/performance-", StringComparison.OrdinalIgnoreCase));
             Assert.Contains("events/events-20260426.jsonl", entryNames);
             Assert.Contains("latest-capture/capture-manifest.json", entryNames);
@@ -98,6 +104,7 @@ public sealed class DiagnosticsBundleServiceTests
             Assert.Contains("latest-capture/latest-session.yaml", entryNames);
             Assert.Contains("latest-capture/capture-synthesis.json", entryNames);
             Assert.Contains("latest-capture/live-model-parity.json", entryNames);
+            Assert.Contains("latest-capture/live-overlay-diagnostics.json", entryNames);
             Assert.Contains("latest-capture/ibt-analysis/status.json", entryNames);
             Assert.Contains("latest-capture/ibt-analysis/ibt-schema-summary.json", entryNames);
             Assert.Contains("analysis/20260426-race.json", entryNames);

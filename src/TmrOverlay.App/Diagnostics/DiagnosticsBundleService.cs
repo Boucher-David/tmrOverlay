@@ -16,6 +16,7 @@ internal sealed class DiagnosticsBundleService
     private const int MaxRecentEdgeCaseFiles = 20;
     private const int MaxLatestCaptureIbtAnalysisFiles = 12;
     private const int MaxRecentModelParityFiles = 10;
+    private const int MaxRecentOverlayDiagnosticsFiles = 10;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -25,6 +26,7 @@ internal sealed class DiagnosticsBundleService
 
     private readonly AppStorageOptions _storageOptions;
     private readonly LiveModelParityOptions _liveModelParityOptions;
+    private readonly LiveOverlayDiagnosticsOptions _liveOverlayDiagnosticsOptions;
     private readonly TelemetryCaptureState _captureState;
     private readonly AppPerformanceState _performanceState;
     private readonly AppPerformanceSnapshotRecorder _performanceRecorder;
@@ -40,6 +42,7 @@ internal sealed class DiagnosticsBundleService
     public DiagnosticsBundleService(
         AppStorageOptions storageOptions,
         LiveModelParityOptions liveModelParityOptions,
+        LiveOverlayDiagnosticsOptions liveOverlayDiagnosticsOptions,
         TelemetryCaptureState captureState,
         AppPerformanceState performanceState,
         AppPerformanceSnapshotRecorder performanceRecorder,
@@ -47,6 +50,7 @@ internal sealed class DiagnosticsBundleService
     {
         _storageOptions = storageOptions;
         _liveModelParityOptions = liveModelParityOptions;
+        _liveOverlayDiagnosticsOptions = liveOverlayDiagnosticsOptions;
         _captureState = captureState;
         _performanceState = performanceState;
         _performanceRecorder = performanceRecorder;
@@ -219,6 +223,26 @@ internal sealed class DiagnosticsBundleService
                     modelParitySucceeded);
             }
 
+            var overlayDiagnosticsStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+            var overlayDiagnosticsSucceeded = false;
+            try
+            {
+                AddRecentFiles(
+                    archive,
+                    Path.Combine(_storageOptions.LogsRoot, _liveOverlayDiagnosticsOptions.LogDirectoryName),
+                    $"*{_liveOverlayDiagnosticsOptions.OutputFileName}",
+                    "overlay-diagnostics",
+                    MaxRecentOverlayDiagnosticsFiles);
+                overlayDiagnosticsSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.DiagnosticsBundleOverlayDiagnostics,
+                    overlayDiagnosticsStarted,
+                    overlayDiagnosticsSucceeded);
+            }
+
             var historyStarted = System.Diagnostics.Stopwatch.GetTimestamp();
             var historySucceeded = false;
             try
@@ -328,6 +352,10 @@ internal sealed class DiagnosticsBundleService
             archive,
             Path.Combine(captureDirectory, _liveModelParityOptions.OutputFileName),
             $"latest-capture/{_liveModelParityOptions.OutputFileName}");
+        AddFileIfExists(
+            archive,
+            Path.Combine(captureDirectory, _liveOverlayDiagnosticsOptions.OutputFileName),
+            $"latest-capture/{_liveOverlayDiagnosticsOptions.OutputFileName}");
         AddRecentFiles(
             archive,
             Path.Combine(captureDirectory, "ibt-analysis"),

@@ -37,9 +37,10 @@ public sealed class IbtAnalysisServiceTests
 
             Assert.Equal(2, ibt.Header.Version);
             Assert.Equal(60, ibt.Header.TickRate);
-            Assert.Equal(5, ibt.Fields.Count);
+            Assert.Equal(9, ibt.Fields.Count);
             Assert.Equal(4, ibt.DiskHeader.RecordCount);
             Assert.Contains(ibt.Fields, field => field.Name == "Lat" && field.TypeName == "irDouble");
+            Assert.Contains(ibt.Fields, field => field.Name == "Alt" && field.TypeName == "irDouble");
             Assert.Contains("WeekendInfo:", ibt.SessionInfoYaml);
         }
         finally
@@ -81,14 +82,22 @@ public sealed class IbtAnalysisServiceTests
             var result = await service.WriteAsync(captureDirectory);
 
             Assert.Equal(IbtAnalysisStatus.Succeeded, result.Status);
-            Assert.Equal(5, result.FieldCount);
+            Assert.Equal(9, result.FieldCount);
             Assert.True(File.Exists(Path.Combine(captureDirectory, "ibt-analysis", "status.json")));
             Assert.True(File.Exists(Path.Combine(captureDirectory, "ibt-analysis", "ibt-schema-summary.json")));
+            Assert.True(File.Exists(Path.Combine(captureDirectory, "ibt-analysis", "ibt-local-car-summary.json")));
             var comparisonJson = File.ReadAllText(Path.Combine(captureDirectory, "ibt-analysis", "ibt-vs-live-schema.json"));
             using var comparison = JsonDocument.Parse(comparisonJson);
             var ibtOnly = comparison.RootElement.GetProperty("onlyInIbtFieldNames").EnumerateArray().Select(item => item.GetString()).ToArray();
             Assert.Contains("Lat", ibtOnly);
             Assert.Contains("Lon", ibtOnly);
+
+            var localCarJson = File.ReadAllText(Path.Combine(captureDirectory, "ibt-analysis", "ibt-local-car-summary.json"));
+            using var localCar = JsonDocument.Parse(localCarJson);
+            Assert.True(localCar.RootElement.GetProperty("trackMapReadiness").GetProperty("isCandidate").GetBoolean());
+            Assert.Contains(
+                localCar.RootElement.GetProperty("missingOpponentContextFields").EnumerateArray(),
+                item => item.GetString() == "CarIdxF2Time");
         }
         finally
         {
@@ -139,14 +148,18 @@ public sealed class IbtAnalysisServiceTests
         {
             new TestIbtField("SessionTime", 5, 0, 1, "s", "Seconds since session start"),
             new TestIbtField("LapDist", 4, 8, 1, "m", "Meters traveled from S/F this lap"),
-            new TestIbtField("Lat", 5, 12, 1, "deg", "Latitude in decimal degrees"),
-            new TestIbtField("Lon", 5, 20, 1, "deg", "Longitude in decimal degrees"),
-            new TestIbtField("Gear", 2, 28, 1, "", "Selected gear")
+            new TestIbtField("LapDistPct", 4, 12, 1, "%", "Percentage distance around lap"),
+            new TestIbtField("Lat", 5, 16, 1, "deg", "Latitude in decimal degrees"),
+            new TestIbtField("Lon", 5, 24, 1, "deg", "Longitude in decimal degrees"),
+            new TestIbtField("Alt", 5, 32, 1, "m", "Altitude in meters"),
+            new TestIbtField("FuelLevel", 4, 40, 1, "l", "Fuel level"),
+            new TestIbtField("Speed", 4, 44, 1, "m/s", "Vehicle speed"),
+            new TestIbtField("Gear", 2, 48, 1, "", "Selected gear")
         };
         const int telemetryHeaderBytes = 112;
         const int diskHeaderBytes = 32;
         const int varHeaderBytes = 144;
-        const int bufferLength = 32;
+        const int bufferLength = 52;
         const int recordCount = 4;
         var varHeaderOffset = telemetryHeaderBytes + diskHeaderBytes;
         var sessionInfo = Encoding.UTF8.GetBytes("""
@@ -196,8 +209,12 @@ public sealed class IbtAnalysisServiceTests
         {
             writer.Write(record * 0.5d);
             writer.Write(100f + record);
+            writer.Write(0.1f + record * 0.01f);
             writer.Write(35.1d + record * 0.001d);
             writer.Write(-80.2d - record * 0.001d);
+            writer.Write(280d + record);
+            writer.Write(42f - record);
+            writer.Write(20f + record);
             writer.Write(record);
         }
     }

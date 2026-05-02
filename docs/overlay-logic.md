@@ -15,6 +15,9 @@ They should be updated whenever overlay behavior, telemetry derivation, analysis
 ## Related Analysis Logic
 
 - [Live Model Groundwork](live-model-groundwork.md)
+- [Live Overlay Diagnostics](live-overlay-diagnostics.md)
+- [24-Hour Live Overlay Findings](live-overlay-24h-findings.md)
+- [Model V2 Future Branch Notes](model-v2-future-branches.md)
 - [Edge-Case Telemetry Logic](edge-case-telemetry-logic.md)
 - [IBT Analysis](ibt-analysis.md)
 - [Post-Race Analysis Logic](post-race-analysis-logic.md)

@@ -128,6 +128,12 @@ The distance window uses a 4.746 m focused-car-length baseline. The seconds fall
 
 If no timed car qualifies, the radar still draws the generic side-warning rectangle from `CarLeftRight`. This keeps the actual spotter warning visible without pretending a random timed car is alongside.
 
+Data review note from the May 2026 capture analysis:
+
+- Long Nürburgring captures showed many frames with physical/timing proximity candidates but no side signal, and a smaller number of frames with a side signal but no clean same-frame contact candidate.
+- That supports keeping the current split: lap-distance/track-length and timing are longitudinal proximity inputs, while `CarLeftRight` remains the side-occupancy authority.
+- The generic side-warning rectangle is not just a fallback; it preserves real spotter state when the nearby-car reconstruction cannot confidently attach the warning to one decoded car.
+
 ## Radar Visibility
 
 The radar fades in when any current signal exists:
@@ -262,3 +268,13 @@ This is still live-only derived state. It is not persisted into compact history.
 - Color should stay neutral white until close bumper-gap proximity, then move through yellow toward saturated alert red.
 - Car opacity should also communicate early proximity: faint at the radar edge, full near the yellow-warning threshold.
 - Visibility should be communicated by alpha fade only.
+
+## 24-Hour Race Findings
+
+Live endurance-race review found that radar focus handling needs a deeper model-v2 pass before it should be treated as mature:
+
+- The radar did not handle arbitrary focused cars well.
+- It also struggled when the user's team car was active but another driver was in the car.
+- Multiclass warning likely failed for the same root reason: focus-relative timing/progress and local-player side occupancy are different signal families.
+
+Future radar work should consume model-v2 focus-relative placement evidence, preserve `CarLeftRight` as local-player side occupancy only, and clearly suppress or relabel partial states when the current focus cannot support safe radar placement.

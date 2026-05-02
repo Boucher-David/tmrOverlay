@@ -20,8 +20,9 @@
   The radar is a transparent circular proximity view that only paints from fresh live telemetry, follows the current camera/focus car when available, prefers physical distance from `CarIdxLapDistPct` and track length for close-range placement, falls back to reliable live time gaps when distance is unavailable, uses `CarLeftRight` as the authoritative alongside signal, fades nearby neutral-white car rectangles in between radar entry and the yellow-warning threshold, moves them through yellow toward saturated alert red only inside the close bumper-gap warning buffer, labels its range rings, and can show an outer-ring multiclass warning for cars behind outside the 2-second timing fallback but within 5 seconds. The gap overlay is a four-hour in-class trend graph with the focused car's class leader as the top baseline, adaptive Y-axis scaling, left-side axis labels, lap reference lines, subtle weather bands, driver/leader-change markers, dimmed context lines, and endpoint `P<N>` labels. It keeps bounded in-memory traces for all available same-class timing rows, while dynamically rendering the leader, the focused car, nearby class traffic, and recently visible cars.
 - Stores early pit-service history signals such as pit-lane time, pit-stall/service time, observed fuel fill rate, tire/repair indicators, and confidence flags.
 - Keeps raw capture as an opt-in diagnostic/development mode; the settings window can request raw capture at runtime if the app was started without the flag.
-- When raw capture is enabled, stores `telemetry.bin`, `telemetry-schema.json`, `latest-session.yaml`, optional `session-info/`, and `capture-manifest.json`, then writes compact `capture-synthesis.json`, `live-model-parity.json`, and optional `ibt-analysis/*.json` sidecars after the session.
+- When raw capture is enabled, stores `telemetry.bin`, `telemetry-schema.json`, `latest-session.yaml`, optional `session-info/`, and `capture-manifest.json`, then writes compact `capture-synthesis.json`, `live-model-parity.json`, `live-overlay-diagnostics.json`, and optional `ibt-analysis/*.json` sidecars after the session.
 - Always records compact edge-case telemetry artifacts after a live session. These are bounded JSON clips around suspicious or newly exposed telemetry states, not full raw frame payloads.
+- Always records compact live-overlay diagnostics after a live session. These are bounded observer-mode summaries for gap/radar/fuel/position-cadence assumptions, not overlay behavior changes.
 - Shows live-analysis health signals in the overlay, plus disk-write health when raw capture is enabled.
 - Writes rolling local logs, JSONL app events, runtime-state markers, persisted settings, lightweight performance snapshots, and diagnostics bundles for triage.
 - Includes retention cleanup for old captures and diagnostics bundles.
@@ -75,9 +76,10 @@ Each capture folder contains:
 - `session-info/`
 - `capture-synthesis.json` after post-session synthesis succeeds
 - `live-model-parity.json` after post-session model-v2 parity evaluation
+- `live-overlay-diagnostics.json` after passive overlay-assumption diagnostics are saved
 - `ibt-analysis/*.json` when IBT analysis is enabled and a matching iRacing `.ibt` file can be selected or skipped/failure status is recorded
 
-Model-v2 parity runs in observer mode: current overlays still use their existing fuel/proximity/gap inputs, while the collector compares those inputs with `LiveTelemetrySnapshot.Models` and records compact mismatch/coverage evidence. `live-model-parity.json` includes `promotionReadiness`; when a session passes the configured data-volume, mismatch-rate, and coverage thresholds, the app also writes a `live_model_v2_promotion_candidate` event. IBT logging uses the same raw-capture switch by default. Starting raw capture requests iRacing telemetry logging, and capture finalization requests logging to stop. The post-session analyzer writes compact JSON sidecars only, enforces a timeout for capture synthesis, scans a bounded set of recent `.ibt` candidates, enforces size/stability/sample/time limits, and does not copy source `.ibt` files into the capture directory unless `IbtAnalysis:CopyIbtIntoCaptureDirectory=true`.
+Model-v2 parity runs in observer mode: current overlays still use their existing fuel/proximity/gap inputs, while the collector compares those inputs with `LiveTelemetrySnapshot.Models` and records compact mismatch/coverage evidence. `LiveTelemetrySnapshot.Models` also carries source evidence for timing, spatial/radar placement, gap, and fuel-baseline usability so future overlays can distinguish reliable raw signals from diagnostic or partial signals. `live-model-parity.json` includes `promotionReadiness`; when a session passes the configured data-volume, mismatch-rate, and coverage thresholds, the app also writes a `live_model_v2_promotion_candidate` event. `live-overlay-diagnostics.json` is a separate observer artifact for the 24-hour findings: non-race gap semantics, multi-lap gap scaling, radar focus/side evidence, fuel source stitching, and position cadence. IBT logging uses the same raw-capture switch by default. Starting raw capture requests iRacing telemetry logging, and capture finalization requests logging to stop. The post-session analyzer writes compact JSON sidecars only, including `ibt-local-car-summary.json` for bounded local-car trajectory/fuel/vehicle-dynamics investigation, enforces a timeout for capture synthesis, scans a bounded set of recent `.ibt` candidates, enforces size/stability/sample/time limits, and does not copy source `.ibt` files into the capture directory unless `IbtAnalysis:CopyIbtIntoCaptureDirectory=true`.
 
 ## Edge-Case Telemetry Artifacts
 
@@ -88,6 +90,16 @@ Edge-case telemetry capture is enabled by default and is separate from raw captu
 ```
 
 Each `*-edge-cases.json` file includes the watched raw schema, missing watched variables, clip triggers, a short pre-trigger window, a short post-trigger window, dropped-observation counts when the clip cap is reached, a final sampled context tail from the end of the session, selected nearby/class timing rows, and raw watch values for channels such as fuel, tires, suspension, brakes, wheel speed, pit service, weather, engine warnings, replay state, incidents, frame rate, and network latency. It intentionally does not include `telemetry.bin`.
+
+## Live Overlay Diagnostics
+
+Live overlay diagnostics are enabled by default and are separate from raw capture. Without raw capture they are written under:
+
+```text
+%LOCALAPPDATA%\TmrOverlay\logs\overlay-diagnostics
+```
+
+Each `*-live-overlay-diagnostics.json` file summarizes current-overlay assumptions observed from normalized live snapshots: gap source/session semantics, large gap and jump examples, radar side/focus/placement evidence, fuel level/burn/source evidence, and sampled intra-lap position/class-position changes. The mac harness mirrors this for mock/demo overlay runs.
 
 ## Build And Run On Windows
 

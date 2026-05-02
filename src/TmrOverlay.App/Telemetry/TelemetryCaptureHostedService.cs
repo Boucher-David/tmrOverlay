@@ -30,6 +30,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     private readonly AppPerformanceState _performance;
     private readonly TelemetryEdgeCaseRecorder _edgeCaseRecorder;
     private readonly LiveModelParityRecorder _liveModelParityRecorder;
+    private readonly LiveOverlayDiagnosticsRecorder _liveOverlayDiagnosticsRecorder;
     private readonly object _sync = new();
     private readonly SemaphoreSlim _postSessionArtifactSemaphore = new(1, 1);
     private readonly CancellationTokenSource _startupArtifactCancellation = new();
@@ -59,7 +60,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         TelemetryCaptureState state,
         AppPerformanceState performance,
         TelemetryEdgeCaseRecorder edgeCaseRecorder,
-        LiveModelParityRecorder liveModelParityRecorder)
+        LiveModelParityRecorder liveModelParityRecorder,
+        LiveOverlayDiagnosticsRecorder liveOverlayDiagnosticsRecorder)
     {
         _logger = logger;
         _options = options;
@@ -75,6 +77,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         _performance = performance;
         _edgeCaseRecorder = edgeCaseRecorder;
         _liveModelParityRecorder = liveModelParityRecorder;
+        _liveOverlayDiagnosticsRecorder = liveOverlayDiagnosticsRecorder;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -374,6 +377,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             _liveTelemetrySink.MarkCollectionStarted(sourceId, _activeStartedAtUtc.Value);
             _edgeCaseRecorder.StartCollection(sourceId, _activeStartedAtUtc.Value, edgeCaseSchema);
             _liveModelParityRecorder.StartCollection(sourceId, _activeStartedAtUtc.Value);
+            _liveOverlayDiagnosticsRecorder.StartCollection(sourceId, _activeStartedAtUtc.Value);
 
             if (capture is not null)
             {
@@ -1493,11 +1497,13 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 
             try
             {
-                _liveModelParityRecorder.RecordFrame(_liveTelemetrySource.Snapshot());
+                var liveSnapshot = _liveTelemetrySource.Snapshot();
+                _liveModelParityRecorder.RecordFrame(liveSnapshot);
+                _liveOverlayDiagnosticsRecorder.RecordFrame(liveSnapshot);
             }
             catch (Exception exception)
             {
-                _logger.LogWarning(exception, "Failed to record live model parity frame.");
+                _logger.LogWarning(exception, "Failed to record live model observer frame.");
             }
         }
         finally
@@ -1565,6 +1571,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         var finalizeStarted = Stopwatch.GetTimestamp();
         var finalizeSucceeded = false;
         var parityCompleted = false;
+        var overlayDiagnosticsCompleted = false;
         try
         {
             _state.MarkCaptureStopped();
@@ -1677,6 +1684,9 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                     edgeCaseFinalizeSucceeded);
             }
 
+            CompleteLiveOverlayDiagnostics(capture?.DirectoryPath, capture?.FinishedAtUtc ?? DateTimeOffset.UtcNow);
+            overlayDiagnosticsCompleted = true;
+
             if (capture is not null)
             {
                 await WritePostSessionArtifactsAsync(
@@ -1703,6 +1713,11 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 CompleteLiveModelParity(capture?.DirectoryPath, capture?.FinishedAtUtc ?? DateTimeOffset.UtcNow);
             }
 
+            if (!overlayDiagnosticsCompleted)
+            {
+                CompleteLiveOverlayDiagnostics(capture?.DirectoryPath, capture?.FinishedAtUtc ?? DateTimeOffset.UtcNow);
+            }
+
             _performance.RecordOperation(
                 AppPerformanceMetricIds.TelemetryFinalizeCollection,
                 finalizeStarted,
@@ -1721,6 +1736,18 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         catch (Exception exception)
         {
             _logger.LogWarning(exception, "Failed to complete live model parity artifact.");
+        }
+    }
+
+    private void CompleteLiveOverlayDiagnostics(string? captureDirectory, DateTimeOffset finishedAtUtc)
+    {
+        try
+        {
+            _liveOverlayDiagnosticsRecorder.CompleteCollection(finishedAtUtc, captureDirectory);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Failed to complete live overlay diagnostics artifact.");
         }
     }
 

@@ -327,6 +327,91 @@ DriverInfo:
         Assert.Contains(models.Relative.Rows, row => row.CarIdx == 12 && row.IsBehind);
         Assert.Equal("Partly Cloudy", models.Weather.SkiesLabel);
         Assert.True(models.FuelPit.Fuel.HasValidFuel);
+        Assert.True(models.Timing.ClassLeaderGapEvidence.IsUsable);
+        Assert.True(models.Timing.FocusRow!.CanUseForRadarPlacement);
+        Assert.Equal("requires_previous_green_distance_sample", models.FuelPit.BaselineEligibilityEvidence.MissingReason);
+    }
+
+    [Fact]
+    public void RecordFrame_MarksTimingOnlyRowsAsUnavailableForSpatialAndRadarPlacement()
+    {
+        var store = new LiveTelemetryStore();
+
+        store.RecordFrame(CreateSample(
+            playerCarIdx: 10,
+            teamLapDistPct: 0.50d,
+            teamEstimatedTimeSeconds: 50d,
+            teamCarClass: 4098,
+            teamClassPosition: 3,
+            classLeaderCarIdx: 11,
+            classLeaderLapDistPct: 0.53d,
+            classLeaderF2TimeSeconds: 0d,
+            focusClassCars:
+            [
+                new HistoricalCarProximity(
+                    CarIdx: 23,
+                    LapCompleted: -1,
+                    LapDistPct: -1d,
+                    F2TimeSeconds: 62.75d,
+                    EstimatedTimeSeconds: null,
+                    Position: 9,
+                    ClassPosition: 7,
+                    CarClass: 4098,
+                    TrackSurface: null,
+                    OnPitRoad: null)
+            ]));
+
+        var row = Assert.Single(store.Snapshot().Models.Timing.ClassRows, row => row.CarIdx == 23);
+
+        Assert.True(row.HasTiming);
+        Assert.True(row.TimingEvidence.IsUsable);
+        Assert.False(row.HasSpatialProgress);
+        Assert.False(row.SpatialEvidence.IsUsable);
+        Assert.Equal("lap_progress_missing", row.SpatialEvidence.MissingReason);
+        Assert.False(row.CanUseForRadarPlacement);
+        Assert.False(row.RadarPlacementEvidence.IsUsable);
+    }
+
+    [Fact]
+    public void RecordFrame_FlagsFuelUseWithoutFuelLevelAsDiagnosticOnly()
+    {
+        var store = new LiveTelemetryStore();
+
+        store.RecordFrame(CreateSample(
+            fuelLevelLiters: 0d,
+            fuelLevelPercent: 0d,
+            fuelUsePerHourKg: 60d));
+
+        var fuelPit = store.Snapshot().Models.FuelPit;
+
+        Assert.False(fuelPit.Fuel.HasValidFuel);
+        Assert.False(fuelPit.FuelLevelEvidence.IsUsable);
+        Assert.Equal("missing_or_zero_fuel_level", fuelPit.FuelLevelEvidence.MissingReason);
+        Assert.False(fuelPit.InstantaneousBurnEvidence.IsUsable);
+        Assert.Equal("fuel_level_invalid", fuelPit.InstantaneousBurnEvidence.MissingReason);
+        Assert.False(fuelPit.MeasuredBurnEvidence.IsUsable);
+    }
+
+    [Fact]
+    public void RecordFrame_MarksClassGapPartialWhenLeaderF2IsMissing()
+    {
+        var store = new LiveTelemetryStore();
+
+        store.RecordFrame(CreateSample(
+            playerCarIdx: 10,
+            teamLapDistPct: 0.50d,
+            teamEstimatedTimeSeconds: 125d,
+            teamCarClass: 4098,
+            teamClassPosition: 7,
+            classLeaderCarIdx: 11,
+            classLeaderF2TimeSeconds: null));
+
+        var models = store.Snapshot().Models;
+
+        Assert.False(models.Timing.ClassLeaderGapEvidence.IsUsable);
+        Assert.Equal("CarIdxF2Time", models.Timing.ClassLeaderGapEvidence.Source);
+        Assert.Equal("leader_f2_time_missing", models.Timing.ClassLeaderGapEvidence.MissingReason);
+        Assert.Equal("leader_f2_time_missing", models.Timing.FocusRow!.GapEvidence.MissingReason);
     }
 
     [Fact]
@@ -460,6 +545,13 @@ DriverInfo:
             IsFocus: true,
             IsOverallLeader: false,
             IsClassLeader: false,
+            HasTiming: true,
+            HasSpatialProgress: true,
+            CanUseForRadarPlacement: true,
+            TimingEvidence: LiveSignalEvidence.Reliable("test"),
+            SpatialEvidence: LiveSignalEvidence.Reliable("test"),
+            RadarPlacementEvidence: LiveSignalEvidence.Reliable("test"),
+            GapEvidence: LiveSignalEvidence.Reliable("test"),
             DriverName: "Driver One",
             TeamName: "Team One",
             CarNumber: "71",

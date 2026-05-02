@@ -126,6 +126,11 @@ internal static class LiveModelParityAnalyzer
                 CompareNullableBoolean(observations, "proximity", $"relative-pit-road-{legacyCar.CarIdx}", legacyCar.OnPitRoad, relative.OnPitRoad);
             }
 
+            if (legacyCar.RelativeMeters is null)
+            {
+                continue;
+            }
+
             if (!spatialByCarIdx.TryGetValue(legacyCar.CarIdx, out var spatial))
             {
                 observations.Add(Missing("proximity", $"spatial-car-{legacyCar.CarIdx}", "legacy nearby car missing from model spatial cars"));

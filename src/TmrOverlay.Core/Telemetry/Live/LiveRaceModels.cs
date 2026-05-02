@@ -10,6 +10,38 @@ internal enum LiveModelQuality
     Reliable = 3
 }
 
+internal sealed record LiveSignalEvidence(
+    string Source,
+    LiveModelQuality Quality,
+    bool IsUsable,
+    string? MissingReason)
+{
+    public static LiveSignalEvidence Reliable(string source)
+    {
+        return new LiveSignalEvidence(source, LiveModelQuality.Reliable, IsUsable: true, MissingReason: null);
+    }
+
+    public static LiveSignalEvidence Inferred(string source)
+    {
+        return new LiveSignalEvidence(source, LiveModelQuality.Inferred, IsUsable: true, MissingReason: null);
+    }
+
+    public static LiveSignalEvidence Partial(string source, string reason)
+    {
+        return new LiveSignalEvidence(source, LiveModelQuality.Partial, IsUsable: false, MissingReason: reason);
+    }
+
+    public static LiveSignalEvidence DiagnosticOnly(string source, string reason)
+    {
+        return new LiveSignalEvidence(source, LiveModelQuality.Partial, IsUsable: false, MissingReason: reason);
+    }
+
+    public static LiveSignalEvidence Unavailable(string source, string reason)
+    {
+        return new LiveSignalEvidence(source, LiveModelQuality.Unavailable, IsUsable: false, MissingReason: reason);
+    }
+}
+
 internal sealed record LiveRaceModels(
     LiveSessionModel Session,
     LiveDriverDirectoryModel DriverDirectory,
@@ -116,6 +148,8 @@ internal sealed record LiveTimingModel(
     int? FocusCarIdx,
     int? OverallLeaderCarIdx,
     int? ClassLeaderCarIdx,
+    LiveSignalEvidence OverallLeaderGapEvidence,
+    LiveSignalEvidence ClassLeaderGapEvidence,
     LiveTimingRow? PlayerRow,
     LiveTimingRow? FocusRow,
     IReadOnlyList<LiveTimingRow> OverallRows,
@@ -128,6 +162,8 @@ internal sealed record LiveTimingModel(
         FocusCarIdx: null,
         OverallLeaderCarIdx: null,
         ClassLeaderCarIdx: null,
+        OverallLeaderGapEvidence: LiveSignalEvidence.Unavailable("overall-gap", "no_timing_sample"),
+        ClassLeaderGapEvidence: LiveSignalEvidence.Unavailable("class-gap", "no_timing_sample"),
         PlayerRow: null,
         FocusRow: null,
         OverallRows: [],
@@ -142,6 +178,13 @@ internal sealed record LiveTimingRow(
     bool IsFocus,
     bool IsOverallLeader,
     bool IsClassLeader,
+    bool HasTiming,
+    bool HasSpatialProgress,
+    bool CanUseForRadarPlacement,
+    LiveSignalEvidence TimingEvidence,
+    LiveSignalEvidence SpatialEvidence,
+    LiveSignalEvidence RadarPlacementEvidence,
+    LiveSignalEvidence GapEvidence,
     string? DriverName,
     string? TeamName,
     string? CarNumber,
@@ -183,6 +226,8 @@ internal sealed record LiveRelativeRow(
     bool IsAhead,
     bool IsBehind,
     bool IsSameClass,
+    LiveSignalEvidence TimingEvidence,
+    LiveSignalEvidence PlacementEvidence,
     string? DriverName,
     int? OverallPosition,
     int? ClassPosition,
@@ -212,6 +257,7 @@ internal sealed record LiveSpatialModel(
 internal sealed record LiveSpatialCar(
     int CarIdx,
     LiveModelQuality Quality,
+    LiveSignalEvidence PlacementEvidence,
     double RelativeLaps,
     double? RelativeMeters,
     int? CarClass,
@@ -255,6 +301,10 @@ internal sealed record LiveFuelPitModel(
     bool PitstopActive,
     bool PlayerCarInPitStall,
     bool? TeamOnPitRoad,
+    LiveSignalEvidence FuelLevelEvidence,
+    LiveSignalEvidence InstantaneousBurnEvidence,
+    LiveSignalEvidence MeasuredBurnEvidence,
+    LiveSignalEvidence BaselineEligibilityEvidence,
     int? PitServiceFlags,
     double? PitServiceFuelLiters,
     double? PitRepairLeftSeconds,
@@ -271,6 +321,10 @@ internal sealed record LiveFuelPitModel(
         PitstopActive: false,
         PlayerCarInPitStall: false,
         TeamOnPitRoad: null,
+        FuelLevelEvidence: LiveSignalEvidence.Unavailable("FuelLevel", "missing_or_zero_fuel_level"),
+        InstantaneousBurnEvidence: LiveSignalEvidence.Unavailable("FuelUsePerHour", "missing_or_zero_fuel_use"),
+        MeasuredBurnEvidence: LiveSignalEvidence.Unavailable("rolling-local-fuel-delta", "requires_two_green_distance_samples"),
+        BaselineEligibilityEvidence: LiveSignalEvidence.Unavailable("measured-local-fuel-baseline", "requires_rolling_local_driver_window"),
         PitServiceFlags: null,
         PitServiceFuelLiters: null,
         PitRepairLeftSeconds: null,

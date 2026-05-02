@@ -78,6 +78,21 @@ swift test
 
 The current local Command Line Tools setup may build but fail to run XCTest; report that limitation if it applies.
 
+For overlay behavior changes, also run a live mac-harness smoke test when a GUI session is available. Use an isolated app-data root so the check does not disturb normal local settings/history:
+
+```bash
+TMR_MAC_APP_DATA_ROOT=/tmp/tmroverlay-live-validate ./run.sh
+```
+
+Let it run long enough to connect and start mock live analysis, then confirm:
+
+- the process is running as `TmrOverlayMac`
+- the log contains mock connection and collection-start entries
+- `logs/performance/*.jsonl` shows nonzero telemetry frames and overlay refresh data
+- `logs/overlay-diagnostics/*-live-overlay-diagnostics.json` is being written
+
+This live smoke test is the best check that one instance of each current overlay updates from live mock telemetry. Screenshot generation is still useful as the deterministic layout/regression check, but it should not be treated as the only validation for live behavior. If screen capture or Accessibility permissions are unavailable from the shell, report that limitation and rely on process/log/diagnostic evidence plus the screenshot generator.
+
 ## Change-Specific Checks
 
 - Keep public snapshot member names stable unless the requested change intentionally updates the contract.

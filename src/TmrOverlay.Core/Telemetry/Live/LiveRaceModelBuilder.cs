@@ -117,6 +117,24 @@ internal static class LiveRaceModelBuilder
         var focusCarIdx = FocusCarIdx(sample);
         var playerCarIdx = sample.PlayerCarIdx;
         var classLeaderCarIdx = leaderGap.ClassLeaderCarIdx ?? FocusClassLeaderCarIdx(sample);
+        var overallGapEvidence = BuildLeaderGapEvidence(
+            source: "overall-gap",
+            position: FocusPosition(sample),
+            leaderCarIdx: sample.LeaderCarIdx,
+            referenceCarIdx: focusCarIdx,
+            referenceF2TimeSeconds: FocusF2TimeSeconds(sample),
+            leaderF2TimeSeconds: sample.LeaderF2TimeSeconds,
+            referenceProgress: Progress(FocusLapCompleted(sample), FocusLapDistPct(sample)),
+            leaderProgress: Progress(sample.LeaderLapCompleted, sample.LeaderLapDistPct));
+        var classGapEvidence = BuildLeaderGapEvidence(
+            source: "class-gap",
+            position: FocusClassPosition(sample),
+            leaderCarIdx: classLeaderCarIdx,
+            referenceCarIdx: focusCarIdx,
+            referenceF2TimeSeconds: FocusF2TimeSeconds(sample),
+            leaderF2TimeSeconds: FocusClassLeaderF2TimeSeconds(sample),
+            referenceProgress: Progress(FocusLapCompleted(sample), FocusLapDistPct(sample)),
+            leaderProgress: Progress(FocusClassLeaderLapCompleted(sample), FocusClassLeaderLapDistPct(sample)));
 
         AddKnownRow(
             rows,
@@ -217,7 +235,7 @@ internal static class LiveRaceModelBuilder
         var classGapByCarIdx = leaderGap.ClassCars.ToDictionary(car => car.CarIdx);
         var mergedRows = rows
             .GroupBy(row => row.CarIdx)
-            .Select(group => ApplyClassGap(MergeRows(group), classGapByCarIdx))
+            .Select(group => ApplyClassGap(MergeRows(group), classGapByCarIdx, classGapEvidence))
             .OrderBy(row => row.OverallPosition ?? int.MaxValue)
             .ThenBy(row => row.ClassPosition ?? int.MaxValue)
             .ThenByDescending(row => row.ProgressLaps ?? double.MinValue)
@@ -254,6 +272,8 @@ internal static class LiveRaceModelBuilder
             FocusCarIdx: focusCarIdx,
             OverallLeaderCarIdx: leaderGap.OverallLeaderCarIdx,
             ClassLeaderCarIdx: classLeaderCarIdx,
+            OverallLeaderGapEvidence: overallGapEvidence,
+            ClassLeaderGapEvidence: classGapEvidence,
             PlayerRow: playerRow,
             FocusRow: focusRow,
             OverallRows: mergedRows,
@@ -281,6 +301,12 @@ internal static class LiveRaceModelBuilder
                 IsAhead: car.RelativeLaps > 0d,
                 IsBehind: car.RelativeLaps < 0d,
                 IsSameClass: referenceClass is not null && car.CarClass == referenceClass,
+                TimingEvidence: car.RelativeSeconds is not null
+                    ? LiveSignalEvidence.Reliable("proximity-relative-seconds")
+                    : LiveSignalEvidence.Partial("proximity-relative-seconds", "relative_seconds_missing"),
+                PlacementEvidence: car.RelativeMeters is not null
+                    ? LiveSignalEvidence.Reliable("CarIdxLapDistPct+track-length")
+                    : LiveSignalEvidence.Inferred("CarIdxLapDistPct"),
                 DriverName: timingRow?.DriverName,
                 OverallPosition: car.OverallPosition ?? timingRow?.OverallPosition,
                 ClassPosition: car.ClassPosition ?? timingRow?.ClassPosition,
@@ -302,6 +328,8 @@ internal static class LiveRaceModelBuilder
                     IsAhead: row.DeltaSecondsToFocus < 0d,
                     IsBehind: row.DeltaSecondsToFocus > 0d,
                     IsSameClass: referenceClass is not null && row.CarClass == referenceClass,
+                    TimingEvidence: row.GapEvidence,
+                    PlacementEvidence: LiveSignalEvidence.Unavailable("class-gap", "no_lap_distance_placement"),
                     DriverName: row.DriverName,
                     OverallPosition: row.OverallPosition,
                     ClassPosition: row.ClassPosition,
@@ -337,9 +365,11 @@ internal static class LiveRaceModelBuilder
     {
         var trackLengthMeters = ValidPositive(context.Track.TrackLengthKm) is { } km ? km * 1000d : null;
         var cars = proximity.NearbyCars
+            .Where(car => car.RelativeMeters is not null)
             .Select(car => new LiveSpatialCar(
                 CarIdx: car.CarIdx,
-                Quality: car.RelativeMeters is not null ? LiveModelQuality.Reliable : LiveModelQuality.Inferred,
+                Quality: LiveModelQuality.Reliable,
+                PlacementEvidence: LiveSignalEvidence.Reliable("CarIdxLapDistPct+track-length"),
                 RelativeLaps: car.RelativeLaps,
                 RelativeMeters: car.RelativeMeters,
                 CarClass: car.CarClass,
@@ -395,6 +425,12 @@ internal static class LiveRaceModelBuilder
 
     private static LiveFuelPitModel BuildFuelPit(HistoricalTelemetrySample sample, LiveFuelSnapshot fuel)
     {
+        var fuelLevelEvidence = BuildFuelLevelEvidence(sample);
+        var instantaneousBurnEvidence = BuildInstantaneousBurnEvidence(sample, fuel);
+        var measuredBurnEvidence = LiveSignalEvidence.Unavailable(
+            "rolling-local-fuel-delta",
+            "requires_two_green_distance_samples");
+        var baselineEligibilityEvidence = BuildBaselineEligibilityEvidence(sample, fuel);
         var hasPitData = sample.OnPitRoad
             || sample.PitstopActive
             || sample.PlayerCarInPitStall
@@ -419,6 +455,10 @@ internal static class LiveRaceModelBuilder
             PitstopActive: sample.PitstopActive,
             PlayerCarInPitStall: sample.PlayerCarInPitStall,
             TeamOnPitRoad: sample.TeamOnPitRoad,
+            FuelLevelEvidence: fuelLevelEvidence,
+            InstantaneousBurnEvidence: instantaneousBurnEvidence,
+            MeasuredBurnEvidence: measuredBurnEvidence,
+            BaselineEligibilityEvidence: baselineEligibilityEvidence,
             PitServiceFlags: sample.PitServiceFlags,
             PitServiceFuelLiters: ValidNonNegative(sample.PitServiceFuelLiters),
             PitRepairLeftSeconds: ValidNonNegative(sample.PitRepairLeftSeconds),
@@ -581,6 +621,15 @@ internal static class LiveRaceModelBuilder
     {
         var driver = driverDirectory.Drivers.FirstOrDefault(candidate => candidate.CarIdx == carIdx);
         var progressLaps = Progress(lapCompleted, lapDistPct);
+        var hasTiming = HasTimingSignal(
+            overallPosition,
+            classPosition,
+            f2TimeSeconds,
+            estimatedTimeSeconds,
+            lastLapTimeSeconds,
+            bestLapTimeSeconds);
+        var hasSpatialProgress = progressLaps is not null;
+        var canUseForRadarPlacement = hasSpatialProgress && !IsPitRoadLike(trackSurface, onPitRoad);
 
         return new LiveTimingRow(
             CarIdx: carIdx,
@@ -590,6 +639,21 @@ internal static class LiveRaceModelBuilder
             IsFocus: isFocus,
             IsOverallLeader: isOverallLeader,
             IsClassLeader: isClassLeader,
+            HasTiming: hasTiming,
+            HasSpatialProgress: hasSpatialProgress,
+            CanUseForRadarPlacement: canUseForRadarPlacement,
+            TimingEvidence: hasTiming
+                ? new LiveSignalEvidence(source, quality, IsUsable: true, MissingReason: null)
+                : LiveSignalEvidence.Unavailable(source, "timing_fields_missing"),
+            SpatialEvidence: hasSpatialProgress
+                ? new LiveSignalEvidence(source, quality, IsUsable: true, MissingReason: null)
+                : LiveSignalEvidence.Unavailable(source, "lap_progress_missing"),
+            RadarPlacementEvidence: canUseForRadarPlacement
+                ? new LiveSignalEvidence(source, quality, IsUsable: true, MissingReason: null)
+                : LiveSignalEvidence.Unavailable(
+                    source,
+                    hasSpatialProgress ? "pit_or_off_track_surface" : "lap_progress_missing"),
+            GapEvidence: LiveSignalEvidence.Unavailable("class-gap", "gap_not_calculated_for_row"),
             DriverName: driver?.DriverName,
             TeamName: driver?.TeamName,
             CarNumber: driver?.CarNumber,
@@ -650,13 +714,21 @@ internal static class LiveRaceModelBuilder
             GapLapsToClassLeader = FirstValue(rows.Select(row => row.GapLapsToClassLeader)),
             DeltaSecondsToFocus = FirstValue(rows.Select(row => row.DeltaSecondsToFocus)),
             TrackSurface = FirstValue(rows.Select(row => row.TrackSurface)),
-            OnPitRoad = FirstValue(rows.Select(row => row.OnPitRoad))
+            OnPitRoad = FirstValue(rows.Select(row => row.OnPitRoad)),
+            HasTiming = rows.Any(row => row.HasTiming),
+            HasSpatialProgress = rows.Any(row => row.HasSpatialProgress),
+            CanUseForRadarPlacement = rows.Any(row => row.CanUseForRadarPlacement),
+            TimingEvidence = MergeEvidence(rows.Select(row => row.TimingEvidence)),
+            SpatialEvidence = MergeEvidence(rows.Select(row => row.SpatialEvidence)),
+            RadarPlacementEvidence = MergeEvidence(rows.Select(row => row.RadarPlacementEvidence)),
+            GapEvidence = MergeEvidence(rows.Select(row => row.GapEvidence))
         };
     }
 
     private static LiveTimingRow ApplyClassGap(
         LiveTimingRow row,
-        IReadOnlyDictionary<int, LiveClassGapCar> classGapByCarIdx)
+        IReadOnlyDictionary<int, LiveClassGapCar> classGapByCarIdx,
+        LiveSignalEvidence classGapEvidence)
     {
         if (!classGapByCarIdx.TryGetValue(row.CarIdx, out var gap))
         {
@@ -669,8 +741,178 @@ internal static class LiveRaceModelBuilder
             ClassPosition = row.ClassPosition ?? gap.ClassPosition,
             GapSecondsToClassLeader = row.GapSecondsToClassLeader ?? gap.GapSecondsToClassLeader,
             GapLapsToClassLeader = row.GapLapsToClassLeader ?? gap.GapLapsToClassLeader,
-            DeltaSecondsToFocus = row.DeltaSecondsToFocus ?? gap.DeltaSecondsToReference
+            DeltaSecondsToFocus = row.DeltaSecondsToFocus ?? gap.DeltaSecondsToReference,
+            GapEvidence = BuildClassGapRowEvidence(gap, classGapEvidence)
         };
+    }
+
+    private static LiveSignalEvidence BuildLeaderGapEvidence(
+        string source,
+        int? position,
+        int? leaderCarIdx,
+        int? referenceCarIdx,
+        double? referenceF2TimeSeconds,
+        double? leaderF2TimeSeconds,
+        double? referenceProgress,
+        double? leaderProgress)
+    {
+        if (position == 1 || (leaderCarIdx is not null && leaderCarIdx == referenceCarIdx))
+        {
+            return LiveSignalEvidence.Reliable("position");
+        }
+
+        if (ValidNonNegative(referenceF2TimeSeconds) is not null)
+        {
+            return ValidNonNegative(leaderF2TimeSeconds) is not null
+                ? LiveSignalEvidence.Reliable("CarIdxF2Time")
+                : LiveSignalEvidence.Partial("CarIdxF2Time", "leader_f2_time_missing");
+        }
+
+        if (referenceProgress is not null && leaderProgress is not null)
+        {
+            return LiveSignalEvidence.Inferred("CarIdxLapDistPct");
+        }
+
+        if (referenceCarIdx is null)
+        {
+            return LiveSignalEvidence.Unavailable(source, "reference_car_missing");
+        }
+
+        return LiveSignalEvidence.Unavailable(source, "gap_signals_missing");
+    }
+
+    private static LiveSignalEvidence BuildClassGapRowEvidence(
+        LiveClassGapCar gap,
+        LiveSignalEvidence classGapEvidence)
+    {
+        if (gap.IsClassLeader)
+        {
+            return LiveSignalEvidence.Reliable("class-leader-row");
+        }
+
+        if (gap.GapSecondsToClassLeader is not null)
+        {
+            return classGapEvidence;
+        }
+
+        if (gap.GapLapsToClassLeader is not null)
+        {
+            return LiveSignalEvidence.Inferred("CarIdxLapDistPct");
+        }
+
+        return LiveSignalEvidence.Unavailable("class-gap", "gap_signals_missing");
+    }
+
+    private static LiveSignalEvidence BuildFuelLevelEvidence(HistoricalTelemetrySample sample)
+    {
+        return ValidPositive(sample.FuelLevelLiters) is not null
+            ? LiveSignalEvidence.Reliable("FuelLevel")
+            : LiveSignalEvidence.Unavailable("FuelLevel", "missing_or_zero_fuel_level");
+    }
+
+    private static LiveSignalEvidence BuildInstantaneousBurnEvidence(
+        HistoricalTelemetrySample sample,
+        LiveFuelSnapshot fuel)
+    {
+        if (ValidPositive(sample.FuelUsePerHourKg) is null)
+        {
+            return LiveSignalEvidence.Unavailable("FuelUsePerHour", "missing_or_zero_fuel_use");
+        }
+
+        return fuel.HasValidFuel
+            ? LiveSignalEvidence.DiagnosticOnly("FuelUsePerHour", "instantaneous_burn_requires_smoothing")
+            : LiveSignalEvidence.DiagnosticOnly("FuelUsePerHour", "fuel_level_invalid");
+    }
+
+    private static LiveSignalEvidence BuildBaselineEligibilityEvidence(
+        HistoricalTelemetrySample sample,
+        LiveFuelSnapshot fuel)
+    {
+        if (!fuel.HasValidFuel)
+        {
+            return LiveSignalEvidence.Unavailable("measured-local-fuel-baseline", "valid_local_fuel_level_missing");
+        }
+
+        if (sample.OnPitRoad || sample.PitstopActive || sample.PlayerCarInPitStall)
+        {
+            return LiveSignalEvidence.Unavailable("measured-local-fuel-baseline", "pit_or_service_context");
+        }
+
+        if (Progress(sample.LapCompleted, sample.LapDistPct) is null)
+        {
+            return LiveSignalEvidence.Unavailable("measured-local-fuel-baseline", "local_lap_progress_missing");
+        }
+
+        return LiveSignalEvidence.Partial(
+            "measured-local-fuel-baseline",
+            "requires_previous_green_distance_sample");
+    }
+
+    private static bool HasTimingSignal(
+        int? overallPosition,
+        int? classPosition,
+        double? f2TimeSeconds,
+        double? estimatedTimeSeconds,
+        double? lastLapTimeSeconds,
+        double? bestLapTimeSeconds)
+    {
+        return overallPosition is > 0
+            || classPosition is > 0
+            || ValidNonNegative(f2TimeSeconds) is not null
+            || ValidNonNegative(estimatedTimeSeconds) is not null
+            || ValidPositive(lastLapTimeSeconds) is not null
+            || ValidPositive(bestLapTimeSeconds) is not null;
+    }
+
+    private static bool IsPitRoadLike(int? trackSurface, bool? onPitRoad)
+    {
+        return onPitRoad == true || IsPitRoadTrackSurface(trackSurface);
+    }
+
+    private static bool IsPitRoadTrackSurface(int? trackSurface)
+    {
+        return trackSurface is 1 or 2;
+    }
+
+    private static LiveSignalEvidence MergeEvidence(IEnumerable<LiveSignalEvidence> evidence)
+    {
+        var items = evidence.ToArray();
+        if (items.Length == 0)
+        {
+            return LiveSignalEvidence.Unavailable("unknown", "no_evidence");
+        }
+
+        var usable = items
+            .Where(item => item.IsUsable)
+            .OrderByDescending(item => item.Quality)
+            .ToArray();
+        if (usable.Length > 0)
+        {
+            return new LiveSignalEvidence(
+                Source: JoinSources(usable),
+                Quality: usable.Max(item => item.Quality),
+                IsUsable: true,
+                MissingReason: null);
+        }
+
+        var strongest = items
+            .OrderByDescending(item => item.Quality)
+            .First();
+        return new LiveSignalEvidence(
+            Source: JoinSources(items),
+            Quality: strongest.Quality,
+            IsUsable: false,
+            MissingReason: strongest.MissingReason);
+    }
+
+    private static string JoinSources(IEnumerable<LiveSignalEvidence> evidence)
+    {
+        return string.Join(
+            "+",
+            evidence
+                .Select(item => item.Source)
+                .Where(source => !string.IsNullOrWhiteSpace(source))
+                .Distinct(StringComparer.OrdinalIgnoreCase));
     }
 
     private static LiveDriverIdentity ToLiveDriver(HistoricalSessionDriver driver)

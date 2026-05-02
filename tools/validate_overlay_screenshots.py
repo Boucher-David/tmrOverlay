@@ -18,7 +18,7 @@ EXPECTED_PNGS = {
     "car-radar/car-radar-states.png": (3600, 2800),
     "car-radar/car-radar-multiclass.png": (600, 600),
     "gap-to-leader/gap-to-leader-states.png": (3600, 2800),
-    "gap-to-leader/gap-to-leader.png": (1120, 520),
+    "gap-to-leader/gap-to-leader.png": (1320, 560),
 }
 
 EXPECTED_STATE_PNGS = [

@@ -14,6 +14,7 @@ internal sealed class IbtAnalysisService
     private const string SchemaSummaryFileName = "ibt-schema-summary.json";
     private const string SchemaComparisonFileName = "ibt-vs-live-schema.json";
     private const string FieldSummaryFileName = "ibt-field-summary.json";
+    private const string LocalCarSummaryFileName = "ibt-local-car-summary.json";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -51,6 +52,75 @@ internal sealed class IbtAnalysisService
         "position",
         "f2time",
         "esttime"
+    ];
+
+    private static readonly string[] ExpectedOpponentContextFields =
+    [
+        "CamCarIdx",
+        "CarLeftRight",
+        "CarIdxLapDistPct",
+        "CarIdxF2Time",
+        "CarIdxEstTime",
+        "CarIdxPosition",
+        "CarIdxClassPosition",
+        "CarIdxClass",
+        "CarIdxOnPitRoad",
+        "CarIdxTrackSurface",
+        "CarIdxBestLapTime",
+        "CarIdxLastLapTime"
+    ];
+
+    private static readonly string[] LocalCarAnalysisFieldNames =
+    [
+        "SessionTime",
+        "Lap",
+        "LapCompleted",
+        "LapDist",
+        "LapDistPct",
+        "Lat",
+        "Lon",
+        "Alt",
+        "Speed",
+        "VelocityX",
+        "VelocityY",
+        "VelocityZ",
+        "Yaw",
+        "Pitch",
+        "Roll",
+        "YawNorth",
+        "YawRate",
+        "PitchRate",
+        "RollRate",
+        "LatAccel",
+        "LongAccel",
+        "VertAccel",
+        "FuelLevel",
+        "FuelLevelPct",
+        "FuelUsePerHour",
+        "OnPitRoad",
+        "PitstopActive",
+        "PlayerCarInPitStall",
+        "PitSvFuel",
+        "dpFuelFill",
+        "dpFuelAddKg",
+        "LFspeed",
+        "RFspeed",
+        "LRspeed",
+        "RRspeed",
+        "LFpressure",
+        "RFpressure",
+        "LRpressure",
+        "RRpressure",
+        "LFrideHeight",
+        "RFrideHeight",
+        "LRrideHeight",
+        "RRrideHeight",
+        "AirTemp",
+        "TrackTempCrew",
+        "TrackWetness",
+        "WeatherDeclaredWet",
+        "Precipitation",
+        "Skies"
     ];
 
     private readonly IbtAnalysisOptions _options;
@@ -183,11 +253,12 @@ internal sealed class IbtAnalysisService
         var fieldScan = SampleFields(candidate.Path, ibt, cancellationToken);
         var comparison = BuildComparison(liveSchema, ibt.Fields);
         var context = ParseContext(ibt.SessionInfoYaml);
+        var source = candidate.ToSource();
 
         var schemaSummary = new IbtSchemaSummaryDocument(
             AnalysisVersion: 1,
             GeneratedAtUtc: DateTimeOffset.UtcNow,
-            Source: candidate.ToSource(),
+            Source: source,
             Header: ibt.Header,
             DiskHeader: ibt.DiskHeader,
             Context: context,
@@ -207,20 +278,23 @@ internal sealed class IbtAnalysisService
         var fieldSummary = new IbtFieldSummaryDocument(
             AnalysisVersion: 1,
             GeneratedAtUtc: DateTimeOffset.UtcNow,
-            Source: candidate.ToSource(),
+            Source: source,
             TotalRecordCount: fieldScan.TotalRecordCount,
             ParserStartRecordIndex: fieldScan.ParserStartRecordIndex,
             SampleStride: fieldScan.SampleStride,
             SampledRecordCount: fieldScan.SampledRecordCount,
             MaxSampledRecords: _options.MaxSampledRecords,
             Fields: fieldScan.Fields);
+        var localCarSummary = BuildLocalCarSummary(source, fieldScan, ibt.Fields, context);
 
         var schemaSummaryPath = Path.Combine(outputDirectory, SchemaSummaryFileName);
         var comparisonPath = Path.Combine(outputDirectory, SchemaComparisonFileName);
         var fieldSummaryPath = Path.Combine(outputDirectory, FieldSummaryFileName);
+        var localCarSummaryPath = Path.Combine(outputDirectory, LocalCarSummaryFileName);
         WriteJson(schemaSummaryPath, schemaSummary);
         WriteJson(comparisonPath, comparison);
         WriteJson(fieldSummaryPath, fieldSummary);
+        WriteJson(localCarSummaryPath, localCarSummary);
 
         if (_options.CopyIbtIntoCaptureDirectory)
         {
@@ -236,10 +310,10 @@ internal sealed class IbtAnalysisService
             Reason: null,
             TelemetryRoot: _options.TelemetryRoot,
             OutputDirectory: outputDirectory,
-            Source: candidate.ToSource(),
+            Source: source,
             CandidateSelection: candidateSelection.ToSummary(),
             Guardrails: Guardrails(),
-            OutputFiles: [SchemaSummaryFileName, SchemaComparisonFileName, FieldSummaryFileName],
+            OutputFiles: [SchemaSummaryFileName, SchemaComparisonFileName, FieldSummaryFileName, LocalCarSummaryFileName],
             ElapsedMilliseconds: stopwatch.ElapsedMilliseconds,
             FieldCount: ibt.Fields.Count,
             TotalRecordCount: fieldScan.TotalRecordCount,
@@ -556,6 +630,172 @@ internal sealed class IbtAnalysisService
             SampleStride: sampleStride,
             SampledRecordCount: sampled,
             Fields: stats.Select(field => field.ToSummary()).ToArray());
+    }
+
+    private static IbtLocalCarSummaryDocument BuildLocalCarSummary(
+        IbtSourceFile source,
+        IbtFieldScan fieldScan,
+        IReadOnlyList<IbtTelemetryVariableSchema> schema,
+        HistoricalSessionContext context)
+    {
+        var fieldsByName = fieldScan.Fields
+            .GroupBy(field => field.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var schemaByName = schema
+            .GroupBy(field => field.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var keyFields = LocalCarAnalysisFieldNames
+            .Where(fieldsByName.ContainsKey)
+            .Select(name => ToLocalCarFieldSummary(fieldsByName[name], schemaByName.GetValueOrDefault(name)))
+            .ToArray();
+        var missingLocalFields = LocalCarAnalysisFieldNames
+            .Where(name => !fieldsByName.ContainsKey(name))
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var missingOpponentFields = ExpectedOpponentContextFields
+            .Where(name => !fieldsByName.ContainsKey(name))
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var signalGroups = BuildLocalCarSignalGroups(fieldsByName);
+        var lat = fieldsByName.GetValueOrDefault("Lat");
+        var lon = fieldsByName.GetValueOrDefault("Lon");
+        var alt = fieldsByName.GetValueOrDefault("Alt");
+        var lapDist = fieldsByName.GetValueOrDefault("LapDist");
+        var lapDistPct = fieldsByName.GetValueOrDefault("LapDistPct");
+        var lapCompleted = fieldsByName.GetValueOrDefault("LapCompleted");
+        var coordinateCount = Math.Min(
+            lat?.FiniteValueCount ?? 0,
+            lon?.FiniteValueCount ?? 0);
+        var hasLatLon = HasFiniteSamples(lat) && HasFiniteSamples(lon);
+        var hasLapDistance = HasFiniteSamples(lapDist) || HasFiniteSamples(lapDistPct);
+        var trackMapMissingReasons = new List<string>();
+        if (!hasLatLon)
+        {
+            trackMapMissingReasons.Add("lat_lon_missing");
+        }
+
+        if (!hasLapDistance)
+        {
+            trackMapMissingReasons.Add("lap_distance_missing");
+        }
+
+        if (coordinateCount == 0)
+        {
+            trackMapMissingReasons.Add("sampled_coordinates_missing");
+        }
+
+        var notes = new List<string>();
+        if (missingOpponentFields.Length == ExpectedOpponentContextFields.Length)
+        {
+            notes.Add("No live opponent arrays were present; use the matching raw/live capture for standings, radar, and class-gap context.");
+        }
+
+        if (hasLatLon && hasLapDistance)
+        {
+            notes.Add("IBT has enough local-car trajectory fields for future track-map investigation, subject to lap filtering and coordinate cleanup.");
+        }
+
+        return new IbtLocalCarSummaryDocument(
+            AnalysisVersion: 1,
+            GeneratedAtUtc: DateTimeOffset.UtcNow,
+            Source: source,
+            Combo: HistoricalComboIdentity.From(context),
+            TotalRecordCount: fieldScan.TotalRecordCount,
+            SampledRecordCount: fieldScan.SampledRecordCount,
+            SampleStride: fieldScan.SampleStride,
+            TrackMapReadiness: new IbtTrackMapReadiness(
+                HasLatitudeLongitude: hasLatLon,
+                HasAltitude: HasFiniteSamples(alt),
+                HasLapDistance: hasLapDistance,
+                HasLapCompleted: HasFiniteSamples(lapCompleted),
+                SampledCoordinateRecordCount: coordinateCount,
+                IsCandidate: hasLatLon && hasLapDistance && coordinateCount > 0,
+                MissingReasons: trackMapMissingReasons),
+            CoordinateBounds: hasLatLon
+                ? new IbtCoordinateBounds(
+                    MinLatitude: lat?.Minimum,
+                    MaxLatitude: lat?.Maximum,
+                    MinLongitude: lon?.Minimum,
+                    MaxLongitude: lon?.Maximum,
+                    MinAltitudeMeters: alt?.Minimum,
+                    MaxAltitudeMeters: alt?.Maximum)
+                : null,
+            LapProgress: new IbtLapProgressSummary(
+                LapMinimum: fieldsByName.GetValueOrDefault("Lap")?.Minimum,
+                LapMaximum: fieldsByName.GetValueOrDefault("Lap")?.Maximum,
+                LapCompletedMinimum: lapCompleted?.Minimum,
+                LapCompletedMaximum: lapCompleted?.Maximum,
+                LapDistMinimum: lapDist?.Minimum,
+                LapDistMaximum: lapDist?.Maximum,
+                LapDistPctMinimum: lapDistPct?.Minimum,
+                LapDistPctMaximum: lapDistPct?.Maximum),
+            SignalGroups: signalGroups,
+            KeyFields: keyFields,
+            MissingLocalCandidateFields: missingLocalFields,
+            MissingOpponentContextFields: missingOpponentFields,
+            Notes: notes);
+    }
+
+    private static IReadOnlyList<IbtLocalCarSignalGroup> BuildLocalCarSignalGroups(
+        IReadOnlyDictionary<string, IbtFieldSummary> fieldsByName)
+    {
+        return
+        [
+            BuildLocalCarSignalGroup("trajectory", fieldsByName, ["Lat", "Lon", "Alt", "LapDist", "LapDistPct", "Lap", "LapCompleted"]),
+            BuildLocalCarSignalGroup("fuel", fieldsByName, ["FuelLevel", "FuelLevelPct", "FuelUsePerHour"]),
+            BuildLocalCarSignalGroup("vehicle-dynamics", fieldsByName, ["Speed", "VelocityX", "VelocityY", "VelocityZ", "Yaw", "Pitch", "Roll", "YawRate", "PitchRate", "RollRate", "LatAccel", "LongAccel", "VertAccel"]),
+            BuildLocalCarSignalGroup("tires-wheels", fieldsByName, ["LFspeed", "RFspeed", "LRspeed", "RRspeed", "LFpressure", "RFpressure", "LRpressure", "RRpressure", "LFrideHeight", "RFrideHeight", "LRrideHeight", "RRrideHeight"]),
+            BuildLocalCarSignalGroup("pit-service", fieldsByName, ["OnPitRoad", "PitstopActive", "PlayerCarInPitStall", "PitSvFuel", "dpFuelFill", "dpFuelAddKg"]),
+            BuildLocalCarSignalGroup("weather", fieldsByName, ["AirTemp", "TrackTempCrew", "TrackWetness", "WeatherDeclaredWet", "Precipitation", "Skies"]),
+            BuildLocalCarSignalGroup("opponent-context", fieldsByName, ExpectedOpponentContextFields)
+        ];
+    }
+
+    private static IbtLocalCarSignalGroup BuildLocalCarSignalGroup(
+        string name,
+        IReadOnlyDictionary<string, IbtFieldSummary> fieldsByName,
+        IReadOnlyList<string> expectedFields)
+    {
+        var present = expectedFields
+            .Where(fieldsByName.ContainsKey)
+            .OrderBy(field => field, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var missing = expectedFields
+            .Where(field => !fieldsByName.ContainsKey(field))
+            .OrderBy(field => field, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        return new IbtLocalCarSignalGroup(
+            Name: name,
+            PresentFields: present,
+            MissingFields: missing);
+    }
+
+    private static IbtLocalCarFieldSummary ToLocalCarFieldSummary(
+        IbtFieldSummary summary,
+        IbtTelemetryVariableSchema? schema)
+    {
+        return new IbtLocalCarFieldSummary(
+            Name: summary.Name,
+            TypeName: summary.TypeName,
+            Count: summary.Count,
+            Unit: summary.Unit,
+            Description: summary.Description,
+            SampledRecordCount: summary.SampledRecordCount,
+            NonDefaultRecordCount: summary.NonDefaultRecordCount,
+            ChangeCount: summary.ChangeCount,
+            FiniteValueCount: summary.FiniteValueCount,
+            Minimum: summary.Minimum,
+            Maximum: summary.Maximum,
+            Mean: summary.Mean,
+            FirstValue: summary.FirstValue,
+            LastValue: summary.LastValue,
+            ByteSize: schema?.ByteSize,
+            Offset: schema?.Offset);
+    }
+
+    private static bool HasFiniteSamples(IbtFieldSummary? field)
+    {
+        return field is not null && field.FiniteValueCount > 0;
     }
 
     private static IbtSchemaComparisonDocument BuildComparison(
@@ -1034,6 +1274,73 @@ internal sealed record IbtFieldSummaryDocument(
     int SampledRecordCount,
     int MaxSampledRecords,
     IReadOnlyList<IbtFieldSummary> Fields);
+
+internal sealed record IbtLocalCarSummaryDocument(
+    int AnalysisVersion,
+    DateTimeOffset GeneratedAtUtc,
+    IbtSourceFile Source,
+    HistoricalComboIdentity Combo,
+    int TotalRecordCount,
+    int SampledRecordCount,
+    int SampleStride,
+    IbtTrackMapReadiness TrackMapReadiness,
+    IbtCoordinateBounds? CoordinateBounds,
+    IbtLapProgressSummary LapProgress,
+    IReadOnlyList<IbtLocalCarSignalGroup> SignalGroups,
+    IReadOnlyList<IbtLocalCarFieldSummary> KeyFields,
+    IReadOnlyList<string> MissingLocalCandidateFields,
+    IReadOnlyList<string> MissingOpponentContextFields,
+    IReadOnlyList<string> Notes);
+
+internal sealed record IbtTrackMapReadiness(
+    bool HasLatitudeLongitude,
+    bool HasAltitude,
+    bool HasLapDistance,
+    bool HasLapCompleted,
+    int SampledCoordinateRecordCount,
+    bool IsCandidate,
+    IReadOnlyList<string> MissingReasons);
+
+internal sealed record IbtCoordinateBounds(
+    double? MinLatitude,
+    double? MaxLatitude,
+    double? MinLongitude,
+    double? MaxLongitude,
+    double? MinAltitudeMeters,
+    double? MaxAltitudeMeters);
+
+internal sealed record IbtLapProgressSummary(
+    double? LapMinimum,
+    double? LapMaximum,
+    double? LapCompletedMinimum,
+    double? LapCompletedMaximum,
+    double? LapDistMinimum,
+    double? LapDistMaximum,
+    double? LapDistPctMinimum,
+    double? LapDistPctMaximum);
+
+internal sealed record IbtLocalCarSignalGroup(
+    string Name,
+    IReadOnlyList<string> PresentFields,
+    IReadOnlyList<string> MissingFields);
+
+internal sealed record IbtLocalCarFieldSummary(
+    string Name,
+    string TypeName,
+    int Count,
+    string Unit,
+    string Description,
+    int SampledRecordCount,
+    int NonDefaultRecordCount,
+    int ChangeCount,
+    int FiniteValueCount,
+    double? Minimum,
+    double? Maximum,
+    double? Mean,
+    object? FirstValue,
+    object? LastValue,
+    int? ByteSize,
+    int? Offset);
 
 internal sealed record IbtFieldSummary(
     string Name,

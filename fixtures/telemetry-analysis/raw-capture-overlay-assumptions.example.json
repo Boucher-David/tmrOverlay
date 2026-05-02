@@ -1,0 +1,44 @@
+{
+  "generatedAtUtc": "2026-05-02T00:00:00+00:00",
+  "capturesSampled": [
+    {
+      "captureId": "capture-20260426-130334-932",
+      "frames": 1036026,
+      "sampledSpan": "4h 8m",
+      "telemetryBytes": 8138956800,
+      "trackLengthMeters": 24154.4
+    },
+    {
+      "captureId": "capture-20260502-143722-571",
+      "frames": 277680,
+      "sampledSpan": "1h 17m",
+      "telemetryBytes": 2179360640,
+      "trackLengthMeters": 25176.4
+    }
+  ],
+  "fuel": {
+    "finding": "FuelUsePerHour is instantaneous and can be present when FuelLevel is invalid.",
+    "positiveFuelUseWithoutValidFuelLevelSamples": 15667,
+    "modelV2Rule": "Expose instantaneous burn as diagnostic evidence; measured fuel baselines require rolling local-driver fuel-level deltas over valid green distance."
+  },
+  "radar": {
+    "finding": "CarLeftRight side signals and decoded nearby-car placement are related but not interchangeable.",
+    "modelV2Rule": "Keep side occupancy as its own evidence family and keep radar placement limited to lap-distance/track-length-backed cars."
+  },
+  "gap": {
+    "finding": "Reference F2 can exist while leader F2 is missing; treating missing leader F2 as zero can overstate gaps.",
+    "modelV2Rule": "Carry leader-F2-missing as partial evidence instead of marking the gap reliable."
+  },
+  "positionCadence": {
+    "finding": "Raw captures can count whether CarIdxPosition and CarIdxClassPosition change before lap completion.",
+    "exampleCounters": {
+      "observedCarSamples": 125000,
+      "overallPositionChanges": 240,
+      "overallIntraLapPositionChanges": 42,
+      "classPositionChanges": 118,
+      "classIntraLapPositionChanges": 31
+    },
+    "modelV2Rule": "Require repeated real-session evidence before assuming standings and relative overlays can update position changes continuously within a lap."
+  },
+  "promotionGuidance": "Use live-model-parity promotion artifacts from several real sessions before making model v2 authoritative for current overlays."
+}
