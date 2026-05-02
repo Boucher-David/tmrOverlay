@@ -363,7 +363,7 @@ internal static class LiveRaceModelBuilder
         HistoricalTelemetrySample sample,
         LiveProximitySnapshot proximity)
     {
-        var trackLengthMeters = ValidPositive(context.Track.TrackLengthKm) is { } km ? km * 1000d : null;
+        var trackLengthMeters = ValidPositive(context.Track.TrackLengthKm) is { } km ? km * 1000d : (double?)null;
         var cars = proximity.NearbyCars
             .Where(car => car.RelativeMeters is not null)
             .Select(car => new LiveSpatialCar(
