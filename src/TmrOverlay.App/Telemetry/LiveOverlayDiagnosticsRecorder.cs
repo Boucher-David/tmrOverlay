@@ -33,6 +33,8 @@ internal sealed class LiveOverlayDiagnosticsRecorder
     private readonly Dictionary<string, int> _fuelBurnEvidenceCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _fuelMeasuredEvidenceCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _fuelBaselineEvidenceCounts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _eventSampleCountsByKind = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _eventSampleKeys = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<int, PositionState> _positionStates = [];
     private readonly List<LiveOverlayDiagnosticsFrameSample> _sampleFrames = [];
     private readonly List<LiveOverlayDiagnosticsEventSample> _eventSamples = [];
@@ -162,6 +164,8 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             _fuelBurnEvidenceCounts.Clear();
             _fuelMeasuredEvidenceCounts.Clear();
             _fuelBaselineEvidenceCounts.Clear();
+            _eventSampleCountsByKind.Clear();
+            _eventSampleKeys.Clear();
             _positionStates.Clear();
             _sampleFrames.Clear();
             _eventSamples.Clear();
@@ -220,6 +224,7 @@ internal sealed class LiveOverlayDiagnosticsRecorder
                         MinimumFrameSpacingSeconds: _options.MinimumFrameSpacingSeconds,
                         MaxSampleFramesPerSession: _options.MaxSampleFramesPerSession,
                         MaxEventExamplesPerSession: _options.MaxEventExamplesPerSession,
+                        MaxEventExamplesPerKind: _options.MaxEventExamplesPerKind,
                         LargeGapSeconds: _options.LargeGapSeconds,
                         LargeGapLapEquivalent: _options.LargeGapLapEquivalent,
                         GapJumpSeconds: _options.GapJumpSeconds),
@@ -669,23 +674,48 @@ internal sealed class LiveOverlayDiagnosticsRecorder
         LiveTelemetrySnapshot snapshot,
         DateTimeOffset capturedAtUtc)
     {
+        var normalizedKind = string.IsNullOrWhiteSpace(kind) ? "unknown" : kind.Trim();
+        var normalizedDetail = string.IsNullOrWhiteSpace(detail) ? normalizedKind : detail.Trim();
+        var playerCarIdx = snapshot.Models.DriverDirectory.PlayerCarIdx ?? snapshot.LatestSample?.PlayerCarIdx;
+        var focusCarIdx = snapshot.Models.DriverDirectory.FocusCarIdx
+            ?? snapshot.LatestSample?.FocusCarIdx
+            ?? playerCarIdx;
+        var sessionKind = SessionKind(snapshot);
+        var eventKey = string.Join(
+            "\u001f",
+            normalizedKind,
+            normalizedDetail,
+            sessionKind,
+            playerCarIdx?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "",
+            focusCarIdx?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "");
+        if (_eventSampleKeys.Contains(eventKey))
+        {
+            _droppedEventSampleCount++;
+            return;
+        }
+
         if (_eventSamples.Count >= _options.MaxEventExamplesPerSession)
         {
             _droppedEventSampleCount++;
             return;
         }
 
-        var playerCarIdx = snapshot.Models.DriverDirectory.PlayerCarIdx ?? snapshot.LatestSample?.PlayerCarIdx;
-        var focusCarIdx = snapshot.Models.DriverDirectory.FocusCarIdx
-            ?? snapshot.LatestSample?.FocusCarIdx
-            ?? playerCarIdx;
+        _eventSampleCountsByKind.TryGetValue(normalizedKind, out var kindCount);
+        if (kindCount >= _options.MaxEventExamplesPerKind)
+        {
+            _droppedEventSampleCount++;
+            return;
+        }
+
+        _eventSampleKeys.Add(eventKey);
+        _eventSampleCountsByKind[normalizedKind] = kindCount + 1;
         _eventSamples.Add(new LiveOverlayDiagnosticsEventSample(
-            Kind: kind,
-            Detail: detail,
+            Kind: normalizedKind,
+            Detail: normalizedDetail,
             CapturedAtUtc: capturedAtUtc,
             Sequence: snapshot.Sequence,
             SessionTimeSeconds: Round(snapshot.LatestSample?.SessionTime),
-            SessionKind: SessionKind(snapshot),
+            SessionKind: sessionKind,
             PlayerCarIdx: playerCarIdx,
             FocusCarIdx: focusCarIdx,
             ClassGapSeconds: Round(snapshot.LeaderGap.ClassLeaderGap.Seconds),
@@ -969,6 +999,7 @@ internal sealed record LiveOverlayDiagnosticsArtifactOptions(
     double MinimumFrameSpacingSeconds,
     int MaxSampleFramesPerSession,
     int MaxEventExamplesPerSession,
+    int MaxEventExamplesPerKind,
     double LargeGapSeconds,
     double LargeGapLapEquivalent,
     double GapJumpSeconds);

@@ -99,7 +99,7 @@ Live overlay diagnostics are enabled by default and are separate from raw captur
 %LOCALAPPDATA%\TmrOverlay\logs\overlay-diagnostics
 ```
 
-Each `*-live-overlay-diagnostics.json` file summarizes current-overlay assumptions observed from normalized live snapshots: gap source/session semantics, large gap and jump examples, radar side/focus/placement evidence, fuel level/burn/source evidence, and sampled intra-lap position/class-position changes. The mac harness mirrors this for mock/demo overlay runs.
+Each `*-live-overlay-diagnostics.json` file summarizes current-overlay assumptions observed from normalized live snapshots: gap source/session semantics, large gap and jump examples, radar side/focus/placement evidence, fuel level/burn/source evidence, and sampled intra-lap position/class-position changes. Event examples are duplicate-suppressed and capped per kind so one stable condition cannot fill the whole sample budget. The mac harness mirrors this for mock/demo overlay runs.
 
 ## Build And Run On Windows
 

@@ -15,6 +15,8 @@ internal sealed class LiveOverlayDiagnosticsOptions
 
     public int MaxEventExamplesPerSession { get; init; } = 80;
 
+    public int MaxEventExamplesPerKind { get; init; } = 8;
+
     public double LargeGapSeconds { get; init; } = 600d;
 
     public double LargeGapLapEquivalent { get; init; } = 1d;
@@ -34,6 +36,7 @@ internal sealed class LiveOverlayDiagnosticsOptions
             MinimumFrameSpacingSeconds = ParseDouble(section["MinimumFrameSpacingSeconds"], defaultValue: 1d, minimumValue: 0.1d),
             MaxSampleFramesPerSession = ParseInt32(section["MaxSampleFramesPerSession"], defaultValue: 240, minimumValue: 10),
             MaxEventExamplesPerSession = ParseInt32(section["MaxEventExamplesPerSession"], defaultValue: 80, minimumValue: 5),
+            MaxEventExamplesPerKind = ParseInt32(section["MaxEventExamplesPerKind"], defaultValue: 8, minimumValue: 1),
             LargeGapSeconds = ParseDouble(section["LargeGapSeconds"], defaultValue: 600d, minimumValue: 30d),
             LargeGapLapEquivalent = ParseDouble(section["LargeGapLapEquivalent"], defaultValue: 1d, minimumValue: 0.25d),
             GapJumpSeconds = ParseDouble(section["GapJumpSeconds"], defaultValue: 300d, minimumValue: 10d),

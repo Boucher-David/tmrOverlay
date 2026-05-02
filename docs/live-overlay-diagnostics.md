@@ -28,6 +28,7 @@ The mac harness mirrors this path under `~/Library/Application Support/TmrOverla
 ## Guardrails
 
 - Enabled by default, bounded by sampled frame and event caps.
+- Event examples are exact-duplicate suppressed and capped per kind before the global cap, so a stable condition such as a multi-lap class gap cannot crowd out unrelated radar/fuel/position examples.
 - Best-effort: failures are logged and must not stop live telemetry, history, raw capture, IBT analysis, or overlays.
 - Additive: older captures without this file remain valid.
 - Diagnostic only: event counts are evidence for future branches, not automatic behavior changes.
