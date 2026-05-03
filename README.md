@@ -49,6 +49,8 @@
 - `docs/history-data-evolution.md` documents how future app versions should migrate or rebuild user history written by older versions.
 - `docs/ibt-analysis.md` documents the compact IBT sidecar investigation path.
 - `docs/overlay-logic.md` is the human-readable index for how each overlay derives and displays its state.
+- `VERSION.md` records milestone tag meanings, corrected squash titles, and release-note summaries.
+- `Directory.Build.props` holds shared .NET product/version metadata for the app and core assemblies.
 - `telemetry.md` summarizes the event/session/car schema exposed by the current raw capture model.
 
 ## Raw Capture Output
