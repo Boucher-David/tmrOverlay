@@ -1,5 +1,3 @@
-using System.Reflection;
-
 namespace TmrOverlay.App.Runtime;
 
 internal static class BuildFreshnessChecker
@@ -18,14 +16,14 @@ internal static class BuildFreshnessChecker
     public static BuildFreshnessResult Check()
     {
         var repositoryRoot = FindRepositoryRoot(AppContext.BaseDirectory);
-        var assemblyPath = Assembly.GetExecutingAssembly().Location;
+        var buildStamp = FindBuildStamp(AppContext.BaseDirectory);
 
-        if (repositoryRoot is null || string.IsNullOrWhiteSpace(assemblyPath) || !File.Exists(assemblyPath))
+        if (repositoryRoot is null || buildStamp is null)
         {
             return BuildFreshnessResult.Current;
         }
 
-        var buildTimeUtc = File.GetLastWriteTimeUtc(assemblyPath);
+        var buildTimeUtc = buildStamp.LastWriteTimeUtc;
         var newestSource = FindNewestSource(repositoryRoot);
 
         if (newestSource is null || newestSource.LastWriteTimeUtc <= buildTimeUtc.AddSeconds(2))
@@ -37,6 +35,26 @@ internal static class BuildFreshnessChecker
         return new BuildFreshnessResult(
             SourceNewerThanBuild: true,
             Message: $"Local source is newer than this build; rebuild recommended. Newest: {relativePath}");
+    }
+
+    private static FileSystemInfo? FindBuildStamp(string appBaseDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(appBaseDirectory) || !Directory.Exists(appBaseDirectory))
+        {
+            return null;
+        }
+
+        var appDirectory = new DirectoryInfo(appBaseDirectory);
+        foreach (var fileName in new[] { "TmrOverlay.App.exe", "TmrOverlay.App.dll" })
+        {
+            var candidate = Path.Combine(appDirectory.FullName, fileName);
+            if (File.Exists(candidate))
+            {
+                return new FileInfo(candidate);
+            }
+        }
+
+        return appDirectory;
     }
 
     private static FileInfo? FindNewestSource(string repositoryRoot)

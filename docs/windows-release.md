@@ -9,6 +9,19 @@ TmrOverlay v0.9 starts with portable Windows tester builds. A release tag such a
 
 The zip is self-contained for Windows x64. Testers do not need to install the .NET runtime.
 
+## One-Page Teammate Guide
+
+The current teammate-facing install/support handoff image is:
+
+![Tech Mates Racing Overlay Windows tester install and feedback guide](assets/windows-release-teammate-tutorial.png)
+
+Regenerate it after release-package or Support-tab flow changes:
+
+```bash
+swift tools/render_release_tutorial.swift
+python3 tools/validate_overlay_screenshots.py --profile release-tutorial --root docs/assets
+```
+
 ## Publishing
 
 1. Merge the release branch to `main` after the Windows validation gate passes.
@@ -20,7 +33,7 @@ The zip is self-contained for Windows x64. Testers do not need to install the .N
    ```
 
 3. GitHub Actions runs `.github/workflows/windows-dotnet.yml`.
-4. The PR/main validation job restores, builds, tests, validates tracked screenshots, and runs a self-contained publish dry run with the same package audit used by release packaging.
+4. The PR/main validation job restores, builds, tests, validates tracked screenshots, generates/validates Windows-rendered overlay screenshots as workflow artifacts, and runs a self-contained publish dry run with the same package audit used by release packaging.
 5. The tag workflow publishes `src/TmrOverlay.App` for `win-x64`, audits the publish folder, writes a package manifest, zips the publish folder, generates a SHA-256 checksum, uploads workflow artifacts, and creates or updates the GitHub Release assets.
 
 Manual workflow dispatch can still produce package artifacts for a branch test run, but it does not create a GitHub Release unless the run is for a `vMAJOR.MINOR.PATCH` tag.

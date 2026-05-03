@@ -43,6 +43,30 @@ jobs:
       - name: Validate screenshot artifacts
         run: python tools/validate_overlay_screenshots.py
 
+      - name: Validate release tutorial image
+        run: python tools/validate_overlay_screenshots.py --profile release-tutorial --root docs/assets
+
+      - name: Generate Windows overlay screenshots
+        shell: pwsh
+        run: |
+          dotnet run `
+            --project .\tools\TmrOverlay.WindowsScreenshots\TmrOverlay.WindowsScreenshots.csproj `
+            --configuration Release `
+            --no-build `
+            -- .\artifacts\windows-overlay-screenshots
+
+      - name: Validate Windows overlay screenshots
+        run: python tools/validate_overlay_screenshots.py --profile windows-ci --root artifacts/windows-overlay-screenshots
+
+      - name: Upload Windows overlay screenshots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-overlay-screenshots
+          path: artifacts/windows-overlay-screenshots
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Publish dry run
         id: publish_dry_run
         shell: pwsh

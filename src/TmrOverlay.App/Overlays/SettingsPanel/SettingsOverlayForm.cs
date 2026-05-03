@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Drawing;
-using System.Drawing.Text;
 using TmrOverlay.App.Analysis;
 using TmrOverlay.App.Brand;
 using TmrOverlay.App.Diagnostics;
@@ -29,20 +28,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         "car-radar"
     ];
 
-    private static readonly string[] PreferredFontFamilies =
-    [
-        "Segoe UI",
-        "Arial",
-        "Calibri",
-        "Consolas",
-        "Courier New",
-        "Georgia",
-        "Tahoma",
-        "Times New Roman",
-        "Trebuchet MS",
-        "Verdana"
-    ];
-
     private readonly ApplicationSettings _applicationSettings;
     private readonly IReadOnlyList<OverlayDefinition> _managedOverlays;
     private readonly TelemetryCaptureState _captureState;
@@ -59,7 +44,9 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private readonly Action _requestApplicationExit;
     private readonly Action<string?> _selectedOverlayChanged;
     private readonly Panel _titleBar;
+    private readonly PictureBox _brandLogo;
     private readonly Label _titleLabel;
+    private readonly Label _subtitleLabel;
     private readonly Button _closeButton;
     private readonly TabControl _tabs;
     private readonly System.Windows.Forms.Timer _refreshTimer;
@@ -120,7 +107,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         Padding = Padding.Empty;
         ShowIcon = true;
         ShowInTaskbar = true;
-        Text = "TmrOverlay Settings";
+        Text = "Tech Mates Racing Overlay";
         TopMost = false;
         MinimumSize = SizeFromClientSize(new Size(
             SettingsOverlayDefinition.Definition.DefaultWidth,
@@ -139,10 +126,31 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             AutoSize = false,
             ForeColor = OverlayTheme.Colors.TextPrimary,
             Font = OverlayTheme.Font(OverlayTheme.DefaultFontFamily, 11f, FontStyle.Bold),
-            Location = new Point(14, 9),
-            Size = new Size(ClientSize.Width - 60, 24),
+            Location = new Point(72, 4),
+            Size = new Size(ClientSize.Width - 132, 19),
+            Text = "Tech Mates Racing Overlay",
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+
+        _subtitleLabel = new Label
+        {
+            AutoSize = false,
+            ForeColor = OverlayTheme.Colors.TextMuted,
+            Font = OverlayTheme.Font(OverlayTheme.DefaultFontFamily, 8.5f),
+            Location = new Point(72, 21),
+            Size = new Size(ClientSize.Width - 132, 16),
             Text = "TMR Overlay",
             TextAlign = ContentAlignment.MiddleLeft
+        };
+
+        _brandLogo = new PictureBox
+        {
+            BackColor = Color.Transparent,
+            Image = TmrBrandAssets.LoadLogoImage(),
+            Location = new Point(14, 8),
+            Size = new Size(48, 27),
+            SizeMode = PictureBoxSizeMode.Zoom,
+            TabStop = false
         };
 
         _closeButton = new Button
@@ -175,16 +183,18 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _tabs.DrawItem += DrawSettingsTab;
         _tabs.SelectedIndexChanged += (_, _) => ReportSelectedOverlayTab();
 
+        _titleBar.Controls.Add(_brandLogo);
         _titleBar.Controls.Add(_titleLabel);
+        _titleBar.Controls.Add(_subtitleLabel);
         _titleBar.Controls.Add(_closeButton);
         Controls.Add(_titleBar);
         Controls.Add(_tabs);
 
-        RegisterDragSurfaces(_titleBar, _titleLabel);
+        RegisterDragSurfaces(_titleBar, _brandLogo, _titleLabel, _subtitleLabel);
 
         BuildTabs();
         ReportSelectedOverlayTab();
-        ApplyFontFamily(_applicationSettings.General.FontFamily);
+        ApplyFontFamily(OverlayTheme.DefaultFontFamily);
         _refreshTimer = new System.Windows.Forms.Timer
         {
             Interval = 500
@@ -204,7 +214,10 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             _refreshTimer.Dispose();
             _tabs.Dispose();
             _closeButton.Dispose();
+            _subtitleLabel.Dispose();
             _titleLabel.Dispose();
+            _brandLogo.Image?.Dispose();
+            _brandLogo.Dispose();
             _titleBar.Dispose();
         }
 
@@ -214,13 +227,15 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
-        if (_titleBar is null || _titleLabel is null || _closeButton is null || _tabs is null)
+        if (_titleBar is null || _brandLogo is null || _titleLabel is null || _subtitleLabel is null || _closeButton is null || _tabs is null)
         {
             return;
         }
 
         _titleBar.Size = new Size(ClientSize.Width, OverlayTheme.Layout.SettingsTitleBarHeight);
-        _titleLabel.Size = new Size(Math.Max(120, ClientSize.Width - 60), 24);
+        _brandLogo.Location = new Point(14, 8);
+        _titleLabel.Size = new Size(Math.Max(120, ClientSize.Width - 132), 19);
+        _subtitleLabel.Size = new Size(Math.Max(120, ClientSize.Width - 132), 16);
         _closeButton.Location = new Point(ClientSize.Width - 36, 8);
         _tabs.Location = new Point(OverlayTheme.Layout.SettingsTabInset, OverlayTheme.Layout.SettingsTabTop);
         _tabs.Size = new Size(Math.Max(360, ClientSize.Width - 24), Math.Max(320, ClientSize.Height - 66));
@@ -395,43 +410,14 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     {
         var page = CreateTabPage("General");
         var title = CreateSectionLabel("General", 18, 18, 500);
-        var fontLabel = CreateLabel("Font family", 22, 60, 160);
-        var fontCombo = new ComboBox
-        {
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            Location = new Point(180, 56),
-            Size = new Size(260, 28),
-            TabStop = true
-        };
-
-        foreach (var family in BuildFontFamilyList())
-        {
-            fontCombo.Items.Add(family);
-        }
-
-        var selectedFont = SelectFontFamily(_applicationSettings.General.FontFamily, fontCombo);
-        fontCombo.SelectedItem = selectedFont;
-        fontCombo.SelectedIndexChanged += (_, _) =>
-        {
-            if (_loading || fontCombo.SelectedItem is not string fontFamily)
-            {
-                return;
-            }
-
-            _applicationSettings.General.FontFamily = fontFamily;
-            ApplyFontFamily(fontFamily);
-            SaveAndApply();
-        };
 
         page.Controls.Add(title);
-        page.Controls.Add(fontLabel);
-        page.Controls.Add(fontCombo);
 
-        var unitsLabel = CreateLabel("Units", 22, 106, 160);
+        var unitsLabel = CreateLabel("Units", 22, 60, 160);
         var unitsCombo = new ComboBox
         {
             DropDownStyle = ComboBoxStyle.DropDownList,
-            Location = new Point(180, 102),
+            Location = new Point(180, 56),
             Size = new Size(160, 28),
             TabStop = true
         };
@@ -1355,48 +1341,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         return Math.Max(80, (int)Math.Round(defaultDimension * Math.Clamp(scale, 0.6d, 2d)));
     }
 
-    private static string SelectFontFamily(string? savedFontFamily, ComboBox fontCombo)
-    {
-        if (!string.IsNullOrWhiteSpace(savedFontFamily))
-        {
-            foreach (var item in fontCombo.Items)
-            {
-                if (item is string family && string.Equals(family, savedFontFamily, StringComparison.OrdinalIgnoreCase))
-                {
-                    return family;
-                }
-            }
-
-            fontCombo.Items.Add(savedFontFamily);
-            return savedFontFamily;
-        }
-
-        return fontCombo.Items.Count > 0 && fontCombo.Items[0] is string firstFont
-            ? firstFont
-            : "Segoe UI";
-    }
-
-    private static IReadOnlyList<string> BuildFontFamilyList()
-    {
-        try
-        {
-            using var installedFonts = new InstalledFontCollection();
-            var installed = installedFonts.Families
-                .Select(family => family.Name)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var available = PreferredFontFamilies
-                .Where(installed.Contains)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-
-            return available.Length > 0 ? available : PreferredFontFamilies;
-        }
-        catch
-        {
-            return PreferredFontFamilies;
-        }
-    }
-
     private void ApplyFontFamily(string? fontFamily)
     {
         if (string.IsNullOrWhiteSpace(fontFamily))
@@ -1410,7 +1354,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private static void ApplyFontFamilyRecursive(Control control, string fontFamily)
     {
         var current = control.Font;
-        control.Font = new Font(fontFamily, current.Size, current.Style, current.Unit);
+        control.Font = OverlayTheme.Font(fontFamily, current.Size, current.Style);
 
         foreach (Control child in control.Controls)
         {

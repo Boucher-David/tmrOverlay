@@ -1008,7 +1008,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         Rectangle plotBounds)
     {
         const float labelHeight = 13f;
-        using var font = new Font(_fontFamily, label.IsReferenceCar ? 7.5f : 7f, FontStyle.Regular, GraphicsUnit.Point);
+        using var font = OverlayTheme.Font(_fontFamily, label.IsReferenceCar ? 7.5f : 7f);
         var textSize = graphics.MeasureString(label.Text, font);
         var x = Math.Min(plotBounds.Right - textSize.Width - 2f, label.Point.X + 6f);
         var labelBounds = new RectangleF(x - 2f, y, textSize.Width + 4f, labelHeight);
@@ -1053,7 +1053,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         {
             DashStyle = DashStyle.Dot
         };
-        using var labelFont = new Font(_fontFamily, 7f, FontStyle.Regular, GraphicsUnit.Point);
+        using var labelFont = OverlayTheme.Font(_fontFamily, 7f);
         using var labelBrush = new SolidBrush(Color.FromArgb(150, 218, 226, 230));
 
         foreach (var marker in markers)
@@ -1132,7 +1132,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         using var markerFill = new SolidBrush(Color.FromArgb(18, 30, 42));
         using var referenceMarkerPen = new Pen(Color.FromArgb(112, 224, 146), 1.8f);
         using var otherMarkerPen = new Pen(Color.FromArgb(220, 235, 245, 255), 1.4f);
-        using var labelFont = new Font(_fontFamily, 7f, FontStyle.Regular, GraphicsUnit.Point);
+        using var labelFont = OverlayTheme.Font(_fontFamily, 7f);
         using var labelBrush = new SolidBrush(Color.FromArgb(190, 205, 218, 228));
 
         foreach (var marker in markers)
@@ -1156,7 +1156,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         DrawLapIntervalLines(graphics, plotBounds, domain, lapReferenceSeconds);
 
         using var gridPen = new Pen(Color.FromArgb(34, 255, 255, 255), 1f);
-        using var gridFont = new Font(_fontFamily, 7f, FontStyle.Regular, GraphicsUnit.Point);
+        using var gridFont = OverlayTheme.Font(_fontFamily, 7f);
         using var gridBrush = new SolidBrush(Color.FromArgb(120, 138, 152, 160));
         using var labelFormat = new StringFormat
         {
@@ -1206,7 +1206,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         }
 
         using var linePen = new Pen(Color.FromArgb(34, 255, 255, 255), 1f);
-        using var labelFont = new Font(_fontFamily, 7f, FontStyle.Regular, GraphicsUnit.Point);
+        using var labelFont = OverlayTheme.Font(_fontFamily, 7f);
         using var labelBrush = new SolidBrush(Color.FromArgb(128, 138, 152, 160));
         using var labelFormat = new StringFormat
         {
@@ -1230,7 +1230,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
 
     private void DrawScaleLabels(Graphics graphics, Rectangle plotBounds, Rectangle axisBounds, double maxGapSeconds)
     {
-        using var font = new Font(_fontFamily, 7.5f, FontStyle.Regular, GraphicsUnit.Point);
+        using var font = OverlayTheme.Font(_fontFamily, 7.5f);
         using var brush = new SolidBrush(Color.FromArgb(138, 152, 160));
         using var labelFormat = new StringFormat
         {
@@ -1322,8 +1322,8 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         using var borderPen = new Pen(Color.FromArgb(180, 236, 112, 99), 1f);
         graphics.DrawRectangle(borderPen, graphBounds);
 
-        using var titleFont = new Font(_fontFamily, 10f, FontStyle.Bold, GraphicsUnit.Point);
-        using var detailFont = new Font(_fontFamily, 8f, FontStyle.Regular, GraphicsUnit.Point);
+        using var titleFont = OverlayTheme.Font(_fontFamily, 10f, FontStyle.Bold);
+        using var detailFont = OverlayTheme.Font(_fontFamily, 8f);
         using var titleBrush = new SolidBrush(Color.FromArgb(238, 255, 225, 220));
         using var detailBrush = new SolidBrush(Color.FromArgb(205, 255, 225, 220));
         using var format = new StringFormat

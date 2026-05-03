@@ -61,6 +61,16 @@ The mac harness now records live overlay diagnostics from mock/demo snapshots, i
 
 That replay provider should be a development tool only. It should read existing captures, skip or downsample aggressively, and avoid changing the Windows collector/runtime path.
 
+### Windows Screenshot Parity Validation
+
+The mac harness remains the fast local design surface, but Windows is the production/iRacing runtime. v0.10 adds a Windows-only screenshot generator that renders the real WinForms forms with deterministic telemetry fixtures and uploads the resulting contact sheet plus per-state PNGs as GitHub Actions artifacts.
+
+Use this as a parity gate, not as a replacement for the tracked `mocks/` screenshots. The tracked mac screenshots document the intended review states; the Windows artifacts prove the production forms still render, size, and arrange those states under the WinForms runtime. The first parity set should cover settings tabs plus the current production overlays: status, fuel calculator, relative, flags, session/weather, pit service, inputs, radar, and gap to leader.
+
+Keep the fixtures isolated from local history, app data, raw captures, and real machine paths. If a Windows screenshot state needs live telemetry, build it from normalized `LiveTelemetrySnapshot` data with explicit fixture values. If a future overlay needs replay evidence, add that through a separate capture-replay branch rather than letting the screenshot generator read private capture directories.
+
+Use the parity artifacts to identify which visual differences are intentional platform rendering and which should become shared tokens. The likely shared set is color roles, title/status/table font sizes, row heights, padding, border opacity, state tones, graph grid alpha, and empty/error/waiting treatment. Font parity should start with a fallback policy rather than a bundled font or user-facing font picker: Windows defaults to `Segoe UI`, mac defaults to SF/System, and both should keep matching sizes/weights/line heights closely enough for review. If the screenshots still drift after token cleanup, evaluate bundling an OFL font such as Inter as a separate asset/licensing change.
+
 ### IBT-Derived Track Map Store
 
 Treat post-session track-map generation as a future derived-asset product branch, not as part of the current compact IBT sidecar contract. Today `ibt-analysis/ibt-local-car-summary.json` only records whether `Lat`/`Lon`/`Alt` plus lap-distance fields make an IBT file track-map-ready. A track-map branch should turn that readiness signal into a durable reusable map asset.
@@ -115,6 +125,16 @@ Bridge v2 should define:
 This branch fits after enough Windows overlays consume `LiveTelemetrySnapshot.Models` that the external schema reflects real product semantics instead of temporary overlay-local assumptions.
 
 The peer context path should be treated as derived context exchange, not raw telemetry sync. It should carry provenance, session identity, observation window, roster/timing coverage, schema version, and trust/source labels, then merge only into model-v2 availability as partial remote context. It should not silently overwrite local telemetry, and it should not share raw `telemetry.bin`, source `.ibt` files, or private local history by default.
+
+### VR Renderer
+
+Treat VR support as a future renderer/client, not as a tweak to the current WinForms desktop overlays. Keep the Windows tray app as the telemetry, settings, storage, diagnostics, and release owner; use the Overlay Bridge or a future model-v2 snapshot boundary for a separate VR renderer when the normalized contracts are stable enough.
+
+The first VR candidates should be sparse and local: flag border/status, blindspot/radar warnings, and a compact relative surface. Dense standings tables, gap graphs, strategy grids, and long text diagnostics should stay desktop-first until they have a VR-specific interaction model.
+
+VR has stricter performance constraints than desktop overlays. At 90 Hz, the frame budget is about 11.1 ms; at 120 Hz, it is about 8.3 ms. Dropped frames are a comfort problem, not just a visual quality issue. A VR renderer should never perform disk IO, JSON parsing, history lookup, image decode, network calls, or avoidable allocations in the render loop. Precompute and double-buffer telemetry snapshots, cache/rasterize text only when values change, minimize transparent overdraw and many independent quads, and prefer stable low-motion positions with larger text and fewer simultaneous overlays.
+
+The model-v2 implication is that VR needs compact, already-interpreted overlay state: local safety signals, current flag category, nearby relative rows, freshness, and unavailable reasons. It should not duplicate raw telemetry interpretation in a headset renderer.
 
 ### Streaming / Broadcast Overlays
 

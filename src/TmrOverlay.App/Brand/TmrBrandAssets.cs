@@ -9,6 +9,25 @@ internal static class TmrBrandAssets
     private const string LogoFileName = "TMRLogo.png";
     private const int IconSize = 256;
 
+    public static Image? LoadLogoImage()
+    {
+        try
+        {
+            var logoPath = ResolveLogoPath();
+            if (logoPath is null)
+            {
+                return null;
+            }
+
+            using var source = Image.FromFile(logoPath);
+            return new Bitmap(source);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     public static Icon LoadIcon()
     {
         try

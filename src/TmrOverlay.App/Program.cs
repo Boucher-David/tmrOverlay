@@ -39,8 +39,8 @@ internal static class Program
         if (!isFirstInstance)
         {
             MessageBox.Show(
-                "TMR Overlay is already running.",
-                "TMR Overlay",
+                "Tech Mates Racing Overlay is already running.",
+                "Tech Mates Racing Overlay",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
             return;

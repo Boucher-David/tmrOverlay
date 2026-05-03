@@ -44,7 +44,7 @@ Last updated: 2026-05-03
   - `Styling/OverlayTheme.cs` contains human-editable shared Windows overlay colors, font helpers, and common layout tokens; data-visualization-specific colors can remain near their drawing code
   - optional `overlay-theme.json` under the app settings root can override shared font/color tokens without recompiling
   - `Status/` contains the current internal collector status overlay, hidden by default for normal users
-  - `SettingsPanel/` contains a fixed-size tabbed settings window for user-managed overlay visibility, scale/opacity when applicable, session filters, shared font/units, support capture/log/diagnostics access, and overlay-specific display options
+  - `SettingsPanel/` contains a branded fixed-size tabbed settings window for user-managed overlay visibility, scale/opacity when applicable, session filters, units, support capture/log/diagnostics access, and overlay-specific display options
   - `Flags/` contains a transparent primary-screen border overlay for live session flag categories; it defaults to the main monitor size, centers a 4:3 frame on ultrawide displays, and requires recognized live session context before the runtime window is shown
   - `FuelCalculator/` contains the first strategy overlay, backed by live telemetry plus exact car/track/session history
   - `Relative/` contains the first production model-v2 overlay, a telemetry-first relative table backed by `LiveTelemetrySnapshot.Models.Relative`
@@ -67,18 +67,18 @@ Last updated: 2026-05-03
   - new overlay features should log unexpected refresh/render failures and surface a compact visible error state, while normal telemetry gaps should degrade to waiting/unavailable
 
 - `src/TmrOverlay.App/Overlays/SettingsPanel/`
-  - wide 1080x600 settings window with a `TMR Overlay` title bar and vertical left-side tabs so all current tabs fit without horizontal tab-strip scrolling
+  - wide 1080x600 settings window with a TMR logo plus `Tech Mates Racing Overlay` title bar and vertical left-side tabs so all current tabs fit without horizontal tab-strip scrolling
   - the settings window is recentered whenever it opens and does not persist user-dragged placement between runs
   - opens on startup and can be reopened from the tray menu
   - acts as the main UI; clicking its `X` or otherwise closing it through the user close path exits the application instead of hiding the app to the tray
   - uses normal desktop z-order, taskbar, and Alt+Tab behavior instead of the product overlays' tool-window/always-on-top behavior
   - tabs include General, user-facing overlay tabs ordered with Standings, Relative, Flags, and Radar first when present, and Support last
-  - General exposes a shared overlay font-family selector from widely available fonts and a metric/imperial unit selector
+  - General exposes a metric/imperial unit selector; user-facing font selection is hidden while v0.10 tightens cross-platform screenshot parity
   - Support is task-oriented: compact app status, live/session state, current issue, diagnostics bundle actions, diagnostic telemetry capture, storage shortcuts, discoverable advanced collection status, and compact app activity
   - per-overlay tabs expose visibility, scale, opacity, test/practice/qualifying/race session filters, and descriptor-driven overlay-specific display options when those controls make sense for that overlay
   - future settings information architecture should group timing/table overlays, race-state/local-car overlays, input/local telemetry overlays, and developer/admin/future surfaces instead of treating every tab as the same kind of user-facing overlay
   - opening the radar settings tab previews the radar overlay only when the overlay is enabled, so the tab no longer overrides the `Visible` checkbox
-  - visibility, scale, opacity, font, unit, and display-option changes apply to open overlays immediately; session filters are rechecked against live session type
+  - visibility, scale, opacity, unit, and display-option changes apply to open overlays immediately; session filters are rechecked against live session type
 
 - Deferred overlay UI/style v2:
   - current model-v2 work standardizes live data, not visual structure
@@ -308,7 +308,7 @@ Last updated: 2026-05-03
   - the mac mock race mirrors the Windows radar/gap feature behavior with synthetic all-class timing rows, multiclass approach traffic, weather bands, and driver handoff events, while Windows remains real telemetry only
   - the mac harness mirrors the current Windows overlay review set: status, fuel calculator, relative, flags, session/weather, pit-service, input/car-state, radar, and gap-to-leader; it also includes a mac-only standings candidate for design review before a production standings overlay is wired
   - the mac status overlay is display-only, matching Windows; runtime raw-capture requests live in the settings window and still record logs/events
-  - the mac harness mirrors the settings window schema and basic tabbed UI for visibility, scale/opacity when applicable, session filters, font/units, support capture, and a mock Support/performance snapshot tab; mac diagnostics bundles include matching telemetry-state/performance metadata stubs and recent mock performance JSONL logs
+  - the mac harness mirrors the settings window schema and basic tabbed UI for visibility, scale/opacity when applicable, session filters, units, support capture, and a mock Support/performance snapshot tab; mac diagnostics bundles include matching telemetry-state/performance metadata stubs and recent mock performance JSONL logs
   - `swift run TmrOverlayMacScreenshots` renders tracked overlay review artifacts under `mocks/`: focused live-state screenshots, multi-state contact sheets, and smaller per-state PNG cards for status, fuel calculator, relative, settings, car radar, gap-to-leader, and design-v2 candidate states
   - screenshot waiting/unavailable fixtures should be isolated from local user history and cached live telemetry; for example, the fuel waiting preview uses an empty temporary history root so it cannot accidentally show stale stint rows from this machine
 
@@ -540,7 +540,7 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 - The local mac Swift package builds, but `swift test` currently requires an XCTest-capable Swift/Xcode toolchain.
 - No general-purpose replay/decoder tool exists yet for `telemetry.bin`; targeted analysis scripts exist under `tools/analysis/`.
 - v0.9 portable tester publishing is tag-driven, but broad production distribution still needs a signing decision, installer/update channel, and passive update-check UI.
-- The v0.9 PR workflow runs restore/build/test, screenshot validation, and a self-contained publish dry run with package audit. The release workflow audits the publish folder for accidental repo/dev-folder leaks, emits a package manifest, and keeps user data under the app-data root instead of the install folder.
+- The PR workflow runs restore/build/test, tracked screenshot validation, Windows screenshot artifact generation/validation, and a self-contained publish dry run with package audit. The release workflow audits the publish folder for accidental repo/dev-folder leaks, emits a package manifest, and keeps user data under the app-data root instead of the install folder.
 - Because the app-data root persists across portable installs, durable settings/history schema changes must include version bumps plus migrations or compatible readers. Incompatible/future history is skipped and left on disk instead of being fed to overlays.
 - Overlay modules now live under `src/TmrOverlay.App/Overlays/`; status, settings, fuel-calculator, relative, flags, session/weather, pit-service snapshot, input/car-state, car-radar, and gap-to-leader overlays are wired, while remaining future overlay folders are still placeholders.
 - Pure models and calculations have started moving into `src/TmrOverlay.Core/`; Windows remains the production app/runtime, while the ignored mac harness remains the mock-telemetry development surface.
@@ -549,7 +549,7 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 
 ## Recommended Next Steps
 
-1. Finish `v0.9-production-publishing`: validate the tag-driven GitHub Release zip/checksum flow in CI, keep `Directory.Build.props` aligned with the milestone, and make sure `docs/windows-release.md` matches the release assets.
+1. Finish `v0.10-windows-screenshot-validation`: validate the CI-generated Windows screenshot artifact path, keep `Directory.Build.props` aligned with the milestone, and make sure the mac/tracked mock screenshots still describe the intended review states.
 2. Decide signing before broad distribution. Private teammate zip builds can remain unsigned, but production sharing should sign the executable or package.
 3. Add passive update discovery after the first release exists: latest-release or manifest lookup, semantic version comparison, tray/settings notification, release notes/download command, and diagnostics logging.
 4. Decide the installer/update channel after the portable baseline: Velopack for installer plus update feed, or MSIX/App Installer if package identity/signing constraints are acceptable.
