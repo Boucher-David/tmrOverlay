@@ -147,7 +147,7 @@ Likely scope:
 - Generate or validate layouts against readability, session filters, stale-state handling, screenshot validation, and performance rules.
 - Keep production overlays hand-authored until generated layouts can meet the same quality bar.
 
-### v0.22.0+ - Installer, Signing, VR, And Broader Platform Work
+### v0.22.0+ - Installer, Signing, And Broader Platform Work
 
 Goal: graduate from private tester zip builds and desktop overlays toward a broader product platform.
 
@@ -155,10 +155,24 @@ Candidate branches:
 
 - Signed Windows artifacts plus an installer/update channel such as Velopack or MSIX/App Installer.
 - Passive update checks tied to the chosen release feed.
-- A dedicated VR renderer/client using compact model-v2 state through Overlay Bridge or a future snapshot boundary, with sparse local surfaces first: flags, blindspot/radar, and compact relative.
 - A stronger external-client/plugin story after bridge schemas, auth/local access, versioning, and update policy are settled.
 
-Do not start VR or broad plugin work by modifying WinForms overlay internals directly. Keep the tray app as telemetry/settings/storage/diagnostics owner and treat new renderers as clients of normalized app state.
+Do not start broad plugin or renderer work by modifying WinForms overlay internals directly. Keep the tray app as telemetry/settings/storage/diagnostics owner and treat new renderers as clients of normalized app state.
+
+## Suggested V1.X Roadmap
+
+### v1.x - VR Renderer / Headset Client
+
+Goal: add VR support only after the desktop app, model-v2 contracts, overlay bridge, and update/publishing path are stable enough to support a separate renderer.
+
+Likely scope:
+
+- Build VR as a dedicated renderer/client using compact model-v2 state through Overlay Bridge or a future snapshot boundary.
+- Keep the Windows tray app as the telemetry, settings, storage, diagnostics, update, and release owner.
+- Start with sparse local overlays: flag status, blindspot/radar warnings, and compact relative.
+- Keep dense standings tables, gap graphs, strategy grids, long diagnostics, and chat-heavy surfaces desktop-first until they have a VR-specific interaction model.
+- Treat VR frame budget and comfort as hard product requirements, not style polish. Avoid disk IO, JSON parsing, history lookup, network calls, image decode, or avoidable allocations in the render loop.
+- Validate rendering at headset refresh targets before exposing it to teammates.
 
 ## Supporting Topic Notes
 
