@@ -45,7 +45,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
     private readonly OverlaySettings _settings;
     private readonly string _fontFamily;
     private readonly Dictionary<int, RadarCarVisual> _carVisuals = [];
-    private LiveProximitySnapshot _proximity = LiveProximitySnapshot.Unavailable;
+    private LiveSpatialModel _spatial = LiveSpatialModel.Empty;
     private DateTimeOffset? _lastRefreshAtUtc;
     private double _radarAlpha;
     private double _leftSideAlpha;
@@ -213,7 +213,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             {
                 snapshot = _liveTelemetrySource.Snapshot();
                 previousSequence = _lastRefreshSequence;
-                _proximity = IsFresh(snapshot, now) ? snapshot.Proximity : LiveProximitySnapshot.Unavailable;
+                _spatial = IsFresh(snapshot, now) ? snapshot.Models.Spatial : LiveSpatialModel.Empty;
                 snapshotSucceeded = true;
             }
             finally
@@ -309,8 +309,8 @@ internal sealed class CarRadarForm : PersistentOverlayForm
     {
         return _overlayError is not null
             || _settingsPreviewVisible
-            || _proximity.HasCarLeft
-            || _proximity.HasCarRight
+            || _spatial.HasCarLeft
+            || _spatial.HasCarRight
             || CurrentRadarCars().Any()
             || CurrentMulticlassApproach() is not null;
     }
@@ -355,8 +355,8 @@ internal sealed class CarRadarForm : PersistentOverlayForm
 
     private void UpdateSideWarningAlphas(double elapsedSeconds)
     {
-        _leftSideAlpha = MoveTowardSideAlpha(_leftSideAlpha, _proximity.HasCarLeft, elapsedSeconds);
-        _rightSideAlpha = MoveTowardSideAlpha(_rightSideAlpha, _proximity.HasCarRight, elapsedSeconds);
+        _leftSideAlpha = MoveTowardSideAlpha(_leftSideAlpha, _spatial.HasCarLeft, elapsedSeconds);
+        _rightSideAlpha = MoveTowardSideAlpha(_rightSideAlpha, _spatial.HasCarRight, elapsedSeconds);
     }
 
     private static double MoveTowardSideAlpha(double current, bool visible, double elapsedSeconds)
@@ -425,9 +425,9 @@ internal sealed class CarRadarForm : PersistentOverlayForm
         previous?.Dispose();
     }
 
-    private IEnumerable<LiveProximityCar> CurrentRadarCars()
+    private IEnumerable<LiveSpatialCar> CurrentRadarCars()
     {
-        return _proximity.NearbyCars.Where(IsInRadarRange);
+        return _spatial.Cars.Where(IsInRadarRange);
     }
 
     private LiveMulticlassApproach? CurrentMulticlassApproach()
@@ -437,7 +437,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             return null;
         }
 
-        return _proximity.MulticlassApproaches
+        return _spatial.MulticlassApproaches
             .Where(IsInMulticlassWarningRange)
             .MaxBy(approach => approach.Urgency);
     }
@@ -719,7 +719,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             RadarCarHeight);
     }
 
-    private static float PlacementDirection(LiveProximityCar car, int index, float idealOffset)
+    private static float PlacementDirection(LiveSpatialCar car, int index, float idealOffset)
     {
         if (idealOffset < 0f)
         {
@@ -777,7 +777,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
         graphics.DrawRoundedRectangle(pen, carRect, CarCornerRadius);
     }
 
-    private float LongitudinalOffset(LiveProximityCar car, float usableRadius)
+    private float LongitudinalOffset(LiveSpatialCar car, float usableRadius)
     {
         if (ReliableRelativeMeters(car) is { } meters)
         {
@@ -797,7 +797,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
         }
 
         var absSeconds = Math.Abs(seconds);
-        var contactSeconds = Math.Clamp(_proximity.SideOverlapWindowSeconds, 0.05d, RadarRangeSeconds * 0.5d);
+        var contactSeconds = Math.Clamp(_spatial.SideOverlapWindowSeconds, 0.05d, RadarRangeSeconds * 0.5d);
         var separatedCenterOffset = Math.Min(
             usableRadius,
             FocusedCarHeight / 2f + RadarCarHeight / 2f + SeparatedCarPaddingPixels);
@@ -873,7 +873,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             Lerp(yellow.B, alertRed.B, redMix));
     }
 
-    private double ProximityTint(LiveProximityCar car)
+    private double ProximityTint(LiveSpatialCar car)
     {
         if (ReliableRelativeMeters(car) is { } meters)
         {
@@ -885,13 +885,13 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             return 0d;
         }
 
-        var contactSeconds = Math.Clamp(_proximity.SideOverlapWindowSeconds, 0.05d, RadarRangeSeconds * 0.5d);
+        var contactSeconds = Math.Clamp(_spatial.SideOverlapWindowSeconds, 0.05d, RadarRangeSeconds * 0.5d);
         var warningGapSeconds = contactSeconds * ProximityWarningGapMeters / FocusedCarLengthMeters;
         var secondsGapPastContact = Math.Abs(car.RelativeSeconds!.Value) - contactSeconds;
         return 1d - Math.Clamp(secondsGapPastContact / Math.Max(0.001d, warningGapSeconds), 0d, 1d);
     }
 
-    private double RadarEntryOpacity(LiveProximityCar car)
+    private double RadarEntryOpacity(LiveSpatialCar car)
     {
         if (ReliableRelativeMeters(car) is { } meters)
         {
@@ -907,7 +907,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             return 0d;
         }
 
-        var contactSeconds = Math.Clamp(_proximity.SideOverlapWindowSeconds, 0.05d, RadarRangeSeconds * 0.5d);
+        var contactSeconds = Math.Clamp(_spatial.SideOverlapWindowSeconds, 0.05d, RadarRangeSeconds * 0.5d);
         var warningGapSeconds = contactSeconds * ProximityWarningGapMeters / FocusedCarLengthMeters;
         return OpacityBetweenRangeEdgeAndWarningStart(
             Math.Abs(car.RelativeSeconds!.Value),
@@ -956,7 +956,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
         return ratio * ratio * (3d - 2d * ratio);
     }
 
-    private double RangeRatio(LiveProximityCar car)
+    private double RangeRatio(LiveSpatialCar car)
     {
         if (ReliableRelativeMeters(car) is { } meters)
         {
@@ -974,7 +974,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             1d);
     }
 
-    private bool IsInRadarRange(LiveProximityCar car)
+    private bool IsInRadarRange(LiveSpatialCar car)
     {
         if (ReliableRelativeMeters(car) is { } meters)
         {
@@ -985,7 +985,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             && Math.Abs(car.RelativeSeconds!.Value) <= RadarRangeSeconds;
     }
 
-    private static double? ReliableRelativeMeters(LiveProximityCar car)
+    private static double? ReliableRelativeMeters(LiveSpatialCar car)
     {
         return car.RelativeMeters is { } meters && !double.IsNaN(meters) && !double.IsInfinity(meters)
             ? meters
@@ -1027,13 +1027,13 @@ internal sealed class CarRadarForm : PersistentOverlayForm
 
     private sealed class RadarCarVisual
     {
-        public RadarCarVisual(LiveProximityCar car)
+        public RadarCarVisual(LiveSpatialCar car)
         {
             Car = car;
             LastSeenAtUtc = DateTimeOffset.UtcNow;
         }
 
-        public LiveProximityCar Car { get; set; }
+        public LiveSpatialCar Car { get; set; }
 
         public double Alpha { get; set; }
 

@@ -104,7 +104,7 @@ public sealed class LiveProximitySnapshotTests
     }
 
     [Fact]
-    public void From_UsesFocusedCarProgressWhenCameraFocusDiffersFromPlayer()
+    public void From_HidesRadarWhenCameraFocusDiffersFromPlayer()
     {
         var context = new HistoricalSessionContext
         {
@@ -137,11 +137,49 @@ public sealed class LiveProximitySnapshotTests
 
         var proximity = LiveProximitySnapshot.From(context, sample);
 
-        Assert.Equal(4099, proximity.ReferenceCarClass);
-        var car = Assert.Single(proximity.NearbyCars);
-        Assert.Equal(12, car.CarIdx);
-        Assert.Equal(0.015d, car.RelativeLaps, precision: 6);
-        Assert.Equal(1.5d, car.RelativeSeconds!.Value, precision: 6);
+        Assert.False(proximity.HasData);
+        Assert.Empty(proximity.NearbyCars);
+        Assert.Null(proximity.CarLeftRight);
+        Assert.False(proximity.HasCarLeft);
+        Assert.False(proximity.HasCarRight);
+        Assert.Equal("waiting", proximity.SideStatus);
+    }
+
+    [Fact]
+    public void From_HidesRadarWhenLocalDriverIsNotInCar()
+    {
+        var context = new HistoricalSessionContext
+        {
+            Car = new HistoricalCarIdentity(),
+            Track = new HistoricalTrackIdentity(),
+            Session = new HistoricalSessionIdentity(),
+            Conditions = new HistoricalSessionInfoConditions()
+        };
+        var sample = CreateSample(
+            isOnTrack: false,
+            isInGarage: true,
+            carLeftRight: 4,
+            teamLapDistPct: 0.50d,
+            nearbyCars:
+            [
+                new HistoricalCarProximity(
+                    CarIdx: 12,
+                    LapCompleted: 5,
+                    LapDistPct: 0.53d,
+                    F2TimeSeconds: 16d,
+                    EstimatedTimeSeconds: null,
+                    Position: 3,
+                    ClassPosition: 3,
+                    CarClass: 1,
+                    TrackSurface: 3,
+                    OnPitRoad: false)
+            ]);
+
+        var proximity = LiveProximitySnapshot.From(context, sample);
+
+        Assert.False(proximity.HasData);
+        Assert.Empty(proximity.NearbyCars);
+        Assert.Null(proximity.CarLeftRight);
         Assert.False(proximity.HasCarLeft);
         Assert.False(proximity.HasCarRight);
         Assert.Equal("waiting", proximity.SideStatus);
@@ -512,15 +550,17 @@ public sealed class LiveProximitySnapshotTests
         int? focusCarClass = null,
         int? focusClassLeaderCarIdx = null,
         double? focusClassLeaderF2TimeSeconds = null,
-        bool onPitRoad = false)
+        bool onPitRoad = false,
+        bool isOnTrack = true,
+        bool isInGarage = false)
     {
         return new HistoricalTelemetrySample(
             CapturedAtUtc: DateTimeOffset.UtcNow,
             SessionTime: 123d,
             SessionTick: 100,
             SessionInfoUpdate: 1,
-            IsOnTrack: true,
-            IsInGarage: false,
+            IsOnTrack: isOnTrack,
+            IsInGarage: isInGarage,
             OnPitRoad: onPitRoad,
             PitstopActive: false,
             PlayerCarInPitStall: onPitRoad,

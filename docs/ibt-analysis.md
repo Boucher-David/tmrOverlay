@@ -57,6 +57,18 @@ ibt-analysis/ibt-local-car-summary.json
 
 `ibt-local-car-summary.json` reduces those sampled fields into local-car analysis groups: trajectory, fuel, vehicle dynamics, tires/wheels, pit service, weather, and missing opponent context. It also records track-map readiness from `Lat`/`Lon`/`Alt` plus lap-distance coverage. This sidecar is the committed contract for future local-car post-race analysis; the source `.ibt` file still stays outside the capture directory unless explicitly configured.
 
+## Future Track Map Generation
+
+The current IBT path does not write a reusable track-map asset. It only records whether the selected `.ibt` has enough local-car trajectory fields to be a candidate.
+
+A future track-map branch should keep source `.ibt` files external, extract compact derived geometry, and save generated user maps under app-owned local storage such as:
+
+```text
+%LOCALAPPDATA%\TmrOverlay\track-maps\user
+```
+
+Those generated maps should be keyed by the normalized track identity from session info, with provenance pointing back to the capture/IBT summary. The reusable map document should prefer local meter coordinates plus `LapDistPct` samples over raw latitude/longitude, include quality metrics for lap coverage and closure, and be read by overlays through a `TrackMapStore` rather than directly from capture folders or the iRacing telemetry directory.
+
 ## Guardrails
 
 IBT analysis is deliberately best-effort:

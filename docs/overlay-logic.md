@@ -9,6 +9,8 @@ They should be updated whenever overlay behavior, telemetry derivation, analysis
 - [Status Overlay Logic](status-overlay-logic.md)
 - [Settings And Overlay Manager Logic](settings-overlay-logic.md)
 - [Fuel Calculator Logic](fuel-calculator-logic.md)
+- [Relative Overlay Logic](relative-overlay-logic.md)
+- [Simple Telemetry Overlays Logic](simple-telemetry-overlays-logic.md)
 - [Car Radar Logic](car-radar-logic.md)
 - [Gap To Leader Logic](gap-to-leader-logic.md)
 
@@ -24,7 +26,7 @@ They should be updated whenever overlay behavior, telemetry derivation, analysis
 
 ## Deferred UI Style V2
 
-The current model-v2 work standardizes live data, not visual structure. A future overlay UI/style v2 pass should standardize shared WinForms theme tokens and reusable overlay primitives so status, fuel, radar, gap, and future timing overlays share visual language without copying label, border, severity, table, graph, and empty-state code. Keep that migration additive and validate one overlay at a time with screenshots.
+The current model-v2 work standardizes live data, not visual structure. Relative plus the simple Flags, Session / Weather, Pit Service, and Input / Car State overlays now consume model-v2 state directly. Treat overlay UI/style v2 as telemetry-first by default: standings, relative, local in-car radar/blindspot, flags, session/weather, and timing tables should be dense, stable windows into iRacing telemetry. Normal rows should not look like confidence reports. Normalized source, quality, usability, freshness, and missing-reason states should become exception UI for stale, unavailable, modeled, or derived values, especially in analysis products like fuel strategy, non-local radar focus/multiclass interpretation, gap graphs, and a future pit crew/engineer control overlay. Competitor overlay analysis remains the product-shape check: small purpose-built overlays, dense information, low-noise dark styling, and semantic color rather than one monolithic dashboard. The ignored mac harness is the proving ground for generated `mocks/design-v2/` states while model-v2 evidence is still being collected, including the current standings, relative, sector comparison, blindspot signal, laptime delta, stint laptime log, flag, and analysis-exception previews. Keep the Windows migration additive and validate one overlay at a time with screenshots.
 
 ## Maintenance Rule
 

@@ -98,6 +98,49 @@ DriverInfo:
     }
 
     [Fact]
+    public void ApplySessionInfo_CarriesSplitTimeSectorsIntoContext()
+    {
+        var store = new LiveTelemetryStore();
+        store.ApplySessionInfo("""
+WeekendInfo:
+ TrackName: nurburgringcombined
+DriverInfo:
+ DriverCarIdx: 10
+ Drivers:
+ - CarIdx: 10
+   UserName: Player
+SplitTimeInfo:
+ Sectors:
+ - SectorNum: 0
+   SectorStartPct: 0.000000
+ - SectorNum: 1
+   SectorStartPct: 0.059239
+ - SectorNum: 2
+   SectorStartPct: 0.114229
+""");
+
+        var sectors = store.Snapshot().Context.Sectors;
+
+        Assert.Collection(
+            sectors,
+            sector =>
+            {
+                Assert.Equal(0, sector.SectorNum);
+                Assert.Equal(0d, sector.SectorStartPct);
+            },
+            sector =>
+            {
+                Assert.Equal(1, sector.SectorNum);
+                Assert.Equal(0.059239d, sector.SectorStartPct);
+            },
+            sector =>
+            {
+                Assert.Equal(2, sector.SectorNum);
+                Assert.Equal(0.114229d, sector.SectorStartPct);
+            });
+    }
+
+    [Fact]
     public void RecordFrame_SurfacesMulticlassApproachOutsideCloseRadarRange()
     {
         var store = new LiveTelemetryStore();
@@ -129,6 +172,8 @@ DriverInfo:
         Assert.Equal(4099, approach.CarClass);
         Assert.Equal(-4.5d, approach.RelativeSeconds!.Value, precision: 6);
         Assert.Equal(approach, snapshot.Proximity.StrongestMulticlassApproach);
+        Assert.Equal(approach, Assert.Single(snapshot.Models.Spatial.MulticlassApproaches));
+        Assert.Equal(approach, snapshot.Models.Spatial.StrongestMulticlassApproach);
     }
 
     [Fact]
@@ -163,7 +208,7 @@ DriverInfo:
     }
 
     [Fact]
-    public void RecordFrame_ClearsMulticlassClosingHistoryWhenCameraFocusChanges()
+    public void RecordFrame_SuppressesRadarWhenCameraFocusLeavesLocalPlayer()
     {
         var store = new LiveTelemetryStore();
         var startedAtUtc = DateTimeOffset.UtcNow;
@@ -213,9 +258,12 @@ DriverInfo:
 
         var snapshot = store.Snapshot();
 
-        var approach = Assert.Single(snapshot.Proximity.MulticlassApproaches);
-        Assert.Equal(51, approach.CarIdx);
-        Assert.Null(approach.ClosingRateSecondsPerSecond);
+        Assert.False(snapshot.Proximity.HasData);
+        Assert.Empty(snapshot.Proximity.NearbyCars);
+        Assert.Empty(snapshot.Proximity.MulticlassApproaches);
+        Assert.Null(snapshot.Proximity.StrongestMulticlassApproach);
+        Assert.Empty(snapshot.Models.Spatial.Cars);
+        Assert.Empty(snapshot.Models.Spatial.MulticlassApproaches);
     }
 
     [Fact]
@@ -267,6 +315,7 @@ DriverInfo:
 
         store.RecordFrame(CreateSample(
             playerCarIdx: 10,
+            carLeftRight: 4,
             teamLapDistPct: 0.50d,
             teamEstimatedTimeSeconds: 50d,
             teamCarClass: 4098,
@@ -320,6 +369,16 @@ DriverInfo:
         Assert.True(models.Session.HasData);
         Assert.Equal("Race", models.Session.SessionType);
         Assert.Equal(5100d, models.Spatial.TrackLengthMeters!.Value, precision: 6);
+        Assert.Equal(10, models.Spatial.ReferenceCarIdx);
+        Assert.Equal(4098, models.Spatial.ReferenceCarClass);
+        Assert.Equal(4, models.Spatial.CarLeftRight);
+        Assert.Equal("both sides", models.Spatial.SideStatus);
+        Assert.True(models.Spatial.HasCarLeft);
+        Assert.True(models.Spatial.HasCarRight);
+        var spatialCar = Assert.Single(models.Spatial.Cars);
+        Assert.Equal(12, spatialCar.CarIdx);
+        Assert.Equal(-1d, spatialCar.RelativeSeconds!.Value, precision: 6);
+        Assert.True(spatialCar.HasReliableRelativeSeconds);
         Assert.Equal(10, models.DriverDirectory.PlayerCarIdx);
         Assert.Equal("Driver One", models.DriverDirectory.PlayerDriver?.DriverName);
         Assert.Equal(10, models.Timing.FocusRow?.CarIdx);
@@ -595,7 +654,8 @@ DriverInfo:
         double? classLeaderLapDistPct = null,
         double? classLeaderF2TimeSeconds = null,
         IReadOnlyList<HistoricalCarProximity>? focusClassCars = null,
-        IReadOnlyList<HistoricalCarProximity>? nearbyCars = null)
+        IReadOnlyList<HistoricalCarProximity>? nearbyCars = null,
+        int? carLeftRight = null)
     {
         return new HistoricalTelemetrySample(
             CapturedAtUtc: capturedAtUtc ?? DateTimeOffset.UtcNow,
@@ -627,6 +687,7 @@ DriverInfo:
             FocusLapDistPct: focusLapDistPct,
             FocusEstimatedTimeSeconds: focusEstimatedTimeSeconds,
             FocusCarClass: focusCarClass,
+            CarLeftRight: carLeftRight,
             TeamLapCompleted: teamLapDistPct is null ? null : 2,
             TeamLapDistPct: teamLapDistPct,
             TeamEstimatedTimeSeconds: teamEstimatedTimeSeconds,

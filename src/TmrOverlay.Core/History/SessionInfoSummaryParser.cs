@@ -75,6 +75,11 @@ internal static class SessionInfoSummaryParser
             Drivers = parsed.Drivers
                 .Select(ToDriver)
                 .Where(driver => driver.CarIdx is not null)
+                .ToArray(),
+            Sectors = parsed.Sectors
+                .Select(ToSector)
+                .Where(sector => sector.SectorStartPct >= 0d && sector.SectorStartPct < 1d)
+                .OrderBy(sector => sector.SectorStartPct)
                 .ToArray()
         };
     }
@@ -85,8 +90,10 @@ internal static class SessionInfoSummaryParser
         var section = string.Empty;
         Dictionary<string, string>? currentSession = null;
         Dictionary<string, string>? currentDriver = null;
+        Dictionary<string, string>? currentSector = null;
         var inSessions = false;
         var inDrivers = false;
+        var inSectors = false;
 
         foreach (var rawLine in yaml.Split('\n'))
         {
@@ -103,9 +110,11 @@ internal static class SessionInfoSummaryParser
             {
                 FinishCurrentSession();
                 FinishCurrentDriver();
+                FinishCurrentSector();
                 section = trimmed.TrimEnd(':');
                 inSessions = false;
                 inDrivers = false;
+                inSectors = false;
                 continue;
             }
 
@@ -183,11 +192,39 @@ internal static class SessionInfoSummaryParser
                         }
                     }
                     break;
+
+                case "SplitTimeInfo":
+                    if (indent == 1 && trimmed == "Sectors:")
+                    {
+                        inSectors = true;
+                        break;
+                    }
+
+                    if (inSectors)
+                    {
+                        if (trimmed.StartsWith("- ", StringComparison.Ordinal))
+                        {
+                            FinishCurrentSector();
+                            currentSector = [];
+                            if (TryReadKeyValue(trimmed, out var sectorListKey, out var sectorListValue))
+                            {
+                                currentSector[sectorListKey] = sectorListValue;
+                            }
+                            break;
+                        }
+
+                        if (currentSector is not null && TryReadKeyValue(trimmed, out var sectorKey, out var sectorValue))
+                        {
+                            currentSector[sectorKey] = sectorValue;
+                        }
+                    }
+                    break;
             }
         }
 
         FinishCurrentSession();
         FinishCurrentDriver();
+        FinishCurrentSector();
         return parsed;
 
         void FinishCurrentSession()
@@ -205,6 +242,15 @@ internal static class SessionInfoSummaryParser
             {
                 parsed.Drivers.Add(currentDriver);
                 currentDriver = null;
+            }
+        }
+
+        void FinishCurrentSector()
+        {
+            if (currentSector is not null)
+            {
+                parsed.Sectors.Add(currentSector);
+                currentSector = null;
             }
         }
     }
@@ -255,6 +301,15 @@ internal static class SessionInfoSummaryParser
             CarClassShortName = ReadString(values, "CarClassShortName"),
             CarClassColorHex = NormalizeColorHex(ReadString(values, "CarClassColor")),
             IsSpectator = ReadBool(values, "IsSpectator")
+        };
+    }
+
+    private static HistoricalTrackSector ToSector(IReadOnlyDictionary<string, string> values)
+    {
+        return new HistoricalTrackSector
+        {
+            SectorNum = ReadInt(values, "SectorNum") ?? 0,
+            SectorStartPct = ReadDouble(values, "SectorStartPct") ?? -1d
         };
     }
 
@@ -391,5 +446,7 @@ internal static class SessionInfoSummaryParser
         public List<Dictionary<string, string>> Sessions { get; } = [];
 
         public List<Dictionary<string, string>> Drivers { get; } = [];
+
+        public List<Dictionary<string, string>> Sectors { get; } = [];
     }
 }

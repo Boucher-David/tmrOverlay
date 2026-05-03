@@ -80,6 +80,7 @@ internal sealed record LiveSessionModel(
     int? SessionLapsTotal,
     int? RaceLaps,
     int? SessionState,
+    int? SessionFlags,
     string? TrackDisplayName,
     double? TrackLengthKm,
     string? CarDisplayName,
@@ -100,6 +101,7 @@ internal sealed record LiveSessionModel(
         SessionLapsTotal: null,
         RaceLaps: null,
         SessionState: null,
+        SessionFlags: null,
         TrackDisplayName: null,
         TrackLengthKm: null,
         CarDisplayName: null,
@@ -241,17 +243,37 @@ internal sealed record LiveSpatialModel(
     bool HasData,
     LiveModelQuality Quality,
     int? ReferenceCarIdx,
+    int? ReferenceCarClass,
+    int? CarLeftRight,
+    string SideStatus,
+    bool HasCarLeft,
+    bool HasCarRight,
+    double SideOverlapWindowSeconds,
     double? TrackLengthMeters,
     double? ReferenceLapDistPct,
-    IReadOnlyList<LiveSpatialCar> Cars)
+    IReadOnlyList<LiveSpatialCar> Cars,
+    LiveSpatialCar? NearestAhead,
+    LiveSpatialCar? NearestBehind,
+    IReadOnlyList<LiveMulticlassApproach> MulticlassApproaches,
+    LiveMulticlassApproach? StrongestMulticlassApproach)
 {
     public static LiveSpatialModel Empty { get; } = new(
         HasData: false,
         Quality: LiveModelQuality.Unavailable,
         ReferenceCarIdx: null,
+        ReferenceCarClass: null,
+        CarLeftRight: null,
+        SideStatus: "waiting",
+        HasCarLeft: false,
+        HasCarRight: false,
+        SideOverlapWindowSeconds: 0.22d,
         TrackLengthMeters: null,
         ReferenceLapDistPct: null,
-        Cars: []);
+        Cars: [],
+        NearestAhead: null,
+        NearestBehind: null,
+        MulticlassApproaches: [],
+        StrongestMulticlassApproach: null);
 }
 
 internal sealed record LiveSpatialCar(
@@ -259,10 +281,18 @@ internal sealed record LiveSpatialCar(
     LiveModelQuality Quality,
     LiveSignalEvidence PlacementEvidence,
     double RelativeLaps,
+    double? RelativeSeconds,
     double? RelativeMeters,
+    int? OverallPosition,
+    int? ClassPosition,
     int? CarClass,
     int? TrackSurface,
-    bool? OnPitRoad);
+    bool? OnPitRoad,
+    string? CarClassColorHex = null)
+{
+    public bool HasReliableRelativeSeconds =>
+        RelativeSeconds is { } seconds && !double.IsNaN(seconds) && !double.IsInfinity(seconds);
+}
 
 internal sealed record LiveWeatherModel(
     bool HasData,
@@ -365,7 +395,19 @@ internal sealed record LiveInputTelemetryModel(
     double? SpeedMetersPerSecond,
     int? PlayerTireCompound,
     bool HasPedalInputs,
-    bool HasSteeringInput)
+    bool HasSteeringInput,
+    int? Gear,
+    double? Rpm,
+    double? Throttle,
+    double? Brake,
+    double? Clutch,
+    double? SteeringWheelAngle,
+    int? EngineWarnings,
+    double? Voltage,
+    double? WaterTempC,
+    double? FuelPressureBar,
+    double? OilTempC,
+    double? OilPressureBar)
 {
     public static LiveInputTelemetryModel Empty { get; } = new(
         HasData: false,
@@ -373,5 +415,17 @@ internal sealed record LiveInputTelemetryModel(
         SpeedMetersPerSecond: null,
         PlayerTireCompound: null,
         HasPedalInputs: false,
-        HasSteeringInput: false);
+        HasSteeringInput: false,
+        Gear: null,
+        Rpm: null,
+        Throttle: null,
+        Brake: null,
+        Clutch: null,
+        SteeringWheelAngle: null,
+        EngineWarnings: null,
+        Voltage: null,
+        WaterTempC: null,
+        FuelPressureBar: null,
+        OilTempC: null,
+        OilPressureBar: null);
 }

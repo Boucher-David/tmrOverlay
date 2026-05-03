@@ -122,7 +122,14 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
 
     private void ResetProximityHistoryIfReferenceChanged(HistoricalTelemetrySample sample)
     {
-        var referenceCarIdx = sample.FocusCarIdx ?? sample.PlayerCarIdx;
+        var referenceCarIdx = LocalRadarReferenceCarIdx(sample);
+        if (referenceCarIdx is null)
+        {
+            _proximityHistory.Clear();
+            _lastProximityReferenceCarIdx = null;
+            return;
+        }
+
         if (_lastProximityReferenceCarIdx is not null && _lastProximityReferenceCarIdx != referenceCarIdx)
         {
             _proximityHistory.Clear();
@@ -135,8 +142,8 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
         HistoricalTelemetrySample sample,
         LiveProximitySnapshot proximity)
     {
-        var focusCarClass = FocusCarClass(sample);
-        if (focusCarClass is null || proximity.NearbyCars.Count == 0)
+        var localCarClass = LocalRadarCarClass(sample);
+        if (localCarClass is null || proximity.NearbyCars.Count == 0)
         {
             return [];
         }
@@ -144,7 +151,7 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
         var approaches = new List<LiveMulticlassApproach>();
         foreach (var car in proximity.NearbyCars)
         {
-            if (car.CarClass is null || car.CarClass == focusCarClass)
+            if (car.CarClass is null || car.CarClass == localCarClass)
             {
                 continue;
             }
@@ -264,11 +271,24 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
         return 1d - Math.Clamp((distance - closeRange) / Math.Max(0.001d, warningRange - closeRange), 0d, 1d);
     }
 
-    private static int? FocusCarClass(HistoricalTelemetrySample sample)
+    private static int? LocalRadarCarClass(HistoricalTelemetrySample sample)
     {
         return HasExplicitNonPlayerFocus(sample)
-            ? sample.FocusCarClass
+            ? sample.TeamCarClass
             : sample.FocusCarClass ?? sample.TeamCarClass;
+    }
+
+    private static int? LocalRadarReferenceCarIdx(HistoricalTelemetrySample sample)
+    {
+        if (!sample.IsOnTrack
+            || sample.IsInGarage
+            || (sample.PlayerCarIdx is null && sample.FocusCarIdx is not null)
+            || HasExplicitNonPlayerFocus(sample))
+        {
+            return null;
+        }
+
+        return sample.PlayerCarIdx ?? sample.FocusCarIdx;
     }
 
     private static bool HasExplicitNonPlayerFocus(HistoricalTelemetrySample sample)

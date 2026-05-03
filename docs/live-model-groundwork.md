@@ -3,9 +3,9 @@
 The live telemetry boundary now has two layers:
 
 1. Existing overlay-specific slices: fuel, proximity, and leader gap.
-2. Additive shared models under `LiveTelemetrySnapshot.Models`.
+2. Additive shared models under `LiveTelemetrySnapshot.Models`, now used directly by the Relative overlay.
 
-The shared models are intended to support mature overlays such as standings, relative, weather, timing tables, and future map/analysis surfaces without letting each overlay rediscover the same race state in its form code.
+The shared models are intended to support simple telemetry-first overlays such as standings, relative, local in-car radar, flags, weather, timing tables, and future map surfaces, plus deeper analysis products, without letting each overlay rediscover the same race state in its form code.
 
 ## Compatibility
 
@@ -19,6 +19,8 @@ This does not change:
 - existing capture synthesis artifacts
 - existing overlay-specific snapshot properties
 
+Relative and Car Radar are additive on top of those compatibility rules: Relative reads `LiveTelemetrySnapshot.Models.Relative`, and Car Radar reads `LiveTelemetrySnapshot.Models.Spatial` for local in-car radar, while the older fuel/gap overlays keep their current inputs until each one is migrated deliberately.
+
 Older data collected on Windows remains readable because the new models are derived from the normalized `HistoricalTelemetrySample` already produced by the collector. The builder tolerates missing timing, driver, weather, pit, and proximity fields by marking the affected model as `Unavailable` or `Partial` instead of throwing.
 
 ## Model Families
@@ -26,14 +28,14 @@ Older data collected on Windows remains readable because the new models are deri
 - `LiveSessionModel`: session clock, lap limits, session labels, track/car display labels, and missing live session signals.
 - `LiveDriverDirectoryModel`: session-info driver identity keyed by `CarIdx`, plus player/focus references.
 - `LiveTimingModel`: reusable overall/class rows with position, class, lap progress, timing, gap, pit, and driver identity fields.
-- `LiveRelativeModel`: focus-relative cars from proximity first, with class-gap timing as a fallback.
-- `LiveSpatialModel`: focus-relative lap and meter placement for map/radar-style consumers.
+- `LiveRelativeModel`: local-radar proximity first, with focus/class-gap timing as a fallback for timing-table and relative-style consumers.
+- `LiveSpatialModel`: local-radar side occupancy, lap/meter/timing placement, nearest-car, and multiclass-approach state for radar-style consumers; broader focus-relative placement remains an advanced branch.
 - `LiveWeatherModel`: live wetness, declared-wet state, temperatures, skies, precipitation, and rubber state.
 - `LiveFuelPitModel`: live fuel plus pit-road/service signals.
 - `LiveRaceEventModel`: basic on-track, garage, lap, and driver-change context.
-- `LiveInputTelemetryModel`: currently exposes only speed/tire-compound availability from normalized samples; pedal/steering channels can be added later without changing current consumers.
+- `LiveInputTelemetryModel`: local speed, tire compound, gear/RPM, pedals, steering, engine-warning, electrical, temperature, and pressure signals from normalized samples.
 
-Model rows now carry explicit `LiveSignalEvidence` for source, quality, usability, and missing reason. Timing rows distinguish timing availability from spatial progress and radar placement eligibility, so a same-class F2 row can remain usable for gap/timing while staying unavailable for map/radar placement. Fuel/pit models distinguish valid fuel level, instantaneous burn diagnostics, rolling measured burn, and measured-baseline eligibility. This keeps model-v2 consumers from treating first-pass overlay heuristics as equally reliable raw facts.
+Model rows now carry explicit `LiveSignalEvidence` for source, quality, usability, and missing reason. This evidence is not meant to dominate every overlay. For telemetry-first overlays such as standings, relative, local in-car radar, flags, session/weather, and timing tables, the normal path should render direct iRacing telemetry quietly and only expose evidence when data is stale, unavailable, modeled, or derived. Local in-car radar can stay simple by using local-player side/proximity telemetry only while the user is driving; non-local focus, teammate focus, spectator mode, and multiclass interpretation remain advanced evidence-aware radar cases. Timing rows still distinguish timing availability from spatial progress and radar placement eligibility, so a same-class F2 row can remain usable for standings/relative/gap timing while staying unavailable for map/non-local radar placement. Fuel/pit models distinguish valid fuel level, instantaneous burn diagnostics, rolling measured burn, and measured-baseline eligibility. This keeps model-v2 consumers from treating first-pass overlay heuristics as equally reliable raw facts without turning every normal telemetry row into a confidence report.
 
 Current long-capture findings reflected in the v2 contract:
 
@@ -42,7 +44,7 @@ Current long-capture findings reflected in the v2 contract:
 - Leader gaps with missing leader F2 timing are partial evidence, not reliable zero-based gaps.
 - IBT can enrich local-car post-race trajectory and vehicle dynamics, but raw/live capture remains the source for opponent timing, radar side state, focus, and class-gap context.
 
-The 24-hour live-overlay review adds product semantics on top of those source findings: race-gap graphs should not pretend practice/qualifying/test timing is the same thing as race-position gap; radar focus and multiclass warning need focus-safe evidence; and endurance fuel strategy needs team-stint evidence rather than stitched local scalar fuel.
+The 24-hour live-overlay review adds product semantics on top of those source findings: race-gap graphs should not pretend practice/qualifying/test timing is the same thing as race-position gap; the first radar path should stay local in-car while focus/multiclass cases collect evidence for a later advanced branch; and endurance fuel strategy needs team-stint evidence rather than stitched local scalar fuel.
 
 ## Timing Columns
 
@@ -61,13 +63,13 @@ Current default columns cover:
 - best lap
 - pit state
 
-The registry keeps display keys stable before any standings or relative overlay exists, so future UI can share column settings and tests can validate table semantics without copying formatter logic.
+The registry keeps display keys stable for future shared standings/relative UI so table semantics can be validated without copying formatter logic. The first Relative overlay keeps formatting local while those shared primitives are still being refined.
 
 ## Parity Mode
 
-The current product overlays still read the existing overlay-specific snapshot slices. Model v2 is observed in parallel, not yet authoritative.
+Relative was the first product overlay to read the additive model-v2 live state directly through `LiveTelemetrySnapshot.Models.Relative`. The simple Flags, Session / Weather, Pit Service, and Input / Car State overlays also consume `LiveTelemetrySnapshot.Models` directly. Car Radar now reads `LiveTelemetrySnapshot.Models.Spatial` for the simplified local in-car radar contract. The fuel and gap overlays still read their existing overlay-specific snapshot slices while model v2 is observed in parallel.
 
-`LiveModelParityAnalyzer` compares those existing slices against equivalent values in `LiveTelemetrySnapshot.Models` for fuel/pit, proximity/relative/spatial, timing/leader-gap, weather, session, and race-event state. The Windows collector records sampled parity frames and mismatch summaries through `LiveModelParityRecorder`. A separate `LiveOverlayDiagnosticsRecorder` watches the same normalized snapshots for product assumptions found during the 24-hour race, including non-race gap semantics, large gap scaling, radar focus/side evidence, fuel source stitching, and intra-lap position cadence.
+`LiveModelParityAnalyzer` compares those existing slices against equivalent values in `LiveTelemetrySnapshot.Models` for fuel/pit, proximity/relative/spatial, timing/leader-gap, weather, session, and race-event state. The Windows collector records sampled parity frames and mismatch summaries through `LiveModelParityRecorder`. A separate `LiveOverlayDiagnosticsRecorder` watches the same normalized snapshots for product assumptions found during the 24-hour race and design-v2 candidate work, including non-race gap semantics, large gap scaling, local-only radar suppression and side/placement evidence, fuel source stitching, intra-lap position cadence, lap-delta channel availability, and derived sector-timing coverage.
 
 At session finalization the app writes `live-model-parity.json`. When raw capture is active, the file is written beside the raw capture sidecars. When raw capture is not active, it is written under the logs model-parity folder. The artifact includes:
 
@@ -85,10 +87,14 @@ This lets collected raw/IBT sessions evaluate whether model v2 matches current o
 
 ## Deferred Overlay UI V2
 
-Model v2 is data-contract work, not a visual architecture rewrite. A separate overlay UI/style v2 pass should eventually standardize shared visual primitives across the WinForms overlays:
+Model v2 is data-contract work, not a visual architecture rewrite. Overlay UI/style v2 should render model-v2 telemetry directly by default: standings, relative, local in-car radar, flags, session/weather, and timing tables should feel like simple windows into iRacing telemetry. Source, quality, usability, and missing-reason evidence should become exception UI for stale, unavailable, modeled, or derived values. Competitor overlay analysis keeps the product shape grounded in small, dense, purpose-built overlays.
+
+A separate overlay UI/style v2 pass should eventually standardize shared visual primitives across the WinForms overlays:
 
 - semantic theme tokens for spacing, typography, borders, severity, table, and graph roles
 - reusable header, status badge, source footer, metric row, table cell, graph panel, and empty/error/waiting-state helpers
 - shared text fitting, border drawing, severity color, class-color, and stale-data styling helpers
 
-That work should be additive first and migrate one overlay at a time with screenshot validation, keeping overlay-specific domain layout local.
+That work should be additive first and migrate one overlay at a time with screenshot validation, keeping overlay-specific domain layout local. Shared primitives should be able to consume model-v2 source/evidence state directly instead of each overlay inventing its own live, degraded, stale, history-backed, or unavailable display language.
+
+While model-v2 parity data is still being collected, the ignored mac harness owns the design-v2 proving ground. Its generated `mocks/design-v2/` contact sheet should iterate first on telemetry-first standings, relative, local blindspot/radar signal, flag, session/weather, and table primitives, then keep evidence-aware badges, source footers, graph context, and deterministic unavailable states for the analysis overlays that need them before those primitives are ported into Windows. The current mac candidates also include sector comparison, laptime delta, and stint laptime log designs; sector comparison and laptime delta now have live diagnostics for input readiness, but still need an explicit model-v2 UI contract before promotion to Windows overlays.

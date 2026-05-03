@@ -33,9 +33,12 @@ internal sealed class LiveOverlayDiagnosticsRecorder
     private readonly Dictionary<string, int> _fuelBurnEvidenceCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _fuelMeasuredEvidenceCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _fuelBaselineEvidenceCounts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _lapDeltaValueCounts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _lapDeltaUsableCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _eventSampleCountsByKind = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _eventSampleKeys = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<int, PositionState> _positionStates = [];
+    private readonly Dictionary<int, SectorTimingState> _sectorStates = [];
     private readonly List<LiveOverlayDiagnosticsFrameSample> _sampleFrames = [];
     private readonly List<LiveOverlayDiagnosticsEventSample> _eventSamples = [];
     private string? _sourceId;
@@ -60,6 +63,9 @@ internal sealed class LiveOverlayDiagnosticsRecorder
     private DateTimeOffset? _previousClassGapAtUtc;
     private int _radarFramesWithData;
     private int _radarNonPlayerFocusFrames;
+    private int _radarLocalSuppressedNonPlayerFocusFrames;
+    private int _radarLocalUnavailablePitOrGarageFrames;
+    private int _radarLocalProgressMissingFrames;
     private int _radarSideSignalFrames;
     private int _radarRawSideSuppressedForFocusFrames;
     private int _radarSideSignalWithoutPlacementFrames;
@@ -81,6 +87,22 @@ internal sealed class LiveOverlayDiagnosticsRecorder
     private int _positionClassChanges;
     private int _positionIntraLapOverallChanges;
     private int _positionIntraLapClassChanges;
+    private int _lapDeltaObservedFrames;
+    private int _lapDeltaFramesWithAnyValue;
+    private int _lapDeltaFramesWithAnyUsableValue;
+    private double? _maxAbsLapDeltaSeconds;
+    private IReadOnlyList<HistoricalTrackSector> _sectorDefinitions = [];
+    private int _sectorMetadataFrames;
+    private int _sectorMissingMetadataFrames;
+    private int _sectorObservedFrames;
+    private int _sectorFocusTrackedFrames;
+    private int _sectorAheadTrackedFrames;
+    private int _sectorBehindTrackedFrames;
+    private int _sectorComparisonFrames;
+    private int _sectorInvalidProgressFrames;
+    private int _sectorResetFrames;
+    private int _sectorCrossingCount;
+    private int _sectorCompletedIntervalCount;
 
     public LiveOverlayDiagnosticsRecorder(
         LiveOverlayDiagnosticsOptions options,
@@ -133,6 +155,9 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             _previousClassGapAtUtc = null;
             _radarFramesWithData = 0;
             _radarNonPlayerFocusFrames = 0;
+            _radarLocalSuppressedNonPlayerFocusFrames = 0;
+            _radarLocalUnavailablePitOrGarageFrames = 0;
+            _radarLocalProgressMissingFrames = 0;
             _radarSideSignalFrames = 0;
             _radarRawSideSuppressedForFocusFrames = 0;
             _radarSideSignalWithoutPlacementFrames = 0;
@@ -154,6 +179,22 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             _positionClassChanges = 0;
             _positionIntraLapOverallChanges = 0;
             _positionIntraLapClassChanges = 0;
+            _lapDeltaObservedFrames = 0;
+            _lapDeltaFramesWithAnyValue = 0;
+            _lapDeltaFramesWithAnyUsableValue = 0;
+            _maxAbsLapDeltaSeconds = null;
+            _sectorDefinitions = [];
+            _sectorMetadataFrames = 0;
+            _sectorMissingMetadataFrames = 0;
+            _sectorObservedFrames = 0;
+            _sectorFocusTrackedFrames = 0;
+            _sectorAheadTrackedFrames = 0;
+            _sectorBehindTrackedFrames = 0;
+            _sectorComparisonFrames = 0;
+            _sectorInvalidProgressFrames = 0;
+            _sectorResetFrames = 0;
+            _sectorCrossingCount = 0;
+            _sectorCompletedIntervalCount = 0;
             _sessionFrameCounts.Clear();
             _gapClassSourceCounts.Clear();
             _gapClassEvidenceCounts.Clear();
@@ -164,9 +205,12 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             _fuelBurnEvidenceCounts.Clear();
             _fuelMeasuredEvidenceCounts.Clear();
             _fuelBaselineEvidenceCounts.Clear();
+            _lapDeltaValueCounts.Clear();
+            _lapDeltaUsableCounts.Clear();
             _eventSampleCountsByKind.Clear();
             _eventSampleKeys.Clear();
             _positionStates.Clear();
+            _sectorStates.Clear();
             _sampleFrames.Clear();
             _eventSamples.Clear();
         }
@@ -195,6 +239,8 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             RecordRadar(snapshot, capturedAtUtc);
             RecordFuel(snapshot, capturedAtUtc);
             RecordPositionCadence(snapshot, capturedAtUtc);
+            RecordLapDelta(snapshot);
+            RecordSectorTiming(snapshot, capturedAtUtc);
             RecordSampleFrame(snapshot, capturedAtUtc);
         }
     }
@@ -251,6 +297,9 @@ internal sealed class LiveOverlayDiagnosticsRecorder
                     Radar: new RadarOverlayDiagnosticsSummary(
                         FramesWithData: _radarFramesWithData,
                         NonPlayerFocusFrames: _radarNonPlayerFocusFrames,
+                        LocalSuppressedNonPlayerFocusFrames: _radarLocalSuppressedNonPlayerFocusFrames,
+                        LocalUnavailablePitOrGarageFrames: _radarLocalUnavailablePitOrGarageFrames,
+                        LocalProgressMissingFrames: _radarLocalProgressMissingFrames,
                         SideSignalFrames: _radarSideSignalFrames,
                         RawSideSuppressedForFocusFrames: _radarRawSideSuppressedForFocusFrames,
                         SideSignalWithoutPlacementFrames: _radarSideSignalWithoutPlacementFrames,
@@ -280,6 +329,28 @@ internal sealed class LiveOverlayDiagnosticsRecorder
                         IntraLapOverallPositionChanges: _positionIntraLapOverallChanges,
                         IntraLapClassPositionChanges: _positionIntraLapClassChanges,
                         TrackedCarCount: _positionStates.Count),
+                    LapDelta: new LapDeltaDiagnosticsSummary(
+                        ObservedFrames: _lapDeltaObservedFrames,
+                        FramesWithAnyValue: _lapDeltaFramesWithAnyValue,
+                        FramesWithAnyUsableValue: _lapDeltaFramesWithAnyUsableValue,
+                        MaxAbsDeltaSeconds: Round(_maxAbsLapDeltaSeconds),
+                        ValueFrameCounts: Sorted(_lapDeltaValueCounts),
+                        UsableFrameCounts: Sorted(_lapDeltaUsableCounts)),
+                    SectorTiming: new SectorTimingDiagnosticsSummary(
+                        SectorCount: _sectorDefinitions.Count,
+                        SectorStartPcts: _sectorDefinitions.Select(sector => Round(sector.SectorStartPct) ?? sector.SectorStartPct).ToArray(),
+                        MetadataFrames: _sectorMetadataFrames,
+                        MissingMetadataFrames: _sectorMissingMetadataFrames,
+                        ObservedFrames: _sectorObservedFrames,
+                        FocusTrackedFrames: _sectorFocusTrackedFrames,
+                        AheadTrackedFrames: _sectorAheadTrackedFrames,
+                        BehindTrackedFrames: _sectorBehindTrackedFrames,
+                        ComparisonFrames: _sectorComparisonFrames,
+                        InvalidProgressFrames: _sectorInvalidProgressFrames,
+                        ResetFrames: _sectorResetFrames,
+                        CrossingCount: _sectorCrossingCount,
+                        CompletedIntervalCount: _sectorCompletedIntervalCount,
+                        TrackedCarCount: _sectorStates.Count),
                     SampleFrames: _sampleFrames.ToArray(),
                     EventSamples: _eventSamples.ToArray());
 
@@ -418,6 +489,7 @@ internal sealed class LiveOverlayDiagnosticsRecorder
 
     private void RecordRadar(LiveTelemetrySnapshot snapshot, DateTimeOffset capturedAtUtc)
     {
+        var sample = snapshot.LatestSample;
         var playerCarIdx = snapshot.Models.DriverDirectory.PlayerCarIdx ?? snapshot.LatestSample?.PlayerCarIdx;
         var focusCarIdx = snapshot.Models.DriverDirectory.FocusCarIdx
             ?? snapshot.LatestSample?.FocusCarIdx
@@ -428,6 +500,13 @@ internal sealed class LiveOverlayDiagnosticsRecorder
         if (string.Equals(focusKind, "non-player", StringComparison.OrdinalIgnoreCase))
         {
             _radarNonPlayerFocusFrames++;
+            _radarLocalSuppressedNonPlayerFocusFrames++;
+            AddEvent(
+                "radar.local-suppressed-non-player-focus",
+                "local-only radar hidden while camera focus is another car",
+                snapshot,
+                capturedAtUtc);
+
             if (snapshot.LatestSample?.CarLeftRight is not null)
             {
                 _radarRawSideSuppressedForFocusFrames++;
@@ -437,6 +516,29 @@ internal sealed class LiveOverlayDiagnosticsRecorder
                     snapshot,
                     capturedAtUtc);
             }
+        }
+
+        if (sample is not null && IsLocalRadarPitOrGarage(sample))
+        {
+            _radarLocalUnavailablePitOrGarageFrames++;
+            AddEvent(
+                "radar.local-unavailable-pit-or-garage",
+                "local-only radar unavailable while local car is off track, in garage, or in pit context",
+                snapshot,
+                capturedAtUtc);
+        }
+
+        if (sample is not null
+            && CanUseLocalRadarContext(sample)
+            && !IsLocalRadarPitOrGarage(sample)
+            && LocalRadarLapDistPct(sample) is null)
+        {
+            _radarLocalProgressMissingFrames++;
+            AddEvent(
+                "radar.local-progress-missing",
+                "local side/timing context exists but local lap-distance progress is unavailable",
+                snapshot,
+                capturedAtUtc);
         }
 
         if (snapshot.Proximity.HasData)
@@ -626,6 +728,409 @@ internal sealed class LiveOverlayDiagnosticsRecorder
         }
     }
 
+    private void RecordLapDelta(LiveTelemetrySnapshot snapshot)
+    {
+        var sample = snapshot.LatestSample;
+        if (sample is null)
+        {
+            return;
+        }
+
+        _lapDeltaObservedFrames++;
+        var anyValue = false;
+        var anyUsable = false;
+        foreach (var signal in LapDeltaSignals(sample))
+        {
+            if (IsFinite(signal.Seconds))
+            {
+                anyValue = true;
+                Increment(_lapDeltaValueCounts, signal.Key);
+                _maxAbsLapDeltaSeconds = Max(_maxAbsLapDeltaSeconds, Math.Abs(signal.Seconds!.Value));
+            }
+
+            if (signal.IsUsable)
+            {
+                anyUsable = true;
+                Increment(_lapDeltaUsableCounts, signal.Key);
+            }
+        }
+
+        if (anyValue)
+        {
+            _lapDeltaFramesWithAnyValue++;
+        }
+
+        if (anyUsable)
+        {
+            _lapDeltaFramesWithAnyUsableValue++;
+        }
+    }
+
+    private void RecordSectorTiming(LiveTelemetrySnapshot snapshot, DateTimeOffset capturedAtUtc)
+    {
+        var sample = snapshot.LatestSample;
+        if (sample is null)
+        {
+            return;
+        }
+
+        var sectors = SectorDefinitions(snapshot);
+        if (sectors.Count < 2)
+        {
+            _sectorMissingMetadataFrames++;
+            return;
+        }
+
+        _sectorMetadataFrames++;
+        var observations = SectorObservations(snapshot).ToArray();
+        if (observations.Length == 0)
+        {
+            return;
+        }
+
+        _sectorObservedFrames++;
+        if (observations.Any(observation => string.Equals(observation.Role, "focus", StringComparison.OrdinalIgnoreCase)))
+        {
+            _sectorFocusTrackedFrames++;
+        }
+
+        if (observations.Any(observation => string.Equals(observation.Role, "ahead", StringComparison.OrdinalIgnoreCase)))
+        {
+            _sectorAheadTrackedFrames++;
+        }
+
+        if (observations.Any(observation => string.Equals(observation.Role, "behind", StringComparison.OrdinalIgnoreCase)))
+        {
+            _sectorBehindTrackedFrames++;
+        }
+
+        if (observations.Any(observation => string.Equals(observation.Role, "focus", StringComparison.OrdinalIgnoreCase))
+            && observations.Any(observation => !string.Equals(observation.Role, "focus", StringComparison.OrdinalIgnoreCase)))
+        {
+            _sectorComparisonFrames++;
+        }
+
+        foreach (var observation in observations)
+        {
+            RecordSectorObservation(snapshot, capturedAtUtc, sectors, observation);
+        }
+    }
+
+    private void RecordSectorObservation(
+        LiveTelemetrySnapshot snapshot,
+        DateTimeOffset capturedAtUtc,
+        IReadOnlyList<HistoricalTrackSector> sectors,
+        SectorObservation observation)
+    {
+        if (observation.OnPitRoad == true || !IsValidSectorProgress(observation.LapCompleted, observation.LapDistPct))
+        {
+            _sectorInvalidProgressFrames++;
+            if (_sectorStates.Remove(observation.CarIdx))
+            {
+                _sectorResetFrames++;
+            }
+
+            return;
+        }
+
+        var currentLapCompleted = observation.LapCompleted!.Value;
+        var currentLapDistPct = observation.LapDistPct!.Value;
+        if (!_sectorStates.TryGetValue(observation.CarIdx, out var previous))
+        {
+            _sectorStates[observation.CarIdx] = new SectorTimingState(
+                observation.CarIdx,
+                currentLapCompleted,
+                currentLapDistPct,
+                observation.SessionTimeSeconds,
+                LastCrossingSector: null,
+                LastCrossingSessionTimeSeconds: null);
+            return;
+        }
+
+        if (currentLapCompleted < previous.LapCompleted
+            || currentLapCompleted - previous.LapCompleted > 1
+            || !IsFinite(observation.SessionTimeSeconds)
+            || observation.SessionTimeSeconds <= previous.SessionTimeSeconds)
+        {
+            _sectorResetFrames++;
+            _sectorStates[observation.CarIdx] = previous with
+            {
+                LapCompleted = currentLapCompleted,
+                LapDistPct = currentLapDistPct,
+                SessionTimeSeconds = observation.SessionTimeSeconds,
+                LastCrossingSector = null,
+                LastCrossingSessionTimeSeconds = null
+            };
+            return;
+        }
+
+        var crossings = SectorCrossings(sectors, previous, observation).ToArray();
+        var state = previous;
+        foreach (var crossing in crossings)
+        {
+            _sectorCrossingCount++;
+            if (state.LastCrossingSector is { } previousSector
+                && state.LastCrossingSessionTimeSeconds is { } previousCrossingTime)
+            {
+                var elapsed = crossing.SessionTimeSeconds - previousCrossingTime;
+                if (elapsed is > 0d and < 900d)
+                {
+                    _sectorCompletedIntervalCount++;
+                    AddEvent(
+                        "sector.interval-derived",
+                        $"car {observation.CarIdx} {observation.Role} sector {previousSector}->{crossing.SectorNum} {elapsed:0.###}s",
+                        snapshot,
+                        capturedAtUtc);
+                }
+            }
+
+            state = state with
+            {
+                LastCrossingSector = crossing.SectorNum,
+                LastCrossingSessionTimeSeconds = crossing.SessionTimeSeconds
+            };
+        }
+
+        _sectorStates[observation.CarIdx] = state with
+        {
+            LapCompleted = currentLapCompleted,
+            LapDistPct = currentLapDistPct,
+            SessionTimeSeconds = observation.SessionTimeSeconds
+        };
+    }
+
+    private IEnumerable<LapDeltaSignal> LapDeltaSignals(HistoricalTelemetrySample sample)
+    {
+        yield return new LapDeltaSignal(
+            "toBestLap",
+            sample.LapDeltaToBestLapSeconds,
+            sample.LapDeltaToBestLapRate,
+            sample.LapDeltaToBestLapOk);
+        yield return new LapDeltaSignal(
+            "toOptimalLap",
+            sample.LapDeltaToOptimalLapSeconds,
+            sample.LapDeltaToOptimalLapRate,
+            sample.LapDeltaToOptimalLapOk);
+        yield return new LapDeltaSignal(
+            "toSessionBestLap",
+            sample.LapDeltaToSessionBestLapSeconds,
+            sample.LapDeltaToSessionBestLapRate,
+            sample.LapDeltaToSessionBestLapOk);
+        yield return new LapDeltaSignal(
+            "toSessionOptimalLap",
+            sample.LapDeltaToSessionOptimalLapSeconds,
+            sample.LapDeltaToSessionOptimalLapRate,
+            sample.LapDeltaToSessionOptimalLapOk);
+        yield return new LapDeltaSignal(
+            "toSessionLastLap",
+            sample.LapDeltaToSessionLastLapSeconds,
+            sample.LapDeltaToSessionLastLapRate,
+            sample.LapDeltaToSessionLastLapOk);
+    }
+
+    private IReadOnlyList<HistoricalTrackSector> SectorDefinitions(LiveTelemetrySnapshot snapshot)
+    {
+        if (_sectorDefinitions.Count >= 2)
+        {
+            return _sectorDefinitions;
+        }
+
+        var sectors = snapshot.Context.Sectors
+            .Where(sector => IsFinite(sector.SectorStartPct) && sector.SectorStartPct >= 0d && sector.SectorStartPct < 1d)
+            .GroupBy(sector => sector.SectorNum)
+            .Select(group => group.OrderBy(sector => sector.SectorStartPct).First())
+            .OrderBy(sector => sector.SectorStartPct)
+            .ToArray();
+        if (sectors.Length >= 2)
+        {
+            _sectorDefinitions = sectors;
+        }
+
+        return _sectorDefinitions;
+    }
+
+    private IEnumerable<SectorObservation> SectorObservations(LiveTelemetrySnapshot snapshot)
+    {
+        var sample = snapshot.LatestSample;
+        if (sample is null)
+        {
+            yield break;
+        }
+
+        var focusCarIdx = snapshot.Models.DriverDirectory.FocusCarIdx
+            ?? sample.FocusCarIdx
+            ?? sample.PlayerCarIdx;
+        var timingByCarIdx = snapshot.Models.Timing.OverallRows
+            .GroupBy(row => row.CarIdx)
+            .ToDictionary(group => group.Key, group => group.First());
+
+        if (focusCarIdx is { } focusIdx)
+        {
+            var focusRow = MatchingTimingRow(snapshot.Models.Timing.FocusRow, focusIdx)
+                ?? MatchingTimingRow(snapshot.Models.Timing.PlayerRow, focusIdx)
+                ?? (timingByCarIdx.TryGetValue(focusIdx, out var timingRow) ? timingRow : null);
+            yield return new SectorObservation(
+                focusIdx,
+                "focus",
+                focusRow?.LapCompleted ?? FocusLapCompleted(sample),
+                focusRow?.LapDistPct ?? FocusLapDistPct(sample),
+                sample.SessionTime,
+                focusRow?.OnPitRoad ?? FocusOnPitRoad(sample));
+        }
+
+        foreach (var observation in RelativeSectorObservations(snapshot, sample, timingByCarIdx))
+        {
+            yield return observation;
+        }
+    }
+
+    private static IEnumerable<SectorObservation> RelativeSectorObservations(
+        LiveTelemetrySnapshot snapshot,
+        HistoricalTelemetrySample sample,
+        IReadOnlyDictionary<int, LiveTimingRow> timingByCarIdx)
+    {
+        var ahead = snapshot.Models.Relative.Rows
+            .Where(row => row.IsAhead)
+            .OrderBy(RelativeSortKey)
+            .FirstOrDefault();
+        if (ahead is not null && TryCreateRelativeSectorObservation(ahead, "ahead", sample, timingByCarIdx, out var aheadObservation))
+        {
+            yield return aheadObservation;
+        }
+
+        var behind = snapshot.Models.Relative.Rows
+            .Where(row => row.IsBehind)
+            .OrderBy(RelativeSortKey)
+            .FirstOrDefault();
+        if (behind is not null && TryCreateRelativeSectorObservation(behind, "behind", sample, timingByCarIdx, out var behindObservation))
+        {
+            yield return behindObservation;
+        }
+    }
+
+    private static bool TryCreateRelativeSectorObservation(
+        LiveRelativeRow row,
+        string role,
+        HistoricalTelemetrySample sample,
+        IReadOnlyDictionary<int, LiveTimingRow> timingByCarIdx,
+        out SectorObservation observation)
+    {
+        var timingRow = timingByCarIdx.TryGetValue(row.CarIdx, out var candidate) ? candidate : null;
+        var proximity = FindProximity(sample, row.CarIdx);
+        var lapCompleted = timingRow?.LapCompleted ?? proximity?.LapCompleted;
+        var lapDistPct = timingRow?.LapDistPct ?? proximity?.LapDistPct;
+        observation = new SectorObservation(
+            row.CarIdx,
+            role,
+            lapCompleted,
+            lapDistPct,
+            sample.SessionTime,
+            row.OnPitRoad ?? timingRow?.OnPitRoad ?? proximity?.OnPitRoad);
+        return lapCompleted is not null || lapDistPct is not null;
+    }
+
+    private static HistoricalCarProximity? FindProximity(HistoricalTelemetrySample sample, int carIdx)
+    {
+        return (sample.FocusClassCars ?? [])
+            .Concat(sample.ClassCars ?? [])
+            .Concat(sample.NearbyCars ?? [])
+            .FirstOrDefault(car => car.CarIdx == carIdx);
+    }
+
+    private static IEnumerable<SectorCrossing> SectorCrossings(
+        IReadOnlyList<HistoricalTrackSector> sectors,
+        SectorTimingState previous,
+        SectorObservation current)
+    {
+        var currentLapCompleted = current.LapCompleted!.Value;
+        var currentLapDistPct = current.LapDistPct!.Value;
+        var previousProgress = previous.LapCompleted + previous.LapDistPct;
+        var currentProgress = currentLapCompleted + currentLapDistPct;
+        var progressDelta = currentProgress - previousProgress;
+        if (progressDelta <= 0d || !IsFinite(progressDelta))
+        {
+            yield break;
+        }
+
+        var timeDelta = current.SessionTimeSeconds - previous.SessionTimeSeconds;
+        for (var lap = previous.LapCompleted; lap <= currentLapCompleted; lap++)
+        {
+            foreach (var sector in sectors)
+            {
+                var boundaryProgress = lap + sector.SectorStartPct;
+                if (boundaryProgress <= previousProgress || boundaryProgress > currentProgress)
+                {
+                    continue;
+                }
+
+                var interpolation = (boundaryProgress - previousProgress) / progressDelta;
+                if (!IsFinite(interpolation) || interpolation < 0d || interpolation > 1d)
+                {
+                    continue;
+                }
+
+                yield return new SectorCrossing(
+                    sector.SectorNum,
+                    previous.SessionTimeSeconds + (timeDelta * interpolation));
+            }
+        }
+    }
+
+    private static bool IsValidSectorProgress(int? lapCompleted, double? lapDistPct)
+    {
+        return lapCompleted is >= 0
+            && lapDistPct is { } pct
+            && IsFinite(pct)
+            && pct >= 0d
+            && pct <= 1d;
+    }
+
+    private static LiveTimingRow? MatchingTimingRow(LiveTimingRow? row, int carIdx)
+    {
+        return row?.CarIdx == carIdx ? row : null;
+    }
+
+    private static int? FocusLapCompleted(HistoricalTelemetrySample sample)
+    {
+        return HasExplicitNonPlayerFocus(sample)
+            ? sample.FocusLapCompleted
+            : sample.FocusLapCompleted ?? sample.TeamLapCompleted ?? sample.LapCompleted;
+    }
+
+    private static double? FocusLapDistPct(HistoricalTelemetrySample sample)
+    {
+        return HasExplicitNonPlayerFocus(sample)
+            ? sample.FocusLapDistPct
+            : sample.FocusLapDistPct ?? sample.TeamLapDistPct ?? sample.LapDistPct;
+    }
+
+    private static bool? FocusOnPitRoad(HistoricalTelemetrySample sample)
+    {
+        return HasExplicitNonPlayerFocus(sample)
+            ? sample.FocusOnPitRoad
+            : sample.FocusOnPitRoad ?? sample.TeamOnPitRoad ?? sample.OnPitRoad;
+    }
+
+    private static double RelativeSortKey(LiveRelativeRow row)
+    {
+        if (row.RelativeSeconds is { } seconds && IsFinite(seconds))
+        {
+            return Math.Abs(seconds);
+        }
+
+        if (row.RelativeMeters is { } meters && IsFinite(meters))
+        {
+            return Math.Abs(meters);
+        }
+
+        if (row.RelativeLaps is { } laps && IsFinite(laps))
+        {
+            return Math.Abs(laps);
+        }
+
+        return double.MaxValue;
+    }
+
     private void RecordSampleFrame(LiveTelemetrySnapshot snapshot, DateTimeOffset capturedAtUtc)
     {
         if (_lastSampledFrameAtUtc is not null
@@ -718,6 +1223,11 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             SessionKind: sessionKind,
             PlayerCarIdx: playerCarIdx,
             FocusCarIdx: focusCarIdx,
+            FocusKind: FocusKind(playerCarIdx, focusCarIdx),
+            RawCarLeftRight: snapshot.LatestSample?.CarLeftRight,
+            RawNearbyCarCount: snapshot.LatestSample?.NearbyCars?.Count ?? 0,
+            HasRadarData: snapshot.Proximity.HasData,
+            HasSideSignal: snapshot.Proximity.CarLeftRight is not null,
             ClassGapSeconds: Round(snapshot.LeaderGap.ClassLeaderGap.Seconds),
             ClassGapLaps: Round(snapshot.LeaderGap.ClassLeaderGap.Laps),
             NearbyCarCount: snapshot.Proximity.NearbyCars.Count,
@@ -865,6 +1375,57 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             : "non-player";
     }
 
+    private static bool CanUseLocalRadarContext(HistoricalTelemetrySample sample)
+    {
+        return sample.IsOnTrack
+            && !sample.IsInGarage
+            && (sample.PlayerCarIdx is not null || sample.FocusCarIdx is null)
+            && !HasExplicitNonPlayerFocus(sample);
+    }
+
+    private static bool IsLocalRadarPitOrGarage(HistoricalTelemetrySample sample)
+    {
+        return !sample.IsOnTrack
+            || sample.IsInGarage
+            || sample.OnPitRoad
+            || sample.PlayerCarInPitStall
+            || sample.TeamOnPitRoad == true
+            || IsPitRoadTrackSurface(sample.FocusTrackSurface)
+            || IsPitRoadTrackSurface(sample.PlayerTrackSurface);
+    }
+
+    private static double? LocalRadarLapDistPct(HistoricalTelemetrySample sample)
+    {
+        if (!HasExplicitNonPlayerFocus(sample)
+            && sample.FocusLapDistPct is { } focusLapDistPct
+            && IsFinite(focusLapDistPct)
+            && focusLapDistPct >= 0d)
+        {
+            return focusLapDistPct;
+        }
+
+        if (sample.TeamLapDistPct is { } teamLapDistPct && IsFinite(teamLapDistPct) && teamLapDistPct >= 0d)
+        {
+            return teamLapDistPct;
+        }
+
+        return IsFinite(sample.LapDistPct) && sample.LapDistPct >= 0d
+            ? sample.LapDistPct
+            : null;
+    }
+
+    private static bool HasExplicitNonPlayerFocus(HistoricalTelemetrySample sample)
+    {
+        return sample.FocusCarIdx is not null
+            && sample.PlayerCarIdx is not null
+            && sample.FocusCarIdx != sample.PlayerCarIdx;
+    }
+
+    private static bool IsPitRoadTrackSurface(int? trackSurface)
+    {
+        return trackSurface is 1 or 2;
+    }
+
     private static string EvidenceKey(LiveSignalEvidence evidence)
     {
         return evidence.MissingReason is { Length: > 0 } missingReason
@@ -979,6 +1540,35 @@ internal sealed class LiveOverlayDiagnosticsRecorder
         double? LapDistPct,
         DateTimeOffset CapturedAtUtc,
         double SessionTimeSeconds);
+
+    private sealed record LapDeltaSignal(
+        string Key,
+        double? Seconds,
+        double? Rate,
+        bool? Ok)
+    {
+        public bool IsUsable => Ok == true && Seconds is { } seconds && !double.IsNaN(seconds) && !double.IsInfinity(seconds);
+    }
+
+    private sealed record SectorObservation(
+        int CarIdx,
+        string Role,
+        int? LapCompleted,
+        double? LapDistPct,
+        double SessionTimeSeconds,
+        bool? OnPitRoad);
+
+    private sealed record SectorTimingState(
+        int CarIdx,
+        int LapCompleted,
+        double LapDistPct,
+        double SessionTimeSeconds,
+        int? LastCrossingSector,
+        double? LastCrossingSessionTimeSeconds);
+
+    private sealed record SectorCrossing(
+        int SectorNum,
+        double SessionTimeSeconds);
 }
 
 internal sealed record LiveOverlayDiagnosticsArtifact(
@@ -992,6 +1582,8 @@ internal sealed record LiveOverlayDiagnosticsArtifact(
     RadarOverlayDiagnosticsSummary Radar,
     FuelOverlayDiagnosticsSummary Fuel,
     PositionCadenceDiagnosticsSummary PositionCadence,
+    LapDeltaDiagnosticsSummary LapDelta,
+    SectorTimingDiagnosticsSummary SectorTiming,
     IReadOnlyList<LiveOverlayDiagnosticsFrameSample> SampleFrames,
     IReadOnlyList<LiveOverlayDiagnosticsEventSample> EventSamples);
 
@@ -1029,6 +1621,9 @@ internal sealed record GapOverlayDiagnosticsSummary(
 internal sealed record RadarOverlayDiagnosticsSummary(
     int FramesWithData,
     int NonPlayerFocusFrames,
+    int LocalSuppressedNonPlayerFocusFrames,
+    int LocalUnavailablePitOrGarageFrames,
+    int LocalProgressMissingFrames,
     int SideSignalFrames,
     int RawSideSuppressedForFocusFrames,
     int SideSignalWithoutPlacementFrames,
@@ -1061,6 +1656,30 @@ internal sealed record PositionCadenceDiagnosticsSummary(
     int IntraLapClassPositionChanges,
     int TrackedCarCount);
 
+internal sealed record LapDeltaDiagnosticsSummary(
+    int ObservedFrames,
+    int FramesWithAnyValue,
+    int FramesWithAnyUsableValue,
+    double? MaxAbsDeltaSeconds,
+    IReadOnlyDictionary<string, int> ValueFrameCounts,
+    IReadOnlyDictionary<string, int> UsableFrameCounts);
+
+internal sealed record SectorTimingDiagnosticsSummary(
+    int SectorCount,
+    IReadOnlyList<double> SectorStartPcts,
+    int MetadataFrames,
+    int MissingMetadataFrames,
+    int ObservedFrames,
+    int FocusTrackedFrames,
+    int AheadTrackedFrames,
+    int BehindTrackedFrames,
+    int ComparisonFrames,
+    int InvalidProgressFrames,
+    int ResetFrames,
+    int CrossingCount,
+    int CompletedIntervalCount,
+    int TrackedCarCount);
+
 internal sealed record LiveOverlayDiagnosticsFrameSample(
     DateTimeOffset CapturedAtUtc,
     long Sequence,
@@ -1091,6 +1710,11 @@ internal sealed record LiveOverlayDiagnosticsEventSample(
     string SessionKind,
     int? PlayerCarIdx,
     int? FocusCarIdx,
+    string FocusKind,
+    int? RawCarLeftRight,
+    int RawNearbyCarCount,
+    bool HasRadarData,
+    bool HasSideSignal,
     double? ClassGapSeconds,
     double? ClassGapLaps,
     int NearbyCarCount,

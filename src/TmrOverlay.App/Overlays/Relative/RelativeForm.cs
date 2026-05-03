@@ -1,0 +1,573 @@
+using System.Diagnostics;
+using System.Drawing;
+using System.Globalization;
+using Microsoft.Extensions.Logging;
+using TmrOverlay.App.Overlays.Abstractions;
+using TmrOverlay.App.Overlays.Styling;
+using TmrOverlay.App.Performance;
+using TmrOverlay.Core.Overlays;
+using TmrOverlay.Core.Settings;
+using TmrOverlay.Core.Telemetry.Live;
+
+namespace TmrOverlay.App.Overlays.Relative;
+
+internal sealed class RelativeForm : PersistentOverlayForm
+{
+    private const int MaximumRows = 17;
+    private const int NormalMinimumTableHeight = 180;
+    private const int RefreshIntervalMilliseconds = 250;
+    private readonly ILiveTelemetrySource _liveTelemetrySource;
+    private readonly ILogger<RelativeForm> _logger;
+    private readonly AppPerformanceState _performanceState;
+    private readonly OverlaySettings _settings;
+    private readonly string _fontFamily;
+    private readonly Label _titleLabel;
+    private readonly Label _statusLabel;
+    private readonly TableLayoutPanel _table;
+    private readonly Label _sourceLabel;
+    private readonly Label[] _positionLabels = new Label[MaximumRows];
+    private readonly Label[] _driverLabels = new Label[MaximumRows];
+    private readonly Label[] _gapLabels = new Label[MaximumRows];
+    private readonly Label[] _detailLabels = new Label[MaximumRows];
+    private readonly System.Windows.Forms.Timer _refreshTimer;
+    private long? _lastRefreshSequence;
+    private int _lastVisibleRows = -1;
+    private string? _overlayError;
+    private string? _lastLoggedError;
+    private DateTimeOffset? _lastLoggedErrorAtUtc;
+
+    private int CarsAhead => _settings.GetIntegerOption(
+        OverlayOptionKeys.RelativeCarsAhead,
+        defaultValue: 5,
+        minimum: 0,
+        maximum: 8);
+
+    private int CarsBehind => _settings.GetIntegerOption(
+        OverlayOptionKeys.RelativeCarsBehind,
+        defaultValue: 5,
+        minimum: 0,
+        maximum: 8);
+
+    public RelativeForm(
+        ILiveTelemetrySource liveTelemetrySource,
+        ILogger<RelativeForm> logger,
+        AppPerformanceState performanceState,
+        OverlaySettings settings,
+        string fontFamily,
+        Action saveSettings)
+        : base(
+            settings,
+            saveSettings,
+            RelativeOverlayDefinition.Definition.DefaultWidth,
+            RelativeOverlayDefinition.Definition.DefaultHeight)
+    {
+        _liveTelemetrySource = liveTelemetrySource;
+        _logger = logger;
+        _performanceState = performanceState;
+        _settings = settings;
+        _fontFamily = fontFamily;
+
+        BackColor = OverlayTheme.Colors.WindowBackground;
+        Padding = new Padding(12);
+
+        _titleLabel = new Label
+        {
+            AutoSize = false,
+            ForeColor = OverlayTheme.Colors.TextPrimary,
+            Font = OverlayTheme.Font(_fontFamily, 11f, FontStyle.Bold),
+            Location = new Point(14, 10),
+            Size = new Size(150, 24),
+            Text = "Relative"
+        };
+
+        _statusLabel = new Label
+        {
+            AutoSize = false,
+            ForeColor = OverlayTheme.Colors.TextSubtle,
+            Font = OverlayTheme.Font(_fontFamily, 9f),
+            Location = new Point(164, 11),
+            Size = new Size(ClientSize.Width - 178, 22),
+            Text = "waiting",
+            TextAlign = ContentAlignment.MiddleRight
+        };
+
+        _table = new TableLayoutPanel
+        {
+            BackColor = OverlayTheme.Colors.PanelBackground,
+            CellBorderStyle = TableLayoutPanelCellBorderStyle.Single,
+            ColumnCount = 4,
+            Location = new Point(14, 42),
+            RowCount = MaximumRows,
+            Size = new Size(ClientSize.Width - 28, ClientSize.Height - 76)
+        };
+        _table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 13f));
+        _table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 52f));
+        _table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 18f));
+        _table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 17f));
+        for (var row = 0; row < MaximumRows; row++)
+        {
+            _table.RowStyles.Add(new RowStyle(SizeType.Percent, 100f / MaximumRows));
+            _positionLabels[row] = CreateCellLabel(_fontFamily, "--", alignRight: false, bold: true);
+            _driverLabels[row] = CreateCellLabel(_fontFamily, string.Empty);
+            _gapLabels[row] = CreateCellLabel(_fontFamily, "--", alignRight: true, monospace: true);
+            _detailLabels[row] = CreateCellLabel(_fontFamily, string.Empty, alignRight: true);
+            _table.Controls.Add(_positionLabels[row], 0, row);
+            _table.Controls.Add(_driverLabels[row], 1, row);
+            _table.Controls.Add(_gapLabels[row], 2, row);
+            _table.Controls.Add(_detailLabels[row], 3, row);
+        }
+
+        _sourceLabel = new Label
+        {
+            AutoSize = false,
+            ForeColor = OverlayTheme.Colors.TextMuted,
+            Font = OverlayTheme.Font(_fontFamily, 8.5f),
+            Location = new Point(14, ClientSize.Height - 28),
+            Size = new Size(ClientSize.Width - 28, 18),
+            Text = "source: waiting",
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+
+        Controls.Add(_titleLabel);
+        Controls.Add(_statusLabel);
+        Controls.Add(_table);
+        Controls.Add(_sourceLabel);
+
+        RegisterDragSurfaces(_titleLabel, _statusLabel, _table, _sourceLabel);
+        RegisterDragSurfaces(
+            _positionLabels
+                .Concat(_driverLabels)
+                .Concat(_gapLabels)
+                .Concat(_detailLabels)
+                .ToArray());
+
+        _refreshTimer = new System.Windows.Forms.Timer
+        {
+            Interval = RefreshIntervalMilliseconds
+        };
+        _refreshTimer.Tick += (_, _) => RefreshOverlay();
+        _refreshTimer.Start();
+
+        RefreshOverlay();
+    }
+
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+        if (_statusLabel is null || _table is null || _sourceLabel is null)
+        {
+            return;
+        }
+
+        _statusLabel.Location = new Point(164, 11);
+        _statusLabel.Size = new Size(Math.Max(120, ClientSize.Width - 178), 22);
+        _table.Location = new Point(14, 42);
+        _table.Size = new Size(
+            Math.Max(250, ClientSize.Width - 28),
+            Math.Max(NormalMinimumTableHeight, ClientSize.Height - 76));
+        _sourceLabel.Location = new Point(14, ClientSize.Height - 28);
+        _sourceLabel.Size = new Size(Math.Max(250, ClientSize.Width - 28), 18);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _refreshTimer.Stop();
+            _refreshTimer.Dispose();
+            _table.Dispose();
+            _titleLabel.Dispose();
+            _statusLabel.Dispose();
+            _sourceLabel.Dispose();
+        }
+
+        base.Dispose(disposing);
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        var started = Stopwatch.GetTimestamp();
+        var succeeded = false;
+        try
+        {
+            base.OnPaint(e);
+            using var borderPen = new Pen(OverlayTheme.Colors.WindowBorder);
+            e.Graphics.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
+            succeeded = true;
+        }
+        catch (Exception exception)
+        {
+            ReportOverlayError(exception, "render");
+        }
+        finally
+        {
+            _performanceState.RecordOperation(
+                AppPerformanceMetricIds.OverlayRelativePaint,
+                started,
+                succeeded);
+        }
+    }
+
+    private void RefreshOverlay()
+    {
+        var started = Stopwatch.GetTimestamp();
+        var succeeded = false;
+        try
+        {
+            LiveTelemetrySnapshot snapshot;
+            var snapshotStarted = Stopwatch.GetTimestamp();
+            var snapshotSucceeded = false;
+            try
+            {
+                snapshot = _liveTelemetrySource.Snapshot();
+                snapshotSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayRelativeSnapshot,
+                    snapshotStarted,
+                    snapshotSucceeded);
+            }
+
+            var carsAhead = CarsAhead;
+            var carsBehind = CarsBehind;
+            var now = DateTimeOffset.UtcNow;
+            var previousSequence = _lastRefreshSequence;
+
+            RelativeOverlayViewModel viewModel;
+            var viewModelStarted = Stopwatch.GetTimestamp();
+            var viewModelSucceeded = false;
+            try
+            {
+                viewModel = RelativeOverlayViewModel.From(snapshot, now, carsAhead, carsBehind);
+                viewModelSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayRelativeViewModel,
+                    viewModelStarted,
+                    viewModelSucceeded);
+            }
+
+            var applyStarted = Stopwatch.GetTimestamp();
+            var applySucceeded = false;
+            var uiChanged = false;
+            try
+            {
+                _overlayError = null;
+                uiChanged |= SetTextIfChanged(_statusLabel, viewModel.Status);
+                uiChanged |= SetTextIfChanged(_sourceLabel, viewModel.Source);
+                uiChanged |= ApplyStatusColor(viewModel);
+                uiChanged |= ApplyRows(viewModel, carsAhead, carsBehind);
+                applySucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayRelativeApplyUi,
+                    applyStarted,
+                    applySucceeded);
+            }
+
+            _lastRefreshSequence = snapshot.Sequence;
+            _performanceState.RecordOverlayRefreshDecision(
+                RelativeOverlayDefinition.Definition.Id,
+                now,
+                previousSequence,
+                snapshot.Sequence,
+                snapshot.LastUpdatedAtUtc,
+                applied: uiChanged);
+            if (uiChanged)
+            {
+                Invalidate();
+            }
+
+            succeeded = true;
+        }
+        catch (Exception exception)
+        {
+            ReportOverlayError(exception, "refresh");
+            SetTextIfChanged(_statusLabel, "relative error");
+            SetTextIfChanged(_sourceLabel, _overlayError);
+            Invalidate();
+        }
+        finally
+        {
+            _performanceState.RecordOperation(
+                AppPerformanceMetricIds.OverlayRelativeRefresh,
+                started,
+                succeeded);
+        }
+    }
+
+    private bool ApplyRows(RelativeOverlayViewModel viewModel, int carsAhead, int carsBehind)
+    {
+        var started = Stopwatch.GetTimestamp();
+        var succeeded = false;
+        try
+        {
+            var rows = viewModel.Rows;
+            var visibleRows = Math.Clamp(Math.Max(1, carsAhead + carsBehind + 1), 1, MaximumRows);
+            if (rows.Count > visibleRows)
+            {
+                visibleRows = Math.Min(rows.Count, MaximumRows);
+            }
+
+            var changed = false;
+            _table.SuspendLayout();
+            try
+            {
+                changed |= UpdateVisibleRows(visibleRows);
+                for (var index = 0; index < MaximumRows; index++)
+                {
+                    if (index < rows.Count)
+                    {
+                        changed |= ApplyRow(index, rows[index], visible: index < visibleRows);
+                        continue;
+                    }
+
+                    var placeholder = rows.Count == 0 && index == 0
+                        ? viewModel.Status
+                        : string.Empty;
+                    changed |= ApplyBlankRow(index, placeholder, visible: index < visibleRows);
+                }
+            }
+            finally
+            {
+                _table.ResumeLayout(changed);
+            }
+
+            succeeded = true;
+            return changed;
+        }
+        finally
+        {
+            _performanceState.RecordOperation(
+                AppPerformanceMetricIds.OverlayRelativeRows,
+                started,
+                succeeded);
+        }
+    }
+
+    private bool ApplyRow(int index, RelativeOverlayRowViewModel row, bool visible)
+    {
+        var changed = false;
+        changed |= SetVisibleIfChanged(_positionLabels[index], visible);
+        changed |= SetVisibleIfChanged(_driverLabels[index], visible);
+        changed |= SetVisibleIfChanged(_gapLabels[index], visible);
+        changed |= SetVisibleIfChanged(_detailLabels[index], visible);
+        changed |= SetTextIfChanged(_positionLabels[index], row.Position);
+        changed |= SetTextIfChanged(_driverLabels[index], row.Driver);
+        changed |= SetTextIfChanged(_gapLabels[index], row.Gap);
+        changed |= SetTextIfChanged(_detailLabels[index], row.Detail);
+
+        var backColor = row.IsReference
+            ? OverlayTheme.Colors.InfoBackground
+            : row.IsPit
+                ? OverlayTheme.Colors.WarningBackground
+                : OverlayTheme.Colors.PanelBackground;
+        var textColor = row.IsPartial
+            ? OverlayTheme.Colors.TextMuted
+            : row.IsReference
+                ? OverlayTheme.Colors.TextPrimary
+                : OverlayTheme.Colors.TextSecondary;
+        var gapColor = row.IsReference
+            ? OverlayTheme.Colors.TextPrimary
+            : row.IsPartial
+                ? OverlayTheme.Colors.TextMuted
+                : row.IsAhead
+                    ? OverlayTheme.Colors.InfoText
+                    : OverlayTheme.Colors.SuccessText;
+        var detailColor = row.IsPit
+            ? OverlayTheme.Colors.WarningText
+            : TryParseColor(row.ClassColorHex) ?? (row.IsSameClass ? OverlayTheme.Colors.TextSubtle : OverlayTheme.Colors.InfoText);
+
+        changed |= ApplyCellColors(index, backColor, textColor, gapColor, detailColor);
+        return changed;
+    }
+
+    private bool ApplyBlankRow(int index, string placeholder, bool visible)
+    {
+        var changed = false;
+        changed |= SetVisibleIfChanged(_positionLabels[index], visible);
+        changed |= SetVisibleIfChanged(_driverLabels[index], visible);
+        changed |= SetVisibleIfChanged(_gapLabels[index], visible);
+        changed |= SetVisibleIfChanged(_detailLabels[index], visible);
+        changed |= SetTextIfChanged(_positionLabels[index], string.Empty);
+        changed |= SetTextIfChanged(_driverLabels[index], placeholder);
+        changed |= SetTextIfChanged(_gapLabels[index], string.Empty);
+        changed |= SetTextIfChanged(_detailLabels[index], string.Empty);
+        changed |= ApplyCellColors(
+            index,
+            OverlayTheme.Colors.PanelBackground,
+            OverlayTheme.Colors.TextMuted,
+            OverlayTheme.Colors.TextMuted,
+            OverlayTheme.Colors.TextMuted);
+        return changed;
+    }
+
+    private bool UpdateVisibleRows(int visibleRows)
+    {
+        if (_lastVisibleRows == visibleRows)
+        {
+            return false;
+        }
+
+        var changed = false;
+        for (var row = 0; row < _table.RowStyles.Count; row++)
+        {
+            var sizeType = row < visibleRows ? SizeType.Percent : SizeType.Absolute;
+            var height = row < visibleRows ? 100f / visibleRows : 0f;
+            if (_table.RowStyles[row].SizeType != sizeType)
+            {
+                _table.RowStyles[row].SizeType = sizeType;
+                changed = true;
+            }
+
+            if (Math.Abs(_table.RowStyles[row].Height - height) > 0.001f)
+            {
+                _table.RowStyles[row].Height = height;
+                changed = true;
+            }
+        }
+
+        _lastVisibleRows = visibleRows;
+        return changed;
+    }
+
+    private bool ApplyStatusColor(RelativeOverlayViewModel viewModel)
+    {
+        if (_overlayError is not null)
+        {
+            var errorChanged = SetBackColorIfChanged(this, OverlayTheme.Colors.ErrorBackground);
+            errorChanged |= SetForeColorIfChanged(_statusLabel, OverlayTheme.Colors.ErrorText);
+            return errorChanged;
+        }
+
+        if (viewModel.Rows.Count == 0)
+        {
+            var waitingChanged = SetBackColorIfChanged(this, OverlayTheme.Colors.WindowBackground);
+            waitingChanged |= SetForeColorIfChanged(_statusLabel, OverlayTheme.Colors.TextSubtle);
+            return waitingChanged;
+        }
+
+        var changed = SetBackColorIfChanged(this, OverlayTheme.Colors.InfoBackground);
+        changed |= SetForeColorIfChanged(_statusLabel, OverlayTheme.Colors.InfoText);
+        return changed;
+    }
+
+    private bool ApplyCellColors(int index, Color backColor, Color textColor, Color gapColor, Color detailColor)
+    {
+        var changed = false;
+        changed |= SetBackColorIfChanged(_positionLabels[index], backColor);
+        changed |= SetBackColorIfChanged(_driverLabels[index], backColor);
+        changed |= SetBackColorIfChanged(_gapLabels[index], backColor);
+        changed |= SetBackColorIfChanged(_detailLabels[index], backColor);
+        changed |= SetForeColorIfChanged(_positionLabels[index], textColor);
+        changed |= SetForeColorIfChanged(_driverLabels[index], textColor);
+        changed |= SetForeColorIfChanged(_gapLabels[index], gapColor);
+        changed |= SetForeColorIfChanged(_detailLabels[index], detailColor);
+        return changed;
+    }
+
+    private void ReportOverlayError(Exception exception, string stage)
+    {
+        var message = $"{stage}: {exception.GetType().Name} {exception.Message}";
+        _overlayError = message;
+        var now = DateTimeOffset.UtcNow;
+        if (string.Equals(_lastLoggedError, message, StringComparison.Ordinal)
+            && _lastLoggedErrorAtUtc is { } lastLogged
+            && now - lastLogged < TimeSpan.FromSeconds(30))
+        {
+            return;
+        }
+
+        _lastLoggedError = message;
+        _lastLoggedErrorAtUtc = now;
+        _logger.LogWarning(exception, "Relative overlay {Stage} failed.", stage);
+    }
+
+    private static Label CreateCellLabel(
+        string fontFamily,
+        string text,
+        bool alignRight = false,
+        bool bold = false,
+        bool monospace = false)
+    {
+        return new Label
+        {
+            AutoSize = false,
+            BackColor = OverlayTheme.Colors.PanelBackground,
+            Dock = DockStyle.Fill,
+            Font = monospace
+                ? new Font(FontFamily.GenericMonospace, bold ? 9f : 8.8f, bold ? FontStyle.Bold : FontStyle.Regular)
+                : OverlayTheme.Font(fontFamily, bold ? 9.2f : 8.8f, bold ? FontStyle.Bold : FontStyle.Regular),
+            ForeColor = bold ? OverlayTheme.Colors.TextPrimary : OverlayTheme.Colors.TextSecondary,
+            Margin = Padding.Empty,
+            Padding = new Padding(7, 0, 7, 0),
+            Text = text,
+            TextAlign = alignRight ? ContentAlignment.MiddleRight : ContentAlignment.MiddleLeft
+        };
+    }
+
+    private static bool SetTextIfChanged(Label label, string? value)
+    {
+        var text = value ?? string.Empty;
+        if (string.Equals(label.Text, text, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        label.Text = text;
+        return true;
+    }
+
+    private static bool SetVisibleIfChanged(Control control, bool visible)
+    {
+        if (control.Visible == visible)
+        {
+            return false;
+        }
+
+        control.Visible = visible;
+        return true;
+    }
+
+    private static bool SetBackColorIfChanged(Control control, Color color)
+    {
+        if (control.BackColor == color)
+        {
+            return false;
+        }
+
+        control.BackColor = color;
+        return true;
+    }
+
+    private static bool SetForeColorIfChanged(Control control, Color color)
+    {
+        if (control.ForeColor == color)
+        {
+            return false;
+        }
+
+        control.ForeColor = color;
+        return true;
+    }
+
+    private static Color? TryParseColor(string? hex)
+    {
+        if (string.IsNullOrWhiteSpace(hex))
+        {
+            return null;
+        }
+
+        var value = hex.Trim().TrimStart('#');
+        return value.Length == 6
+            && int.TryParse(value, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var rgb)
+            ? Color.FromArgb((rgb >> 16) & 0xff, (rgb >> 8) & 0xff, rgb & 0xff)
+            : null;
+    }
+}

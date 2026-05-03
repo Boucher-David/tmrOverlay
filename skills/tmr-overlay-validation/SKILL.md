@@ -17,6 +17,42 @@ git diff --check
 rg -n "^(<<<<<<<|>>>>>>>|=======)$" --glob '!captures/**' --glob '!captures-latest/**' --glob '!local-mac/TmrOverlayMac/.build/**' --glob '!**/*.png' --glob '!**/*.jpg' --glob '!**/*.bin'
 ```
 
+## Branch-Complete Release Hygiene
+
+Run this section when a branch is being declared complete, prepared for merge, or promoted to a product milestone.
+
+Inspect the branch shape and the text that GitHub is likely to expose in a PR squash:
+
+```bash
+git fetch origin --tags
+git status --short --branch
+git log --reverse --oneline "$(git merge-base main HEAD)"..HEAD
+git diff --name-status "$(git merge-base main HEAD)"..HEAD
+git tag --list --sort=version:refname -n2
+```
+
+Sanitize the first branch commit / squash text before handoff. The first commit message or planned PR squash title should not be a throwaway message such as "more changes", "fix", "done", "one diagnostic", "Even more overlays", or an accidental-main note. It should be versioned, product-facing, and specific enough to explain the branch without relying on private conversation context.
+
+For branch-complete handoff:
+
+- Update `VERSION.md` with the target version, suggested squash title, and squash body.
+- Ensure the suggested title uses `vMAJOR.MINOR.PATCH`, for example `[v0.7.0] Add simple model-v2 overlays and design-v2 preview states`.
+- Ensure the body summarizes the actual branch diff, including product behavior, data/schema/diagnostic changes, docs/validation artifacts, CI/release-pipeline changes, and any user-data compatibility impact.
+- Re-read the final branch commit list and `git diff --name-status` after late fixes. If CI, validation, version metadata, build metadata, or follow-up bug fixes were added after the original release note was drafted, update `VERSION.md` again before final handoff.
+- Keep the final answer's recommended squash title/body identical to the current `VERSION.md` suggestion unless explicitly calling out a requested alternative.
+- Remove or generalize sensitive local details from the squash text: raw local paths, private diagnostic file names, uncommitted capture names, accidental branch-operation notes, and private conversation shorthand.
+- Ensure `Directory.Build.props` `VersionPrefix` matches the branch target version when the branch is intended to produce that app milestone.
+- Do not create the release tag on an unmerged feature branch unless the user explicitly declares that branch as the release point.
+
+For a milestone already on `main`, create and push an annotated tag after confirming the release commit:
+
+```bash
+git tag -a vX.Y.Z <commit> -m "vX.Y.Z - Short release title" -m "Short release summary."
+git push origin vX.Y.Z
+```
+
+Use `git push --force-with-lease` only for an explicitly approved repair of an accidental main push, and preserve the work on a branch before moving `main`.
+
 ## Local C# Compile-Shape Check
 
 When any `.cs` file changes, run the local scanner. This is the main C# validation available on machines without `dotnet`:

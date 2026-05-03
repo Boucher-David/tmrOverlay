@@ -42,7 +42,8 @@ Last updated: 2026-05-02
   - `Status/` contains the current collector status overlay
   - `SettingsPanel/` contains a centered tabbed settings window for user-managed overlay visibility, scale, session filters, shared font/units, runtime raw-capture requests, placeholder Overlay Bridge controls, post-race analysis browsing, and overlay-specific display options
   - `FuelCalculator/` contains the first strategy overlay, backed by live telemetry plus exact car/track/session history
-  - `CarRadar/` contains a transparent circular proximity overlay, backed by `CamCarIdx`, player-only `CarLeftRight`, reliable live timing gaps, and nearby `CarIdx*` progress/position telemetry
+  - `Relative/` contains the first production model-v2 overlay, a telemetry-first relative table backed by `LiveTelemetrySnapshot.Models.Relative`
+  - `CarRadar/` contains a transparent circular local in-car proximity overlay, backed by local player/team progress, player-only `CarLeftRight`, reliable live timing gaps, and nearby `CarIdx*` progress/position telemetry
   - `GapToLeader/` contains a rolling in-class gap trend graph, backed by `CarIdxF2Time` with progress fallback
 
 - `src/TmrOverlay.App/Overlays/Status/StatusOverlayForm.cs`
@@ -76,6 +77,10 @@ Last updated: 2026-05-02
 
 - Deferred overlay UI/style v2:
   - current model-v2 work standardizes live data, not visual structure
+  - treat UI/style v2 as telemetry-first by default: standings, relative, local in-car radar, flags, session/weather, and timing tables should be dense, stable windows into iRacing telemetry
+  - reserve model-v2 source, quality, usability, freshness, and missing-reason chrome for stale, unavailable, modeled, or derived values, especially analysis products like fuel strategy, non-local radar focus/multiclass interpretation, and gap graphs
+  - use competitor overlay analysis as the product-shape check: small purpose-built overlays, dense information, low-noise dark styling, and semantic color instead of one monolithic dashboard
+  - the ignored mac harness now owns a generated `mocks/design-v2/` proving ground for telemetry-first standings, relative, local in-car radar, flag display, table semantics, and narrower analysis-exception states while model-v2 race evidence is still being collected
   - future style groundwork should add semantic theme tokens and reusable WinForms primitives for headers, status badges, source footers, metric rows, table cells, graph panels, shared borders, severity colors, class colors, text fitting, and empty/error/waiting states
   - migrate this additively one overlay at a time with screenshot validation, keeping overlay-specific domain layout local
 
@@ -95,14 +100,24 @@ Last updated: 2026-05-02
   - caches exact history lookups briefly by car/track/session so live fuel refreshes do not reread aggregate JSON every tick
   - skips expensive strategy/UI work when the live snapshot sequence and display options are unchanged, and only mutates labels/table layout when target values changed
 
+- `src/TmrOverlay.App/Overlays/Relative/`
+  - draggable telemetry-first relative overlay placed below the fuel calculator by default
+  - is the first production overlay to consume `LiveTelemetrySnapshot.Models.Relative` directly instead of a legacy overlay-specific snapshot slice
+  - renders cars ahead above a reference row and cars behind below it, with configurable 0-8 row counts per side
+  - uses model-v2 relative rows from proximity first and timing/class-gap fallback when proximity is unavailable
+  - normalizes gap signs by row direction so cars ahead display negative gaps and cars behind display positive gaps regardless of source sign
+  - keeps source/evidence chrome quiet in the normal case; the footer only calls out live proximity, model-v2 timing fallback, partial timing, or waiting
+  - treats snapshots older than 1.5 seconds as stale and shows waiting instead of retaining old rows
+  - has a matching generated mac-harness screenshot set under `mocks/relative/`
+
 - `src/TmrOverlay.App/Overlays/CarRadar/`
   - draggable 300px circular radar overlay placed to the right of the status overlay by default
   - transparent outside the circle and paints nothing when no cars are within proximity or multiclass warning range
-  - follows the active camera/focus car through `CamCarIdx` when valid, falling back to the player/team car
-  - uses `CarLeftRight` for side occupancy only when focused on the player car
-  - uses only fresh live nearby-car telemetry for placement/timing around the focused car; live `CarIdxLapDistPct` plus track length provides preferred physical-distance placement, while `CarIdxEstTime` and `CarIdxF2Time` provide timing fallback and multiclass warning timing when reliable without inventing seconds from history or fuel estimates
-  - excludes pit-road cars from radar proximity and hides the radar while the focused car is in pit-road states
-  - draws the focused car as a white rectangle and nearby traffic from any class as neutral-white rectangles that fade in between radar entry and the yellow-warning threshold, then move through yellow toward saturated alert red only inside the close bumper-gap warning buffer, using physical distance inside a car-length-based radar window when possible with timing fallback labels on the rings
+  - is local in-car first: hides for explicit non-player focus, garage/off-track, and pit contexts instead of trying to reinterpret spectator/teammate focus as production radar
+  - uses local `CarLeftRight` for side occupancy and local player/team progress/timing for nearby placement; `Focus*` fields are used only when focus is local or not explicitly another car
+  - uses only fresh live nearby-car telemetry for placement/timing around the local car; live `CarIdxLapDistPct` plus track length provides preferred physical-distance placement, while `CarIdxEstTime` and `CarIdxF2Time` provide timing fallback and multiclass warning timing when reliable without inventing seconds from history or fuel estimates
+  - excludes pit-road cars from radar proximity and hides the radar while the local car is in pit-road states
+  - draws the local car as a white rectangle and nearby traffic from any class as neutral-white rectangles that fade in between radar entry and the yellow-warning threshold, then move through yellow toward saturated alert red only inside the close bumper-gap warning buffer, using physical distance inside a car-length-based radar window when possible with timing fallback labels on the rings
   - keeps per-car visual state by `CarIdx`, fades the whole radar and side-warning rectangles in/out, and treats stale live snapshots as unavailable so old proximity does not stay painted forever
   - clips the Windows form to a circular region, uses a black transparency key instead of fuchsia, and drops form opacity to zero after fade-out so a transparency-key failure cannot leave a purple backing window visible
   - tracks recent relative timing for other-class cars and can draw a short outer red arc with a live seconds gap when faster multiclass traffic is behind outside the 2-second timing fallback range but within 5 seconds
@@ -134,8 +149,8 @@ Last updated: 2026-05-02
   - ties IBT telemetry logging to the same raw-capture switch by default, so raw capture start/stop requests also ask iRacing to start/stop `.ibt` logging
   - writes post-session sidecars after raw capture finalization: `capture-synthesis.json` runs immediately from the closed TmrOverlay capture with a timeout, while `ibt-analysis/*.json` waits only a bounded time for iRacing to stop writing before skipping and leaving the capture eligible for startup recovery
   - IBT analysis now includes `ibt-local-car-summary.json`, a bounded local-car trajectory/fuel/vehicle-dynamics summary with track-map readiness and explicit missing opponent-context fields; source `.ibt` files still stay out of capture directories by default
-  - records live model-v2 parity in observer mode so current overlays keep using existing fuel/proximity/gap slices while `LiveTelemetrySnapshot.Models` is compared against them and summarized in `live-model-parity.json`
-  - records passive live overlay diagnostics in observer mode so 24-hour findings can be measured without changing overlay behavior; `live-overlay-diagnostics.json` summarizes gap session semantics, large gap/jump evidence, radar side/focus/placement evidence, fuel source evidence, and sampled position cadence
+  - records live model-v2 parity in observer mode; Relative now consumes `LiveTelemetrySnapshot.Models.Relative` directly, while the remaining legacy overlay slices are compared against the additive models and summarized in `live-model-parity.json`
+  - records passive live overlay diagnostics in observer mode; `live-overlay-diagnostics.json` summarizes gap session semantics, large gap/jump evidence, local-only radar suppression, side/focus/placement evidence, fuel source evidence, sampled position cadence, lap-delta channel availability, and derived sector-timing coverage
   - records bounded compact edge-case telemetry artifacts for every live session by combining normalized live samples with selected scalar raw watch channels for fuel, tires, suspension, brakes, wheel speed, pit service, weather, engine/replay/system/network state, incidents, and driver-control changes; artifacts also count observations dropped after the clip cap and include a final sampled context tail so long spectated/parked sessions still have late-session telemetry context
   - isolates raw-capture frame queue/write/read failures from live history, normalized live telemetry, and overlay performance recording so overlays can keep updating while capture diagnostics run
   - logs and records app events for runtime raw-capture start failures instead of silently failing
@@ -174,14 +189,15 @@ Last updated: 2026-05-02
   - `LiveTelemetryStore` is the shared normalized live source for product overlays
   - `ILiveTelemetrySource` is the read boundary for overlays and the local bridge
   - `ILiveTelemetrySink` is the write boundary for live iRacing collection and replay/dev providers
-  - `LiveTelemetrySnapshot` includes fuel, proximity, leader-gap, and same-class gap graph inputs derived from each frame
+  - `LiveTelemetrySnapshot` includes fuel, proximity, leader-gap, and same-class gap graph compatibility inputs derived from each frame
   - `LiveTelemetrySnapshot.Models` is an additive live-only model layer with session, driver-directory, timing, relative, spatial, weather, fuel/pit, race-event, and input availability families; it is derived from existing normalized samples and keeps raw capture, compact history, post-race analysis, and existing synthesized data backwards-compatible
-  - model-v2 rows carry `LiveSignalEvidence` so future overlays can distinguish reliable timing, timing-only rows, spatial/radar placement eligibility, partial leader-gap timing, diagnostic instantaneous fuel burn, and rolling measured-fuel baseline eligibility before the current overlays are migrated
-  - `TimingColumnRegistry` defines reusable table-column keys and formatters for future standings/relative-style overlays without registering new overlays yet
+  - model-v2 rows carry `LiveSignalEvidence` so overlays can distinguish reliable timing, timing-only rows, spatial/radar placement eligibility, partial leader-gap timing, diagnostic instantaneous fuel burn, and rolling measured-fuel baseline eligibility as overlays migrate
+  - `TimingColumnRegistry` defines reusable table-column keys and formatters for future standings/relative-style overlays; the first production Relative overlay currently keeps its table formatting local while shared primitives are refined
 
 - `local-mac/TmrOverlayMac/`
   - mirrors the live overlay diagnostics recorder for mock/demo runs so the four-hour preview and capture-derived radar/gap demos can emit `live-overlay-diagnostics.json`
   - does not yet replay arbitrary 24-hour raw captures through every overlay; that is tracked as future harness work in `docs/model-v2-future-branches.md`
+  - mirrors the Relative overlay for design-v2 iteration and generated validation screenshots
 
 ### Session history
 
@@ -279,10 +295,10 @@ Last updated: 2026-05-02
   - the mac live mock uses the tracked four-hour Nürburgring baseline shape from race time zero at 4x speed for faster fuel/gap overlay iteration
   - for overlay development, Windows should stay production-facing and real-data-driven; the ignored mac harness can use looser mock scenes, fixed offsets, named sample drivers, and exaggerated events for fast visual iteration
   - the mac mock race mirrors the Windows radar/gap feature behavior with synthetic all-class timing rows, multiclass approach traffic, weather bands, and driver handoff events, while Windows remains real telemetry only
-  - the mac harness opens the same startup overlay set as Windows: status, fuel calculator, radar, and gap-to-leader
+  - the mac harness opens the same startup overlay set as Windows: status, fuel calculator, relative, radar, and gap-to-leader
   - the mac status overlay is display-only, matching Windows; runtime raw-capture requests live in the settings window and still record logs/events
   - the mac harness mirrors the settings window schema and basic tabbed UI for visibility, scale, session filters, font/units, raw capture, placeholder Overlay Bridge controls, post-race analysis, and a mock Error Logging/performance snapshot tab; mac diagnostics bundles include matching telemetry-state/performance metadata stubs and recent mock performance JSONL logs
-  - `swift run TmrOverlayMacScreenshots` renders tracked overlay review artifacts under `mocks/`: focused live-state screenshots, multi-state contact sheets, and smaller per-state PNG cards for status, fuel calculator, settings, car radar, and gap-to-leader
+  - `swift run TmrOverlayMacScreenshots` renders tracked overlay review artifacts under `mocks/`: focused live-state screenshots, multi-state contact sheets, and smaller per-state PNG cards for status, fuel calculator, relative, settings, car radar, and gap-to-leader
   - screenshot waiting/unavailable fixtures should be isolated from local user history and cached live telemetry; for example, the fuel waiting preview uses an empty temporary history root so it cannot accidentally show stale stint rows from this machine
 
 ### Tests
@@ -501,21 +517,28 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 - The current machine does not have `dotnet`, so Windows build/test verification still needs to happen on a .NET-equipped machine.
 - The local mac Swift package builds, but `swift test` currently requires an XCTest-capable Swift/Xcode toolchain.
 - No general-purpose replay/decoder tool exists yet for `telemetry.bin`; targeted analysis scripts exist under `tools/analysis/`.
-- Overlay modules now live under `src/TmrOverlay.App/Overlays/`; status, settings, fuel-calculator, car-radar, and gap-to-leader overlays are wired, while remaining future overlay folders are still placeholders.
+- Overlay modules now live under `src/TmrOverlay.App/Overlays/`; status, settings, fuel-calculator, relative, flags, session/weather, pit-service snapshot, input/car-state, car-radar, and gap-to-leader overlays are wired, while remaining future overlay folders are still placeholders.
 - Pure models and calculations have started moving into `src/TmrOverlay.Core/`; Windows remains the production app/runtime, while the ignored mac harness remains the mock-telemetry development surface.
 - The root-level launcher is `TmrOverlay.cmd`, not a standalone copied `.exe`, because a normal framework-dependent .NET build needs its companion output files.
 - The primary analyzed real capture is the 4-hour Nürburgring VLN race capture. It proved that teammate stints retain `CarIdx*` timing/position data but do not expose direct scalar fuel fields.
 
 ## Recommended Next Steps
 
-1. Add live-burn smoothing and reserve/margin settings to the fuel calculator.
-2. Harden radar and leader-gap derivation against longer multi-class traffic captures, especially lapped traffic and pit-road edge cases.
-3. Decide which post-v1.0 controls belong in the Overlay Bridge settings tab, such as enable/disable, port, allowed clients, schema version, and connection health.
-4. Improve historical aggregation and confidence/source tracking as more user sessions are collected.
-5. Keep raw capture available for diagnostics, but avoid making it the normal user data path.
-6. Expand post-race strategy review/export beyond the first saved-analysis view; see `docs/post-race-strategy-analysis.md`.
-7. Start with update notification before self-update; see `docs/update-strategy.md`.
-8. When summary or other durable history shapes change, add ordered migrations or compatible readers to the historical data maintenance flow, update `HistorySchemaCompatibilityTests`, and keep car/track/session history higher priority than performance/logging data.
+1. Start `v0.8-settings-and-overlay-polish` after v0.7 merges. Scope it to settings correctness, overlay control polish, simple-overlay live/mock review, and CI release-flow sanity; see `VERSION.md`.
+2. Ensure every v0.7 overlay has correct settings tab representation, visibility controls, scale, session filters, shared font/units behavior, and overlay-specific options where needed.
+3. Polish the simple telemetry overlays against live/mock data: text fitting, window sizing, default positions, row density, stale/waiting states, and status labels. Keep Relative as the quality baseline.
+4. Confirm the `Windows build/test` required check and tag-triggered package artifact path stay stable after merge.
+5. Identify remaining v1/legacy overlay slices and choose the next safe model-v2 migration target without pulling fuel/gap analysis products into the simple-overlay path prematurely.
+6. Keep collecting radar diagnostics for suppressed non-local focus, local progress-missing, side-without-placement, and multiclass cases before expanding beyond local in-car radar.
+7. Decide the Overlay Bridge v2 shape: enable/disable, port, allowed clients, schema version, connection health, and which normalized model-v2 snapshots should become the public client contract.
+8. Add a future streaming/broadcast group for Twitch/YouTube chat overlays, keeping chat ingestion, auth, moderation, rate limits, and offline preview states separate from iRacing telemetry.
+9. Treat overlay builder as a later creator/development platform on top of design-v2 primitives and the bridge schema, not as a prerequisite for the first hand-authored production overlays.
+10. Move actual application publishing into a release-platform branch with signed artifacts, versioning, installer/portable packaging, update-channel policy, tester diagnostics, and CI validation.
+11. Improve historical aggregation and confidence/source tracking as more user sessions are collected.
+12. Keep raw capture available for diagnostics, but avoid making it the normal user data path.
+13. Expand post-race strategy review/export beyond the first saved-analysis view; see `docs/post-race-strategy-analysis.md`.
+14. Start with update notification before self-update; see `docs/update-strategy.md`.
+15. When summary or other durable history shapes change, add ordered migrations or compatible readers to the historical data maintenance flow, update `HistorySchemaCompatibilityTests`, and keep car/track/session history higher priority than performance/logging data.
 
 ## Files Most Likely To Change Next
 
