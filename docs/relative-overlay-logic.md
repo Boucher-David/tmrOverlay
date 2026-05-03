@@ -83,4 +83,4 @@ Unexpected refresh/render failures are logged through the overlay logger and sur
 - Default size: `520x360`.
 - Default position: `(24, 530)`, below the fuel calculator.
 - Settings expose cars ahead and cars behind.
-- Shared font, visibility, scale, opacity, session filters, and persistence follow the same managed-overlay behavior as the other product overlays.
+- Theme font, visibility, scale, opacity, session filters, and persistence follow the same managed-overlay behavior as the other product overlays.

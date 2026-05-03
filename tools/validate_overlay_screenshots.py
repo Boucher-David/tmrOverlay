@@ -58,10 +58,54 @@ EXPECTED_STATE_PNGS = [
     "gap-to-leader/states/long-run-spread.png",
 ]
 
+WINDOWS_EXPECTED_PNGS = {
+    "states/status-live-analysis.png": (520, 150),
+    "states/fuel-calculator-live.png": (600, 320),
+    "states/relative-live.png": (520, 360),
+    "states/flags-blue.png": (960, 540),
+    "states/session-weather-live.png": (420, 270),
+    "states/pit-service-active.png": (420, 250),
+    "states/input-state-trace.png": (520, 300),
+    "states/car-radar-side-pressure.png": (300, 300),
+    "states/gap-to-leader-trend.png": (560, 260),
+}
+
+WINDOWS_MINIMUM_PNGS = {
+    # GitHub-hosted Windows runners can clamp wide top-level WinForms clients
+    # to the available desktop width even when the app's production client
+    # target is 1080x600. Keep the height exact enough for layout review while
+    # accepting the runner-observed width.
+    "states/settings-general.png": (1000, 600),
+    "states/settings-relative.png": (1000, 600),
+    "states/settings-support.png": (1000, 600),
+}
+
+WINDOWS_MIN_UNIQUE_BYTES = {
+    # Flags is intentionally a simple mostly-empty border overlay. The
+    # generator paints a review backdrop behind its transparent window color,
+    # but it should not need the same texture complexity as table/graph views.
+    "states/flags-blue.png": 8,
+}
+
+WINDOWS_EXPECTED_FILES = [
+    "contact-sheet.png",
+    "manifest.json",
+]
+
+RELEASE_TUTORIAL_EXPECTED_PNGS = {
+    "windows-release-teammate-tutorial.png": (1600, 1000),
+}
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", default="mocks", help="Screenshot root directory.")
+    parser.add_argument(
+        "--profile",
+        choices=("tracked", "windows-ci", "release-tutorial"),
+        default="tracked",
+        help="Screenshot artifact profile to validate.",
+    )
     parser.add_argument(
         "--min-unique-bytes",
         type=int,
@@ -72,6 +116,13 @@ def main() -> int:
 
     root = Path(args.root)
     failures: list[str] = []
+    if args.profile == "windows-ci":
+        validate_windows_ci(root, args.min_unique_bytes, failures)
+        return finish(failures)
+    if args.profile == "release-tutorial":
+        validate_release_tutorial(root, args.min_unique_bytes, failures)
+        return finish(failures)
+
     for relative_path, expected_size in EXPECTED_PNGS.items():
         validate_png(
             root=root,
@@ -91,13 +142,63 @@ def main() -> int:
             minimum_size=(300, 240),
         )
 
-    if failures:
-        print("\nScreenshot validation failed:", file=sys.stderr)
-        for failure in failures:
-            print(f"- {failure}", file=sys.stderr)
-        return 1
+    return finish(failures)
 
-    return 0
+
+def finish(failures: list[str]) -> int:
+    if not failures:
+        return 0
+
+    print("\nScreenshot validation failed:", file=sys.stderr)
+    for failure in failures:
+        print(f"- {failure}", file=sys.stderr)
+    return 1
+
+
+def validate_windows_ci(root: Path, min_unique_bytes: int, failures: list[str]) -> None:
+    for relative_path in WINDOWS_EXPECTED_FILES:
+        path = root / relative_path
+        if not path.exists():
+            failures.append(f"{relative_path}: missing file")
+
+    validate_png(
+        root=root,
+        relative_path="contact-sheet.png",
+        expected_size=None,
+        min_unique_bytes=min_unique_bytes,
+        failures=failures,
+        minimum_size=(1200, 900),
+    )
+
+    for relative_path, expected_size in WINDOWS_EXPECTED_PNGS.items():
+        validate_png(
+            root=root,
+            relative_path=relative_path,
+            expected_size=expected_size,
+            min_unique_bytes=WINDOWS_MIN_UNIQUE_BYTES.get(relative_path, min_unique_bytes),
+            failures=failures,
+        )
+
+    for relative_path, minimum_size in WINDOWS_MINIMUM_PNGS.items():
+        validate_png(
+            root=root,
+            relative_path=relative_path,
+            expected_size=None,
+            min_unique_bytes=WINDOWS_MIN_UNIQUE_BYTES.get(relative_path, min_unique_bytes),
+            failures=failures,
+            minimum_size=minimum_size,
+        )
+
+
+def validate_release_tutorial(root: Path, min_unique_bytes: int, failures: list[str]) -> None:
+    for relative_path, expected_size in RELEASE_TUTORIAL_EXPECTED_PNGS.items():
+        validate_png(
+            root=root,
+            relative_path=relative_path,
+            expected_size=expected_size,
+            min_unique_bytes=min_unique_bytes,
+            failures=failures,
+        )
 
 
 def validate_png(

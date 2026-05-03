@@ -54,7 +54,7 @@ This differs from driving overlays, which persist placement through `PersistentO
 
 The settings UI has:
 
-- A `TMR Overlay` header.
+- A branded `Tech Mates Racing Overlay` header with the TMR logo.
 - Vertical left-side tabs.
 - General.
 - User-facing overlay tabs, ordered with Standings, Relative, Flags, and Radar first when present.
@@ -72,7 +72,7 @@ Gap To Leader is race-only, so its settings tab omits the redundant `Display in 
 
 The selected overlay tab is reported back to `OverlayManager`.
 
-The General tab exposes the shared font-family selector and metric/imperial unit selector. Support capture and support paths intentionally live in the Support tab instead of General.
+The General tab exposes the metric/imperial unit selector. User-facing font selection is intentionally hidden for now so Windows and mac review surfaces stay stable; shared typography remains a theme/platform default that can be revisited from the visual-token layer. Support capture and support paths intentionally live in the Support tab instead of General.
 
 ## Overlay Settings Normalization
 
@@ -119,7 +119,7 @@ When the user selects the radar settings tab:
 
 When leaving the radar tab, preview mode is turned off. If the radar overlay is disabled, selecting its settings tab does not override the `Visible` checkbox.
 
-## Scale, Font, And Units
+## Scale And Units
 
 Scale:
 
@@ -127,14 +127,15 @@ Scale:
 - Client size is recalculated from default dimensions and scale.
 - The manager remembers the last applied scale to avoid unnecessary resizing.
 
-Font:
-
-- If the global font family changes, all managed driving overlay forms are closed and recreated.
-
 Units:
 
 - If the global unit system changes, all managed driving overlay forms are closed and recreated.
 - Unit system is either `Metric` or `Imperial`.
+
+Typography:
+
+- The user-facing font selector is hidden during the v0.10 parity pass.
+- Managed overlays render with the platform/theme default font unless an advanced theme override is introduced.
 
 ## Settings Persistence
 

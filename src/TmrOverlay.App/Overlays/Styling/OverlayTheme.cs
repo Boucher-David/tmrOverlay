@@ -15,6 +15,32 @@ internal static class OverlayTheme
 {
     public static string DefaultFontFamily { get; private set; } = "Segoe UI";
 
+    public static class Typography
+    {
+        public static readonly string[] PreferredFontFamilies =
+        [
+            "Segoe UI",
+            "Inter",
+            "Arial",
+            "Calibri",
+            "Helvetica Neue",
+            "Tahoma",
+            "Trebuchet MS",
+            "Verdana",
+            "Consolas",
+            "Courier New",
+            "Georgia",
+            "Times New Roman"
+        ];
+
+        public const float OverlayTitleSize = 11f;
+        public const float OverlayStatusSize = 9f;
+        public const float OverlaySourceSize = 8.5f;
+        public const float TableTextSize = 8.8f;
+        public const float TableHeaderSize = 9.2f;
+        public const float MiniLabelSize = 7f;
+    }
+
     public static class Colors
     {
         public static Color WindowBackground { get; set; } = Color.FromArgb(14, 18, 21);
@@ -55,6 +81,10 @@ internal static class OverlayTheme
     public static class Layout
     {
         public const int OuterPadding = 14;
+        public const int OverlayHeaderHeight = 34;
+        public const int OverlayTableRowHeight = 28;
+        public const int OverlayCompactRowHeight = 24;
+        public const int OverlayBorderWidth = 1;
         public const int SettingsTitleBarHeight = 42;
         public const int SettingsTabTop = 54;
         public const int SettingsTabInset = 12;
@@ -69,6 +99,11 @@ internal static class OverlayTheme
             size,
             style,
             GraphicsUnit.Point);
+    }
+
+    public static Font MonospaceFont(float size, FontStyle style = FontStyle.Regular)
+    {
+        return new Font(FontFamily.GenericMonospace, size, style, GraphicsUnit.Point);
     }
 
     public static void LoadOverrides(string themePath, ILogger logger)

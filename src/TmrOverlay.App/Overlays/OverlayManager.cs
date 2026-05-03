@@ -10,6 +10,7 @@ using TmrOverlay.App.Overlays.SettingsPanel;
 using TmrOverlay.App.Overlays.SessionWeather;
 using TmrOverlay.App.Overlays.SimpleTelemetry;
 using TmrOverlay.App.Overlays.Status;
+using TmrOverlay.App.Overlays.Styling;
 using TmrOverlay.App.Settings;
 using TmrOverlay.App.Storage;
 using TmrOverlay.Core.Settings;
@@ -384,10 +385,7 @@ internal sealed class OverlayManager : IDisposable
         }
     }
 
-    private string SelectedFontFamily =>
-        string.IsNullOrWhiteSpace(_settings?.General.FontFamily)
-            ? "Segoe UI"
-            : _settings.General.FontFamily;
+    private static string SelectedFontFamily => OverlayTheme.DefaultFontFamily;
 
     private string SelectedUnitSystem =>
         string.Equals(_settings?.General.UnitSystem, "Imperial", StringComparison.OrdinalIgnoreCase)

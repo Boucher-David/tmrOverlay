@@ -86,7 +86,7 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
         {
             ContextMenuStrip = contextMenu,
             Icon = TmrBrandAssets.LoadIcon(),
-            Text = "TmrOverlay",
+            Text = "Tech Mates Racing Overlay",
             Visible = true
         };
         _notifyIcon.DoubleClick += (_, _) => OpenCapture();

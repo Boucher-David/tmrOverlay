@@ -17,7 +17,7 @@ mocks/
   weather/
 ```
 
-These files are review artifacts, not publish output. Generated mac-harness screenshots are the source of truth for current runtime overlay review. The `relative/` folder is the production Relative overlay preview set; `design-v2/` is a separate generated mac-harness proving ground for future shared overlay primitives. Its default direction is telemetry-first overlays, including standings, relative, local blindspot/radar, laptime, stint log, and flag-style surfaces, with source/evidence chrome reserved for stale, unavailable, modeled, or derived values. Keep any future exploratory static design mock clearly labeled and separate from generated validation artifacts.
+These files are review artifacts, not publish output. Generated mac-harness screenshots are the tracked source of truth for current runtime overlay review. CI also generates Windows-rendered WinForms screenshots from deterministic fixtures and uploads them as workflow artifacts for parity review; those OS-specific artifacts should not be committed under `mocks/`. The `relative/` folder is the production Relative overlay preview set; `design-v2/` is a separate generated mac-harness proving ground for future shared overlay primitives. Its default direction is telemetry-first overlays, including standings, relative, local blindspot/radar, laptime, stint log, and flag-style surfaces, with source/evidence chrome reserved for stale, unavailable, modeled, or derived values. Keep any future exploratory static design mock clearly labeled and separate from generated validation artifacts.
 
 When adding or materially changing an overlay, update that overlay's mock folder with:
 
@@ -29,6 +29,18 @@ Validate generated screenshots before review:
 
 ```bash
 python3 tools/validate_overlay_screenshots.py
+```
+
+Validate Windows CI artifacts after generating them locally or downloading them from Actions:
+
+```bash
+python3 tools/validate_overlay_screenshots.py --profile windows-ci --root artifacts/windows-overlay-screenshots
+```
+
+Tester-facing documentation images live under `docs/assets/`, not `mocks/`. The current Windows install/support tutorial is regenerated with `swift tools/render_release_tutorial.swift` and validated with:
+
+```bash
+python3 tools/validate_overlay_screenshots.py --profile release-tutorial --root docs/assets
 ```
 
 That check verifies the expected PNGs exist, match their expected dimensions where the dimensions are fixed, and are not blank. It does not replace visual review: each screenshot state should still be checked against its scenario contract. In particular, waiting/unavailable states should use isolated fixtures with no local user history or cached live data, so stale development data cannot make an empty state look partially populated.

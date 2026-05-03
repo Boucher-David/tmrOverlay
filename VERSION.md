@@ -9,63 +9,86 @@ TmrOverlay uses SemVer-style annotated Git tags for product milestones:
 
 ## Current Branch Target
 
-### v0.9.0 - Production Publishing And Updates
+### v0.10.0 - Windows Screenshot Parity Validation
 
 Planned branch name:
 
 ```text
-v0.9-production-publishing
+v0.10-windows-screenshot-validation
 ```
 
 Planned scope:
 
-- Replace manual teammate build sharing with a repeatable GitHub release/package flow for tester builds.
-- Produce clearly versioned Windows `win-x64` artifacts from CI using Release build/test, `dotnet publish`, package-content auditing, artifact zipping, package manifest generation, SHA-256 checksum generation, release notes, and durable build metadata.
-- Promote tag-triggered package artifacts into a GitHub Release instead of leaving them only as workflow artifacts.
-- Derive Windows executable/tray icon assets from the checked-in brand source image instead of wiring the wide source PNG directly into the app.
-- Decide the first install/update channel:
-  - v0.9 minimum: portable self-contained zip with checksum, release notes, diagnostics version metadata, and manual install/upgrade instructions.
-  - preferred installer/update candidate: Velopack, producing a setup executable, portable package, release feed, and later in-app update checks against GitHub Releases or static hosting.
-  - Microsoft-native candidate: MSIX plus App Installer, but only after signing/package identity constraints are accepted.
-- Add code-signing decision and CI secret plan. Unsigned zip builds are acceptable for private tester proofing, but a broadly publishable installer/package needs signed artifacts to reduce Windows trust friction.
-- Add a passive update discovery surface: tray/settings version display, manual `Check for updates`, latest release/manifest lookup, release notes link, and diagnostics bundle fields for current version/update-check state. No modal prompts during active sessions.
-- Keep diagnostics bundle and version reporting aligned with shared tester builds so feedback can be traced to an exact release.
+- Add a Windows-rendered screenshot parity path so PRs produce real WinForms overlay screenshots, not only mac-harness mock artifacts.
+- Keep tracked `mocks/` as deterministic mac/design review artifacts while uploading Windows screenshots as CI artifacts for side-by-side review.
+- Cover the current Windows overlay set with deterministic telemetry fixtures: settings, status, fuel calculator, relative, flags, session/weather, pit service, inputs, radar, and gap to leader.
+- Validate Windows screenshot artifacts for existence, expected size, and non-blank rendering in the same GitHub PR gate as build/test/publish dry run.
+- Start documenting the shared visual-token/font policy needed to make mac and Windows review surfaces converge without pretending native renderers will be pixel-identical.
+- Hide user-facing font selection for the parity branch and keep font choice in the shared theme/platform default path.
+- Add visible TMR branding to the app entry point with the repo-owned logo and `Tech Mates Racing Overlay` name.
+- Add a teammate-facing Windows release tutorial image that explains download, install, first launch, and diagnostics feedback handoff.
+- Carry forward future VR support and performance notes as product/platform documentation, not as a v0.10 implementation.
+- Remove publish warnings that affect the v0.9 single-file release path when they are straightforward to fix in the same branch.
 
 Technical implementation checklist:
 
-1. Harden `.github/workflows/windows-dotnet.yml` into two product flows: PR/main validation gate and tag/manual release packaging.
-2. On release tags, run restore/build/test, publish `src/TmrOverlay.App` for `win-x64` as self-contained single-file output, audit the publish folder, zip it, generate manifest/checksum files, and upload release artifacts.
-3. Add release creation/upload so `v*.*.*` tags produce a GitHub Release containing the zip, manifest, checksum, and notes derived from `VERSION.md` or a generated changelog.
-4. Add app metadata polish: generated `.ico` from `assets/brand/TMRLogo.png`, Windows executable icon metadata, `AssemblyVersion/FileVersion/InformationalVersion`, and diagnostics output showing exact version/commit.
-5. Add tester install docs: where to unzip/install, upgrade expectations, settings/history compatibility, SmartScreen/signing expectations, rollback instructions, and how to attach diagnostics.
-6. Prototype signing: start with documented unsigned/private tester builds, then evaluate Azure Artifact Signing or an OV code-signing certificate for executable/MSIX signing before broader release.
-7. Decide packaging path after the first portable release: Velopack for installer plus update feed, or MSIX/App Installer for Windows-native package identity and update policy.
-8. Add passive update checking only after releases exist: latest GitHub Release or static manifest lookup, semantic version comparison, tray/settings notification, download/release-notes command, and diagnostics logging.
+1. Add a Windows-only screenshot generator project that references the production app/core projects and renders real WinForms forms from fixture `LiveTelemetrySnapshot` data.
+2. Add a Windows screenshot validation profile to `tools/validate_overlay_screenshots.py`.
+3. Update `.github/workflows/windows-dotnet.yml` so PR/main validation generates, validates, and uploads Windows screenshot artifacts before the publish dry run.
+4. Keep generated Windows screenshots under ignored `artifacts/`; do not commit them under `mocks/`.
+5. Fix the single-file publish analyzer warning by avoiding `Assembly.Location` in build-freshness checks.
+6. Add and validate a generated teammate release tutorial image under `docs/assets/`.
+7. Document the mac/Windows parity boundary, shared token/font policy, and future VR renderer/performance constraints.
 
 Implemented baseline in this branch:
 
-- Bump shared .NET product/version metadata to `0.9.0`.
-- Generate and wire a Windows executable icon derived from `assets/brand/TMRLogo.png`.
-- Harden the Windows GitHub Actions workflow into a PR/main validation gate plus tag/manual package flow.
-- On PRs, restore, build, test, validate tracked screenshots, and run a self-contained publish dry run with the same package audit used by release packaging.
-- On `vMAJOR.MINOR.PATCH` tags, publish the app as a self-contained `win-x64` package, audit the publish folder for accidental repo/dev-folder leaks, zip it with a versioned file name, generate manifest/checksum files, upload release artifacts, and attach them to the GitHub Release.
-- Keep manual workflow dispatch useful for branch package artifacts without creating a release unless the run is for a product tag.
-- Add tester package-contents, install, checksum, user-data compatibility, schema-migration expectations, upgrade, rollback, signing, and diagnostics documentation in `docs/windows-release.md`.
-- Update the update strategy with the new release baseline and the remaining signing/update-notification decisions.
-- Keep tester AppData cleaner by disabling edge-case clips, model-v2 parity, live overlay diagnostics, and post-race analysis by default while preserving config/env overrides for analysis collection.
-- Rework the Support tab into a task-oriented support surface with app status, current issue, diagnostics bundle actions, diagnostic telemetry capture, storage shortcuts, compact app activity, and discoverable advanced collection status.
-- Add `docs/repo-surface.md` and `.gitignore` hardening so customer/tester-facing docs, product source, internal development assets, and local runtime data are separated clearly.
-- Refresh settings screenshot artifacts for the Support tab changes.
+- Bumped shared .NET product/version metadata to `0.10.0`.
+- Added `tools/TmrOverlay.WindowsScreenshots`, a Windows-only WinForms screenshot generator that renders the production forms from deterministic telemetry fixtures.
+- Added a `windows-ci` screenshot validation profile and wired GitHub Actions to generate, validate, and upload Windows screenshot artifacts during PR/main validation.
+- Kept tracked `mocks/` as mac/design validation artifacts while documenting Windows screenshots as ignored CI artifacts under `artifacts/`.
+- Fixed the single-file publish analyzer warning by using `AppContext.BaseDirectory` as the build-freshness base instead of relying on `Assembly.Location`.
+- Removed the General-tab font dropdown from the user-facing settings UI while keeping theme-level font overrides available for advanced parity work.
+- Added branded app chrome to the Windows settings window and mac harness using the TMR logo plus `Tech Mates Racing Overlay`.
+- Updated product metadata from the scaffold name to `Tech Mates Racing Overlay` while keeping storage and assembly identities stable.
+- Added a generated one-page Windows tester install/support tutorial image and validation profile for the docs asset.
+- Documented Windows screenshot parity, shared token/font policy, and future VR renderer/performance constraints in the future-branch notes.
 
 Likely squash title:
 
 ```text
-[v0.9.0] Add production publishing and teammate update flow
+[v0.10.0] Add Windows screenshot parity validation
 ```
 
 Likely squash body:
 
 ```text
+- Bumped shared .NET product/version metadata to 0.10.0 for the next validation branch.
+- Added a Windows-only screenshot generator that renders the real WinForms settings and overlay forms from deterministic live-telemetry fixtures.
+- Expanded CI so PR/main validation generates Windows overlay screenshots, validates them for expected size/non-blank output, and uploads them as review artifacts alongside the existing tracked screenshot validation.
+- Documented the screenshot parity workflow, keeping committed `mocks/` as mac/design artifacts and Windows screenshots as ignored CI artifacts under `artifacts/`.
+- Fixed the single-file publish warning by removing `Assembly.Location` from the runtime build-freshness check.
+- Removed the user-facing font dropdown for this parity pass and kept font selection as a theme/platform concern.
+- Added the TMR logo and `Tech Mates Racing Overlay` branding to the app settings entry point on Windows and mac.
+- Updated assembly product metadata to the branded application name without moving app-data storage roots.
+- Added a generated teammate-facing release tutorial image covering release download, portable install, first launch warnings, app expectations, and Support-tab diagnostics handoff.
+- Added future-platform notes for shared mac/Windows visual tokens, font parity policy, and eventual VR renderer/performance constraints.
+- Validation: git diff --check, conflict-marker sweep, screenshot validator for tracked mocks, release-tutorial screenshot validator, workflow YAML parse, C# compile-shape scanner, Swift build, and CI-owned Windows restore/build/test/screenshot/publish validation. Local Windows screenshot generation and dotnet build/test still require the Windows CI environment from this Mac; local `swift test` is blocked by the current toolchain missing `XCTest`.
+```
+
+## Merged Mainline Milestones
+
+### v0.9.0 - Production Publishing And Updates
+
+Commit: `8e4961d`
+
+Squash title:
+
+```text
+[v0.9.0] Add production publishing and teammate update flow
+```
+
+Summary:
+
 - Bumped shared .NET product/version metadata to 0.9.0 and wired a generated Windows executable icon derived from the checked-in TMR logo.
 - Hardened the Windows GitHub Actions workflow so PR/main run restore/build/test, tracked screenshot validation, and a self-contained publish dry run with package audit, while tag/manual release packaging publishes a self-contained win-x64 app, zips it, generates manifest/checksum files, and uploads release artifacts.
 - Added tag-driven GitHub Release creation for vMAJOR.MINOR.PATCH tags with versioned Windows zip/manifest/checksum assets and generated release notes.
@@ -74,10 +97,6 @@ Likely squash body:
 - Disabled advanced collection outputs by default for tester builds, including edge-case clips, model-v2 parity, live overlay diagnostics, and post-race analysis, while keeping config/env overrides and tests for enabling them.
 - Added repo-surface docs and ignore rules to separate customer/tester-facing material, product source, internal development assets, and generated local runtime data.
 - Updated the update strategy to treat portable GitHub Releases as the v0.9 baseline while keeping signing, installer selection, and passive update checks as follow-up work.
-- Validation: git diff --check, conflict-marker sweep, workflow YAML parse, stale-reference sweep, Swift build, mac settings screenshot generation, screenshot validator, and C# compile-shape scanner. Windows restore/build/test plus publish dry-run audit now run in PR CI; local Swift tests still require an XCTest-capable toolchain.
-```
-
-## Merged Mainline Milestones
 
 ### v0.8.0 - Settings And Overlay Polish
 

@@ -1,11 +1,11 @@
 <Project>
   <PropertyGroup>
-    <Product>TmrOverlay</Product>
-    <Company>TmrOverlay</Company>
+    <Product>Tech Mates Racing Overlay</Product>
+    <Company>Tech Mates Racing</Company>
     <Authors>TmrOverlay contributors</Authors>
     <RepositoryType>git</RepositoryType>
     <RepositoryUrl>https://github.com/Boucher-David/TMROverlay</RepositoryUrl>
-    <VersionPrefix>0.9.0</VersionPrefix>
+    <VersionPrefix>0.10.0</VersionPrefix>
     <Version Condition="'$(Version)' == ''">$(VersionPrefix)</Version>
     <AssemblyVersion>$(VersionPrefix).0</AssemblyVersion>
     <FileVersion>$(VersionPrefix).0</FileVersion>

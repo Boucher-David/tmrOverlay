@@ -26,7 +26,7 @@ internal sealed class AppVersionInfo
 
         return new AppVersionInfo
         {
-            ProductName = assembly.GetCustomAttribute<AssemblyProductAttribute>()?.Product ?? "TmrOverlay",
+            ProductName = assembly.GetCustomAttribute<AssemblyProductAttribute>()?.Product ?? "Tech Mates Racing Overlay",
             Version = name.Version?.ToString() ?? "0.0.0",
             InformationalVersion = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
                 ?? name.Version?.ToString()

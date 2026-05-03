@@ -8,6 +8,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TmrOverlay.Core", "src\TmrO
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TmrOverlay.App.Tests", "tests\TmrOverlay.App.Tests\TmrOverlay.App.Tests.csproj", "{3CB5023F-56F5-4E70-A12E-3D0D0A5F1E3C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TmrOverlay.WindowsScreenshots", "tools\TmrOverlay.WindowsScreenshots\TmrOverlay.WindowsScreenshots.csproj", "{7F5C8A0D-BF67-4E34-AD37-88FCE685B17E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -26,6 +28,10 @@ Global
 		{3CB5023F-56F5-4E70-A12E-3D0D0A5F1E3C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3CB5023F-56F5-4E70-A12E-3D0D0A5F1E3C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{3CB5023F-56F5-4E70-A12E-3D0D0A5F1E3C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7F5C8A0D-BF67-4E34-AD37-88FCE685B17E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7F5C8A0D-BF67-4E34-AD37-88FCE685B17E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7F5C8A0D-BF67-4E34-AD37-88FCE685B17E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7F5C8A0D-BF67-4E34-AD37-88FCE685B17E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
