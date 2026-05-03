@@ -540,7 +540,7 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 - The local mac Swift package builds, but `swift test` currently requires an XCTest-capable Swift/Xcode toolchain.
 - No general-purpose replay/decoder tool exists yet for `telemetry.bin`; targeted analysis scripts exist under `tools/analysis/`.
 - v0.9 portable tester publishing is tag-driven, but broad production distribution still needs a signing decision, installer/update channel, and passive update-check UI.
-- The v0.9 release workflow audits the publish folder for accidental repo/dev-folder leaks, emits a package manifest, and keeps user data under the app-data root instead of the install folder.
+- The v0.9 PR workflow runs restore/build/test, screenshot validation, and a self-contained publish dry run with package audit. The release workflow audits the publish folder for accidental repo/dev-folder leaks, emits a package manifest, and keeps user data under the app-data root instead of the install folder.
 - Because the app-data root persists across portable installs, durable settings/history schema changes must include version bumps plus migrations or compatible readers. Incompatible/future history is skipped and left on disk instead of being fed to overlays.
 - Overlay modules now live under `src/TmrOverlay.App/Overlays/`; status, settings, fuel-calculator, relative, flags, session/weather, pit-service snapshot, input/car-state, car-radar, and gap-to-leader overlays are wired, while remaining future overlay folders are still placeholders.
 - Pure models and calculations have started moving into `src/TmrOverlay.Core/`; Windows remains the production app/runtime, while the ignored mac harness remains the mock-telemetry development surface.

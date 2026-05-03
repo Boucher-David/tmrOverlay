@@ -33,7 +33,7 @@ Planned scope:
 
 Technical implementation checklist:
 
-1. Harden `.github/workflows/windows-dotnet.yml` into two product flows: PR/main build-test gate and tag/manual release packaging.
+1. Harden `.github/workflows/windows-dotnet.yml` into two product flows: PR/main validation gate and tag/manual release packaging.
 2. On release tags, run restore/build/test, publish `src/TmrOverlay.App` for `win-x64` as self-contained single-file output, audit the publish folder, zip it, generate manifest/checksum files, and upload release artifacts.
 3. Add release creation/upload so `v*.*.*` tags produce a GitHub Release containing the zip, manifest, checksum, and notes derived from `VERSION.md` or a generated changelog.
 4. Add app metadata polish: generated `.ico` from `assets/brand/TMRLogo.png`, Windows executable icon metadata, `AssemblyVersion/FileVersion/InformationalVersion`, and diagnostics output showing exact version/commit.
@@ -46,7 +46,8 @@ Implemented baseline in this branch:
 
 - Bump shared .NET product/version metadata to `0.9.0`.
 - Generate and wire a Windows executable icon derived from `assets/brand/TMRLogo.png`.
-- Harden the Windows GitHub Actions workflow into a PR/main build-test gate plus tag/manual package flow.
+- Harden the Windows GitHub Actions workflow into a PR/main validation gate plus tag/manual package flow.
+- On PRs, restore, build, test, validate tracked screenshots, and run a self-contained publish dry run with the same package audit used by release packaging.
 - On `vMAJOR.MINOR.PATCH` tags, publish the app as a self-contained `win-x64` package, audit the publish folder for accidental repo/dev-folder leaks, zip it with a versioned file name, generate manifest/checksum files, upload release artifacts, and attach them to the GitHub Release.
 - Keep manual workflow dispatch useful for branch package artifacts without creating a release unless the run is for a product tag.
 - Add tester package-contents, install, checksum, user-data compatibility, schema-migration expectations, upgrade, rollback, signing, and diagnostics documentation in `docs/windows-release.md`.
@@ -66,14 +67,14 @@ Likely squash body:
 
 ```text
 - Bumped shared .NET product/version metadata to 0.9.0 and wired a generated Windows executable icon derived from the checked-in TMR logo.
-- Hardened the Windows GitHub Actions workflow so PR/main still run the build/test gate, while tag/manual release packaging publishes a self-contained win-x64 app, audits package contents, zips it, generates manifest/checksum files, and uploads release artifacts.
+- Hardened the Windows GitHub Actions workflow so PR/main run restore/build/test, tracked screenshot validation, and a self-contained publish dry run with package audit, while tag/manual release packaging publishes a self-contained win-x64 app, zips it, generates manifest/checksum files, and uploads release artifacts.
 - Added tag-driven GitHub Release creation for vMAJOR.MINOR.PATCH tags with versioned Windows zip/manifest/checksum assets and generated release notes.
 - Added Windows tester release docs covering package contents, download, checksum verification, portable install, app-data compatibility, schema-migration expectations, upgrade, rollback, unsigned SmartScreen expectations, and diagnostics handoff.
 - Reworked the Support tab into a task-oriented surface for app status, diagnostics bundle actions, diagnostic telemetry capture, storage shortcuts, compact app activity, and discoverable advanced collection status.
 - Disabled advanced collection outputs by default for tester builds, including edge-case clips, model-v2 parity, live overlay diagnostics, and post-race analysis, while keeping config/env overrides and tests for enabling them.
 - Added repo-surface docs and ignore rules to separate customer/tester-facing material, product source, internal development assets, and generated local runtime data.
 - Updated the update strategy to treat portable GitHub Releases as the v0.9 baseline while keeping signing, installer selection, and passive update checks as follow-up work.
-- Validation: git diff --check, conflict-marker sweep, workflow YAML parse, stale-reference sweep, Swift build, mac settings screenshot generation, screenshot validator, and C# compile-shape scanner. Windows dotnet build/test still must run in CI or on Windows; local Swift tests still require an XCTest-capable toolchain.
+- Validation: git diff --check, conflict-marker sweep, workflow YAML parse, stale-reference sweep, Swift build, mac settings screenshot generation, screenshot validator, and C# compile-shape scanner. Windows restore/build/test plus publish dry-run audit now run in PR CI; local Swift tests still require an XCTest-capable toolchain.
 ```
 
 ## Merged Mainline Milestones

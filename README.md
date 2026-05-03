@@ -125,7 +125,7 @@ Future overlays should consume shared live data through `TmrOverlay.Core.Telemet
 
 ## Windows Tester Releases
 
-Release tags named `vMAJOR.MINOR.PATCH` publish a portable Windows x64 tester build through GitHub Actions. The release workflow restores, builds, tests, publishes the WinForms app as a self-contained single-file package, audits the publish folder for accidental repo/dev-folder leaks, writes a package manifest, zips the publish folder, writes a SHA-256 checksum, uploads the release artifacts, and attaches them to the GitHub Release.
+Release tags named `vMAJOR.MINOR.PATCH` publish a portable Windows x64 tester build through GitHub Actions. PR validation restores, builds, tests, validates tracked screenshot artifacts, and runs a self-contained publish dry run with the same package-content audit used by release packaging. The release workflow then publishes the WinForms app as a self-contained single-file package, audits the publish folder for accidental repo/dev-folder leaks, writes a package manifest, zips the publish folder, writes a SHA-256 checksum, uploads the release artifacts, and attaches them to the GitHub Release.
 
 See [docs/windows-release.md](/Users/davidboucher/Code/tmrOverlay/docs/windows-release.md) for package contents, tester download, checksum verification, install, user-data compatibility, upgrade, rollback, signing, and diagnostics instructions. v0.9 starts with unsigned portable zip builds; installer-based self-update remains deferred until the release channel and signing plan are settled.
 
