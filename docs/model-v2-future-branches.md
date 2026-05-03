@@ -15,7 +15,152 @@ Relative now consumes `LiveTelemetrySnapshot.Models.Relative` directly, and Car 
   - `tools/analysis/analyze_capture_assumptions.py` for offline raw-capture checks, including sampled intra-lap position/class-position changes.
 - Use the existing `live_model_v2_promotion_candidate` app event as the first "enough evidence to review cutover" signal. It is not an automatic migration trigger.
 
-## Future Branches
+## Suggested V0.X Roadmap
+
+Treat these as branch-size product bets, not fixed promises. If teammate testing exposes a painful install, support, or telemetry issue, pull that forward even if the nominal version order says otherwise.
+
+### v0.11.0 - Teammate Beta Hardening
+
+Goal: make the first shared builds easier to install, understand, and support.
+
+Likely scope:
+
+- Add visible in-app version/build metadata in Settings or Support.
+- Add a manual `Check for updates` action that can compare the running version against the latest GitHub Release or release manifest, then point the user to the release page. Avoid modal prompts during active sessions.
+- Tighten the Support tab from real teammate feedback: clearer current issue text, diagnostics bundle status, copied-path behavior, and what to send back.
+- Validate portable upgrade behavior against existing `%LOCALAPPDATA%\TmrOverlay` settings/history/diagnostics data.
+- Polish first-run and no-iRacing-connected states so testers do not confuse expected waiting states with broken installs.
+- Keep signed installer/update automation out of scope unless v0.9 release friction proves the portable zip is not enough for private testers.
+
+### v0.12.0 - Overlay Bridge V1
+
+Goal: turn the disabled local bridge into a documented developer/platform boundary.
+
+Likely scope:
+
+- Define versioned local JSON contracts for live telemetry, app health, overlay metadata, selected display settings, and schema capabilities.
+- Keep the bridge local and disabled by default with explicit settings/support visibility for enabled state, port, client count, last error, and schema version.
+- Use normalized `LiveTelemetrySnapshot.Models` where available instead of exporting overlay-local temporary calculations.
+- Add deterministic bridge fixture tests and sample payloads so external clients can be developed without iRacing running.
+- Document a future peer/missed-history path without implementing broad teammate sync yet. If a small proof is included, it should exchange derived session context only: provenance, session identity, observation window, roster/timing coverage, schema version, and trust labels.
+
+### v0.13.0 - Model V2 Overlay Migration
+
+Goal: continue moving production overlays to the normalized model layer one overlay at a time.
+
+Likely scope:
+
+- Migrate the remaining simple overlays that are ready: standings, session/weather, pit service, inputs, and selected timing-table surfaces.
+- Add explicit model-v2 availability/completeness state for mid-session joins and iRacing car-coverage limits.
+- Keep legacy live slices stable until no production overlay depends on them.
+- Expand tests around partial fields, stale data, unavailable reasons, and mixed full-roster/live-row views.
+- Use Windows screenshot artifacts and tracked mac mocks to catch visual regressions as each overlay changes input source.
+
+### v0.14.0 - Overlay Style V2 / Designer-Friendly UI
+
+Goal: make the overlays and settings surface easier to review, maintain, and hand to a designer.
+
+Likely scope:
+
+- Promote shared visual primitives: overlay headers, quiet status badges, timing rows, relative rows, metric rows, flag strips, compact weather widgets, graph panels, borders, state tones, and text-fitting rules.
+- Keep typography, row heights, spacing, opacity defaults, and semantic colors in shared tokens instead of scattered form-local constants.
+- Use the mac harness for fast style iteration, then port stable primitives back to Windows.
+- Keep normal telemetry-first overlays quiet; only surface source/evidence chrome for stale, unavailable, modeled, or derived values.
+- Refresh tracked `mocks/` and compare Windows CI artifacts before calling the branch done.
+
+### v0.15.0 - Session Completeness And Bootstrap
+
+Goal: make standings, relative, gap, and analysis overlays honest about what the local SDK knows when the user joins late or has limited car coverage.
+
+Likely scope:
+
+- Promote mid-session join handling into explicit model-v2 state: local observation start, session clock, roster availability, current timing rows, best/last lap availability, and missing local history.
+- Treat iRacing car-count/transmitted-row limits as first-class completeness signals rather than silently hiding missing competitors.
+- Expose roster count, live row count, rows with timing, rows with spatial progress, and missing-row reasons.
+- Decide how each overlay labels full-field, nearby-transmitted, partial, or mixed views.
+- Use real captures plus diagnostics to validate the assumptions before updating user-facing copy.
+
+### v0.16.0 - Capture Replay And Evidence Loop
+
+Goal: make real race evidence easier to replay through overlays without manually driving the app.
+
+Likely scope:
+
+- Add a development-only raw-capture replay provider for the mac harness or a separate tooling path.
+- Decode selected four-hour/twenty-four-hour captures into normalized live snapshots at controllable playback speed.
+- Drive one instance of each overlay from replayed snapshots, generate screenshots/contact sheets, and emit replay-side `live-overlay-diagnostics.json`.
+- Keep replay isolated from the Windows runtime collector and private capture folders.
+- Use replay artifacts to decide model-v2 promotions, overlay simplifications, and edge-case UI behavior.
+
+### v0.17.0 - IBT Track Map Store
+
+Goal: turn post-session IBT readiness checks into reusable local track-map assets.
+
+Likely scope:
+
+- Add app-owned storage such as `%LOCALAPPDATA%\TmrOverlay\track-maps`.
+- Build `IbtTrackMapBuilder` and `TrackMapStore` around compact derived geometry rather than storing source `.ibt` files.
+- Persist schema version, track identity, provenance, quality metrics, local coordinate metadata, lap-distance percentages, and a resampled closed polyline.
+- Score clean laps, filter pit/outlap/noisy samples, simplify/smooth geometry, and merge only when a new source improves an existing map.
+- Keep overlays consuming maps through the store; do not let overlays read IBT files directly.
+
+### v0.18.0 - Fuel And Strategy V2
+
+Goal: rebuild fuel strategy around team-stint evidence instead of stitched scalar estimates.
+
+Likely scope:
+
+- Combine local measured fuel windows, team/focus progress, completed stint lengths, pit/service history, max-fuel constraints, and source labels.
+- Reject impossible stint rhythms when current-session evidence and history disagree.
+- Treat tire/repair/pit-service/setup-change evidence as input to strategy but avoid command-capable pit controls in this branch.
+- Keep user-facing strategy recommendations conservative until enough teammate race data supports them.
+
+### v0.19.0 - Pit Crew / Engineer Workspace
+
+Goal: explore the operator surface for a spotter or engineer supporting a team car.
+
+Likely scope:
+
+- Start read-only: pit service state, fuel/repair/tire choices, stint/fuel analysis, driver-control context, team-car status, and useful spectator telemetry.
+- Add an explicit pit-command service design before any simulator writes.
+- Validate iRacing command behavior for active-car, teammate, spectator, and driver-swap states before promising remote/team control.
+- Keep command-capable controls gated and obvious if they ever ship.
+
+### v0.20.0 - Streaming And External Overlay Clients
+
+Goal: let the app support broadcast-style surfaces without coupling chat or browser rendering to the Windows collector.
+
+Likely scope:
+
+- Add Twitch/YouTube chat overlay exploration as a separate stream-facing feature set.
+- Keep chat auth, tokens, moderation, reconnect behavior, and rate limits isolated from iRacing telemetry.
+- Use Overlay Bridge contracts for browser/stream clients once those contracts are stable enough.
+- Add deterministic offline preview states for chat-only and mixed telemetry/chat overlays.
+
+### v0.21.0 - Overlay Builder And Designer Tooling
+
+Goal: move toward configurable layouts only after the primitives and bridge contracts are stable.
+
+Likely scope:
+
+- Start as a local development/designer tool for arranging simple telemetry widgets, choosing shared theme tokens, and exporting deterministic previews.
+- Generate or validate layouts against readability, session filters, stale-state handling, screenshot validation, and performance rules.
+- Keep production overlays hand-authored until generated layouts can meet the same quality bar.
+
+### v0.22.0+ - Installer, Signing, VR, And Broader Platform Work
+
+Goal: graduate from private tester zip builds and desktop overlays toward a broader product platform.
+
+Candidate branches:
+
+- Signed Windows artifacts plus an installer/update channel such as Velopack or MSIX/App Installer.
+- Passive update checks tied to the chosen release feed.
+- A dedicated VR renderer/client using compact model-v2 state through Overlay Bridge or a future snapshot boundary, with sparse local surfaces first: flags, blindspot/radar, and compact relative.
+- A stronger external-client/plugin story after bridge schemas, auth/local access, versioning, and update policy are settled.
+
+Do not start VR or broad plugin work by modifying WinForms overlay internals directly. Keep the tray app as telemetry/settings/storage/diagnostics owner and treat new renderers as clients of normalized app state.
+
+## Supporting Topic Notes
 
 ### Fuel Strategy V2
 
