@@ -26,7 +26,7 @@ internal static class SessionWeatherOverlayViewModel
         var status = BuildStatus(session, weather);
         var tone = weather.DeclaredWetSurfaceMismatch == true
             ? SimpleTelemetryTone.Warning
-            : weather.WeatherDeclaredWet || weather.TrackWetness is > 0
+            : HasWetSurfaceSignal(weather)
                 ? SimpleTelemetryTone.Info
                 : SimpleTelemetryTone.Normal;
         var rows = new[]
@@ -56,7 +56,7 @@ internal static class SessionWeatherOverlayViewModel
             return "wet mismatch";
         }
 
-        if (weather.WeatherDeclaredWet || weather.TrackWetness is > 0)
+        if (HasWetSurfaceSignal(weather))
         {
             return weather.TrackWetnessLabel ?? "wet declared";
         }
@@ -119,7 +119,7 @@ internal static class SessionWeatherOverlayViewModel
         var wetness = weather.TrackWetnessLabel ?? (weather.TrackWetness is { } raw
             ? raw.ToString(CultureInfo.InvariantCulture)
             : "--");
-        if (weather.WeatherDeclaredWet)
+        if (weather.WeatherDeclaredWet == true)
         {
             return wetness == "--" ? "declared wet" : $"{wetness} | declared wet";
         }
@@ -138,6 +138,11 @@ internal static class SessionWeatherOverlayViewModel
     private static string FormatRubber(LiveWeatherModel weather)
     {
         return Trim(weather.RubberState) ?? "--";
+    }
+
+    private static bool HasWetSurfaceSignal(LiveWeatherModel weather)
+    {
+        return weather.WeatherDeclaredWet == true || weather.TrackWetness is > 0;
     }
 
     private static string? Trim(string? value)

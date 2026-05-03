@@ -79,6 +79,34 @@ public sealed class SimpleTelemetryOverlayViewModelTests
     }
 
     [Fact]
+    public void SessionWeather_FromTelemetry_TreatsUnknownWetFlagAsNormalTelemetry()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = Snapshot(now, LiveRaceModels.Empty with
+        {
+            Session = LiveSessionModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                SessionType = "Practice"
+            },
+            Weather = LiveWeatherModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                WeatherDeclaredWet = null,
+                TrackWetness = null
+            }
+        });
+
+        var viewModel = SessionWeatherOverlayViewModel.From(snapshot, now, "Metric");
+
+        Assert.Equal("Practice", viewModel.Status);
+        Assert.Equal(SimpleTelemetryTone.Normal, viewModel.Tone);
+        Assert.Contains(viewModel.Rows, row => row.Label == "Surface" && row.Value == "--");
+    }
+
+    [Fact]
     public void PitService_FromTelemetry_FormatsRequestedService()
     {
         var now = DateTimeOffset.UtcNow;
