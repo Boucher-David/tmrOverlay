@@ -133,7 +133,7 @@ internal static class Program
                 new AppPerformanceState(),
                 OverlaySettingsFor(FlagsOverlayDefinition.Definition, width: 960, height: 540),
                 Noop),
-            postProcess: bitmap => ReplaceColorWithTransparency(bitmap, Color.Magenta)));
+            postProcess: bitmap => ReplaceColorWithReviewBackdrop(bitmap, Color.Magenta)));
         screenshots.Add(RenderForm(
             outputRoot,
             "session-weather-live",
@@ -424,16 +424,19 @@ internal static class Program
         }
     }
 
-    private static void ReplaceColorWithTransparency(Bitmap bitmap, Color transparentColor)
+    private static void ReplaceColorWithReviewBackdrop(Bitmap bitmap, Color targetColor)
     {
-        var target = transparentColor.ToArgb();
+        var target = targetColor.ToArgb();
         for (var y = 0; y < bitmap.Height; y++)
         {
             for (var x = 0; x < bitmap.Width; x++)
             {
                 if (bitmap.GetPixel(x, y).ToArgb() == target)
                 {
-                    bitmap.SetPixel(x, y, Color.Transparent);
+                    var color = ((x / 16) + (y / 16)) % 2 == 0
+                        ? Color.FromArgb(20, 25, 29)
+                        : Color.FromArgb(32, 38, 43);
+                    bitmap.SetPixel(x, y, color);
                 }
             }
         }
