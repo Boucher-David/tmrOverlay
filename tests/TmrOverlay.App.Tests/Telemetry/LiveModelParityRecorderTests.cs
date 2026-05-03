@@ -71,6 +71,7 @@ public sealed class LiveModelParityRecorderTests
             var recorder = new LiveModelParityRecorder(
                 new LiveModelParityOptions
                 {
+                    Enabled = true,
                     MinimumFrameSpacingSeconds = 0.1d,
                     MaxFramesPerSession = 10,
                     MaxObservationsPerFrame = 10,
@@ -131,6 +132,7 @@ public sealed class LiveModelParityRecorderTests
             var recorder = new LiveModelParityRecorder(
                 new LiveModelParityOptions
                 {
+                    Enabled = true,
                     PromotionCandidateMinimumFrames = 1,
                     PromotionCandidateMaxMismatchFrameRate = 0d,
                     PromotionCandidateMinimumCoverageRatio = 1d

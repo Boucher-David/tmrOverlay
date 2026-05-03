@@ -13,18 +13,22 @@ internal sealed class PostRaceAnalysisStore
         WriteIndented = true
     };
 
-    private readonly SessionHistoryOptions _options;
+    private readonly SessionHistoryOptions _historyOptions;
+    private readonly PostRaceAnalysisOptions _analysisOptions;
 
-    public PostRaceAnalysisStore(SessionHistoryOptions options)
+    public PostRaceAnalysisStore(
+        SessionHistoryOptions historyOptions,
+        PostRaceAnalysisOptions analysisOptions)
     {
-        _options = options;
+        _historyOptions = historyOptions;
+        _analysisOptions = analysisOptions;
     }
 
     public async Task<PostRaceAnalysis?> SaveFromSummaryAsync(
         HistoricalSessionSummary summary,
         CancellationToken cancellationToken)
     {
-        if (!_options.Enabled)
+        if (!_historyOptions.Enabled || !_analysisOptions.Enabled)
         {
             return null;
         }
@@ -63,7 +67,7 @@ internal sealed class PostRaceAnalysisStore
             .ToArray();
     }
 
-    private string AnalysisDirectory => Path.Combine(_options.ResolvedHistoryRoot, "analysis");
+    private string AnalysisDirectory => Path.Combine(_historyOptions.ResolvedHistoryRoot, "analysis");
 
     private static PostRaceAnalysis? ReadAnalysis(string path)
     {

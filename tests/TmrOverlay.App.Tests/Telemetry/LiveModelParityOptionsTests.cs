@@ -7,10 +7,19 @@ namespace TmrOverlay.App.Tests.Telemetry;
 public sealed class LiveModelParityOptionsTests
 {
     [Fact]
+    public void FromConfiguration_DefaultsToDisabled()
+    {
+        var options = LiveModelParityOptions.FromConfiguration(BuildConfiguration(new Dictionary<string, string?>()));
+
+        Assert.False(options.Enabled);
+    }
+
+    [Fact]
     public void FromConfiguration_UsesSafeCustomNames()
     {
         var options = LiveModelParityOptions.FromConfiguration(BuildConfiguration(new Dictionary<string, string?>
         {
+            ["LiveModelParity:Enabled"] = "true",
             ["LiveModelParity:PromotionCandidateMinimumFrames"] = "2500",
             ["LiveModelParity:PromotionCandidateMaxMismatchFrameRate"] = "0.01",
             ["LiveModelParity:PromotionCandidateMinimumCoverageRatio"] = "0.95",
@@ -18,6 +27,7 @@ public sealed class LiveModelParityOptionsTests
             ["LiveModelParity:LogDirectoryName"] = "custom-parity"
         }));
 
+        Assert.True(options.Enabled);
         Assert.Equal(2500, options.PromotionCandidateMinimumFrames);
         Assert.Equal(0.01d, options.PromotionCandidateMaxMismatchFrameRate);
         Assert.Equal(0.95d, options.PromotionCandidateMinimumCoverageRatio);

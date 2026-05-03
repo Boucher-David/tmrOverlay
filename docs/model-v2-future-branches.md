@@ -6,7 +6,7 @@ Relative now consumes `LiveTelemetrySnapshot.Models.Relative` directly, and Car 
 
 ## This Branch Scope
 
-- Keep raw capture, IBT logging, capture synthesis, IBT sidecars, model parity, and live overlay diagnostics enabled by default with bounded output and failure isolation.
+- Keep raw capture and advanced diagnostics bounded with failure isolation. For tester builds, raw capture, model parity, live overlay diagnostics, and edge-case clips should stay opt-in/disabled by default unless a branch explicitly collects evidence.
 - Preserve compatibility with already collected raw captures and synthesized data. New sidecars are additive; older captures remain readable.
 - Record enough evidence to decide future overlay behavior from data:
   - `live-model-parity.json` for model-v2 coverage/mismatch and promotion-readiness.
@@ -130,9 +130,9 @@ Builder v1 should likely start as a local development tool for arranging simple 
 
 ### Application Publishing
 
-Publishing is a separate app-platform branch and is the planned v0.9 target. The current settings panel exposes copyable local clean/build/publish/zip commands, but that is not a release system.
+Publishing is a separate app-platform branch and is the v0.9 target. The v0.9 baseline turns product tags into portable Windows GitHub Release assets with a checksum, but that is still only the first release channel.
 
-A real publishing branch should define signed Windows artifacts, versioning, installer or portable packaging, update-channel policy, release notes, rollback/compatibility expectations for durable user settings/history, diagnostics bundle expectations for tester builds, and CI validation that can replace the current "copy a command and zip a folder" workflow. It should also derive executable, tray, and future overlay-branding icon assets from `assets/brand/` source images rather than binding wide source PNGs directly into the app.
+A complete publishing path should still define signed Windows artifacts, installer or portable packaging, update-channel policy, rollback/compatibility expectations for durable user settings/history, diagnostics bundle expectations for tester builds, and passive update checks. v0.9 derives the Windows executable icon from `assets/brand/` into `src/TmrOverlay.App/Assets/`; future overlay-branding derivatives should follow the same source-to-platform-asset pattern.
 
 ### Telemetry-First Overlay Branches
 

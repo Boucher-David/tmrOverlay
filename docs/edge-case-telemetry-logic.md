@@ -1,6 +1,6 @@
 # Edge-Case Telemetry Logic
 
-This file explains the compact edge-case reports written after live telemetry sessions.
+This file explains the compact edge-case reports written after live telemetry sessions when edge-case collection is enabled. The collector is disabled by default for tester builds and should be enabled only when collecting diagnostic or analysis evidence.
 
 Implementation files:
 

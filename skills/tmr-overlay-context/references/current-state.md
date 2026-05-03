@@ -12,7 +12,7 @@ Last updated: 2026-05-03
 
 - `assets/`
   - contains repo-owned source visual assets such as brand/logo images for future app icons, overlay branding, docs, and publishing work
-  - platform-specific generated icon assets should be created later by the publishing branch instead of wiring wide source PNGs directly into the app
+  - the v0.9 publishing branch derives the Windows executable icon from the source logo into `src/TmrOverlay.App/Assets/TmrOverlay.ico`
 
 - `src/TmrOverlay.App/TmrOverlay.App.csproj`
   - .NET 8 WinForms app
@@ -74,7 +74,7 @@ Last updated: 2026-05-03
   - uses normal desktop z-order, taskbar, and Alt+Tab behavior instead of the product overlays' tool-window/always-on-top behavior
   - tabs include General, user-facing overlay tabs ordered with Standings, Relative, Flags, and Radar first when present, and Support last
   - General exposes a shared overlay font-family selector from widely available fonts and a metric/imperial unit selector
-  - Support shows the current app warning/error from `TelemetryCaptureState`, owns runtime diagnostic telemetry capture, opens local log/diagnostics folders, shows a lightweight performance summary with iRacing channel/system values and overlay update-decision rates, and can create/copy a diagnostics bundle using `DiagnosticsBundleService`
+  - Support is task-oriented: compact app status, live/session state, current issue, diagnostics bundle actions, diagnostic telemetry capture, storage shortcuts, discoverable advanced collection status, and compact app activity
   - per-overlay tabs expose visibility, scale, opacity, test/practice/qualifying/race session filters, and descriptor-driven overlay-specific display options when those controls make sense for that overlay
   - future settings information architecture should group timing/table overlays, race-state/local-car overlays, input/local telemetry overlays, and developer/admin/future surfaces instead of treating every tab as the same kind of user-facing overlay
   - opening the radar settings tab previews the radar overlay only when the overlay is enabled, so the tab no longer overrides the `Visible` checkbox
@@ -173,8 +173,8 @@ Last updated: 2026-05-03
     - optional historical `session-info/*.yaml`
     - post-session `capture-synthesis.json` is written by `CaptureSynthesisService`, not by the live writer
     - post-session `ibt-analysis/*.json` is written by `IbtAnalysisService` when enabled and a candidate `.ibt` can be selected or a skipped/failed status is recorded
-    - post-session `live-model-parity.json` is written by `LiveModelParityRecorder` for model-v2 parity and raw/IBT signal availability review
-    - post-session `live-overlay-diagnostics.json` is written by `LiveOverlayDiagnosticsRecorder` when raw capture is active; otherwise the same observer artifact is written under `logs/overlay-diagnostics`
+    - optional post-session `live-model-parity.json` is written by `LiveModelParityRecorder` when model-v2 parity collection is enabled
+    - optional post-session `live-overlay-diagnostics.json` is written by `LiveOverlayDiagnosticsRecorder` when overlay diagnostics collection is enabled; without raw capture the same observer artifact is written under `logs/overlay-diagnostics`
   - uses a bounded channel to decouple SDK callbacks from disk writes
   - drops frames when the queue fills instead of blocking the SDK callback path
 
@@ -219,8 +219,8 @@ Last updated: 2026-05-03
   - contains platform-neutral historical session context, telemetry samples, summary/aggregate models, slug/path helpers, session-info parsing, and the in-memory historical accumulator
 
 - `src/TmrOverlay.App/Analysis/`
-  - persists post-race analysis JSON under the user history root; settings no longer exposes this as a normal user-facing overlay tab
-  - `PostRaceAnalysisPipeline` saves an analysis row after compact session history is saved and isolates analysis persistence/event failures from telemetry finalization
+  - can persist post-race analysis JSON under the user history root when `PostRaceAnalysis:Enabled=true`; settings exposes it only as advanced collection status, not as a normal user-facing overlay tab
+  - `PostRaceAnalysisPipeline` saves an analysis row after compact session history is saved when enabled and isolates analysis persistence/event failures from telemetry finalization
 
 - `history/baseline/`
   - contains tracked, sanitized development/sample data from the 4-hour Nürburgring VLN Mercedes-AMG GT3 race capture
@@ -269,6 +269,10 @@ Last updated: 2026-05-03
   - includes recent post-race analysis JSON at top-level `analysis/` plus recent user-history summaries and aggregates so collected car/track/session metrics can be inspected for accuracy
   - creates a best-effort diagnostics bundle automatically when a live telemetry session finalizes, and the Support tab reports the latest automatic bundle
   - intentionally excludes raw `telemetry.bin` and source `.ibt` payloads
+
+- `docs/repo-surface.md`
+  - separates customer/tester-facing material, product source, internal development assets, and ignored local runtime data
+  - records cleanup candidates such as local `artifacts/`, root `tmroverlay-diagnostics-*` folders, ignored raw captures, and the tracked legacy raw capture that should eventually be replaced with compact fixtures
 
 - `src/TmrOverlay.App/Retention/`
   - removes old capture directories and diagnostics bundles on startup
@@ -410,6 +414,16 @@ Current keys:
 - `LiveModelParity:PromotionCandidateMinimumCoverageRatio`
 - `LiveModelParity:OutputFileName`
 - `LiveModelParity:LogDirectoryName`
+- `LiveOverlayDiagnostics:Enabled`
+- `LiveOverlayDiagnostics:MinimumFrameSpacingSeconds`
+- `LiveOverlayDiagnostics:MaxSampleFramesPerSession`
+- `LiveOverlayDiagnostics:MaxEventExamplesPerSession`
+- `LiveOverlayDiagnostics:MaxEventExamplesPerKind`
+- `LiveOverlayDiagnostics:LargeGapSeconds`
+- `LiveOverlayDiagnostics:LargeGapLapEquivalent`
+- `LiveOverlayDiagnostics:GapJumpSeconds`
+- `LiveOverlayDiagnostics:OutputFileName`
+- `LiveOverlayDiagnostics:LogDirectoryName`
 - `IbtAnalysis:Enabled`
 - `IbtAnalysis:TelemetryLoggingEnabled`
 - `IbtAnalysis:TelemetryRoot`
@@ -424,6 +438,7 @@ Current keys:
 - `IbtAnalysis:OutputDirectoryName`
 - `SessionHistory:Enabled`
 - `SessionHistory:UseBaselineHistory`
+- `PostRaceAnalysis:Enabled`
 - `Storage:UseRepositoryLocalStorage`
 - `Storage:AppDataRoot`
 - `Storage:CaptureRoot`
@@ -524,6 +539,9 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 - The current machine does not have `dotnet`, so Windows build/test verification still needs to happen on a .NET-equipped machine.
 - The local mac Swift package builds, but `swift test` currently requires an XCTest-capable Swift/Xcode toolchain.
 - No general-purpose replay/decoder tool exists yet for `telemetry.bin`; targeted analysis scripts exist under `tools/analysis/`.
+- v0.9 portable tester publishing is tag-driven, but broad production distribution still needs a signing decision, installer/update channel, and passive update-check UI.
+- The v0.9 release workflow audits the publish folder for accidental repo/dev-folder leaks, emits a package manifest, and keeps user data under the app-data root instead of the install folder.
+- Because the app-data root persists across portable installs, durable settings/history schema changes must include version bumps plus migrations or compatible readers. Incompatible/future history is skipped and left on disk instead of being fed to overlays.
 - Overlay modules now live under `src/TmrOverlay.App/Overlays/`; status, settings, fuel-calculator, relative, flags, session/weather, pit-service snapshot, input/car-state, car-radar, and gap-to-leader overlays are wired, while remaining future overlay folders are still placeholders.
 - Pure models and calculations have started moving into `src/TmrOverlay.Core/`; Windows remains the production app/runtime, while the ignored mac harness remains the mock-telemetry development surface.
 - The root-level launcher is `TmrOverlay.cmd`, not a standalone copied `.exe`, because a normal framework-dependent .NET build needs its companion output files.
@@ -531,21 +549,19 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 
 ## Recommended Next Steps
 
-1. Start `v0.8-settings-and-overlay-polish` after v0.7 merges. Scope it to settings correctness, overlay control polish, simple-overlay live/mock review, and CI release-flow sanity; see `VERSION.md`.
-2. Ensure every v0.7 overlay has correct settings tab representation, visibility controls, scale, session filters, shared font/units behavior, and overlay-specific options where needed.
-3. Polish the simple telemetry overlays against live/mock data: text fitting, window sizing, default positions, row density, stale/waiting states, and status labels. Keep Relative as the quality baseline.
-4. Confirm the `Windows build/test` required check and tag-triggered package artifact path stay stable after merge.
+1. Finish `v0.9-production-publishing`: validate the tag-driven GitHub Release zip/checksum flow in CI, keep `Directory.Build.props` aligned with the milestone, and make sure `docs/windows-release.md` matches the release assets.
+2. Decide signing before broad distribution. Private teammate zip builds can remain unsigned, but production sharing should sign the executable or package.
+3. Add passive update discovery after the first release exists: latest-release or manifest lookup, semantic version comparison, tray/settings notification, release notes/download command, and diagnostics logging.
+4. Decide the installer/update channel after the portable baseline: Velopack for installer plus update feed, or MSIX/App Installer if package identity/signing constraints are acceptable.
 5. Identify remaining v1/legacy overlay slices and choose the next safe model-v2 migration target without pulling fuel/gap analysis products into the simple-overlay path prematurely.
 6. Keep collecting radar diagnostics for suppressed non-local focus, local progress-missing, side-without-placement, and multiclass cases before expanding beyond local in-car radar.
 7. Decide the Overlay Bridge v2 shape: enable/disable, port, allowed clients, schema version, connection health, and which normalized model-v2 snapshots should become the public client contract.
 8. Add a future streaming/broadcast group for Twitch/YouTube chat overlays, keeping chat ingestion, auth, moderation, rate limits, and offline preview states separate from iRacing telemetry.
 9. Treat overlay builder as a later creator/development platform on top of design-v2 primitives and the bridge schema, not as a prerequisite for the first hand-authored production overlays.
-10. Move actual application publishing into a release-platform branch with signed artifacts, versioning, installer/portable packaging, update-channel policy, tester diagnostics, and CI validation.
-11. Improve historical aggregation and confidence/source tracking as more user sessions are collected.
-12. Keep raw capture available for diagnostics, but avoid making it the normal user data path.
-13. Expand post-race strategy review/export beyond the first saved-analysis view; see `docs/post-race-strategy-analysis.md`.
-14. Start with update notification before self-update; see `docs/update-strategy.md`.
-15. When summary or other durable history shapes change, add ordered migrations or compatible readers to the historical data maintenance flow, update `HistorySchemaCompatibilityTests`, and keep car/track/session history higher priority than performance/logging data.
+10. Improve historical aggregation and confidence/source tracking as more user sessions are collected.
+11. Keep raw capture available for diagnostics, but avoid making it the normal user data path.
+12. Expand post-race strategy review/export beyond the first saved-analysis view; see `docs/post-race-strategy-analysis.md`.
+13. When summary or other durable history shapes change, add ordered migrations or compatible readers to the historical data maintenance flow, update `HistorySchemaCompatibilityTests`, and keep car/track/session history higher priority than performance/logging data.
 
 ## Files Most Likely To Change Next
 

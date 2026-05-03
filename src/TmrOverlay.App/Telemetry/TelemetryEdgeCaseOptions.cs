@@ -5,7 +5,7 @@ namespace TmrOverlay.App.Telemetry;
 
 internal sealed class TelemetryEdgeCaseOptions
 {
-    public bool Enabled { get; init; } = true;
+    public bool Enabled { get; init; }
 
     public double PreTriggerSeconds { get; init; } = 10d;
 
@@ -23,7 +23,7 @@ internal sealed class TelemetryEdgeCaseOptions
 
         return new TelemetryEdgeCaseOptions
         {
-            Enabled = ParseBoolean(section["Enabled"], defaultValue: true),
+            Enabled = ParseBoolean(section["Enabled"], defaultValue: false),
             PreTriggerSeconds = ParseDouble(section["PreTriggerSeconds"], defaultValue: 10d, minimumValue: 1d),
             PostTriggerSeconds = ParseDouble(section["PostTriggerSeconds"], defaultValue: 5d, minimumValue: 1d),
             MaxClipsPerSession = ParseInt32(section["MaxClipsPerSession"], defaultValue: 20, minimumValue: 1),

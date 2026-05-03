@@ -146,12 +146,13 @@ The settings window stores normalized size but is recentered on open, so saved c
 
 The Support tab:
 
-- Shows current app warning/error.
-- Shows performance summary text, including live iRacing channel/system values and overlay update-decision rates.
-- Opens local logs and diagnostics folders.
-- Can manually create/copy a diagnostics bundle.
+- Shows compact app status, live/session state, and current app warning/error.
+- Makes support actions primary: create diagnostics bundle, copy latest bundle path, and open the diagnostics folder.
+- Owns runtime diagnostic telemetry capture requests without overlapping the current-issue state.
+- Keeps local storage shortcuts together for logs, diagnostics, captures, and history.
+- Shows advanced collection systems as discoverable disabled-by-default support tools instead of normal product tabs.
+- Shows compact app activity for telemetry, iRacing connection health, raw capture state, and process size.
 - Reports the latest automatic end-of-session diagnostics bundle.
-- Owns runtime diagnostic telemetry capture requests.
 
 ## Design Notes
 

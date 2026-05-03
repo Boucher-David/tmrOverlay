@@ -9,6 +9,9 @@ on:
       - 'v*.*.*'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   windows_build_test:
     name: Windows build/test
@@ -34,31 +37,172 @@ jobs:
 
   windows_release_package:
     name: Windows release package
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     needs: windows_build_test
     runs-on: windows-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
 
+      - name: Compute release metadata
+        id: release_metadata
+        shell: pwsh
+        run: |
+          $refName = "${{ github.ref_name }}"
+          $shortSha = "${{ github.sha }}".Substring(0, 7)
+          [xml]$buildProps = Get-Content .\Directory.Build.props
+          $branchVersion = $buildProps.Project.PropertyGroup.VersionPrefix
+          $isReleaseTag = "${{ github.ref_type }}" -eq "tag" -and $refName -match '^v(?<version>\d+\.\d+\.\d+)$'
+
+          if ($isReleaseTag) {
+              $version = $Matches['version']
+              $packageLabel = $refName
+          } else {
+              $version = $branchVersion
+              $safeRef = $refName -replace '[^A-Za-z0-9._-]', '-'
+              $packageLabel = "$safeRef-${{ github.run_number }}-$shortSha"
+          }
+
+          $fileVersion = "$version.0"
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "file_version=$fileVersion" >> $env:GITHUB_OUTPUT
+          "informational_version=$version+${{ github.sha }}" >> $env:GITHUB_OUTPUT
+          "package_name=TmrOverlay-$packageLabel-win-x64" >> $env:GITHUB_OUTPUT
+          "is_release_tag=$($isReleaseTag.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
       - name: Restore
         run: dotnet restore tmrOverlay.sln
 
       - name: Publish
-        run: dotnet publish .\src\TmrOverlay.App\TmrOverlay.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o .\artifacts\TmrOverlay-win-x64
+        shell: pwsh
+        run: |
+          $publishPath = ".\artifacts\${{ steps.release_metadata.outputs.package_name }}"
+          dotnet publish .\src\TmrOverlay.App\TmrOverlay.App.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:Version=${{ steps.release_metadata.outputs.version }} `
+            -p:AssemblyVersion=${{ steps.release_metadata.outputs.file_version }} `
+            -p:FileVersion=${{ steps.release_metadata.outputs.file_version }} `
+            -p:InformationalVersion=${{ steps.release_metadata.outputs.informational_version }} `
+            -p:ContinuousIntegrationBuild=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            -o $publishPath
+
+      - name: Audit publish output
+        shell: pwsh
+        run: |
+          $publishPath = ".\artifacts\${{ steps.release_metadata.outputs.package_name }}"
+          $manifestPath = ".\artifacts\${{ steps.release_metadata.outputs.package_name }}-manifest.txt"
+          $forbiddenTopLevelDirectories = @(
+            ".git",
+            ".github",
+            "captures",
+            "captures-latest",
+            "docs",
+            "history",
+            "local-mac",
+            "mocks",
+            "skills",
+            "tests",
+            "tools"
+          )
+          $requiredFiles = @(
+            "TmrOverlay.App.exe",
+            "appsettings.json",
+            "Assets\TMRLogo.png"
+          )
+          $allowedAssetFiles = @(
+            "Assets\TMRLogo.png"
+          )
+
+          $missingFiles = @($requiredFiles | Where-Object { -not (Test-Path -LiteralPath (Join-Path $publishPath $_) -PathType Leaf) })
+          if ($missingFiles.Count -gt 0) {
+            throw "Published package is missing required files: $($missingFiles -join ', ')"
+          }
+
+          $leakedDirectories = @(Get-ChildItem -LiteralPath $publishPath -Force |
+            Where-Object { $_.PSIsContainer -and $forbiddenTopLevelDirectories -contains $_.Name.ToLowerInvariant() })
+          if ($leakedDirectories.Count -gt 0) {
+            $names = $leakedDirectories | ForEach-Object { $_.Name }
+            throw "Published package contains repo/dev directories that must not ship: $($names -join ', ')"
+          }
+
+          $assetRoot = Join-Path $publishPath "Assets"
+          $unexpectedAssetFiles = @(Get-ChildItem -LiteralPath $assetRoot -Recurse -File -Force |
+            Where-Object {
+              $relativePath = [System.IO.Path]::GetRelativePath($publishPath, $_.FullName)
+              $allowedAssetFiles -notcontains $relativePath
+            })
+          if ($unexpectedAssetFiles.Count -gt 0) {
+            $names = $unexpectedAssetFiles | ForEach-Object { [System.IO.Path]::GetRelativePath($publishPath, $_.FullName) }
+            throw "Published package contains unexpected asset files: $($names -join ', ')"
+          }
+
+          $entries = Get-ChildItem -LiteralPath $publishPath -Recurse -Force |
+            Sort-Object FullName |
+            ForEach-Object {
+              $relativePath = [System.IO.Path]::GetRelativePath($publishPath, $_.FullName)
+              if ($_.PSIsContainer) {
+                "         dir  $relativePath"
+              } else {
+                "{0,12}  {1}" -f $_.Length, $relativePath
+              }
+            }
+
+          @(
+            "package=${{ steps.release_metadata.outputs.package_name }}",
+            "version=${{ steps.release_metadata.outputs.version }}",
+            "informationalVersion=${{ steps.release_metadata.outputs.informational_version }}",
+            "generatedAtUtc=$((Get-Date).ToUniversalTime().ToString('o'))",
+            "",
+            "Published files:"
+          ) + $entries | Set-Content -Path $manifestPath -Encoding ascii
 
       - name: Zip package
         shell: pwsh
-        run: Compress-Archive -Path .\artifacts\TmrOverlay-win-x64\* -DestinationPath .\artifacts\TmrOverlay-win-x64.zip -Force
+        run: |
+          $publishPath = ".\artifacts\${{ steps.release_metadata.outputs.package_name }}"
+          $packagePath = ".\artifacts\${{ steps.release_metadata.outputs.package_name }}.zip"
+          Compress-Archive -Path "$publishPath\*" -DestinationPath $packagePath -Force
+
+      - name: Generate checksum
+        shell: pwsh
+        run: |
+          $packagePath = ".\artifacts\${{ steps.release_metadata.outputs.package_name }}.zip"
+          $checksumPath = "$packagePath.sha256"
+          $hash = (Get-FileHash -Path $packagePath -Algorithm SHA256).Hash.ToLowerInvariant()
+          $fileName = Split-Path -Path $packagePath -Leaf
+          "$hash  $fileName" | Set-Content -Path $checksumPath -Encoding ascii
 
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TmrOverlay-win-x64
-          path: .\artifacts\TmrOverlay-win-x64.zip
+          name: ${{ steps.release_metadata.outputs.package_name }}
+          path: |
+            artifacts/${{ steps.release_metadata.outputs.package_name }}.zip
+            artifacts/${{ steps.release_metadata.outputs.package_name }}.zip.sha256
+            artifacts/${{ steps.release_metadata.outputs.package_name }}-manifest.txt
+
+      - name: Create GitHub release
+        if: steps.release_metadata.outputs.is_release_tag == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            artifacts/${{ steps.release_metadata.outputs.package_name }}.zip
+            artifacts/${{ steps.release_metadata.outputs.package_name }}.zip.sha256
+            artifacts/${{ steps.release_metadata.outputs.package_name }}-manifest.txt

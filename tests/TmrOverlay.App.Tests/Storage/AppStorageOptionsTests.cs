@@ -7,6 +7,23 @@ namespace TmrOverlay.App.Tests.Storage;
 public sealed class AppStorageOptionsTests
 {
     [Fact]
+    public void FromConfiguration_DefaultsWritableFoldersToLocalAppData()
+    {
+        var configuration = BuildConfiguration([]);
+        var expectedRoot = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "TmrOverlay");
+
+        var options = AppStorageOptions.FromConfiguration(configuration);
+
+        Assert.False(options.UseRepositoryLocalStorage);
+        Assert.Equal(Path.GetFullPath(expectedRoot), options.AppDataRoot);
+        Assert.Equal(Path.GetFullPath(Path.Combine(expectedRoot, "settings")), options.SettingsRoot);
+        Assert.Equal(Path.GetFullPath(Path.Combine(expectedRoot, "history", "user")), options.UserHistoryRoot);
+        Assert.Equal(Path.GetFullPath(Path.Combine(expectedRoot, "logs")), options.LogsRoot);
+    }
+
+    [Fact]
     public void FromConfiguration_UsesAppDataRootForDefaultWritableFolders()
     {
         var appDataRoot = Path.Combine(Path.GetTempPath(), "tmr-overlay-storage-test");

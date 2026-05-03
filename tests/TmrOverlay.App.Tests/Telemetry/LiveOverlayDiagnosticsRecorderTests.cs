@@ -23,6 +23,7 @@ public sealed class LiveOverlayDiagnosticsRecorderTests
             var recorder = new LiveOverlayDiagnosticsRecorder(
                 new LiveOverlayDiagnosticsOptions
                 {
+                    Enabled = true,
                     MinimumFrameSpacingSeconds = 0.1d,
                     MaxSampleFramesPerSession = 10,
                     MaxEventExamplesPerSession = 20,
@@ -119,6 +120,7 @@ public sealed class LiveOverlayDiagnosticsRecorderTests
             var recorder = new LiveOverlayDiagnosticsRecorder(
                 new LiveOverlayDiagnosticsOptions
                 {
+                    Enabled = true,
                     MinimumFrameSpacingSeconds = 0.1d,
                     MaxSampleFramesPerSession = 10,
                     MaxEventExamplesPerSession = 20,
@@ -213,6 +215,7 @@ public sealed class LiveOverlayDiagnosticsRecorderTests
             var recorder = new LiveOverlayDiagnosticsRecorder(
                 new LiveOverlayDiagnosticsOptions
                 {
+                    Enabled = true,
                     MinimumFrameSpacingSeconds = 0.1d,
                     MaxSampleFramesPerSession = 10,
                     MaxEventExamplesPerSession = 20,
