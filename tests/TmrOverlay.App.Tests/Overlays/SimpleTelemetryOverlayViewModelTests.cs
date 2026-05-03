@@ -2,6 +2,7 @@ using TmrOverlay.App.Overlays.Flags;
 using TmrOverlay.App.Overlays.InputState;
 using TmrOverlay.App.Overlays.PitService;
 using TmrOverlay.App.Overlays.SessionWeather;
+using TmrOverlay.App.Overlays.SimpleTelemetry;
 using TmrOverlay.Core.Telemetry.Live;
 using Xunit;
 

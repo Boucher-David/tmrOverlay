@@ -524,17 +524,21 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 
 ## Recommended Next Steps
 
-1. Add live-burn smoothing and reserve/margin settings to the fuel calculator.
-2. Keep collecting radar diagnostics for suppressed non-local focus, local progress-missing, side-without-placement, and multiclass cases before expanding beyond local in-car radar.
-3. Decide the Overlay Bridge v2 shape: enable/disable, port, allowed clients, schema version, connection health, and which normalized model-v2 snapshots should become the public client contract.
-4. Add a future streaming/broadcast group for Twitch/YouTube chat overlays, keeping chat ingestion, auth, moderation, rate limits, and offline preview states separate from iRacing telemetry.
-5. Treat overlay builder as a later creator/development platform on top of design-v2 primitives and the bridge schema, not as a prerequisite for the first hand-authored production overlays.
-6. Move actual application publishing into a release-platform branch with signed artifacts, versioning, installer/portable packaging, update-channel policy, tester diagnostics, and CI validation.
-7. Improve historical aggregation and confidence/source tracking as more user sessions are collected.
-8. Keep raw capture available for diagnostics, but avoid making it the normal user data path.
-9. Expand post-race strategy review/export beyond the first saved-analysis view; see `docs/post-race-strategy-analysis.md`.
-10. Start with update notification before self-update; see `docs/update-strategy.md`.
-11. When summary or other durable history shapes change, add ordered migrations or compatible readers to the historical data maintenance flow, update `HistorySchemaCompatibilityTests`, and keep car/track/session history higher priority than performance/logging data.
+1. Start `v0.8-settings-and-overlay-polish` after v0.7 merges. Scope it to settings correctness, overlay control polish, simple-overlay live/mock review, and CI release-flow sanity; see `VERSION.md`.
+2. Ensure every v0.7 overlay has correct settings tab representation, visibility controls, scale, session filters, shared font/units behavior, and overlay-specific options where needed.
+3. Polish the simple telemetry overlays against live/mock data: text fitting, window sizing, default positions, row density, stale/waiting states, and status labels. Keep Relative as the quality baseline.
+4. Confirm the `Windows build/test` required check and tag-triggered package artifact path stay stable after merge.
+5. Identify remaining v1/legacy overlay slices and choose the next safe model-v2 migration target without pulling fuel/gap analysis products into the simple-overlay path prematurely.
+6. Keep collecting radar diagnostics for suppressed non-local focus, local progress-missing, side-without-placement, and multiclass cases before expanding beyond local in-car radar.
+7. Decide the Overlay Bridge v2 shape: enable/disable, port, allowed clients, schema version, connection health, and which normalized model-v2 snapshots should become the public client contract.
+8. Add a future streaming/broadcast group for Twitch/YouTube chat overlays, keeping chat ingestion, auth, moderation, rate limits, and offline preview states separate from iRacing telemetry.
+9. Treat overlay builder as a later creator/development platform on top of design-v2 primitives and the bridge schema, not as a prerequisite for the first hand-authored production overlays.
+10. Move actual application publishing into a release-platform branch with signed artifacts, versioning, installer/portable packaging, update-channel policy, tester diagnostics, and CI validation.
+11. Improve historical aggregation and confidence/source tracking as more user sessions are collected.
+12. Keep raw capture available for diagnostics, but avoid making it the normal user data path.
+13. Expand post-race strategy review/export beyond the first saved-analysis view; see `docs/post-race-strategy-analysis.md`.
+14. Start with update notification before self-update; see `docs/update-strategy.md`.
+15. When summary or other durable history shapes change, add ordered migrations or compatible readers to the historical data maintenance flow, update `HistorySchemaCompatibilityTests`, and keep car/track/session history higher priority than performance/logging data.
 
 ## Files Most Likely To Change Next
 

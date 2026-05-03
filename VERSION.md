@@ -32,6 +32,30 @@ Suggested squash body:
 
 Status: not tagged yet. Tag `v0.7.0` only after this branch is merged or otherwise declared as the release point.
 
+## Next Branch Target
+
+### v0.8.0 - Settings And Overlay Polish
+
+Planned branch name:
+
+```text
+v0.8-settings-and-overlay-polish
+```
+
+Planned scope:
+
+- Ensure every v0.7 overlay has correct settings tab representation, visibility controls, scale, session filters, shared font/units behavior, and any overlay-specific options.
+- Polish the simple telemetry overlays against live/mock data: text fitting, window sizing, default positions, row density, stale/waiting states, and status labels.
+- Keep Relative as the quality baseline for the rest of the simple overlay set.
+- Confirm the `Windows build/test` required check and tag-triggered package artifact path stay stable after merge.
+- Identify remaining v1/legacy overlay slices and choose the next safe model-v2 migration target without pulling fuel/gap analysis products into the simple-overlay path prematurely.
+
+Likely squash title:
+
+```text
+[v0.8.0] Polish settings, overlay controls, and CI release flow
+```
+
 ## Tagged Mainline Milestones
 
 ### v0.6.0 - Model V2 Groundwork, IBT Analysis, And Overlay Diagnostics
