@@ -29,6 +29,8 @@ internal static class FlagsOverlayViewModel
         new(0x00040000, "service"),
         new(0x00080000, "furled"),
         new(0x00100000, "repair"),
+        new(0x00200000, "scoring invalid"),
+        new(0x00400000, "unknown driver flag"),
         new(0x10000000, "start hidden"),
         new(0x20000000, "start ready"),
         new(0x40000000, "start set"),
@@ -136,12 +138,28 @@ internal static class FlagsOverlayViewModel
             return "disqualified";
         }
 
+        if (HasFlag(flags, 0x00200000) || HasFlag(flags, 0x00400000))
+        {
+            return "driver flag";
+        }
+
         if (HasFlag(flags, 0x00000010))
         {
             return "red flag";
         }
 
-        if (HasFlag(flags, 0x00008000) || HasFlag(flags, 0x00004000) || HasFlag(flags, 0x00000100) || HasFlag(flags, 0x00000008))
+        if (HasFlag(flags, 0x00080000))
+        {
+            return "black flag warning";
+        }
+
+        if (HasFlag(flags, 0x00008000)
+            || HasFlag(flags, 0x00004000)
+            || HasFlag(flags, 0x00002000)
+            || HasFlag(flags, 0x00000200)
+            || HasFlag(flags, 0x00000100)
+            || HasFlag(flags, 0x00000040)
+            || HasFlag(flags, 0x00000008))
         {
             return "yellow/caution";
         }
@@ -161,29 +179,52 @@ internal static class FlagsOverlayViewModel
             return "white flag";
         }
 
-        return HasFlag(flags, 0x00000004) ? "green" : null;
+        if (HasFlag(flags, 0x00001000) || HasFlag(flags, 0x00000800) || HasFlag(flags, 0x00000080))
+        {
+            return "race countdown";
+        }
+
+        return HasFlag(flags, 0x00000400) || HasFlag(flags, 0x00000004) || HasFlag(flags, unchecked((int)0x80000000))
+            ? "green"
+            : null;
     }
 
     private static SimpleTelemetryTone ToneFor(int? flags, int? sessionState)
     {
         if (flags is { } value)
         {
-            if (HasFlag(value, 0x00010000) || HasFlag(value, 0x00100000) || HasFlag(value, 0x00020000) || HasFlag(value, 0x00000010))
+            if (HasFlag(value, 0x00010000)
+                || HasFlag(value, 0x00100000)
+                || HasFlag(value, 0x00400000)
+                || HasFlag(value, 0x00200000)
+                || HasFlag(value, 0x00080000)
+                || HasFlag(value, 0x00020000)
+                || HasFlag(value, 0x00000010))
             {
                 return SimpleTelemetryTone.Error;
             }
 
-            if (HasFlag(value, 0x00008000) || HasFlag(value, 0x00004000) || HasFlag(value, 0x00000100) || HasFlag(value, 0x00000008))
+            if (HasFlag(value, 0x00008000)
+                || HasFlag(value, 0x00004000)
+                || HasFlag(value, 0x00002000)
+                || HasFlag(value, 0x00000200)
+                || HasFlag(value, 0x00000100)
+                || HasFlag(value, 0x00000040)
+                || HasFlag(value, 0x00000008))
             {
                 return SimpleTelemetryTone.Warning;
             }
 
-            if (HasFlag(value, 0x00000001))
+            if (HasFlag(value, 0x00001000)
+                || HasFlag(value, 0x00000800)
+                || HasFlag(value, 0x00000080)
+                || HasFlag(value, 0x00000002)
+                || HasFlag(value, 0x00000001))
             {
                 return SimpleTelemetryTone.Info;
             }
 
-            if (HasFlag(value, 0x00000004))
+            if (HasFlag(value, 0x00000400) || HasFlag(value, 0x00000004) || HasFlag(value, unchecked((int)0x80000000)))
             {
                 return SimpleTelemetryTone.Success;
             }

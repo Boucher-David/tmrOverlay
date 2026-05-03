@@ -9,31 +9,6 @@ TmrOverlay uses SemVer-style annotated Git tags for product milestones:
 
 ## Current Branch Target
 
-### v0.7.0 - Simple Model-V2 Overlays, Design-V2 Preview, And Release Hygiene
-
-Suggested squash title:
-
-```text
-[v0.7.0] Add simple model-v2 overlays, design-v2 previews, and release hygiene
-```
-
-Suggested squash body:
-
-```text
-- Add production model-v2 overlay paths for relative, flags, session/weather, pit-service, input/car-state, and local in-car radar.
-- Add shared simple telemetry overlay shell/view-model helpers for dense direct-telemetry windows.
-- Expand live model-v2 timing, spatial, sector, lap-delta, and diagnostics evidence for simple overlays and later analysis products.
-- Add design-v2 mock states for relative, standings, flags, sector comparison, blindspot, laptime delta, and stint laptime log.
-- Document future product branches including IBT-derived track-map generation, pit crew/engineer workflows, overlay bridge, streaming overlays, overlay builder, and publishing.
-- Add version-history metadata, branch-complete release hygiene validation, and shared .NET build version metadata.
-- Split CI into a stable Windows build/test merge gate and tag-triggered Windows release package artifact.
-- Fix session/weather nullable wet-flag handling and cover unknown wet telemetry with a focused test.
-```
-
-Status: not tagged yet. Tag `v0.7.0` only after this branch is merged or otherwise declared as the release point.
-
-## Next Branch Target
-
 ### v0.8.0 - Settings And Overlay Polish
 
 Planned branch name:
@@ -46,15 +21,98 @@ Planned scope:
 
 - Ensure every v0.7 overlay has correct settings tab representation, visibility controls, scale, session filters, shared font/units behavior, and any overlay-specific options.
 - Polish the simple telemetry overlays against live/mock data: text fitting, window sizing, default positions, row density, stale/waiting states, and status labels.
+- Bring the ignored mac harness up to parity for v0.8 review, including the simple telemetry overlays and a mac-only standings candidate before production standings is wired.
 - Keep Relative as the quality baseline for the rest of the simple overlay set.
+- Incorporate first-pass v0.8 review feedback: relative should grow from actual telemetry rows, gap settings should live-update graph selection, standings should preview pit-column behavior, and source/footer chrome should remain validation-oriented rather than default end-user overlay furniture.
+- Treat settings as the fixed-size app control surface: overlays default hidden, internal/deferred product surfaces are removed from normal user tabs, Support owns diagnostic capture, and most product overlays expose opacity where that control makes sense.
+- Rework Flags as a primary-screen border overlay with user-selected categories, telemetry-driven display lifetime, in-session runtime gating, and a 4:3 height-based default for ultrawide monitors.
 - Confirm the `Windows build/test` required check and tag-triggered package artifact path stay stable after merge.
 - Identify remaining v1/legacy overlay slices and choose the next safe model-v2 migration target without pulling fuel/gap analysis products into the simple-overlay path prematurely.
+- Capture the model-v2 telemetry follow-up assumptions for mid-session joins and Max Cars-limited car coverage so standings, relative, and analysis overlays can distinguish full roster context from currently transmitted live car rows.
+- Establish a repo asset home for source brand/logo images that future publishing and overlay-branding work can derive platform-specific resources from.
 
 Likely squash title:
 
 ```text
-[v0.8.0] Polish settings, overlay controls, and CI release flow
+[v0.8.0] Polish settings, overlay controls, and mac review parity
 ```
+
+Likely squash body:
+
+```text
+- Reworked Settings into a fixed-size app control surface with driving overlays hidden by default, ordered user-facing tabs, Support-owned diagnostic capture, and internal/deferred product surfaces removed from the normal tab list.
+- Added per-overlay opacity controls where useful, while keeping Flags and Radar exempt, and kept Gap To Leader race-only in settings/runtime policy.
+- Polished Relative, Flags, Input/Car State, and Gap behavior: compact actual relative rows, vertical class marker, screen-border flag display that follows active telemetry flags, graphical pedal traces/wheel input, and live-updating gap context.
+- Added TMR brand assets plus Windows tray/settings icon loading from the checked-in source logo.
+- Brought the ignored mac harness to v0.8 review parity, including matching settings options, telemetry-driven flag display, overlay defaults, regenerated screenshots, and validation updates.
+- Bumped settings migration to prune obsolete flag timer options now that flag display lifetime is driven by telemetry.
+- Updated branch-complete hygiene so docs, screenshots, stale-reference sweeps, version text, and release metadata are treated as final branch-readiness artifacts.
+- Validation: swift build, mac screenshot generation, screenshot validator, C# compile-shape scanner, whitespace/conflict checks. Windows dotnet build/test still must run in CI or on Windows.
+```
+
+## Next Branch Target
+
+### v0.9.0 - Production Publishing And Updates
+
+Planned branch name:
+
+```text
+v0.9-production-publishing
+```
+
+Planned scope:
+
+- Replace manual teammate build sharing with a repeatable GitHub release/package flow for tester builds.
+- Produce clearly versioned Windows `win-x64` artifacts from CI using Release build/test, `dotnet publish`, artifact zipping, SHA-256 checksum generation, release notes, and durable build metadata.
+- Promote tag-triggered package artifacts into a GitHub Release instead of leaving them only as workflow artifacts.
+- Derive Windows executable/tray icon assets from the checked-in brand source image instead of wiring the wide source PNG directly into the app.
+- Decide the first install/update channel:
+  - v0.9 minimum: portable self-contained zip with checksum, release notes, diagnostics version metadata, and manual install/upgrade instructions.
+  - preferred installer/update candidate: Velopack, producing a setup executable, portable package, release feed, and later in-app update checks against GitHub Releases or static hosting.
+  - Microsoft-native candidate: MSIX plus App Installer, but only after signing/package identity constraints are accepted.
+- Add code-signing decision and CI secret plan. Unsigned zip builds are acceptable for private tester proofing, but a broadly publishable installer/package needs signed artifacts to reduce Windows trust friction.
+- Add a passive update discovery surface: tray/settings version display, manual `Check for updates`, latest release/manifest lookup, release notes link, and diagnostics bundle fields for current version/update-check state. No modal prompts during active sessions.
+- Keep diagnostics bundle and version reporting aligned with shared tester builds so feedback can be traced to an exact release.
+
+Technical implementation checklist:
+
+1. Harden `.github/workflows/windows-dotnet.yml` into two product flows: PR/main build-test gate and tag/manual release packaging.
+2. On release tags, run restore/build/test, publish `src/TmrOverlay.App` for `win-x64` as self-contained single-file output, zip the publish folder, generate a checksum file, and upload both as artifacts.
+3. Add release creation/upload so `v*.*.*` tags produce a GitHub Release containing the zip, checksum, and notes derived from `VERSION.md` or a generated changelog.
+4. Add app metadata polish: generated `.ico` from `assets/brand/TMRLogo.png`, Windows executable icon metadata, `AssemblyVersion/FileVersion/InformationalVersion`, and diagnostics output showing exact version/commit.
+5. Add tester install docs: where to unzip/install, upgrade expectations, settings/history compatibility, SmartScreen/signing expectations, rollback instructions, and how to attach diagnostics.
+6. Prototype signing: start with documented unsigned/private tester builds, then evaluate Azure Artifact Signing or an OV code-signing certificate for executable/MSIX signing before broader release.
+7. Decide packaging path after the first portable release: Velopack for installer plus update feed, or MSIX/App Installer for Windows-native package identity and update policy.
+8. Add passive update checking only after releases exist: latest GitHub Release or static manifest lookup, semantic version comparison, tray/settings notification, download/release-notes command, and diagnostics logging.
+
+Likely squash title:
+
+```text
+[v0.9.0] Add production publishing and teammate update flow
+```
+
+## Merged Mainline Milestones
+
+### v0.7.0 - Simple Model-V2 Overlays, Design-V2 Preview, And Release Hygiene
+
+Commit: `79fbec7`
+
+Squash title:
+
+```text
+[v0.7.0] Add simple model-v2 overlays, design-v2 previews, and release hygiene
+```
+
+Summary:
+
+- Added production model-v2 overlay paths for relative, flags, session/weather, pit-service, input/car-state, and local in-car radar.
+- Added shared simple telemetry overlay shell/view-model helpers for dense direct-telemetry windows.
+- Expanded live model-v2 timing, spatial, sector, lap-delta, and diagnostics evidence for simple overlays and later analysis products.
+- Added design-v2 mock states for relative, standings, flags, sector comparison, blindspot, laptime delta, and stint laptime log.
+- Documented future product branches including IBT-derived track-map generation, pit crew/engineer workflows, overlay bridge, streaming overlays, overlay builder, and publishing.
+- Added version-history metadata, branch-complete release hygiene validation, and shared .NET build version metadata.
+- Split CI into a stable Windows build/test merge gate and tag-triggered Windows release package artifact.
+- Fixed session/weather nullable wet-flag handling and covered unknown wet telemetry with a focused test.
 
 ## Tagged Mainline Milestones
 

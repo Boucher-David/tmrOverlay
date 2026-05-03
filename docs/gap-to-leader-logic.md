@@ -148,6 +148,7 @@ Additional desired cars:
 
 - Nearest same-class cars ahead of the focused car, up to the `GapCarsAhead` setting.
 - Nearest same-class cars behind the focused car, up to the `GapCarsBehind` setting.
+- When either setting changes, the currently recorded render states are re-targeted immediately so the graph updates without waiting for a new sample.
 
 Ahead/behind is based on delta seconds to the focused car:
 

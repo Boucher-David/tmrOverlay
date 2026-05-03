@@ -16,13 +16,10 @@ Use this repo-local skill when the task is about continuing or extending `tmrOve
 3. If the task is about fuel, strategy, stint logic, or telemetry interpretation, read `references/fuel-overlay-context.md`.
 4. If the task is about overlay features, layout, UI direction, or screenshot review, read `references/overlay-research.md`.
 5. Inspect git status before editing because this repo may accumulate ongoing local changes.
-6. For overlay/settings changes, regenerate mac-harness screenshots and run `python3 tools/validate_overlay_screenshots.py`; still do visual review for text overlap and scenario correctness.
-7. Treat fixtures as contracts: assert visible data, assert absent data, and isolate waiting/unavailable/error states from local user history or cached telemetry unless the scenario explicitly tests those paths.
-8. After code changes, run a stale-reference sweep before final validation. Search docs, mocks, tests, the ignored mac harness, and repo skills for old behavior names/descriptions/API call patterns that no longer match the implementation, then patch those references in the same pass.
-9. When implementation behavior, calculations, defaults, source labels, fixture data, or validation semantics change, update the affected build test assertions and test fixtures in the same pass. Treat stale passing or failing assertions as stale references, not as a separate cleanup task.
-10. If overlay behavior or analysis logic changes, update the matching English logic note under `docs/overlay-logic.md` so future design review can happen from readable rules.
-11. Before branch-complete handoff, use `skills/tmr-overlay-validation/SKILL.md` to inspect branch commits, sanitize the first commit or planned squash text, update `VERSION.md`, align build version metadata, and tag only the release point.
-12. If you change product direction, validation assumptions, capture format, or analysis assumptions, update the relevant reference/docs file so future sessions inherit the new context.
+6. Treat fixtures as contracts: assert visible data, assert absent data, and isolate waiting/unavailable/error states from local user history or cached telemetry unless the scenario explicitly tests those paths.
+7. When implementation behavior, calculations, defaults, source labels, fixture data, or validation semantics change, update the affected build test assertions and test fixtures in the same pass. Treat stale passing or failing assertions as stale references, not as a separate cleanup task.
+8. Before branch-complete handoff, use `skills/tmr-overlay-validation/SKILL.md` to make docs/screenshots current, inspect branch commits, sanitize the first commit or planned squash text, update `VERSION.md`, align build version metadata, and tag only the release point.
+9. If you change product direction, validation assumptions, capture format, or analysis assumptions, make sure the relevant reference/docs file is updated during the branch-complete sweep so future sessions inherit the new context. Raw capture format changes still need same-pass docs per `AGENTS.md`.
 
 ## Primary Files
 

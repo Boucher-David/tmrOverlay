@@ -13,7 +13,8 @@ internal sealed class ApplicationSettings
         int defaultWidth,
         int defaultHeight,
         int defaultX = 24,
-        int defaultY = 24)
+        int defaultY = 24,
+        bool defaultEnabled = false)
     {
         var existing = Overlays.FirstOrDefault(overlay => string.Equals(overlay.Id, id, StringComparison.OrdinalIgnoreCase));
         if (existing is not null)
@@ -24,6 +25,7 @@ internal sealed class ApplicationSettings
         var overlay = new OverlaySettings
         {
             Id = id,
+            Enabled = defaultEnabled,
             X = defaultX,
             Y = defaultY,
             Width = defaultWidth,

@@ -7,7 +7,7 @@ internal sealed class OverlaySettings
 {
     public required string Id { get; init; }
 
-    public bool Enabled { get; set; } = true;
+    public bool Enabled { get; set; }
 
     public double Scale { get; set; } = 1d;
 

@@ -15,6 +15,7 @@ internal sealed class RelativeForm : PersistentOverlayForm
 {
     private const int MaximumRows = 17;
     private const int NormalMinimumTableHeight = 180;
+    private const int CompactRowHeight = 26;
     private const int RefreshIntervalMilliseconds = 250;
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly ILogger<RelativeForm> _logger;
@@ -25,7 +26,7 @@ internal sealed class RelativeForm : PersistentOverlayForm
     private readonly Label _statusLabel;
     private readonly TableLayoutPanel _table;
     private readonly Label _sourceLabel;
-    private readonly Label[] _positionLabels = new Label[MaximumRows];
+    private readonly ClassPositionLabel[] _positionLabels = new ClassPositionLabel[MaximumRows];
     private readonly Label[] _driverLabels = new Label[MaximumRows];
     private readonly Label[] _gapLabels = new Label[MaximumRows];
     private readonly Label[] _detailLabels = new Label[MaximumRows];
@@ -107,7 +108,7 @@ internal sealed class RelativeForm : PersistentOverlayForm
         for (var row = 0; row < MaximumRows; row++)
         {
             _table.RowStyles.Add(new RowStyle(SizeType.Percent, 100f / MaximumRows));
-            _positionLabels[row] = CreateCellLabel(_fontFamily, "--", alignRight: false, bold: true);
+            _positionLabels[row] = CreatePositionCellLabel(_fontFamily, "--");
             _driverLabels[row] = CreateCellLabel(_fontFamily, string.Empty);
             _gapLabels[row] = CreateCellLabel(_fontFamily, "--", alignRight: true, monospace: true);
             _detailLabels[row] = CreateCellLabel(_fontFamily, string.Empty, alignRight: true);
@@ -136,6 +137,7 @@ internal sealed class RelativeForm : PersistentOverlayForm
         RegisterDragSurfaces(_titleLabel, _statusLabel, _table, _sourceLabel);
         RegisterDragSurfaces(
             _positionLabels
+                .Cast<Label>()
                 .Concat(_driverLabels)
                 .Concat(_gapLabels)
                 .Concat(_detailLabels)
@@ -260,7 +262,7 @@ internal sealed class RelativeForm : PersistentOverlayForm
                 uiChanged |= SetTextIfChanged(_statusLabel, viewModel.Status);
                 uiChanged |= SetTextIfChanged(_sourceLabel, viewModel.Source);
                 uiChanged |= ApplyStatusColor(viewModel);
-                uiChanged |= ApplyRows(viewModel, carsAhead, carsBehind);
+                uiChanged |= ApplyRows(viewModel);
                 applySucceeded = true;
             }
             finally
@@ -302,24 +304,23 @@ internal sealed class RelativeForm : PersistentOverlayForm
         }
     }
 
-    private bool ApplyRows(RelativeOverlayViewModel viewModel, int carsAhead, int carsBehind)
+    private bool ApplyRows(RelativeOverlayViewModel viewModel)
     {
         var started = Stopwatch.GetTimestamp();
         var succeeded = false;
         try
         {
             var rows = viewModel.Rows;
-            var visibleRows = Math.Clamp(Math.Max(1, carsAhead + carsBehind + 1), 1, MaximumRows);
-            if (rows.Count > visibleRows)
-            {
-                visibleRows = Math.Min(rows.Count, MaximumRows);
-            }
+            var visibleRows = rows.Count == 0
+                ? 1
+                : Math.Clamp(rows.Count, 1, MaximumRows);
 
             var changed = false;
             _table.SuspendLayout();
             try
             {
                 changed |= UpdateVisibleRows(visibleRows);
+                changed |= UpdateTableHeight(visibleRows);
                 for (var index = 0; index < MaximumRows; index++)
                 {
                     if (index < rows.Count)
@@ -380,9 +381,11 @@ internal sealed class RelativeForm : PersistentOverlayForm
                 : row.IsAhead
                     ? OverlayTheme.Colors.InfoText
                     : OverlayTheme.Colors.SuccessText;
+        var classColor = TryParseColor(row.ClassColorHex);
+        changed |= _positionLabels[index].SetClassColor(classColor);
         var detailColor = row.IsPit
             ? OverlayTheme.Colors.WarningText
-            : TryParseColor(row.ClassColorHex) ?? (row.IsSameClass ? OverlayTheme.Colors.TextSubtle : OverlayTheme.Colors.InfoText);
+            : classColor ?? (row.IsSameClass ? OverlayTheme.Colors.TextSubtle : OverlayTheme.Colors.InfoText);
 
         changed |= ApplyCellColors(index, backColor, textColor, gapColor, detailColor);
         return changed;
@@ -399,6 +402,7 @@ internal sealed class RelativeForm : PersistentOverlayForm
         changed |= SetTextIfChanged(_driverLabels[index], placeholder);
         changed |= SetTextIfChanged(_gapLabels[index], string.Empty);
         changed |= SetTextIfChanged(_detailLabels[index], string.Empty);
+        changed |= _positionLabels[index].SetClassColor(null);
         changed |= ApplyCellColors(
             index,
             OverlayTheme.Colors.PanelBackground,
@@ -418,8 +422,8 @@ internal sealed class RelativeForm : PersistentOverlayForm
         var changed = false;
         for (var row = 0; row < _table.RowStyles.Count; row++)
         {
-            var sizeType = row < visibleRows ? SizeType.Percent : SizeType.Absolute;
-            var height = row < visibleRows ? 100f / visibleRows : 0f;
+            var sizeType = SizeType.Absolute;
+            var height = row < visibleRows ? CompactRowHeight : 0f;
             if (_table.RowStyles[row].SizeType != sizeType)
             {
                 _table.RowStyles[row].SizeType = sizeType;
@@ -435,6 +439,19 @@ internal sealed class RelativeForm : PersistentOverlayForm
 
         _lastVisibleRows = visibleRows;
         return changed;
+    }
+
+    private bool UpdateTableHeight(int visibleRows)
+    {
+        var maximumHeight = Math.Max(CompactRowHeight, ClientSize.Height - 76);
+        var desiredHeight = Math.Min(maximumHeight, Math.Max(CompactRowHeight, visibleRows * CompactRowHeight + 2));
+        if (_table.Height == desiredHeight)
+        {
+            return false;
+        }
+
+        _table.Height = desiredHeight;
+        return true;
     }
 
     private bool ApplyStatusColor(RelativeOverlayViewModel viewModel)
@@ -512,6 +529,22 @@ internal sealed class RelativeForm : PersistentOverlayForm
         };
     }
 
+    private static ClassPositionLabel CreatePositionCellLabel(string fontFamily, string text)
+    {
+        return new ClassPositionLabel
+        {
+            AutoSize = false,
+            BackColor = OverlayTheme.Colors.PanelBackground,
+            Dock = DockStyle.Fill,
+            Font = OverlayTheme.Font(fontFamily, 9.2f, FontStyle.Bold),
+            ForeColor = OverlayTheme.Colors.TextPrimary,
+            Margin = Padding.Empty,
+            Padding = new Padding(28, 0, 4, 0),
+            Text = text,
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+    }
+
     private static bool SetTextIfChanged(Label label, string? value)
     {
         var text = value ?? string.Empty;
@@ -569,5 +602,46 @@ internal sealed class RelativeForm : PersistentOverlayForm
             && int.TryParse(value, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var rgb)
             ? Color.FromArgb((rgb >> 16) & 0xff, (rgb >> 8) & 0xff, rgb & 0xff)
             : null;
+    }
+
+    private sealed class ClassPositionLabel : Label
+    {
+        private Color? _classColor;
+
+        public bool SetClassColor(Color? color)
+        {
+            if (ColorEquals(_classColor, color))
+            {
+                return false;
+            }
+
+            _classColor = color;
+            Invalidate();
+            return true;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            if (_classColor is not { } color || Width <= 18 || Height <= 6)
+            {
+                return;
+            }
+
+            using var brush = new SolidBrush(color);
+            var barHeight = Math.Max(10, Height - 10);
+            var y = Math.Max(4, (Height - barHeight) / 2);
+            e.Graphics.FillRectangle(brush, 8, y, 3, barHeight);
+        }
+
+        private static bool ColorEquals(Color? left, Color? right)
+        {
+            if (left.HasValue != right.HasValue)
+            {
+                return false;
+            }
+
+            return !left.HasValue || left.Value.ToArgb() == right.GetValueOrDefault().ToArgb();
+        }
     }
 }

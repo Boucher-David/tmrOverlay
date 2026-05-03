@@ -42,6 +42,7 @@ Current long-capture findings reflected in the v2 contract:
 - `FuelUsePerHour` is diagnostic until smoothed or confirmed by rolling fuel-level deltas.
 - `CarLeftRight` side occupancy is separate from decoded nearby-car placement.
 - Leader gaps with missing leader F2 timing are partial evidence, not reliable zero-based gaps.
+- Raw session flags need semantic normalization before more overlays consume them: background bits such as `serviceable` and `start hidden` should not become user-facing alerts by themselves, while global `SessionFlags` and per-car `CarIdxSessionFlags` should be preserved separately so blue/debris/yellow and driver-specific black/repair/furled states can be displayed in the right scope.
 - IBT can enrich local-car post-race trajectory and vehicle dynamics, but raw/live capture remains the source for opponent timing, radar side state, focus, and class-gap context.
 
 The 24-hour live-overlay review adds product semantics on top of those source findings: race-gap graphs should not pretend practice/qualifying/test timing is the same thing as race-position gap; the first radar path should stay local in-car while focus/multiclass cases collect evidence for a later advanced branch; and endurance fuel strategy needs team-stint evidence rather than stitched local scalar fuel.

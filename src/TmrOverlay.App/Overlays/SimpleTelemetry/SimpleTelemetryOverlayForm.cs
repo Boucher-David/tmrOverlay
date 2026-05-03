@@ -20,6 +20,7 @@ internal sealed class SimpleTelemetryOverlayForm : PersistentOverlayForm
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly ILogger<SimpleTelemetryOverlayForm> _logger;
     private readonly AppPerformanceState _performanceState;
+    private readonly OverlaySettings _settings;
     private readonly string _fontFamily;
     private readonly string _unitSystem;
     private readonly SimpleTelemetryOverlayMetrics _metrics;
@@ -54,6 +55,7 @@ internal sealed class SimpleTelemetryOverlayForm : PersistentOverlayForm
         _liveTelemetrySource = liveTelemetrySource;
         _logger = logger;
         _performanceState = performanceState;
+        _settings = settings;
         _fontFamily = fontFamily;
         _unitSystem = unitSystem;
         _metrics = metrics;
@@ -119,6 +121,7 @@ internal sealed class SimpleTelemetryOverlayForm : PersistentOverlayForm
         Controls.Add(_statusLabel);
         Controls.Add(_table);
         Controls.Add(_sourceLabel);
+        ApplySourceFooterLayout();
 
         RegisterDragSurfaces(_titleLabel, _statusLabel, _table, _sourceLabel);
         RegisterDragSurfaces(_labelCells.Concat(_valueCells).ToArray());
@@ -143,13 +146,31 @@ internal sealed class SimpleTelemetryOverlayForm : PersistentOverlayForm
 
         _statusLabel.Location = new Point(204, 11);
         _statusLabel.Size = new Size(Math.Max(100, ClientSize.Width - 218), 22);
-        _table.Location = new Point(14, 42);
-        _table.Size = new Size(
-            Math.Max(240, ClientSize.Width - 28),
-            Math.Max(MinimumTableHeight, ClientSize.Height - 76));
-        _sourceLabel.Location = new Point(14, ClientSize.Height - 28);
-        _sourceLabel.Size = new Size(Math.Max(240, ClientSize.Width - 28), 18);
+        ApplySourceFooterLayout();
     }
+
+    private bool ApplySourceFooterLayout()
+    {
+        if (_table is null || _sourceLabel is null)
+        {
+            return false;
+        }
+
+        var showSourceFooter = ShowSourceFooter;
+        var changed = SetVisibleIfChanged(_sourceLabel, showSourceFooter);
+        _table.Location = new Point(14, 42);
+        changed |= SetSizeIfChanged(
+            _table,
+            new Size(
+                Math.Max(240, ClientSize.Width - 28),
+                Math.Max(MinimumTableHeight, ClientSize.Height - (showSourceFooter ? 76 : 56))));
+        _sourceLabel.Location = new Point(14, ClientSize.Height - 28);
+        changed |= SetSizeIfChanged(_sourceLabel, new Size(Math.Max(240, ClientSize.Width - 28), 18));
+        return changed;
+    }
+
+    private bool ShowSourceFooter =>
+        _overlayError is not null;
 
     protected override void Dispose(bool disposing)
     {
@@ -230,6 +251,7 @@ internal sealed class SimpleTelemetryOverlayForm : PersistentOverlayForm
                 uiChanged |= SetTextIfChanged(_titleLabel, viewModel.Title);
                 uiChanged |= SetTextIfChanged(_statusLabel, viewModel.Status);
                 uiChanged |= SetTextIfChanged(_sourceLabel, viewModel.Source);
+                uiChanged |= ApplySourceFooterLayout();
                 uiChanged |= ApplyTone(viewModel.Tone);
                 uiChanged |= ApplyRows(viewModel);
                 applySucceeded = true;
@@ -259,6 +281,7 @@ internal sealed class SimpleTelemetryOverlayForm : PersistentOverlayForm
             ReportOverlayError(exception, "refresh");
             SetTextIfChanged(_statusLabel, $"{_definition.DisplayName.ToLowerInvariant()} error");
             SetTextIfChanged(_sourceLabel, _overlayError);
+            ApplySourceFooterLayout();
             ApplyTone(SimpleTelemetryTone.Error);
             Invalidate();
         }
@@ -484,6 +507,17 @@ internal sealed class SimpleTelemetryOverlayForm : PersistentOverlayForm
         }
 
         control.Visible = visible;
+        return true;
+    }
+
+    private static bool SetSizeIfChanged(Control control, Size size)
+    {
+        if (control.Size == size)
+        {
+            return false;
+        }
+
+        control.Size = size;
         return true;
     }
 

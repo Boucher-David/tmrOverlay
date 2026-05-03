@@ -15,6 +15,21 @@ The current Windows tester build is a self-contained `win-x64` publish folder th
 
 Use two phases.
 
+### v0.9 Publishing Baseline
+
+The v0.9 branch should make the app publishable for teammates even before automatic install/update is solved:
+
+1. Keep the PR/main Windows build-test workflow as the merge gate.
+2. On `v*.*.*` tags or manual release dispatch, run Release restore/build/test, then publish `src/TmrOverlay.App` for `win-x64` as a self-contained single-file output.
+3. Zip the publish folder, generate a SHA-256 checksum file, and upload both as workflow artifacts.
+4. Promote the zip/checksum into a GitHub Release with versioned release notes, rather than requiring teammates to download from a workflow run.
+5. Embed release metadata in the app: product version, informational version/commit, executable/tray icon, and diagnostics bundle fields that identify the exact build.
+6. Document portable install/upgrade behavior: unzip location, replacing old files, settings/history compatibility, rollback, SmartScreen/signing expectations, and how to send diagnostics.
+7. Decide signing before broad distribution. Private tester zip builds can remain unsigned temporarily, but a publishable installer/package should sign the executable or package.
+8. Defer active self-update until a durable installer/update channel exists; add passive update discovery first.
+
+This keeps v0.9 focused on a reliable release artifact and teammate feedback loop. Installer frameworks and automatic updates can then build on top of a known-good release feed.
+
 ### Phase 1: Update Notification Only
 
 Add an `UpdateCheckService` that checks a static HTTPS manifest or the latest GitHub Release at startup and then no more than once per day.
@@ -74,7 +89,7 @@ This should be treated as temporary infrastructure. It is easy to get wrong arou
 
 - Tray menu: `Update available...` when a newer version exists.
 - Settings window: an Updates section or tab with current version, latest version, last checked time, release notes link, and download/install button.
-- Error Logging tab diagnostics: include update check state, last failure, selected channel, and current app version.
+- Support tab diagnostics: include update check state, last failure, selected channel, and current app version.
 - Never put an update prompt above the sim during an active session.
 
 ## Release Requirements

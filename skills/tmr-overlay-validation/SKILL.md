@@ -21,6 +21,15 @@ rg -n "^(<<<<<<<|>>>>>>>|=======)$" --glob '!captures/**' --glob '!captures-late
 
 Run this section when a branch is being declared complete, prepared for merge, or promoted to a product milestone.
 
+Make branch-readiness artifacts current before writing the final squash text:
+
+- Run a stale-reference sweep across docs, mocks, tests, the ignored mac harness, repo skills, and release notes for old behavior names, settings tabs, option labels, source labels, screenshot assumptions, and API call patterns that no longer match the branch implementation.
+- Patch affected behavior docs as part of this branch-complete pass. Overlay behavior changes should update `docs/overlay-logic.md` and the matching overlay-specific logic note. App/settings/platform changes should update README/current-state docs when the product shape changed. Product direction, validation assumptions, analysis assumptions, live-model contract notes, and future-branch notes should land here unless the change is a durable raw-capture/schema change that requires same-pass docs.
+- If changing Windows build/release commands, make `README.md`, release-command docs, CI docs, and any in-app command references agree during this branch-complete pass.
+- For overlay or settings UI changes, regenerate the deterministic mac-harness screenshots under `mocks/`, keep the contact sheet plus per-state PNGs current, and run `python3 tools/validate_overlay_screenshots.py`.
+- Treat screenshot changes as validation artifacts. If screenshots cannot be regenerated on the current machine, say so explicitly and do not describe the branch as fully ready without that gap.
+- Re-run `git diff --name-status "$(git merge-base main HEAD)"..HEAD` after docs and screenshots are current so `VERSION.md` and the final handoff text describe the actual final branch contents.
+
 Inspect the branch shape and the text that GitHub is likely to expose in a PR squash:
 
 ```bash
@@ -140,9 +149,7 @@ This live smoke test is the best check that one instance of each current overlay
 ## Change-Specific Checks
 
 - Keep public snapshot member names stable unless the requested change intentionally updates the contract.
-- If changing shared live models or normalized snapshot contracts, keep existing overlay-specific members additive/stable, add focused builder tests, update `docs/live-model-groundwork.md` when present, and do not change durable history/raw-capture schemas unless explicitly required.
-- If changing Windows build/release commands, keep `src/TmrOverlay.App/Overlays/SettingsPanel/SettingsOverlayForm.cs`, `README.md`, and `docs/windows-dotnet-commands.md` aligned when those files exist. Copied release package commands should either create their required artifact directories themselves or state a clear precondition before `Compress-Archive`.
+- If changing shared live models or normalized snapshot contracts, keep existing overlay-specific members additive/stable, add focused builder tests, and do not change durable history/raw-capture schemas unless explicitly required.
 - If changing raw capture format, verify `docs/capture-format.md`, `telemetry.md`, and `README.md` were updated in the same pass.
 - If changing IBT capture or analysis behavior, verify `docs/ibt-analysis.md` when present, `docs/capture-format.md`, `telemetry.md`, and `README.md` stay aligned. IBT analysis must remain a compact sidecar: no source `.ibt` copy by default, bounded candidate scanning, file-size and stability checks, timeout/sample limits, and skipped/failed status files instead of failures in compact history, post-race analysis, or capture synthesis.
-- If materially changing overlays, update or call out missing review images under `mocks/<overlay-id>/`.
 - If changing shared contracts, reusable overlay behavior, or app boilerplate, inspect whether both the Windows app and ignored mac harness need matching changes.

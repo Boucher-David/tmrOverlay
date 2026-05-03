@@ -5,7 +5,7 @@ TmrOverlay can request iRacing's own binary telemetry logging and then analyze t
 ## Runtime Behavior
 
 - `IbtAnalysis:TelemetryLoggingEnabled` defaults to `true`.
-- IBT logging follows the same switch as raw capture. The startup raw-capture flag or the Collector Status `Capture` button starts a raw segment and sends iRacing's telemetry start command; stopping or finalizing that raw segment sends the telemetry stop command.
+- IBT logging follows the same switch as raw capture. The startup raw-capture flag or the Support tab's diagnostic telemetry capture control starts a raw segment and sends iRacing's telemetry start command; stopping or finalizing that raw segment sends the telemetry stop command.
 - `IbtAnalysis:Enabled` defaults to `true`.
 - After raw capture finalization, the app writes `capture-synthesis.json` immediately with its own timeout, then waits up to `IbtAnalysis:MaxIRacingExitWaitSeconds` for iRacing to stop writing telemetry before looking for the best matching `.ibt` under the configured telemetry root.
 - The app writes compact JSON sidecars under the raw capture directory in `ibt-analysis/`.

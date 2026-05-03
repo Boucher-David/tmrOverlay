@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Drawing;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using TmrOverlay.App.Brand;
 using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.Overlays;
@@ -84,7 +85,7 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
         _notifyIcon = new NotifyIcon
         {
             ContextMenuStrip = contextMenu,
-            Icon = SystemIcons.Application,
+            Icon = TmrBrandAssets.LoadIcon(),
             Text = "TmrOverlay",
             Visible = true
         };

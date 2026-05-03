@@ -23,5 +23,6 @@ internal static class GapToLeaderOverlayDefinition
                 0,
                 12,
                 defaultValue: 5)
-        ]);
+        ],
+        ShowSessionFilters: false);
 }

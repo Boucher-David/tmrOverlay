@@ -15,5 +15,6 @@ internal static class CarRadarOverlayDefinition
                 OverlayOptionKeys.RadarMulticlassWarning,
                 "Show multiclass warning",
                 defaultValue: true)
-        ]);
+        ],
+        ShowOpacityControl: false);
 }
