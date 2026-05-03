@@ -2,9 +2,9 @@ import AppKit
 import Foundation
 
 private enum Theme {
-    static let background = NSColor(red255: 10, green: 13, blue: 16)
-    static let panel = NSColor(red255: 18, green: 23, blue: 27, alpha: 0.98)
-    static let panelAlt = NSColor(red255: 24, green: 30, blue: 34, alpha: 0.98)
+    static let background = NSColor(red255: 12, green: 15, blue: 18)
+    static let panel = NSColor(red255: 19, green: 24, blue: 28, alpha: 1)
+    static let panelAlt = NSColor(red255: 24, green: 30, blue: 34, alpha: 1)
     static let panelRaised = NSColor(red255: 30, green: 38, blue: 44, alpha: 0.98)
     static let border = NSColor(white: 1.0, alpha: 0.22)
     static let borderStrong = NSColor(white: 1.0, alpha: 0.34)
@@ -167,30 +167,29 @@ private let canvasSize = CGSize(width: 1600, height: 1000)
 
 private func renderTutorial(_ c: Canvas) {
     c.fill(CGRect(origin: .zero, size: c.size), Theme.background)
-    drawGrid(c)
     drawHeader(c)
 
     let cards = [
         StepCard(
             number: "1",
-            title: "Download the release",
-            subtitle: "Use the latest GitHub Release for the teammate build.",
+            title: "Download",
+            subtitle: "Use the latest GitHub Release.",
             bullets: [
-                "Open Releases and pick the latest vX.Y.Z release.",
+                "Open the latest vX.Y.Z release.",
                 "Download TmrOverlay-vX.Y.Z-win-x64.zip.",
-                "Optional: download the matching .sha256 file."
+                "Optional: download the matching .sha256."
             ],
             accent: Theme.accent,
             renderPreview: drawReleasePreview
         ),
         StepCard(
             number: "2",
-            title: "Extract and run",
-            subtitle: "Do not run the app from inside the zip.",
+            title: "Install",
+            subtitle: "Extract the zip before running.",
             bullets: [
-                "Unzip to a normal user-writable folder.",
+                "Unzip to a user-writable folder.",
                 "Suggested: %LOCALAPPDATA%\\Programs\\TmrOverlay.",
-                "Run TmrOverlay.App.exe from the extracted folder."
+                "Run TmrOverlay.App.exe."
             ],
             accent: Theme.success,
             renderPreview: drawFolderPreview
@@ -198,11 +197,11 @@ private func renderTutorial(_ c: Canvas) {
         StepCard(
             number: "3",
             title: "First launch",
-            subtitle: "Private tester packages are currently unsigned.",
+            subtitle: "Private tester builds are unsigned.",
             bullets: [
                 "Windows may show a SmartScreen warning.",
-                "Use More info > Run anyway if you trust the build.",
-                "Live telemetry appears only while iRacing is connected."
+                "Use More info > Run anyway.",
+                "Overlays update after iRacing connects."
             ],
             accent: Theme.warning,
             renderPreview: drawSmartScreenPreview
@@ -212,12 +211,12 @@ private func renderTutorial(_ c: Canvas) {
     let cardWidth: CGFloat = 486
     let topY: CGFloat = 142
     for (index, card) in cards.enumerated() {
-        let rect = c.topRect(x: 42 + CGFloat(index) * (cardWidth + 28), y: topY, width: cardWidth, height: 270)
+        let rect = c.topRect(x: 42 + CGFloat(index) * (cardWidth + 28), y: topY, width: cardWidth, height: 238)
         drawStepCard(c, rect: rect, card: card)
     }
 
-    drawAppPreview(c, rect: c.topRect(x: 42, y: 444, width: 726, height: 392))
-    drawSupportPreview(c, rect: c.topRect(x: 804, y: 444, width: 754, height: 392))
+    drawAppPreview(c, rect: c.topRect(x: 42, y: 414, width: 726, height: 422))
+    drawSupportPreview(c, rect: c.topRect(x: 804, y: 414, width: 754, height: 422))
     drawFooter(c)
 }
 
@@ -261,19 +260,16 @@ private func drawHeader(_ c: Canvas) {
 private func drawStepCard(_ c: Canvas, rect: CGRect, card: StepCard) {
     c.fill(rect, Theme.panel, radius: 8)
     c.stroke(rect, Theme.border, width: 1, radius: 8)
-    c.fill(CGRect(x: rect.minX, y: rect.maxY - 6, width: rect.width, height: 6), card.accent, radius: 8)
-    c.badge(card.number, CGRect(x: rect.minX + 20, y: rect.maxY - 58, width: 38, height: 38), color: card.accent)
-    c.text(card.title, CGRect(x: rect.minX + 72, y: rect.maxY - 51, width: rect.width - 92, height: 24), size: 18, weight: .bold)
-    c.text(card.subtitle, CGRect(x: rect.minX + 22, y: rect.maxY - 82, width: rect.width - 44, height: 20), size: 12.5, color: Theme.muted)
-
-    let preview = CGRect(x: rect.minX + 22, y: rect.minY + 22, width: 188, height: 132)
-    card.renderPreview(c, preview)
+    c.fill(CGRect(x: rect.minX, y: rect.maxY - 5, width: rect.width, height: 5), card.accent, radius: 8)
+    c.badge(card.number, CGRect(x: rect.minX + 22, y: rect.maxY - 62, width: 42, height: 42), color: card.accent)
+    c.text(card.title, CGRect(x: rect.minX + 82, y: rect.maxY - 51, width: rect.width - 108, height: 24), size: 18, weight: .bold)
+    c.text(card.subtitle, CGRect(x: rect.minX + 82, y: rect.maxY - 78, width: rect.width - 108, height: 20), size: 12.5, color: Theme.muted)
 
     var bulletY = rect.maxY - 116
     for bullet in card.bullets {
-        c.fill(CGRect(x: rect.minX + 228, y: bulletY + 5, width: 6, height: 6), card.accent, radius: 3)
-        c.multiline(bullet, CGRect(x: rect.minX + 244, y: bulletY - 1, width: rect.width - 268, height: 42), size: 12.3)
-        bulletY -= 42
+        c.fill(CGRect(x: rect.minX + 28, y: bulletY + 6, width: 7, height: 7), card.accent, radius: 3.5)
+        c.text(bullet, CGRect(x: rect.minX + 48, y: bulletY - 2, width: rect.width - 76, height: 22), size: 12.5, color: Theme.secondary)
+        bulletY -= 38
     }
 }
 
