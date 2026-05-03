@@ -202,14 +202,18 @@ internal static class Program
             outputRoot,
             "car-radar-side-pressure",
             "Car Radar",
-            () => new CarRadarForm(
-                fixture.SourceFor(frame => fixture.CreateSnapshot(frame, sessionFlags: 0x00000004)),
-                NullLogger<CarRadarForm>.Instance,
-                new AppPerformanceState(),
-                OverlaySettingsFor(CarRadarOverlayDefinition.Definition),
-                ScreenshotFontFamily,
-                Noop),
-            postProcess: bitmap => ReplaceColorWithTransparency(bitmap, Color.Black),
+            () =>
+            {
+                var form = new CarRadarForm(
+                    fixture.SourceFor(frame => fixture.CreateSnapshot(frame, sessionFlags: 0x00000004)),
+                    NullLogger<CarRadarForm>.Instance,
+                    new AppPerformanceState(),
+                    OverlaySettingsFor(CarRadarOverlayDefinition.Definition),
+                    ScreenshotFontFamily,
+                    Noop);
+                form.SetSettingsPreviewVisible(true);
+                return form;
+            },
             refreshPasses: 4));
         screenshots.Add(RenderForm(
             outputRoot,
@@ -337,14 +341,27 @@ internal static class Program
         int refreshPasses = 1)
     {
         using var form = createForm();
+        var targetClientSize = form.ClientSize;
         form.Location = new Point(-20000, -20000);
         form.CreateControl();
-        form.Show();
+        CreateControlHandles(form);
+        if (form.ClientSize != targetClientSize)
+        {
+            form.ClientSize = targetClientSize;
+        }
+
+        form.PerformLayout();
         Application.DoEvents();
 
         for (var pass = 0; pass < refreshPasses; pass++)
         {
             InvokeRefreshOverlay(form);
+            Application.DoEvents();
+        }
+
+        if (form.ClientSize != targetClientSize)
+        {
+            form.ClientSize = targetClientSize;
             Application.DoEvents();
         }
 
@@ -356,6 +373,15 @@ internal static class Program
         var path = Path.Combine(outputRoot, "states", $"{fileStem}.png");
         bitmap.Save(path, ImageFormat.Png);
         return new RenderedScreenshot(label, path, form.ClientSize.Width, form.ClientSize.Height);
+    }
+
+    private static void CreateControlHandles(Control control)
+    {
+        _ = control.Handle;
+        foreach (Control child in control.Controls)
+        {
+            CreateControlHandles(child);
+        }
     }
 
     private static void InvokeRefreshOverlay(Form form)
