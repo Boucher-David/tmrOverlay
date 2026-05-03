@@ -4,13 +4,12 @@
 
 ## What It Does Today
 
-- Starts as a WinForms tray application with no main window.
+- Starts as a WinForms tray application with a fixed-size settings window as the app control surface.
 - Uses a local single-instance mutex so a second launch exits instead of attaching another telemetry collector to the same iRacing session.
-- Shows a tiny always-on-top status overlay in the top-left corner.
-- Shows a centered tabbed settings window for managing overlay visibility, scale, session filters, shared overlay font, units, copyable Windows local clean/build commands, support/log access, and overlay-specific display options.
+- Includes an internal collector status overlay for development/support, hidden by default for normal users.
+- Shows a centered tabbed settings window for managing overlay visibility, scale, opacity where useful, session filters, shared overlay font, units, support/log access, diagnostic capture, and overlay-specific display options.
 - Treats the settings window as the main UI: clicking its `X` exits the application instead of hiding it to the tray.
 - Keeps the settings window on the normal desktop layer with a taskbar/Alt+Tab entry, while driving overlays can stay above the sim.
-- Includes a placeholder Overlay Bridge settings tab for post-v1.0 bridge controls.
 - Lets you drag overlays and remembers each overlay position between app launches.
 - Connects to iRacing through the `irsdkSharp` wrapper.
 - Starts live telemetry analysis whenever iRacing sends usable frame data.
@@ -18,7 +17,7 @@
 - Shows an early fuel calculator overlay that estimates race laps, whole-lap stint targets, final-stint length, realistic fuel-saving alerts, and stop-by-stop tire-change timing guidance.
 - Shows first-pass relative, flags, session/weather, pit-service, input/car-state, radar, and gap-to-leader overlays backed by model-v2 relative/session/weather/fuel-pit/input/spatial rows plus live `CamCarIdx`, `CarLeftRight`, `CarIdxF2Time`, `CarIdxEstTime`, and `CarIdx*` progress/position telemetry.
   The relative overlay is the first production model-v2 consumer: it renders a dense local/reference relative table from `LiveTelemetrySnapshot.Models.Relative`, configurable cars ahead/behind, timing fallback labeling, and quiet source text unless data is waiting or degraded.
-  The flags, session/weather, pit-service, and input/car-state overlays use a shared simple telemetry shell and render direct iRacing telemetry quietly; pit-service is read-only, with command-capable pit crew/engineer workflow deferred to a future analysis/operator overlay.
+  The flags overlay is a transparent primary-screen border driven by live session flags; ultrawide defaults keep monitor height with a centered 4:3 frame. Session/weather and pit-service use the shared simple telemetry shell, input/car-state uses graph traces, and all render direct iRacing telemetry quietly. Pit-service is read-only, with command-capable pit crew/engineer workflow deferred to a future analysis/operator overlay.
   The radar is a transparent circular proximity view that reads `LiveTelemetrySnapshot.Models.Spatial`, only paints from fresh local in-car telemetry, prefers physical distance from `CarIdxLapDistPct` and track length for close-range placement, falls back to reliable live time gaps when distance is unavailable, uses `CarLeftRight` as the authoritative alongside signal, fades nearby neutral-white car rectangles in between radar entry and the yellow-warning threshold, moves them through yellow toward saturated alert red only inside the close bumper-gap warning buffer, labels its range rings, and can show an outer-ring multiclass warning for cars behind outside the 2-second timing fallback but within 5 seconds. The gap overlay is a four-hour in-class trend graph with the focused car's class leader as the top baseline, adaptive Y-axis scaling, left-side axis labels, lap reference lines, subtle weather bands, driver/leader-change markers, dimmed context lines, and endpoint `P<N>` labels. It keeps bounded in-memory traces for all available same-class timing rows, while dynamically rendering the leader, the focused car, nearby class traffic, and recently visible cars.
 - Stores early pit-service history signals such as pit-lane time, pit-stall/service time, observed fuel fill rate, tire/repair indicators, and confidence flags.
 - Keeps raw capture as an opt-in diagnostic/development mode; the settings window can request raw capture at runtime if the app was started without the flag.
@@ -38,6 +37,7 @@
 - `src/TmrOverlay.App/Bridge/` contains the optional localhost overlay bridge for future external UI clients.
 - `src/TmrOverlay.App/Shell/` contains the tray/menu shell.
 - `src/TmrOverlay.Core/` contains platform-neutral settings models, overlay metadata, historical telemetry/session models, live telemetry derivation, post-race analysis models, and fuel strategy logic.
+- `assets/` contains repo-owned source visual assets such as brand/logo images for future app icons, overlay branding, docs, and publishing work.
 - `src/TmrOverlay.App/Storage/` contains app-owned local storage path resolution.
 - `src/TmrOverlay.App/History/` contains compact session-history disk storage and lookup services.
 - `src/TmrOverlay.App/Logging/`, `Events/`, `Runtime/`, `Diagnostics/`, `Retention/`, `Replay/`, `Analysis/`, and `Settings/` contain Windows app boilerplate and persistence services.
@@ -69,7 +69,7 @@ When enabled, captures are written under the user-local application data directo
 
 For development, set `TMR_Storage__UseRepositoryLocalStorage=true` to write under this checkout instead.
 
-If the app is already running and you forgot the startup flag, check `Raw capture` in the Collector Status settings tab. That requests raw capture for the current process and starts a raw capture on the next live SDK frame. Active raw captures cannot be disabled mid-collection; the checkbox is locked until the current collection ends.
+If the app is already running and you forgot the startup flag, check `Capture diagnostic telemetry` in the Support settings tab. That requests raw capture for the current process and starts a raw capture on the next live SDK frame. Active raw captures cannot be disabled mid-collection; the checkbox is locked until the current collection ends.
 
 Each capture folder contains:
 
@@ -116,7 +116,7 @@ Each `*-live-overlay-diagnostics.json` file summarizes current-overlay and desig
 You can also double-click [TmrOverlay.cmd](/Users/davidboucher/Code/tmrOverlay/TmrOverlay.cmd) from the repo root after the app has been built once. It launches the built executable from the expected `Debug` or `Release` output folder.
 
 The tray menu lets you open the raw capture folder, open the current raw capture when one exists, open logs, open the settings window, create a diagnostics bundle, or exit the app. Closing the settings window with its `X` also exits the app.
-The status overlay stays visible over the sim so you can confirm the app is running and whether live telemetry analysis has started. With raw capture disabled it shows live frame freshness and history-collection state. With raw capture enabled it also shows queued frames, written frames, dropped frames, telemetry file size, disk-write freshness, and explicit warning/error messages. The settings raw-capture checkbox records app events and local logs when toggled or rejected. You can drag overlays to new positions, and each overlay restores its saved frame on restart.
+The settings window is the app control surface. Driving overlays default hidden, can be enabled from their settings tabs, and restore their saved frame on restart. Internal collector status is available for development/support but is not part of the normal end-user settings tab list. The Support tab owns diagnostic telemetry capture and records app events plus local logs when toggled or rejected.
 
 During local development, the overlay also warns when source files in this checkout are newer than the running build. That is a rebuild reminder only; it does not block capture.
 
@@ -132,7 +132,7 @@ The ignored macOS harness is for local overlay and boilerplate iteration on this
 
 It writes mock session history to `~/Library/Application Support/TmrOverlayMac/history/user` by default and mirrors the Windows storage layout for captures, user history, logs, events, settings, diagnostics, runtime state, and retention cleanup. Set `TMR_MAC_USE_REPOSITORY_LOCAL_STORAGE=true` if you intentionally want mac harness data under the ignored `local-mac/TmrOverlayMac/` folder.
 
-The mac harness opens the same startup overlay set as Windows: status, fuel calculator, relative, radar, and gap-to-leader. Its mock live race uses the tracked four-hour Nürburgring baseline shape at 4x speed so long-run relative, gap, and fuel behavior can be inspected quickly. Treat Windows overlay code as production-facing and real-data-driven; the ignored mac harness can use looser mock offsets, named drivers, synthetic weather windows, and exaggerated events for visual iteration.
+The mac harness mirrors the current Windows overlay review set for local v0.8 iteration: status, fuel calculator, relative, flags, session/weather, pit-service, input/car-state, radar, and gap-to-leader, plus a mac-only standings candidate for design review before a production standings overlay is wired. Its mock live race uses the tracked four-hour Nürburgring baseline shape at 4x speed so long-run relative, gap, fuel, and simple telemetry behavior can be inspected quickly. Treat Windows overlay code as production-facing and real-data-driven; the ignored mac harness can use looser mock offsets, named drivers, synthetic weather windows, and exaggerated events for visual iteration.
 
 Raw mock capture is disabled by default. Enable it only when you want to exercise the raw capture writer and disk-health UI:
 
@@ -245,7 +245,7 @@ $env:TMR_SessionHistory__UseBaselineHistory = "true"
 
 Path settings may be absolute or relative. Relative path settings resolve under the selected app data root.
 
-User-facing overlay preferences are stored in the local settings file under the app settings root. The settings window can update each current overlay's visibility, scale, test/practice/qualifying/race session filters, shared font family, metric/imperial units, and overlay-specific display options. It appears on the normal desktop layer so it can sit behind the sim when the user switches away. The General tab also includes copyable Windows clean, build, publish, and zip commands for local development; it does not execute builds from inside the running app. The clean command clears normal .NET build outputs plus the custom `artifacts/TmrOverlay-win-x64` publish folder so a rebuilt local app or republished tester build cannot silently reuse stale output. The zip command checks for that publish folder first and tells the user to run Publish when it is missing. The Error Logging tab shows the current app warning/error, opens the local logs and diagnostics folders, shows a lightweight performance summary with iRacing channel/system values and overlay update-decision rates, and can create/copy a diagnostics bundle for sharing. It also includes a placeholder Overlay Bridge tab for post-v1.0 bridge controls. Settings files are versioned and normalized on load so older local files receive safe defaults as customization expands.
+User-facing overlay preferences are stored in the local settings file under the app settings root. The fixed-size settings window can update each current user-facing overlay's visibility, scale when applicable, test/practice/qualifying/race session filters, shared font family, metric/imperial units, and overlay-specific display options. It appears on the normal desktop layer so it can sit behind the sim when the user switches away. The General tab owns shared app preferences. The Support tab is last and contains diagnostic telemetry capture, current warning/error state, local log/diagnostics folder shortcuts, a lightweight performance summary, and diagnostics bundle creation/copy controls. Settings files are versioned and normalized on load so older local files receive safe defaults as customization expands.
 
 ### Overlay Theme Overrides
 

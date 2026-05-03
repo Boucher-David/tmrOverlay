@@ -60,7 +60,7 @@ The export should exclude:
 - `src/TmrOverlay.Core/Analysis/PostRaceAnalysisBuilder.cs` builds the first compact line-based analysis from `HistoricalSessionSummary`.
 - `src/TmrOverlay.App/Analysis/PostRaceAnalysisStore.cs` persists and loads analysis JSON.
 - `src/TmrOverlay.App/Analysis/PostRaceAnalysisPipeline.cs` isolates analysis persistence/event failures from telemetry finalization.
-- `src/TmrOverlay.App/Overlays/SettingsPanel/SettingsOverlayForm.cs` displays recent analyses in the Post-race Analysis tab.
+- Settings no longer exposes a user-facing Post-race Analysis tab in v0.8; future post-race analysis browsing should return through a dedicated analysis/product surface instead of the current overlay settings list.
 - Record recommendation snapshots only when strategy output changes materially: stint count, stop count, target laps, required saving, tire advice, or confidence source.
 - Keep the live overlay independent from post-race analysis. The live path should publish derived strategy snapshots; the analysis writer can subscribe to or receive those snapshots.
 - Use the same source/confidence language as session history so teammate-mode model data is never treated as measured fuel.

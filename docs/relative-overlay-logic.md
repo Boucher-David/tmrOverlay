@@ -38,11 +38,13 @@ Cars ahead and behind are sorted by the best available absolute relative value:
 
 The nearest configured cars are selected first. Ahead rows are then rendered farthest-to-nearest above the reference row, while behind rows render nearest-to-farthest below it. User settings cap each side from 0 to 8 cars, defaulting to 5 ahead and 5 behind.
 
+The cap does not reserve empty future rows. The table renders only rows backed by current telemetry, plus the reference row when available, so it grows or shrinks as actual cars enter and leave the selected relative window. The reference row stays between the selected ahead and behind rows instead of drifting into a standings-style sort.
+
 ## Display Rules
 
 Rows show:
 
-- Class position first, then overall position, otherwise `--`.
+- Class position first, then overall position, otherwise `--`. The first cell includes a small class-color bar so class color does not require a separate table column.
 - `#<car number> <driver>` when a car number is known.
 - `0.000` for the reference gap.
 - `-<value>` for cars ahead and `+<value>` for cars behind, regardless of whether the source row came from proximity or timing fallback.

@@ -42,9 +42,10 @@ At startup, `OverlayManager.ShowStartupOverlays`:
 The settings window:
 
 - Uses default size from `SettingsOverlayDefinition`.
-- Enforces its minimum default size.
+- Enforces its default size as both the minimum and maximum.
 - Recenters every time it is opened.
 - Does not preserve user-dragged placement between runs.
+- Uses normal desktop/taskbar behavior and is not always on top.
 - Activates after being shown.
 
 This differs from driving overlays, which persist placement through `PersistentOverlayForm`.
@@ -56,23 +57,22 @@ The settings UI has:
 - A `TMR Overlay` header.
 - Vertical left-side tabs.
 - General.
-- Error Logging.
-- One tab per managed overlay.
-- Overlay Bridge placeholder.
-- Post-race Analysis.
+- User-facing overlay tabs, ordered with Standings, Relative, Flags, and Radar first when present.
+- Support as the final tab.
 
-Managed overlay tabs are generated from `OverlayManager.ManagedOverlayDefinitions`. Adding a driving overlay definition there is what makes the settings tab appear; overlay-specific options only appear when the definition provides option descriptors.
+Managed overlay tabs are generated from `OverlayManager.ManagedOverlayDefinitions`, then filtered so internal-only surfaces such as Collector Status do not appear as user-facing settings tabs. Adding a driving overlay definition there is what makes the settings tab eligible to appear; overlay-specific options only appear when the definition provides option descriptors or a custom settings block.
+
+The tab list now starts to reflect user task grouping: General first, timing/race-critical overlays early, and Support last. Future platform surfaces such as Overlay Bridge, publishing/update status, post-race analysis, and overlay builder should not be added as ordinary driving-overlay tabs without a product pass.
+
+Flags exposes flag-category enable controls and custom border size controls instead of session filters, scale, opacity, or custom timing. The flag overlay ignores background flag bits such as serviceable/start-hidden as standalone display triggers and paints a category only while current telemetry reports a matching user-facing flag category.
+
+Most driving overlays expose opacity next to scale and keep the existing overlay opacity as their default. The transparent full-screen-style flag border and the radar do not expose opacity because their readability comes from semantic color/shape rather than a normal panel background.
+
+Gap To Leader is race-only, so its settings tab omits the redundant `Display in sessions` filter group.
 
 The selected overlay tab is reported back to `OverlayManager`.
 
-The General tab exposes copyable Windows PowerShell commands for local development:
-
-- Clean clears Release build intermediates, app/core `bin` and `obj` folders, the custom `artifacts/TmrOverlay-win-x64` publish folder, and its zip.
-- Build compiles the WinForms app in Release.
-- Publish writes the self-contained `win-x64` tester build to `artifacts/TmrOverlay-win-x64`.
-- Zip packages the current publish folder and throws a clear "Run Publish first" error when the publish output folder is missing.
-
-The settings UI only copies these commands. It never runs builds from inside the app.
+The General tab exposes the shared font-family selector and metric/imperial unit selector. Support capture and support paths intentionally live in the Support tab instead of General.
 
 ## Overlay Settings Normalization
 
@@ -83,7 +83,9 @@ For every managed driving overlay, `OverlayManager` ensures:
 - Width and height are valid.
 - Invalid sizes are reset from the overlay default size and scale.
 
-The gap-to-leader overlay receives a one-time default of race-only visibility if it still has all session filters enabled and the marker option has not been set.
+The gap-to-leader overlay is normalized to race-only visibility whenever managed overlay settings are ensured.
+
+The flags overlay is normalized to the primary monitor bounds when old saved settings still contain the previous small table dimensions or the old 1920x1080 default. Ultrawide monitors use full monitor height with a centered 4:3 border so the default is not an impractically wide banner. User-entered custom border width/height are preserved once edited.
 
 ## Session Visibility
 
@@ -112,10 +114,10 @@ When the user selects the radar settings tab:
 
 1. `SettingsOverlayForm` reports the selected tab id.
 2. `OverlayManager` sees that the selected overlay id is `car-radar`.
-3. The radar overlay is forced visible even if disabled or filtered out by session rules.
+3. If the radar overlay is enabled, the radar overlay is forced visible even if filtered out by session rules.
 4. `CarRadarForm.SetSettingsPreviewVisible(true)` forces radar alpha to full so the user can see changes.
 
-When leaving the radar tab, preview mode is turned off.
+When leaving the radar tab, preview mode is turned off. If the radar overlay is disabled, selecting its settings tab does not override the `Visible` checkbox.
 
 ## Scale, Font, And Units
 
@@ -140,26 +142,16 @@ Driving overlays persist their placement and size through their `OverlaySettings
 
 The settings window stores normalized size but is recentered on open, so saved coordinates do not control startup placement.
 
-## Post-Race Analysis Tab
-
-The settings window:
-
-1. Loads recent post-race analyses from `PostRaceAnalysisStore`.
-2. Sorts saved analyses newest first through the store.
-3. Selects the first item by default.
-4. Displays the selected analysis body as plain text.
-
-The built-in sample appears after saved analyses.
-
 ## Diagnostics In Settings
 
-The Error Logging tab:
+The Support tab:
 
 - Shows current app warning/error.
 - Shows performance summary text, including live iRacing channel/system values and overlay update-decision rates.
 - Opens local logs and diagnostics folders.
 - Can manually create/copy a diagnostics bundle.
 - Reports the latest automatic end-of-session diagnostics bundle.
+- Owns runtime diagnostic telemetry capture requests.
 
 ## Design Notes
 

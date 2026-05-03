@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-05-02
+Last updated: 2026-05-03
 
 ## Project Goal
 
@@ -9,6 +9,10 @@ Last updated: 2026-05-02
 ## Implemented So Far
 
 ### Application shell
+
+- `assets/`
+  - contains repo-owned source visual assets such as brand/logo images for future app icons, overlay branding, docs, and publishing work
+  - platform-specific generated icon assets should be created later by the publishing branch instead of wiring wide source PNGs directly into the app
 
 - `src/TmrOverlay.App/TmrOverlay.App.csproj`
   - .NET 8 WinForms app
@@ -39,8 +43,9 @@ Last updated: 2026-05-02
   - `Abstractions/` contains Windows overlay form helpers such as `PersistentOverlayForm`, which centralizes frame setup, drag handling, and per-overlay settings persistence
   - `Styling/OverlayTheme.cs` contains human-editable shared Windows overlay colors, font helpers, and common layout tokens; data-visualization-specific colors can remain near their drawing code
   - optional `overlay-theme.json` under the app settings root can override shared font/color tokens without recompiling
-  - `Status/` contains the current collector status overlay
-  - `SettingsPanel/` contains a centered tabbed settings window for user-managed overlay visibility, scale, session filters, shared font/units, runtime raw-capture requests, placeholder Overlay Bridge controls, post-race analysis browsing, and overlay-specific display options
+  - `Status/` contains the current internal collector status overlay, hidden by default for normal users
+  - `SettingsPanel/` contains a fixed-size tabbed settings window for user-managed overlay visibility, scale/opacity when applicable, session filters, shared font/units, support capture/log/diagnostics access, and overlay-specific display options
+  - `Flags/` contains a transparent primary-screen border overlay for live session flag categories; it defaults to the main monitor size, centers a 4:3 frame on ultrawide displays, and requires recognized live session context before the runtime window is shown
   - `FuelCalculator/` contains the first strategy overlay, backed by live telemetry plus exact car/track/session history
   - `Relative/` contains the first production model-v2 overlay, a telemetry-first relative table backed by `LiveTelemetrySnapshot.Models.Relative`
   - `CarRadar/` contains a transparent circular local in-car proximity overlay, backed by local player/team progress, player-only `CarLeftRight`, reliable live timing gaps, and nearby `CarIdx*` progress/position telemetry
@@ -67,17 +72,18 @@ Last updated: 2026-05-02
   - opens on startup and can be reopened from the tray menu
   - acts as the main UI; clicking its `X` or otherwise closing it through the user close path exits the application instead of hiding the app to the tray
   - uses normal desktop z-order, taskbar, and Alt+Tab behavior instead of the product overlays' tool-window/always-on-top behavior
-  - tabs include General, Error Logging, each current overlay, an Overlay Bridge placeholder for post-v1.0 controls, and Post-race Analysis with a past-session picker backed by saved analysis rows plus the built-in four-hour sample; refreshes default to the most recent analysis
-  - General exposes a shared overlay font-family selector from widely available fonts, a metric/imperial unit selector, and copy-only Windows clean/build/publish/zip commands for local development
-  - Error Logging shows the current app warning/error from `TelemetryCaptureState`, opens local log/diagnostics folders, shows a lightweight performance summary with iRacing channel/system values and overlay update-decision rates, and can create/copy a diagnostics bundle using `DiagnosticsBundleService`
-  - per-overlay tabs expose visibility, scale, test/practice/qualifying/race session filters, and descriptor-driven overlay-specific display options
-  - opening the radar settings tab forces the radar overlay visible as a live preview even when user/session visibility would otherwise hide it
-  - the Collector Status tab owns the runtime `Raw capture` checkbox
-  - visibility, scale, font, unit, and display-option changes apply to open overlays immediately; session filters are rechecked against live session type
+  - tabs include General, user-facing overlay tabs ordered with Standings, Relative, Flags, and Radar first when present, and Support last
+  - General exposes a shared overlay font-family selector from widely available fonts and a metric/imperial unit selector
+  - Support shows the current app warning/error from `TelemetryCaptureState`, owns runtime diagnostic telemetry capture, opens local log/diagnostics folders, shows a lightweight performance summary with iRacing channel/system values and overlay update-decision rates, and can create/copy a diagnostics bundle using `DiagnosticsBundleService`
+  - per-overlay tabs expose visibility, scale, opacity, test/practice/qualifying/race session filters, and descriptor-driven overlay-specific display options when those controls make sense for that overlay
+  - future settings information architecture should group timing/table overlays, race-state/local-car overlays, input/local telemetry overlays, and developer/admin/future surfaces instead of treating every tab as the same kind of user-facing overlay
+  - opening the radar settings tab previews the radar overlay only when the overlay is enabled, so the tab no longer overrides the `Visible` checkbox
+  - visibility, scale, opacity, font, unit, and display-option changes apply to open overlays immediately; session filters are rechecked against live session type
 
 - Deferred overlay UI/style v2:
   - current model-v2 work standardizes live data, not visual structure
-  - treat UI/style v2 as telemetry-first by default: standings, relative, local in-car radar, flags, session/weather, and timing tables should be dense, stable windows into iRacing telemetry
+  - treat UI/style v2 as telemetry-first by default: standings, relative, local in-car radar, flags, session/weather context, and timing tables should be dense, stable windows into iRacing telemetry
+  - persistent source footers should be validation/admin chrome, not default end-user overlay furniture
   - reserve model-v2 source, quality, usability, freshness, and missing-reason chrome for stale, unavailable, modeled, or derived values, especially analysis products like fuel strategy, non-local radar focus/multiclass interpretation, and gap graphs
   - use competitor overlay analysis as the product-shape check: small purpose-built overlays, dense information, low-noise dark styling, and semantic color instead of one monolithic dashboard
   - the ignored mac harness now owns a generated `mocks/design-v2/` proving ground for telemetry-first standings, relative, local in-car radar, flag display, table semantics, and narrower analysis-exception states while model-v2 race evidence is still being collected
@@ -103,7 +109,8 @@ Last updated: 2026-05-02
 - `src/TmrOverlay.App/Overlays/Relative/`
   - draggable telemetry-first relative overlay placed below the fuel calculator by default
   - is the first production overlay to consume `LiveTelemetrySnapshot.Models.Relative` directly instead of a legacy overlay-specific snapshot slice
-  - renders cars ahead above a reference row and cars behind below it, with configurable 0-8 row counts per side
+  - renders actual cars ahead above a reference row and actual cars behind below it, with configurable 0-8 maximum row counts per side; the table does not reserve blank future rows just because the setting allows more cars
+  - draws the class color as a small horizontal bar inside the position cell instead of allocating a separate class-color column
   - uses model-v2 relative rows from proximity first and timing/class-gap fallback when proximity is unavailable
   - normalizes gap signs by row direction so cars ahead display negative gaps and cars behind display positive gaps regardless of source sign
   - keeps source/evidence chrome quiet in the normal case; the footer only calls out live proximity, model-v2 timing fallback, partial timing, or waiting
@@ -212,7 +219,7 @@ Last updated: 2026-05-02
   - contains platform-neutral historical session context, telemetry samples, summary/aggregate models, slug/path helpers, session-info parsing, and the in-memory historical accumulator
 
 - `src/TmrOverlay.App/Analysis/`
-  - persists post-race analysis JSON under the user history root and populates the settings window dropdown
+  - persists post-race analysis JSON under the user history root; settings no longer exposes this as a normal user-facing overlay tab
   - `PostRaceAnalysisPipeline` saves an analysis row after compact session history is saved and isolates analysis persistence/event failures from telemetry finalization
 
 - `history/baseline/`
@@ -246,7 +253,7 @@ Last updated: 2026-05-02
 - `src/TmrOverlay.App/Settings/`
   - persists overlay settings under `%LOCALAPPDATA%/TmrOverlay/settings`
   - the disk store remains Windows app-owned; settings models and `AppSettingsMigrator` live in `src/TmrOverlay.Core/Settings/` so other development harnesses can follow the same schema
-  - settings are versioned and currently migrate legacy per-overlay boolean/integer fields into the keyed overlay option bag
+  - settings are versioned, migrate legacy per-overlay boolean/integer fields into the keyed overlay option bag, and prune obsolete option keys when an overlay control is removed
 
 - `src/TmrOverlay.App/Events/`
   - writes JSONL app-event breadcrumbs under `%LOCALAPPDATA%/TmrOverlay/logs/events`
@@ -260,7 +267,7 @@ Last updated: 2026-05-02
   - includes recent compact edge-case telemetry artifacts under `edge-cases/`, including their final context tail when present
   - includes recent model-v2 parity artifacts under `model-parity/` plus the latest capture's `live-model-parity.json` when present
   - includes recent post-race analysis JSON at top-level `analysis/` plus recent user-history summaries and aggregates so collected car/track/session metrics can be inspected for accuracy
-  - creates a best-effort diagnostics bundle automatically when a live telemetry session finalizes, and the Error Logging tab reports the latest automatic bundle
+  - creates a best-effort diagnostics bundle automatically when a live telemetry session finalizes, and the Support tab reports the latest automatic bundle
   - intentionally excludes raw `telemetry.bin` and source `.ibt` payloads
 
 - `src/TmrOverlay.App/Retention/`
@@ -275,7 +282,7 @@ Last updated: 2026-05-02
   - optional disabled-by-default localhost HTTP bridge
   - exposes `GET /health` and `GET /snapshot`
   - snapshots come from `ILiveTelemetrySource`, so downstream UI clients do not read directly from iRacing or raw capture files
-  - the settings window has a placeholder Overlay Bridge tab for post-v1.0 bridge controls; configuration still lives in app settings for now
+  - configuration still lives in app settings for now; user-facing bridge controls are deferred to a future platform/settings pass
 
 ### Local mac harness
 
@@ -295,10 +302,10 @@ Last updated: 2026-05-02
   - the mac live mock uses the tracked four-hour Nürburgring baseline shape from race time zero at 4x speed for faster fuel/gap overlay iteration
   - for overlay development, Windows should stay production-facing and real-data-driven; the ignored mac harness can use looser mock scenes, fixed offsets, named sample drivers, and exaggerated events for fast visual iteration
   - the mac mock race mirrors the Windows radar/gap feature behavior with synthetic all-class timing rows, multiclass approach traffic, weather bands, and driver handoff events, while Windows remains real telemetry only
-  - the mac harness opens the same startup overlay set as Windows: status, fuel calculator, relative, radar, and gap-to-leader
+  - the mac harness mirrors the current Windows overlay review set: status, fuel calculator, relative, flags, session/weather, pit-service, input/car-state, radar, and gap-to-leader; it also includes a mac-only standings candidate for design review before a production standings overlay is wired
   - the mac status overlay is display-only, matching Windows; runtime raw-capture requests live in the settings window and still record logs/events
-  - the mac harness mirrors the settings window schema and basic tabbed UI for visibility, scale, session filters, font/units, raw capture, placeholder Overlay Bridge controls, post-race analysis, and a mock Error Logging/performance snapshot tab; mac diagnostics bundles include matching telemetry-state/performance metadata stubs and recent mock performance JSONL logs
-  - `swift run TmrOverlayMacScreenshots` renders tracked overlay review artifacts under `mocks/`: focused live-state screenshots, multi-state contact sheets, and smaller per-state PNG cards for status, fuel calculator, relative, settings, car radar, and gap-to-leader
+  - the mac harness mirrors the settings window schema and basic tabbed UI for visibility, scale/opacity when applicable, session filters, font/units, support capture, and a mock Support/performance snapshot tab; mac diagnostics bundles include matching telemetry-state/performance metadata stubs and recent mock performance JSONL logs
+  - `swift run TmrOverlayMacScreenshots` renders tracked overlay review artifacts under `mocks/`: focused live-state screenshots, multi-state contact sheets, and smaller per-state PNG cards for status, fuel calculator, relative, settings, car radar, gap-to-leader, and design-v2 candidate states
   - screenshot waiting/unavailable fixtures should be isolated from local user history and cached live telemetry; for example, the fuel waiting preview uses an empty temporary history root so it cannot accidentally show stale stint rows from this machine
 
 ### Tests

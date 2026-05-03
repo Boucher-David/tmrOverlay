@@ -49,6 +49,12 @@ Improve readability for multi-lap gaps by separating leader-gap context from loc
 
 Use raw-capture and live-overlay diagnostics to confirm whether `CarIdxPosition` and `CarIdxClassPosition` update intra-lap often enough for standings/relative overlays. The same diagnostics now count live lap-delta channel availability and best-effort sector-boundary intervals derived from session-info sectors plus `CarIdxLapCompleted`/`CarIdxLapDistPct`. If confirmed across enough sessions, promote position cadence, lap-delta readiness, and sector timing into explicit model-v2 timing-table assumptions.
 
+### Session Bootstrap And Car Coverage
+
+Treat mid-session joins as a first-class model-v2 availability case. The app should assume raw frame history starts when the local SDK connection starts, but current session context can still exist immediately through session YAML and current `CarIdx*` rows: roster, car classes, event/session metadata, current standings/result snapshots, completed laps, best/last laps where exposed, current session clock, and current track position for transmitted cars. A future diagnostics pass should compare a known mid-race join against a full-session capture and label which fields are real current-session context versus local-observation-only history.
+
+Treat user-configured iRacing car coverage limits as a separate model-v2 completeness signal. Session YAML can describe the entered field, while live `CarIdx*` arrays may only carry currently transmitted cars. Standings, relative, gap, and post-race analysis should not silently treat missing live rows as retired or unknown competitors. Model v2 should expose roster count, live-row count, rows with timing, rows with spatial progress, missing-row reasons, and whether each overlay is showing full-field standings, nearby transmitted cars, or a partial mixed view.
+
 ### Capture-Backed Mac Overlay Replay
 
 The mac harness now records live overlay diagnostics from mock/demo snapshots, including the four-hour preview and capture-derived radar/gap demos. A future harness branch should add a full raw-capture replay provider that decodes selected 4-hour/24-hour captures into normalized live snapshots at high playback speed, drives one instance of each overlay, and writes screenshots plus `live-overlay-diagnostics.json` from that replay.
@@ -84,11 +90,11 @@ Model v2 does not standardize visual code by itself. Treat overlay UI/style v2 a
 The alignment is:
 
 - Data Model V2 defines normalized telemetry: stable rows, session context, direct iRacing values, availability, source, freshness, quality, usability, and missing reasons.
-- Design Paradigm V2 renders simple telemetry windows by default: standings, relative, local in-car radar, flags, session/weather, timing tables, and similar overlays should be dense, stable, and quiet unless data is stale, unavailable, modeled, or derived.
+- Design Paradigm V2 renders simple telemetry windows by default: standings, relative, local in-car radar, flags, session/weather context, timing tables, and similar overlays should be dense, stable, and quiet unless data is stale, unavailable, modeled, or derived.
 - Evidence/source UI is exception chrome for analysis products: fuel strategy, non-local radar focus/multiclass interpretation, gap graphs, stint planning, and other app-derived decisions can show measured/model/history labels, source footers, and deterministic unavailable states.
 - Competitor overlay analysis validates the product shape: small purpose-built overlays, low-noise dark translucent styling, dense information layout, strong semantic color, and multiple overlays visible at once rather than one monolithic dashboard.
 
-A separate UI/style branch should add shared semantic theme tokens and reusable WinForms primitives for headers, quiet status badges, metric rows, timing tables, relative tables, flag strips, session/weather panels, source footers, graph panels, borders, class/severity colors, text fitting, and empty/error/waiting states. Those primitives should be able to consume model-v2 source/evidence state directly, but the normal rendering path should not make confidence the center of the UI.
+A separate UI/style branch should add shared semantic theme tokens and reusable WinForms primitives for headers, quiet status badges, metric rows, timing tables, relative tables, flag strips, compact weather widgets, optional header/footer context slots, validation/admin source footers, graph panels, borders, class/severity colors, text fitting, and empty/error/waiting states. Those primitives should be able to consume model-v2 source/evidence state directly, but the normal rendering path should not make confidence the center of the UI.
 
 Use the ignored mac harness as the design-v2 proving ground while model-v2 evidence is still being collected. The mac preview path can render deterministic design-v2 states under `mocks/design-v2/` for standings, relative, flag display, and the narrower analysis-exception state. Promote only the primitives and semantics that survive screenshot review back into Windows.
 
@@ -104,8 +110,11 @@ Bridge v2 should define:
 2. Safe local access controls, explicit enable/disable controls, port/client status, and schema-version display in the settings panel.
 3. A browser/client development path that consumes normalized app state rather than talking to iRacing directly.
 4. Compatibility rules for bridge clients when model-v2 fields are added, renamed, deprecated, or unavailable.
+5. An opt-in peer/session context path for trusted teammates to share missed-history summaries when one user joins mid-race after another user has already observed the session.
 
 This branch fits after enough Windows overlays consume `LiveTelemetrySnapshot.Models` that the external schema reflects real product semantics instead of temporary overlay-local assumptions.
+
+The peer context path should be treated as derived context exchange, not raw telemetry sync. It should carry provenance, session identity, observation window, roster/timing coverage, schema version, and trust/source labels, then merge only into model-v2 availability as partial remote context. It should not silently overwrite local telemetry, and it should not share raw `telemetry.bin`, source `.ibt` files, or private local history by default.
 
 ### Streaming / Broadcast Overlays
 
@@ -121,9 +130,9 @@ Builder v1 should likely start as a local development tool for arranging simple 
 
 ### Application Publishing
 
-Publishing is a separate app-platform branch. The current settings panel exposes copyable local clean/build/publish/zip commands, but that is not a release system.
+Publishing is a separate app-platform branch and is the planned v0.9 target. The current settings panel exposes copyable local clean/build/publish/zip commands, but that is not a release system.
 
-A real publishing branch should define signed Windows artifacts, versioning, installer or portable packaging, update-channel policy, release notes, rollback/compatibility expectations for durable user settings/history, diagnostics bundle expectations for tester builds, and CI validation that can replace the current "copy a command and zip a folder" workflow.
+A real publishing branch should define signed Windows artifacts, versioning, installer or portable packaging, update-channel policy, release notes, rollback/compatibility expectations for durable user settings/history, diagnostics bundle expectations for tester builds, and CI validation that can replace the current "copy a command and zip a folder" workflow. It should also derive executable, tray, and future overlay-branding icon assets from `assets/brand/` source images rather than binding wide source PNGs directly into the app.
 
 ### Telemetry-First Overlay Branches
 
@@ -131,10 +140,12 @@ Do not wait for the deep-dive analysis products before building every overlay. S
 
 For these overlays, model v2 should prioritize stable row identity, column formatting, class/session labels, pit/flag/session state, freshness, and predictable unavailable states. It should still carry `LiveSignalEvidence`, but normal UI should only surface that evidence when the data is stale, unavailable, modeled, or derived.
 
+The flag pass adds one model-v2 requirement: normalize flag categories rather than making each overlay inspect raw SDK bits. Preserve raw global `SessionFlags` and per-car `CarIdxSessionFlags`, but expose user-facing categories such as green/start, blue, yellow/debris/caution, finish/countdown, and critical driver flags. Treat `serviceable` and `start hidden` as background context unless combined with a displayable category.
+
 Current design-v2 candidate readiness:
 
 - Standings can consume `LiveTelemetrySnapshot.Models.Timing` rows and `TimingColumnRegistry` formatting once a production overlay is added.
-- Flags, session/weather, pit-service snapshot, and input/car-state overlays now have first-pass Windows implementations that consume `LiveTelemetrySnapshot.Models` directly through the shared simple telemetry shell.
+- Flags, session/weather, pit-service snapshot, and input/car-state overlays now have first-pass Windows implementations that consume `LiveTelemetrySnapshot.Models` directly. Flags and input/car-state use custom graphical forms while session/weather and pit-service continue through the simple telemetry shell.
 - Sector comparison is a simple table visually, and live diagnostics now test whether sector metadata plus car progress can produce enough sector-boundary intervals. It still needs an explicit model-v2 row contract before it should be promoted beyond the mac design surface.
 - Blindspot signal should stay local in-car only and can use the existing local-player `CarLeftRight`/proximity state without the advanced non-local radar branch.
 - Laptime delta can now use diagnostics to confirm live delta-channel availability and `_OK` usability across sessions. Until that evidence is broad enough and represented in model v2, it remains a design/model target rather than a reliable Windows overlay.

@@ -75,7 +75,11 @@ public sealed class AppSettingsStoreTests
                       "height": -20,
                       "opacity": 1.5,
                       "classGapCarsAhead": -4,
-                      "classGapCarsBehind": 99
+                      "classGapCarsBehind": 99,
+                      "options": {
+                        "flags.green-seconds": "0",
+                        "flags.blue-seconds": "12"
+                      }
                     }
                   ]
                 }
@@ -97,9 +101,13 @@ public sealed class AppSettingsStoreTests
             Assert.Equal(5, overlay.GetIntegerOption(OverlayOptionKeys.RelativeCarsBehind, 5, 0, 8));
             Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.FuelAdvice, defaultValue: true));
             Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true));
+            Assert.False(overlay.Options.ContainsKey("flags.green-seconds"));
+            Assert.False(overlay.Options.ContainsKey("flags.blue-seconds"));
 
             var saved = File.ReadAllText(settingsPath);
             Assert.Contains($"\"settingsVersion\": {AppSettingsMigrator.CurrentVersion}", saved);
+            Assert.DoesNotContain("flags.green-seconds", saved);
+            Assert.DoesNotContain("flags.blue-seconds", saved);
         }
         finally
         {

@@ -5,7 +5,16 @@ namespace TmrOverlay.Core.Settings;
 
 internal static class AppSettingsMigrator
 {
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
+
+    private static readonly string[] ObsoleteOptionKeys =
+    [
+        "flags.green-seconds",
+        "flags.blue-seconds",
+        "flags.yellow-seconds",
+        "flags.critical-seconds",
+        "flags.finish-seconds"
+    ];
 
     public static ApplicationSettings Migrate(ApplicationSettings? settings)
     {
@@ -44,6 +53,7 @@ internal static class AppSettingsMigrator
             overlay.Options = new Dictionary<string, string>(
                 overlay.Options ?? [],
                 StringComparer.OrdinalIgnoreCase);
+            RemoveObsoleteOverlayOptions(overlay);
             MigrateLegacyOverlayOptions(overlay);
             EnsureOption(overlay, OverlayOptionKeys.StatusCaptureDetails, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.StatusHealthDetails, defaultValue: true);
@@ -77,6 +87,14 @@ internal static class AppSettingsMigrator
         MigrateLegacyBoolean(overlay, "showRadarMulticlassWarning", OverlayOptionKeys.RadarMulticlassWarning);
         MigrateLegacyInteger(overlay, "classGapCarsAhead", OverlayOptionKeys.GapCarsAhead, 0, 12);
         MigrateLegacyInteger(overlay, "classGapCarsBehind", OverlayOptionKeys.GapCarsBehind, 0, 12);
+    }
+
+    private static void RemoveObsoleteOverlayOptions(OverlaySettings overlay)
+    {
+        foreach (var key in ObsoleteOptionKeys)
+        {
+            overlay.Options.Remove(key);
+        }
     }
 
     private static void MigrateLegacyBoolean(OverlaySettings overlay, string legacyName, string optionKey)
