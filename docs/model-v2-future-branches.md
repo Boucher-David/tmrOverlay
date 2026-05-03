@@ -55,6 +55,18 @@ The mac harness now records live overlay diagnostics from mock/demo snapshots, i
 
 That replay provider should be a development tool only. It should read existing captures, skip or downsample aggressively, and avoid changing the Windows collector/runtime path.
 
+### IBT-Derived Track Map Store
+
+Treat post-session track-map generation as a future derived-asset product branch, not as part of the current compact IBT sidecar contract. Today `ibt-analysis/ibt-local-car-summary.json` only records whether `Lat`/`Lon`/`Alt` plus lap-distance fields make an IBT file track-map-ready. A track-map branch should turn that readiness signal into a durable reusable map asset.
+
+Generated user maps should live in app-owned local storage, outside the iRacing telemetry folder and outside retention-managed capture directories. Add an explicit storage root such as `Storage:TrackMapRoot`, defaulting under `%LOCALAPPDATA%\TmrOverlay\track-maps`, with user-discovered maps separated from any future bundled/baseline maps.
+
+The first implementation should keep source `.ibt` files external and persist only compact derived geometry: schema version, generated time, track identity, source/provenance summary, quality metrics, coordinate-system metadata, and a resampled closed polyline in local meter coordinates with lap-distance percentages. Prefer normalized local coordinates over raw latitude/longitude in the reusable map file unless raw geographic values are explicitly needed for diagnostics.
+
+Build this behind a separate `IbtTrackMapBuilder` and `TrackMapStore` instead of extending overlays to read IBT files directly. The builder should select clean complete laps, filter pit/outlap/noisy samples where possible, convert `Lat`/`Lon` to a local tangent-plane coordinate system, smooth/resample/simplify the line, score coverage and closure quality, and merge only when a new source improves an existing map for the same track identity.
+
+Overlays should consume maps through the store. A live track-map overlay can then place the local car and other cars from normalized live progress fields such as `CarIdxLapDistPct`; it should treat an IBT-derived map as the learned driven line for that track/config, not as official track boundaries.
+
 ### Uniform Model V2 Migration
 
 Relative and Car Radar are production overlays consuming `LiveTelemetrySnapshot.Models` directly. After several clean `live_model_v2_promotion_candidate` sessions cover race, practice/test, pit cycles, driver swaps, focus changes, multiclass traffic, and large-gap cases, continue migrating the remaining overlays one at a time to `LiveTelemetrySnapshot.Models`.
