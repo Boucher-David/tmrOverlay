@@ -1,14 +1,16 @@
 # Update Notification and Self-Update Strategy
 
-Last updated: 2026-04-28
+Last updated: 2026-05-03
 
 ## Current State
 
-The current Windows tester build is a self-contained `win-x64` publish folder that can be zipped and shared. That is good for early testing, but it is not a full updater surface:
+The v0.9 publishing branch defines a tag-driven portable Windows release path. The PR/main workflow restores, builds, tests, validates tracked screenshots, and runs a publish dry run with package audit. A `vMAJOR.MINOR.PATCH` tag publishes the app as a self-contained `win-x64` package, audits the publish folder, zips it, writes a package manifest and SHA-256 checksum, uploads workflow artifacts, and attaches the zip/manifest/checksum to a GitHub Release.
+
+That is enough for teammate tester downloads, but it is not a full updater surface:
 
 - the running executable should not try to replace itself in place
 - zipped releases do not give Windows a durable install/update identity
-- there is no release signing, installer channel, rollback mechanism, or update manifest yet
+- there is no release signing, installer channel, automatic rollback mechanism, or update manifest yet
 - the safest current behavior is update notification plus a link to the release download
 
 ## Recommendation
@@ -19,14 +21,14 @@ Use two phases.
 
 The v0.9 branch should make the app publishable for teammates even before automatic install/update is solved:
 
-1. Keep the PR/main Windows build-test workflow as the merge gate.
-2. On `v*.*.*` tags or manual release dispatch, run Release restore/build/test, then publish `src/TmrOverlay.App` for `win-x64` as a self-contained single-file output.
-3. Zip the publish folder, generate a SHA-256 checksum file, and upload both as workflow artifacts.
-4. Promote the zip/checksum into a GitHub Release with versioned release notes, rather than requiring teammates to download from a workflow run.
-5. Embed release metadata in the app: product version, informational version/commit, executable/tray icon, and diagnostics bundle fields that identify the exact build.
-6. Document portable install/upgrade behavior: unzip location, replacing old files, settings/history compatibility, rollback, SmartScreen/signing expectations, and how to send diagnostics.
-7. Decide signing before broad distribution. Private tester zip builds can remain unsigned temporarily, but a publishable installer/package should sign the executable or package.
-8. Defer active self-update until a durable installer/update channel exists; add passive update discovery first.
+1. Keep the PR/main Windows validation workflow as the merge gate, including restore/build/test, tracked screenshot validation, and a self-contained publish dry run with package audit. Implemented in `.github/workflows/windows-dotnet.yml`.
+2. On `v*.*.*` tags or manual release dispatch, run Release restore/build/test, then publish `src/TmrOverlay.App` for `win-x64` as a self-contained single-file output. Implemented for tags and manual package artifacts.
+3. Audit the publish folder, zip it, generate a package manifest and SHA-256 checksum file, and upload the release artifacts. Implemented.
+4. Promote the zip/manifest/checksum into a GitHub Release with versioned release notes, rather than requiring teammates to download from a workflow run. Implemented for `vMAJOR.MINOR.PATCH` tags.
+5. Embed release metadata in the app: product version, informational version/commit, executable/tray icon, and diagnostics bundle fields that identify the exact build. Implemented through shared version properties, release publish metadata, diagnostics app-version output, and a generated Windows `.ico`.
+6. Document portable install/upgrade behavior: package contents, unzip location, replacing old files, settings/history compatibility, rollback, SmartScreen/signing expectations, and how to send diagnostics. Implemented in `docs/windows-release.md`.
+7. Decide signing before broad distribution. Private tester zip builds can remain unsigned temporarily, but a publishable installer/package should sign the executable or package. Still pending.
+8. Defer active self-update until a durable installer/update channel exists; add passive update discovery first. Still pending after release artifacts exist.
 
 This keeps v0.9 focused on a reliable release artifact and teammate feedback loop. Installer frameworks and automatic updates can then build on top of a known-good release feed.
 
@@ -40,7 +42,7 @@ Suggested manifest:
 {
   "version": "0.9.4",
   "publishedAtUtc": "2026-04-28T00:00:00Z",
-  "downloadUrl": "https://example.invalid/TmrOverlay-win-x64.zip",
+  "downloadUrl": "https://example.invalid/TmrOverlay-v0.9.4-win-x64.zip",
   "sha256": "hex-encoded-release-hash",
   "releaseNotesUrl": "https://example.invalid/releases/0.9.4",
   "minimumVersion": "0.9.0",

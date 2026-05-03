@@ -26,6 +26,7 @@ Make branch-readiness artifacts current before writing the final squash text:
 - Run a stale-reference sweep across docs, mocks, tests, the ignored mac harness, repo skills, and release notes for old behavior names, settings tabs, option labels, source labels, screenshot assumptions, and API call patterns that no longer match the branch implementation.
 - Patch affected behavior docs as part of this branch-complete pass. Overlay behavior changes should update `docs/overlay-logic.md` and the matching overlay-specific logic note. App/settings/platform changes should update README/current-state docs when the product shape changed. Product direction, validation assumptions, analysis assumptions, live-model contract notes, and future-branch notes should land here unless the change is a durable raw-capture/schema change that requires same-pass docs.
 - If changing Windows build/release commands, make `README.md`, release-command docs, CI docs, and any in-app command references agree during this branch-complete pass.
+- If changing Windows publishing/package contents, verify PR validation runs a publish dry run with the same package audit, the release workflow audits the publish folder for accidental repo/dev-folder leaks, emits a package manifest, and documents which user data stays outside the install folder.
 - For overlay or settings UI changes, regenerate the deterministic mac-harness screenshots under `mocks/`, keep the contact sheet plus per-state PNGs current, and run `python3 tools/validate_overlay_screenshots.py`.
 - Treat screenshot changes as validation artifacts. If screenshots cannot be regenerated on the current machine, say so explicitly and do not describe the branch as fully ready without that gap.
 - Re-run `git diff --name-status "$(git merge-base main HEAD)"..HEAD` after docs and screenshots are current so `VERSION.md` and the final handoff text describe the actual final branch contents.
@@ -51,6 +52,7 @@ For branch-complete handoff:
 - Keep the final answer's recommended squash title/body identical to the current `VERSION.md` suggestion unless explicitly calling out a requested alternative.
 - Remove or generalize sensitive local details from the squash text: raw local paths, private diagnostic file names, uncommitted capture names, accidental branch-operation notes, and private conversation shorthand.
 - Ensure `Directory.Build.props` `VersionPrefix` matches the branch target version when the branch is intended to produce that app milestone.
+- Before publishing a milestone, verify persistent AppData compatibility: settings migrations still load old settings, history maintenance backs up/migrates or skips old/future/corrupt history safely, and any durable user-data schema change updates version constants, migrations or compatible readers, tests, and docs.
 - Do not create the release tag on an unmerged feature branch unless the user explicitly declares that branch as the release point.
 
 For a milestone already on `main`, create and push an annotated tag after confirming the release commit:
@@ -142,7 +144,7 @@ Let it run long enough to connect and start mock live analysis, then confirm:
 - the process is running as `TmrOverlayMac`
 - the log contains mock connection and collection-start entries
 - `logs/performance/*.jsonl` shows nonzero telemetry frames and overlay refresh data
-- `logs/overlay-diagnostics/*-live-overlay-diagnostics.json` is being written
+- when overlay diagnostics are enabled for the smoke run, `logs/overlay-diagnostics/*-live-overlay-diagnostics.json` is being written
 
 This live smoke test is the best check that one instance of each current overlay updates from live mock telemetry. Screenshot generation is still useful as the deterministic layout/regression check, but it should not be treated as the only validation for live behavior. If screen capture or Accessibility permissions are unavailable from the shell, report that limitation and rely on process/log/diagnostic evidence plus the screenshot generator.
 

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Text;
+using TmrOverlay.App.Analysis;
 using TmrOverlay.App.Brand;
 using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
@@ -45,6 +46,10 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private readonly ApplicationSettings _applicationSettings;
     private readonly IReadOnlyList<OverlayDefinition> _managedOverlays;
     private readonly TelemetryCaptureState _captureState;
+    private readonly TelemetryEdgeCaseOptions _telemetryEdgeCaseOptions;
+    private readonly LiveModelParityOptions _liveModelParityOptions;
+    private readonly LiveOverlayDiagnosticsOptions _liveOverlayDiagnosticsOptions;
+    private readonly PostRaceAnalysisOptions _postRaceAnalysisOptions;
     private readonly AppPerformanceState _performanceState;
     private readonly AppStorageOptions _storageOptions;
     private readonly DiagnosticsBundleService _diagnosticsBundleService;
@@ -64,15 +69,21 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private bool _loading = true;
     private bool _syncingRawCaptureCheckBox;
     private bool _applicationExitRequested;
+    private Label? _appStatusLabel;
+    private Label? _sessionStateLabel;
     private Label? _currentIssueLabel;
     private Label? _performanceSnapshotLabel;
-    private TextBox? _latestDiagnosticsBundleTextBox;
+    private Label? _latestDiagnosticsBundleLabel;
     private Label? _supportStatusLabel;
 
     public SettingsOverlayForm(
         ApplicationSettings applicationSettings,
         IReadOnlyList<OverlayDefinition> managedOverlays,
         TelemetryCaptureState captureState,
+        TelemetryEdgeCaseOptions telemetryEdgeCaseOptions,
+        LiveModelParityOptions liveModelParityOptions,
+        LiveOverlayDiagnosticsOptions liveOverlayDiagnosticsOptions,
+        PostRaceAnalysisOptions postRaceAnalysisOptions,
         AppPerformanceState performanceState,
         AppStorageOptions storageOptions,
         DiagnosticsBundleService diagnosticsBundleService,
@@ -91,6 +102,10 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _applicationSettings = applicationSettings;
         _managedOverlays = managedOverlays;
         _captureState = captureState;
+        _telemetryEdgeCaseOptions = telemetryEdgeCaseOptions;
+        _liveModelParityOptions = liveModelParityOptions;
+        _liveOverlayDiagnosticsOptions = liveOverlayDiagnosticsOptions;
+        _postRaceAnalysisOptions = postRaceAnalysisOptions;
         _performanceState = performanceState;
         _storageOptions = storageOptions;
         _diagnosticsBundleService = diagnosticsBundleService;
@@ -441,11 +456,11 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         return page;
     }
 
-    private void AddSupportCaptureControls(TabPage page, int top)
+    private void AddSupportCaptureControls(TabPage page, int x, int top, int width)
     {
-        var title = CreateSectionLabel("Support capture", 18, top, 500);
-        var note = CreateMutedLabel("Enable only when collecting telemetry for debugging or analysis.", 22, top + 30, 510);
-        _rawCaptureCheckBox = CreateCheckBox("Capture diagnostic telemetry", _captureState.Snapshot().RawCaptureEnabled, 22, top + 66, 260);
+        var title = CreateSectionLabel("Diagnostic telemetry", x, top, width);
+        var note = CreateMutedLabel("Use only when asked to collect telemetry for debugging or analysis.", x + 4, top + 30, width);
+        _rawCaptureCheckBox = CreateCheckBox("Capture diagnostic telemetry", _captureState.Snapshot().RawCaptureEnabled, x + 4, top + 66, 280);
         _rawCaptureCheckBox.CheckedChanged += (_, _) => RawCaptureCheckBoxChanged();
 
         page.Controls.Add(title);
@@ -453,52 +468,81 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         page.Controls.Add(_rawCaptureCheckBox);
     }
 
+    private void AddAdvancedDiagnosticsControls(TabPage page, int top)
+    {
+        var title = CreateSectionLabel("Advanced collection", 560, top, 300);
+        var note = CreateMutedLabel("Disabled by default. Enable with appsettings.json or TMR_ overrides.", 564, top + 30, 330);
+        var status = CreateMultiLineValueLabel(AdvancedDiagnosticsText(), 564, top + 62, 330, 104);
+
+        page.Controls.Add(title);
+        page.Controls.Add(note);
+        page.Controls.Add(status);
+    }
+
+    private void AddSupportStorageControls(TabPage page, int top)
+    {
+        var title = CreateSectionLabel("Storage", 560, top, 300);
+        var note = CreateMutedLabel("Open local folders used for support handoff.", 564, top + 30, 330);
+
+        var logsButton = CreateActionButton("Logs", 564, top + 68, 96);
+        logsButton.Click += (_, _) => OpenSupportDirectory(_storageOptions.LogsRoot, "logs");
+        var diagnosticsButton = CreateActionButton("Diagnostics", 670, top + 68, 110);
+        diagnosticsButton.Click += (_, _) => OpenSupportDirectory(_storageOptions.DiagnosticsRoot, "diagnostics");
+        var capturesButton = CreateActionButton("Captures", 564, top + 106, 96);
+        capturesButton.Click += (_, _) => OpenSupportDirectory(_storageOptions.CaptureRoot, "captures");
+        var historyButton = CreateActionButton("History", 670, top + 106, 110);
+        historyButton.Click += (_, _) => OpenSupportDirectory(_storageOptions.UserHistoryRoot, "history");
+
+        page.Controls.Add(title);
+        page.Controls.Add(note);
+        page.Controls.Add(logsButton);
+        page.Controls.Add(diagnosticsButton);
+        page.Controls.Add(capturesButton);
+        page.Controls.Add(historyButton);
+    }
+
     private TabPage CreateSupportTab()
     {
         var page = CreateTabPage("Support");
         var title = CreateSectionLabel("Support", 18, 18, 500);
         var note = CreateMutedLabel("Use this tab when sharing logs for overlay or telemetry issues.", 22, 48, 510);
-        var issueLabel = CreateLabel("Current issue", 22, 88, 140);
-        _currentIssueLabel = CreateMultiLineValueLabel(string.Empty, 180, 82, 350, 54);
+        var statusLabel = CreateLabel("App status", 22, 88, 140);
+        _appStatusLabel = CreateValueLabel(string.Empty, 180, 84, 350, 28);
+        var sessionLabel = CreateLabel("Session state", 22, 128, 140);
+        _sessionStateLabel = CreateValueLabel(string.Empty, 180, 124, 350, 28);
+        var issueLabel = CreateLabel("Current issue", 22, 168, 140);
+        _currentIssueLabel = CreateMultiLineValueLabel(string.Empty, 180, 162, 350, 58);
 
-        AddSupportCaptureControls(page, 150);
-
-        var logsLabel = CreateLabel("Logs folder", 22, 238, 140);
-        var logsPath = CreateCommandTextBox(180, 234, 250, _storageOptions.LogsRoot);
-        var openLogsButton = CreateActionButton("Open", 440, 234, 90);
-        openLogsButton.Click += (_, _) => OpenSupportDirectory(_storageOptions.LogsRoot, "logs");
-
-        var diagnosticsLabel = CreateLabel("Diagnostics folder", 22, 280, 140);
-        var diagnosticsPath = CreateCommandTextBox(180, 276, 250, _storageOptions.DiagnosticsRoot);
-        var openDiagnosticsButton = CreateActionButton("Open", 440, 276, 90);
-        openDiagnosticsButton.Click += (_, _) => OpenSupportDirectory(_storageOptions.DiagnosticsRoot, "diagnostics");
-
-        var latestBundleLabel = CreateLabel("Latest bundle", 22, 322, 140);
-        _latestDiagnosticsBundleTextBox = CreateCommandTextBox(180, 318, 250, LatestDiagnosticsBundlePath() ?? string.Empty);
-        var copyBundleButton = CreateActionButton("Copy Path", 440, 318, 90);
-        copyBundleButton.Click += (_, _) => CopyLatestDiagnosticsBundlePath();
-
-        var createBundleButton = CreateActionButton("Create Bundle", 180, 360, 140);
+        var actionsTitle = CreateSectionLabel("Support actions", 18, 246, 500);
+        var createBundleButton = CreateActionButton("Create Bundle", 22, 286, 140);
         createBundleButton.Click += (_, _) => CreateDiagnosticsBundleFromTab();
-        _supportStatusLabel = CreateMutedLabel(string.Empty, 330, 362, 200);
+        var copyBundleButton = CreateActionButton("Copy Latest Path", 172, 286, 140);
+        copyBundleButton.Click += (_, _) => CopyLatestDiagnosticsBundlePath();
+        var openDiagnosticsButton = CreateActionButton("Open Diagnostics", 322, 286, 150);
+        openDiagnosticsButton.Click += (_, _) => OpenSupportDirectory(_storageOptions.DiagnosticsRoot, "diagnostics");
+        _latestDiagnosticsBundleLabel = CreateMutedLabel(string.Empty, 22, 324, 508);
+        _supportStatusLabel = CreateMutedLabel(string.Empty, 22, 350, 508);
 
-        var performanceLabel = CreateLabel("App activity", 22, 400, 140);
-        _performanceSnapshotLabel = CreateMultiLineValueLabel(string.Empty, 180, 394, 350, 90);
+        AddSupportCaptureControls(page, 18, 388, 512);
+        AddAdvancedDiagnosticsControls(page, 88);
+        AddSupportStorageControls(page, 274);
+
+        var performanceLabel = CreateSectionLabel("App activity", 560, 420, 300);
+        _performanceSnapshotLabel = CreateMultiLineValueLabel(string.Empty, 564, 452, 330, 72);
 
         page.Controls.Add(title);
         page.Controls.Add(note);
+        page.Controls.Add(statusLabel);
+        page.Controls.Add(_appStatusLabel);
+        page.Controls.Add(sessionLabel);
+        page.Controls.Add(_sessionStateLabel);
         page.Controls.Add(issueLabel);
         page.Controls.Add(_currentIssueLabel);
-        page.Controls.Add(logsLabel);
-        page.Controls.Add(logsPath);
-        page.Controls.Add(openLogsButton);
-        page.Controls.Add(diagnosticsLabel);
-        page.Controls.Add(diagnosticsPath);
         page.Controls.Add(openDiagnosticsButton);
-        page.Controls.Add(latestBundleLabel);
-        page.Controls.Add(_latestDiagnosticsBundleTextBox);
-        page.Controls.Add(copyBundleButton);
+        page.Controls.Add(actionsTitle);
         page.Controls.Add(createBundleButton);
+        page.Controls.Add(copyBundleButton);
+        page.Controls.Add(_latestDiagnosticsBundleLabel);
         page.Controls.Add(_supportStatusLabel);
         page.Controls.Add(performanceLabel);
         page.Controls.Add(_performanceSnapshotLabel);
@@ -870,20 +914,20 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         };
     }
 
-    private static TextBox CreateCommandTextBox(int x, int y, int width, string command)
+    private static Label CreateValueLabel(string text, int x, int y, int width, int height)
     {
-        return new TextBox
+        return new Label
         {
+            AutoSize = false,
             BackColor = OverlayTheme.Colors.PanelBackground,
             BorderStyle = BorderStyle.FixedSingle,
             ForeColor = OverlayTheme.Colors.TextSecondary,
-            Font = OverlayTheme.Font("Consolas", 8.25f),
+            Font = OverlayTheme.Font(OverlayTheme.DefaultFontFamily, 9f, FontStyle.Bold),
             Location = new Point(x, y),
-            ReadOnly = true,
-            Size = new Size(width, 28),
-            TabStop = true,
-            Text = command,
-            WordWrap = false
+            Padding = new Padding(8, 5, 8, 4),
+            Size = new Size(width, height),
+            Text = text,
+            TextAlign = ContentAlignment.MiddleLeft
         };
     }
 
@@ -982,22 +1026,38 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
     private void SyncErrorLoggingTab()
     {
-        if (_currentIssueLabel is null && _latestDiagnosticsBundleTextBox is null && _performanceSnapshotLabel is null)
+        if (_appStatusLabel is null
+            && _sessionStateLabel is null
+            && _currentIssueLabel is null
+            && _latestDiagnosticsBundleLabel is null
+            && _performanceSnapshotLabel is null)
         {
             return;
         }
 
         var captureSnapshot = _captureState.Snapshot();
         var diagnosticsSnapshot = _diagnosticsBundleService.Snapshot();
+        if (_appStatusLabel is not null)
+        {
+            var appStatus = AppStatus(captureSnapshot);
+            _appStatusLabel.Text = appStatus.Text;
+            _appStatusLabel.ForeColor = appStatus.Color;
+        }
+
+        if (_sessionStateLabel is not null)
+        {
+            _sessionStateLabel.Text = SessionStateText(captureSnapshot);
+        }
+
         if (_currentIssueLabel is not null)
         {
             _currentIssueLabel.Text = CurrentIssueText(captureSnapshot);
         }
 
-        if (_latestDiagnosticsBundleTextBox is not null)
+        if (_latestDiagnosticsBundleLabel is not null)
         {
             var latestBundlePath = diagnosticsSnapshot.LastBundlePath ?? LatestDiagnosticsBundlePath() ?? string.Empty;
-            _latestDiagnosticsBundleTextBox.Text = latestBundlePath;
+            _latestDiagnosticsBundleLabel.Text = LatestBundleDisplayText(latestBundlePath);
             ReportAutomaticDiagnosticsBundleStatus(diagnosticsSnapshot, latestBundlePath);
         }
 
@@ -1017,11 +1077,10 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
                 ["bundlePath"] = bundlePath,
                 ["source"] = "settings_support_tab"
             });
-            if (_latestDiagnosticsBundleTextBox is not null)
+            if (_latestDiagnosticsBundleLabel is not null)
             {
-                _latestDiagnosticsBundleTextBox.Text = bundlePath;
+                _latestDiagnosticsBundleLabel.Text = LatestBundleDisplayText(bundlePath);
             }
-
             SetSupportStatus("Created diagnostics bundle.", isError: false);
             OpenSupportDirectory(Path.GetDirectoryName(bundlePath)!, "diagnostics");
         }
@@ -1038,7 +1097,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
     private void CopyLatestDiagnosticsBundlePath()
     {
-        var bundlePath = _latestDiagnosticsBundleTextBox?.Text;
+        var bundlePath = _diagnosticsBundleService.Snapshot().LastBundlePath ?? LatestDiagnosticsBundlePath();
         if (string.IsNullOrWhiteSpace(bundlePath))
         {
             SetSupportStatus("No diagnostics bundle yet.", isError: true);
@@ -1157,67 +1216,107 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         return "No current error or warning recorded.";
     }
 
+    private string AdvancedDiagnosticsText()
+    {
+        return string.Join(
+            Environment.NewLine,
+            $"edge clips: {Status(_telemetryEdgeCaseOptions.Enabled)}",
+            $"model v2 parity: {Status(_liveModelParityOptions.Enabled)}",
+            $"overlay signals: {Status(_liveOverlayDiagnosticsOptions.Enabled)}",
+            $"post-race analysis: {Status(_postRaceAnalysisOptions.Enabled)}",
+            "Paths: logs + history folders below");
+    }
+
+    private static string Status(bool enabled)
+    {
+        return enabled ? "enabled" : "disabled";
+    }
+
+    private static (string Text, Color Color) AppStatus(TelemetryCaptureStatusSnapshot snapshot)
+    {
+        if (!string.IsNullOrWhiteSpace(snapshot.LastError))
+        {
+            return ("Error", OverlayTheme.Colors.ErrorText);
+        }
+
+        if (!string.IsNullOrWhiteSpace(snapshot.LastWarning)
+            || !string.IsNullOrWhiteSpace(snapshot.AppWarning)
+            || snapshot.DroppedFrameCount > 0)
+        {
+            return ("Warning", OverlayTheme.Colors.WarningText);
+        }
+
+        if (snapshot.IsCapturing)
+        {
+            return ("Live telemetry", OverlayTheme.Colors.SuccessText);
+        }
+
+        if (snapshot.IsConnected)
+        {
+            return ("Connected", OverlayTheme.Colors.InfoText);
+        }
+
+        return ("Waiting for iRacing", OverlayTheme.Colors.TextSecondary);
+    }
+
+    private static string SessionStateText(TelemetryCaptureStatusSnapshot snapshot)
+    {
+        if (snapshot.RawCaptureActive)
+        {
+            return $"Diagnostic telemetry active ({snapshot.WrittenFrameCount:N0} frames written)";
+        }
+
+        if (snapshot.RawCaptureEnabled)
+        {
+            return "Diagnostic telemetry requested";
+        }
+
+        if (snapshot.IsCapturing)
+        {
+            return $"Receiving live telemetry ({snapshot.FrameCount:N0} frames)";
+        }
+
+        if (snapshot.IsConnected)
+        {
+            return "iRacing connected; waiting for live session data";
+        }
+
+        return "Not connected";
+    }
+
+    private static string LatestBundleDisplayText(string? bundlePath)
+    {
+        if (string.IsNullOrWhiteSpace(bundlePath))
+        {
+            return "Latest bundle: none created yet";
+        }
+
+        return $"Latest bundle: {Path.GetFileName(bundlePath)}";
+    }
+
     private static string PerformanceSnapshotText(
         AppPerformanceSnapshot performance,
         TelemetryCaptureStatusSnapshot capture)
     {
+        var telemetryState = capture.IsCapturing
+            ? $"{performance.TelemetryFrameCount:N0} frames, {performance.TelemetryFramesPerSecond:0.##} fps"
+            : "waiting for live telemetry";
+        var rawState = capture.RawCaptureActive || capture.RawCaptureEnabled
+            ? $"{capture.WrittenFrameCount:N0} written, {capture.DroppedFrameCount:N0} dropped, {FormatBytes(capture.TelemetryFileBytes)}"
+            : "diagnostic capture off";
+
         return string.Join(
             Environment.NewLine,
-            $"telemetry: {performance.TelemetryFrameCount:N0} frames, {performance.TelemetryFramesPerSecond:0.##} fps",
-            $"data changed: {MetricSummary(performance, AppPerformanceMetricIds.TelemetryDataChanged)}",
-            $"live/history: {MetricCompact(performance, AppPerformanceMetricIds.LiveTelemetrySink)} / {MetricCompact(performance, AppPerformanceMetricIds.HistoryRecordFrame)}",
-            $"iRacing: quality {ValueCompact(performance, AppPerformanceValueIds.IRacingChanQuality)}, latency {ValueCompact(performance, AppPerformanceValueIds.IRacingChanLatency, "s")}, fps {ValueCompact(performance, AppPerformanceValueIds.IRacingFrameRate)}",
-            $"finalize: history {MetricCompact(performance, AppPerformanceMetricIds.TelemetryFinalizeSaveHistory)}, analysis {MetricCompact(performance, AppPerformanceMetricIds.TelemetryFinalizeSaveAnalysis)}, bundle {MetricCompact(performance, AppPerformanceMetricIds.TelemetryFinalizeDiagnosticsBundle)}",
-            $"overlays avg: status {MetricAverage(performance, AppPerformanceMetricIds.OverlayStatusRefresh)}, fuel {MetricAverage(performance, AppPerformanceMetricIds.OverlayFuelRefresh)}, relative {MetricAverage(performance, AppPerformanceMetricIds.OverlayRelativeRefresh)}, flags {MetricAverage(performance, AppPerformanceMetricIds.OverlayFlagsRefresh)}, session {MetricAverage(performance, AppPerformanceMetricIds.OverlaySessionWeatherRefresh)}, pit {MetricAverage(performance, AppPerformanceMetricIds.OverlayPitServiceRefresh)}, input {MetricAverage(performance, AppPerformanceMetricIds.OverlayInputStateRefresh)}, radar {MetricAverage(performance, AppPerformanceMetricIds.OverlayRadarRefresh)}, gap {MetricAverage(performance, AppPerformanceMetricIds.OverlayGapRefresh)}",
-            $"overlay input changed: status {ValuePercent(performance, "overlay.status.update.input_changed")}, fuel {ValuePercent(performance, "overlay.fuel_calculator.update.input_changed")}, relative {ValuePercent(performance, "overlay.relative.update.input_changed")}, flags {ValuePercent(performance, "overlay.flags.update.input_changed")}, session {ValuePercent(performance, "overlay.session-weather.update.input_changed")}, pit {ValuePercent(performance, "overlay.pit-service.update.input_changed")}, input {ValuePercent(performance, "overlay.input-state.update.input_changed")}, radar {ValuePercent(performance, "overlay.car_radar.update.input_changed")}, gap {ValuePercent(performance, "overlay.gap_to_leader.update.input_changed")}",
-            $"diagnostics: create {MetricCompact(performance, AppPerformanceMetricIds.DiagnosticsBundleCreate)}, files {MetricCompact(performance, AppPerformanceMetricIds.DiagnosticsBundlePerformanceFiles)}, history {MetricCompact(performance, AppPerformanceMetricIds.DiagnosticsBundleHistory)}",
-            $"raw: written {capture.WrittenFrameCount:N0}, queue {performance.Capture.LastPendingMessageCount:N0}, drops {capture.DroppedFrameCount:N0}, file {FormatBytes(capture.TelemetryFileBytes)}",
-            $"process: ws {FormatBytes(performance.Process.WorkingSetBytes)}, heap {FormatBytes(performance.Process.ManagedHeapBytes)}");
+            $"telemetry: {telemetryState}",
+            $"iRacing: quality {ValueLast(performance, AppPerformanceValueIds.IRacingChanQuality)}, latency {ValueLast(performance, AppPerformanceValueIds.IRacingChanLatency, "s")}",
+            $"raw: {rawState}",
+            $"process: {FormatBytes(performance.Process.WorkingSetBytes)} working set");
     }
 
-    private static string MetricSummary(AppPerformanceSnapshot performance, string metricId)
-    {
-        var metric = FindMetric(performance, metricId);
-        return metric is null || metric.Count == 0
-            ? "n/a"
-            : $"avg {metric.AverageMilliseconds:0.###} ms, p95 {metric.P95Milliseconds:0.###} ms, max {metric.MaxMilliseconds:0.###} ms";
-    }
-
-    private static string MetricCompact(AppPerformanceSnapshot performance, string metricId)
-    {
-        var metric = FindMetric(performance, metricId);
-        return metric is null || metric.Count == 0
-            ? "n/a"
-            : $"{metric.AverageMilliseconds:0.###}/{metric.P95Milliseconds:0.###} ms";
-    }
-
-    private static string MetricAverage(AppPerformanceSnapshot performance, string metricId)
-    {
-        var metric = FindMetric(performance, metricId);
-        return metric is null || metric.Count == 0
-            ? "n/a"
-            : $"{metric.AverageMilliseconds:0.###} ms";
-    }
-
-    private static PerformanceMetricSnapshot? FindMetric(AppPerformanceSnapshot performance, string metricId)
-    {
-        return performance.Metrics.FirstOrDefault(metric => string.Equals(metric.Id, metricId, StringComparison.OrdinalIgnoreCase));
-    }
-
-    private static string ValueCompact(AppPerformanceSnapshot performance, string valueId, string suffix = "")
+    private static string ValueLast(AppPerformanceSnapshot performance, string valueId, string suffix = "")
     {
         var value = FindValue(performance, valueId);
-        return value is null || value.Count == 0
-            ? "n/a"
-            : $"last {FormatValue(value.Last, suffix)}, p05 {FormatValue(value.P05, suffix)}, p95 {FormatValue(value.P95, suffix)}";
-    }
-
-    private static string ValuePercent(AppPerformanceSnapshot performance, string valueId)
-    {
-        var value = FindValue(performance, valueId);
-        return value?.Average is null
-            ? "n/a"
-            : $"{value.Average.Value * 100d:0.#}%";
+        return value?.Last is null ? "n/a" : FormatValue(value.Last, suffix);
     }
 
     private static PerformanceValueSnapshot? FindValue(AppPerformanceSnapshot performance, string valueId)

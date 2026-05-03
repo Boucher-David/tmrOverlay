@@ -1,6 +1,6 @@
 # Live Overlay Diagnostics
 
-`live-overlay-diagnostics.json` is a passive observer artifact for the current fuel, radar, gap, timing, and design-v2 candidate overlays. It is intended to test overlay assumptions from real sessions before model-v2 behavior changes are made.
+`live-overlay-diagnostics.json` is a disabled-by-default passive observer artifact for the current fuel, radar, gap, timing, and design-v2 candidate overlays. It is intended to test overlay assumptions from real sessions before model-v2 behavior changes are made.
 
 The recorder does not change overlay output. It watches normalized live snapshots and writes bounded summaries for:
 
@@ -29,7 +29,8 @@ The mac harness mirrors this path under `~/Library/Application Support/TmrOverla
 
 ## Guardrails
 
-- Enabled by default, bounded by sampled frame and event caps.
+- Disabled by default for tester builds; enable it with `LiveOverlayDiagnostics:Enabled=true` or a `TMR_LiveOverlayDiagnostics__Enabled=true` override when collecting evidence.
+- Bounded by sampled frame and event caps.
 - Event examples are exact-duplicate suppressed and capped per kind before the global cap, so a stable condition such as a multi-lap class gap cannot crowd out unrelated radar/fuel/position examples.
 - Radar event examples include the focus kind, raw `CarLeftRight`, raw nearby-car count, whether the production radar had data, and nearby/timing/spatial row counts. This lets suppressed spectator/teammate focus and other partial radar cases be reviewed from the capture without making them normal overlay UI.
 - Sector timing examples are derived diagnostics only. They show whether sector table inputs are reconstructable from sector metadata plus live car progress; they are not yet a production sector-comparison model contract.

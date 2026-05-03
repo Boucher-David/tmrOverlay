@@ -98,6 +98,7 @@ internal static class Program
                 services.AddSingleton(LiveModelParityOptions.FromConfiguration(context.Configuration));
                 services.AddSingleton(LiveOverlayDiagnosticsOptions.FromConfiguration(context.Configuration));
                 services.AddSingleton(IbtAnalysisOptions.FromConfiguration(context.Configuration));
+                services.AddSingleton(PostRaceAnalysisOptions.FromConfiguration(context.Configuration));
                 services.AddSingleton(SessionHistoryOptions.FromConfiguration(context.Configuration, storageOptions));
                 services.AddSingleton(RetentionOptions.FromConfiguration(context.Configuration));
                 services.AddSingleton(replayOptions);

@@ -8,6 +8,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>TmrOverlay.App</AssemblyName>
     <RootNamespace>TmrOverlay.App</RootNamespace>
+    <ApplicationIcon>Assets\TmrOverlay.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

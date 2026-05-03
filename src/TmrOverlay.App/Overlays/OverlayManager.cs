@@ -20,6 +20,7 @@ using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.Performance;
+using TmrOverlay.App.Analysis;
 
 namespace TmrOverlay.App.Overlays;
 
@@ -29,6 +30,10 @@ internal sealed class OverlayManager : IDisposable
     private readonly AppStorageOptions _storageOptions;
     private readonly DiagnosticsBundleService _diagnosticsBundleService;
     private readonly TelemetryCaptureState _telemetryCaptureState;
+    private readonly TelemetryEdgeCaseOptions _telemetryEdgeCaseOptions;
+    private readonly LiveModelParityOptions _liveModelParityOptions;
+    private readonly LiveOverlayDiagnosticsOptions _liveOverlayDiagnosticsOptions;
+    private readonly PostRaceAnalysisOptions _postRaceAnalysisOptions;
     private readonly AppPerformanceState _performanceState;
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly SessionHistoryQueryService _historyQueryService;
@@ -53,6 +58,10 @@ internal sealed class OverlayManager : IDisposable
         AppStorageOptions storageOptions,
         DiagnosticsBundleService diagnosticsBundleService,
         TelemetryCaptureState telemetryCaptureState,
+        TelemetryEdgeCaseOptions telemetryEdgeCaseOptions,
+        LiveModelParityOptions liveModelParityOptions,
+        LiveOverlayDiagnosticsOptions liveOverlayDiagnosticsOptions,
+        PostRaceAnalysisOptions postRaceAnalysisOptions,
         AppPerformanceState performanceState,
         ILiveTelemetrySource liveTelemetrySource,
         SessionHistoryQueryService historyQueryService,
@@ -66,6 +75,10 @@ internal sealed class OverlayManager : IDisposable
         _storageOptions = storageOptions;
         _diagnosticsBundleService = diagnosticsBundleService;
         _telemetryCaptureState = telemetryCaptureState;
+        _telemetryEdgeCaseOptions = telemetryEdgeCaseOptions;
+        _liveModelParityOptions = liveModelParityOptions;
+        _liveOverlayDiagnosticsOptions = liveOverlayDiagnosticsOptions;
+        _postRaceAnalysisOptions = postRaceAnalysisOptions;
         _performanceState = performanceState;
         _liveTelemetrySource = liveTelemetrySource;
         _historyQueryService = historyQueryService;
@@ -118,6 +131,10 @@ internal sealed class OverlayManager : IDisposable
                 _settings,
                 ManagedOverlayDefinitions,
                 _telemetryCaptureState,
+                _telemetryEdgeCaseOptions,
+                _liveModelParityOptions,
+                _liveOverlayDiagnosticsOptions,
+                _postRaceAnalysisOptions,
                 _performanceState,
                 _storageOptions,
                 _diagnosticsBundleService,

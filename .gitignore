@@ -30,6 +30,7 @@
 /runtime-state.json
 /history/user/
 /artifacts/
+/tmroverlay-diagnostics-*/
 
 # Convenience launcher for the ignored macOS harness.
 /run.sh

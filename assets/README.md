@@ -10,7 +10,7 @@ This folder holds repo-owned visual source assets that are useful across app, ov
 
 Keep source images here when they are not yet wired into a specific runtime. Platform-specific derivatives should live near the consuming project once they are generated:
 
-- Windows app icons: `src/TmrOverlay.App/Assets/` or the WinForms project resource path chosen by the publishing branch.
+- Windows app icons: `src/TmrOverlay.App/Assets/`.
 - macOS harness icons: `local-mac/TmrOverlayMac/` if the ignored harness needs local-only resources.
 - Screenshot/mock artifacts: `mocks/`, not this folder.
 
