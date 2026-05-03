@@ -1,8 +1,14 @@
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.App.Overlays.CarRadar;
+using TmrOverlay.App.Overlays.Flags;
 using TmrOverlay.App.Overlays.FuelCalculator;
 using TmrOverlay.App.Overlays.GapToLeader;
+using TmrOverlay.App.Overlays.InputState;
+using TmrOverlay.App.Overlays.PitService;
+using TmrOverlay.App.Overlays.Relative;
 using TmrOverlay.App.Overlays.SettingsPanel;
+using TmrOverlay.App.Overlays.SessionWeather;
+using TmrOverlay.App.Overlays.SimpleTelemetry;
 using TmrOverlay.App.Overlays.Status;
 using TmrOverlay.App.Settings;
 using TmrOverlay.App.Storage;
@@ -31,6 +37,8 @@ internal sealed class OverlayManager : IDisposable
     private readonly AppEventRecorder _events;
     private readonly ILogger<CarRadarForm> _carRadarLogger;
     private readonly ILogger<GapToLeaderForm> _gapToLeaderLogger;
+    private readonly ILogger<RelativeForm> _relativeLogger;
+    private readonly ILogger<SimpleTelemetryOverlayForm> _simpleTelemetryLogger;
     private readonly Dictionary<string, Form> _forms = [];
     private readonly Dictionary<string, double> _appliedScales = [];
     private readonly System.Windows.Forms.Timer _sessionVisibilityTimer;
@@ -53,7 +61,9 @@ internal sealed class OverlayManager : IDisposable
         PostRaceAnalysisStore postRaceAnalysisStore,
         AppEventRecorder events,
         ILogger<CarRadarForm> carRadarLogger,
-        ILogger<GapToLeaderForm> gapToLeaderLogger)
+        ILogger<GapToLeaderForm> gapToLeaderLogger,
+        ILogger<RelativeForm> relativeLogger,
+        ILogger<SimpleTelemetryOverlayForm> simpleTelemetryLogger)
     {
         _settingsStore = settingsStore;
         _storageOptions = storageOptions;
@@ -66,6 +76,8 @@ internal sealed class OverlayManager : IDisposable
         _events = events;
         _carRadarLogger = carRadarLogger;
         _gapToLeaderLogger = gapToLeaderLogger;
+        _relativeLogger = relativeLogger;
+        _simpleTelemetryLogger = simpleTelemetryLogger;
 
         _sessionVisibilityTimer = new System.Windows.Forms.Timer
         {
@@ -153,6 +165,11 @@ internal sealed class OverlayManager : IDisposable
     [
         StatusOverlayDefinition.Definition,
         FuelCalculatorOverlayDefinition.Definition,
+        RelativeOverlayDefinition.Definition,
+        FlagsOverlayDefinition.Definition,
+        SessionWeatherOverlayDefinition.Definition,
+        PitServiceOverlayDefinition.Definition,
+        InputStateOverlayDefinition.Definition,
         CarRadarOverlayDefinition.Definition,
         GapToLeaderOverlayDefinition.Definition
     ];
@@ -181,6 +198,101 @@ internal sealed class OverlayManager : IDisposable
                 SaveSettings),
             24,
             190),
+        new OverlayRegistration(
+            RelativeOverlayDefinition.Definition,
+            settings => new RelativeForm(
+                _liveTelemetrySource,
+                _relativeLogger,
+                _performanceState,
+                settings,
+                SelectedFontFamily,
+                SaveSettings),
+            24,
+            530),
+        new OverlayRegistration(
+            FlagsOverlayDefinition.Definition,
+            settings => new SimpleTelemetryOverlayForm(
+                FlagsOverlayDefinition.Definition,
+                _liveTelemetrySource,
+                _simpleTelemetryLogger,
+                _performanceState,
+                settings,
+                SelectedFontFamily,
+                SelectedUnitSystem,
+                new SimpleTelemetryOverlayMetrics(
+                    AppPerformanceMetricIds.OverlayFlagsRefresh,
+                    AppPerformanceMetricIds.OverlayFlagsSnapshot,
+                    AppPerformanceMetricIds.OverlayFlagsViewModel,
+                    AppPerformanceMetricIds.OverlayFlagsApplyUi,
+                    AppPerformanceMetricIds.OverlayFlagsRows,
+                    AppPerformanceMetricIds.OverlayFlagsPaint),
+                FlagsOverlayViewModel.From,
+                SaveSettings),
+            650,
+            620),
+        new OverlayRegistration(
+            SessionWeatherOverlayDefinition.Definition,
+            settings => new SimpleTelemetryOverlayForm(
+                SessionWeatherOverlayDefinition.Definition,
+                _liveTelemetrySource,
+                _simpleTelemetryLogger,
+                _performanceState,
+                settings,
+                SelectedFontFamily,
+                SelectedUnitSystem,
+                new SimpleTelemetryOverlayMetrics(
+                    AppPerformanceMetricIds.OverlaySessionWeatherRefresh,
+                    AppPerformanceMetricIds.OverlaySessionWeatherSnapshot,
+                    AppPerformanceMetricIds.OverlaySessionWeatherViewModel,
+                    AppPerformanceMetricIds.OverlaySessionWeatherApplyUi,
+                    AppPerformanceMetricIds.OverlaySessionWeatherRows,
+                    AppPerformanceMetricIds.OverlaySessionWeatherPaint),
+                SessionWeatherOverlayViewModel.From,
+                SaveSettings),
+            1070,
+            24),
+        new OverlayRegistration(
+            PitServiceOverlayDefinition.Definition,
+            settings => new SimpleTelemetryOverlayForm(
+                PitServiceOverlayDefinition.Definition,
+                _liveTelemetrySource,
+                _simpleTelemetryLogger,
+                _performanceState,
+                settings,
+                SelectedFontFamily,
+                SelectedUnitSystem,
+                new SimpleTelemetryOverlayMetrics(
+                    AppPerformanceMetricIds.OverlayPitServiceRefresh,
+                    AppPerformanceMetricIds.OverlayPitServiceSnapshot,
+                    AppPerformanceMetricIds.OverlayPitServiceViewModel,
+                    AppPerformanceMetricIds.OverlayPitServiceApplyUi,
+                    AppPerformanceMetricIds.OverlayPitServiceRows,
+                    AppPerformanceMetricIds.OverlayPitServicePaint),
+                PitServiceOverlayViewModel.From,
+                SaveSettings),
+            1070,
+            320),
+        new OverlayRegistration(
+            InputStateOverlayDefinition.Definition,
+            settings => new SimpleTelemetryOverlayForm(
+                InputStateOverlayDefinition.Definition,
+                _liveTelemetrySource,
+                _simpleTelemetryLogger,
+                _performanceState,
+                settings,
+                SelectedFontFamily,
+                SelectedUnitSystem,
+                new SimpleTelemetryOverlayMetrics(
+                    AppPerformanceMetricIds.OverlayInputStateRefresh,
+                    AppPerformanceMetricIds.OverlayInputStateSnapshot,
+                    AppPerformanceMetricIds.OverlayInputStateViewModel,
+                    AppPerformanceMetricIds.OverlayInputStateApplyUi,
+                    AppPerformanceMetricIds.OverlayInputStateRows,
+                    AppPerformanceMetricIds.OverlayInputStatePaint),
+                InputStateOverlayViewModel.From,
+                SaveSettings),
+            1070,
+            590),
         new OverlayRegistration(
             CarRadarOverlayDefinition.Definition,
             settings => new CarRadarForm(

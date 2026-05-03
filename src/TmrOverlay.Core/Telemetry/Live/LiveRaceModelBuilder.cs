@@ -74,6 +74,7 @@ internal static class LiveRaceModelBuilder
             SessionLapsTotal: sample.SessionLapsTotal is >= 0 ? sample.SessionLapsTotal : null,
             RaceLaps: sample.RaceLaps is >= 0 ? sample.RaceLaps : null,
             SessionState: sample.SessionState,
+            SessionFlags: sample.SessionFlags,
             TrackDisplayName: FirstNonEmpty(context.Track.TrackDisplayName, context.Track.TrackName),
             TrackLengthKm: ValidPositive(context.Track.TrackLengthKm),
             CarDisplayName: FirstNonEmpty(context.Car.CarScreenName, context.Car.CarScreenNameShort, context.Car.CarPath),
@@ -365,31 +366,48 @@ internal static class LiveRaceModelBuilder
     {
         var trackLengthMeters = ValidPositive(context.Track.TrackLengthKm) is { } km ? km * 1000d : (double?)null;
         var cars = proximity.NearbyCars
-            .Where(car => car.RelativeMeters is not null)
             .Select(car => new LiveSpatialCar(
                 CarIdx: car.CarIdx,
-                Quality: LiveModelQuality.Reliable,
-                PlacementEvidence: LiveSignalEvidence.Reliable("CarIdxLapDistPct+track-length"),
+                Quality: SpatialCarQuality(car),
+                PlacementEvidence: SpatialPlacementEvidence(car),
                 RelativeLaps: car.RelativeLaps,
+                RelativeSeconds: car.RelativeSeconds,
                 RelativeMeters: car.RelativeMeters,
+                OverallPosition: car.OverallPosition,
+                ClassPosition: car.ClassPosition,
                 CarClass: car.CarClass,
                 TrackSurface: car.TrackSurface,
-                OnPitRoad: car.OnPitRoad))
-            .OrderBy(car => Math.Abs(car.RelativeMeters ?? car.RelativeLaps))
+                OnPitRoad: car.OnPitRoad,
+                CarClassColorHex: car.CarClassColorHex))
+            .OrderBy(car => Math.Abs(car.RelativeMeters ?? car.RelativeSeconds ?? car.RelativeLaps))
             .ThenBy(car => car.CarIdx)
             .ToArray();
 
         return new LiveSpatialModel(
-            HasData: cars.Length > 0 || FocusLapDistPct(sample) is not null,
+            HasData: proximity.HasData || proximity.HasCarLeft || proximity.HasCarRight || cars.Length > 0 || FocusLapDistPct(sample) is not null,
             Quality: cars.Length > 0
                 ? cars.Max(car => car.Quality)
-                : FocusLapDistPct(sample) is not null
+                : proximity.HasCarLeft || proximity.HasCarRight || FocusLapDistPct(sample) is not null
                     ? LiveModelQuality.Partial
                     : LiveModelQuality.Unavailable,
             ReferenceCarIdx: FocusCarIdx(sample),
+            ReferenceCarClass: proximity.ReferenceCarClass,
+            CarLeftRight: proximity.CarLeftRight,
+            SideStatus: proximity.SideStatus,
+            HasCarLeft: proximity.HasCarLeft,
+            HasCarRight: proximity.HasCarRight,
+            SideOverlapWindowSeconds: proximity.SideOverlapWindowSeconds,
             TrackLengthMeters: trackLengthMeters,
             ReferenceLapDistPct: FocusLapDistPct(sample),
-            Cars: cars);
+            Cars: cars,
+            NearestAhead: cars
+                .Where(car => car.RelativeLaps > 0d)
+                .MinBy(car => car.RelativeLaps),
+            NearestBehind: cars
+                .Where(car => car.RelativeLaps < 0d)
+                .MaxBy(car => car.RelativeLaps),
+            MulticlassApproaches: proximity.MulticlassApproaches,
+            StrongestMulticlassApproach: proximity.StrongestMulticlassApproach);
     }
 
     private static LiveWeatherModel BuildWeather(HistoricalSessionContext context, HistoricalTelemetrySample sample)
@@ -483,16 +501,78 @@ internal static class LiveRaceModelBuilder
             DriverChangeLapStatus: sample.DriverChangeLapStatus);
     }
 
+    private static LiveModelQuality SpatialCarQuality(LiveProximityCar car)
+    {
+        if (car.RelativeMeters is not null)
+        {
+            return LiveModelQuality.Reliable;
+        }
+
+        return car.HasReliableRelativeSeconds
+            ? LiveModelQuality.Inferred
+            : LiveModelQuality.Partial;
+    }
+
+    private static LiveSignalEvidence SpatialPlacementEvidence(LiveProximityCar car)
+    {
+        if (car.RelativeMeters is not null)
+        {
+            return LiveSignalEvidence.Reliable("CarIdxLapDistPct+track-length");
+        }
+
+        return car.HasReliableRelativeSeconds
+            ? LiveSignalEvidence.Inferred("CarIdxEstTime/CarIdxF2Time")
+            : LiveSignalEvidence.Partial("CarIdxLapDistPct", "track_length_or_timing_missing");
+    }
+
     private static LiveInputTelemetryModel BuildInputs(HistoricalTelemetrySample sample)
     {
         var speed = IsFinite(sample.SpeedMetersPerSecond) ? sample.SpeedMetersPerSecond : (double?)null;
+        var throttle = ValidUnitInterval(sample.Throttle);
+        var brake = ValidUnitInterval(sample.Brake);
+        var clutch = ValidUnitInterval(sample.Clutch);
+        var steering = sample.SteeringWheelAngle is { } steeringValue && IsFinite(steeringValue) ? steeringValue : (double?)null;
+        var gear = sample.Gear is >= -1 and <= 20 ? sample.Gear : null;
+        var rpm = ValidNonNegative(sample.Rpm);
+        var voltage = ValidPositive(sample.Voltage);
+        var waterTemp = sample.WaterTempC is { } waterTempValue && IsFinite(waterTempValue) ? waterTempValue : (double?)null;
+        var fuelPressure = ValidNonNegative(sample.FuelPressureBar);
+        var oilTemp = sample.OilTempC is { } oilTempValue && IsFinite(oilTempValue) ? oilTempValue : (double?)null;
+        var oilPressure = ValidNonNegative(sample.OilPressureBar);
+        var hasPedals = throttle is not null || brake is not null || clutch is not null;
+        var hasSteering = steering is not null;
+        var hasCarState = gear is not null
+            || rpm is not null
+            || sample.EngineWarnings is not null
+            || voltage is not null
+            || waterTemp is not null
+            || fuelPressure is not null
+            || oilTemp is not null
+            || oilPressure is not null;
+
         return new LiveInputTelemetryModel(
-            HasData: speed is not null || sample.PlayerTireCompound >= 0,
-            Quality: speed is not null ? LiveModelQuality.Partial : LiveModelQuality.Unavailable,
+            HasData: speed is not null || sample.PlayerTireCompound >= 0 || hasPedals || hasSteering || hasCarState,
+            Quality: hasPedals || hasSteering || hasCarState
+                ? LiveModelQuality.Reliable
+                : speed is not null
+                    ? LiveModelQuality.Partial
+                    : LiveModelQuality.Unavailable,
             SpeedMetersPerSecond: speed,
             PlayerTireCompound: sample.PlayerTireCompound >= 0 ? sample.PlayerTireCompound : null,
-            HasPedalInputs: false,
-            HasSteeringInput: false);
+            HasPedalInputs: hasPedals,
+            HasSteeringInput: hasSteering,
+            Gear: gear,
+            Rpm: rpm,
+            Throttle: throttle,
+            Brake: brake,
+            Clutch: clutch,
+            SteeringWheelAngle: steering,
+            EngineWarnings: sample.EngineWarnings,
+            Voltage: voltage,
+            WaterTempC: waterTemp,
+            FuelPressureBar: fuelPressure,
+            OilTempC: oilTemp,
+            OilPressureBar: oilPressure);
     }
 
     private static void AddKnownRow(
@@ -1150,6 +1230,11 @@ internal static class LiveRaceModelBuilder
     private static double? ValidNonNegative(double? value)
     {
         return value is { } number && IsFinite(number) && number >= 0d ? number : null;
+    }
+
+    private static double? ValidUnitInterval(double? value)
+    {
+        return value is { } number && IsFinite(number) && number >= 0d && number <= 1d ? number : null;
     }
 
     private static bool IsNonNegativeFinite(double value)

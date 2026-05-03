@@ -93,6 +93,8 @@ public sealed class AppSettingsStoreTests
             Assert.Equal(1d, overlay.Opacity);
             Assert.Equal(0, overlay.GetIntegerOption(OverlayOptionKeys.GapCarsAhead, 5, 0, 12));
             Assert.Equal(12, overlay.GetIntegerOption(OverlayOptionKeys.GapCarsBehind, 5, 0, 12));
+            Assert.Equal(5, overlay.GetIntegerOption(OverlayOptionKeys.RelativeCarsAhead, 5, 0, 8));
+            Assert.Equal(5, overlay.GetIntegerOption(OverlayOptionKeys.RelativeCarsBehind, 5, 0, 8));
             Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.FuelAdvice, defaultValue: true));
             Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true));
 

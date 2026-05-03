@@ -10,13 +10,14 @@ mocks/
   car-radar/
   gap-to-leader/
   settings-overlay/
+  design-v2/
   standings/
   relative/
   competition-distance-graph/
   weather/
 ```
 
-These files are review artifacts, not publish output. Generated mac-harness screenshots are the source of truth for current runtime overlay review. Keep any future exploratory static design mock clearly labeled and separate from generated validation artifacts.
+These files are review artifacts, not publish output. Generated mac-harness screenshots are the source of truth for current runtime overlay review. The `relative/` folder is the production Relative overlay preview set; `design-v2/` is a separate generated mac-harness proving ground for future shared overlay primitives. Its default direction is telemetry-first overlays, including standings, relative, local blindspot/radar, laptime, stint log, and flag-style surfaces, with source/evidence chrome reserved for stale, unavailable, modeled, or derived values. Keep any future exploratory static design mock clearly labeled and separate from generated validation artifacts.
 
 When adding or materially changing an overlay, update that overlay's mock folder with:
 

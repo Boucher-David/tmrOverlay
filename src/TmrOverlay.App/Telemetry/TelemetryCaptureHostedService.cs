@@ -740,6 +740,23 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         return double.IsNaN(value) || double.IsInfinity(value) || value < 0d ? null : value;
     }
 
+    private static double? ReadNullableFiniteDouble(IRacingSDK sdk, string variableName)
+    {
+        var value = ReadDouble(sdk, variableName);
+        return double.IsNaN(value) || double.IsInfinity(value) ? null : value;
+    }
+
+    private static bool? ReadNullableBoolean(IRacingSDK sdk, string variableName)
+    {
+        return sdk.GetData(variableName) switch
+        {
+            bool value => value,
+            int value => value != 0,
+            uint value => value != 0,
+            _ => null
+        };
+    }
+
     private static int? ReadInt32ArrayElement(IRacingSDK sdk, string variableName, int index)
     {
         if (index < 0)
@@ -1404,6 +1421,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 SessionLapsRemainEx: ReadInt32(sdk, "SessionLapsRemainEx"),
                 SessionLapsTotal: ReadInt32(sdk, "SessionLapsTotal"),
                 SessionState: ReadInt32(sdk, "SessionState"),
+                SessionFlags: ReadNullableInt32(sdk, "SessionFlags"),
                 RaceLaps: ReadInt32(sdk, "RaceLaps"),
                 PlayerCarIdx: playerCarIdx,
                 FocusCarIdx: focusCarIdx,
@@ -1462,7 +1480,35 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 TireSetsUsed: ReadInt32(sdk, "TireSetsUsed"),
                 FastRepairUsed: ReadInt32(sdk, "FastRepairUsed"),
                 DriversSoFar: ReadInt32(sdk, "DCDriversSoFar"),
-                DriverChangeLapStatus: ReadInt32(sdk, "DCLapStatus"));
+                DriverChangeLapStatus: ReadInt32(sdk, "DCLapStatus"),
+                LapCurrentLapTimeSeconds: ReadNullableDouble(sdk, "LapCurrentLapTime"),
+                LapDeltaToBestLapSeconds: ReadNullableFiniteDouble(sdk, "LapDeltaToBestLap"),
+                LapDeltaToBestLapRate: ReadNullableFiniteDouble(sdk, "LapDeltaToBestLap_DD"),
+                LapDeltaToBestLapOk: ReadNullableBoolean(sdk, "LapDeltaToBestLap_OK"),
+                LapDeltaToOptimalLapSeconds: ReadNullableFiniteDouble(sdk, "LapDeltaToOptimalLap"),
+                LapDeltaToOptimalLapRate: ReadNullableFiniteDouble(sdk, "LapDeltaToOptimalLap_DD"),
+                LapDeltaToOptimalLapOk: ReadNullableBoolean(sdk, "LapDeltaToOptimalLap_OK"),
+                LapDeltaToSessionBestLapSeconds: ReadNullableFiniteDouble(sdk, "LapDeltaToSessionBestLap"),
+                LapDeltaToSessionBestLapRate: ReadNullableFiniteDouble(sdk, "LapDeltaToSessionBestLap_DD"),
+                LapDeltaToSessionBestLapOk: ReadNullableBoolean(sdk, "LapDeltaToSessionBestLap_OK"),
+                LapDeltaToSessionOptimalLapSeconds: ReadNullableFiniteDouble(sdk, "LapDeltaToSessionOptimalLap"),
+                LapDeltaToSessionOptimalLapRate: ReadNullableFiniteDouble(sdk, "LapDeltaToSessionOptimalLap_DD"),
+                LapDeltaToSessionOptimalLapOk: ReadNullableBoolean(sdk, "LapDeltaToSessionOptimalLap_OK"),
+                LapDeltaToSessionLastLapSeconds: ReadNullableFiniteDouble(sdk, "LapDeltaToSessionLastlLap"),
+                LapDeltaToSessionLastLapRate: ReadNullableFiniteDouble(sdk, "LapDeltaToSessionLastlLap_DD"),
+                LapDeltaToSessionLastLapOk: ReadNullableBoolean(sdk, "LapDeltaToSessionLastlLap_OK"),
+                Gear: ReadNullableInt32(sdk, "Gear"),
+                Rpm: ReadNullableFiniteDouble(sdk, "RPM"),
+                Throttle: ReadNullableFiniteDouble(sdk, "Throttle"),
+                Brake: ReadNullableFiniteDouble(sdk, "Brake"),
+                Clutch: ReadNullableFiniteDouble(sdk, "Clutch"),
+                SteeringWheelAngle: ReadNullableFiniteDouble(sdk, "SteeringWheelAngle"),
+                EngineWarnings: ReadNullableInt32(sdk, "EngineWarnings"),
+                Voltage: ReadNullableFiniteDouble(sdk, "Voltage"),
+                WaterTempC: ReadNullableFiniteDouble(sdk, "WaterTemp"),
+                FuelPressureBar: ReadNullableFiniteDouble(sdk, "FuelPress"),
+                OilTempC: ReadNullableFiniteDouble(sdk, "OilTemp"),
+                OilPressureBar: ReadNullableFiniteDouble(sdk, "OilPress"));
             rawWatch = ReadRawTelemetryWatchSnapshot(sdk, rawWatchVariableNames);
             _performance.RecordIRacingSystemTelemetry(
                 capturedAtUtc,

@@ -28,7 +28,8 @@ Current modules:
 - `Status/` - tiny display-only collector status overlay
 - `SettingsPanel/` - centered tabbed settings window with a `TMR Overlay` header and vertical left tabs for user-managed visibility, scale, session filters, shared font/units, runtime raw-capture requests, support/log/performance access, placeholder Overlay Bridge controls, post-race analysis browsing, and overlay-specific display options
 - `FuelCalculator/` - fuel/stint strategy overlay with tire-stop guidance from history
-- `CarRadar/` - transparent circular proximity radar from fresh live `CamCarIdx`, `CarLeftRight`, `CarIdxF2Time`, `CarIdxEstTime`, and `CarIdx*` progress arrays, with car rectangles placed from physical lap-distance meters when available, timing fallback when needed, side occupancy anchored by `CarLeftRight`, neutral-white car rectangles fading in between radar entry and the yellow-warning threshold, and proximity color moving through yellow toward saturated alert red only inside the close bumper-gap warning buffer around the focused car
+- `Relative/` - telemetry-first relative table from `LiveTelemetrySnapshot.Models.Relative`, with configurable ahead/behind row counts, a reference row, timing fallback labeling, and quiet source text unless rows are waiting or degraded
+- `CarRadar/` - transparent circular local in-car proximity radar from `LiveTelemetrySnapshot.Models.Spatial`, using fresh local player/team progress, `CarLeftRight`, `CarIdxF2Time`, `CarIdxEstTime`, and `CarIdx*` progress arrays, hidden for explicit non-player focus/garage/pit contexts, with car rectangles placed from physical lap-distance meters when available, timing fallback when needed, side occupancy anchored by local `CarLeftRight`, neutral-white car rectangles fading in between radar entry and the yellow-warning threshold, and proximity color moving through yellow toward saturated alert red only inside the close bumper-gap warning buffer around the local car
 - `GapToLeader/` - four-hour in-class gap trend graph from `CamCarIdx`, `CarIdxF2Time`, standings, and `CarIdx*` progress, with a bounded in-memory trace, adaptive Y-axis scaling, left-side axis labels, lap reference lines, weather bands, driver/leader-change markers, and endpoint position labels for the focused car context
 
 Windows overlay code is production-facing and should stay real-data-driven. Use the ignored mac harness for looser development scenes such as fixed race offsets, named mock drivers, synthetic weather windows, and exaggerated graph events.
@@ -36,6 +37,5 @@ Windows overlay code is production-facing and should stay real-data-driven. Use 
 Expected future modules:
 
 - `Standings/`
-- `Relative/`
 - `CompetitionDistanceGraph/`
 - `Weather/`

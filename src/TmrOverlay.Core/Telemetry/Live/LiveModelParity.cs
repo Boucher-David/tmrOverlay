@@ -108,6 +108,11 @@ internal static class LiveModelParityAnalyzer
         var expectedReferenceCarIdx = sample.FocusCarIdx ?? sample.PlayerCarIdx;
         CompareNullableInt(observations, "proximity", "relative-reference-car-idx", expectedReferenceCarIdx, snapshot.Models.Relative.ReferenceCarIdx);
         CompareNullableInt(observations, "proximity", "spatial-reference-car-idx", expectedReferenceCarIdx, snapshot.Models.Spatial.ReferenceCarIdx);
+        CompareNullableInt(observations, "proximity", "spatial-side-raw", snapshot.Proximity.CarLeftRight, snapshot.Models.Spatial.CarLeftRight);
+        CompareString(observations, "proximity", "spatial-side-status", snapshot.Proximity.SideStatus, snapshot.Models.Spatial.SideStatus);
+        CompareBoolean(observations, "proximity", "spatial-has-car-left", snapshot.Proximity.HasCarLeft, snapshot.Models.Spatial.HasCarLeft);
+        CompareBoolean(observations, "proximity", "spatial-has-car-right", snapshot.Proximity.HasCarRight, snapshot.Models.Spatial.HasCarRight);
+        CompareNullableDouble(observations, "proximity", "spatial-side-overlap-window", snapshot.Proximity.SideOverlapWindowSeconds, snapshot.Models.Spatial.SideOverlapWindowSeconds, SecondsTolerance);
 
         var relativeByCarIdx = snapshot.Models.Relative.Rows.ToDictionary(row => row.CarIdx);
         var spatialByCarIdx = snapshot.Models.Spatial.Cars.ToDictionary(car => car.CarIdx);
@@ -126,11 +131,6 @@ internal static class LiveModelParityAnalyzer
                 CompareNullableBoolean(observations, "proximity", $"relative-pit-road-{legacyCar.CarIdx}", legacyCar.OnPitRoad, relative.OnPitRoad);
             }
 
-            if (legacyCar.RelativeMeters is null)
-            {
-                continue;
-            }
-
             if (!spatialByCarIdx.TryGetValue(legacyCar.CarIdx, out var spatial))
             {
                 observations.Add(Missing("proximity", $"spatial-car-{legacyCar.CarIdx}", "legacy nearby car missing from model spatial cars"));
@@ -138,8 +138,10 @@ internal static class LiveModelParityAnalyzer
             else
             {
                 CompareNullableDouble(observations, "proximity", $"spatial-laps-{legacyCar.CarIdx}", legacyCar.RelativeLaps, spatial.RelativeLaps, LapDistanceTolerance);
+                CompareNullableDouble(observations, "proximity", $"spatial-seconds-{legacyCar.CarIdx}", legacyCar.RelativeSeconds, spatial.RelativeSeconds, SecondsTolerance);
                 CompareNullableDouble(observations, "proximity", $"spatial-meters-{legacyCar.CarIdx}", legacyCar.RelativeMeters, spatial.RelativeMeters, DistanceMetersTolerance);
                 CompareNullableInt(observations, "proximity", $"spatial-class-{legacyCar.CarIdx}", legacyCar.CarClass, spatial.CarClass);
+                CompareNullableBoolean(observations, "proximity", $"spatial-pit-road-{legacyCar.CarIdx}", legacyCar.OnPitRoad, spatial.OnPitRoad);
             }
         }
     }

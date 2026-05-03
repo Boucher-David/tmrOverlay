@@ -4,6 +4,8 @@ This file explains how the car radar decides when to appear, where cars are draw
 
 Implementation files:
 
+- `src/TmrOverlay.Core/Telemetry/Live/LiveRaceModels.cs`
+- `src/TmrOverlay.Core/Telemetry/Live/LiveRaceModelBuilder.cs`
 - `src/TmrOverlay.Core/Telemetry/Live/LiveTelemetrySnapshot.cs`
 - `src/TmrOverlay.Core/Telemetry/Live/LiveTelemetryStore.cs`
 - `src/TmrOverlay.App/Overlays/CarRadar/CarRadarForm.cs`
@@ -12,12 +14,16 @@ Implementation files:
 
 The radar is a live proximity overlay. It is not a historical or replay overlay.
 
-It uses fresh live telemetry only:
+The production radar is local in-car first. It builds proximity only when the local player/team car is on track, not in the garage or pit context, and the active camera focus is either the local player car or unknown. When the camera is explicitly focused on another car, the production radar is hidden instead of trying to reinterpret local side telemetry for that watched car.
 
-- `CamCarIdx` for the current camera/focus car when valid, falling back to `PlayerCarIdx`.
+It renders from `LiveTelemetrySnapshot.Models.Spatial`, which is populated from the local-only live proximity model. It uses fresh live telemetry only:
+
+- Local player/team lap-distance, timing, and car-class fields. `Focus*` fields are used only when focus is not explicitly another car.
 - `CarLeftRight` for side occupancy.
 - Nearby `CarIdxLapDistPct` and lap completion for physical-distance placement when track length is known.
 - Nearby `CarIdxEstTime` or `CarIdxF2Time` for live relative seconds when available and plausible.
+
+Non-local focus, teammate/spectator camera states, and richer multiclass interpretation are collected as diagnostics and future model-v2 analysis inputs. They are not the first product radar contract.
 
 If live timing is missing or suspicious, the car may remain in the live proximity snapshot for diagnostics and non-radar consumers. When track length is known, the radar can still use current lap-distance progress as a physical distance; it does not synthesize a seconds gap from lap distance, fuel, or history estimates.
 
@@ -36,27 +42,31 @@ Stale snapshots are treated as unavailable so old traffic does not remain painte
 
 ## Live Proximity Input
 
-`LiveProximitySnapshot.From` derives proximity from the current telemetry sample.
+`LiveProximitySnapshot.From` derives local-only proximity from the current telemetry sample. `LiveRaceModelBuilder.BuildSpatial` then projects the same local radar contract into model v2 so the Windows radar reads `LiveSpatialModel` rather than the legacy `LiveProximitySnapshot` slice.
 
-1. Determine focused-car lap distance:
-   - Prefer `FocusLapDistPct`, sourced from `CarIdxLapDistPct[CamCarIdx]` when the camera focus car is valid.
-   - Fall back to team/player lap distance only when the focus car is the player car.
-2. If focused-car lap distance is unavailable:
-   - Keep side occupancy from `CarLeftRight` only when the focus car is the player car.
+1. Check the local radar context:
+   - Require the local player/team car to be on track.
+   - Hide the radar while the user is in garage/replay/off-track context.
+   - Hide the radar when `CamCarIdx`/focus is explicitly another car.
+2. Determine local-car lap distance:
+   - Use `FocusLapDistPct` only when focus is local or not explicitly non-player.
+   - Fall back to team/player lap distance.
+3. If local lap distance is unavailable:
+   - Keep side occupancy from `CarLeftRight` when the local radar context is valid.
    - Mark nearby cars unavailable.
-3. If the focused car is on pit road or in a pit track-surface state:
+4. If the local car is on pit road or in a pit track-surface state:
    - Mark the radar unavailable.
    - Hide side occupancy.
-4. Convert each nearby car:
-   - `relativeLaps = car.LapDistPct - focusLapDistPct`
+5. Convert each nearby car:
+   - `relativeLaps = car.LapDistPct - localLapDistPct`
    - Wrap across start/finish so values stay within `-0.5` to `0.5`.
    - Preserve position, class, track surface, pit-road flag, F2 time, and estimated time.
    - Calculate relative meters when track length exists.
-5. Exclude cars on pit road or in pit track-surface states.
-6. Keep cars where absolute relative laps is at most `0.5` and not effectively zero.
-7. Sort by absolute relative laps.
-8. Nearest ahead is the smallest positive relative laps.
-9. Nearest behind is the largest negative relative laps.
+6. Exclude cars on pit road or in pit track-surface states.
+7. Keep cars where absolute relative laps is at most `0.5` and not effectively zero.
+8. Sort by absolute relative laps.
+9. Nearest ahead is the smallest positive relative laps.
+10. Nearest behind is the largest negative relative laps.
 
 Pit-road cars do not appear on radar. The gap overlay can still use separate timing rows for race context.
 
@@ -88,10 +98,9 @@ Plausibility rules:
 - If live lap time does not exist:
   - Absolute delta must be at most 60 seconds.
 
-Live lap time for this plausibility check comes from current live lap-time fields only:
+Live lap time for this plausibility check comes from current local live lap-time fields only:
 
-- Focus last lap.
-- Focus best lap.
+- Focus last/best lap only when focus is local.
 - Team last lap.
 - Team best lap.
 - Player last lap.
@@ -124,7 +133,7 @@ When a side warning exists, the radar may attach that side slot to a rendered ti
 
 - The car has reliable relative meters inside the contact-length window, or it has reliable relative seconds inside the fallback timing window.
 
-The distance window uses a 4.746 m focused-car-length baseline. The seconds fallback is derived from that same assumed length divided by focused-car speed, clamped between 0.18 and 0.45 seconds. If speed is unavailable, the fallback window is 0.22 seconds.
+The distance window uses a 4.746 m local-car-length baseline. The seconds fallback is derived from that same assumed length divided by local-car speed, clamped between 0.18 and 0.45 seconds. If speed is unavailable, the fallback window is 0.22 seconds.
 
 If no timed car qualifies, the radar still draws the generic side-warning rectangle from `CarLeftRight`. This keeps the actual spotter warning visible without pretending a random timed car is alongside.
 
@@ -155,7 +164,7 @@ The Windows form clips the overlay window to a circular region, uses a black tra
 
 Radar range is:
 
-- 6 focused-car lengths, currently `4.746 m * 6 = 28.476 m`, when relative meters exists.
+- 6 local-car lengths, currently `4.746 m * 6 = 28.476 m`, when relative meters exists.
 - 2 seconds for cars without relative meters but with reliable relative seconds.
 
 Cars are in range when the best available live relative value is inside that range. Distance is preferred over seconds because it is a direct physical threshold and avoids showing multiple cars as overlapping simply because their timing rows are similar.
@@ -170,12 +179,12 @@ Range ratio drives color and ordering.
 
 Longitudinal placement uses signed relative meters with a car-length contact window when possible, falling back to signed relative seconds:
 
-- `0.0 m` maps to the focused car rectangle.
-- A non-zero car whose absolute gap is at least the focused-car-length contact window is placed outside the focused car rectangle.
-- A car rectangle should overlap the focused car only when the reliable distance gap is inside that contact window. In practice, that visual overlap means contact, a near-contact stack, or an actual side-overlap/alongside condition.
+- `0.0 m` maps to the local car rectangle.
+- A non-zero car whose absolute gap is at least the local-car-length contact window is placed outside the local car rectangle.
+- A car rectangle should overlap the local car only when the reliable distance gap is inside that contact window. In practice, that visual overlap means contact, a near-contact stack, or an actual side-overlap/alongside condition.
 - Outside the contact window, remaining distance is scaled out to the radar edge.
 
-Negative values draw behind the focused car. Positive values draw ahead.
+Negative values draw behind the local car. Positive values draw ahead.
 
 ## Fade State
 
@@ -242,21 +251,21 @@ Approximation:
 
 ## Multiclass Warning
 
-`LiveTelemetryStore` tracks short per-car proximity history and can build early multiclass warnings from other-class traffic behind the focused car.
+`LiveTelemetryStore` tracks short per-car local proximity history and can build early multiclass warnings from other-class traffic behind the local car.
 
 The early-warning seconds range is outside the fallback timing proximity range:
 
 - Fallback timing proximity range: 2 seconds.
 - Multiclass warning range: greater than 2 seconds behind and up to 5 seconds behind.
 
-When camera focus changes, the short closing-rate history is reset so approach rates measured against the old reference car are not applied to the new focused car.
+When the local radar context is unavailable, or the local reference car changes, the short closing-rate history is reset so approach rates measured against an old reference are not applied to the next local radar frame.
 
 The radar can draw:
 
 - A red outer arc.
 - A small text label with the relative seconds when known.
 
-This is still live-only derived state. It is not persisted into compact history.
+This is still live-only derived state. It is not persisted into compact history. Treat it as an advanced radar branch: the simple first radar contract is local side/proximity traffic, while multiclass approach behavior should be reviewed from diagnostics before it becomes a design-v2 centerpiece.
 
 ## Design Notes
 
@@ -277,4 +286,11 @@ Live endurance-race review found that radar focus handling needs a deeper model-
 - It also struggled when the user's team car was active but another driver was in the car.
 - Multiclass warning likely failed for the same root reason: focus-relative timing/progress and local-player side occupancy are different signal families.
 
-Future radar work should consume model-v2 focus-relative placement evidence, preserve `CarLeftRight` as local-player side occupancy only, and clearly suppress or relabel partial states when the current focus cannot support safe radar placement.
+Current product direction is to keep the production radar local-only while the diagnostics collector captures the suppressed/partial cases:
+
+- `radar.local-suppressed-non-player-focus` for spectator or teammate focus.
+- `radar.local-unavailable-pit-or-garage` for local off-track/garage/pit contexts.
+- `radar.local-progress-missing` when side/timing context exists but local lap progress is unavailable.
+- `radar.side-without-placement` when `CarLeftRight` reports side pressure without a close decoded placement candidate.
+
+Future radar work can consume model-v2 focus-relative placement evidence, preserve `CarLeftRight` as local-player side occupancy only, and clearly suppress or relabel partial states when the current focus cannot support safe radar placement.

@@ -1,0 +1,275 @@
+using System.Globalization;
+using TmrOverlay.Core.Telemetry.Live;
+
+namespace TmrOverlay.App.Overlays.Relative;
+
+internal sealed record RelativeOverlayViewModel(
+    string Status,
+    string Source,
+    IReadOnlyList<RelativeOverlayRowViewModel> Rows)
+{
+    private const double StaleSeconds = 1.5d;
+
+    public static RelativeOverlayViewModel From(
+        LiveTelemetrySnapshot snapshot,
+        DateTimeOffset now,
+        int carsAhead,
+        int carsBehind)
+    {
+        if (!snapshot.IsConnected || !snapshot.IsCollecting)
+        {
+            return Waiting("waiting for iRacing");
+        }
+
+        if (snapshot.LastUpdatedAtUtc is not { } updatedAt
+            || Math.Abs((now - updatedAt).TotalSeconds) > StaleSeconds)
+        {
+            return Waiting("waiting for fresh telemetry");
+        }
+
+        var reference = ReferenceRow(snapshot);
+        var relativeRows = snapshot.Models.Relative.Rows;
+        if (reference is null && relativeRows.Count == 0)
+        {
+            return Waiting("waiting for relative telemetry");
+        }
+
+        var ahead = relativeRows
+            .Where(row => row.IsAhead)
+            .OrderBy(RelativeSortKey)
+            .ThenBy(row => row.CarIdx)
+            .Take(Math.Clamp(carsAhead, 0, 8))
+            .OrderByDescending(RelativeSortKey)
+            .ThenBy(row => row.CarIdx)
+            .Select(row => ToRow(snapshot, row, direction: RelativeRowDirection.Ahead))
+            .ToArray();
+        var behind = relativeRows
+            .Where(row => row.IsBehind)
+            .OrderBy(RelativeSortKey)
+            .ThenBy(row => row.CarIdx)
+            .Take(Math.Clamp(carsBehind, 0, 8))
+            .Select(row => ToRow(snapshot, row, direction: RelativeRowDirection.Behind))
+            .ToArray();
+        var rows = reference is null
+            ? ahead.Concat(behind).ToArray()
+            : ahead.Concat([reference]).Concat(behind).ToArray();
+        var status = BuildStatus(snapshot, rows.Count(row => !row.IsReference), relativeRows.Count);
+        var source = BuildSource(snapshot, relativeRows);
+
+        return new RelativeOverlayViewModel(status, source, rows);
+    }
+
+    private static RelativeOverlayViewModel Waiting(string status)
+    {
+        return new RelativeOverlayViewModel(
+            Status: status,
+            Source: "source: waiting",
+            Rows: []);
+    }
+
+    private static RelativeOverlayRowViewModel? ReferenceRow(LiveTelemetrySnapshot snapshot)
+    {
+        var referenceCarIdx = snapshot.Models.Relative.ReferenceCarIdx
+            ?? snapshot.Models.Timing.FocusRow?.CarIdx
+            ?? snapshot.Models.Timing.PlayerRow?.CarIdx;
+        if (referenceCarIdx is null)
+        {
+            return null;
+        }
+
+        var timing = snapshot.Models.Timing.OverallRows.FirstOrDefault(row => row.CarIdx == referenceCarIdx)
+            ?? snapshot.Models.Timing.ClassRows.FirstOrDefault(row => row.CarIdx == referenceCarIdx)
+            ?? MatchingTimingRow(snapshot.Models.Timing.FocusRow, referenceCarIdx.Value)
+            ?? MatchingTimingRow(snapshot.Models.Timing.PlayerRow, referenceCarIdx.Value);
+        var driver = snapshot.Models.DriverDirectory.Drivers.FirstOrDefault(row => row.CarIdx == referenceCarIdx);
+        return new RelativeOverlayRowViewModel(
+            Position: FormatPosition(timing?.OverallPosition, timing?.ClassPosition),
+            Driver: FormatDriver(driver?.CarNumber, timing?.DriverName ?? driver?.DriverName, referenceCarIdx.Value),
+            Gap: "0.000",
+            Detail: FormatDetail(timing?.CarClassName ?? driver?.CarClassName, timing?.OnPitRoad),
+            ClassColorHex: driver?.CarClassColorHex,
+            IsReference: true,
+            IsAhead: false,
+            IsBehind: false,
+            IsSameClass: true,
+            IsPit: timing?.OnPitRoad == true,
+            IsPartial: false);
+    }
+
+    private static RelativeOverlayRowViewModel ToRow(
+        LiveTelemetrySnapshot snapshot,
+        LiveRelativeRow row,
+        RelativeRowDirection direction)
+    {
+        var driver = snapshot.Models.DriverDirectory.Drivers.FirstOrDefault(driver => driver.CarIdx == row.CarIdx);
+        return new RelativeOverlayRowViewModel(
+            Position: FormatPosition(row.OverallPosition, row.ClassPosition),
+            Driver: FormatDriver(driver?.CarNumber, row.DriverName ?? driver?.DriverName, row.CarIdx),
+            Gap: FormatRelativeGap(row, direction),
+            Detail: FormatDetail(driver?.CarClassName, row.OnPitRoad),
+            ClassColorHex: driver?.CarClassColorHex,
+            IsReference: false,
+            IsAhead: direction == RelativeRowDirection.Ahead,
+            IsBehind: direction == RelativeRowDirection.Behind,
+            IsSameClass: row.IsSameClass,
+            IsPit: row.OnPitRoad == true,
+            IsPartial: !row.TimingEvidence.IsUsable && !row.PlacementEvidence.IsUsable);
+    }
+
+    private static string BuildStatus(
+        LiveTelemetrySnapshot snapshot,
+        int shownRows,
+        int availableRows)
+    {
+        var referenceCarIdx = snapshot.Models.Relative.ReferenceCarIdx
+            ?? snapshot.Models.Timing.FocusRow?.CarIdx
+            ?? snapshot.Models.Timing.PlayerRow?.CarIdx;
+        var reference = referenceCarIdx is null
+            ? null
+            : snapshot.Models.Timing.OverallRows.FirstOrDefault(row => row.CarIdx == referenceCarIdx)
+                ?? snapshot.Models.Timing.ClassRows.FirstOrDefault(row => row.CarIdx == referenceCarIdx)
+                ?? MatchingTimingRow(snapshot.Models.Timing.FocusRow, referenceCarIdx.Value)
+                ?? MatchingTimingRow(snapshot.Models.Timing.PlayerRow, referenceCarIdx.Value);
+        var position = reference is null
+            ? null
+            : FormatPosition(reference.OverallPosition, reference.ClassPosition);
+        var prefix = string.IsNullOrWhiteSpace(position) ? "live relative" : position;
+        return availableRows > shownRows
+            ? $"{prefix} - {shownRows}/{availableRows} cars"
+            : $"{prefix} - {shownRows} cars";
+    }
+
+    private static string BuildSource(
+        LiveTelemetrySnapshot snapshot,
+        IReadOnlyList<LiveRelativeRow> rows)
+    {
+        if (rows.Count == 0)
+        {
+            return snapshot.Models.Relative.HasData
+                ? "source: model-v2 relative"
+                : "source: waiting";
+        }
+
+        var hasFallback = rows.Any(row => !string.Equals(row.Source, "proximity", StringComparison.OrdinalIgnoreCase));
+        var hasPartial = rows.Any(row => row.Quality <= LiveModelQuality.Partial);
+        if (hasPartial)
+        {
+            return "source: partial timing";
+        }
+
+        return hasFallback
+            ? "source: model-v2 timing fallback"
+            : "source: live proximity telemetry";
+    }
+
+    private static string FormatPosition(int? overallPosition, int? classPosition)
+    {
+        if (classPosition is > 0)
+        {
+            return $"C{classPosition.Value.ToString(CultureInfo.InvariantCulture)}";
+        }
+
+        if (overallPosition is > 0)
+        {
+            return $"P{overallPosition.Value.ToString(CultureInfo.InvariantCulture)}";
+        }
+
+        return "--";
+    }
+
+    private static string FormatDriver(string? carNumber, string? driverName, int carIdx)
+    {
+        var label = string.IsNullOrWhiteSpace(driverName)
+            ? $"Car {carIdx.ToString(CultureInfo.InvariantCulture)}"
+            : driverName.Trim();
+        if (label.Length > 18)
+        {
+            label = label[..18].TrimEnd();
+        }
+
+        return string.IsNullOrWhiteSpace(carNumber)
+            ? label
+            : $"#{carNumber.Trim()} {label}";
+    }
+
+    private static string FormatDetail(string? carClassName, bool? onPitRoad)
+    {
+        var classLabel = string.IsNullOrWhiteSpace(carClassName) ? "class" : carClassName.Trim();
+        if (classLabel.Length > 8)
+        {
+            classLabel = classLabel[..8].TrimEnd();
+        }
+
+        return onPitRoad == true ? $"{classLabel} PIT" : classLabel;
+    }
+
+    private static string FormatRelativeGap(LiveRelativeRow row, RelativeRowDirection direction)
+    {
+        var sign = direction == RelativeRowDirection.Ahead ? "-" : "+";
+        if (row.RelativeSeconds is { } seconds && IsFinite(seconds))
+        {
+            return $"{sign}{Math.Abs(seconds).ToString("0.000", CultureInfo.InvariantCulture)}";
+        }
+
+        if (row.RelativeMeters is { } meters && IsFinite(meters))
+        {
+            return $"{sign}{Math.Abs(meters).ToString("0", CultureInfo.InvariantCulture)}m";
+        }
+
+        if (row.RelativeLaps is { } laps && IsFinite(laps))
+        {
+            return $"{sign}{Math.Abs(laps).ToString("0.000", CultureInfo.InvariantCulture)}L";
+        }
+
+        return "--";
+    }
+
+    private static LiveTimingRow? MatchingTimingRow(LiveTimingRow? row, int carIdx)
+    {
+        return row?.CarIdx == carIdx ? row : null;
+    }
+
+    private static double RelativeSortKey(LiveRelativeRow row)
+    {
+        if (row.RelativeSeconds is { } seconds && IsFinite(seconds))
+        {
+            return Math.Abs(seconds);
+        }
+
+        if (row.RelativeMeters is { } meters && IsFinite(meters))
+        {
+            return Math.Abs(meters);
+        }
+
+        if (row.RelativeLaps is { } laps && IsFinite(laps))
+        {
+            return Math.Abs(laps);
+        }
+
+        return double.MaxValue;
+    }
+
+    private static bool IsFinite(double value)
+    {
+        return !double.IsNaN(value) && !double.IsInfinity(value);
+    }
+}
+
+internal sealed record RelativeOverlayRowViewModel(
+    string Position,
+    string Driver,
+    string Gap,
+    string Detail,
+    string? ClassColorHex,
+    bool IsReference,
+    bool IsAhead,
+    bool IsBehind,
+    bool IsSameClass,
+    bool IsPit,
+    bool IsPartial);
+
+internal enum RelativeRowDirection
+{
+    Ahead,
+    Behind
+}

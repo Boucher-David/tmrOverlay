@@ -75,20 +75,30 @@ internal sealed record LiveProximitySnapshot(
         HistoricalSessionContext context,
         HistoricalTelemetrySample sample)
     {
-        var focusLapDistPct = FocusLapDistPct(sample);
-        var focusCarClass = FocusCarClass(sample);
-        var focusOnPitRoad = FocusOnPitRoad(sample);
-        var carLeftRight = focusOnPitRoad ? null : CarLeftRightForFocus(sample);
-        if (focusLapDistPct is null || focusOnPitRoad)
+        var localCarClass = LocalRadarCarClass(sample);
+        var sideOverlapWindowSeconds = CalculateSideOverlapWindowSeconds(sample);
+        if (!CanUseLocalRadarContext(sample))
         {
             return Unavailable with
             {
-                ReferenceCarClass = focusCarClass,
+                ReferenceCarClass = localCarClass,
+                SideOverlapWindowSeconds = sideOverlapWindowSeconds
+            };
+        }
+
+        var localOnPitRoad = LocalRadarOnPitRoad(sample);
+        var carLeftRight = localOnPitRoad ? null : sample.CarLeftRight;
+        var localLapDistPct = LocalRadarLapDistPct(sample);
+        if (localLapDistPct is null || localOnPitRoad)
+        {
+            return Unavailable with
+            {
+                ReferenceCarClass = localCarClass,
                 CarLeftRight = carLeftRight,
                 SideStatus = FormatSideStatus(carLeftRight),
                 HasCarLeft = DetectCarLeft(carLeftRight),
                 HasCarRight = DetectCarRight(carLeftRight),
-                SideOverlapWindowSeconds = CalculateSideOverlapWindowSeconds(sample)
+                SideOverlapWindowSeconds = sideOverlapWindowSeconds
             };
         }
 
@@ -104,9 +114,9 @@ internal sealed record LiveProximitySnapshot(
             .Where(car => !IsPitRoadCar(car))
             .Select(car => ToLiveCar(
                 car,
-                focusLapDistPct.Value,
-                FocusF2TimeSeconds(sample),
-                FocusEstimatedTimeSeconds(sample),
+                localLapDistPct.Value,
+                LocalRadarF2TimeSeconds(sample),
+                LocalRadarEstimatedTimeSeconds(sample),
                 liveLapTimeSeconds,
                 trackLengthMeters,
                 carClassColorsByCarIdx.TryGetValue(car.CarIdx, out var colorHex) ? colorHex : null))
@@ -116,7 +126,7 @@ internal sealed record LiveProximitySnapshot(
 
         return new LiveProximitySnapshot(
             HasData: carLeftRight is not null || cars.Length > 0,
-            ReferenceCarClass: focusCarClass,
+            ReferenceCarClass: localCarClass,
             CarLeftRight: carLeftRight,
             SideStatus: FormatSideStatus(carLeftRight),
             HasCarLeft: DetectCarLeft(carLeftRight),
@@ -130,19 +140,19 @@ internal sealed record LiveProximitySnapshot(
                 .MaxBy(car => car.RelativeLaps),
             MulticlassApproaches: [],
             StrongestMulticlassApproach: null,
-            SideOverlapWindowSeconds: CalculateSideOverlapWindowSeconds(sample));
+            SideOverlapWindowSeconds: sideOverlapWindowSeconds);
     }
 
     private static LiveProximityCar ToLiveCar(
         HistoricalCarProximity car,
-        double focusLapDistPct,
-        double? focusF2TimeSeconds,
-        double? focusEstimatedTimeSeconds,
+        double referenceLapDistPct,
+        double? referenceF2TimeSeconds,
+        double? referenceEstimatedTimeSeconds,
         double? liveLapTimeSeconds,
         double? trackLengthMeters,
         string? carClassColorHex)
     {
-        var relativeLaps = car.LapDistPct - focusLapDistPct;
+        var relativeLaps = car.LapDistPct - referenceLapDistPct;
         if (relativeLaps > 0.5d)
         {
             relativeLaps -= 1d;
@@ -157,9 +167,9 @@ internal sealed record LiveProximitySnapshot(
             RelativeLaps: relativeLaps,
             RelativeSeconds: CalculateRelativeSeconds(
                 car.EstimatedTimeSeconds,
-                focusEstimatedTimeSeconds,
+                referenceEstimatedTimeSeconds,
                 car.F2TimeSeconds,
-                focusF2TimeSeconds,
+                referenceF2TimeSeconds,
                 liveLapTimeSeconds,
                 relativeLaps),
             RelativeMeters: trackLengthMeters is { } meters && IsPositiveFinite(meters)
@@ -224,13 +234,6 @@ internal sealed record LiveProximitySnapshot(
 
     private static double? LiveLapTimeSeconds(HistoricalTelemetrySample sample)
     {
-        if (HasExplicitNonPlayerFocus(sample))
-        {
-            return FirstPositiveFinite(
-                sample.FocusLastLapTimeSeconds,
-                sample.FocusBestLapTimeSeconds);
-        }
-
         return FirstPositiveFinite(
             sample.FocusLastLapTimeSeconds,
             sample.FocusBestLapTimeSeconds,
@@ -298,16 +301,22 @@ internal sealed record LiveProximitySnapshot(
         return DefaultSideOverlapWindowSeconds;
     }
 
-    private static double? FocusLapDistPct(HistoricalTelemetrySample sample)
+    private static bool CanUseLocalRadarContext(HistoricalTelemetrySample sample)
     {
-        if (sample.FocusLapDistPct is { } focusLapDistPct && IsFinite(focusLapDistPct) && focusLapDistPct >= 0d)
+        return sample.IsOnTrack
+            && !sample.IsInGarage
+            && (sample.PlayerCarIdx is not null || sample.FocusCarIdx is null)
+            && !HasExplicitNonPlayerFocus(sample);
+    }
+
+    private static double? LocalRadarLapDistPct(HistoricalTelemetrySample sample)
+    {
+        if (!HasExplicitNonPlayerFocus(sample)
+            && sample.FocusLapDistPct is { } focusLapDistPct
+            && IsFinite(focusLapDistPct)
+            && focusLapDistPct >= 0d)
         {
             return Math.Clamp(focusLapDistPct, 0d, 1d);
-        }
-
-        if (HasExplicitNonPlayerFocus(sample))
-        {
-            return null;
         }
 
         if (sample.TeamLapDistPct is { } teamLapDistPct && IsFinite(teamLapDistPct) && teamLapDistPct >= 0d)
@@ -320,48 +329,25 @@ internal sealed record LiveProximitySnapshot(
             : null;
     }
 
-    private static double? FocusF2TimeSeconds(HistoricalTelemetrySample sample)
+    private static double? LocalRadarF2TimeSeconds(HistoricalTelemetrySample sample)
     {
-        if (HasExplicitNonPlayerFocus(sample))
-        {
-            return FirstPositiveOrZeroFinite(sample.FocusF2TimeSeconds);
-        }
-
         return FirstPositiveOrZeroFinite(sample.FocusF2TimeSeconds, sample.TeamF2TimeSeconds);
     }
 
-    private static double? FocusEstimatedTimeSeconds(HistoricalTelemetrySample sample)
+    private static double? LocalRadarEstimatedTimeSeconds(HistoricalTelemetrySample sample)
     {
-        if (HasExplicitNonPlayerFocus(sample))
-        {
-            return FirstPositiveOrZeroFinite(sample.FocusEstimatedTimeSeconds);
-        }
-
         return FirstPositiveOrZeroFinite(sample.FocusEstimatedTimeSeconds, sample.TeamEstimatedTimeSeconds);
     }
 
-    private static int? FocusCarClass(HistoricalTelemetrySample sample)
+    private static int? LocalRadarCarClass(HistoricalTelemetrySample sample)
     {
-        if (HasExplicitNonPlayerFocus(sample))
-        {
-            return sample.FocusCarClass;
-        }
-
-        return sample.FocusCarClass ?? sample.TeamCarClass;
+        return !HasExplicitNonPlayerFocus(sample)
+            ? sample.FocusCarClass ?? sample.TeamCarClass
+            : sample.TeamCarClass;
     }
 
-    private static int? CarLeftRightForFocus(HistoricalTelemetrySample sample)
+    private static bool LocalRadarOnPitRoad(HistoricalTelemetrySample sample)
     {
-        return FocusUsesPlayerSideTelemetry(sample) ? sample.CarLeftRight : null;
-    }
-
-    private static bool FocusOnPitRoad(HistoricalTelemetrySample sample)
-    {
-        if (HasExplicitNonPlayerFocus(sample))
-        {
-            return sample.FocusOnPitRoad == true || IsPitRoadTrackSurface(sample.FocusTrackSurface);
-        }
-
         return sample.FocusOnPitRoad == true
             || sample.TeamOnPitRoad == true
             || sample.OnPitRoad
@@ -377,11 +363,6 @@ internal sealed record LiveProximitySnapshot(
     private static bool IsPitRoadTrackSurface(int? trackSurface)
     {
         return trackSurface is 1 or 2;
-    }
-
-    private static bool FocusUsesPlayerSideTelemetry(HistoricalTelemetrySample sample)
-    {
-        return !HasExplicitNonPlayerFocus(sample);
     }
 
     private static bool HasExplicitNonPlayerFocus(HistoricalTelemetrySample sample)

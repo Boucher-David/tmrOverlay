@@ -12,10 +12,17 @@ Implementation files:
 
 The settings window is the main UI. It is a normal desktop window, not a driving overlay.
 
+Treat settings as the app control plane rather than a v1 or model-v2 overlay consumer. Overlay v2 migrations change which live model a driving overlay reads; settings owns lifecycle, visibility, session filters, shared units/fonts, diagnostics access, and future app-platform controls. A later settings information-architecture pass may group overlays and platform features, but it should stay separate from telemetry model migration.
+
 Driving overlays are managed windows that can sit above the simulator. Current driving overlays:
 
 - Status.
 - Fuel Calculator.
+- Relative.
+- Flags.
+- Session / Weather.
+- Pit Service.
+- Input / Car State.
 - Car Radar.
 - Gap To Leader.
 
@@ -53,6 +60,8 @@ The settings UI has:
 - One tab per managed overlay.
 - Overlay Bridge placeholder.
 - Post-race Analysis.
+
+Managed overlay tabs are generated from `OverlayManager.ManagedOverlayDefinitions`. Adding a driving overlay definition there is what makes the settings tab appear; overlay-specific options only appear when the definition provides option descriptors.
 
 The selected overlay tab is reported back to `OverlayManager`.
 

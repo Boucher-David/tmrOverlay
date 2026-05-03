@@ -12,16 +12,26 @@ from typing import Optional
 
 
 EXPECTED_PNGS = {
+    "design-v2/design-v2-states.png": (5350, 4020),
     "status/status-states.png": (3600, 2800),
     "fuel-calculator/fuel-calculator-states.png": (3600, 2800),
+    "relative/relative-states.png": (3600, 2800),
     "settings-overlay/settings-overlay-states.png": (3600, 2800),
     "car-radar/car-radar-states.png": (3600, 2800),
     "car-radar/car-radar-multiclass.png": (600, 600),
     "gap-to-leader/gap-to-leader-states.png": (3600, 2800),
-    "gap-to-leader/gap-to-leader.png": (1320, 560),
+    "gap-to-leader/gap-to-leader.png": (1120, 520),
 }
 
 EXPECTED_STATE_PNGS = [
+    "design-v2/states/standings-telemetry.png",
+    "design-v2/states/relative-telemetry.png",
+    "design-v2/states/sector-comparison.png",
+    "design-v2/states/blindspot-signal.png",
+    "design-v2/states/laptime-delta.png",
+    "design-v2/states/stint-laptime-log.png",
+    "design-v2/states/flag-display.png",
+    "design-v2/states/analysis-exception.png",
     "status/states/waiting.png",
     "status/states/live-analysis.png",
     "status/states/raw-capture.png",
@@ -30,6 +40,10 @@ EXPECTED_STATE_PNGS = [
     "fuel-calculator/states/opening-stint.png",
     "fuel-calculator/states/mid-race.png",
     "fuel-calculator/states/stable-finish.png",
+    "relative/states/waiting.png",
+    "relative/states/live-relative.png",
+    "relative/states/compact-window.png",
+    "relative/states/pit-context.png",
     "settings-overlay/states/general.png",
     "settings-overlay/states/error-logging.png",
     "settings-overlay/states/overlay-tab.png",

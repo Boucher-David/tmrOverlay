@@ -882,34 +882,47 @@ def analyze_raw_capture(capture_dir: Path, max_sample_frames: int) -> dict[str, 
                 previous_class_gap_seconds = class_seconds
 
             # Radar/proximity checks.
-            focus_on_pit = bool(focus and (focus.get("onPitRoad") or focus.get("trackSurface") in (1, 2)))
-            focus_progress_valid = bool(focus and focus["lapCompleted"] >= 0 and focus["lapDistPct"] >= 0.0)
-            if focus_idx != player_idx:
+            non_player_focus = player_idx >= 0 and focus_idx != player_idx
+            local_radar_on_pit = (
+                not is_on_track
+                or is_in_garage
+                or local_on_pit
+                or team_on_pit
+                or bool(team and team.get("trackSurface") in (1, 2))
+            )
+            local_progress_valid = bool(team and team["lapCompleted"] >= 0 and team["lapDistPct"] >= 0.0)
+            if non_player_focus:
                 radar_counts["nonPlayerFocusFrames"] += 1
-            if focus_on_pit:
+                radar_counts["localSuppressedNonPlayerFocusFrames"] += 1
+            if local_radar_on_pit:
                 radar_counts["focusPitFrames"] += 1
+                radar_counts["localUnavailablePitOrGarageFrames"] += 1
             side_active = int(car_left_right or 0) in (2, 3, 4, 5, 6)
             if side_active:
                 radar_counts["sideSignalFrames"] += 1
-            if focus_progress_valid and not focus_on_pit:
-                focus_lap = int(focus["lapCompleted"])
-                focus_pct = float(focus["lapDistPct"])
-                lap_time = focus.get("lastLap") or focus.get("bestLap") or (team.get("lastLap") if team else None) or (team.get("bestLap") if team else None)
-                focus_est = focus.get("est")
-                focus_f2 = focus.get("f2")
+                if non_player_focus:
+                    radar_counts["rawSideSuppressedForFocusFrames"] += 1
+            if not non_player_focus and not local_radar_on_pit and not local_progress_valid:
+                radar_counts["localProgressMissingFrames"] += 1
+            if not non_player_focus and local_progress_valid and not local_radar_on_pit:
+                local_lap = int(team["lapCompleted"])
+                local_pct = float(team["lapDistPct"])
+                lap_time = team.get("lastLap") or team.get("bestLap") or (focus.get("lastLap") if focus else None) or (focus.get("bestLap") if focus else None)
+                local_est = team.get("est")
+                local_f2 = team.get("f2")
                 radar_candidates = []
                 side_contact_candidates = []
                 timing_accepted = 0
                 timing_rejected = 0
                 pit_excluded = 0
                 for idx in active_indices:
-                    if idx == focus_idx or not car_has_progress(idx):
+                    if idx == player_idx or not car_has_progress(idx):
                         continue
                     candidate = car_progress(idx)
                     if not candidate:
                         continue
                     candidate_on_pit = bool(candidate.get("onPitRoad") or candidate.get("trackSurface") in (1, 2))
-                    rel = relative_laps(candidate["lapCompleted"], candidate["lapDistPct"], focus_lap, focus_pct)
+                    rel = relative_laps(candidate["lapCompleted"], candidate["lapDistPct"], local_lap, local_pct)
                     rel_m = rel * track_length_m if track_length_m else None
                     if candidate_on_pit:
                         if rel_m is not None and abs(rel_m) <= RADAR_RANGE_METERS:
@@ -917,16 +930,16 @@ def analyze_raw_capture(capture_dir: Path, max_sample_frames: int) -> dict[str, 
                         continue
                     delta = None
                     source = None
-                    if candidate.get("est") is not None and focus_est is not None:
-                        delta = candidate["est"] - focus_est
+                    if candidate.get("est") is not None and local_est is not None:
+                        delta = candidate["est"] - local_est
                         if lap_time and delta > lap_time / 2.0:
                             delta -= lap_time
                         elif lap_time and delta < -lap_time / 2.0:
                             delta += lap_time
                         source = "CarIdxEstTime"
                     if not plausible_relative_seconds(delta, rel, lap_time):
-                        if candidate.get("f2") is not None and focus_f2 is not None:
-                            delta = focus_f2 - candidate["f2"]
+                        if candidate.get("f2") is not None and local_f2 is not None:
+                            delta = local_f2 - candidate["f2"]
                             source = "CarIdxF2Time"
                         else:
                             delta = None

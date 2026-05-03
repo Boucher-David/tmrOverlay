@@ -21,6 +21,8 @@ internal sealed class HistoricalSessionContext
     public required HistoricalSessionInfoConditions Conditions { get; init; }
 
     public IReadOnlyList<HistoricalSessionDriver> Drivers { get; init; } = [];
+
+    public IReadOnlyList<HistoricalTrackSector> Sectors { get; init; } = [];
 }
 
 internal sealed class HistoricalSessionSummary
@@ -133,6 +135,13 @@ internal sealed class HistoricalTrackIdentity
     public string? TrackType { get; init; }
 
     public string? TrackVersion { get; init; }
+}
+
+internal sealed class HistoricalTrackSector
+{
+    public int SectorNum { get; init; }
+
+    public double SectorStartPct { get; init; }
 }
 
 internal sealed class HistoricalSessionIdentity
@@ -473,6 +482,7 @@ internal sealed record HistoricalTelemetrySample(
     int? SessionLapsRemainEx = null,
     int? SessionLapsTotal = null,
     int? SessionState = null,
+    int? SessionFlags = null,
     int? RaceLaps = null,
     int? PlayerCarIdx = null,
     int? FocusCarIdx = null,
@@ -531,7 +541,35 @@ internal sealed record HistoricalTelemetrySample(
     int? TireSetsUsed = null,
     int? FastRepairUsed = null,
     int? DriversSoFar = null,
-    int? DriverChangeLapStatus = null);
+    int? DriverChangeLapStatus = null,
+    double? LapCurrentLapTimeSeconds = null,
+    double? LapDeltaToBestLapSeconds = null,
+    double? LapDeltaToBestLapRate = null,
+    bool? LapDeltaToBestLapOk = null,
+    double? LapDeltaToOptimalLapSeconds = null,
+    double? LapDeltaToOptimalLapRate = null,
+    bool? LapDeltaToOptimalLapOk = null,
+    double? LapDeltaToSessionBestLapSeconds = null,
+    double? LapDeltaToSessionBestLapRate = null,
+    bool? LapDeltaToSessionBestLapOk = null,
+    double? LapDeltaToSessionOptimalLapSeconds = null,
+    double? LapDeltaToSessionOptimalLapRate = null,
+    bool? LapDeltaToSessionOptimalLapOk = null,
+    double? LapDeltaToSessionLastLapSeconds = null,
+    double? LapDeltaToSessionLastLapRate = null,
+    bool? LapDeltaToSessionLastLapOk = null,
+    int? Gear = null,
+    double? Rpm = null,
+    double? Throttle = null,
+    double? Brake = null,
+    double? Clutch = null,
+    double? SteeringWheelAngle = null,
+    int? EngineWarnings = null,
+    double? Voltage = null,
+    double? WaterTempC = null,
+    double? FuelPressureBar = null,
+    double? OilTempC = null,
+    double? OilPressureBar = null);
 
 internal sealed record HistoricalCarProximity(
     int CarIdx,
