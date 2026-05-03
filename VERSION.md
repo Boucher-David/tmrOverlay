@@ -9,23 +9,25 @@ TmrOverlay uses SemVer-style annotated Git tags for product milestones:
 
 ## Current Branch Target
 
-### v0.7.0 - Simple Model-V2 Overlays And Design-V2 Preview
+### v0.7.0 - Simple Model-V2 Overlays, Design-V2 Preview, And Release Hygiene
 
 Suggested squash title:
 
 ```text
-[v0.7.0] Add simple model-v2 overlays and design-v2 preview states
+[v0.7.0] Add simple model-v2 overlays, design-v2 previews, and release hygiene
 ```
 
 Suggested squash body:
 
 ```text
-- Add production relative, flags, session/weather, pit-service, input/car-state, and local radar v2 overlay paths.
+- Add production model-v2 overlay paths for relative, flags, session/weather, pit-service, input/car-state, and local in-car radar.
 - Add shared simple telemetry overlay shell/view-model helpers for dense direct-telemetry windows.
-- Expand live model-v2 spatial, timing, sector, delta, and diagnostics evidence for simple overlays and later analysis products.
+- Expand live model-v2 timing, spatial, sector, lap-delta, and diagnostics evidence for simple overlays and later analysis products.
 - Add design-v2 mock states for relative, standings, flags, sector comparison, blindspot, laptime delta, and stint laptime log.
 - Document future product branches including IBT-derived track-map generation, pit crew/engineer workflows, overlay bridge, streaming overlays, overlay builder, and publishing.
-- Refresh screenshot validation artifacts and tests for the new overlay surface.
+- Add version-history metadata, branch-complete release hygiene validation, and shared .NET build version metadata.
+- Split CI into a stable Windows build/test merge gate and tag-triggered Windows release package artifact.
+- Fix session/weather nullable wet-flag handling and cover unknown wet telemetry with a focused test.
 ```
 
 Status: not tagged yet. Tag `v0.7.0` only after this branch is merged or otherwise declared as the release point.

@@ -27,6 +27,7 @@ Inspect the branch shape and the text that GitHub is likely to expose in a PR sq
 git fetch origin --tags
 git status --short --branch
 git log --reverse --oneline "$(git merge-base main HEAD)"..HEAD
+git diff --name-status "$(git merge-base main HEAD)"..HEAD
 git tag --list --sort=version:refname -n2
 ```
 
@@ -36,7 +37,9 @@ For branch-complete handoff:
 
 - Update `VERSION.md` with the target version, suggested squash title, and squash body.
 - Ensure the suggested title uses `vMAJOR.MINOR.PATCH`, for example `[v0.7.0] Add simple model-v2 overlays and design-v2 preview states`.
-- Ensure the body summarizes product behavior, data/schema/diagnostic changes, validation artifacts, and any user-data compatibility impact.
+- Ensure the body summarizes the actual branch diff, including product behavior, data/schema/diagnostic changes, docs/validation artifacts, CI/release-pipeline changes, and any user-data compatibility impact.
+- Re-read the final branch commit list and `git diff --name-status` after late fixes. If CI, validation, version metadata, build metadata, or follow-up bug fixes were added after the original release note was drafted, update `VERSION.md` again before final handoff.
+- Keep the final answer's recommended squash title/body identical to the current `VERSION.md` suggestion unless explicitly calling out a requested alternative.
 - Remove or generalize sensitive local details from the squash text: raw local paths, private diagnostic file names, uncommitted capture names, accidental branch-operation notes, and private conversation shorthand.
 - Ensure `Directory.Build.props` `VersionPrefix` matches the branch target version when the branch is intended to produce that app milestone.
 - Do not create the release tag on an unmerged feature branch unless the user explicitly declares that branch as the release point.
