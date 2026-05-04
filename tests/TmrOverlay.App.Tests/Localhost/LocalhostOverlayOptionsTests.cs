@@ -1,15 +1,15 @@
 using Microsoft.Extensions.Configuration;
-using TmrOverlay.App.Bridge;
+using TmrOverlay.App.Localhost;
 using Xunit;
 
-namespace TmrOverlay.App.Tests.Bridge;
+namespace TmrOverlay.App.Tests.Localhost;
 
-public sealed class OverlayBridgeOptionsTests
+public sealed class LocalhostOverlayOptionsTests
 {
     [Fact]
-    public void FromConfiguration_DefaultsToDisabledLocalhostBridge()
+    public void FromConfiguration_DefaultsToDisabledLocalhostOverlays()
     {
-        var options = OverlayBridgeOptions.FromConfiguration(BuildConfiguration(new Dictionary<string, string?>()));
+        var options = LocalhostOverlayOptions.FromConfiguration(BuildConfiguration(new Dictionary<string, string?>()));
 
         Assert.False(options.Enabled);
         Assert.Equal(8765, options.Port);
@@ -19,10 +19,10 @@ public sealed class OverlayBridgeOptionsTests
     [Fact]
     public void FromConfiguration_HonorsEnabledAndPort()
     {
-        var options = OverlayBridgeOptions.FromConfiguration(BuildConfiguration(new Dictionary<string, string?>
+        var options = LocalhostOverlayOptions.FromConfiguration(BuildConfiguration(new Dictionary<string, string?>
         {
-            ["OverlayBridge:Enabled"] = "true",
-            ["OverlayBridge:Port"] = "9123"
+            ["LocalhostOverlays:Enabled"] = "true",
+            ["LocalhostOverlays:Port"] = "9123"
         }));
 
         Assert.True(options.Enabled);
@@ -37,10 +37,10 @@ public sealed class OverlayBridgeOptionsTests
     [InlineData("not-a-port")]
     public void FromConfiguration_InvalidPortFallsBackToDefault(string configuredPort)
     {
-        var options = OverlayBridgeOptions.FromConfiguration(BuildConfiguration(new Dictionary<string, string?>
+        var options = LocalhostOverlayOptions.FromConfiguration(BuildConfiguration(new Dictionary<string, string?>
         {
-            ["OverlayBridge:Enabled"] = "true",
-            ["OverlayBridge:Port"] = configuredPort
+            ["LocalhostOverlays:Enabled"] = "true",
+            ["LocalhostOverlays:Port"] = configuredPort
         }));
 
         Assert.True(options.Enabled);

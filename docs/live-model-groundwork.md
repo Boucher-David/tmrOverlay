@@ -28,7 +28,7 @@ Older data collected on Windows remains readable because the new models are deri
 - `LiveSessionModel`: session clock, lap limits, session labels, track/car display labels, and missing live session signals.
 - `LiveDriverDirectoryModel`: session-info driver identity keyed by `CarIdx`, plus player/focus references.
 - `LiveTimingModel`: reusable overall/class rows with position, class, lap progress, timing, gap, pit, and driver identity fields.
-- `LiveRelativeModel`: local-radar proximity first, with focus/class-gap timing as a fallback for timing-table and relative-style consumers.
+- `LiveRelativeModel`: local-radar proximity first, with focus/class-gap timing as a fallback for timing-table and relative-style consumers. When proximity has lap-distance placement but no direct relative seconds, relative rows may carry an inferred display-time gap from live lap-distance delta and current lap-time context; radar keeps using the stricter spatial model instead.
 - `LiveSpatialModel`: local-radar side occupancy, lap/meter/timing placement, nearest-car, and multiclass-approach state for radar-style consumers; broader focus-relative placement remains an advanced branch.
 - `LiveWeatherModel`: live wetness, declared-wet state, temperatures, skies, precipitation, and rubber state.
 - `LiveFuelPitModel`: live fuel plus pit-road/service signals.

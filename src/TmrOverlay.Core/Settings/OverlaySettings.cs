@@ -64,4 +64,22 @@ internal sealed class OverlaySettings
     {
         Options[key] = Math.Clamp(value, minimum, maximum).ToString();
     }
+
+    public string GetStringOption(string key, string defaultValue = "")
+    {
+        return Options.TryGetValue(key, out var configured)
+            ? configured
+            : defaultValue;
+    }
+
+    public void SetStringOption(string key, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            Options.Remove(key);
+            return;
+        }
+
+        Options[key] = value.Trim();
+    }
 }

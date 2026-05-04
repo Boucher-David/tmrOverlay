@@ -7,6 +7,6 @@ internal static class SettingsOverlayDefinition
     public static OverlayDefinition Definition { get; } = new(
         Id: "settings",
         DisplayName: "Settings",
-        DefaultWidth: 1080,
-        DefaultHeight: 600);
+        DefaultWidth: 1240,
+        DefaultHeight: 680);
 }

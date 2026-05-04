@@ -38,7 +38,9 @@ Cars ahead and behind are sorted by the best available absolute relative value:
 
 The nearest configured cars are selected first. Ahead rows are then rendered farthest-to-nearest above the reference row, while behind rows render nearest-to-farthest below it. User settings cap each side from 0 to 8 cars, defaulting to 5 ahead and 5 behind.
 
-The cap does not reserve empty future rows. The table renders only rows backed by current telemetry, plus the reference row when available, so it grows or shrinks as actual cars enter and leave the selected relative window. The reference row stays between the selected ahead and behind rows instead of drifting into a standings-style sort.
+The live table uses fixed slots once a reference row exists: configured ahead slots, the reference row, then configured behind slots. Empty slots stay blank so the reference row and table height do not jump when nearby cars enter or leave. This lets live numbers update in place instead of forcing the whole relative table to re-layout every tick. Waiting and unavailable states still collapse to one placeholder row.
+
+The reference row stays between the selected ahead and behind rows instead of drifting into a standings-style sort.
 
 ## Display Rules
 
@@ -52,6 +54,8 @@ Rows show:
 - Class detail, with `PIT` appended for pit-road rows.
 
 Normal rows are quiet. Reference rows are visually emphasized; pit rows use warning color; fully degraded rows are muted.
+
+Relative seconds come from live proximity timing when available. If proximity has only lap-distance placement, the model-v2 relative row can infer a display seconds gap from live lap-distance delta multiplied by the current local/focus lap-time signal. Radar does not consume that inferred seconds value; it remains stricter and uses only live proximity seconds or physical distance for proximity placement.
 
 ## Source And Status Text
 

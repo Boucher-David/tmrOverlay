@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging.Abstractions;
 using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Performance;
@@ -32,7 +33,21 @@ public sealed class DiagnosticsBundleServiceTests
             File.WriteAllText(Path.Combine(modelParityDirectory, "session-20260426-live-model-parity.json"), """{"frameCount":1}""");
             File.WriteAllText(Path.Combine(overlayDiagnosticsDirectory, "session-20260426-live-overlay-diagnostics.json"), """{"frameCount":1}""");
             File.WriteAllText(Path.Combine(storage.EventsRoot, "events-20260426.jsonl"), "{}");
-            File.WriteAllText(Path.Combine(storage.SettingsRoot, "settings.json"), "{}");
+            File.WriteAllText(
+                Path.Combine(storage.SettingsRoot, "settings.json"),
+                """
+                {
+                  "overlays": [
+                    {
+                      "id": "stream-chat",
+                      "options": {
+                        "stream-chat.provider": "streamlabs",
+                        "stream-chat.streamlabs-url": "https://streamlabs.com/widgets/chat-box/private-token"
+                      }
+                    }
+                  ]
+                }
+                """);
             File.WriteAllText(storage.RuntimeStatePath, "{}");
 
             var analysisDirectory = Path.Combine(storage.UserHistoryRoot, "analysis");
@@ -114,6 +129,16 @@ public sealed class DiagnosticsBundleServiceTests
             Assert.Contains("history/user/cars/car-156-mercedesamgevogt3/tracks/track-262-nurburgring-combinedshortb/sessions/race/summaries/capture-20260426-120000-000.json", entryNames);
             Assert.DoesNotContain("latest-capture/telemetry.bin", entryNames);
             Assert.DoesNotContain("latest-capture/ibt-analysis/source.ibt", entryNames);
+
+            var settingsEntry = archive.GetEntry("settings/settings.json");
+            Assert.NotNull(settingsEntry);
+            using var settingsReader = new StreamReader(settingsEntry.Open());
+            var bundledSettings = settingsReader.ReadToEnd();
+            var bundledSettingsJson = JsonNode.Parse(bundledSettings);
+            var bundledOverlay = Assert.IsType<JsonObject>(Assert.Single(Assert.IsType<JsonArray>(bundledSettingsJson?["overlays"])));
+            var bundledOptions = Assert.IsType<JsonObject>(bundledOverlay["options"]);
+            Assert.Equal("<redacted>", (string?)bundledOptions["stream-chat.streamlabs-url"]);
+            Assert.DoesNotContain("private-token", bundledSettings);
         }
         finally
         {
@@ -135,6 +160,7 @@ public sealed class DiagnosticsBundleServiceTests
             LogsRoot = Path.Combine(root, "logs"),
             SettingsRoot = Path.Combine(root, "settings"),
             DiagnosticsRoot = Path.Combine(root, "diagnostics"),
+            TrackMapRoot = Path.Combine(root, "track-maps", "user"),
             EventsRoot = Path.Combine(root, "logs", "events"),
             RuntimeStatePath = Path.Combine(root, "runtime-state.json")
         };

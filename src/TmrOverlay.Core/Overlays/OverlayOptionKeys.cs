@@ -12,6 +12,10 @@ internal static class OverlayOptionKeys
     public const string GapCarsAhead = "gap.cars-ahead";
     public const string GapCarsBehind = "gap.cars-behind";
     public const string GapRaceOnlyDefaultApplied = "gap.race-only-default-applied";
+    public const string TrackMapBuildFromTelemetry = "track-map.build-from-telemetry";
+    public const string StreamChatProvider = "stream-chat.provider";
+    public const string StreamChatStreamlabsUrl = "stream-chat.streamlabs-url";
+    public const string StreamChatTwitchChannel = "stream-chat.twitch-channel";
     public const string FlagsShowGreen = "flags.show-green";
     public const string FlagsShowBlue = "flags.show-blue";
     public const string FlagsShowYellow = "flags.show-yellow";

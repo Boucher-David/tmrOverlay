@@ -5,7 +5,7 @@ namespace TmrOverlay.Core.Settings;
 
 internal static class AppSettingsMigrator
 {
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 5;
 
     private static readonly string[] ObsoleteOptionKeys =
     [
@@ -64,6 +64,7 @@ internal static class AppSettingsMigrator
             EnsureOption(overlay, OverlayOptionKeys.RelativeCarsBehind, defaultValue: 5, minimum: 0, maximum: 8);
             EnsureOption(overlay, OverlayOptionKeys.GapCarsAhead, defaultValue: 5, minimum: 0, maximum: 12);
             EnsureOption(overlay, OverlayOptionKeys.GapCarsBehind, defaultValue: 5, minimum: 0, maximum: 12);
+            EnsureOption(overlay, OverlayOptionKeys.TrackMapBuildFromTelemetry, defaultValue: true);
 
             overlay.Scale = ClampFinite(overlay.Scale, 0.6d, 2d, 1d);
             overlay.Width = Math.Max(0, overlay.Width);

@@ -1,17 +1,22 @@
 using System.Diagnostics;
 using System.Drawing;
+using System.Text.Json;
 using TmrOverlay.App.Analysis;
 using TmrOverlay.App.Brand;
 using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
+using TmrOverlay.App.Localhost;
 using TmrOverlay.App.Overlays.Abstractions;
 using TmrOverlay.App.Overlays.Flags;
+using TmrOverlay.App.Overlays.StreamChat;
+using TmrOverlay.App.Overlays.TrackMap;
 using TmrOverlay.App.Overlays.Styling;
 using TmrOverlay.App.Performance;
 using TmrOverlay.App.Storage;
+using TmrOverlay.App.TrackMaps;
+using TmrOverlay.App.Telemetry;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
-using TmrOverlay.App.Telemetry;
 
 namespace TmrOverlay.App.Overlays.SettingsPanel;
 
@@ -19,13 +24,25 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 {
     private const int SideTabThickness = 38;
     private const int SideTabLength = 174;
+    private static readonly JsonSerializerOptions TrackMapReportJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true
+    };
 
     private static readonly string[] PreferredOverlayTabOrder =
     [
         "standings",
         "relative",
+        "gap-to-leader",
+        "track-map",
+        "stream-chat",
+        "fuel-calculator",
+        "input-state",
+        "car-radar",
         "flags",
-        "car-radar"
+        "session-weather",
+        "pit-service"
     ];
 
     private readonly ApplicationSettings _applicationSettings;
@@ -37,7 +54,10 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private readonly PostRaceAnalysisOptions _postRaceAnalysisOptions;
     private readonly AppPerformanceState _performanceState;
     private readonly AppStorageOptions _storageOptions;
+    private readonly LocalhostOverlayOptions _localhostOverlayOptions;
     private readonly DiagnosticsBundleService _diagnosticsBundleService;
+    private readonly IbtTrackMapBuilder _trackMapBuilder;
+    private readonly TrackMapStore _trackMapStore;
     private readonly AppEventRecorder _events;
     private readonly Action _saveSettings;
     private readonly Action _applyOverlaySettings;
@@ -62,6 +82,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private Label? _performanceSnapshotLabel;
     private Label? _latestDiagnosticsBundleLabel;
     private Label? _supportStatusLabel;
+    private Label? _trackMapManualBuildStatusLabel;
+    private CheckBox? _trackMapGenerationCheckBox;
 
     public SettingsOverlayForm(
         ApplicationSettings applicationSettings,
@@ -73,7 +95,10 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         PostRaceAnalysisOptions postRaceAnalysisOptions,
         AppPerformanceState performanceState,
         AppStorageOptions storageOptions,
+        LocalhostOverlayOptions localhostOverlayOptions,
         DiagnosticsBundleService diagnosticsBundleService,
+        IbtTrackMapBuilder trackMapBuilder,
+        TrackMapStore trackMapStore,
         AppEventRecorder events,
         OverlaySettings settings,
         Action saveSettings,
@@ -95,7 +120,10 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _postRaceAnalysisOptions = postRaceAnalysisOptions;
         _performanceState = performanceState;
         _storageOptions = storageOptions;
+        _localhostOverlayOptions = localhostOverlayOptions;
         _diagnosticsBundleService = diagnosticsBundleService;
+        _trackMapBuilder = trackMapBuilder;
+        _trackMapStore = trackMapStore;
         _events = events;
         _saveSettings = saveSettings;
         _applyOverlaySettings = applyOverlaySettings;
@@ -547,8 +575,38 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         var page = CreateTabPage(definition.DisplayName);
         page.Tag = definition.Id;
         var title = CreateSectionLabel(definition.DisplayName, 18, 18, 500);
+        var isTrackMap = string.Equals(definition.Id, TrackMapOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase);
+        var isStreamChat = string.Equals(definition.Id, StreamChatOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase);
+        var controlTop = 58;
 
-        var enabledCheckBox = CreateCheckBox("Visible", settings.Enabled, 22, 58, 220);
+        if (isStreamChat)
+        {
+            page.Controls.Add(title);
+            page.Controls.Add(CreateMutedLabel(
+                "Browser-source surface for stream chat. Streamlabs uses your Chat Box widget URL; Twitch reads public chat by channel name.",
+                22,
+                54,
+                680));
+            AddLocalhostOptions(page, definition, 112);
+            AddStreamChatOptions(page, settings, 212);
+            return page;
+        }
+
+        if (isTrackMap)
+        {
+            page.Controls.Add(CreateWarningLabel(
+                "Track Map generation is on by default. TMR can build one local map from your telemetry-generated IBT files, store derived geometry on this PC, then skip complete layouts. Opt out to use bundled app maps only, or the circle placeholder when no bundled map exists.",
+                22,
+                50,
+                610,
+                74));
+            var optOutButton = CreateActionButton("Opt Out", 646, 72, 88);
+            optOutButton.Click += (_, _) => OptOutTrackMapGeneration(settings);
+            page.Controls.Add(optOutButton);
+            controlTop = 142;
+        }
+
+        var enabledCheckBox = CreateCheckBox("Visible", settings.Enabled, 22, controlTop, 220);
         enabledCheckBox.CheckedChanged += (_, _) =>
         {
             settings.Enabled = enabledCheckBox.Checked;
@@ -558,7 +616,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         page.Controls.Add(title);
         page.Controls.Add(enabledCheckBox);
 
-        var optionsTop = 104;
+        var optionsTop = controlTop + 46;
         if (definition.ShowScaleControl)
         {
             var scaleLabel = CreateLabel("Scale", 22, optionsTop + 4, 160);
@@ -661,8 +719,28 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             optionsTop += 176;
         }
 
+        AddLocalhostOptions(page, definition, isTrackMap ? 142 : 58);
         AddOverlaySpecificOptions(page, definition, settings, optionsTop);
         return page;
+    }
+
+    private void AddLocalhostOptions(TabPage page, OverlayDefinition definition, int top)
+    {
+        const int x = 560;
+        page.Controls.Add(CreateSectionLabel("Localhost browser source", x, top, 500));
+        if (LocalhostOverlayPageRenderer.TryGetRouteForOverlayId(definition.Id, out var route))
+        {
+            var url = $"{_localhostOverlayOptions.Prefix.TrimEnd('/')}{route}";
+            page.Controls.Add(CreateLabel("URL", x + 4, top + 42, 120));
+            page.Controls.Add(CreateSelectableValueBox(url, x + 92, top + 36, 300, 30));
+            var copyButton = CreateActionButton("Copy", x + 402, top + 36, 76);
+            copyButton.Click += (_, _) => CopyTextToClipboard(url);
+            page.Controls.Add(copyButton);
+            page.Controls.Add(CreateMutedLabel("This browser-source route does not require the native overlay to be visible. Enable LocalhostOverlays in configuration before using it.", x + 4, top + 76, 500));
+            return;
+        }
+
+        page.Controls.Add(CreateMutedLabel("No localhost route is available for this overlay yet.", x + 4, top + 42, 560));
     }
 
     private void AddOverlaySpecificOptions(TabPage page, OverlayDefinition definition, OverlaySettings settings, int top)
@@ -673,7 +751,482 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             return;
         }
 
+        if (string.Equals(definition.Id, TrackMapOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            AddTrackMapOptions(page, settings, top);
+            return;
+        }
+
         AddDescriptorOptions(page, definition.SettingsOptions, settings, top);
+    }
+
+    private void AddTrackMapOptions(TabPage page, OverlaySettings settings, int top)
+    {
+        page.Controls.Add(CreateSectionLabel("Map status", 18, top, 500));
+        page.Controls.Add(CreateLabel("Source", 22, top + 42, 120));
+        page.Controls.Add(CreateValueLabel("Bundled map, local user map, or circle fallback", 150, top + 36, 500, 30));
+        page.Controls.Add(CreateLabel("Generation", 22, top + 84, 120));
+        page.Controls.Add(CreateValueLabel("On by default; complete layouts are skipped after one good map", 150, top + 78, 520, 30));
+        var buildCheckBox = CreateCheckBox(
+            "Build local maps from IBT telemetry",
+            settings.GetBooleanOption(OverlayOptionKeys.TrackMapBuildFromTelemetry, defaultValue: true),
+            22,
+            top + 122,
+            320);
+        buildCheckBox.CheckedChanged += (_, _) =>
+        {
+            settings.SetBooleanOption(OverlayOptionKeys.TrackMapBuildFromTelemetry, buildCheckBox.Checked);
+            SaveAndApply();
+        };
+        _trackMapGenerationCheckBox = buildCheckBox;
+        page.Controls.Add(buildCheckBox);
+        page.Controls.Add(CreateMutedLabel("When disabled, source IBT files are ignored and runtime lookup uses only bundled app maps before falling back to the circle.", 22, top + 158, 680));
+
+        const int manualX = 560;
+        const int manualTop = 276;
+        page.Controls.Add(CreateSectionLabel("Manual IBT conversion", manualX, manualTop, 500));
+        page.Controls.Add(CreateMutedLabel("Temporary local testing tool; events are included in diagnostics bundles.", manualX + 4, manualTop + 32, 500));
+        var convertButton = CreateActionButton("Convert IBT...", manualX + 4, manualTop + 68, 132);
+        convertButton.Click += async (_, _) => await BuildTrackMapFromIbtAsync(convertButton);
+        page.Controls.Add(convertButton);
+        var scanFolderButton = CreateActionButton("Scan Folder...", manualX + 146, manualTop + 68, 132);
+        scanFolderButton.Click += async (_, _) => await BuildTrackMapsFromFolderAsync(scanFolderButton);
+        page.Controls.Add(scanFolderButton);
+        _trackMapManualBuildStatusLabel = CreateMultiLineValueLabel("No manual conversion run in this session.", manualX + 4, manualTop + 108, 500, 78);
+        page.Controls.Add(_trackMapManualBuildStatusLabel);
+    }
+
+    private void AddStreamChatOptions(TabPage page, OverlaySettings settings, int top)
+    {
+        page.Controls.Add(CreateSectionLabel("Chat provider", 18, top, 500));
+        page.Controls.Add(CreateLabel("Mode", 22, top + 42, 120));
+        var providerCombo = new ComboBox
+        {
+            BackColor = OverlayTheme.Colors.PanelBackground,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            FlatStyle = FlatStyle.Flat,
+            ForeColor = OverlayTheme.Colors.TextControl,
+            Location = new Point(150, top + 36),
+            Size = new Size(220, 30),
+            TabStop = true
+        };
+        providerCombo.Items.AddRange([
+            new StreamChatProviderItem("Not configured", StreamChatOverlaySettings.ProviderNone),
+            new StreamChatProviderItem("Streamlabs Chat Box URL", StreamChatOverlaySettings.ProviderStreamlabs),
+            new StreamChatProviderItem("Twitch channel", StreamChatOverlaySettings.ProviderTwitch)
+        ]);
+        var provider = StreamChatOverlaySettings.NormalizeProvider(
+            settings.GetStringOption(OverlayOptionKeys.StreamChatProvider, StreamChatOverlaySettings.ProviderNone));
+        providerCombo.SelectedIndex = providerCombo.Items
+            .Cast<StreamChatProviderItem>()
+            .Select((item, index) => new { item, index })
+            .FirstOrDefault(candidate => string.Equals(candidate.item.Value, provider, StringComparison.OrdinalIgnoreCase))
+            ?.index ?? 0;
+        page.Controls.Add(providerCombo);
+
+        page.Controls.Add(CreateLabel("Streamlabs URL", 22, top + 86, 120));
+        var streamlabsBox = CreateEditableTextBox(
+            settings.GetStringOption(OverlayOptionKeys.StreamChatStreamlabsUrl),
+            150,
+            top + 80,
+            520,
+            30);
+        page.Controls.Add(streamlabsBox);
+        page.Controls.Add(CreateMutedLabel("Paste the Streamlabs Chat Box widget URL, for example https://streamlabs.com/widgets/chat-box/...", 150, top + 114, 620));
+
+        page.Controls.Add(CreateLabel("Twitch channel", 22, top + 166, 120));
+        var twitchBox = CreateEditableTextBox(
+            settings.GetStringOption(OverlayOptionKeys.StreamChatTwitchChannel),
+            150,
+            top + 160,
+            220,
+            30);
+        page.Controls.Add(twitchBox);
+        page.Controls.Add(CreateMutedLabel("Use the public channel name only. Streamlabs is the preferred no-login option for this first pass.", 150, top + 194, 620));
+
+        void SyncProviderFields()
+        {
+            var selected = providerCombo.SelectedItem is StreamChatProviderItem item
+                ? item.Value
+                : StreamChatOverlaySettings.ProviderNone;
+            streamlabsBox.Enabled = string.Equals(selected, StreamChatOverlaySettings.ProviderStreamlabs, StringComparison.Ordinal);
+            twitchBox.Enabled = string.Equals(selected, StreamChatOverlaySettings.ProviderTwitch, StringComparison.Ordinal);
+        }
+
+        providerCombo.SelectedIndexChanged += (_, _) => SyncProviderFields();
+        SyncProviderFields();
+
+        var saveButton = CreateActionButton("Save Chat", 150, top + 236, 110);
+        saveButton.Click += (_, _) => SaveStreamChatSettings(settings, providerCombo, streamlabsBox, twitchBox);
+        page.Controls.Add(saveButton);
+        page.Controls.Add(CreateMutedLabel("Open the localhost URL in a browser or OBS after saving. The overlay will show connected status, then append messages as they arrive.", 274, top + 242, 560));
+    }
+
+    private void SaveStreamChatSettings(
+        OverlaySettings settings,
+        ComboBox providerCombo,
+        TextBox streamlabsBox,
+        TextBox twitchBox)
+    {
+        var provider = providerCombo.SelectedItem is StreamChatProviderItem item
+            ? item.Value
+            : StreamChatOverlaySettings.ProviderNone;
+        settings.SetStringOption(OverlayOptionKeys.StreamChatProvider, provider);
+        settings.SetStringOption(OverlayOptionKeys.StreamChatStreamlabsUrl, streamlabsBox.Text);
+        settings.SetStringOption(OverlayOptionKeys.StreamChatTwitchChannel, twitchBox.Text);
+        SaveAndApply();
+    }
+
+    private void OptOutTrackMapGeneration(OverlaySettings settings)
+    {
+        _events.Record("track_map_generation_opt_out", new Dictionary<string, string?>
+        {
+            ["source"] = "settings_track_map_warning"
+        });
+
+        settings.SetBooleanOption(OverlayOptionKeys.TrackMapBuildFromTelemetry, false);
+        if (_trackMapGenerationCheckBox is { Checked: true } checkBox)
+        {
+            checkBox.Checked = false;
+            return;
+        }
+
+        SaveAndApply();
+    }
+
+    private async Task BuildTrackMapFromIbtAsync(Button button)
+    {
+        using var dialog = new OpenFileDialog
+        {
+            Title = "Select iRacing IBT telemetry file",
+            Filter = "iRacing telemetry (*.ibt)|*.ibt|All files (*.*)|*.*",
+            InitialDirectory = DefaultIbtDirectory(),
+            CheckFileExists = true,
+            Multiselect = false
+        };
+
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        var ibtPath = dialog.FileName;
+        button.Enabled = false;
+        SetTrackMapManualBuildStatus($"Building map from {Path.GetFileName(ibtPath)}...");
+        _events.Record("track_map_manual_generation_requested", new Dictionary<string, string?>
+        {
+            ["sourcePath"] = ibtPath,
+            ["sourceFile"] = Path.GetFileName(ibtPath)
+        });
+
+        try
+        {
+            var result = await Task.Run(() => BuildTrackMapFromIbt(ibtPath)).ConfigureAwait(true);
+            SetTrackMapManualBuildStatus(result.Message);
+            _events.Record(result.EventName, result.Properties);
+        }
+        catch (Exception exception)
+        {
+            SetTrackMapManualBuildStatus($"Failed: {exception.GetType().Name}. Create a diagnostics bundle from Support.");
+            _events.Record("track_map_manual_generation_failed", new Dictionary<string, string?>
+            {
+                ["sourcePath"] = ibtPath,
+                ["sourceFile"] = Path.GetFileName(ibtPath),
+                ["error"] = exception.GetType().Name,
+                ["message"] = exception.Message
+            });
+        }
+        finally
+        {
+            button.Enabled = true;
+        }
+    }
+
+    private async Task BuildTrackMapsFromFolderAsync(Button button)
+    {
+        using var dialog = new FolderBrowserDialog
+        {
+            Description = "Select a folder containing iRacing IBT telemetry files. Subfolders are scanned.",
+            InitialDirectory = DefaultIbtDirectory(),
+            ShowNewFolderButton = false,
+            SelectedPath = DefaultIbtDirectory()
+        };
+
+        if (dialog.ShowDialog(this) != DialogResult.OK || string.IsNullOrWhiteSpace(dialog.SelectedPath))
+        {
+            return;
+        }
+
+        var sourceRoot = dialog.SelectedPath;
+        button.Enabled = false;
+        SetTrackMapManualBuildStatus($"Scanning {sourceRoot}...");
+        _events.Record("track_map_bulk_generation_requested", new Dictionary<string, string?>
+        {
+            ["sourceRoot"] = sourceRoot
+        });
+
+        try
+        {
+            var result = await Task.Run(() => BuildTrackMapsFromFolder(sourceRoot)).ConfigureAwait(true);
+            SetTrackMapManualBuildStatus(result.Message);
+            _events.Record(result.EventName, result.Properties);
+        }
+        catch (Exception exception)
+        {
+            SetTrackMapManualBuildStatus($"Folder scan failed: {exception.GetType().Name}. Create a diagnostics bundle from Support.");
+            _events.Record("track_map_bulk_generation_failed", new Dictionary<string, string?>
+            {
+                ["sourceRoot"] = sourceRoot,
+                ["error"] = exception.GetType().Name,
+                ["message"] = exception.Message
+            });
+        }
+        finally
+        {
+            button.Enabled = true;
+        }
+    }
+
+    private ManualTrackMapBuildResult BuildTrackMapsFromFolder(string sourceRoot)
+    {
+        var files = Directory
+            .EnumerateFiles(sourceRoot, "*.ibt", SearchOption.AllDirectories)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var results = new List<ManualTrackMapFileResult>(files.Length);
+        var saved = 0;
+        var skippedComplete = 0;
+        var skippedNotImproved = 0;
+        var rejected = 0;
+        var failed = 0;
+
+        foreach (var ibtPath in files)
+        {
+            var sourceFile = Path.GetFileName(ibtPath);
+            try
+            {
+                var track = _trackMapBuilder.ReadTrackIdentity(ibtPath, CancellationToken.None);
+                if (_trackMapStore.HasCompleteMap(track))
+                {
+                    skippedComplete++;
+                    results.Add(new ManualTrackMapFileResult(
+                        sourceFile,
+                        ibtPath,
+                        Outcome: "skipped",
+                        Reason: "complete_map_already_exists",
+                        MapPath: null,
+                        Confidence: null,
+                        CompleteLapCount: null,
+                        MissingBinCount: null,
+                        TrackIdentityKey: null,
+                        TrackName: track.TrackName,
+                        TrackConfigName: track.TrackConfigName,
+                        Error: null));
+                    continue;
+                }
+
+                var build = _trackMapBuilder.BuildFromIbt(ibtPath, captureId: "manual-folder-settings", CancellationToken.None);
+                if (build.Document is null)
+                {
+                    rejected++;
+                    results.Add(new ManualTrackMapFileResult(
+                        sourceFile,
+                        ibtPath,
+                        Outcome: "rejected",
+                        Reason: string.Join(",", build.RejectionReasons),
+                        MapPath: null,
+                        Confidence: null,
+                        CompleteLapCount: null,
+                        MissingBinCount: null,
+                        TrackIdentityKey: null,
+                        TrackName: track.TrackName,
+                        TrackConfigName: track.TrackConfigName,
+                        Error: null));
+                    continue;
+                }
+
+                var save = _trackMapStore.SaveIfImproved(build.Document);
+                if (save.Saved)
+                {
+                    saved++;
+                }
+                else
+                {
+                    skippedNotImproved++;
+                }
+
+                results.Add(new ManualTrackMapFileResult(
+                    sourceFile,
+                    ibtPath,
+                    Outcome: save.Saved ? "saved" : "skipped",
+                    Reason: save.Reason,
+                    MapPath: save.Path,
+                    Confidence: build.Document.Quality.Confidence.ToString(),
+                    CompleteLapCount: build.Document.Quality.CompleteLapCount,
+                    MissingBinCount: build.Document.Quality.MissingBinCount,
+                    TrackIdentityKey: build.Document.Identity.Key,
+                    TrackName: track.TrackName,
+                    TrackConfigName: track.TrackConfigName,
+                    Error: null));
+            }
+            catch (Exception exception)
+            {
+                failed++;
+                results.Add(new ManualTrackMapFileResult(
+                    sourceFile,
+                    ibtPath,
+                    Outcome: "failed",
+                    Reason: null,
+                    MapPath: null,
+                    Confidence: null,
+                    CompleteLapCount: null,
+                    MissingBinCount: null,
+                    TrackIdentityKey: null,
+                    TrackName: null,
+                    TrackConfigName: null,
+                    Error: exception.GetType().Name));
+            }
+        }
+
+        var reportPath = WriteTrackMapManualReport(sourceRoot, results);
+        var message = files.Length == 0
+            ? $"No .ibt files found in {sourceRoot}."
+            : $"Scanned {files.Length} IBT files: saved {saved}, skipped {skippedComplete + skippedNotImproved}, rejected {rejected}, failed {failed}. Report: {Path.GetFileName(reportPath)}";
+
+        return new ManualTrackMapBuildResult(
+            failed == 0 ? "track_map_bulk_generation_completed" : "track_map_bulk_generation_completed_with_failures",
+            message,
+            new Dictionary<string, string?>
+            {
+                ["sourceRoot"] = sourceRoot,
+                ["sourceFileCount"] = files.Length.ToString(),
+                ["saved"] = saved.ToString(),
+                ["skippedComplete"] = skippedComplete.ToString(),
+                ["skippedNotImproved"] = skippedNotImproved.ToString(),
+                ["rejected"] = rejected.ToString(),
+                ["failed"] = failed.ToString(),
+                ["reportPath"] = reportPath
+            });
+    }
+
+    private string WriteTrackMapManualReport(string sourceRoot, IReadOnlyList<ManualTrackMapFileResult> results)
+    {
+        var root = Path.Combine(_storageOptions.LogsRoot, "track-maps");
+        Directory.CreateDirectory(root);
+        var reportPath = Path.Combine(root, $"track-map-manual-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss-fff}.json");
+        File.WriteAllText(
+            reportPath,
+            JsonSerializer.Serialize(new
+            {
+                GeneratedAtUtc = DateTimeOffset.UtcNow,
+                SourceRoot = sourceRoot,
+                SourceFileCount = results.Count,
+                Saved = results.Count(result => string.Equals(result.Outcome, "saved", StringComparison.OrdinalIgnoreCase)),
+                Skipped = results.Count(result => string.Equals(result.Outcome, "skipped", StringComparison.OrdinalIgnoreCase)),
+                Rejected = results.Count(result => string.Equals(result.Outcome, "rejected", StringComparison.OrdinalIgnoreCase)),
+                Failed = results.Count(result => string.Equals(result.Outcome, "failed", StringComparison.OrdinalIgnoreCase)),
+                Results = results
+            }, TrackMapReportJsonOptions));
+        return reportPath;
+    }
+
+    private ManualTrackMapBuildResult BuildTrackMapFromIbt(string ibtPath)
+    {
+        var sourceFile = Path.GetFileName(ibtPath);
+        var track = _trackMapBuilder.ReadTrackIdentity(ibtPath, CancellationToken.None);
+        if (_trackMapStore.HasCompleteMap(track))
+        {
+            return new ManualTrackMapBuildResult(
+                "track_map_manual_generation_skipped",
+                $"Skipped {sourceFile}: a complete map already exists for this layout.",
+                new Dictionary<string, string?>
+                {
+                    ["sourcePath"] = ibtPath,
+                    ["sourceFile"] = sourceFile,
+                    ["reason"] = "complete_map_already_exists",
+                    ["trackName"] = track.TrackName,
+                    ["trackConfigName"] = track.TrackConfigName
+                });
+        }
+
+        var build = _trackMapBuilder.BuildFromIbt(ibtPath, captureId: "manual-settings", CancellationToken.None);
+        if (build.Document is null)
+        {
+            var reasons = string.Join(",", build.RejectionReasons);
+            return new ManualTrackMapBuildResult(
+                "track_map_manual_generation_rejected",
+                $"Rejected {sourceFile}: {reasons}. Create a diagnostics bundle from Support.",
+                new Dictionary<string, string?>
+                {
+                    ["sourcePath"] = ibtPath,
+                    ["sourceFile"] = sourceFile,
+                    ["reasons"] = reasons,
+                    ["trackName"] = track.TrackName,
+                    ["trackConfigName"] = track.TrackConfigName
+                });
+        }
+
+        var save = _trackMapStore.SaveIfImproved(build.Document);
+        return new ManualTrackMapBuildResult(
+            save.Saved ? "track_map_manual_generated" : "track_map_manual_generation_skipped",
+            save.Saved
+                ? $"Saved {Path.GetFileName(save.Path)} ({build.Document.Quality.Confidence}, laps {build.Document.Quality.CompleteLapCount}, missing bins {build.Document.Quality.MissingBinCount})."
+                : $"Skipped {sourceFile}: {save.Reason ?? "not_improved"}.",
+            new Dictionary<string, string?>
+            {
+                ["sourcePath"] = ibtPath,
+                ["sourceFile"] = sourceFile,
+                ["mapPath"] = save.Path,
+                ["reason"] = save.Reason,
+                ["confidence"] = build.Document.Quality.Confidence.ToString(),
+                ["completeLapCount"] = build.Document.Quality.CompleteLapCount.ToString(),
+                ["missingBinCount"] = build.Document.Quality.MissingBinCount.ToString(),
+                ["trackIdentityKey"] = build.Document.Identity.Key,
+                ["trackName"] = track.TrackName,
+                ["trackConfigName"] = track.TrackConfigName
+            });
+    }
+
+    private void SetTrackMapManualBuildStatus(string message)
+    {
+        if (_trackMapManualBuildStatusLabel is not null)
+        {
+            _trackMapManualBuildStatusLabel.Text = message;
+        }
+    }
+
+    private static string DefaultIbtDirectory()
+    {
+        var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        var telemetry = Path.Combine(documents, "iRacing", "telemetry");
+        return Directory.Exists(telemetry) ? telemetry : documents;
+    }
+
+    private sealed record ManualTrackMapBuildResult(
+        string EventName,
+        string Message,
+        IReadOnlyDictionary<string, string?> Properties);
+
+    private sealed record ManualTrackMapFileResult(
+        string SourceFile,
+        string SourcePath,
+        string Outcome,
+        string? Reason,
+        string? MapPath,
+        string? Confidence,
+        int? CompleteLapCount,
+        int? MissingBinCount,
+        string? TrackIdentityKey,
+        string? TrackName,
+        string? TrackConfigName,
+        string? Error);
+
+    private sealed record StreamChatProviderItem(string Label, string Value)
+    {
+        public override string ToString()
+        {
+            return Label;
+        }
     }
 
     private void AddFlagsOptions(TabPage page, OverlaySettings settings, int top)
@@ -900,6 +1453,23 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         };
     }
 
+    private static Label CreateWarningLabel(string text, int x, int y, int width, int height)
+    {
+        return new Label
+        {
+            AutoSize = false,
+            BackColor = Color.FromArgb(42, 35, 18),
+            BorderStyle = BorderStyle.FixedSingle,
+            ForeColor = OverlayTheme.Colors.WarningIndicator,
+            Font = OverlayTheme.Font(OverlayTheme.DefaultFontFamily, 8.75f, FontStyle.Bold),
+            Location = new Point(x, y),
+            Padding = new Padding(10, 8, 10, 6),
+            Size = new Size(width, height),
+            Text = text,
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+    }
+
     private static Label CreateValueLabel(string text, int x, int y, int width, int height)
     {
         return new Label
@@ -914,6 +1484,37 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             Size = new Size(width, height),
             Text = text,
             TextAlign = ContentAlignment.MiddleLeft
+        };
+    }
+
+    private static TextBox CreateSelectableValueBox(string text, int x, int y, int width, int height)
+    {
+        return new TextBox
+        {
+            BackColor = OverlayTheme.Colors.PanelBackground,
+            BorderStyle = BorderStyle.FixedSingle,
+            Font = OverlayTheme.Font(OverlayTheme.DefaultFontFamily, 9f, FontStyle.Bold),
+            ForeColor = OverlayTheme.Colors.TextSecondary,
+            Location = new Point(x, y),
+            ReadOnly = true,
+            Size = new Size(width, height),
+            TabStop = true,
+            Text = text
+        };
+    }
+
+    private static TextBox CreateEditableTextBox(string text, int x, int y, int width, int height)
+    {
+        return new TextBox
+        {
+            BackColor = OverlayTheme.Colors.PanelBackground,
+            BorderStyle = BorderStyle.FixedSingle,
+            Font = OverlayTheme.Font(OverlayTheme.DefaultFontFamily, 9f),
+            ForeColor = OverlayTheme.Colors.TextControl,
+            Location = new Point(x, y),
+            Size = new Size(width, height),
+            TabStop = true,
+            Text = text
         };
     }
 
@@ -1098,6 +1699,19 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         catch
         {
             SetSupportStatus("Clipboard unavailable. Select the path instead.", isError: true);
+        }
+    }
+
+    private void CopyTextToClipboard(string text)
+    {
+        try
+        {
+            Clipboard.SetText(text);
+            SetSupportStatus("Copied URL.", isError: false);
+        }
+        catch
+        {
+            SetSupportStatus("Clipboard unavailable. Select the URL instead.", isError: true);
         }
     }
 

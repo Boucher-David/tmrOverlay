@@ -7,6 +7,6 @@ internal static class InputStateOverlayDefinition
     public static OverlayDefinition Definition { get; } = new(
         Id: "input-state",
         DisplayName: "Inputs",
-        DefaultWidth: 520,
-        DefaultHeight: 300);
+        DefaultWidth: 390,
+        DefaultHeight: 220);
 }

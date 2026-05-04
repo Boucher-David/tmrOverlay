@@ -4,10 +4,10 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.Core.AppInfo;
 using TmrOverlay.App.Analysis;
-using TmrOverlay.App.Bridge;
 using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.History;
+using TmrOverlay.App.Localhost;
 using TmrOverlay.App.Logging;
 using TmrOverlay.App.Overlays;
 using TmrOverlay.App.Overlays.Styling;
@@ -19,6 +19,7 @@ using TmrOverlay.App.Shell;
 using TmrOverlay.App.Settings;
 using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
+using TmrOverlay.App.TrackMaps;
 using TmrOverlay.Core.Telemetry.Live;
 
 namespace TmrOverlay.App;
@@ -102,7 +103,7 @@ internal static class Program
                 services.AddSingleton(SessionHistoryOptions.FromConfiguration(context.Configuration, storageOptions));
                 services.AddSingleton(RetentionOptions.FromConfiguration(context.Configuration));
                 services.AddSingleton(replayOptions);
-                services.AddSingleton(OverlayBridgeOptions.FromConfiguration(context.Configuration));
+                services.AddSingleton(LocalhostOverlayOptions.FromConfiguration(context.Configuration));
                 services.AddSingleton<AppEventRecorder>();
                 services.AddSingleton<AppSettingsStore>();
                 services.AddSingleton<SessionHistoryStore>();
@@ -110,6 +111,8 @@ internal static class Program
                 services.AddSingleton<PostRaceAnalysisStore>();
                 services.AddSingleton<PostRaceAnalysisPipeline>();
                 services.AddSingleton<IbtAnalysisService>();
+                services.AddSingleton<IbtTrackMapBuilder>();
+                services.AddSingleton<TrackMapStore>();
                 services.AddSingleton<DiagnosticsBundleService>();
                 services.AddSingleton<TelemetryCaptureState>();
                 services.AddSingleton<TelemetryEdgeCaseRecorder>();
@@ -126,7 +129,7 @@ internal static class Program
                 services.AddHostedService<HistoryMaintenanceService>();
                 services.AddHostedService<AppPerformanceHostedService>();
                 services.AddHostedService<RetentionHostedService>();
-                services.AddHostedService<OverlayBridgeHostedService>();
+                services.AddHostedService<LocalhostOverlayHostedService>();
                 services.AddTelemetryProvider(replayOptions);
             });
     }

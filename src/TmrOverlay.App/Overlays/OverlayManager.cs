@@ -10,7 +10,10 @@ using TmrOverlay.App.Overlays.SettingsPanel;
 using TmrOverlay.App.Overlays.SessionWeather;
 using TmrOverlay.App.Overlays.SimpleTelemetry;
 using TmrOverlay.App.Overlays.Status;
+using TmrOverlay.App.Overlays.Standings;
+using TmrOverlay.App.Overlays.StreamChat;
 using TmrOverlay.App.Overlays.Styling;
+using TmrOverlay.App.Overlays.TrackMap;
 using TmrOverlay.App.Settings;
 using TmrOverlay.App.Storage;
 using TmrOverlay.Core.Settings;
@@ -20,8 +23,10 @@ using TmrOverlay.App.History;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
+using TmrOverlay.App.Localhost;
 using TmrOverlay.App.Performance;
 using TmrOverlay.App.Analysis;
+using TmrOverlay.App.TrackMaps;
 
 namespace TmrOverlay.App.Overlays;
 
@@ -36,12 +41,17 @@ internal sealed class OverlayManager : IDisposable
     private readonly LiveOverlayDiagnosticsOptions _liveOverlayDiagnosticsOptions;
     private readonly PostRaceAnalysisOptions _postRaceAnalysisOptions;
     private readonly AppPerformanceState _performanceState;
+    private readonly LocalhostOverlayOptions _localhostOverlayOptions;
+    private readonly IbtTrackMapBuilder _trackMapBuilder;
+    private readonly TrackMapStore _trackMapStore;
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly SessionHistoryQueryService _historyQueryService;
     private readonly AppEventRecorder _events;
     private readonly ILogger<CarRadarForm> _carRadarLogger;
     private readonly ILogger<GapToLeaderForm> _gapToLeaderLogger;
     private readonly ILogger<RelativeForm> _relativeLogger;
+    private readonly ILogger<StandingsForm> _standingsLogger;
+    private readonly ILogger<TrackMapForm> _trackMapLogger;
     private readonly ILogger<SimpleTelemetryOverlayForm> _simpleTelemetryLogger;
     private readonly Dictionary<string, Form> _forms = [];
     private readonly Dictionary<string, double> _appliedScales = [];
@@ -64,12 +74,17 @@ internal sealed class OverlayManager : IDisposable
         LiveOverlayDiagnosticsOptions liveOverlayDiagnosticsOptions,
         PostRaceAnalysisOptions postRaceAnalysisOptions,
         AppPerformanceState performanceState,
+        LocalhostOverlayOptions localhostOverlayOptions,
+        IbtTrackMapBuilder trackMapBuilder,
+        TrackMapStore trackMapStore,
         ILiveTelemetrySource liveTelemetrySource,
         SessionHistoryQueryService historyQueryService,
         AppEventRecorder events,
         ILogger<CarRadarForm> carRadarLogger,
         ILogger<GapToLeaderForm> gapToLeaderLogger,
         ILogger<RelativeForm> relativeLogger,
+        ILogger<StandingsForm> standingsLogger,
+        ILogger<TrackMapForm> trackMapLogger,
         ILogger<SimpleTelemetryOverlayForm> simpleTelemetryLogger)
     {
         _settingsStore = settingsStore;
@@ -81,12 +96,17 @@ internal sealed class OverlayManager : IDisposable
         _liveOverlayDiagnosticsOptions = liveOverlayDiagnosticsOptions;
         _postRaceAnalysisOptions = postRaceAnalysisOptions;
         _performanceState = performanceState;
+        _localhostOverlayOptions = localhostOverlayOptions;
+        _trackMapBuilder = trackMapBuilder;
+        _trackMapStore = trackMapStore;
         _liveTelemetrySource = liveTelemetrySource;
         _historyQueryService = historyQueryService;
         _events = events;
         _carRadarLogger = carRadarLogger;
         _gapToLeaderLogger = gapToLeaderLogger;
         _relativeLogger = relativeLogger;
+        _standingsLogger = standingsLogger;
+        _trackMapLogger = trackMapLogger;
         _simpleTelemetryLogger = simpleTelemetryLogger;
 
         _sessionVisibilityTimer = new System.Windows.Forms.Timer
@@ -138,7 +158,10 @@ internal sealed class OverlayManager : IDisposable
                 _postRaceAnalysisOptions,
                 _performanceState,
                 _storageOptions,
+                _localhostOverlayOptions,
                 _diagnosticsBundleService,
+                _trackMapBuilder,
+                _trackMapStore,
                 _events,
                 settings,
                 SaveSettings,
@@ -182,8 +205,11 @@ internal sealed class OverlayManager : IDisposable
     private IReadOnlyList<OverlayDefinition> ManagedOverlayDefinitions =>
     [
         StatusOverlayDefinition.Definition,
+        StandingsOverlayDefinition.Definition,
         FuelCalculatorOverlayDefinition.Definition,
         RelativeOverlayDefinition.Definition,
+        TrackMapOverlayDefinition.Definition,
+        StreamChatOverlayDefinition.Definition,
         FlagsOverlayDefinition.Definition,
         SessionWeatherOverlayDefinition.Definition,
         PitServiceOverlayDefinition.Definition,
@@ -205,6 +231,17 @@ internal sealed class OverlayManager : IDisposable
             24,
             24),
         new OverlayRegistration(
+            StandingsOverlayDefinition.Definition,
+            settings => new StandingsForm(
+                _liveTelemetrySource,
+                _standingsLogger,
+                _performanceState,
+                settings,
+                SelectedFontFamily,
+                SaveSettings),
+            24,
+            190),
+        new OverlayRegistration(
             FuelCalculatorOverlayDefinition.Definition,
             settings => new FuelCalculatorForm(
                 _liveTelemetrySource,
@@ -215,7 +252,7 @@ internal sealed class OverlayManager : IDisposable
                 SelectedUnitSystem,
                 SaveSettings),
             24,
-            190),
+            550),
         new OverlayRegistration(
             RelativeOverlayDefinition.Definition,
             settings => new RelativeForm(
@@ -225,8 +262,20 @@ internal sealed class OverlayManager : IDisposable
                 settings,
                 SelectedFontFamily,
                 SaveSettings),
-            24,
-            530),
+            650,
+            24),
+        new OverlayRegistration(
+            TrackMapOverlayDefinition.Definition,
+            settings => new TrackMapForm(
+                _liveTelemetrySource,
+                _trackMapStore,
+                _trackMapLogger,
+                _performanceState,
+                settings,
+                SelectedFontFamily,
+                SaveSettings),
+            650,
+            400),
         new OverlayRegistration(
             FlagsOverlayDefinition.Definition,
             settings => new FlagsOverlayForm(

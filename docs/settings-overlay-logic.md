@@ -12,13 +12,15 @@ Implementation files:
 
 The settings window is the main UI. It is a normal desktop window, not a driving overlay.
 
-Treat settings as the app control plane rather than a v1 or model-v2 overlay consumer. Overlay v2 migrations change which live model a driving overlay reads; settings owns lifecycle, visibility, session filters, shared units/fonts, diagnostics access, and future app-platform controls. A later settings information-architecture pass may group overlays and platform features, but it should stay separate from telemetry model migration.
+Treat settings as the app control plane rather than a v1 or model-v2 overlay consumer. Overlay v2 migrations change which live model a driving overlay reads; settings owns lifecycle, visibility, session filters, shared units/fonts, diagnostics access, and future app-platform controls. Settings information architecture should stay separate from telemetry model migration.
 
 Driving overlays are managed windows that can sit above the simulator. Current driving overlays:
 
 - Status.
+- Standings.
 - Fuel Calculator.
 - Relative.
+- Track Map.
 - Flags.
 - Session / Weather.
 - Pit Service.
@@ -41,7 +43,7 @@ At startup, `OverlayManager.ShowStartupOverlays`:
 
 The settings window:
 
-- Uses default size from `SettingsOverlayDefinition`.
+- Uses default size from `SettingsOverlayDefinition`; the current fixed client size is wide enough for the Support tab's two-column controls.
 - Enforces its default size as both the minimum and maximum.
 - Recenters every time it is opened.
 - Does not preserve user-dragged placement between runs.
@@ -55,20 +57,26 @@ This differs from driving overlays, which persist placement through `PersistentO
 The settings UI has:
 
 - A branded `Tech Mates Racing Overlay` header with the TMR logo.
-- Vertical left-side tabs.
+- Flat vertical left-side tabs in a taller desktop settings window so all current overlay and support tabs fit without scrolling.
 - General.
-- User-facing overlay tabs, ordered with Standings, Relative, Flags, and Radar first when present.
+- User-facing overlay tabs ordered by common race workflow.
 - Support as the final tab.
 
 Managed overlay tabs are generated from `OverlayManager.ManagedOverlayDefinitions`, then filtered so internal-only surfaces such as Collector Status do not appear as user-facing settings tabs. Adding a driving overlay definition there is what makes the settings tab eligible to appear; overlay-specific options only appear when the definition provides option descriptors or a custom settings block.
 
-The tab list now starts to reflect user task grouping: General first, timing/race-critical overlays early, and Support last. Future platform surfaces such as Overlay Bridge, publishing/update status, post-race analysis, and overlay builder should not be added as ordinary driving-overlay tabs without a product pass.
+The tab list keeps General first, puts common race timing overlays early, keeps driver telemetry and race-state overlays after that, and leaves Support last. Future platform surfaces such as Overlay Bridge, publishing/update status, post-race analysis, and overlay builder should not be added as ordinary driving-overlay tabs without a product pass.
 
 Flags exposes flag-category enable controls and custom border size controls instead of session filters, scale, opacity, or custom timing. The flag overlay ignores background flag bits such as serviceable/start-hidden as standalone display triggers and paints a category only while current telemetry reports a matching user-facing flag category.
 
 Most driving overlays expose opacity next to scale and keep the existing overlay opacity as their default. The transparent full-screen-style flag border and the radar do not expose opacity because their readability comes from semantic color/shape rather than a normal panel background.
 
 Gap To Leader is race-only, so its settings tab omits the redundant `Display in sessions` filter group.
+
+Each user-facing overlay tab shows a selectable localhost browser-source URL plus a copy button when a route exists. These routes are independent of the native overlay visibility checkbox; a hidden native overlay can still be used as a localhost browser source when `LocalhostOverlays` is enabled in configuration.
+
+Track Map exposes normal overlay visibility, scale, opacity, and session filters plus map-generation status. Its tab explains that bundled app maps are used when present, while local IBT-derived map generation is on by default. Users can opt out from the warning, which clears `Build local maps from IBT telemetry`; when disabled, runtime lookup ignores user-generated maps and uses only bundled app maps before falling back to the circle placeholder. The checkbox controls future automatic post-session generation, not an immediate scan. Temporary `Convert IBT...` and `Scan Folder...` buttons let Windows testers convert one `.ibt` file or recursively scan an existing telemetry folder; events and per-file folder reports are included in diagnostics bundles.
+
+Stream Chat is exposed as a browser-source settings tab and localhost route. The settings tab asks for one active source: not configured, Streamlabs Chat Box URL, or Twitch channel. Streamlabs embeds the configured widget URL in `/overlays/stream-chat`; Twitch connects from the browser source to public channel chat and appends messages as they arrive. The inactive provider is ignored even if its field has a saved value. Provider auth, moderation controls, write/chat-command support, and richer rate-limit handling are separate follow-up work. Streamlabs widget URLs are treated as private local settings and redacted from diagnostics bundles.
 
 The selected overlay tab is reported back to `OverlayManager`.
 
@@ -134,7 +142,7 @@ Units:
 
 Typography:
 
-- The user-facing font selector is hidden during the v0.10 parity pass.
+- The user-facing font selector is hidden while shared typography stays a theme/platform concern.
 - Managed overlays render with the platform/theme default font unless an advanced theme override is introduced.
 
 ## Settings Persistence

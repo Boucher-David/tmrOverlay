@@ -124,7 +124,11 @@ internal static class LiveModelParityAnalyzer
             }
             else
             {
-                CompareNullableDouble(observations, "proximity", $"relative-seconds-{legacyCar.CarIdx}", legacyCar.RelativeSeconds, relative.RelativeSeconds, SecondsTolerance);
+                if (legacyCar.RelativeSeconds is not null || !IsLapTimeInferredRelative(relative))
+                {
+                    CompareNullableDouble(observations, "proximity", $"relative-seconds-{legacyCar.CarIdx}", legacyCar.RelativeSeconds, relative.RelativeSeconds, SecondsTolerance);
+                }
+
                 CompareNullableDouble(observations, "proximity", $"relative-laps-{legacyCar.CarIdx}", legacyCar.RelativeLaps, relative.RelativeLaps, LapDistanceTolerance);
                 CompareNullableDouble(observations, "proximity", $"relative-meters-{legacyCar.CarIdx}", legacyCar.RelativeMeters, relative.RelativeMeters, DistanceMetersTolerance);
                 CompareNullableInt(observations, "proximity", $"relative-class-{legacyCar.CarIdx}", legacyCar.CarClass, relative.CarClass);
@@ -144,6 +148,11 @@ internal static class LiveModelParityAnalyzer
                 CompareNullableBoolean(observations, "proximity", $"spatial-pit-road-{legacyCar.CarIdx}", legacyCar.OnPitRoad, spatial.OnPitRoad);
             }
         }
+    }
+
+    private static bool IsLapTimeInferredRelative(LiveRelativeRow row)
+    {
+        return string.Equals(row.TimingEvidence.Source, "CarIdxLapDistPct+lap-time", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void CompareLeaderGap(

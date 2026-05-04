@@ -43,6 +43,10 @@ $allowedAssetFiles = @(
     "Assets\TMRLogo.png"
 )
 
+$allowedAssetPatterns = @(
+    '^Assets\\TrackMaps\\[^\\]+\.json$'
+)
+
 $missingFiles = @($requiredFiles | Where-Object { -not (Test-Path -LiteralPath (Join-Path $PublishPath $_) -PathType Leaf) })
 if ($missingFiles.Count -gt 0) {
     throw "Published package is missing required files: $($missingFiles -join ', ')"
@@ -59,7 +63,16 @@ $assetRoot = Join-Path $PublishPath "Assets"
 $unexpectedAssetFiles = @(Get-ChildItem -LiteralPath $assetRoot -Recurse -File -Force |
     Where-Object {
         $relativePath = [System.IO.Path]::GetRelativePath($PublishPath, $_.FullName)
-        $allowedAssetFiles -notcontains $relativePath
+        $isAllowedFile = $allowedAssetFiles -contains $relativePath
+        $isAllowedPattern = $false
+        foreach ($pattern in $allowedAssetPatterns) {
+            if ($relativePath -match $pattern) {
+                $isAllowedPattern = $true
+                break
+            }
+        }
+
+        -not ($isAllowedFile -or $isAllowedPattern)
     })
 if ($unexpectedAssetFiles.Count -gt 0) {
     $names = $unexpectedAssetFiles | ForEach-Object { [System.IO.Path]::GetRelativePath($PublishPath, $_.FullName) }

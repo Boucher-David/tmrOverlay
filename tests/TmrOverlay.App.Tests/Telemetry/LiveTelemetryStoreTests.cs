@@ -432,6 +432,46 @@ DriverInfo:
     }
 
     [Fact]
+    public void RecordFrame_InferRelativeOverlaySecondsWithoutChangingRadarTiming()
+    {
+        var store = new LiveTelemetryStore();
+
+        store.RecordFrame(CreateSample(
+            playerCarIdx: 10,
+            teamLapDistPct: 0.50d,
+            teamCarClass: 4098,
+            nearbyCars:
+            [
+                new HistoricalCarProximity(
+                    CarIdx: 12,
+                    LapCompleted: 2,
+                    LapDistPct: 0.53d,
+                    F2TimeSeconds: null,
+                    EstimatedTimeSeconds: null,
+                    Position: 8,
+                    ClassPosition: 4,
+                    CarClass: 4098,
+                    TrackSurface: 3,
+                    OnPitRoad: false)
+            ]));
+
+        var snapshot = store.Snapshot();
+
+        var proximityCar = Assert.Single(snapshot.Proximity.NearbyCars);
+        Assert.Null(proximityCar.RelativeSeconds);
+
+        var relativeRow = Assert.Single(snapshot.Models.Relative.Rows);
+        Assert.Equal(2.7d, relativeRow.RelativeSeconds!.Value, precision: 6);
+        Assert.Equal("CarIdxLapDistPct+lap-time", relativeRow.TimingEvidence.Source);
+
+        var spatialCar = Assert.Single(snapshot.Models.Spatial.Cars);
+        Assert.Null(spatialCar.RelativeSeconds);
+
+        var parity = LiveModelParityAnalyzer.Analyze(snapshot);
+        Assert.False(parity.HasMismatch);
+    }
+
+    [Fact]
     public void RecordFrame_FlagsFuelUseWithoutFuelLevelAsDiagnosticOnly()
     {
         var store = new LiveTelemetryStore();

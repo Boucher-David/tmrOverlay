@@ -101,6 +101,7 @@ public sealed class AppSettingsStoreTests
             Assert.Equal(5, overlay.GetIntegerOption(OverlayOptionKeys.RelativeCarsBehind, 5, 0, 8));
             Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.FuelAdvice, defaultValue: true));
             Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true));
+            Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.TrackMapBuildFromTelemetry, defaultValue: true));
             Assert.False(overlay.Options.ContainsKey("flags.green-seconds"));
             Assert.False(overlay.Options.ContainsKey("flags.blue-seconds"));
 
@@ -149,6 +150,7 @@ public sealed class AppSettingsStoreTests
             LogsRoot = Path.Combine(root, "logs"),
             SettingsRoot = Path.Combine(root, "settings"),
             DiagnosticsRoot = Path.Combine(root, "diagnostics"),
+            TrackMapRoot = Path.Combine(root, "track-maps", "user"),
             EventsRoot = Path.Combine(root, "logs", "events"),
             RuntimeStatePath = Path.Combine(root, "runtime-state.json")
         };

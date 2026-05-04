@@ -7,7 +7,7 @@
 - Starts as a WinForms tray application with a fixed-size settings window as the app control surface.
 - Uses a local single-instance mutex so a second launch exits instead of attaching another telemetry collector to the same iRacing session.
 - Includes an internal collector status overlay for development/support, hidden by default for normal users.
-- Shows a branded centered tabbed settings window for managing overlay visibility, scale, opacity where useful, session filters, units, support/log access, diagnostic capture, and overlay-specific display options.
+- Shows a branded centered settings window with flat left-side tabs for managing overlay visibility, scale, opacity where useful, session filters, units, support/log access, diagnostic capture, and overlay-specific display options.
 - Treats the settings window as the main UI: clicking its `X` exits the application instead of hiding it to the tray.
 - Keeps the settings window on the normal desktop layer with a taskbar/Alt+Tab entry, while driving overlays can stay above the sim.
 - Lets you drag overlays and remembers each overlay position between app launches.
@@ -15,13 +15,15 @@
 - Starts live telemetry analysis whenever iRacing sends usable frame data.
 - Writes compact per-combo session history under app-owned local storage.
 - Shows an early fuel calculator overlay that estimates race laps, whole-lap stint targets, final-stint length, realistic fuel-saving alerts, and stop-by-stop tire-change timing guidance.
-- Shows first-pass relative, flags, session/weather, pit-service, input/car-state, radar, and gap-to-leader overlays backed by model-v2 relative/session/weather/fuel-pit/input/spatial rows plus live `CamCarIdx`, `CarLeftRight`, `CarIdxF2Time`, `CarIdxEstTime`, and `CarIdx*` progress/position telemetry.
-  The relative overlay is the first production model-v2 consumer: it renders a dense local/reference relative table from `LiveTelemetrySnapshot.Models.Relative`, configurable cars ahead/behind, timing fallback labeling, and quiet source text unless data is waiting or degraded.
+- Shows first-pass standings, relative, track-map, flags, session/weather, pit-service, input/car-state, radar, and gap-to-leader overlays backed by model-v2 timing/relative/session/weather/fuel-pit/input/spatial rows plus live `CamCarIdx`, `CarLeftRight`, `CarIdxF2Time`, `CarIdxEstTime`, and `CarIdx*` progress/position telemetry, with a browser-source Stream Chat route that can use either a Streamlabs Chat Box widget URL or public Twitch channel chat.
+  The standings overlay renders a compact same-class timing table from `LiveTelemetrySnapshot.Models.Timing`, including leader gap, focus interval, and pit-road status.
+  The relative overlay is the first production model-v2 consumer: it renders a dense local/reference relative table from `LiveTelemetrySnapshot.Models.Relative`, configurable stable cars-ahead/behind slots, live or inferred display-time gaps, timing fallback labeling, and quiet source text unless data is waiting or degraded.
+  The track-map overlay is a transparent map-only surface: it draws bundled app maps when available, uses local IBT-derived maps while default-on generation remains enabled, otherwise shows a circle fallback with live car dots placed by lap-distance progress.
   The flags overlay is a transparent primary-screen border driven by live session flags; ultrawide defaults keep monitor height with a centered 4:3 frame. Session/weather and pit-service use the shared simple telemetry shell, input/car-state uses graph traces, and all render direct iRacing telemetry quietly. Pit-service is read-only, with command-capable pit crew/engineer workflow deferred to a future analysis/operator overlay.
-  The radar is a transparent circular proximity view that reads `LiveTelemetrySnapshot.Models.Spatial`, only paints from fresh local in-car telemetry, prefers physical distance from `CarIdxLapDistPct` and track length for close-range placement, falls back to reliable live time gaps when distance is unavailable, uses `CarLeftRight` as the authoritative alongside signal, fades nearby neutral-white car rectangles in between radar entry and the yellow-warning threshold, moves them through yellow toward saturated alert red only inside the close bumper-gap warning buffer, labels its range rings, and can show an outer-ring multiclass warning for cars behind outside the 2-second timing fallback but within 5 seconds. The gap overlay is a four-hour in-class trend graph with the focused car's class leader as the top baseline, adaptive Y-axis scaling, left-side axis labels, lap reference lines, subtle weather bands, driver/leader-change markers, dimmed context lines, and endpoint `P<N>` labels. It keeps bounded in-memory traces for all available same-class timing rows, while dynamically rendering the leader, the focused car, nearby class traffic, and recently visible cars.
+  The radar is a transparent circular proximity view that reads `LiveTelemetrySnapshot.Models.Spatial`, only paints from fresh local in-car telemetry, prefers physical distance from `CarIdxLapDistPct` and track length for close-range placement, falls back to reliable live time gaps when distance is unavailable, uses `CarLeftRight` as the authoritative alongside signal, attaches likely decoded cars to active side warnings instead of drawing the same opponent twice, fades nearby neutral-white car rectangles in between radar entry and the yellow-warning threshold, moves them through yellow toward saturated alert red only inside the close bumper-gap warning buffer, labels its range rings, and can show an outer-ring multiclass warning for cars behind outside the 2-second timing fallback but within 5 seconds. The gap overlay is a four-hour in-class trend graph with the focused car's class leader as the top baseline, adaptive Y-axis scaling, left-side axis labels, lap reference lines, subtle weather bands, driver/leader-change markers, dimmed context lines, and endpoint `P<N>` labels. It keeps bounded in-memory traces for all available same-class timing rows, while dynamically rendering the leader, the focused car, nearby class traffic, and recently visible cars.
 - Stores early pit-service history signals such as pit-lane time, pit-stall/service time, observed fuel fill rate, tire/repair indicators, and confidence flags.
 - Keeps raw capture as an opt-in diagnostic/development mode; the settings window can request raw capture at runtime if the app was started without the flag.
-- When raw capture is enabled, stores `telemetry.bin`, `telemetry-schema.json`, `latest-session.yaml`, optional `session-info/`, and `capture-manifest.json`, then writes compact `capture-synthesis.json` plus optional advanced sidecars such as `live-model-parity.json`, `live-overlay-diagnostics.json`, and `ibt-analysis/*.json` when those collectors are enabled.
+- When raw capture is enabled, stores `telemetry.bin`, `telemetry-schema.json`, `latest-session.yaml`, optional `session-info/`, and `capture-manifest.json`, then writes compact `capture-synthesis.json` plus optional advanced sidecars such as `live-model-parity.json`, `live-overlay-diagnostics.json`, and `ibt-analysis/*.json` when those collectors are enabled. Successful IBT analysis can also generate a local reusable track-map JSON under app-owned storage unless the user opts out on the Track Map settings tab.
 - Keeps edge-case telemetry, model-v2 parity, live-overlay diagnostics, and post-race analysis disabled by default for tester builds; the Support tab shows their status as advanced collection tools.
 - Shows live-analysis health signals in the overlay, plus disk-write health when raw capture is enabled.
 - Writes rolling local logs, JSONL app events, runtime-state markers, persisted settings, lightweight performance snapshots, and diagnostics bundles for triage.
@@ -33,7 +35,7 @@
 - `src/TmrOverlay.App/` contains the Windows application, tray shell, and telemetry collector.
 - `src/TmrOverlay.App/Overlays/` contains overlay modules. Each overlay type gets its own folder and uses shared draggable/persisted window behavior.
 - `src/TmrOverlay.App/Overlays/Styling/OverlayTheme.cs` contains the common Windows overlay visual tokens, including shared colors, font helpers, and basic layout constants.
-- `src/TmrOverlay.App/Bridge/` contains the optional localhost overlay bridge for future external UI clients.
+- `src/TmrOverlay.App/Localhost/` contains the optional localhost browser-source overlays for OBS and other local capture tools.
 - `src/TmrOverlay.App/Shell/` contains the tray/menu shell.
 - `src/TmrOverlay.Core/` contains platform-neutral settings models, overlay metadata, historical telemetry/session models, live telemetry derivation, post-race analysis models, and fuel strategy logic.
 - `assets/` contains repo-owned source visual assets such as brand/logo images for future app icons, overlay branding, docs, and publishing work.
@@ -84,7 +86,7 @@ Each capture folder contains:
 - `live-overlay-diagnostics.json` when passive overlay-assumption diagnostics are enabled
 - `ibt-analysis/*.json` when IBT analysis is enabled and a matching iRacing `.ibt` file can be selected or skipped/failure status is recorded
 
-Model-v2 parity runs in observer mode for the legacy overlay-input families while Relative consumes `LiveTelemetrySnapshot.Models.Relative` directly and Car Radar consumes `LiveTelemetrySnapshot.Models.Spatial` for local in-car radar. When enabled, the collector compares existing fuel/proximity/gap inputs with `LiveTelemetrySnapshot.Models` and records compact mismatch/coverage evidence. `LiveTelemetrySnapshot.Models` also carries source evidence for timing, spatial/radar placement, gap, and fuel-baseline usability so future overlays can distinguish reliable raw signals from diagnostic or partial signals. `live-model-parity.json` includes `promotionReadiness`; when a session passes the configured data-volume, mismatch-rate, and coverage thresholds, the app also writes a `live_model_v2_promotion_candidate` event. `live-overlay-diagnostics.json` is a separate observer artifact for the 24-hour findings and design-v2 candidates: non-race gap semantics, multi-lap gap scaling, local-only radar suppression and side/placement evidence, fuel source stitching, position cadence, lap-delta channel availability, and derived sector-timing coverage. IBT logging uses the same raw-capture switch by default. Starting raw capture requests iRacing telemetry logging, and capture finalization requests logging to stop. The post-session analyzer writes compact JSON sidecars only, including `ibt-local-car-summary.json` for bounded local-car trajectory/fuel/vehicle-dynamics investigation, enforces a timeout for capture synthesis, scans a bounded set of recent `.ibt` candidates, enforces size/stability/sample/time limits, and does not copy source `.ibt` files into the capture directory unless `IbtAnalysis:CopyIbtIntoCaptureDirectory=true`.
+Model-v2 parity runs in observer mode for the legacy overlay-input families while Relative consumes `LiveTelemetrySnapshot.Models.Relative` directly and Car Radar consumes `LiveTelemetrySnapshot.Models.Spatial` for local in-car radar. When enabled, the collector compares existing fuel/proximity/gap inputs with `LiveTelemetrySnapshot.Models` and records compact mismatch/coverage evidence. `LiveTelemetrySnapshot.Models` also carries source evidence for timing, spatial/radar placement, gap, and fuel-baseline usability so future overlays can distinguish reliable raw signals from diagnostic or partial signals. `live-model-parity.json` includes `promotionReadiness`; when a session passes the configured data-volume, mismatch-rate, and coverage thresholds, the app also writes a `live_model_v2_promotion_candidate` event. `live-overlay-diagnostics.json` is a separate observer artifact for the 24-hour findings and design-v2 candidates: non-race gap semantics, multi-lap gap scaling, local-only radar suppression and side/placement evidence, fuel source stitching, position cadence, lap-delta channel availability, and derived sector-timing coverage. IBT logging uses the same raw-capture switch by default. Starting raw capture requests iRacing telemetry logging, and capture finalization requests logging to stop. The post-session analyzer writes compact JSON sidecars only, including `ibt-local-car-summary.json` for bounded local-car trajectory/fuel/vehicle-dynamics investigation, enforces a timeout for capture synthesis, scans a bounded set of recent `.ibt` candidates, enforces size/stability/sample/time limits, can derive compact local track-map geometry from complete positive laps, and does not copy source `.ibt` files into the capture directory unless `IbtAnalysis:CopyIbtIntoCaptureDirectory=true`.
 
 ## Edge-Case Telemetry Artifacts
 
@@ -127,7 +129,9 @@ Future overlays should consume shared live data through `TmrOverlay.Core.Telemet
 
 Release tags named `vMAJOR.MINOR.PATCH` publish a portable Windows x64 tester build through GitHub Actions. PR validation restores, builds, tests, validates tracked screenshot artifacts, and runs a self-contained publish dry run with the same package-content audit used by release packaging. The release workflow then publishes the WinForms app as a self-contained single-file package, audits the publish folder for accidental repo/dev-folder leaks, writes a package manifest, zips the publish folder, writes a SHA-256 checksum, uploads the release artifacts, and attaches them to the GitHub Release.
 
-See [docs/windows-release.md](/Users/davidboucher/Code/tmrOverlay/docs/windows-release.md) for package contents, tester download, checksum verification, install, user-data compatibility, upgrade, rollback, signing, and diagnostics instructions. v0.9 starts with unsigned portable zip builds; installer-based self-update remains deferred until the release channel and signing plan are settled.
+See [docs/windows-release.md](/Users/davidboucher/Code/tmrOverlay/docs/windows-release.md) for package contents, tester download, checksum verification, install, user-data compatibility, upgrade, rollback, signing, and diagnostics instructions. Current tester releases are unsigned portable zip builds; installer-based self-update remains deferred until the release channel and signing plan are settled.
+
+See [docs/track-map-overlay-logic.md](/Users/davidboucher/Code/tmrOverlay/docs/track-map-overlay-logic.md) for the Windows track-map generation validation flow and the batch command for creating bundled derived map JSON assets from vetted IBT files.
 
 ## macOS Local Harness
 
@@ -139,7 +143,7 @@ The ignored macOS harness is for local overlay and boilerplate iteration on this
 
 It writes mock session history to `~/Library/Application Support/TmrOverlayMac/history/user` by default and mirrors the Windows storage layout for captures, user history, logs, events, settings, diagnostics, runtime state, and retention cleanup. Set `TMR_MAC_USE_REPOSITORY_LOCAL_STORAGE=true` if you intentionally want mac harness data under the ignored `local-mac/TmrOverlayMac/` folder.
 
-The mac harness mirrors the current Windows overlay review set for local v0.8 iteration: status, fuel calculator, relative, flags, session/weather, pit-service, input/car-state, radar, and gap-to-leader, plus a mac-only standings candidate for design review before a production standings overlay is wired. Its mock live race uses the tracked four-hour Nürburgring baseline shape at 4x speed so long-run relative, gap, fuel, and simple telemetry behavior can be inspected quickly. Treat Windows overlay code as production-facing and real-data-driven; the ignored mac harness can use looser mock offsets, named drivers, synthetic weather windows, and exaggerated events for visual iteration.
+The mac harness mirrors the current Windows overlay review set for local v0.11 iteration: status, standings, fuel calculator, relative, track map, flags, session/weather, pit-service, input/car-state, radar, and gap-to-leader. Its mock live race uses the tracked four-hour Nürburgring baseline shape at 4x speed so long-run relative, standings, gap, fuel, and simple telemetry behavior can be inspected quickly. Treat Windows overlay code as production-facing and real-data-driven; the ignored mac harness can use looser mock offsets, named drivers, synthetic weather windows, and exaggerated events for visual iteration.
 
 Raw mock capture is disabled by default. Enable it only when you want to exercise the raw capture writer and disk-health UI:
 
@@ -232,6 +236,7 @@ Available settings:
 - `Storage:LogsRoot`
 - `Storage:SettingsRoot`
 - `Storage:DiagnosticsRoot`
+- `Storage:TrackMapRoot`
 - `Storage:EventsRoot`
 - `Storage:RuntimeStatePath`
 - `Logging:File:Enabled`
@@ -250,8 +255,8 @@ Available settings:
 - `Replay:Enabled`
 - `Replay:CaptureDirectory`
 - `Replay:SpeedMultiplier`
-- `OverlayBridge:Enabled`
-- `OverlayBridge:Port`
+- `LocalhostOverlays:Enabled`
+- `LocalhostOverlays:Port`
 
 By default, writable data resolves under `%LOCALAPPDATA%\TmrOverlay`.
 
@@ -282,16 +287,29 @@ Advanced visual tokens can be overridden with an optional `overlay-theme.json` f
 
 Color keys match `OverlayTheme.Colors` property names and can be written as camelCase, kebab-case, snake_case, or PascalCase. Colors accept `#RRGGBB` or `#AARRGGBB`.
 
-### Local Overlay Bridge
+### Localhost Browser Overlays
 
-The optional bridge is disabled by default. Enable it only for local development or future external overlay clients:
+The optional localhost overlay server is disabled by default. Enable it when an overlay should be consumed as a local OBS/browser source instead of, or in addition to, the native desktop overlay:
 
 ```powershell
-$env:TMR_OverlayBridge__Enabled = "true"
-$env:TMR_OverlayBridge__Port = "8765"
+$env:TMR_LocalhostOverlays__Enabled = "true"
+$env:TMR_LocalhostOverlays__Port = "8765"
 ```
 
-When enabled, it listens on `http://localhost:{port}/` and serves `GET /health` plus `GET /snapshot`. The snapshot is sourced from `ILiveTelemetrySource`, so bridge clients receive normalized app state rather than direct iRacing SDK data.
+When enabled, it listens on `http://localhost:{port}/`, serves `GET /health`, `GET /snapshot`, `GET /api/snapshot`, and per-overlay HTML routes for OBS browser sources:
+
+- `/overlays/standings`
+- `/overlays/relative`
+- `/overlays/fuel-calculator`
+- `/overlays/session-weather`
+- `/overlays/pit-service`
+- `/overlays/input-state`
+- `/overlays/car-radar`
+- `/overlays/gap-to-leader`
+- `/overlays/track-map`
+- `/overlays/stream-chat`
+
+The localhost pages poll normalized `ILiveTelemetrySource` snapshots and do not talk to iRacing directly. Track Map fetches stored map geometry from `GET /api/track-map` separately from live snapshots. Flags intentionally has no browser-source route yet while the native overlay is still a simple border box. Stream Chat reads one selected source at a time from the Stream Chat settings tab: either a Streamlabs Chat Box widget URL embedded in the browser source, or public Twitch channel chat by channel name. Provider auth, moderation, and write/chat-command support are intentionally separate follow-up work. Streamlabs widget URLs are treated as private local settings and are redacted from diagnostics bundles. Overlay Bridge is reserved for a future teammate-to-teammate data-sharing boundary, not this local OBS/browser-source feature.
 
 For repo-local development storage, set:
 

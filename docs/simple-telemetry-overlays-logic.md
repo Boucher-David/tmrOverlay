@@ -59,7 +59,7 @@ It displays:
 
 The overlay does not send iRacing pit commands. A future pit crew/engineer overlay should own command-capable controls for refuel amount, tire/repair/tearoff choices, and operator workflow so read-only pit telemetry and active simulator control do not get mixed.
 
-The mac harness standings candidate uses synthetic pit windows derived from the four-hour preview pit entry/exit timing to show how a live `Pit` column can behave before a production standings data contract is added.
+The mac harness standings view uses synthetic pit windows derived from the four-hour preview pit entry/exit timing so the local review surface can exercise the same `Pit` column now exposed by the production Windows standings overlay.
 
 ## Input / Car State
 
@@ -75,5 +75,7 @@ It displays:
 - voltage
 - water temperature
 - oil temperature plus oil/fuel pressure
+
+The default native input overlay is now smaller and has a compact rendering mode. At compact sizes it replaces the large trace-and-wheel layout with current pedal bars plus a dense readout grid for speed, gear, RPM, steering, water temperature, and oil pressure so resizing does not clip the right-side data. Wider/taller sizes can still show the rolling pedal trace, steering wheel, and car-state readouts.
 
 Engine warning bits use a warning tone. Otherwise this overlay stays neutral and acts as a compact local-car telemetry surface.

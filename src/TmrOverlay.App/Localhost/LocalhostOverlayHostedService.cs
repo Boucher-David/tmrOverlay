@@ -4,11 +4,14 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using TmrOverlay.App.Settings;
+using TmrOverlay.App.TrackMaps;
+using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Telemetry.Live;
 
-namespace TmrOverlay.App.Bridge;
+namespace TmrOverlay.App.Localhost;
 
-internal sealed class OverlayBridgeHostedService : IHostedService
+internal sealed class LocalhostOverlayHostedService : IHostedService
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -17,20 +20,26 @@ internal sealed class OverlayBridgeHostedService : IHostedService
         WriteIndented = false
     };
 
-    private readonly OverlayBridgeOptions _options;
+    private readonly LocalhostOverlayOptions _options;
     private readonly ILiveTelemetrySource _liveTelemetrySource;
-    private readonly ILogger<OverlayBridgeHostedService> _logger;
+    private readonly TrackMapStore _trackMapStore;
+    private readonly AppSettingsStore _settingsStore;
+    private readonly ILogger<LocalhostOverlayHostedService> _logger;
     private CancellationTokenSource? _cancellation;
     private HttpListener? _listener;
     private Task? _listenerTask;
 
-    public OverlayBridgeHostedService(
-        OverlayBridgeOptions options,
+    public LocalhostOverlayHostedService(
+        LocalhostOverlayOptions options,
         ILiveTelemetrySource liveTelemetrySource,
-        ILogger<OverlayBridgeHostedService> logger)
+        TrackMapStore trackMapStore,
+        AppSettingsStore settingsStore,
+        ILogger<LocalhostOverlayHostedService> logger)
     {
         _options = options;
         _liveTelemetrySource = liveTelemetrySource;
+        _trackMapStore = trackMapStore;
+        _settingsStore = settingsStore;
         _logger = logger;
     }
 
@@ -48,7 +57,7 @@ internal sealed class OverlayBridgeHostedService : IHostedService
             _listener.Prefixes.Add(_options.Prefix);
             _listener.Start();
             _listenerTask = Task.Run(() => ListenAsync(_cancellation.Token), CancellationToken.None);
-            _logger.LogInformation("Overlay bridge listening on {Prefix}.", _options.Prefix);
+            _logger.LogInformation("Localhost overlays listening on {Prefix}.", _options.Prefix);
         }
         catch (Exception exception)
         {
@@ -56,7 +65,7 @@ internal sealed class OverlayBridgeHostedService : IHostedService
             _listener = null;
             _logger.LogWarning(
                 exception,
-                "Overlay bridge could not listen on {Prefix}. The app will continue without the bridge.",
+                "Localhost overlays could not listen on {Prefix}. The app will continue without localhost browser overlays.",
                 _options.Prefix);
         }
 
@@ -125,15 +134,25 @@ internal sealed class OverlayBridgeHostedService : IHostedService
             switch (path)
             {
                 case "":
+                case "/":
+                    await WriteHtmlAsync(
+                        context.Response,
+                        HttpStatusCode.OK,
+                        LocalhostOverlayPageRenderer.RenderIndex(_options.Port),
+                        cancellationToken).ConfigureAwait(false);
+                    break;
+
                 case "/health":
                     await WriteJsonAsync(context.Response, HttpStatusCode.OK, new
                     {
                         ok = true,
-                        bridge = "tmr-overlay",
+                        service = "tmr-localhost-overlays",
+                        routes = LocalhostOverlayPageRenderer.Routes,
                         generatedAtUtc = DateTimeOffset.UtcNow
                     }, cancellationToken).ConfigureAwait(false);
                     break;
 
+                case "/api/snapshot":
                 case "/snapshot":
                     var live = _liveTelemetrySource.Snapshot();
                     await WriteJsonAsync(context.Response, HttpStatusCode.OK, new
@@ -143,7 +162,32 @@ internal sealed class OverlayBridgeHostedService : IHostedService
                     }, cancellationToken).ConfigureAwait(false);
                     break;
 
+                case "/api/track-map":
+                    var snapshot = _liveTelemetrySource.Snapshot();
+                    await WriteJsonAsync(context.Response, HttpStatusCode.OK, new
+                    {
+                        generatedAtUtc = DateTimeOffset.UtcNow,
+                        trackMap = _trackMapStore.TryReadBest(
+                            snapshot.Context.Track,
+                            includeUserMaps: IsTrackMapUserMapEnabled())
+                    }, cancellationToken).ConfigureAwait(false);
+                    break;
+
+                case "/api/stream-chat":
+                    await WriteJsonAsync(context.Response, HttpStatusCode.OK, new
+                    {
+                        generatedAtUtc = DateTimeOffset.UtcNow,
+                        streamChat = StreamChatOverlaySettings.From(_settingsStore.Load())
+                    }, cancellationToken).ConfigureAwait(false);
+                    break;
+
                 default:
+                    if (LocalhostOverlayPageRenderer.TryRender(path, out var html))
+                    {
+                        await WriteHtmlAsync(context.Response, HttpStatusCode.OK, html, cancellationToken).ConfigureAwait(false);
+                        break;
+                    }
+
                     await WriteJsonAsync(context.Response, HttpStatusCode.NotFound, new
                     {
                         error = "not_found"
@@ -153,18 +197,34 @@ internal sealed class OverlayBridgeHostedService : IHostedService
         }
         catch (Exception exception)
         {
-            _logger.LogWarning(exception, "Overlay bridge request failed.");
+            _logger.LogWarning(exception, "Localhost overlay request failed.");
             try
             {
                 await WriteJsonAsync(context.Response, HttpStatusCode.InternalServerError, new
                 {
-                    error = "bridge_error"
+                    error = "localhost_overlay_error"
                 }, CancellationToken.None).ConfigureAwait(false);
             }
             catch
             {
-                // The client may have disconnected while the bridge was writing the response.
+                // The client may have disconnected while the service was writing the response.
             }
+        }
+    }
+
+    private bool IsTrackMapUserMapEnabled()
+    {
+        try
+        {
+            var settings = _settingsStore.Load();
+            var trackMap = settings.Overlays.FirstOrDefault(
+                overlay => string.Equals(overlay.Id, "track-map", StringComparison.OrdinalIgnoreCase));
+            return trackMap?.GetBooleanOption(OverlayOptionKeys.TrackMapBuildFromTelemetry, defaultValue: true) ?? true;
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Failed to read track map generation setting for localhost map lookup. Defaulting to include user maps.");
+            return true;
         }
     }
 
@@ -182,9 +242,28 @@ internal sealed class OverlayBridgeHostedService : IHostedService
         CancellationToken cancellationToken)
     {
         var json = JsonSerializer.Serialize(payload, JsonOptions);
-        var bytes = Encoding.UTF8.GetBytes(json);
+        await WriteBytesAsync(response, statusCode, "application/json; charset=utf-8", json, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task WriteHtmlAsync(
+        HttpListenerResponse response,
+        HttpStatusCode statusCode,
+        string html,
+        CancellationToken cancellationToken)
+    {
+        await WriteBytesAsync(response, statusCode, "text/html; charset=utf-8", html, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task WriteBytesAsync(
+        HttpListenerResponse response,
+        HttpStatusCode statusCode,
+        string contentType,
+        string content,
+        CancellationToken cancellationToken)
+    {
+        var bytes = Encoding.UTF8.GetBytes(content);
         response.StatusCode = (int)statusCode;
-        response.ContentType = "application/json; charset=utf-8";
+        response.ContentType = contentType;
         response.ContentLength64 = bytes.Length;
         await response.OutputStream.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
         response.Close();

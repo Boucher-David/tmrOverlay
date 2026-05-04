@@ -9,70 +9,76 @@ TmrOverlay uses SemVer-style annotated Git tags for product milestones:
 
 ## Current Branch Target
 
-### v0.10.0 - Windows Screenshot Parity Validation
+### v0.11.0 - Standings, Track Maps, Localhost, And Live Overlay Polish
 
 Planned branch name:
 
 ```text
-v0.10-windows-screenshot-validation
+v0.11-standings-track-map-localhost
 ```
 
 Planned scope:
 
-- Add a Windows-rendered screenshot parity path so PRs produce real WinForms overlay screenshots, not only mac-harness mock artifacts.
-- Keep tracked `mocks/` as deterministic mac/design review artifacts while uploading Windows screenshots as CI artifacts for side-by-side review.
-- Cover the current Windows overlay set with deterministic telemetry fixtures: settings, status, fuel calculator, relative, flags, session/weather, pit service, inputs, radar, and gap to leader.
-- Validate Windows screenshot artifacts for existence, expected size, and non-blank rendering in the same GitHub PR gate as build/test/publish dry run.
-- Start documenting the shared visual-token/font policy needed to make mac and Windows review surfaces converge without pretending native renderers will be pixel-identical.
-- Hide user-facing font selection for the parity branch and keep font choice in the shared theme/platform default path.
-- Add visible TMR branding to the app entry point with the repo-owned logo and `Tech Mates Racing Overlay` name.
-- Add a teammate-facing Windows release tutorial image that explains download, install, first launch, and diagnostics feedback handoff.
-- Carry forward future VR support and performance notes as product/platform documentation, not as a v0.10 implementation.
-- Remove publish warnings that affect the v0.9 single-file release path when they are straightforward to fix in the same branch.
+- Add production Windows standings visibility backed by normalized timing rows.
+- Add a map-only Track Map overlay with bundled-map support, default-on IBT-derived local map generation with explicit opt-out, circle fallback, and live car dots.
+- Add disabled-by-default localhost browser-source routes for OBS overlays, with selectable/copyable per-overlay settings URLs, separate from the future teammate-to-teammate Overlay Bridge.
+- Keep settings as a flat-tab app control surface and make the fixed settings window tall/wide enough for current overlay and Support content.
+- Harden the current live overlays from tester feedback: stable Relative/Fuel number refreshes, iRacing-style relative display-time gaps where available or inferable, a smaller usable Inputs overlay, and less confusing side-warning Radar behavior.
+- Carry the v0.9 zip/publish release path forward with shared version metadata aligned to `0.11.0`.
+- Keep the ignored mac harness and tracked mock screenshots aligned with the Windows overlay/settings surface where practical.
 
 Technical implementation checklist:
 
-1. Add a Windows-only screenshot generator project that references the production app/core projects and renders real WinForms forms from fixture `LiveTelemetrySnapshot` data.
-2. Add a Windows screenshot validation profile to `tools/validate_overlay_screenshots.py`.
-3. Update `.github/workflows/windows-dotnet.yml` so PR/main validation generates, validates, and uploads Windows screenshot artifacts before the publish dry run.
-4. Keep generated Windows screenshots under ignored `artifacts/`; do not commit them under `mocks/`.
-5. Fix the single-file publish analyzer warning by avoiding `Assembly.Location` in build-freshness checks.
-6. Add and validate a generated teammate release tutorial image under `docs/assets/`.
-7. Document the mac/Windows parity boundary, shared token/font policy, and future VR renderer/performance constraints.
+1. Add Standings overlay registration, view model, form, screenshot fixture, and focused unit coverage.
+2. Add Track Map overlay registration, transparent map-only drawing, settings warning/opt-out, mac harness review surface, and screenshot fixture.
+3. Add `LocalhostOverlays` config, selectable/copyable per-overlay settings URLs, and per-overlay HTML routes for standings, relative, fuel calculator, session/weather, pit service, input state, car radar, gap to leader, track map, and stream chat. Keep Flags disabled for localhost until its browser-source design is worth shipping.
+4. Add IBT-derived map generation, confidence classification, storage skip rules for complete maps, and a batch generator for bundled map JSON assets.
+5. Keep future Overlay Bridge docs scoped to trusted teammate-to-teammate data sharing, not local OBS/browser-source routes.
+6. Reduce Relative and Fuel Calculator repaint churn with stable table layouts and value-only label updates.
+7. Add Relative model-v2 display-time fallback from lap-distance deltas while keeping Radar timing stricter.
+8. Make the Inputs overlay usable at its smaller default size with compact pedal/readout rendering.
+9. Attach likely decoded cars to active Radar side warnings so one passing car is not drawn twice.
+10. Regenerate settings screenshots after restoring flat tabs and keeping the larger fixed settings window.
+11. Update docs/context/version metadata and run branch validation available from macOS, with Windows build/test/publish left to Windows CI.
 
 Implemented baseline in this branch:
 
-- Bumped shared .NET product/version metadata to `0.10.0`.
-- Added `tools/TmrOverlay.WindowsScreenshots`, a Windows-only WinForms screenshot generator that renders the production forms from deterministic telemetry fixtures.
-- Added a `windows-ci` screenshot validation profile and wired GitHub Actions to generate, validate, and upload Windows screenshot artifacts during PR/main validation.
-- Kept tracked `mocks/` as mac/design validation artifacts while documenting Windows screenshots as ignored CI artifacts under `artifacts/`.
-- Fixed the single-file publish analyzer warning by using `AppContext.BaseDirectory` as the build-freshness base instead of relying on `Assembly.Location`.
-- Removed the General-tab font dropdown from the user-facing settings UI while keeping theme-level font overrides available for advanced parity work.
-- Added branded app chrome to the Windows settings window and mac harness using the TMR logo plus `Tech Mates Racing Overlay`.
-- Updated product metadata from the scaffold name to `Tech Mates Racing Overlay` while keeping storage and assembly identities stable.
-- Added a generated one-page Windows tester install/support tutorial image and validation profile for the docs asset.
-- Documented Windows screenshot parity, shared token/font policy, and future VR renderer/performance constraints in the future-branch notes.
+- Bumped shared .NET product/version metadata to `0.11.0`.
+- Added Windows Standings and Track Map overlay registrations plus deterministic screenshot coverage.
+- Added a Standings view model that renders compact same-class timing rows from `LiveTelemetrySnapshot.Models.Timing`.
+- Added a transparent map-only Track Map overlay with generated map/circle fallback rendering and live car dots.
+- Added local IBT-derived map generation, confidence metrics, layout-aware map identity, complete-map skip rules, default-on generation with user opt-out, single-file/folder manual IBT conversion diagnostics, and a batch generator for bundled track-map JSON assets.
+- Added `LocalhostOverlays` options and a disabled-by-default localhost server with OBS-ready HTML routes and selectable/copyable settings-tab URLs for supported overlays, plus a Stream Chat route that can consume one selected source: Streamlabs Chat Box widget URL or public Twitch channel chat.
+- Separated localhost browser-source overlays from the future Overlay Bridge concept, which remains scoped to trusted teammate-to-teammate data sharing.
+- Restored flat settings tabs and kept the fixed settings window at 1240x680 so the expanded tab list and Support content fit.
+- Added a double-buffered overlay table primitive and updated Relative/Fuel Calculator refresh paths so routine number changes repaint cells instead of invalidating the whole overlay.
+- Kept Relative live rows in stable configured ahead/reference/behind slots and added inferred display-time gaps from lap-distance delta plus local/focus lap-time context when direct relative seconds are missing.
+- Reduced the default Inputs overlay size and added a compact current-pedal/readout mode so key car-state data remains visible when the overlay is small.
+- Updated local Radar side-warning rendering to attach a likely decoded nearby car to the left/right warning slot, suppress the duplicate center-lane rectangle, and bias the side marker forward/back by longitudinal gap.
 
 Likely squash title:
 
 ```text
-[v0.10.0] Add Windows screenshot parity validation
+[v0.11.0] Add standings, track maps, localhost, and live polish
 ```
 
 Likely squash body:
 
 ```text
-- Bumped shared .NET product/version metadata to 0.10.0 for the next validation branch.
-- Added a Windows-only screenshot generator that renders the real WinForms settings and overlay forms from deterministic live-telemetry fixtures.
-- Expanded CI so PR/main validation generates Windows overlay screenshots, validates them for expected size/non-blank output, and uploads them as review artifacts alongside the existing tracked screenshot validation.
-- Documented the screenshot parity workflow, keeping committed `mocks/` as mac/design artifacts and Windows screenshots as ignored CI artifacts under `artifacts/`.
-- Fixed the single-file publish warning by removing `Assembly.Location` from the runtime build-freshness check.
-- Removed the user-facing font dropdown for this parity pass and kept font selection as a theme/platform concern.
-- Added the TMR logo and `Tech Mates Racing Overlay` branding to the app settings entry point on Windows and mac.
-- Updated assembly product metadata to the branded application name without moving app-data storage roots.
-- Added a generated teammate-facing release tutorial image covering release download, portable install, first launch warnings, app expectations, and Support-tab diagnostics handoff.
-- Added future-platform notes for shared mac/Windows visual tokens, font parity policy, and eventual VR renderer/performance constraints.
-- Validation: git diff --check, conflict-marker sweep, screenshot validator for tracked mocks, release-tutorial screenshot validator, workflow YAML parse, C# compile-shape scanner, Swift build, and CI-owned Windows restore/build/test/screenshot/publish validation. Local Windows screenshot generation and dotnet build/test still require the Windows CI environment from this Mac; local `swift test` is blocked by the current toolchain missing `XCTest`.
+- Bumped shared .NET product/version metadata to 0.11.0.
+- Added production Standings and Track Map overlay registrations, settings tabs, Windows screenshot fixtures, and mac harness review surfaces.
+- Added compact Standings rendering from normalized model-v2 timing rows, including leader gap, focus interval, and pit-road status.
+- Added a transparent map-only Track Map surface with bundled-map support, circle fallback, live car dots, default-on IBT-derived map generation with explicit opt-out, confidence events/tests, single-file/folder manual conversion diagnostics, and complete-map skip behavior.
+- Added disabled-by-default `LocalhostOverlays` support with selectable/copyable per-overlay OBS/browser-source HTML routes and settings-tab URLs for standings, relative, fuel calculator, session/weather, pit service, input state, car radar, gap to leader, track map, and stream chat, while leaving Flags native-only for now.
+- Added Stream Chat source selection for Streamlabs Chat Box widget URLs or public Twitch channel chat, with connected status/messaging in the browser-source overlay and Streamlabs URL redaction in diagnostics bundles.
+- Kept Overlay Bridge conceptually separate as a future trusted teammate-to-teammate sharing boundary.
+- Restored flat settings tabs while keeping the larger 1240x680 settings window so current tabs and Support content fit.
+- Hardened Relative and Fuel Calculator refresh behavior with a double-buffered table layout, stable Relative slots, and value-only number updates to reduce white flicker.
+- Added Relative display-time gap fallback from lap-distance deltas and local/focus lap-time context while leaving Radar placement on stricter spatial timing/distance evidence.
+- Reduced the default Inputs overlay size and added compact pedal/readout rendering so small layouts keep speed, gear, RPM, steering, water, and oil visible.
+- Updated local Radar side-warning rendering to attach likely decoded cars to left/right warnings, suppress duplicate center-lane cars, and bias the side marker forward/back by longitudinal gap.
+- Regenerated tracked settings/overlay screenshots and updated docs/context for the v0.11 product shape and live-overlay hardening.
+- Validation: git diff --check, conflict-marker sweep, localhost overlay JS parse smoke, and C# compile-shape scanner. Windows restore/build/test/screenshot/publish validation remains CI-owned from this Mac because `dotnet` is not installed locally.
 ```
 
 ## Merged Mainline Milestones
@@ -196,7 +202,7 @@ Summary:
 - Moved platform-neutral app settings, overlay metadata, historical models, live telemetry abstractions, post-race analysis models, and fuel strategy logic into `TmrOverlay.Core`.
 - Added descriptor-driven overlay options and settings migration.
 - Added shared overlay theme tokens and centralized overlay manager behavior.
-- Added disabled-by-default localhost Overlay Bridge scaffolding.
+- Added disabled-by-default localhost HTTP scaffolding.
 - Added a Windows .NET GitHub Actions build/test workflow.
 
 ### v0.4.0 - Radar And Gap-To-Leader Overlays

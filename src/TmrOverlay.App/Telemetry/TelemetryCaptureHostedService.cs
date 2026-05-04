@@ -8,6 +8,9 @@ using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.History;
 using TmrOverlay.App.Performance;
+using TmrOverlay.App.Settings;
+using TmrOverlay.App.TrackMaps;
+using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.History;
 using TmrOverlay.Core.Telemetry.EdgeCases;
 using TmrOverlay.Core.Telemetry.Live;
@@ -20,6 +23,9 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     private readonly TelemetryCaptureOptions _options;
     private readonly IbtAnalysisOptions _ibtOptions;
     private readonly IbtAnalysisService _ibtAnalysis;
+    private readonly IbtTrackMapBuilder _trackMapBuilder;
+    private readonly TrackMapStore _trackMapStore;
+    private readonly AppSettingsStore _settingsStore;
     private readonly AppEventRecorder _events;
     private readonly SessionHistoryStore _sessionHistoryStore;
     private readonly PostRaceAnalysisPipeline _postRaceAnalysisPipeline;
@@ -51,6 +57,9 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         TelemetryCaptureOptions options,
         IbtAnalysisOptions ibtOptions,
         IbtAnalysisService ibtAnalysis,
+        IbtTrackMapBuilder trackMapBuilder,
+        TrackMapStore trackMapStore,
+        AppSettingsStore settingsStore,
         AppEventRecorder events,
         SessionHistoryStore sessionHistoryStore,
         PostRaceAnalysisPipeline postRaceAnalysisPipeline,
@@ -67,6 +76,9 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         _options = options;
         _ibtOptions = ibtOptions;
         _ibtAnalysis = ibtAnalysis;
+        _trackMapBuilder = trackMapBuilder;
+        _trackMapStore = trackMapStore;
+        _settingsStore = settingsStore;
         _events = events;
         _sessionHistoryStore = sessionHistoryStore;
         _postRaceAnalysisPipeline = postRaceAnalysisPipeline;
@@ -2000,6 +2012,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                     captureDirectory,
                     result.SourcePath,
                     result.ElapsedMilliseconds);
+                await TryGenerateTrackMapAsync(result.SourcePath, captureId, cancellationToken).ConfigureAwait(false);
                 return;
             }
 
@@ -2037,6 +2050,107 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 ["error"] = exception.GetType().Name
             });
             _logger.LogWarning(exception, "Failed to write IBT analysis for {CaptureDirectory}.", captureDirectory);
+        }
+    }
+
+    private Task TryGenerateTrackMapAsync(
+        string? ibtPath,
+        string? captureId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(ibtPath))
+        {
+            return Task.CompletedTask;
+        }
+
+        try
+        {
+            if (!IsTrackMapGenerationEnabled())
+            {
+                _events.Record("track_map_generation_skipped", new Dictionary<string, string?>
+                {
+                    ["captureId"] = captureId,
+                    ["sourcePath"] = ibtPath,
+                    ["reason"] = "disabled_by_user"
+                });
+                return Task.CompletedTask;
+            }
+
+            var track = _trackMapBuilder.ReadTrackIdentity(ibtPath, cancellationToken);
+            if (_trackMapStore.HasCompleteMap(track))
+            {
+                _events.Record("track_map_generation_skipped", new Dictionary<string, string?>
+                {
+                    ["captureId"] = captureId,
+                    ["sourcePath"] = ibtPath,
+                    ["reason"] = "complete_map_already_exists"
+                });
+                return Task.CompletedTask;
+            }
+
+            var build = _trackMapBuilder.BuildFromIbt(ibtPath, captureId, cancellationToken);
+            if (build.Document is null)
+            {
+                _events.Record("track_map_generation_rejected", new Dictionary<string, string?>
+                {
+                    ["captureId"] = captureId,
+                    ["sourcePath"] = ibtPath,
+                    ["reasons"] = string.Join(",", build.RejectionReasons)
+                });
+                return Task.CompletedTask;
+            }
+
+            var save = _trackMapStore.SaveIfImproved(build.Document);
+            _events.Record(save.Saved ? "track_map_generated" : "track_map_generation_skipped", new Dictionary<string, string?>
+            {
+                ["captureId"] = captureId,
+                ["sourcePath"] = ibtPath,
+                ["mapPath"] = save.Path,
+                ["reason"] = save.Reason,
+                ["confidence"] = build.Document.Quality.Confidence.ToString(),
+                ["completeLapCount"] = build.Document.Quality.CompleteLapCount.ToString(),
+                ["missingBinCount"] = build.Document.Quality.MissingBinCount.ToString()
+            });
+            if (save.Saved)
+            {
+                _logger.LogInformation(
+                    "Generated track map {TrackMapPath} from {IbtPath} with {Confidence} confidence.",
+                    save.Path,
+                    ibtPath,
+                    build.Document.Quality.Confidence);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _events.Record("track_map_generation_failed", new Dictionary<string, string?>
+            {
+                ["captureId"] = captureId,
+                ["sourcePath"] = ibtPath,
+                ["error"] = exception.GetType().Name
+            });
+            _logger.LogWarning(exception, "Failed to generate track map from {IbtPath}.", ibtPath);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private bool IsTrackMapGenerationEnabled()
+    {
+        try
+        {
+            var settings = _settingsStore.Load();
+            var trackMap = settings.Overlays.FirstOrDefault(
+                overlay => string.Equals(overlay.Id, "track-map", StringComparison.OrdinalIgnoreCase));
+            return trackMap?.GetBooleanOption(OverlayOptionKeys.TrackMapBuildFromTelemetry, defaultValue: true) ?? true;
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Failed to read track map generation setting. Defaulting to enabled.");
+            return true;
         }
     }
 

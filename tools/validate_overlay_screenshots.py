@@ -16,7 +16,7 @@ EXPECTED_PNGS = {
     "status/status-states.png": (3600, 2800),
     "fuel-calculator/fuel-calculator-states.png": (3600, 2800),
     "relative/relative-states.png": (3600, 2800),
-    "settings-overlay/settings-overlay-states.png": (3600, 2800),
+    "settings-overlay/settings-overlay-states.png": (5350, 2800),
     "car-radar/car-radar-states.png": (3600, 2800),
     "car-radar/car-radar-multiclass.png": (600, 600),
     "gap-to-leader/gap-to-leader-states.png": (3600, 2800),
@@ -48,6 +48,8 @@ EXPECTED_STATE_PNGS = [
     "settings-overlay/states/support.png",
     "settings-overlay/states/overlay-tab.png",
     "settings-overlay/states/race-only-overlay.png",
+    "settings-overlay/states/track-map-overlay.png",
+    "settings-overlay/states/stream-chat-overlay.png",
     "car-radar/states/clear-track.png",
     "car-radar/states/side-pressure.png",
     "car-radar/states/multiclass-approaching.png",
@@ -62,10 +64,12 @@ WINDOWS_EXPECTED_PNGS = {
     "states/status-live-analysis.png": (520, 150),
     "states/fuel-calculator-live.png": (600, 320),
     "states/relative-live.png": (520, 360),
+    "states/standings-live.png": (620, 340),
+    "states/track-map-placeholder.png": (360, 360),
     "states/flags-blue.png": (960, 540),
     "states/session-weather-live.png": (420, 270),
     "states/pit-service-active.png": (420, 250),
-    "states/input-state-trace.png": (520, 300),
+    "states/input-state-trace.png": (390, 220),
     "states/car-radar-side-pressure.png": (300, 300),
     "states/gap-to-leader-trend.png": (560, 260),
 }
@@ -73,11 +77,12 @@ WINDOWS_EXPECTED_PNGS = {
 WINDOWS_MINIMUM_PNGS = {
     # GitHub-hosted Windows runners can clamp wide top-level WinForms clients
     # to the available desktop width even when the app's production client
-    # target is 1080x600. Keep the height exact enough for layout review while
+    # target is wider than the previous 1080x600 shell. Keep the height exact enough for layout review while
     # accepting the runner-observed width.
-    "states/settings-general.png": (1000, 600),
-    "states/settings-relative.png": (1000, 600),
-    "states/settings-support.png": (1000, 600),
+    "states/settings-general.png": (1000, 680),
+    "states/settings-relative.png": (1000, 680),
+    "states/settings-track-map.png": (1000, 680),
+    "states/settings-support.png": (1000, 680),
 }
 
 WINDOWS_MIN_UNIQUE_BYTES = {

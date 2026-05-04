@@ -146,12 +146,12 @@ Likely scope:
 
 ### v1.5 - Overlay Bridge And External Clients
 
-Goal: turn the disabled local bridge into a documented developer/platform boundary after the core contracts have proven themselves.
+Goal: turn future teammate-to-teammate data sharing into a documented developer/platform boundary after the core contracts have proven themselves. Local OBS/browser-source overlays are a separate localhost feature.
 
 Likely scope:
 
-- Define versioned local JSON contracts for live telemetry, app health, overlay metadata, selected display settings, and schema capabilities.
-- Keep the bridge local and disabled by default with explicit settings/support visibility for enabled state, port, client count, last error, and schema version.
+- Define versioned JSON contracts for live telemetry, app health, overlay metadata, selected display settings, peer/session context, and schema capabilities.
+- Keep the bridge disabled by default with explicit settings/support visibility for enabled state, allowed clients, connection count, last error, and schema version.
 - Use normalized `LiveTelemetrySnapshot.Models` instead of exporting overlay-local temporary calculations.
 - Add deterministic bridge fixture tests and sample payloads so external clients can be developed without iRacing running.
 - Explore peer/missed-history context exchange as derived session context only: provenance, session identity, observation window, roster/timing coverage, schema version, and trust labels.
@@ -162,9 +162,9 @@ Goal: let the app support broadcast-style surfaces without coupling chat or brow
 
 Likely scope:
 
-- Add Twitch/YouTube chat overlay exploration as a separate stream-facing feature set.
+- Expand the current Streamlabs-widget and public Twitch channel browser source into richer Twitch/YouTube chat overlays as a separate stream-facing feature set.
 - Keep chat auth, tokens, moderation, reconnect behavior, and rate limits isolated from iRacing telemetry.
-- Use Overlay Bridge contracts for browser/stream clients once those contracts are stable enough.
+- Keep browser-source stream overlays on the local `LocalhostOverlays` path unless they intentionally need peer data.
 - Add deterministic offline preview states for chat-only and mixed telemetry/chat overlays.
 
 ### v1.7 - Overlay Builder And Designer Tooling
@@ -260,7 +260,7 @@ That replay provider should be a development tool only. It should read existing 
 
 The mac harness remains the fast local design surface, but Windows is the production/iRacing runtime. v0.10 adds a Windows-only screenshot generator that renders the real WinForms forms with deterministic telemetry fixtures and uploads the resulting contact sheet plus per-state PNGs as GitHub Actions artifacts.
 
-Use this as a parity gate, not as a replacement for the tracked `mocks/` screenshots. The tracked mac screenshots document the intended review states; the Windows artifacts prove the production forms still render, size, and arrange those states under the WinForms runtime. The first parity set should cover settings tabs plus the current production overlays: status, fuel calculator, relative, flags, session/weather, pit service, inputs, radar, and gap to leader.
+Use this as a parity gate, not as a replacement for the tracked `mocks/` screenshots. The tracked mac screenshots document the intended review states; the Windows artifacts prove the production forms still render, size, and arrange those states under the WinForms runtime. The first parity set should cover settings tabs plus the current production overlays: status, standings, fuel calculator, relative, track map, flags, session/weather, pit service, inputs, radar, and gap to leader.
 
 Keep the fixtures isolated from local history, app data, raw captures, and real machine paths. If a Windows screenshot state needs live telemetry, build it from normalized `LiveTelemetrySnapshot` data with explicit fixture values. If a future overlay needs replay evidence, add that through a separate capture-replay branch rather than letting the screenshot generator read private capture directories.
 
@@ -270,7 +270,7 @@ Use the parity artifacts to identify which visual differences are intentional pl
 
 Treat post-session track-map generation as a future derived-asset product branch, not as part of the current compact IBT sidecar contract. Today `ibt-analysis/ibt-local-car-summary.json` only records whether `Lat`/`Lon`/`Alt` plus lap-distance fields make an IBT file track-map-ready. A track-map branch should turn that readiness signal into a durable reusable map asset.
 
-Generated user maps should live in app-owned local storage, outside the iRacing telemetry folder and outside retention-managed capture directories. Add an explicit storage root such as `Storage:TrackMapRoot`, defaulting under `%LOCALAPPDATA%\TmrOverlay\track-maps`, with user-discovered maps separated from any future bundled/baseline maps.
+Generated user maps live in app-owned local storage, outside the iRacing telemetry folder and outside retention-managed capture directories. `Storage:TrackMapRoot` defaults under `%LOCALAPPDATA%\TmrOverlay\track-maps\user`, with user-discovered maps separated from bundled/baseline maps.
 
 The first implementation should keep source `.ibt` files external and persist only compact derived geometry: schema version, generated time, track identity, source/provenance summary, quality metrics, coordinate-system metadata, and a resampled closed polyline in local meter coordinates with lap-distance percentages. Prefer normalized local coordinates over raw latitude/longitude in the reusable map file unless raw geographic values are explicitly needed for diagnostics.
 
@@ -307,13 +307,13 @@ Migrate style one overlay at a time with screenshot validation.
 
 ### Overlay Bridge / External Overlay Platform
 
-The disabled-by-default localhost overlay bridge should become the boundary for external overlay clients after the normalized live snapshot schema is stable enough. Treat it as a platform branch, not as another in-process overlay.
+Overlay Bridge should become the boundary for trusted teammate-to-teammate context sharing after the normalized live snapshot schema is stable enough. Treat it as a platform branch, not as another in-process overlay and not as the local OBS/browser-source server.
 
 Bridge v2 should define:
 
 1. Versioned snapshot contracts for model-v2 telemetry, app health, overlay metadata, and selected display settings.
-2. Safe local access controls, explicit enable/disable controls, port/client status, and schema-version display in the settings panel.
-3. A browser/client development path that consumes normalized app state rather than talking to iRacing directly.
+2. Safe access controls, explicit enable/disable controls, peer/client status, and schema-version display in the settings panel.
+3. A peer/client development path that consumes normalized app state rather than talking to iRacing directly.
 4. Compatibility rules for bridge clients when model-v2 fields are added, renamed, deprecated, or unavailable.
 5. An opt-in peer/session context path for trusted teammates to share missed-history summaries when one user joins mid-race after another user has already observed the session.
 
@@ -333,9 +333,9 @@ The model-v2 implication is that VR needs compact, already-interpreted overlay s
 
 ### Streaming / Broadcast Overlays
 
-Twitch and YouTube chat overlays belong in a streaming/broadcast group. They are not model-v2 telemetry primitives, but they can sit beside telemetry overlays as stream-facing presentation surfaces.
+Twitch and YouTube chat overlays belong in a streaming/broadcast group. They are not model-v2 telemetry primitives, but they can sit beside telemetry overlays as stream-facing presentation surfaces. v0.11 includes only the narrow local browser-source path: Streamlabs Chat Box widget embedding and public Twitch channel chat.
 
-The first streaming branch should keep chat ingestion isolated from iRacing telemetry and define rate limits, authentication/storage, moderation controls, reconnect behavior, and deterministic offline preview states. Once the overlay bridge exists, browser-based stream overlays can consume either chat-only state or a mixed bridge feed with telemetry plus chat, depending on the product shape.
+A future streaming branch should keep chat ingestion isolated from iRacing telemetry and define rate limits, authentication/storage, moderation controls, reconnect behavior, and deterministic offline preview states. Browser-based stream overlays should use `LocalhostOverlays` for local OBS capture; Overlay Bridge should only enter the design when a stream overlay intentionally needs trusted peer/shared data.
 
 ### Overlay Builder
 
