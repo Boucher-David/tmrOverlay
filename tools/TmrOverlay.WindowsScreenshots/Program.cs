@@ -300,8 +300,6 @@ internal static class Program
             storage,
             new LocalhostOverlayOptions(),
             diagnostics,
-            new IbtTrackMapBuilder(),
-            new TrackMapStore(storage),
             new AppEventRecorder(storage),
             settings.GetOrAddOverlay(
                 SettingsOverlayDefinition.Definition.Id,

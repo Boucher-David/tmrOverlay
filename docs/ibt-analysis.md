@@ -59,7 +59,7 @@ ibt-analysis/ibt-local-car-summary.json
 
 ## Track Map Generation
 
-The current IBT path can write a reusable user track-map asset after successful IBT analysis when the Track Map setting `track-map.build-from-telemetry` is enabled. The default is enabled, and the Track Map warning includes an opt-out action that clears the checkbox. Fresh installs use bundled app map JSON when available and otherwise keep the circle fallback until local IBT-derived map generation creates a user map. Disabling the setting returns runtime lookup to bundled app maps plus circle fallback; stored user maps remain on disk but are not used by the overlay while disabled.
+The current IBT path can write a reusable user track-map asset after successful IBT analysis when the Track Map setting `track-map.build-from-telemetry` is enabled. The default is enabled, and the Track Map settings tab exposes the `Build local maps from IBT telemetry` checkbox as the user control. Fresh installs use bundled app map JSON when available and otherwise keep the circle fallback until local IBT-derived map generation creates a user map. Disabling the setting returns runtime lookup to bundled app maps plus circle fallback; stored user maps remain on disk but are not used by the overlay while disabled.
 
 The app keeps source `.ibt` files external, extracts compact derived geometry, and saves generated user maps under app-owned local storage:
 

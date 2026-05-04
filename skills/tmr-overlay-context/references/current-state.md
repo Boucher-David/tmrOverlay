@@ -479,7 +479,7 @@ Current default:
 - writable storage resolves under `%LOCALAPPDATA%/TmrOverlay`
 - raw captures default to `%LOCALAPPDATA%/TmrOverlay/captures` but are disabled unless `TelemetryCapture:RawCaptureEnabled=true`; post-session capture synthesis defaults to a 60-second timeout
 - live model-v2 parity defaults on, samples clean frames at most once per second, keeps up to 600 sampled frames and 200 mismatch summaries, writes `live-model-parity.json` beside raw captures or under `%LOCALAPPDATA%/TmrOverlay/logs/model-parity` when no raw capture exists, and marks a session as a promotion candidate after at least 10,000 frames, mismatch-frame rate at or below 0.1%, and model coverage at or above 98% for observed legacy overlay-input families
-- IBT analysis defaults on for raw captures, requests iRacing telemetry logging with the raw-capture switch, reads candidates from `%USERPROFILE%/Documents/iRacing/telemetry`, waits at most 60 seconds for iRacing to stop writing before skipping, can derive local track-map geometry after successful analysis while the default-on Track Map generation setting remains enabled, offers temporary single-file/folder manual conversion buttons in the Track Map tab for Windows validation, and does not copy source `.ibt` files by default
+- IBT analysis defaults on for raw captures, requests iRacing telemetry logging with the raw-capture switch, reads candidates from `%USERPROFILE%/Documents/iRacing/telemetry`, waits at most 60 seconds for iRacing to stop writing before skipping, can derive local track-map geometry after successful analysis while the default-on Track Map generation setting remains enabled, ships vetted bundled maps through app assets, and does not copy source `.ibt` files by default
 - user history defaults to `%LOCALAPPDATA%/TmrOverlay/history/user`
 - local logs default to `%LOCALAPPDATA%/TmrOverlay/logs`
 - app events default to `%LOCALAPPDATA%/TmrOverlay/logs/events`
@@ -550,26 +550,27 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 - v0.9 portable tester publishing is tag-driven, but broad production distribution still needs a signing decision, installer/update channel, and passive update-check UI.
 - The PR workflow runs restore/build/test, tracked screenshot validation, Windows screenshot artifact generation/validation, and a self-contained publish dry run with package audit. The release workflow audits the publish folder for accidental repo/dev-folder leaks, emits a package manifest, and keeps user data under the app-data root instead of the install folder.
 - Because the app-data root persists across portable installs, durable settings/history schema changes must include version bumps plus migrations or compatible readers. Incompatible/future history is skipped and left on disk instead of being fed to overlays.
-- Overlay modules now live under `src/TmrOverlay.App/Overlays/`; status, settings, fuel-calculator, relative, stream-chat browser source, flags, session/weather, pit-service snapshot, input/car-state, car-radar, and gap-to-leader overlays are wired, while remaining future overlay folders are still placeholders.
+- Overlay modules now live under `src/TmrOverlay.App/Overlays/`; status, settings, standings, fuel-calculator, relative, track-map, stream-chat browser source, flags, session/weather, pit-service snapshot, input/car-state, car-radar, and gap-to-leader overlays are wired. Remaining future product surfaces should be added deliberately rather than as placeholder overlay tabs.
 - Pure models and calculations have started moving into `src/TmrOverlay.Core/`; Windows remains the production app/runtime, while the ignored mac harness remains the mock-telemetry development surface.
 - The root-level launcher is `TmrOverlay.cmd`, not a standalone copied `.exe`, because a normal framework-dependent .NET build needs its companion output files.
 - The primary analyzed real capture is the 4-hour Nürburgring VLN race capture. It proved that teammate stints retain `CarIdx*` timing/position data but do not expose direct scalar fuel fields.
 
 ## Recommended Next Steps
 
-1. Finish `v0.11-standings-track-map-localhost`: validate the CI-generated Windows screenshot artifact path, keep `Directory.Build.props` aligned with the milestone, and make sure the mac/tracked mock screenshots still describe the intended review states.
-2. Decide signing before broad distribution. Private teammate zip builds can remain unsigned, but production sharing should sign the executable or package.
-3. Add passive update discovery after the first release exists: latest-release or manifest lookup, semantic version comparison, tray/settings notification, release notes/download command, and diagnostics logging.
+1. Close `v0.11-standings-track-map-localhost`: validate the CI-generated Windows screenshot artifact path, keep `Directory.Build.props` aligned with the milestone, confirm tracked mock screenshots still describe the intended review states, and leave only vetted bundled track-map JSON in the release package.
+2. Start the next teammate-beta hardening pass: visible version/build metadata, manual update check, clearer first-run/no-iRacing states, Support-tab copy from real feedback, and portable upgrade validation against existing `%LOCALAPPDATA%\TmrOverlay` settings/history/diagnostics data.
+3. Decide signing before broad distribution. Private teammate zip builds can remain unsigned, but production sharing should sign the executable or package.
 4. Decide the installer/update channel after the portable baseline: Velopack for installer plus update feed, or MSIX/App Installer if package identity/signing constraints are acceptable.
 5. Identify remaining v1/legacy overlay slices and choose the next safe model-v2 migration target without pulling fuel/gap analysis products into the simple-overlay path prematurely.
 6. Keep collecting radar diagnostics for suppressed non-local focus, local progress-missing, side-without-placement, and multiclass cases before expanding beyond local in-car radar.
-7. Decide the Overlay Bridge v2 shape for teammate-to-teammate data sharing: enable/disable, allowed peers, schema version, connection health, and which normalized model-v2 context should become the trusted peer contract.
-8. Expand Stream Chat beyond the current Streamlabs-widget and public Twitch channel modes when needed, keeping provider auth, moderation, rate limits, and offline preview states separate from iRacing telemetry.
-9. Treat overlay builder as a later creator/development platform on top of design-v2 primitives and the bridge schema, not as a prerequisite for the first hand-authored production overlays.
-10. Improve historical aggregation and confidence/source tracking as more user sessions are collected.
-11. Keep raw capture available for diagnostics, but avoid making it the normal user data path.
-12. Expand post-race strategy review/export beyond the first saved-analysis view; see `docs/post-race-strategy-analysis.md`.
-13. When summary or other durable history shapes change, add ordered migrations or compatible readers to the historical data maintenance flow, update `HistorySchemaCompatibilityTests`, and keep car/track/session history higher priority than performance/logging data.
+7. Harden Track Map after first real usage: current-map quality/status, manual rebuild/replace UX, bundled map QA, confidence/stale/pit-lane screenshot states, and pit-lane-aware live markers when reliable telemetry exists.
+8. Decide the Overlay Bridge v2 shape for teammate-to-teammate data sharing: enable/disable, allowed peers, schema version, connection health, and which normalized model-v2 context should become the trusted peer contract.
+9. Expand Stream Chat beyond the current Streamlabs-widget and public Twitch channel modes when needed, keeping provider auth, moderation, rate limits, and offline preview states separate from iRacing telemetry.
+10. Treat overlay builder as a later creator/development platform on top of design-v2 primitives and the bridge schema, not as a prerequisite for the first hand-authored production overlays.
+11. Improve historical aggregation and confidence/source tracking as more user sessions are collected.
+12. Keep raw capture available for diagnostics, but avoid making it the normal user data path.
+13. Expand post-race strategy review/export beyond the first saved-analysis view; see `docs/post-race-strategy-analysis.md`.
+14. When summary or other durable history shapes change, add ordered migrations or compatible readers to the historical data maintenance flow, update `HistorySchemaCompatibilityTests`, and keep car/track/session history higher priority than performance/logging data.
 
 ## Files Most Likely To Change Next
 

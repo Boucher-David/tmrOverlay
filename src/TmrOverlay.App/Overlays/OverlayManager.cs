@@ -42,7 +42,6 @@ internal sealed class OverlayManager : IDisposable
     private readonly PostRaceAnalysisOptions _postRaceAnalysisOptions;
     private readonly AppPerformanceState _performanceState;
     private readonly LocalhostOverlayOptions _localhostOverlayOptions;
-    private readonly IbtTrackMapBuilder _trackMapBuilder;
     private readonly TrackMapStore _trackMapStore;
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly SessionHistoryQueryService _historyQueryService;
@@ -75,7 +74,6 @@ internal sealed class OverlayManager : IDisposable
         PostRaceAnalysisOptions postRaceAnalysisOptions,
         AppPerformanceState performanceState,
         LocalhostOverlayOptions localhostOverlayOptions,
-        IbtTrackMapBuilder trackMapBuilder,
         TrackMapStore trackMapStore,
         ILiveTelemetrySource liveTelemetrySource,
         SessionHistoryQueryService historyQueryService,
@@ -97,7 +95,6 @@ internal sealed class OverlayManager : IDisposable
         _postRaceAnalysisOptions = postRaceAnalysisOptions;
         _performanceState = performanceState;
         _localhostOverlayOptions = localhostOverlayOptions;
-        _trackMapBuilder = trackMapBuilder;
         _trackMapStore = trackMapStore;
         _liveTelemetrySource = liveTelemetrySource;
         _historyQueryService = historyQueryService;
@@ -160,8 +157,6 @@ internal sealed class OverlayManager : IDisposable
                 _storageOptions,
                 _localhostOverlayOptions,
                 _diagnosticsBundleService,
-                _trackMapBuilder,
-                _trackMapStore,
                 _events,
                 settings,
                 SaveSettings,

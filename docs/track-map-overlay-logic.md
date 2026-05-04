@@ -22,7 +22,7 @@ Bundled maps, when present, are read from `Assets/TrackMaps` in the app output a
 
 ## Generation
 
-After a successful IBT analysis, `TelemetryCaptureHostedService` can ask `IbtTrackMapBuilder` to derive a map from the selected `.ibt` file. User IBT generation is enabled by default from the Track Map settings tab through `track-map.build-from-telemetry`; the warning includes an opt-out button that clears that checkbox. Fresh installs use bundled app map JSON when available and otherwise keep the circle fallback until local generation produces a map. Locally generated user maps are read by the native overlay and localhost route only while that setting remains enabled. The settings tab warns that derived map geometry is generated locally from the user's telemetry-generated IBT files and stored on the user's machine. Source `.ibt` files are not copied into TMR storage by default.
+After a successful IBT analysis, `TelemetryCaptureHostedService` can ask `IbtTrackMapBuilder` to derive a map from the selected `.ibt` file. User IBT generation is enabled by default from the Track Map settings tab through `track-map.build-from-telemetry`. Fresh installs use bundled app map JSON when available and otherwise keep the circle fallback until local generation produces a map. Locally generated user maps are read by the native overlay and localhost route only while that setting remains enabled. The settings tab explains that derived map geometry is generated locally from the user's telemetry-generated IBT files and stored on the user's machine. Source `.ibt` files are not copied into TMR storage by default.
 
 The builder:
 
@@ -93,9 +93,4 @@ dotnet run --project .\tools\TmrOverlay.TrackMapGenerator\TmrOverlay.TrackMapGen
 
 Remove `--dry-run` only after reviewing the confidence output and expected asset count.
 
-The `Build local maps from IBT telemetry` checkbox does not scan existing telemetry by itself. It controls future automatic post-session generation and whether user-generated maps are eligible at runtime. For direct local testing, use the temporary Track Map tab buttons:
-
-- `Convert IBT...` selects one `.ibt` file.
-- `Scan Folder...` recursively scans an existing telemetry folder such as `%USERPROFILE%\Documents\iRacing\telemetry`.
-
-Both paths write events to `logs/events/*.jsonl`. The folder scan also writes a `logs/track-maps/track-map-manual-*.json` report with per-file saved/skipped/rejected/failed outcomes. Those event files and reports are included when the Support tab creates a diagnostics bundle.
+The `Build local maps from IBT telemetry` checkbox does not scan existing telemetry by itself. It controls future automatic post-session generation and whether user-generated maps are eligible at runtime. Use `tools/TmrOverlay.TrackMapGenerator` for direct bundled-asset generation and QA against an existing telemetry folder.

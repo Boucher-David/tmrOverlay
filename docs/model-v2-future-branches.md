@@ -24,7 +24,8 @@ V1.0 should be a polished core desktop overlay app, not the finish line for ever
 - Relative.
 - Local in-car radar/blindspot.
 - Flags.
-- Optional simple session/weather or pit-service snapshots only if they stay telemetry-first and low-noise.
+- Optional Track Map, session/weather, or pit-service snapshots only if they stay telemetry-first, low-noise, and clearly explain unavailable/placeholder states.
+- Localhost browser-source routes as local OBS/capture support, not as the teammate-to-teammate Overlay Bridge.
 
 Heavy analysis products should move to V1.x, where they can build on stable core telemetry contracts and teammate evidence without blocking the first product milestone. Scenario-based layout profiles and engineer/operator mode are large enough to be V2.0 product modes, and VR is a later V2.N platform item because it is a separate renderer with different performance, UX, and comfort constraints.
 
@@ -32,7 +33,21 @@ Heavy analysis products should move to V1.x, where they can build on stable core
 
 Treat these as branch-size product bets, not fixed promises. If teammate testing exposes a painful install, support, or telemetry issue, pull that forward even if the nominal version order says otherwise.
 
-### v0.11.0 - Teammate Beta Hardening
+### v0.11.0 - Standings, Track Maps, Localhost Browser Sources, And Live Polish
+
+Goal: close the pulled-forward user-visible overlay branch before the next teammate-beta hardening pass.
+
+Likely scope:
+
+- Ship first-pass production Standings backed by normalized timing rows.
+- Ship a map-only Track Map overlay with bundled-map lookup, optional user IBT-derived map generation, circle fallback, and live car dots.
+- Add disabled-by-default `LocalhostOverlays` browser-source routes for OBS/local capture tools, separate from the future teammate-to-teammate Overlay Bridge.
+- Add Stream Chat as a browser-source route for one selected source: Streamlabs Chat Box widget URL or public Twitch channel chat.
+- Keep settings as a flat-tab app control surface with selectable/copyable localhost URLs where routes exist.
+- Harden existing live overlays from tester feedback: Relative/Fuel repaint churn, Relative display-time fallback, smaller Inputs layout, and clearer local Radar side warnings.
+- Keep Windows build/test/publish and Windows-rendered screenshot validation CI-owned when local macOS validation cannot run `dotnet`.
+
+### v0.12.0 - Teammate Beta Hardening
 
 Goal: make the first shared builds easier to install, understand, and support.
 
@@ -45,7 +60,7 @@ Likely scope:
 - Polish first-run and no-iRacing-connected states so testers do not confuse expected waiting states with broken installs.
 - Keep signed installer/update automation out of scope unless release friction proves the portable zip is not enough for private testers.
 
-### v0.12.0 - Core Model V2 Readiness
+### v0.13.0 - Core Model V2 Readiness
 
 Goal: make the normalized model layer reliable enough for the V1.0 core overlays.
 
@@ -57,20 +72,20 @@ Likely scope:
 - Expose roster count, live row count, rows with timing, rows with spatial progress, and missing-row reasons.
 - Keep legacy live slices stable until no production core overlay depends on them.
 
-### v0.13.0 - Core Overlay Completion
+### v0.14.0 - Core Overlay Completion
 
 Goal: make the V1.0 overlay set useful and consistent without heavy interpretation.
 
 Likely scope:
 
-- Finish or harden production Standings.
+- Harden production Standings around partial coverage, class labels/colors, pit labels, focus behavior, and larger-field edge cases.
 - Harden Relative around model-v2 rows, user-centered context, class color, pit labels, and partial coverage.
 - Harden local in-car Radar/Blindspot around player-only telemetry, clear unavailable states, and no spectator/team-analysis promises.
 - Harden Flags around normalized flag categories and simple display behavior.
 - Keep session/weather and pit-service as optional simple snapshots, not analysis products.
 - Use Windows screenshot artifacts and tracked mac mocks to catch visual regressions.
 
-### v0.14.0 - Overlay Style V2 / Designer-Friendly UI
+### v0.15.0 - Overlay Style V2 / Designer-Friendly UI
 
 Goal: make the core overlays and settings surface easier to review, maintain, and hand to a designer.
 
@@ -82,7 +97,7 @@ Likely scope:
 - Keep normal telemetry-first overlays quiet; only surface source/evidence chrome for stale, unavailable, modeled, or derived values.
 - Refresh tracked `mocks/` and compare Windows CI artifacts before calling the branch done.
 
-### v0.15.0 - V1.0 Release Candidate Hardening
+### v0.16.0 - V1.0 Release Candidate Hardening
 
 Goal: make the core desktop overlay app ready to call V1.0.
 
@@ -92,7 +107,7 @@ Likely scope:
 - Verify AppData compatibility for settings, history, logs, diagnostics, runtime state, and optional captures.
 - Decide whether private tester zip distribution remains sufficient or whether signed artifacts/installer work must happen before V1.0.
 - Tighten performance and startup behavior for the core overlay set.
-- Keep deep fuel/strategy/engineer/track-map/streaming/builder work out of the V1.0 release candidate unless it is hidden development tooling.
+- Keep deep fuel/strategy/engineer/advanced-track-map/streaming/builder work out of the V1.0 release candidate unless it is hidden development tooling.
 
 ## Suggested V1.X Roadmap
 
@@ -132,17 +147,17 @@ Likely scope:
 - Keep source/evidence UI available because these products derive meaning from telemetry rather than simply displaying direct values.
 - Use replay and live diagnostics to validate edge cases before making advice prominent.
 
-### v1.4 - IBT Track Map Store
+### v1.4 - Track Map Expansion And QA
 
-Goal: turn post-session IBT readiness checks into reusable local track-map assets.
+Goal: improve the v0.11 Track Map implementation with better assets, status reporting, and map-quality workflows after the basic local generation path has real usage.
 
 Likely scope:
 
-- Add app-owned storage such as `%LOCALAPPDATA%\TmrOverlay\track-maps`.
-- Build `IbtTrackMapBuilder` and `TrackMapStore` around compact derived geometry rather than storing source `.ibt` files.
-- Persist schema version, track identity, provenance, quality metrics, local coordinate metadata, lap-distance percentages, and a resampled closed polyline.
-- Score clean laps, filter pit/outlap/noisy samples, simplify/smooth geometry, and merge only when a new source improves an existing map.
-- Keep overlays consuming maps through the store; do not let overlays read IBT files directly.
+- Run the batch track-map generator on vetted `.ibt` sources and commit only reviewed bundled map JSON.
+- Expand settings/support status around current map source, quality, last generation result, and manual rebuild/replace actions.
+- Add deterministic screenshot states for placeholder, preview/low confidence, high confidence, stale markers, and pit-lane marker placement.
+- Improve pit-lane-aware marker placement when live telemetry exposes a reliable pit-lane progress signal.
+- Use iRacing/Data API or other official/reference map sources only as QA references unless licensing and product rules justify bundled assets.
 
 ### v1.5 - Overlay Bridge And External Clients
 
@@ -268,15 +283,15 @@ Use the parity artifacts to identify which visual differences are intentional pl
 
 ### IBT-Derived Track Map Store
 
-Treat post-session track-map generation as a future derived-asset product branch, not as part of the current compact IBT sidecar contract. Today `ibt-analysis/ibt-local-car-summary.json` only records whether `Lat`/`Lon`/`Alt` plus lap-distance fields make an IBT file track-map-ready. A track-map branch should turn that readiness signal into a durable reusable map asset.
+v0.11 pulled the first reusable derived-map path into the product branch. `TelemetryCaptureHostedService` can ask `IbtTrackMapBuilder` to derive compact track geometry after successful IBT analysis, and native/localhost Track Map overlays consume the result through `TrackMapStore` rather than reading `.ibt` files directly.
 
 Generated user maps live in app-owned local storage, outside the iRacing telemetry folder and outside retention-managed capture directories. `Storage:TrackMapRoot` defaults under `%LOCALAPPDATA%\TmrOverlay\track-maps\user`, with user-discovered maps separated from bundled/baseline maps.
 
-The first implementation should keep source `.ibt` files external and persist only compact derived geometry: schema version, generated time, track identity, source/provenance summary, quality metrics, coordinate-system metadata, and a resampled closed polyline in local meter coordinates with lap-distance percentages. Prefer normalized local coordinates over raw latitude/longitude in the reusable map file unless raw geographic values are explicitly needed for diagnostics.
+The first implementation keeps source `.ibt` files external and persists only compact derived geometry: schema version, generated time, track identity, source/provenance summary, quality metrics, coordinate-system metadata, and a resampled closed polyline in local meter coordinates with lap-distance percentages. Prefer normalized local coordinates over raw latitude/longitude in the reusable map file unless raw geographic values are explicitly needed for diagnostics.
 
-Build this behind a separate `IbtTrackMapBuilder` and `TrackMapStore` instead of extending overlays to read IBT files directly. The builder should select clean complete laps, filter pit/outlap/noisy samples where possible, convert `Lat`/`Lon` to a local tangent-plane coordinate system, smooth/resample/simplify the line, score coverage and closure quality, and merge only when a new source improves an existing map for the same track identity.
+Keep future work behind `IbtTrackMapBuilder` and `TrackMapStore` instead of extending overlays to read IBT files directly. The builder should continue selecting clean complete laps, filtering pit/outlap/noisy samples where possible, converting `Lat`/`Lon` to a local tangent-plane coordinate system, smoothing/resampling/simplifying the line, scoring coverage and closure quality, and merging only when a new source improves an existing map for the same track identity.
 
-Overlays should consume maps through the store. A live track-map overlay can then place the local car and other cars from normalized live progress fields such as `CarIdxLapDistPct`; it should treat an IBT-derived map as the learned driven line for that track/config, not as official track boundaries.
+The remaining roadmap is hardening and asset QA: richer current-map status, manual rebuild/replace UX, bundled map generation from vetted sources, deterministic screenshot states for confidence/stale/pit-lane cases, and pit-lane-aware live marker placement when reliable live progress is available. The overlay should keep treating an IBT-derived map as the learned driven line for that track/config, not as official track boundaries.
 
 ### Uniform Model V2 Migration
 
@@ -365,7 +380,7 @@ The flag pass adds one model-v2 requirement: normalize flag categories rather th
 
 Current design-v2 candidate readiness:
 
-- Standings can consume `LiveTelemetrySnapshot.Models.Timing` rows and `TimingColumnRegistry` formatting once a production overlay is added.
+- Standings now has a first-pass production overlay consuming `LiveTelemetrySnapshot.Models.Timing` rows; future design/model work should harden partial coverage, class labels/colors, focus behavior, and larger-field edge cases rather than treating the overlay as unstarted.
 - Flags, session/weather, pit-service snapshot, and input/car-state overlays now have first-pass Windows implementations that consume `LiveTelemetrySnapshot.Models` directly. Flags and input/car-state use custom graphical forms while session/weather and pit-service continue through the simple telemetry shell.
 - Sector comparison is a simple table visually, and live diagnostics now test whether sector metadata plus car progress can produce enough sector-boundary intervals. It still needs an explicit model-v2 row contract before it should be promoted beyond the mac design surface.
 - Blindspot signal should stay local in-car only and can use the existing local-player `CarLeftRight`/proximity state without the advanced non-local radar branch.
