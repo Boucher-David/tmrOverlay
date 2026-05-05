@@ -164,12 +164,17 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
 
                 case "/api/track-map":
                     var snapshot = _liveTelemetrySource.Snapshot();
+                    var trackMapSettings = ReadTrackMapSettings();
                     await WriteJsonAsync(context.Response, HttpStatusCode.OK, new
                     {
                         generatedAtUtc = DateTimeOffset.UtcNow,
                         trackMap = _trackMapStore.TryReadBest(
                             snapshot.Context.Track,
-                            includeUserMaps: IsTrackMapUserMapEnabled())
+                            includeUserMaps: trackMapSettings.IncludeUserMaps),
+                        trackMapSettings = new
+                        {
+                            internalOpacity = trackMapSettings.InternalOpacity
+                        }
                     }, cancellationToken).ConfigureAwait(false);
                     break;
 
@@ -212,19 +217,21 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
         }
     }
 
-    private bool IsTrackMapUserMapEnabled()
+    private TrackMapBrowserSettings ReadTrackMapSettings()
     {
         try
         {
             var settings = _settingsStore.Load();
             var trackMap = settings.Overlays.FirstOrDefault(
                 overlay => string.Equals(overlay.Id, "track-map", StringComparison.OrdinalIgnoreCase));
-            return trackMap?.GetBooleanOption(OverlayOptionKeys.TrackMapBuildFromTelemetry, defaultValue: true) ?? true;
+            return new TrackMapBrowserSettings(
+                IncludeUserMaps: trackMap?.GetBooleanOption(OverlayOptionKeys.TrackMapBuildFromTelemetry, defaultValue: true) ?? true,
+                InternalOpacity: Math.Clamp(trackMap?.Opacity ?? 0.88d, 0.2d, 1d));
         }
         catch (Exception exception)
         {
-            _logger.LogWarning(exception, "Failed to read track map generation setting for localhost map lookup. Defaulting to include user maps.");
-            return true;
+            _logger.LogWarning(exception, "Failed to read track map settings for localhost map lookup. Defaulting to include user maps.");
+            return new TrackMapBrowserSettings(IncludeUserMaps: true, InternalOpacity: 0.88d);
         }
     }
 
@@ -269,3 +276,5 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
         response.Close();
     }
 }
+
+internal sealed record TrackMapBrowserSettings(bool IncludeUserMaps, double InternalOpacity);

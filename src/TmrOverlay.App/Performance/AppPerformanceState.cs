@@ -441,6 +441,9 @@ internal static class AppPerformanceMetricIds
     public const string OverlayTrackMapRefresh = "overlay.track_map.refresh";
     public const string OverlayTrackMapSnapshot = "overlay.track_map.snapshot";
     public const string OverlayTrackMapPaint = "overlay.track_map.paint";
+    public const string OverlayGarageCoverRefresh = "overlay.garage_cover.refresh";
+    public const string OverlayGarageCoverSnapshot = "overlay.garage_cover.snapshot";
+    public const string OverlayGarageCoverPaint = "overlay.garage_cover.paint";
     public const string OverlayFlagsRefresh = "overlay.flags.refresh";
     public const string OverlayFlagsSnapshot = "overlay.flags.snapshot";
     public const string OverlayFlagsViewModel = "overlay.flags.view_model";

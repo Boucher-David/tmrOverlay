@@ -49,13 +49,18 @@ Wet or declared-wet states use an info tone. Declared-wet surface mismatches use
 
 It displays:
 
+- release signal:
+  - `GREEN - go` when `PlayerCarPitSvStatus` reports service complete
+  - `RED - service active` while pit service is in progress or `PitstopActive` is true
+  - `RED - repair active` while required or optional repair time remains in the stall
+  - `GREEN - go (inferred)` when the car is in the stall, service is not active, and no repair timer is blocking release but the explicit service-complete status is unavailable
 - player/team pit-road or pit-stall state
+- decoded pit service status from `PlayerCarPitSvStatus`
 - active/requested service flags
 - requested fuel amount in the selected unit system
 - required and optional repair time
 - requested tire service and tire sets used
 - local/team fast repair counters
-- raw pit service flags
 
 The overlay does not send iRacing pit commands. A future pit crew/engineer overlay should own command-capable controls for refuel amount, tire/repair/tearoff choices, and operator workflow so read-only pit telemetry and active simulator control do not get mixed.
 

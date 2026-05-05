@@ -18,12 +18,14 @@ namespace TmrOverlay.App.Overlays.TrackMap;
 internal sealed class TrackMapForm : PersistentOverlayForm
 {
     private static readonly Color TransparentColor = Color.Black;
+    private static readonly Color TrackInteriorColor = Color.FromArgb(9, 14, 18);
     private static readonly Color TrackHaloColor = Color.FromArgb(82, 255, 255, 255);
-    private static readonly Color TrackLineColor = Color.FromArgb(232, 222, 238, 246);
+    private static readonly Color TrackLineColor = Color.FromArgb(255, 222, 238, 246);
     private static readonly Color PitLineColor = Color.FromArgb(190, 98, 199, 255);
     private static readonly Color MarkerBorderColor = Color.FromArgb(230, 8, 14, 18);
     private static readonly Color FocusMarkerColor = Color.FromArgb(255, 98, 199, 255);
     private static readonly Color DefaultMarkerColor = Color.FromArgb(245, 236, 244, 248);
+    private const int TrackInteriorMaximumAlpha = 150;
     private const int RefreshIntervalMilliseconds = 250;
     private const float MapPadding = 20f;
     private const float TrackHaloWidth = 11f;
@@ -31,6 +33,7 @@ internal sealed class TrackMapForm : PersistentOverlayForm
     private const float PitLineWidth = 2.2f;
     private const float MarkerRadius = 3.6f;
     private const float FocusMarkerRadius = 5.7f;
+    private const float FocusMarkerTextSize = 7.6f;
     private const double MapReloadIntervalSeconds = 10d;
 
     private readonly ILiveTelemetrySource _liveTelemetrySource;
@@ -38,6 +41,7 @@ internal sealed class TrackMapForm : PersistentOverlayForm
     private readonly ILogger<TrackMapForm> _logger;
     private readonly AppPerformanceState _performanceState;
     private readonly OverlaySettings _settings;
+    private readonly Action _saveSettings;
     private readonly System.Windows.Forms.Timer _refreshTimer;
     private LiveTelemetrySnapshot _latestSnapshot = LiveTelemetrySnapshot.Empty;
     private TrackMapDocument? _trackMap;
@@ -66,10 +70,12 @@ internal sealed class TrackMapForm : PersistentOverlayForm
         _logger = logger;
         _performanceState = performanceState;
         _settings = settings;
+        _saveSettings = saveSettings;
 
         BackColor = TransparentColor;
         TransparencyKey = TransparentColor;
         DoubleBuffered = true;
+        Opacity = 1d;
         Padding = Padding.Empty;
 
         _refreshTimer = new System.Windows.Forms.Timer
@@ -97,6 +103,16 @@ internal sealed class TrackMapForm : PersistentOverlayForm
         }
 
         base.Dispose(disposing);
+    }
+
+    protected override void PersistOverlayFrame()
+    {
+        _settings.X = Location.X;
+        _settings.Y = Location.Y;
+        _settings.Width = Size.Width;
+        _settings.Height = Size.Height;
+        _settings.AlwaysOnTop = TopMost;
+        _saveSettings();
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -182,13 +198,14 @@ internal sealed class TrackMapForm : PersistentOverlayForm
         }
 
         var markers = BuildMarkers(_latestSnapshot);
+        using var interiorBrush = TrackInteriorBrush();
         if (_trackMap?.RacingLine.Points is { Count: >= 3 })
         {
-            DrawGeneratedMap(graphics, drawBounds, _trackMap, markers);
+            DrawGeneratedMap(graphics, drawBounds, _trackMap, markers, interiorBrush);
             return;
         }
 
-        DrawCircleFallback(graphics, drawBounds, markers);
+        DrawCircleFallback(graphics, drawBounds, markers, interiorBrush);
     }
 
     private RectangleF DrawingBounds()
@@ -207,14 +224,17 @@ internal sealed class TrackMapForm : PersistentOverlayForm
         Graphics graphics,
         RectangleF drawBounds,
         TrackMapDocument document,
-        IReadOnlyList<TrackMapMarker> markers)
+        IReadOnlyList<TrackMapMarker> markers,
+        Brush interiorBrush)
     {
         var transform = TrackMapTransform.From(document, drawBounds);
         if (transform is null)
         {
-            DrawCircleFallback(graphics, drawBounds, markers);
+            DrawCircleFallback(graphics, drawBounds, markers, interiorBrush);
             return;
         }
+
+        FillGeometry(graphics, document.RacingLine, transform, interiorBrush);
 
         using (var haloPen = new Pen(TrackHaloColor, TrackHaloWidth)
         {
@@ -253,8 +273,10 @@ internal sealed class TrackMapForm : PersistentOverlayForm
     private static void DrawCircleFallback(
         Graphics graphics,
         RectangleF drawBounds,
-        IReadOnlyList<TrackMapMarker> markers)
+        IReadOnlyList<TrackMapMarker> markers,
+        Brush interiorBrush)
     {
+        graphics.FillEllipse(interiorBrush, drawBounds);
         using (var haloPen = new Pen(TrackHaloColor, TrackHaloWidth)
         {
             StartCap = LineCap.Round,
@@ -304,6 +326,40 @@ internal sealed class TrackMapForm : PersistentOverlayForm
         graphics.DrawPath(pen, path);
     }
 
+    private static void FillGeometry(
+        Graphics graphics,
+        TrackMapGeometry geometry,
+        TrackMapTransform transform,
+        Brush brush)
+    {
+        if (!geometry.Closed || geometry.Points.Count < 3)
+        {
+            return;
+        }
+
+        using var path = GeometryPath(geometry, transform);
+        graphics.FillPath(brush, path);
+    }
+
+    private static GraphicsPath GeometryPath(TrackMapGeometry geometry, TrackMapTransform transform)
+    {
+        var path = new GraphicsPath();
+        var previous = transform.Map(geometry.Points[0]);
+        for (var index = 1; index < geometry.Points.Count; index++)
+        {
+            var current = transform.Map(geometry.Points[index]);
+            path.AddLine(previous, current);
+            previous = current;
+        }
+
+        if (geometry.Closed)
+        {
+            path.CloseFigure();
+        }
+
+        return path;
+    }
+
     private static void DrawMarkers(
         Graphics graphics,
         IReadOnlyList<TrackMapMarker> markers,
@@ -318,12 +374,39 @@ internal sealed class TrackMapForm : PersistentOverlayForm
                 continue;
             }
 
-            var radius = marker.IsFocus ? FocusMarkerRadius : MarkerRadius;
+            var positionLabel = marker.IsFocus ? marker.PositionLabel : null;
+            using var positionFont = positionLabel is { Length: > 0 }
+                ? OverlayTheme.Font(OverlayTheme.DefaultFontFamily, FocusMarkerTextSize, FontStyle.Bold)
+                : null;
+            var radius = positionFont is not null
+                ? FocusMarkerRadiusForLabel(graphics.MeasureString(positionLabel, positionFont))
+                : marker.IsFocus ? FocusMarkerRadius : MarkerRadius;
             using var brush = new SolidBrush(marker.Color);
             using var border = new Pen(MarkerBorderColor, marker.IsFocus ? 2f : 1.4f);
-            graphics.FillEllipse(brush, point.X - radius, point.Y - radius, radius * 2f, radius * 2f);
-            graphics.DrawEllipse(border, point.X - radius, point.Y - radius, radius * 2f, radius * 2f);
+            var markerRect = new RectangleF(point.X - radius, point.Y - radius, radius * 2f, radius * 2f);
+            graphics.FillEllipse(brush, markerRect);
+            graphics.DrawEllipse(border, markerRect);
+            if (positionLabel is { Length: > 0 } && positionFont is not null)
+            {
+                DrawFocusPositionText(graphics, positionLabel, positionFont, markerRect);
+            }
         }
+    }
+
+    private static float FocusMarkerRadiusForLabel(SizeF textSize)
+    {
+        return Math.Max(FocusMarkerRadius, Math.Max(textSize.Width, textSize.Height) / 2f + 3.5f);
+    }
+
+    private static void DrawFocusPositionText(Graphics graphics, string label, Font font, RectangleF markerRect)
+    {
+        using var textBrush = new SolidBrush(Color.FromArgb(255, 5, 12, 16));
+        using var format = new StringFormat
+        {
+            Alignment = StringAlignment.Center,
+            LineAlignment = StringAlignment.Center
+        };
+        graphics.DrawString(label, font, textBrush, markerRect, format);
     }
 
     private static PointF? PointOnGeometry(
@@ -402,7 +485,8 @@ internal sealed class TrackMapForm : PersistentOverlayForm
                 row.CarIdx,
                 NormalizeProgress(lapDistPct),
                 row.IsFocus || row.IsPlayer,
-                MarkerColor(row.CarClassColorHex, row.IsFocus || row.IsPlayer));
+                MarkerColor(row.CarClassColorHex, row.IsFocus || row.IsPlayer),
+                PositionLabel(row));
             if (!markers.TryGetValue(row.CarIdx, out var existing)
                 || marker.IsFocus
                 || !existing.IsFocus)
@@ -425,10 +509,40 @@ internal sealed class TrackMapForm : PersistentOverlayForm
                 focusCarIdx,
                 NormalizeProgress(progress),
                 IsFocus: true,
-                FocusMarkerColor);
+                FocusMarkerColor,
+                FocusPositionLabel(snapshot));
         }
 
         return markers.Values.ToArray();
+    }
+
+    private static string? PositionLabel(LiveTimingRow row)
+    {
+        if (!row.IsFocus && !row.IsPlayer)
+        {
+            return null;
+        }
+
+        var position = row.ClassPosition ?? row.OverallPosition;
+        return position is > 0 ? $"P{position.Value}" : null;
+    }
+
+    private static string? FocusPositionLabel(LiveTelemetrySnapshot snapshot)
+    {
+        var row = snapshot.Models.Timing.FocusRow
+            ?? snapshot.Models.Timing.PlayerRow;
+        return row is not null
+            ? PositionLabel(row)
+            : FocusPositionLabel(snapshot.LatestSample);
+    }
+
+    private static string? FocusPositionLabel(HistoricalTelemetrySample? sample)
+    {
+        var position = sample?.FocusClassPosition
+            ?? sample?.TeamClassPosition
+            ?? sample?.FocusPosition
+            ?? sample?.TeamPosition;
+        return position is > 0 ? $"P{position.Value}" : null;
     }
 
     private static double? MarkerProgress(HistoricalTelemetrySample? sample)
@@ -493,6 +607,13 @@ internal sealed class TrackMapForm : PersistentOverlayForm
         return !double.IsNaN(value) && !double.IsInfinity(value);
     }
 
+    private Brush TrackInteriorBrush()
+    {
+        var opacity = Math.Clamp(_settings.Opacity, 0.2d, 1d);
+        var alpha = (int)Math.Round(TrackInteriorMaximumAlpha * opacity);
+        return new SolidBrush(Color.FromArgb(alpha, TrackInteriorColor.R, TrackInteriorColor.G, TrackInteriorColor.B));
+    }
+
     private void ReportOverlayError(Exception exception, string stage)
     {
         var now = DateTimeOffset.UtcNow;
@@ -513,7 +634,8 @@ internal sealed class TrackMapForm : PersistentOverlayForm
         int CarIdx,
         double LapDistPct,
         bool IsFocus,
-        Color Color);
+        Color Color,
+        string? PositionLabel);
 
     private sealed record TrackMapTransform(
         double MinX,

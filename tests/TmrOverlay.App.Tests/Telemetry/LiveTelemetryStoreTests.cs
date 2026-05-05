@@ -61,6 +61,18 @@ public sealed class LiveTelemetryStoreTests
     }
 
     [Fact]
+    public void RecordFrame_PublishesGarageVisibleRaceEvent()
+    {
+        var store = new LiveTelemetryStore();
+
+        store.RecordFrame(CreateSample(isGarageVisible: true));
+
+        var snapshot = store.Snapshot();
+
+        Assert.True(snapshot.Models.RaceEvents.IsGarageVisible);
+    }
+
+    [Fact]
     public void RecordFrame_CarriesSessionInfoClassColorToProximityCars()
     {
         var store = new LiveTelemetryStore();
@@ -695,7 +707,8 @@ DriverInfo:
         double? classLeaderF2TimeSeconds = null,
         IReadOnlyList<HistoricalCarProximity>? focusClassCars = null,
         IReadOnlyList<HistoricalCarProximity>? nearbyCars = null,
-        int? carLeftRight = null)
+        int? carLeftRight = null,
+        bool? isGarageVisible = null)
     {
         return new HistoricalTelemetrySample(
             CapturedAtUtc: capturedAtUtc ?? DateTimeOffset.UtcNow,
@@ -721,6 +734,7 @@ DriverInfo:
             TrackWetness: 1,
             WeatherDeclaredWet: false,
             PlayerTireCompound: 0,
+            IsGarageVisible: isGarageVisible,
             PlayerCarIdx: playerCarIdx,
             FocusCarIdx: focusCarIdx,
             FocusLapCompleted: focusLapDistPct is null ? null : 2,

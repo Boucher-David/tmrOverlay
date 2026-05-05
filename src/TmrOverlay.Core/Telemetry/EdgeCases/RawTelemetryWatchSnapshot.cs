@@ -54,7 +54,7 @@ internal static class RawTelemetryWatchVariables
         [
             "SessionNum", "SessionState", "SessionFlags",
             "SessionTimeRemain", "SessionLapsRemainEx",
-            "IsOnTrack", "IsOnTrackCar", "IsInGarage", "OnPitRoad", "PitstopActive", "PlayerCarInPitStall",
+            "IsOnTrack", "IsOnTrackCar", "IsInGarage", "IsGarageVisible", "OnPitRoad", "PitstopActive", "PlayerCarInPitStall",
             "PlayerTrackSurface", "PlayerTrackSurfaceMaterial",
             "CamCarIdx", "CarLeftRight"
         ],

@@ -29,7 +29,8 @@ public sealed class LocalhostOverlayPageRendererTests
         {
             Assert.Contains("track-map-page", html);
             Assert.Contains("fetch('/api/track-map'", html);
-            Assert.Contains("renderTrackMap(null, cachedTrackMap)", html);
+            Assert.Contains("renderTrackMap(null, cachedTrackMap, cachedTrackMapSettings)", html);
+            Assert.Contains("let cachedTrackMapSettings", html);
         }
         if (expectedId == "stream-chat")
         {

@@ -89,6 +89,7 @@ internal static class LiveModelParityAnalyzer
         CompareBoolean(observations, "pit", "pitstop-active", sample.PitstopActive, model.PitstopActive);
         CompareBoolean(observations, "pit", "player-car-in-pit-stall", sample.PlayerCarInPitStall, model.PlayerCarInPitStall);
         CompareNullableBoolean(observations, "pit", "team-on-pit-road", sample.TeamOnPitRoad, model.TeamOnPitRoad);
+        CompareNullableInt(observations, "pit", "pit-service-status", sample.PitServiceStatus, model.PitServiceStatus);
         CompareNullableInt(observations, "pit", "pit-service-flags", sample.PitServiceFlags, model.PitServiceFlags);
         CompareNullableDouble(observations, "pit", "pit-service-fuel-liters", ValidNonNegative(sample.PitServiceFuelLiters), model.PitServiceFuelLiters, FuelTolerance);
         CompareNullableDouble(observations, "pit", "pit-repair-left-seconds", ValidNonNegative(sample.PitRepairLeftSeconds), model.PitRepairLeftSeconds, SecondsTolerance);
@@ -215,6 +216,7 @@ internal static class LiveModelParityAnalyzer
         var model = snapshot.Models.RaceEvents;
         CompareBoolean(observations, "race-events", "is-on-track", sample.IsOnTrack, model.IsOnTrack);
         CompareBoolean(observations, "race-events", "is-in-garage", sample.IsInGarage, model.IsInGarage);
+        CompareBoolean(observations, "race-events", "is-garage-visible", sample.IsGarageVisible == true, model.IsGarageVisible);
         CompareBoolean(observations, "race-events", "on-pit-road", sample.OnPitRoad, model.OnPitRoad);
         CompareNullableInt(observations, "race-events", "lap", sample.Lap, model.Lap);
         CompareNullableInt(observations, "race-events", "lap-completed", sample.LapCompleted, model.LapCompleted);

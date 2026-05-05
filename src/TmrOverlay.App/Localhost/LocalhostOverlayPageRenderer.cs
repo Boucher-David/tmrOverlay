@@ -472,6 +472,7 @@ internal static class LocalhostOverlayPageRenderer
     const contentEl = document.getElementById('content');
     let lastSequence = null;
     let cachedTrackMap = null;
+    let cachedTrackMapSettings = { internalOpacity: 0.88 };
     let nextTrackMapFetchAt = 0;
     const streamChatState = {
       initialized: false,
@@ -913,7 +914,7 @@ internal static class LocalhostOverlayPageRenderer
       return String(channel || '').trim().replace(/^@/, '').toLowerCase();
     }
 
-    function renderTrackMap(live, trackMap) {
+    function renderTrackMap(live, trackMap, trackMapSettings) {
       const spatial = live?.models?.spatial || {};
       const race = live?.models?.raceEvents || {};
       const focusPct = Number.isFinite(spatial.referenceLapDistPct)
@@ -922,7 +923,7 @@ internal static class LocalhostOverlayPageRenderer
           ? race.lapDistPct
           : 0;
       const markers = trackMapMarkers(live, focusPct);
-      const svg = trackMapSvg(trackMap, markers);
+      const svg = trackMapSvg(trackMap, markers, trackMapSettings);
       contentEl.innerHTML = `
         <div class="track">
           ${svg}
@@ -930,20 +931,25 @@ internal static class LocalhostOverlayPageRenderer
       setStatus(live, spatial.hasData || race.hasData ? 'live | track map' : 'waiting for position');
     }
 
-    function trackMapSvg(trackMap, markers) {
+    function trackMapSvg(trackMap, markers, settings) {
+      const interior = trackMapInteriorFill(settings);
       const racingLine = trackMap?.racingLine;
       if (racingLine?.points?.length >= 3) {
         const transform = trackMapTransform(trackMap);
         if (transform) {
           const racingPath = pathForGeometry(racingLine, transform);
+          const interiorPath = racingLine.closed
+            ? `<path d="${racingPath}" fill="${interior}" stroke="none"></path>`
+            : '';
           const pitPath = trackMap?.pitLane?.points?.length >= 2
             ? `<path d="${pathForGeometry(trackMap.pitLane, transform)}" fill="none" stroke="rgba(98,199,255,0.74)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path>`
             : '';
           const dots = markers.map((marker) => markerSvg(marker, pointOnGeometry(racingLine, transform, marker.lapDistPct))).join('');
           return `
             <svg viewBox="0 0 320 320" role="img" aria-label="Track map">
+              ${interiorPath}
               <path d="${racingPath}" fill="none" stroke="rgba(255,255,255,0.32)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"></path>
-              <path d="${racingPath}" fill="none" stroke="rgba(222,238,246,0.91)" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"></path>
+              <path d="${racingPath}" fill="none" stroke="rgba(222,238,246,1)" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"></path>
               ${pitPath}
               ${dots}
             </svg>`;
@@ -953,10 +959,16 @@ internal static class LocalhostOverlayPageRenderer
       const dots = markers.map((marker) => markerSvg(marker, pointOnCircle(marker.lapDistPct))).join('');
       return `
         <svg viewBox="0 0 320 320" role="img" aria-label="Track map">
+          <circle cx="160" cy="160" r="138" fill="${interior}" stroke="none"></circle>
           <circle cx="160" cy="160" r="138" fill="none" stroke="rgba(255,255,255,0.32)" stroke-width="11"></circle>
-          <circle cx="160" cy="160" r="138" fill="none" stroke="rgba(222,238,246,0.91)" stroke-width="4.4"></circle>
+          <circle cx="160" cy="160" r="138" fill="none" stroke="rgba(222,238,246,1)" stroke-width="4.4"></circle>
           ${dots}
         </svg>`;
+    }
+
+    function trackMapInteriorFill(settings) {
+      const opacity = Math.max(0.2, Math.min(1, Number(settings?.internalOpacity ?? 0.88)));
+      return `rgba(9,14,18,${(0.59 * opacity).toFixed(3)})`;
     }
 
     function trackMapTransform(trackMap) {
@@ -1037,8 +1049,23 @@ internal static class LocalhostOverlayPageRenderer
 
     function markerSvg(marker, point) {
       if (!point) return '';
-      const radius = marker.isFocus ? 5.7 : 3.6;
-      return `<circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="${radius}" fill="${marker.color}" stroke="rgb(8,14,18)" stroke-width="${marker.isFocus ? 2 : 1.4}"></circle>`;
+      const radius = marker.isFocus && marker.positionLabel
+        ? focusMarkerRadius(marker.positionLabel)
+        : marker.isFocus ? 5.7 : 3.6;
+      const circle = `<circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="${radius}" fill="${marker.color}" stroke="rgb(8,14,18)" stroke-width="${marker.isFocus ? 2 : 1.4}"></circle>`;
+      if (!marker.isFocus || !marker.positionLabel) {
+        return circle;
+      }
+
+      return `
+        <g>
+          ${circle}
+          <text x="${point.x.toFixed(1)}" y="${(point.y + 2.9).toFixed(1)}" text-anchor="middle" font-size="7.6" font-weight="800" fill="rgb(5,12,16)">${escapeHtml(marker.positionLabel)}</text>
+        </g>`;
+    }
+
+    function focusMarkerRadius(label) {
+      return Math.max(5.7, 5.1 + String(label || '').length * 2.9);
     }
 
     function trackMapMarkers(live, fallbackFocusPct) {
@@ -1054,7 +1081,8 @@ internal static class LocalhostOverlayPageRenderer
           carIdx: row.carIdx,
           lapDistPct: normalizeProgress(row.lapDistPct),
           isFocus,
-          color: isFocus ? '#62c7ff' : markerColor(row.carClassColorHex)
+          color: isFocus ? '#62c7ff' : markerColor(row.carClassColorHex),
+          positionLabel: isFocus ? positionLabel(row) : null
         };
         const existing = markers.get(row.carIdx);
         if (!existing || marker.isFocus || !existing.isFocus) {
@@ -1073,11 +1101,30 @@ internal static class LocalhostOverlayPageRenderer
           carIdx: focusCarIdx,
           lapDistPct: normalizeProgress(fallbackFocusPct),
           isFocus: true,
-          color: '#62c7ff'
+          color: '#62c7ff',
+          positionLabel: focusPositionLabel(live)
         });
       }
 
       return [...markers.values()].sort((left, right) => Number(left.isFocus) - Number(right.isFocus) || left.carIdx - right.carIdx);
+    }
+
+    function positionLabel(row) {
+      const position = row?.classPosition ?? row?.overallPosition;
+      return Number.isFinite(position) && position > 0 ? `P${position}` : null;
+    }
+
+    function focusPositionLabel(live) {
+      const timing = live?.models?.timing || {};
+      return positionLabel(timing.focusRow) || positionLabel(timing.playerRow) || samplePositionLabel(live?.latestSample);
+    }
+
+    function samplePositionLabel(sample) {
+      const position = sample?.focusClassPosition
+        ?? sample?.teamClassPosition
+        ?? sample?.focusPosition
+        ?? sample?.teamPosition;
+      return Number.isFinite(position) && position > 0 ? `P${position}` : null;
     }
 
     function markerColor(value) {
@@ -1130,6 +1177,7 @@ internal static class LocalhostOverlayPageRenderer
         if (!response.ok) return;
         const payload = await response.json();
         cachedTrackMap = payload.trackMap || null;
+        cachedTrackMapSettings = payload.trackMapSettings || cachedTrackMapSettings;
       } catch {
         cachedTrackMap = null;
       }
@@ -1171,7 +1219,7 @@ internal static class LocalhostOverlayPageRenderer
           renderGap(live);
           break;
         case 'trackMap':
-          renderTrackMap(live, trackMap);
+          renderTrackMap(live, trackMap, cachedTrackMapSettings);
           break;
         case 'streamChat':
           initStreamChat();
@@ -1191,7 +1239,7 @@ internal static class LocalhostOverlayPageRenderer
         render(payload.live, cachedTrackMap);
       } catch (error) {
         if (page.renderer === 'trackMap') {
-          renderTrackMap(null, cachedTrackMap);
+          renderTrackMap(null, cachedTrackMap, cachedTrackMapSettings);
           return;
         }
         statusEl.textContent = 'localhost offline';

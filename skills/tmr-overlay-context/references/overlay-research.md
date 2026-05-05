@@ -1,12 +1,13 @@
 # Overlay Research
 
-Last updated: 2026-04-27
+Last updated: 2026-05-05
 
 ## External Reference Reviewed
 
 Reviewed:
 
 - `https://ioverlay.app/`
+- `https://github.com/lespalt/iRon`
 
 Purpose of the review:
 
@@ -91,6 +92,24 @@ The first post-fuel overlays are now bootstrapped:
 - gap-to-leader: rolling four-hour in-class inverse line graph; class leader is the top baseline, all available same-class timing rows are retained in a bounded overlay-local in-memory render buffer, and the currently rendered set is selected dynamically as leader, focused/reference car, nearest same-class cars ahead/behind, plus recently visible cars that need continuity as they enter/leave the nearby window. The Windows live path keeps gap graph timing rows separate from radar proximity rows so standings/F2 data can still be graphed when lap-distance progress is unavailable. The visible history anchors at the left edge and grows horizontally until the four-hour window is full, Y-axis scale follows the visible field spread, left-side axis labels avoid covering lines, whole-lap gap reference lines appear when the field spreads by a lap or more, vertical 5-lap markers show visible-history duration, and line endpoints show compact `P<N>` class-position labels.
 - gap-to-leader odd-event policy: the class-leader baseline is a role, not a fixed car. When the leader changes, the old leader's car line should continue downward as a normal trace, the new leader becomes the baseline reference, and a compact leader-change marker should explain the reset. Cars with missing telemetry should end their line cleanly instead of connecting across gaps; recently visible cars should fade/dash out after a sticky window so crashes, spins, disconnects, or position losses remain understandable.
 - gap-to-leader weather and driver context: weather should render as subtle full-height vertical bands behind the graph from live wetness/declared-wet telemetry. Driver changes should preserve each line's color and add compact ticks/dots on the affected line. Windows should infer real driver swaps from session-info `DriverInfo.Drivers[]` changes by `CarIdx`, with `DCDriversSoFar` as the explicit local-team signal. Mac may use named mock handoffs for visual iteration.
+
+## iRon Review Notes
+
+`iRon` is a useful peer reference because it is small and direct: Relative, DDU, Inputs, Standings, and Cover overlays are separate purpose-built surfaces rather than one large configurable dashboard.
+
+Notable takeaways:
+
+- The DDU is a dense dashboard assembled from many small information boxes: gear, lap/session, position, incidents, best/last/P1 last, lap delta, fuel, tires, bias, oil, and water. The reviewed code is a hand-authored Direct2D overlay, not a full end-user drag-and-drop builder, but it shows the value of composing many primitive race facts into a compact lower-screen or secondary-display surface.
+- Its fuel block tracks recent green laps without pit stops, averages a configurable number of laps, and applies a safety factor before estimating remaining laps and fuel-to-finish. That overlaps with our fuel overlay direction, but TMR should keep richer stint/history analysis in the dedicated fuel/engineer surfaces rather than squeezing everything into a DDU clone.
+- `PlayerCarPitSvStatus` uses the SDK enum values `none`, `in progress`, `complete`, and `100+` stall/service errors. That makes the existing Pit Service overlay the right place for a red/green release signal.
+- The Cover overlay is intentionally minimal: a blank rectangle toggled like any other overlay. TMR's Garage Cover should be smarter for streamers by keying off `IsGarageVisible`, keeping the cover opaque, and using app-owned imported artwork.
+
+Roadmap fit:
+
+- Design v2 should not replace the current purpose-built overlays with one DDU mega-overlay. The better direction is reusable layout primitives and optional profile/context surfaces.
+- A future DDU/operator layout can reuse proven pieces from Standings, Relative, Fuel, Pit Service, Input/Car State, and Race Events once model-v2 contracts are mature.
+- Garage Cover v2 can become a safe broadcast context surface while garage/setup is visible: team art plus race/session/strategy snippets that do not reveal setup details.
+- Pit Service v2 can become a richer pit/engineer context panel after fuel, stint, repair, tire, driver-control, and pit-command boundaries are modeled clearly.
 
 ## Development Boundary
 

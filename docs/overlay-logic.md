@@ -12,6 +12,7 @@ They should be updated whenever overlay behavior, telemetry derivation, analysis
 - [Standings Overlay Logic](standings-overlay-logic.md)
 - [Relative Overlay Logic](relative-overlay-logic.md)
 - [Track Map Overlay Logic](track-map-overlay-logic.md)
+- [Garage Cover Overlay Logic](garage-cover-overlay-logic.md)
 - [Simple Telemetry Overlays Logic](simple-telemetry-overlays-logic.md)
 - [Car Radar Logic](car-radar-logic.md)
 - [Gap To Leader Logic](gap-to-leader-logic.md)

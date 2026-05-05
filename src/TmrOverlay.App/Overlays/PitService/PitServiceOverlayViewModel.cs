@@ -33,17 +33,19 @@ internal static class PitServiceOverlayViewModel
             return SimpleTelemetryOverlayViewModel.Waiting("Pit Service", "waiting for pit telemetry");
         }
 
-        var status = BuildStatus(pit);
-        var tone = ToneFor(pit);
+        var release = BuildReleaseState(pit);
+        var status = BuildStatus(pit, release);
+        var tone = ToneFor(pit, release);
         var rows = new[]
         {
+            new SimpleTelemetryRowViewModel("Release", release.Value, release.Tone),
             new SimpleTelemetryRowViewModel("Location", FormatLocation(pit), tone),
             new SimpleTelemetryRowViewModel("Service", FormatService(pit), tone),
+            new SimpleTelemetryRowViewModel("Pit status", PitServiceStatusFormatter.Format(pit.PitServiceStatus), tone),
             new SimpleTelemetryRowViewModel("Fuel request", SimpleTelemetryOverlayViewModel.FormatFuelVolume(pit.PitServiceFuelLiters, unitSystem)),
             new SimpleTelemetryRowViewModel("Repair", FormatRepair(pit), RepairTone(pit)),
             new SimpleTelemetryRowViewModel("Tires", FormatTires(pit)),
-            new SimpleTelemetryRowViewModel("Fast repair", FormatFastRepair(pit)),
-            new SimpleTelemetryRowViewModel("Raw flags", FormatRawFlags(pit.PitServiceFlags))
+            new SimpleTelemetryRowViewModel("Fast repair", FormatFastRepair(pit))
         };
 
         return new SimpleTelemetryOverlayViewModel(
@@ -54,8 +56,23 @@ internal static class PitServiceOverlayViewModel
             Rows: rows);
     }
 
-    private static string BuildStatus(LiveFuelPitModel pit)
+    private static string BuildStatus(LiveFuelPitModel pit, PitReleaseState release)
     {
+        if (release.Kind == PitReleaseKind.Go)
+        {
+            return "release ready";
+        }
+
+        if (release.Kind == PitReleaseKind.Hold)
+        {
+            return "hold";
+        }
+
+        if (PitServiceStatusFormatter.IsError(pit.PitServiceStatus))
+        {
+            return "pit stall error";
+        }
+
         if (pit.PlayerCarInPitStall)
         {
             return "in pit stall";
@@ -160,15 +177,13 @@ internal static class PitServiceOverlayViewModel
         return active.Length == 0 ? "none" : string.Join(", ", active);
     }
 
-    private static string FormatRawFlags(int? flags)
+    private static SimpleTelemetryTone ToneFor(LiveFuelPitModel pit, PitReleaseState release)
     {
-        return flags is { } value
-            ? $"0x{value.ToString("X2", CultureInfo.InvariantCulture)}"
-            : "--";
-    }
+        if (release.Tone is SimpleTelemetryTone.Success or SimpleTelemetryTone.Error)
+        {
+            return release.Tone;
+        }
 
-    private static SimpleTelemetryTone ToneFor(LiveFuelPitModel pit)
-    {
         if (pit.PitRepairLeftSeconds is > 0d || pit.PitOptRepairLeftSeconds is > 0d)
         {
             return SimpleTelemetryTone.Warning;
@@ -191,7 +206,74 @@ internal static class PitServiceOverlayViewModel
 
     private static bool HasRequestedService(LiveFuelPitModel pit)
     {
-        return pit.PitServiceFlags is not null || pit.PitServiceFuelLiters is > 0d;
+        return pit.PitServiceFlags is { } flags && flags != 0
+            || pit.PitServiceFuelLiters is > 0d;
+    }
+
+    private static PitReleaseState BuildReleaseState(LiveFuelPitModel pit)
+    {
+        if (PitServiceStatusFormatter.IsError(pit.PitServiceStatus))
+        {
+            return new PitReleaseState(
+                PitReleaseKind.Hold,
+                $"RED - {PitServiceStatusFormatter.Format(pit.PitServiceStatus)}",
+                SimpleTelemetryTone.Error);
+        }
+
+        if (PitServiceStatusFormatter.IsComplete(pit.PitServiceStatus))
+        {
+            return new PitReleaseState(
+                PitReleaseKind.Go,
+                "GREEN - go",
+                SimpleTelemetryTone.Success);
+        }
+
+        if (PitServiceStatusFormatter.IsInProgress(pit.PitServiceStatus) || pit.PitstopActive)
+        {
+            return new PitReleaseState(
+                PitReleaseKind.Hold,
+                "RED - service active",
+                SimpleTelemetryTone.Error);
+        }
+
+        if (pit.PlayerCarInPitStall && HasBlockingRepair(pit))
+        {
+            return new PitReleaseState(
+                PitReleaseKind.Hold,
+                "RED - repair active",
+                SimpleTelemetryTone.Error);
+        }
+
+        if (pit.PlayerCarInPitStall)
+        {
+            return new PitReleaseState(
+                PitReleaseKind.Go,
+                pit.PitServiceStatus is null ? "GREEN - go (inferred)" : "GREEN - go",
+                SimpleTelemetryTone.Success);
+        }
+
+        if (pit.OnPitRoad || pit.TeamOnPitRoad == true)
+        {
+            return new PitReleaseState(
+                PitReleaseKind.Pending,
+                "RED - not in stall",
+                SimpleTelemetryTone.Warning);
+        }
+
+        return HasRequestedService(pit)
+            ? new PitReleaseState(
+                PitReleaseKind.Pending,
+                "armed",
+                SimpleTelemetryTone.Normal)
+            : new PitReleaseState(
+                PitReleaseKind.Pending,
+                "--",
+                SimpleTelemetryTone.Waiting);
+    }
+
+    private static bool HasBlockingRepair(LiveFuelPitModel pit)
+    {
+        return pit.PitRepairLeftSeconds is > 0d || pit.PitOptRepairLeftSeconds is > 0d;
     }
 
     private static int TireServiceCount(int? flags)
@@ -215,4 +297,16 @@ internal static class PitServiceOverlayViewModel
     }
 
     private sealed record PitFlagLabel(int Bit, string Label);
+
+    private enum PitReleaseKind
+    {
+        Pending,
+        Hold,
+        Go
+    }
+
+    private sealed record PitReleaseState(
+        PitReleaseKind Kind,
+        string Value,
+        SimpleTelemetryTone Tone);
 }

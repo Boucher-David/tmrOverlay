@@ -16,6 +16,8 @@ internal static class OverlayOptionKeys
     public const string StreamChatProvider = "stream-chat.provider";
     public const string StreamChatStreamlabsUrl = "stream-chat.streamlabs-url";
     public const string StreamChatTwitchChannel = "stream-chat.twitch-channel";
+    public const string GarageCoverImagePath = "garage-cover.image-path";
+    public const string GarageCoverDefaultFrameApplied = "garage-cover.default-frame-applied";
     public const string FlagsShowGreen = "flags.show-green";
     public const string FlagsShowBlue = "flags.show-blue";
     public const string FlagsShowYellow = "flags.show-yellow";

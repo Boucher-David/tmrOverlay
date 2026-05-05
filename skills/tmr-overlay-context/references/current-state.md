@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-05-04
+Last updated: 2026-05-05
 
 ## Project Goal
 
@@ -48,7 +48,8 @@ Last updated: 2026-05-04
   - `FuelCalculator/` contains the first strategy overlay, backed by live telemetry plus exact car/track/session history
   - `Standings/` contains a compact same-class timing table backed by `LiveTelemetrySnapshot.Models.Timing`
   - `Relative/` contains the first production model-v2 overlay, a telemetry-first relative table backed by `LiveTelemetrySnapshot.Models.Relative`
-  - `TrackMap/` contains the transparent map-only track-map overlay: generated local map geometry when available, circle fallback otherwise, and live car dots placed by lap-distance progress
+  - `TrackMap/` contains the transparent map-only track-map overlay: generated local map geometry when available, circle fallback otherwise, live car dots placed by lap-distance progress, focused/player `P<N>` text inside the marker dot, full-opacity track lines, and setting-driven internal map fill opacity
+  - `GarageCover/` contains a streamer privacy cover overlay; when enabled, it appears only while live telemetry reports the iRacing Garage screen as visible, paints an opaque imported image or black TMR logo fallback, and copies imported images into app-owned settings storage
   - `Flags/` contains a transparent primary-screen border overlay for live session flag categories; it defaults to the main monitor size, centers a 4:3 frame on ultrawide displays, and requires recognized live session context before the runtime window is shown
   - `CarRadar/` contains a transparent circular local in-car proximity overlay, backed by local player/team progress, player-only `CarLeftRight`, reliable live timing gaps, and nearby `CarIdx*` progress/position telemetry
   - `GapToLeader/` contains a rolling in-class gap trend graph, backed by `CarIdxF2Time` with progress fallback
@@ -288,7 +289,7 @@ Last updated: 2026-05-04
 - `src/TmrOverlay.App/Localhost/`
   - optional disabled-by-default localhost browser-source server for OBS and other local capture tools
   - exposes `GET /health`, `GET /snapshot`, `GET /api/snapshot`, `GET /api/track-map`, `GET /api/stream-chat`, and per-overlay HTML routes under `/overlays/{id}`
-  - current routes cover standings, relative, fuel calculator, session/weather, pit service, input state, car radar, gap to leader, track map, and stream chat; Flags is intentionally disabled for localhost for now
+  - current routes cover standings, relative, fuel calculator, session/weather, pit service, input state, car radar, gap to leader, track map, and stream chat; Flags and Garage Cover are intentionally disabled for localhost for now
   - pages poll `ILiveTelemetrySource`, so local browser overlays do not read directly from iRacing or raw capture files
   - the Stream Chat route reads one selected settings source at a time: Streamlabs Chat Box widget URL or public Twitch channel chat; Streamlabs widget URLs are redacted from diagnostics bundles
   - each overlay settings tab lists a selectable/copyable localhost URL, and the route remains usable even when the native overlay is hidden
@@ -311,7 +312,7 @@ Last updated: 2026-05-04
   - the mac live mock uses the tracked four-hour Nürburgring baseline shape from race time zero at 4x speed for faster fuel/gap overlay iteration
   - for overlay development, Windows should stay production-facing and real-data-driven; the ignored mac harness can use looser mock scenes, fixed offsets, named sample drivers, and exaggerated events for fast visual iteration
   - the mac mock race mirrors the Windows radar/gap feature behavior with synthetic all-class timing rows, multiclass approach traffic, weather bands, and driver handoff events, while Windows remains real telemetry only
-  - the mac harness mirrors the current Windows overlay review set: status, standings, fuel calculator, relative, track map, stream chat UI route, flags, session/weather, pit-service, input/car-state, radar, and gap-to-leader
+  - the mac harness mirrors the current Windows overlay review set: status, standings, fuel calculator, relative, track map, stream chat UI route, garage cover, flags, session/weather, pit-service, input/car-state, radar, and gap-to-leader
   - the mac status overlay is display-only, matching Windows; runtime raw-capture requests live in the settings window and still record logs/events
   - the mac harness mirrors the settings window schema and basic tabbed UI for visibility, scale/opacity when applicable, session filters, units, support capture, and a mock Support/performance snapshot tab; mac diagnostics bundles include matching telemetry-state/performance metadata stubs and recent mock performance JSONL logs
   - `swift run TmrOverlayMacScreenshots` renders tracked overlay review artifacts under `mocks/`: focused live-state screenshots, multi-state contact sheets, and smaller per-state PNG cards for status, fuel calculator, relative, settings, car radar, gap-to-leader, and design-v2 candidate states; the settings screenshots include the current standings and track-map tabs
@@ -550,7 +551,7 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 - v0.9 portable tester publishing is tag-driven, but broad production distribution still needs a signing decision, installer/update channel, and passive update-check UI.
 - The PR workflow runs restore/build/test, tracked screenshot validation, Windows screenshot artifact generation/validation, and a self-contained publish dry run with package audit. The release workflow audits the publish folder for accidental repo/dev-folder leaks, emits a package manifest, and keeps user data under the app-data root instead of the install folder.
 - Because the app-data root persists across portable installs, durable settings/history schema changes must include version bumps plus migrations or compatible readers. Incompatible/future history is skipped and left on disk instead of being fed to overlays.
-- Overlay modules now live under `src/TmrOverlay.App/Overlays/`; status, settings, standings, fuel-calculator, relative, track-map, stream-chat browser source, flags, session/weather, pit-service snapshot, input/car-state, car-radar, and gap-to-leader overlays are wired. Remaining future product surfaces should be added deliberately rather than as placeholder overlay tabs.
+- Overlay modules now live under `src/TmrOverlay.App/Overlays/`; status, settings, standings, fuel-calculator, relative, track-map, stream-chat browser source, garage-cover privacy cover, flags, session/weather, pit-service snapshot, input/car-state, car-radar, and gap-to-leader overlays are wired. Remaining future product surfaces should be added deliberately rather than as placeholder overlay tabs.
 - Pure models and calculations have started moving into `src/TmrOverlay.Core/`; Windows remains the production app/runtime, while the ignored mac harness remains the mock-telemetry development surface.
 - The root-level launcher is `TmrOverlay.cmd`, not a standalone copied `.exe`, because a normal framework-dependent .NET build needs its companion output files.
 - The primary analyzed real capture is the 4-hour Nürburgring VLN race capture. It proved that teammate stints retain `CarIdx*` timing/position data but do not expose direct scalar fuel fields.

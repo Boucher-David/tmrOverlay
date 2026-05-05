@@ -21,6 +21,7 @@ Driving overlays are managed windows that can sit above the simulator. Current d
 - Fuel Calculator.
 - Relative.
 - Track Map.
+- Garage Cover.
 - Flags.
 - Session / Weather.
 - Pit Service.
@@ -74,9 +75,11 @@ Gap To Leader is race-only, so its settings tab omits the redundant `Display in 
 
 Each user-facing overlay tab shows a selectable localhost browser-source URL plus a copy button when a route exists. These routes are independent of the native overlay visibility checkbox; a hidden native overlay can still be used as a localhost browser source when `LocalhostOverlays` is enabled in configuration.
 
-Track Map exposes normal overlay visibility, scale, opacity, and session filters plus map-source status. Its tab explains that bundled app maps are used automatically when the current track identity matches, while local IBT-derived map generation is on by default to fill or improve layouts after sessions. The `Build local maps from IBT telemetry` checkbox controls future automatic post-session generation and whether user-generated maps are eligible at runtime; when disabled, runtime lookup uses bundled app maps before falling back to the circle placeholder. The settings tab no longer exposes one-off `.ibt` conversion controls; use `tools/TmrOverlay.TrackMapGenerator` for bundled-asset generation and QA.
+Track Map exposes normal overlay visibility, scale, map-fill opacity, and session filters plus map-source status. Its tab explains that bundled app maps are used automatically when the current track identity matches, while local IBT-derived map generation is on by default to fill or improve layouts after sessions. The `Build local maps from IBT telemetry` checkbox controls future automatic post-session generation and whether user-generated maps are eligible at runtime; when disabled, runtime lookup uses bundled app maps before falling back to the circle placeholder. The settings tab no longer exposes one-off `.ibt` conversion controls; use `tools/TmrOverlay.TrackMapGenerator` for bundled-asset generation and QA.
 
 Stream Chat is exposed as a browser-source settings tab and localhost route. The settings tab asks for one active source: not configured, Streamlabs Chat Box URL, or Twitch channel. Streamlabs embeds the configured widget URL in `/overlays/stream-chat`; Twitch connects from the browser source to public channel chat and appends messages as they arrive. The inactive provider is ignored even if its field has a saved value. Provider auth, moderation controls, write/chat-command support, and richer rate-limit handling are separate follow-up work. Streamlabs widget URLs are treated as private local settings and redacted from diagnostics bundles.
+
+Garage Cover exposes visibility, session filters, image import/clear, and explicit cover frame width/height. It does not expose opacity because the cover is a privacy feature. The imported image is copied into app-owned settings storage before being used by the overlay; when no user image is available, the cover uses the black TMR logo fallback.
 
 The selected overlay tab is reported back to `OverlayManager`.
 
@@ -94,6 +97,8 @@ For every managed driving overlay, `OverlayManager` ensures:
 The gap-to-leader overlay is normalized to race-only visibility whenever managed overlay settings are ensured.
 
 The flags overlay is normalized to the primary monitor bounds when old saved settings still contain the previous small table dimensions or the old 1920x1080 default. Ultrawide monitors use full monitor height with a centered 4:3 border so the default is not an impractically wide banner. User-entered custom border width/height are preserved once edited.
+
+The garage cover overlay is normalized to the primary monitor bounds the first time it is created and is forced to full opacity on each apply. User-entered custom cover width/height are preserved once the first-run frame has been applied.
 
 ## Session Visibility
 

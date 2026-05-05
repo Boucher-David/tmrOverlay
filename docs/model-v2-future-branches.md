@@ -192,6 +192,7 @@ Likely scope:
 - Generate or validate layouts against readability, session filters, stale-state handling, screenshot validation, and performance rules.
 - Treat exported layouts as development artifacts that can inform V2.0 user-facing layout profiles, not as a full in-app profile manager yet.
 - Keep production overlays hand-authored until generated layouts can meet the same quality bar.
+- Treat DDU-style builder research as primitive/layout work, not as a reason to collapse purpose-built overlays into one configurable mega-widget.
 
 ## Suggested V2.X Roadmap
 
@@ -275,7 +276,7 @@ That replay provider should be a development tool only. It should read existing 
 
 The mac harness remains the fast local design surface, but Windows is the production/iRacing runtime. v0.10 adds a Windows-only screenshot generator that renders the real WinForms forms with deterministic telemetry fixtures and uploads the resulting contact sheet plus per-state PNGs as GitHub Actions artifacts.
 
-Use this as a parity gate, not as a replacement for the tracked `mocks/` screenshots. The tracked mac screenshots document the intended review states; the Windows artifacts prove the production forms still render, size, and arrange those states under the WinForms runtime. The first parity set should cover settings tabs plus the current production overlays: status, standings, fuel calculator, relative, track map, flags, session/weather, pit service, inputs, radar, and gap to leader.
+Use this as a parity gate, not as a replacement for the tracked `mocks/` screenshots. The tracked mac screenshots document the intended review states; the Windows artifacts prove the production forms still render, size, and arrange those states under the WinForms runtime. The first parity set should cover settings tabs plus the current production overlays: status, standings, fuel calculator, relative, track map, garage cover, flags, session/weather, pit service, inputs, radar, and gap to leader.
 
 Keep the fixtures isolated from local history, app data, raw captures, and real machine paths. If a Windows screenshot state needs live telemetry, build it from normalized `LiveTelemetrySnapshot` data with explicit fixture values. If a future overlay needs replay evidence, add that through a separate capture-replay branch rather than letting the screenshot generator read private capture directories.
 
@@ -358,6 +359,16 @@ An overlay builder is a future creator/development platform, not a prerequisite 
 
 Builder v1 should likely start as a local development tool for arranging simple telemetry widgets, choosing shared theme tokens, and exporting deterministic preview states. Only later should it become a user-facing editor for custom overlays. Keep the production Windows overlays hand-authored until the builder can generate layouts that meet the same readability, session-filter, stale-state, screenshot-validation, and performance expectations.
 
+### Peer Reference: iRon DDU And Cover
+
+The reviewed iRon DDU is useful product research, but it should not be interpreted as an immediate reason to build one configurable mega-overlay. In the code it is a hand-authored Direct2D dashboard with many compact information boxes, not a drag-and-drop user builder. The important lesson is the density and grouping of primitive race facts: gear, lap/session state, position, incidents, lap delta, fuel, tire/temperature-like readouts, bias, oil, and water can coexist in a compact lower-screen or secondary-display surface when each widget is small and predictable.
+
+iRon's fuel block is the clearest functional reference. It averages recent valid green laps, ignores laps affected by pit road or caution-style flags, and applies a safety factor before estimating remaining laps and fuel-to-finish. TMR's fuel work should keep the richer stint/history/strategy model in purpose-built fuel and future engineer surfaces, but the DDU confirms that a compact "what do I need now" dashboard row can be valuable once those model-v2 facts are stable.
+
+The iRon Cover overlay is deliberately just a blank rectangle. TMR's Garage Cover V1 is stronger as a streamer privacy feature because it keys off `IsGarageVisible`, stays opaque, uses app-owned imported artwork, and has a TMR-logo fallback. The V2 opportunity is separate: a stream-facing garage/broadcast state can show safe session, standings, stint, sponsor, or team-art context while still covering setup details.
+
+Product implication: keep pit release and garage privacy in V1 because they solve direct user pain now. Keep DDU-style layout composition, richer pit/engineer context, garage broadcast content, and user layout profiles in V2/design-v2, after the underlying model contracts and layout primitives are stable enough to make custom surfaces reliable.
+
 ### Layout Profiles
 
 Scenario layout profiles are the user-facing version of configurable overlay sets. A profile should save the combination of overlays and their scenario-specific options, not only window placement. For example, qualifying may show relative, inputs, and lap delta with one set of scale/opacity/session filters, while race may show standings, relative, flags, radar, and pit-service context with different rows and placement.
@@ -392,3 +403,9 @@ Current design-v2 candidate readiness:
 Treat pit crew/engineer as a V2.0 operator mode/workspace, not as a hidden feature inside the read-only pit-service snapshot and not as a V1.0 core overlay. A spotter or engineer watching a team race needs a different telemetry surface than the in-car driver: pit stop request state, repair/fuel/tire choices, stint/fuel analysis, driver-control context, team-car status, and potentially command-capable controls for iRacing pit service variables.
 
 Before adding command controls, isolate simulator writes behind an explicit pit-command service and UI state that makes scope clear. iRacing pit commands are active-car commands, so spectator/teammate behavior needs live validation before any team-operator workflow can promise control over the car being watched. The first pit-service overlay should therefore stay read-only while captures collect the pit/service/setup-change evidence needed for the V2.0 engineer product.
+
+### Garage / Broadcast Context Surface
+
+Garage Cover V1 is a privacy cover. V2 can use the same `IsGarageVisible` trigger as a stream-facing context state: show team art, session status, standings snippets, recent stint context, strategy notes, or sponsor-safe messaging while setup details are hidden.
+
+Keep this separate from the native privacy requirement. The default cover must remain opaque and trustworthy; richer race information should be opt-in, deterministic, and sourced from model-v2 state that is already validated elsewhere. A future browser-source version may fit OBS workflows better than only a native always-on-top window.

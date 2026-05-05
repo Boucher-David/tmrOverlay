@@ -7,6 +7,7 @@ using TmrOverlay.App.Events;
 using TmrOverlay.App.Localhost;
 using TmrOverlay.App.Overlays.Abstractions;
 using TmrOverlay.App.Overlays.Flags;
+using TmrOverlay.App.Overlays.GarageCover;
 using TmrOverlay.App.Overlays.StreamChat;
 using TmrOverlay.App.Overlays.TrackMap;
 using TmrOverlay.App.Overlays.Styling;
@@ -30,6 +31,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         "gap-to-leader",
         "track-map",
         "stream-chat",
+        "garage-cover",
         "fuel-calculator",
         "input-state",
         "car-radar",
@@ -330,6 +332,19 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _selectedOverlayChanged(_tabs.SelectedTab?.Tag as string);
     }
 
+    private void SelectOverlayTab(string overlayId)
+    {
+        foreach (TabPage page in _tabs.TabPages)
+        {
+            if (string.Equals(page.Tag as string, overlayId, StringComparison.OrdinalIgnoreCase))
+            {
+                _tabs.SelectedTab = page;
+                ReportSelectedOverlayTab();
+                return;
+            }
+        }
+    }
+
     private void RequestApplicationExit()
     {
         if (_applicationExitRequested)
@@ -619,7 +634,13 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
         if (definition.ShowOpacityControl)
         {
-            var opacityLabel = CreateLabel("Opacity", 22, optionsTop + 4, 160);
+            var opacityLabel = CreateLabel(
+                string.Equals(definition.Id, TrackMapOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase)
+                    ? "Map fill"
+                    : "Opacity",
+                22,
+                optionsTop + 4,
+                160);
             var opacityInput = new NumericUpDown
             {
                 DecimalPlaces = 0,
@@ -727,7 +748,126 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             return;
         }
 
+        if (string.Equals(definition.Id, GarageCoverOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            AddGarageCoverOptions(page, settings, top);
+            return;
+        }
+
         AddDescriptorOptions(page, definition.SettingsOptions, settings, top);
+    }
+
+    private void AddGarageCoverOptions(TabPage page, OverlaySettings settings, int top)
+    {
+        page.Controls.Add(CreateSectionLabel("Cover image", 18, top, 500));
+        var imagePath = settings.GetStringOption(OverlayOptionKeys.GarageCoverImagePath);
+        page.Controls.Add(CreateLabel("Image", 22, top + 42, 90));
+        page.Controls.Add(CreateSelectableValueBox(
+            string.IsNullOrWhiteSpace(imagePath) ? "No image imported" : imagePath,
+            116,
+            top + 36,
+            520,
+            30));
+
+        var importButton = CreateActionButton("Import Image", 650, top + 36, 130);
+        importButton.Click += (_, _) => ImportGarageCoverImage(settings);
+        page.Controls.Add(importButton);
+
+        var clearButton = CreateActionButton("Clear", 790, top + 36, 80);
+        clearButton.Click += (_, _) =>
+        {
+            try
+            {
+                settings.SetStringOption(OverlayOptionKeys.GarageCoverImagePath, null);
+                GarageCoverImageStore.ClearImportedImages(_storageOptions.SettingsRoot);
+                SaveAndApply();
+                BuildTabs();
+                SelectOverlayTab(GarageCoverOverlayDefinition.Definition.Id);
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show(
+                    this,
+                    exception.Message,
+                    "Garage Cover",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+        };
+        page.Controls.Add(clearButton);
+
+        var sizeTop = top + 104;
+        page.Controls.Add(CreateSectionLabel("Cover frame", 18, sizeTop, 500));
+        page.Controls.Add(CreateLabel("Width", 22, sizeTop + 42, 80));
+        var widthInput = CreateIntegerInput(
+            Math.Clamp(settings.Width, GarageCoverOverlayDefinition.MinimumWidth, GarageCoverOverlayDefinition.MaximumWidth),
+            GarageCoverOverlayDefinition.MinimumWidth,
+            GarageCoverOverlayDefinition.MaximumWidth,
+            108,
+            sizeTop + 38);
+        widthInput.Width = 96;
+        widthInput.ValueChanged += (_, _) =>
+        {
+            settings.Width = (int)widthInput.Value;
+            SaveAndApply();
+        };
+        page.Controls.Add(widthInput);
+
+        page.Controls.Add(CreateLabel("Height", 238, sizeTop + 42, 80));
+        var heightInput = CreateIntegerInput(
+            Math.Clamp(settings.Height, GarageCoverOverlayDefinition.MinimumHeight, GarageCoverOverlayDefinition.MaximumHeight),
+            GarageCoverOverlayDefinition.MinimumHeight,
+            GarageCoverOverlayDefinition.MaximumHeight,
+            324,
+            sizeTop + 38);
+        heightInput.Width = 96;
+        heightInput.ValueChanged += (_, _) =>
+        {
+            settings.Height = (int)heightInput.Value;
+            SaveAndApply();
+        };
+        page.Controls.Add(heightInput);
+
+        page.Controls.Add(CreateMutedLabel("The cover appears automatically only while iRacing reports the Garage screen as visible.", 22, sizeTop + 84, 680));
+    }
+
+    private void ImportGarageCoverImage(OverlaySettings settings)
+    {
+        using var dialog = new OpenFileDialog
+        {
+            AddExtension = true,
+            CheckFileExists = true,
+            Filter = "Image files|*.png;*.jpg;*.jpeg;*.bmp;*.gif|All files|*.*",
+            Multiselect = false,
+            Title = "Import garage cover image"
+        };
+
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            var importedPath = GarageCoverImageStore.ImportImage(dialog.FileName, _storageOptions.SettingsRoot);
+            settings.SetStringOption(OverlayOptionKeys.GarageCoverImagePath, importedPath);
+            _events.Record("garage_cover_image_imported", properties: new Dictionary<string, string?>
+            {
+                ["extension"] = Path.GetExtension(importedPath)
+            });
+            SaveAndApply();
+            BuildTabs();
+            SelectOverlayTab(GarageCoverOverlayDefinition.Definition.Id);
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(
+                this,
+                exception.Message,
+                "Garage Cover",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
     }
 
     private void AddTrackMapOptions(TabPage page, OverlaySettings settings, int top)

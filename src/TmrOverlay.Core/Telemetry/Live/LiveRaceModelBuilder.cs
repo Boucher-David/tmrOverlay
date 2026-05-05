@@ -470,6 +470,7 @@ internal static class LiveRaceModelBuilder
             || sample.PitstopActive
             || sample.PlayerCarInPitStall
             || sample.TeamOnPitRoad is not null
+            || sample.PitServiceStatus is not null
             || sample.PitServiceFlags is not null
             || sample.PitServiceFuelLiters is not null
             || sample.PitRepairLeftSeconds is not null
@@ -494,6 +495,7 @@ internal static class LiveRaceModelBuilder
             InstantaneousBurnEvidence: instantaneousBurnEvidence,
             MeasuredBurnEvidence: measuredBurnEvidence,
             BaselineEligibilityEvidence: baselineEligibilityEvidence,
+            PitServiceStatus: sample.PitServiceStatus,
             PitServiceFlags: sample.PitServiceFlags,
             PitServiceFuelLiters: ValidNonNegative(sample.PitServiceFuelLiters),
             PitRepairLeftSeconds: ValidNonNegative(sample.PitRepairLeftSeconds),
@@ -510,6 +512,7 @@ internal static class LiveRaceModelBuilder
             Quality: LiveModelQuality.Partial,
             IsOnTrack: sample.IsOnTrack,
             IsInGarage: sample.IsInGarage,
+            IsGarageVisible: sample.IsGarageVisible == true,
             OnPitRoad: sample.OnPitRoad,
             Lap: sample.Lap,
             LapCompleted: sample.LapCompleted,
