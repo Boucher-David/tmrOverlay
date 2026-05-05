@@ -267,7 +267,7 @@ Last updated: 2026-05-05
   - includes a local-development build freshness check that warns when source files in the checkout are newer than the running build
 
 - `src/TmrOverlay.App/Diagnostics/`
-  - creates support bundles with app/storage metadata, telemetry state, lightweight performance snapshots, recent performance logs, runtime state, settings, logs/events, and latest capture metadata plus compact capture/IBT sidecars
+  - creates support bundles with app/storage metadata, telemetry state, localhost overlay state/request counters, track-map inventory metadata, lightweight performance snapshots, recent performance logs, runtime state, settings, logs/events, and latest capture metadata plus compact capture/IBT sidecars
   - includes recent compact edge-case telemetry artifacts under `edge-cases/`, including their final context tail when present
   - includes recent model-v2 parity artifacts under `model-parity/` plus the latest capture's `live-model-parity.json` when present
   - includes recent post-race analysis JSON at top-level `analysis/` plus recent user-history summaries and aggregates so collected car/track/session metrics can be inspected for accuracy
@@ -290,8 +290,10 @@ Last updated: 2026-05-05
   - optional disabled-by-default localhost browser-source server for OBS and other local capture tools
   - exposes `GET /health`, `GET /snapshot`, `GET /api/snapshot`, `GET /api/track-map`, `GET /api/stream-chat`, and per-overlay HTML routes under `/overlays/{id}`
   - current routes cover standings, relative, fuel calculator, session/weather, pit service, input state, car radar, gap to leader, track map, and stream chat; Flags and Garage Cover are intentionally disabled for localhost for now
+  - browser-source route metadata and page scripts live with overlay modules under `src/TmrOverlay.App/Overlays/`; localhost owns HTTP transport and the generic page shell
   - pages poll `ILiveTelemetrySource`, so local browser overlays do not read directly from iRacing or raw capture files
-  - the Stream Chat route reads one selected settings source at a time: Streamlabs Chat Box widget URL or public Twitch channel chat; Streamlabs widget URLs are redacted from diagnostics bundles
+  - records lifecycle status, request counts, route counts, failures, and last-request details into diagnostics bundles
+  - Stream Chat reads one saved settings source at a time: the native overlay auto-connects to public Twitch channel chat, while the localhost route can also embed a Streamlabs Chat Box widget URL; Streamlabs widget URLs are redacted from diagnostics bundles
   - each overlay settings tab lists a selectable/copyable localhost URL, and the route remains usable even when the native overlay is hidden
 
 ### Local mac harness
@@ -312,7 +314,7 @@ Last updated: 2026-05-05
   - the mac live mock uses the tracked four-hour Nürburgring baseline shape from race time zero at 4x speed for faster fuel/gap overlay iteration
   - for overlay development, Windows should stay production-facing and real-data-driven; the ignored mac harness can use looser mock scenes, fixed offsets, named sample drivers, and exaggerated events for fast visual iteration
   - the mac mock race mirrors the Windows radar/gap feature behavior with synthetic all-class timing rows, multiclass approach traffic, weather bands, and driver handoff events, while Windows remains real telemetry only
-  - the mac harness mirrors the current Windows overlay review set: status, standings, fuel calculator, relative, track map, stream chat UI route, garage cover, flags, session/weather, pit-service, input/car-state, radar, and gap-to-leader
+  - the mac harness mirrors the current Windows overlay review set: status, standings, fuel calculator, relative, track map, stream chat settings/route controls, garage cover, flags, session/weather, pit-service, input/car-state, radar, and gap-to-leader
   - the mac status overlay is display-only, matching Windows; runtime raw-capture requests live in the settings window and still record logs/events
   - the mac harness mirrors the settings window schema and basic tabbed UI for visibility, scale/opacity when applicable, session filters, units, support capture, and a mock Support/performance snapshot tab; mac diagnostics bundles include matching telemetry-state/performance metadata stubs and recent mock performance JSONL logs
   - `swift run TmrOverlayMacScreenshots` renders tracked overlay review artifacts under `mocks/`: focused live-state screenshots, multi-state contact sheets, and smaller per-state PNG cards for status, fuel calculator, relative, settings, car radar, gap-to-leader, and design-v2 candidate states; the settings screenshots include the current standings and track-map tabs
@@ -551,7 +553,7 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 - v0.9 portable tester publishing is tag-driven, but broad production distribution still needs a signing decision, installer/update channel, and passive update-check UI.
 - The PR workflow runs restore/build/test, tracked screenshot validation, Windows screenshot artifact generation/validation, and a self-contained publish dry run with package audit. The release workflow audits the publish folder for accidental repo/dev-folder leaks, emits a package manifest, and keeps user data under the app-data root instead of the install folder.
 - Because the app-data root persists across portable installs, durable settings/history schema changes must include version bumps plus migrations or compatible readers. Incompatible/future history is skipped and left on disk instead of being fed to overlays.
-- Overlay modules now live under `src/TmrOverlay.App/Overlays/`; status, settings, standings, fuel-calculator, relative, track-map, stream-chat browser source, garage-cover privacy cover, flags, session/weather, pit-service snapshot, input/car-state, car-radar, and gap-to-leader overlays are wired. Remaining future product surfaces should be added deliberately rather than as placeholder overlay tabs.
+- Overlay modules now live under `src/TmrOverlay.App/Overlays/`; status, settings, standings, fuel-calculator, relative, track-map, stream-chat, garage-cover privacy cover, flags, session/weather, pit-service snapshot, input/car-state, car-radar, and gap-to-leader overlays are wired. Browser-source scripts for localhost routes live with their overlay modules. Remaining future product surfaces should be added deliberately rather than as placeholder overlay tabs.
 - Pure models and calculations have started moving into `src/TmrOverlay.Core/`; Windows remains the production app/runtime, while the ignored mac harness remains the mock-telemetry development surface.
 - The root-level launcher is `TmrOverlay.cmd`, not a standalone copied `.exe`, because a normal framework-dependent .NET build needs its companion output files.
 - The primary analyzed real capture is the 4-hour Nürburgring VLN race capture. It proved that teammate stints retain `CarIdx*` timing/position data but do not expose direct scalar fuel fields.
@@ -566,7 +568,7 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 6. Keep collecting radar diagnostics for suppressed non-local focus, local progress-missing, side-without-placement, and multiclass cases before expanding beyond local in-car radar.
 7. Harden Track Map after first real usage: current-map quality/status, manual rebuild/replace UX, bundled map QA, confidence/stale/pit-lane screenshot states, and pit-lane-aware live markers when reliable telemetry exists.
 8. Decide the Overlay Bridge v2 shape for teammate-to-teammate data sharing: enable/disable, allowed peers, schema version, connection health, and which normalized model-v2 context should become the trusted peer contract.
-9. Expand Stream Chat beyond the current Streamlabs-widget and public Twitch channel modes when needed, keeping provider auth, moderation, rate limits, and offline preview states separate from iRacing telemetry.
+9. Expand Stream Chat beyond the current Streamlabs-widget browser source and public Twitch channel modes when needed, keeping provider auth, moderation, rate limits, and offline preview states separate from iRacing telemetry.
 10. Treat overlay builder as a later creator/development platform on top of design-v2 primitives and the bridge schema, not as a prerequisite for the first hand-authored production overlays.
 11. Improve historical aggregation and confidence/source tracking as more user sessions are collected.
 12. Keep raw capture available for diagnostics, but avoid making it the normal user data path.

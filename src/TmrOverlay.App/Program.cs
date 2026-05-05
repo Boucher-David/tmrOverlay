@@ -104,6 +104,7 @@ internal static class Program
                 services.AddSingleton(RetentionOptions.FromConfiguration(context.Configuration));
                 services.AddSingleton(replayOptions);
                 services.AddSingleton(LocalhostOverlayOptions.FromConfiguration(context.Configuration));
+                services.AddSingleton<LocalhostOverlayState>();
                 services.AddSingleton<AppEventRecorder>();
                 services.AddSingleton<AppSettingsStore>();
                 services.AddSingleton<SessionHistoryStore>();

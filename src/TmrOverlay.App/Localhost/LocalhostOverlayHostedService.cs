@@ -4,9 +4,13 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using TmrOverlay.App.Events;
+using TmrOverlay.App.Overlays.BrowserSources;
+using TmrOverlay.App.Overlays.StreamChat;
+using TmrOverlay.App.Overlays.TrackMap;
+using TmrOverlay.App.Performance;
 using TmrOverlay.App.Settings;
 using TmrOverlay.App.TrackMaps;
-using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Telemetry.Live;
 
 namespace TmrOverlay.App.Localhost;
@@ -24,6 +28,9 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly TrackMapStore _trackMapStore;
     private readonly AppSettingsStore _settingsStore;
+    private readonly LocalhostOverlayState _state;
+    private readonly AppEventRecorder _events;
+    private readonly AppPerformanceState _performanceState;
     private readonly ILogger<LocalhostOverlayHostedService> _logger;
     private CancellationTokenSource? _cancellation;
     private HttpListener? _listener;
@@ -34,12 +41,18 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
         ILiveTelemetrySource liveTelemetrySource,
         TrackMapStore trackMapStore,
         AppSettingsStore settingsStore,
+        LocalhostOverlayState state,
+        AppEventRecorder events,
+        AppPerformanceState performanceState,
         ILogger<LocalhostOverlayHostedService> logger)
     {
         _options = options;
         _liveTelemetrySource = liveTelemetrySource;
         _trackMapStore = trackMapStore;
         _settingsStore = settingsStore;
+        _state = state;
+        _events = events;
+        _performanceState = performanceState;
         _logger = logger;
     }
 
@@ -47,9 +60,16 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
     {
         if (!_options.Enabled)
         {
+            _state.RecordDisabled();
+            _events.Record("localhost_overlay_disabled", new Dictionary<string, string?>
+            {
+                ["prefix"] = _options.Prefix,
+                ["port"] = _options.Port.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            });
             return Task.CompletedTask;
         }
 
+        _state.RecordStartAttempted();
         try
         {
             _cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -57,12 +77,25 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
             _listener.Prefixes.Add(_options.Prefix);
             _listener.Start();
             _listenerTask = Task.Run(() => ListenAsync(_cancellation.Token), CancellationToken.None);
+            _state.RecordStarted();
+            _events.Record("localhost_overlay_started", new Dictionary<string, string?>
+            {
+                ["prefix"] = _options.Prefix,
+                ["port"] = _options.Port.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            });
             _logger.LogInformation("Localhost overlays listening on {Prefix}.", _options.Prefix);
         }
         catch (Exception exception)
         {
             _listener?.Close();
             _listener = null;
+            _state.RecordStartFailed(exception);
+            _events.Record("localhost_overlay_start_failed", new Dictionary<string, string?>
+            {
+                ["prefix"] = _options.Prefix,
+                ["port"] = _options.Port.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["error"] = exception.Message
+            });
             _logger.LogWarning(
                 exception,
                 "Localhost overlays could not listen on {Prefix}. The app will continue without localhost browser overlays.",
@@ -89,6 +122,16 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
                 // Expected while the host is shutting down the listener.
             }
         }
+
+        _state.RecordStopped();
+        if (_options.Enabled)
+        {
+            _events.Record("localhost_overlay_stopped", new Dictionary<string, string?>
+            {
+                ["prefix"] = _options.Prefix,
+                ["port"] = _options.Port.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            });
+        }
     }
 
     private async Task ListenAsync(CancellationToken cancellationToken)
@@ -111,22 +154,30 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
 
     private async Task HandleRequestAsync(HttpListenerContext context, CancellationToken cancellationToken)
     {
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        var route = "unknown";
+        var statusCode = (int)HttpStatusCode.InternalServerError;
+        Exception? requestException = null;
         try
         {
             AddCorsHeaders(context.Response);
             if (string.Equals(context.Request.HttpMethod, "OPTIONS", StringComparison.OrdinalIgnoreCase))
             {
+                route = "options";
                 context.Response.StatusCode = (int)HttpStatusCode.NoContent;
+                statusCode = context.Response.StatusCode;
                 context.Response.Close();
                 return;
             }
 
             if (!string.Equals(context.Request.HttpMethod, "GET", StringComparison.OrdinalIgnoreCase))
             {
+                route = "method_not_allowed";
                 await WriteJsonAsync(context.Response, HttpStatusCode.MethodNotAllowed, new
                 {
                     error = "method_not_allowed"
                 }, cancellationToken).ConfigureAwait(false);
+                statusCode = (int)HttpStatusCode.MethodNotAllowed;
                 return;
             }
 
@@ -135,34 +186,41 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
             {
                 case "":
                 case "/":
+                    route = "index";
                     await WriteHtmlAsync(
                         context.Response,
                         HttpStatusCode.OK,
-                        LocalhostOverlayPageRenderer.RenderIndex(_options.Port),
+                        BrowserOverlayPageRenderer.RenderIndex(_options.Port),
                         cancellationToken).ConfigureAwait(false);
+                    statusCode = (int)HttpStatusCode.OK;
                     break;
 
                 case "/health":
+                    route = "health";
                     await WriteJsonAsync(context.Response, HttpStatusCode.OK, new
                     {
                         ok = true,
                         service = "tmr-localhost-overlays",
-                        routes = LocalhostOverlayPageRenderer.Routes,
+                        routes = BrowserOverlayPageRenderer.Routes,
                         generatedAtUtc = DateTimeOffset.UtcNow
                     }, cancellationToken).ConfigureAwait(false);
+                    statusCode = (int)HttpStatusCode.OK;
                     break;
 
                 case "/api/snapshot":
                 case "/snapshot":
+                    route = "snapshot";
                     var live = _liveTelemetrySource.Snapshot();
                     await WriteJsonAsync(context.Response, HttpStatusCode.OK, new
                     {
                         generatedAtUtc = DateTimeOffset.UtcNow,
                         live
                     }, cancellationToken).ConfigureAwait(false);
+                    statusCode = (int)HttpStatusCode.OK;
                     break;
 
                 case "/api/track-map":
+                    route = "track_map";
                     var snapshot = _liveTelemetrySource.Snapshot();
                     var trackMapSettings = ReadTrackMapSettings();
                     await WriteJsonAsync(context.Response, HttpStatusCode.OK, new
@@ -176,44 +234,72 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
                             internalOpacity = trackMapSettings.InternalOpacity
                         }
                     }, cancellationToken).ConfigureAwait(false);
+                    statusCode = (int)HttpStatusCode.OK;
                     break;
 
                 case "/api/stream-chat":
+                    route = "stream_chat";
                     await WriteJsonAsync(context.Response, HttpStatusCode.OK, new
                     {
                         generatedAtUtc = DateTimeOffset.UtcNow,
                         streamChat = StreamChatOverlaySettings.From(_settingsStore.Load())
                     }, cancellationToken).ConfigureAwait(false);
+                    statusCode = (int)HttpStatusCode.OK;
                     break;
 
                 default:
-                    if (LocalhostOverlayPageRenderer.TryRender(path, out var html))
+                    if (BrowserOverlayPageRenderer.TryRender(path, out var html))
                     {
+                        route = "overlay_page";
                         await WriteHtmlAsync(context.Response, HttpStatusCode.OK, html, cancellationToken).ConfigureAwait(false);
+                        statusCode = (int)HttpStatusCode.OK;
                         break;
                     }
 
+                    route = "not_found";
                     await WriteJsonAsync(context.Response, HttpStatusCode.NotFound, new
                     {
                         error = "not_found"
                     }, cancellationToken).ConfigureAwait(false);
+                    statusCode = (int)HttpStatusCode.NotFound;
                     break;
             }
         }
         catch (Exception exception)
         {
+            requestException = exception;
             _logger.LogWarning(exception, "Localhost overlay request failed.");
+            _events.Record("localhost_overlay_request_failed", new Dictionary<string, string?>
+            {
+                ["route"] = route,
+                ["method"] = context.Request.HttpMethod,
+                ["path"] = context.Request.Url?.AbsolutePath ?? string.Empty,
+                ["error"] = exception.Message
+            });
             try
             {
                 await WriteJsonAsync(context.Response, HttpStatusCode.InternalServerError, new
                 {
                     error = "localhost_overlay_error"
                 }, CancellationToken.None).ConfigureAwait(false);
+                statusCode = (int)HttpStatusCode.InternalServerError;
             }
             catch
             {
                 // The client may have disconnected while the service was writing the response.
             }
+        }
+        finally
+        {
+            var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(started);
+            _state.RecordRequest(
+                route,
+                context.Request.HttpMethod,
+                context.Request.Url?.AbsolutePath ?? string.Empty,
+                statusCode,
+                elapsed,
+                requestException);
+            _performanceState.RecordOperation(AppPerformanceMetricIds.LocalhostRequest, elapsed, requestException is null && statusCode < 500);
         }
     }
 
@@ -221,17 +307,12 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
     {
         try
         {
-            var settings = _settingsStore.Load();
-            var trackMap = settings.Overlays.FirstOrDefault(
-                overlay => string.Equals(overlay.Id, "track-map", StringComparison.OrdinalIgnoreCase));
-            return new TrackMapBrowserSettings(
-                IncludeUserMaps: trackMap?.GetBooleanOption(OverlayOptionKeys.TrackMapBuildFromTelemetry, defaultValue: true) ?? true,
-                InternalOpacity: Math.Clamp(trackMap?.Opacity ?? 0.88d, 0.2d, 1d));
+            return TrackMapBrowserSettings.From(_settingsStore.Load());
         }
         catch (Exception exception)
         {
             _logger.LogWarning(exception, "Failed to read track map settings for localhost map lookup. Defaulting to include user maps.");
-            return new TrackMapBrowserSettings(IncludeUserMaps: true, InternalOpacity: 0.88d);
+            return TrackMapBrowserSettings.Default;
         }
     }
 
@@ -276,5 +357,3 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
         response.Close();
     }
 }
-
-internal sealed record TrackMapBrowserSettings(bool IncludeUserMaps, double InternalOpacity);

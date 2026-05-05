@@ -1,10 +1,12 @@
 using System.IO.Compression;
 using System.Text.Json.Nodes;
+using TmrOverlay.App.Localhost;
 using Microsoft.Extensions.Logging.Abstractions;
 using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Performance;
 using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
+using TmrOverlay.App.TrackMaps;
 using Xunit;
 
 namespace TmrOverlay.App.Tests.Diagnostics;
@@ -85,15 +87,31 @@ public sealed class DiagnosticsBundleServiceTests
 
             var state = new TelemetryCaptureState();
             state.MarkCaptureStarted(captureDirectory, DateTimeOffset.UtcNow);
+            var localhostState = new LocalhostOverlayState(new LocalhostOverlayOptions
+            {
+                Enabled = true,
+                Port = 9123
+            });
+            localhostState.RecordStartAttempted();
+            localhostState.RecordStarted();
+            localhostState.RecordRequest(
+                "track_map",
+                "GET",
+                "/api/track-map",
+                200,
+                TimeSpan.FromMilliseconds(4));
             var performance = new AppPerformanceState();
             performance.RecordOperation("test.operation", TimeSpan.FromMilliseconds(3));
             var performanceRecorder = new AppPerformanceSnapshotRecorder(storage);
             performanceRecorder.Record(performance.Snapshot());
+            var trackMapStore = new TrackMapStore(storage);
             var service = new DiagnosticsBundleService(
                 storage,
                 new LiveModelParityOptions(),
                 new LiveOverlayDiagnosticsOptions(),
                 state,
+                localhostState,
+                trackMapStore,
                 performance,
                 performanceRecorder,
                 NullLogger<DiagnosticsBundleService>.Instance);
@@ -105,6 +123,8 @@ public sealed class DiagnosticsBundleServiceTests
             Assert.Contains("metadata/app-version.json", entryNames);
             Assert.Contains("metadata/storage.json", entryNames);
             Assert.Contains("metadata/telemetry-state.json", entryNames);
+            Assert.Contains("metadata/localhost-overlays.json", entryNames);
+            Assert.Contains("metadata/track-maps.json", entryNames);
             Assert.Contains("metadata/performance.json", entryNames);
             Assert.Contains("runtime/runtime-state.json", entryNames);
             Assert.Contains("settings/settings.json", entryNames);
@@ -129,6 +149,25 @@ public sealed class DiagnosticsBundleServiceTests
             Assert.Contains("history/user/cars/car-156-mercedesamgevogt3/tracks/track-262-nurburgring-combinedshortb/sessions/race/summaries/capture-20260426-120000-000.json", entryNames);
             Assert.DoesNotContain("latest-capture/telemetry.bin", entryNames);
             Assert.DoesNotContain("latest-capture/ibt-analysis/source.ibt", entryNames);
+
+            var localhostEntry = archive.GetEntry("metadata/localhost-overlays.json");
+            Assert.NotNull(localhostEntry);
+            using (var localhostReader = new StreamReader(localhostEntry.Open()))
+            {
+                var localhostJson = JsonNode.Parse(localhostReader.ReadToEnd());
+                Assert.True(((bool?)localhostJson?["enabled"]) == true);
+                Assert.Equal("listening", (string?)localhostJson?["status"]);
+                Assert.Equal(1L, ((long?)localhostJson?["totalRequests"]) ?? -1L);
+                Assert.Equal(1L, ((long?)localhostJson?["routeCounts"]?["track_map"]) ?? -1L);
+            }
+
+            var trackMapsEntry = archive.GetEntry("metadata/track-maps.json");
+            Assert.NotNull(trackMapsEntry);
+            using (var trackMapsReader = new StreamReader(trackMapsEntry.Open()))
+            {
+                var trackMapsJson = JsonNode.Parse(trackMapsReader.ReadToEnd());
+                Assert.Equal(storage.TrackMapRoot, (string?)trackMapsJson?["userRoot"]);
+            }
 
             var settingsEntry = archive.GetEntry("settings/settings.json");
             Assert.NotNull(settingsEntry);

@@ -6,6 +6,7 @@ using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.Localhost;
 using TmrOverlay.App.Overlays.Abstractions;
+using TmrOverlay.App.Overlays.BrowserSources;
 using TmrOverlay.App.Overlays.Flags;
 using TmrOverlay.App.Overlays.GarageCover;
 using TmrOverlay.App.Overlays.StreamChat;
@@ -719,7 +720,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     {
         const int x = 560;
         page.Controls.Add(CreateSectionLabel("Localhost browser source", x, top, 500));
-        if (LocalhostOverlayPageRenderer.TryGetRouteForOverlayId(definition.Id, out var route))
+        if (BrowserOverlayPageRenderer.TryGetRouteForOverlayId(definition.Id, out var route))
         {
             var url = $"{_localhostOverlayOptions.Prefix.TrimEnd('/')}{route}";
             page.Controls.Add(CreateLabel("URL", x + 4, top + 42, 120));

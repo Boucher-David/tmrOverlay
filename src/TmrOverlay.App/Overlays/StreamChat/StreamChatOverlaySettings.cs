@@ -1,9 +1,8 @@
 using System.Text.RegularExpressions;
-using TmrOverlay.App.Overlays.StreamChat;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 
-namespace TmrOverlay.App.Localhost;
+namespace TmrOverlay.App.Overlays.StreamChat;
 
 internal static partial class StreamChatOverlaySettings
 {

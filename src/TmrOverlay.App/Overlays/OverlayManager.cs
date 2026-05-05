@@ -53,6 +53,7 @@ internal sealed class OverlayManager : IDisposable
     private readonly ILogger<RelativeForm> _relativeLogger;
     private readonly ILogger<StandingsForm> _standingsLogger;
     private readonly ILogger<TrackMapForm> _trackMapLogger;
+    private readonly ILogger<StreamChatForm> _streamChatLogger;
     private readonly ILogger<SimpleTelemetryOverlayForm> _simpleTelemetryLogger;
     private readonly Dictionary<string, Form> _forms = [];
     private readonly Dictionary<string, double> _appliedScales = [];
@@ -60,7 +61,9 @@ internal sealed class OverlayManager : IDisposable
     private ApplicationSettings? _settings;
     private string? _appliedFontFamily;
     private string? _appliedUnitSystem;
+    private Form? _settingsZOrderForm;
     private bool _radarSettingsPreviewVisible;
+    private bool _settingsOverlayActive;
     private bool _startupShown;
 
     public event EventHandler? ApplicationExitRequested;
@@ -86,6 +89,7 @@ internal sealed class OverlayManager : IDisposable
         ILogger<RelativeForm> relativeLogger,
         ILogger<StandingsForm> standingsLogger,
         ILogger<TrackMapForm> trackMapLogger,
+        ILogger<StreamChatForm> streamChatLogger,
         ILogger<SimpleTelemetryOverlayForm> simpleTelemetryLogger)
     {
         _settingsStore = settingsStore;
@@ -108,6 +112,7 @@ internal sealed class OverlayManager : IDisposable
         _relativeLogger = relativeLogger;
         _standingsLogger = standingsLogger;
         _trackMapLogger = trackMapLogger;
+        _streamChatLogger = streamChatLogger;
         _simpleTelemetryLogger = simpleTelemetryLogger;
 
         _sessionVisibilityTimer = new System.Windows.Forms.Timer
@@ -167,6 +172,7 @@ internal sealed class OverlayManager : IDisposable
                 ApplyOverlaySettings,
                 RequestApplicationExit,
                 SelectSettingsOverlayTab));
+        WireSettingsEmergencyZOrder(form);
         form.Location = new Point(settings.X, settings.Y);
         form.ClientSize = new Size(
             SettingsOverlayDefinition.Definition.DefaultWidth,
@@ -178,6 +184,8 @@ internal sealed class OverlayManager : IDisposable
             form.Show();
         }
 
+        _settingsOverlayActive = true;
+        ApplyEmergencyOverlayZOrder();
         if (settingsSizeChanged)
         {
             SaveSettings();
@@ -276,6 +284,17 @@ internal sealed class OverlayManager : IDisposable
                 SaveSettings),
             650,
             400),
+        new OverlayRegistration(
+            StreamChatOverlayDefinition.Definition,
+            settings => new StreamChatForm(
+                _settingsStore,
+                _streamChatLogger,
+                _performanceState,
+                settings,
+                SelectedFontFamily,
+                SaveSettings),
+            1490,
+            24),
         new OverlayRegistration(
             GarageCoverOverlayDefinition.Definition,
             settings => new GarageCoverForm(
@@ -427,6 +446,12 @@ internal sealed class OverlayManager : IDisposable
                 continue;
             }
 
+            if (string.Equals(registration.Definition.Id, FlagsOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+            {
+                ApplyFlagsRegistration(registration, settings, shouldShow);
+                continue;
+            }
+
             if (!shouldShow)
             {
                 if (_forms.TryGetValue(registration.Definition.Id, out var hiddenForm))
@@ -449,6 +474,8 @@ internal sealed class OverlayManager : IDisposable
                 form.Show();
             }
         }
+
+        ApplyEmergencyOverlayZOrder();
     }
 
     private static string SelectedFontFamily => OverlayTheme.DefaultFontFamily;
@@ -541,6 +568,7 @@ internal sealed class OverlayManager : IDisposable
             settings.Width = size.Width;
             settings.Height = size.Height;
             settings.Opacity = 1d;
+            form.TopMost = !_settingsOverlayActive && settings.AlwaysOnTop;
             if (Math.Abs(form.Opacity - 1d) > 0.001d)
             {
                 form.Opacity = 1d;
@@ -829,10 +857,39 @@ internal sealed class OverlayManager : IDisposable
         }
     }
 
+    private void ApplyFlagsRegistration(OverlayRegistration registration, OverlaySettings settings, bool managedEnabled)
+    {
+        if (!managedEnabled)
+        {
+            if (_forms.TryGetValue(registration.Definition.Id, out var hiddenForm))
+            {
+                if (hiddenForm is FlagsOverlayForm flags)
+                {
+                    flags.SetManagedEnabled(false);
+                }
+
+                hiddenForm.Hide();
+            }
+
+            return;
+        }
+
+        var form = EnsureForm(
+            registration.Definition.Id,
+            () => registration.Create(settings));
+        ApplyScaleIfChanged(registration.Definition, settings, form);
+        ApplyOpacityIfChanged(registration.Definition, settings, form);
+        if (form is FlagsOverlayForm flags)
+        {
+            flags.TopMost = !_settingsOverlayActive && settings.AlwaysOnTop;
+            flags.SetManagedEnabled(true);
+        }
+    }
+
     private static void ApplyGarageCoverDefaultFramePolicy(OverlayDefinition definition, OverlaySettings settings)
     {
         if (!string.Equals(definition.Id, GarageCoverOverlayDefinition.Definition.Id, StringComparison.Ordinal)
-            || settings.GetBooleanOption(OverlayOptionKeys.GarageCoverDefaultFrameApplied, defaultValue: false))
+            || settings.GetBooleanOption(OverlayOptionKeys.GarageCoverCompactDefaultApplied, defaultValue: false))
         {
             if (string.Equals(definition.Id, GarageCoverOverlayDefinition.Definition.Id, StringComparison.Ordinal))
             {
@@ -842,17 +899,97 @@ internal sealed class OverlayManager : IDisposable
             return;
         }
 
-        var bounds = Screen.PrimaryScreen?.Bounds;
-        if (bounds is { Width: > 0, Height: > 0 } screen)
+        var bounds = Screen.PrimaryScreen?.Bounds ?? new Rectangle(0, 0, 1920, 1080);
+        var shouldApplyCompactDefault =
+            !settings.GetBooleanOption(OverlayOptionKeys.GarageCoverDefaultFrameApplied, defaultValue: false)
+            || settings.Width <= 0
+            || settings.Height <= 0
+            || IsLikelyScreenSizedGarageCover(settings, bounds);
+        if (shouldApplyCompactDefault)
         {
-            settings.X = screen.Left;
-            settings.Y = screen.Top;
-            settings.Width = Math.Clamp(screen.Width, GarageCoverOverlayDefinition.MinimumWidth, GarageCoverOverlayDefinition.MaximumWidth);
-            settings.Height = Math.Clamp(screen.Height, GarageCoverOverlayDefinition.MinimumHeight, GarageCoverOverlayDefinition.MaximumHeight);
+            var frame = GarageCoverOverlayDefinition.DefaultFrameForScreen(bounds);
+            settings.X = frame.Left;
+            settings.Y = frame.Top;
+            settings.Width = frame.Width;
+            settings.Height = frame.Height;
         }
 
         settings.Opacity = 1d;
         settings.SetBooleanOption(OverlayOptionKeys.GarageCoverDefaultFrameApplied, true);
+        settings.SetBooleanOption(OverlayOptionKeys.GarageCoverCompactDefaultApplied, true);
+    }
+
+    private void ApplyEmergencyOverlayZOrder()
+    {
+        ApplyLargeOverlayTopMost(GarageCoverOverlayDefinition.Definition.Id);
+        ApplyLargeOverlayTopMost(FlagsOverlayDefinition.Definition.Id);
+        if (_settingsOverlayActive
+            && _forms.TryGetValue(SettingsOverlayDefinition.Definition.Id, out var settingsForm)
+            && settingsForm.Visible)
+        {
+            settingsForm.BringToFront();
+        }
+    }
+
+    private void WireSettingsEmergencyZOrder(Form form)
+    {
+        if (ReferenceEquals(_settingsZOrderForm, form))
+        {
+            return;
+        }
+
+        _settingsZOrderForm = form;
+        form.Activated += (_, _) =>
+        {
+            _settingsOverlayActive = true;
+            ApplyEmergencyOverlayZOrder();
+        };
+        form.Deactivate += (_, _) =>
+        {
+            _settingsOverlayActive = false;
+            ApplyEmergencyOverlayZOrder();
+        };
+    }
+
+    private void ApplyLargeOverlayTopMost(string overlayId)
+    {
+        if (_settings is null || !_forms.TryGetValue(overlayId, out var form) || form.IsDisposed)
+        {
+            return;
+        }
+
+        var settings = _settings.GetOrAddOverlay(
+            overlayId,
+            overlayId == GarageCoverOverlayDefinition.Definition.Id
+                ? GarageCoverOverlayDefinition.Definition.DefaultWidth
+                : FlagsOverlayDefinition.Definition.DefaultWidth,
+            overlayId == GarageCoverOverlayDefinition.Definition.Id
+                ? GarageCoverOverlayDefinition.Definition.DefaultHeight
+                : FlagsOverlayDefinition.Definition.DefaultHeight,
+            defaultEnabled: false);
+        var shouldBeTopMost = !_settingsOverlayActive && settings.AlwaysOnTop;
+        if (form.TopMost != shouldBeTopMost)
+        {
+            form.TopMost = shouldBeTopMost;
+        }
+
+        if (_settingsOverlayActive)
+        {
+            form.SendToBack();
+        }
+    }
+
+    private static bool IsLikelyScreenSizedGarageCover(OverlaySettings settings, Rectangle screenBounds)
+    {
+        if (screenBounds.Width <= 0 || screenBounds.Height <= 0)
+        {
+            return false;
+        }
+
+        return settings.Width >= (int)Math.Round(screenBounds.Width * 0.9d)
+            && settings.Height >= (int)Math.Round(screenBounds.Height * 0.9d)
+            && Math.Abs(settings.X - screenBounds.Left) <= 32
+            && Math.Abs(settings.Y - screenBounds.Top) <= 32;
     }
 
     private static Point CenteredDefaultLocation(OverlayDefinition definition)

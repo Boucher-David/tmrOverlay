@@ -128,6 +128,42 @@ public sealed class TrackMapStoreTests
         }
     }
 
+    [Fact]
+    public void DiagnosticsSnapshot_ReportsReadableAndInvalidMaps()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "tmr-overlay-track-map-store-test", Guid.NewGuid().ToString("N"));
+        var bundledRoot = Path.Combine(root, "bundled");
+        try
+        {
+            var storage = StorageOptionsFor(root);
+            var store = new TrackMapStore(storage, bundledRoot);
+            var identity = TrackMapIdentity.From(TestTrack());
+            Directory.CreateDirectory(storage.TrackMapRoot);
+            Directory.CreateDirectory(bundledRoot);
+            File.WriteAllText(
+                Path.Combine(storage.TrackMapRoot, $"{identity.Key}.json"),
+                JsonSerializer.Serialize(Document(identity, TrackMapConfidence.High)));
+            File.WriteAllText(Path.Combine(bundledRoot, "broken.json"), "{not-json");
+
+            var snapshot = store.DiagnosticsSnapshot();
+
+            Assert.Equal(storage.TrackMapRoot, snapshot.UserRoot);
+            Assert.Equal(bundledRoot, snapshot.BundledRoot);
+            Assert.Equal(1, snapshot.UserMapCount);
+            Assert.Equal(0, snapshot.BundledMapCount);
+            Assert.Equal(1, snapshot.InvalidBundledMapCount);
+            Assert.Contains(snapshot.RecentMaps, item => item.Source == "user" && item.Key == identity.Key && item.IsCompleteForRuntime == true);
+            Assert.Contains(snapshot.RecentMaps, item => item.Source == "bundled" && item.Readable == false && !string.IsNullOrWhiteSpace(item.Error));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
     private static TrackMapDocument Document(
         TrackMapIdentity identity,
         TrackMapConfidence confidence,

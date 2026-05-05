@@ -441,6 +441,9 @@ internal static class AppPerformanceMetricIds
     public const string OverlayTrackMapRefresh = "overlay.track_map.refresh";
     public const string OverlayTrackMapSnapshot = "overlay.track_map.snapshot";
     public const string OverlayTrackMapPaint = "overlay.track_map.paint";
+    public const string OverlayStreamChatSettingsRefresh = "overlay.stream_chat.settings_refresh";
+    public const string OverlayStreamChatConnect = "overlay.stream_chat.connect";
+    public const string OverlayStreamChatPaint = "overlay.stream_chat.paint";
     public const string OverlayGarageCoverRefresh = "overlay.garage_cover.refresh";
     public const string OverlayGarageCoverSnapshot = "overlay.garage_cover.snapshot";
     public const string OverlayGarageCoverPaint = "overlay.garage_cover.paint";
@@ -487,6 +490,7 @@ internal static class AppPerformanceMetricIds
     public const string OverlaySettingsSyncCapture = "overlay.settings.sync_capture";
     public const string OverlaySettingsSyncDiagnostics = "overlay.settings.sync_diagnostics";
     public const string OverlaySettingsSyncAnalysis = "overlay.settings.sync_analysis";
+    public const string LocalhostRequest = "localhost.request";
     public const string DiagnosticsBundleCreate = "diagnostics.bundle.create";
     public const string DiagnosticsBundleMetadata = "diagnostics.bundle.metadata";
     public const string DiagnosticsBundleRuntimeSettings = "diagnostics.bundle.runtime_settings";

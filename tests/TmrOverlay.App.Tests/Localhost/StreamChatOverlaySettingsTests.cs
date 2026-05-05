@@ -1,4 +1,3 @@
-using TmrOverlay.App.Localhost;
 using TmrOverlay.App.Overlays.StreamChat;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;

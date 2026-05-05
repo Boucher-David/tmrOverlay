@@ -40,6 +40,8 @@ Generation is skipped when a complete map already exists for the normalized trac
 
 Track identity is layout-aware: the map key includes `TrackID` when present, normalized track name, normalized config/layout name, track length, and track version. This avoids treating alternate layouts as the same map when session info provides enough identity.
 
+Diagnostics bundles include `metadata/track-maps.json`, a compact inventory of readable and invalid bundled/user map documents. This lets support distinguish a real map-rendering issue from an expected circle fallback when the current track identity has no matching bundled or user-generated map.
+
 ## Localhost
 
 The localhost browser-source route for Track Map is:

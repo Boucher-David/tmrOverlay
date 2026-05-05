@@ -42,7 +42,7 @@ Likely scope:
 - Ship first-pass production Standings backed by normalized timing rows.
 - Ship a map-only Track Map overlay with bundled-map lookup, optional user IBT-derived map generation, circle fallback, and live car dots.
 - Add disabled-by-default `LocalhostOverlays` browser-source routes for OBS/local capture tools, separate from the future teammate-to-teammate Overlay Bridge.
-- Add Stream Chat as a browser-source route for one selected source: Streamlabs Chat Box widget URL or public Twitch channel chat.
+- Add Stream Chat as a normal read-only overlay for saved public Twitch channel chat plus a browser-source route for one selected saved source: Streamlabs Chat Box widget URL or public Twitch channel chat.
 - Keep settings as a flat-tab app control surface with selectable/copyable localhost URLs where routes exist.
 - Harden existing live overlays from tester feedback: Relative/Fuel repaint churn, Relative display-time fallback, smaller Inputs layout, and clearer local Radar side warnings.
 - Keep Windows build/test/publish and Windows-rendered screenshot validation CI-owned when local macOS validation cannot run `dotnet`.
@@ -177,7 +177,7 @@ Goal: let the app support broadcast-style surfaces without coupling chat or brow
 
 Likely scope:
 
-- Expand the current Streamlabs-widget and public Twitch channel browser source into richer Twitch/YouTube chat overlays as a separate stream-facing feature set.
+- Expand the current Streamlabs-widget browser source and public Twitch channel native/browser-source support into richer Twitch/YouTube chat overlays as a separate stream-facing feature set.
 - Keep chat auth, tokens, moderation, reconnect behavior, and rate limits isolated from iRacing telemetry.
 - Keep browser-source stream overlays on the local `LocalhostOverlays` path unless they intentionally need peer data.
 - Add deterministic offline preview states for chat-only and mixed telemetry/chat overlays.
@@ -349,7 +349,7 @@ The model-v2 implication is that VR needs compact, already-interpreted overlay s
 
 ### Streaming / Broadcast Overlays
 
-Twitch and YouTube chat overlays belong in a streaming/broadcast group. They are not model-v2 telemetry primitives, but they can sit beside telemetry overlays as stream-facing presentation surfaces. v0.11 includes only the narrow local browser-source path: Streamlabs Chat Box widget embedding and public Twitch channel chat.
+Twitch and YouTube chat overlays belong in a streaming/broadcast group. They are not model-v2 telemetry primitives, but they can sit beside telemetry overlays as stream-facing presentation surfaces. v0.11 includes a narrow read-only native Twitch overlay plus the local browser-source path: Streamlabs Chat Box widget embedding and public Twitch channel chat.
 
 A future streaming branch should keep chat ingestion isolated from iRacing telemetry and define rate limits, authentication/storage, moderation controls, reconnect behavior, and deterministic offline preview states. Browser-based stream overlays should use `LocalhostOverlays` for local OBS capture; Overlay Bridge should only enter the design when a stream overlay intentionally needs trusted peer/shared data.
 

@@ -19,6 +19,7 @@ using TmrOverlay.App.Overlays.SettingsPanel;
 using TmrOverlay.App.Overlays.SimpleTelemetry;
 using TmrOverlay.App.Overlays.Status;
 using TmrOverlay.App.Overlays.Standings;
+using TmrOverlay.App.Overlays.StreamChat;
 using TmrOverlay.App.Overlays.Styling;
 using TmrOverlay.App.Overlays.TrackMap;
 using TmrOverlay.App.Performance;
@@ -283,6 +284,8 @@ internal static class Program
             new LiveModelParityOptions(),
             new LiveOverlayDiagnosticsOptions(),
             captureState,
+            new LocalhostOverlayState(new LocalhostOverlayOptions()),
+            new TrackMapStore(storage),
             performanceState,
             new AppPerformanceSnapshotRecorder(storage),
             NullLogger<DiagnosticsBundleService>.Instance);
@@ -342,6 +345,7 @@ internal static class Program
             FuelCalculatorOverlayDefinition.Definition,
             RelativeOverlayDefinition.Definition,
             TrackMapOverlayDefinition.Definition,
+            StreamChatOverlayDefinition.Definition,
             FlagsOverlayDefinition.Definition,
             SessionWeatherOverlayDefinition.Definition,
             PitServiceOverlayDefinition.Definition,

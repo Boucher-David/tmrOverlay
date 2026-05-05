@@ -17,9 +17,13 @@ When any condition clears, the cover hides.
 
 ## Display
 
-The first-run default frame is the primary screen bounds. The user can adjust width and height in the Garage Cover settings tab and can drag the native overlay like other product overlays.
+The first-run default frame is a centered 16:9 cover region, capped at half the primary screen and at the overlay's 1280x720 design size. Earlier tester builds defaulted to the primary screen bounds; saved screen-sized defaults are migrated down to this compact frame because a full-screen privacy cover can block emergency access to the settings UI. The user can still adjust width and height in the Garage Cover settings tab and can drag the native overlay like other product overlays.
+
+iRacing currently gives the app `IsGarageVisible` / `IsInGarage` state through telemetry, not a reliable Garage panel rectangle. Until there is validated geometry for the actual on-screen Garage UI, the safer default is to cover less of the desktop and let the streamer enlarge the frame deliberately.
 
 The cover is always opaque. It does not expose the normal opacity control because semi-transparent setup coverage can leak private setup information.
+
+When the settings window is active, `OverlayManager` drops Garage Cover out of the topmost layer and brings settings forward. This keeps Alt+Tab to the settings UI available as the emergency shutdown path even if Garage Cover is visible.
 
 The user can import a PNG, JPG, BMP, or GIF image. The app copies that file into app-owned settings storage under `garage-cover/cover.*` and stores that app-owned path in overlay settings. Runtime rendering loads from the app-owned copy, not the original selected file.
 

@@ -1,9 +1,9 @@
-using TmrOverlay.App.Localhost;
+using TmrOverlay.App.Overlays.BrowserSources;
 using Xunit;
 
 namespace TmrOverlay.App.Tests.Localhost;
 
-public sealed class LocalhostOverlayPageRendererTests
+public sealed class BrowserOverlayPageRendererTests
 {
     [Theory]
     [InlineData("/overlays/standings", "standings")]
@@ -20,7 +20,7 @@ public sealed class LocalhostOverlayPageRendererTests
     [InlineData("/overlays/stream-chat", "stream-chat")]
     public void TryRender_RendersKnownOverlayRoutes(string route, string expectedId)
     {
-        var rendered = LocalhostOverlayPageRenderer.TryRender(route, out var html);
+        var rendered = BrowserOverlayPageRenderer.TryRender(route, out var html);
 
         Assert.True(rendered);
         Assert.Contains("\"id\":\"" + expectedId + "\"", html);
@@ -29,7 +29,7 @@ public sealed class LocalhostOverlayPageRendererTests
         {
             Assert.Contains("track-map-page", html);
             Assert.Contains("fetch('/api/track-map'", html);
-            Assert.Contains("renderTrackMap(null, cachedTrackMap, cachedTrackMapSettings)", html);
+            Assert.Contains("renderOffline()", html);
             Assert.Contains("let cachedTrackMapSettings", html);
         }
         if (expectedId == "stream-chat")
@@ -43,7 +43,7 @@ public sealed class LocalhostOverlayPageRendererTests
     [Fact]
     public void TryRender_RejectsUnknownRoute()
     {
-        var rendered = LocalhostOverlayPageRenderer.TryRender("/overlays/unknown", out var html);
+        var rendered = BrowserOverlayPageRenderer.TryRender("/overlays/unknown", out var html);
 
         Assert.False(rendered);
         Assert.Equal(string.Empty, html);
@@ -52,7 +52,7 @@ public sealed class LocalhostOverlayPageRendererTests
     [Fact]
     public void TryRender_RejectsFlagsRouteWhileBrowserSourceIsDisabled()
     {
-        var rendered = LocalhostOverlayPageRenderer.TryRender("/overlays/flags", out var html);
+        var rendered = BrowserOverlayPageRenderer.TryRender("/overlays/flags", out var html);
 
         Assert.False(rendered);
         Assert.Equal(string.Empty, html);
@@ -71,7 +71,7 @@ public sealed class LocalhostOverlayPageRendererTests
     [InlineData("stream-chat", "/overlays/stream-chat")]
     public void TryGetRouteForOverlayId_ReturnsCanonicalRoute(string overlayId, string expectedRoute)
     {
-        var found = LocalhostOverlayPageRenderer.TryGetRouteForOverlayId(overlayId, out var route);
+        var found = BrowserOverlayPageRenderer.TryGetRouteForOverlayId(overlayId, out var route);
 
         Assert.True(found);
         Assert.Equal(expectedRoute, route);
@@ -80,7 +80,7 @@ public sealed class LocalhostOverlayPageRendererTests
     [Fact]
     public void TryGetRouteForOverlayId_ReturnsFalseForFlagsWhileBrowserSourceIsDisabled()
     {
-        var found = LocalhostOverlayPageRenderer.TryGetRouteForOverlayId("flags", out var route);
+        var found = BrowserOverlayPageRenderer.TryGetRouteForOverlayId("flags", out var route);
 
         Assert.False(found);
         Assert.Equal(string.Empty, route);
@@ -89,7 +89,7 @@ public sealed class LocalhostOverlayPageRendererTests
     [Fact]
     public void RenderIndex_ListsCanonicalRoutes()
     {
-        var html = LocalhostOverlayPageRenderer.RenderIndex(8765);
+        var html = BrowserOverlayPageRenderer.RenderIndex(8765);
 
         Assert.Contains("TMR Localhost Overlays", html);
         Assert.Contains("/overlays/standings", html);

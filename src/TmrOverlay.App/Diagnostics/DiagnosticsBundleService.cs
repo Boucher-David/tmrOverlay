@@ -3,9 +3,11 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.Core.AppInfo;
+using TmrOverlay.App.Localhost;
 using TmrOverlay.App.Performance;
 using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
+using TmrOverlay.App.TrackMaps;
 using TmrOverlay.Core.Overlays;
 
 namespace TmrOverlay.App.Diagnostics;
@@ -31,6 +33,8 @@ internal sealed class DiagnosticsBundleService
     private readonly LiveModelParityOptions _liveModelParityOptions;
     private readonly LiveOverlayDiagnosticsOptions _liveOverlayDiagnosticsOptions;
     private readonly TelemetryCaptureState _captureState;
+    private readonly LocalhostOverlayState _localhostOverlayState;
+    private readonly TrackMapStore _trackMapStore;
     private readonly AppPerformanceState _performanceState;
     private readonly AppPerformanceSnapshotRecorder _performanceRecorder;
     private readonly ILogger<DiagnosticsBundleService> _logger;
@@ -47,6 +51,8 @@ internal sealed class DiagnosticsBundleService
         LiveModelParityOptions liveModelParityOptions,
         LiveOverlayDiagnosticsOptions liveOverlayDiagnosticsOptions,
         TelemetryCaptureState captureState,
+        LocalhostOverlayState localhostOverlayState,
+        TrackMapStore trackMapStore,
         AppPerformanceState performanceState,
         AppPerformanceSnapshotRecorder performanceRecorder,
         ILogger<DiagnosticsBundleService> logger)
@@ -55,6 +61,8 @@ internal sealed class DiagnosticsBundleService
         _liveModelParityOptions = liveModelParityOptions;
         _liveOverlayDiagnosticsOptions = liveOverlayDiagnosticsOptions;
         _captureState = captureState;
+        _localhostOverlayState = localhostOverlayState;
+        _trackMapStore = trackMapStore;
         _performanceState = performanceState;
         _performanceRecorder = performanceRecorder;
         _logger = logger;
@@ -100,6 +108,8 @@ internal sealed class DiagnosticsBundleService
                 }, JsonOptions));
                 AddTextEntry(archive, "metadata/storage.json", JsonSerializer.Serialize(_storageOptions, JsonOptions));
                 AddTextEntry(archive, "metadata/telemetry-state.json", JsonSerializer.Serialize(_captureState.Snapshot(), JsonOptions));
+                AddTextEntry(archive, "metadata/localhost-overlays.json", JsonSerializer.Serialize(_localhostOverlayState.Snapshot(), JsonOptions));
+                AddTextEntry(archive, "metadata/track-maps.json", JsonSerializer.Serialize(_trackMapStore.DiagnosticsSnapshot(), JsonOptions));
                 metadataSucceeded = true;
             }
             finally
