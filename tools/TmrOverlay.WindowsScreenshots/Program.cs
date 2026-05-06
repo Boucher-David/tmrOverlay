@@ -279,12 +279,14 @@ internal static class Program
         captureState.MarkCollectionStarted(DateTimeOffset.UtcNow);
         captureState.RecordFrame(DateTimeOffset.UtcNow);
         var performanceState = new AppPerformanceState();
+        var localhostOptions = new LocalhostOverlayOptions();
+        var localhostState = new LocalhostOverlayState(localhostOptions);
         var diagnostics = new DiagnosticsBundleService(
             storage,
             new LiveModelParityOptions(),
             new LiveOverlayDiagnosticsOptions(),
             captureState,
-            new LocalhostOverlayState(new LocalhostOverlayOptions()),
+            localhostState,
             new TrackMapStore(storage),
             performanceState,
             new AppPerformanceSnapshotRecorder(storage),
@@ -301,7 +303,8 @@ internal static class Program
             new PostRaceAnalysisOptions(),
             performanceState,
             storage,
-            new LocalhostOverlayOptions(),
+            localhostOptions,
+            localhostState,
             diagnostics,
             new AppEventRecorder(storage),
             settings.GetOrAddOverlay(
