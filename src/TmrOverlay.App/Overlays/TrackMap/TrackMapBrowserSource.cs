@@ -11,13 +11,15 @@ internal static class TrackMapBrowserSource
         bodyClass: "track-map-page",
         renderWhenTelemetryUnavailable: true,
         fadeWhenTelemetryUnavailable: TrackMapOverlayDefinition.Definition.FadeWhenLiveTelemetryUnavailable,
-        refreshIntervalMilliseconds: 250,
+        refreshIntervalMilliseconds: 50,
         script: Script);
 
     private const string Script = """
     let cachedTrackMap = null;
     let cachedTrackMapSettings = { internalOpacity: 0.88 };
     let nextTrackMapFetchAt = 0;
+    const smoothedMarkerProgress = new Map();
+    let lastMarkerSmoothingAt = 0;
 
     TmrBrowserOverlay.register({
       async beforeRefresh() {
@@ -56,7 +58,7 @@ internal static class TrackMapBrowserSource
         : Number.isFinite(race.lapDistPct)
           ? race.lapDistPct
           : 0;
-      const markers = trackMapMarkers(live, focusPct);
+      const markers = smoothTrackMapMarkers(trackMapMarkers(live, focusPct));
       const sectors = live?.models?.trackMap?.sectors || [];
       const svg = trackMapSvg(trackMap, markers, sectors, trackMapSettings);
       contentEl.innerHTML = `
@@ -313,6 +315,48 @@ internal static class TrackMapBrowserSource
       }
 
       return [...markers.values()].sort((left, right) => Number(left.isFocus) - Number(right.isFocus) || left.carIdx - right.carIdx);
+    }
+
+    function smoothTrackMapMarkers(markers) {
+      if (!markers.length) {
+        smoothedMarkerProgress.clear();
+        lastMarkerSmoothingAt = 0;
+        return markers;
+      }
+
+      const now = performance.now();
+      const elapsed = lastMarkerSmoothingAt > 0 ? Math.max(0, Math.min(0.25, (now - lastMarkerSmoothingAt) / 1000)) : 0.05;
+      lastMarkerSmoothingAt = now;
+      const alpha = 1 - Math.exp(-elapsed / 0.14);
+      const active = new Set(markers.map((marker) => marker.carIdx));
+      for (const carIdx of smoothedMarkerProgress.keys()) {
+        if (!active.has(carIdx)) {
+          smoothedMarkerProgress.delete(carIdx);
+        }
+      }
+
+      return markers.map((marker) => {
+        const current = smoothedMarkerProgress.get(marker.carIdx);
+        if (!Number.isFinite(current)) {
+          smoothedMarkerProgress.set(marker.carIdx, marker.lapDistPct);
+          return marker;
+        }
+
+        const lapDistPct = smoothProgress(current, marker.lapDistPct, alpha);
+        smoothedMarkerProgress.set(marker.carIdx, lapDistPct);
+        return { ...marker, lapDistPct };
+      });
+    }
+
+    function smoothProgress(current, target, alpha) {
+      let delta = target - current;
+      if (delta > 0.5) {
+        delta -= 1;
+      } else if (delta < -0.5) {
+        delta += 1;
+      }
+
+      return normalizeProgress(current + delta * Math.max(0, Math.min(1, alpha)));
     }
 
     function positionLabel(row) {

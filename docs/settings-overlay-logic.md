@@ -43,7 +43,7 @@ At startup, `OverlayManager.ShowStartupOverlays`:
 
 The settings window:
 
-- Uses default size from `SettingsOverlayDefinition`; the current fixed client size is wide enough for the Support tab's two-column controls.
+- Uses default size from `SettingsOverlayDefinition`; the current fixed client size is wide enough for the full tab list and the single-column teammate Support flow.
 - Enforces its default size as both the minimum and maximum.
 - Recenters every time it is opened.
 - Does not preserve user-dragged placement between runs.
@@ -159,17 +159,18 @@ The settings window stores normalized size but is recentered on open, so saved c
 
 The Support tab:
 
-- Shows compact app status, live/session state, and current app warning/error.
-- Makes support actions primary: create diagnostics bundle, copy latest bundle path, and open the diagnostics folder.
-- Owns runtime diagnostic telemetry capture requests without overlapping the current-issue state.
-- Keeps local storage shortcuts together for logs, diagnostics, captures, and history.
-- Shows advanced collection systems as discoverable default-on support tools instead of normal product tabs, while raw capture remains opt-in.
-- Shows compact app activity for telemetry, iRacing connection health, raw capture state, and process size.
+- Shows visible app version/build metadata at the top of the tab, followed by teammate-oriented diagnostic capture and diagnostics bundle actions.
+- Treats first-run/no-iRacing waiting as an expected idle state instead of an active issue.
+- Keeps diagnostic telemetry at the top of the handoff flow and explains when teammates should enable it.
+- Makes bundle actions primary: create diagnostics bundle, copy latest bundle path, and open the diagnostics folder.
+- Shows compact current state only after the primary teammate actions: app status, live/session state, and current warning/error.
+- Keeps local storage shortcuts together for logs, diagnostics, captures, and history without exposing advanced collection internals as normal teammate controls.
 - Reports the latest automatic end-of-session diagnostics bundle.
 
 ## Design Notes
 
 - Keep settings as a normal desktop UI.
 - Keep driving overlays focused and simulator-friendly.
+- When update checking is implemented, show update warnings as a yellow banner above the tabs and below the main app title area instead of burying them inside the Support tab content.
 - If an overlay has preview behavior, document which settings tab triggers it.
 - If new overlay visibility rules are added, update this file and the overlay-specific logic doc.

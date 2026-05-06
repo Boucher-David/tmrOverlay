@@ -15,6 +15,7 @@ using TmrOverlay.App.Overlays.Styling;
 using TmrOverlay.App.Performance;
 using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
+using TmrOverlay.Core.AppInfo;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 
@@ -74,6 +75,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private bool _loading = true;
     private bool _syncingRawCaptureCheckBox;
     private bool _applicationExitRequested;
+    private Label? _appVersionLabel;
     private Label? _appStatusLabel;
     private Label? _sessionStateLabel;
     private Label? _currentIssueLabel;
@@ -485,8 +487,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private void AddSupportCaptureControls(TabPage page, int x, int top, int width)
     {
         var title = CreateSectionLabel("Diagnostic telemetry", x, top, width);
-        var note = CreateMutedLabel("Use only when asked to collect telemetry for debugging or analysis.", x + 4, top + 30, width);
-        _rawCaptureCheckBox = CreateCheckBox("Capture diagnostic telemetry", _captureState.Snapshot().RawCaptureEnabled, x + 4, top + 66, 280);
+        var note = CreateMutedLabel("If we ask for a repro, enable this before joining/driving, then create a diagnostics bundle after.", x + 4, top + 30, width);
+        _rawCaptureCheckBox = CreateCheckBox("Capture diagnostic telemetry", _captureState.Snapshot().RawCaptureEnabled, x + 4, top + 66, 320);
         _rawCaptureCheckBox.CheckedChanged += (_, _) => RawCaptureCheckBoxChanged();
 
         page.Controls.Add(title);
@@ -505,18 +507,18 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         page.Controls.Add(_advancedDiagnosticsLabel);
     }
 
-    private void AddSupportStorageControls(TabPage page, int top)
+    private void AddSupportStorageControls(TabPage page, int x, int top, int width)
     {
-        var title = CreateSectionLabel("Storage", 560, top, 300);
-        var note = CreateMutedLabel("Open local folders used for support handoff.", 564, top + 30, 330);
+        var title = CreateSectionLabel("Support folders", x, top, width);
+        var note = CreateMutedLabel("Open local folders if we ask for a specific file instead of the diagnostics zip.", x + 4, top + 30, width);
 
-        var logsButton = CreateActionButton("Logs", 564, top + 68, 96);
+        var logsButton = CreateActionButton("Logs", x + 4, top + 66, 96);
         logsButton.Click += (_, _) => OpenSupportDirectory(_storageOptions.LogsRoot, "logs");
-        var diagnosticsButton = CreateActionButton("Diagnostics", 670, top + 68, 110);
+        var diagnosticsButton = CreateActionButton("Diagnostics", x + 110, top + 66, 110);
         diagnosticsButton.Click += (_, _) => OpenSupportDirectory(_storageOptions.DiagnosticsRoot, "diagnostics");
-        var capturesButton = CreateActionButton("Captures", 564, top + 106, 96);
+        var capturesButton = CreateActionButton("Captures", x + 230, top + 66, 96);
         capturesButton.Click += (_, _) => OpenSupportDirectory(_storageOptions.CaptureRoot, "captures");
-        var historyButton = CreateActionButton("History", 670, top + 106, 110);
+        var historyButton = CreateActionButton("History", x + 336, top + 66, 96);
         historyButton.Click += (_, _) => OpenSupportDirectory(_storageOptions.UserHistoryRoot, "history");
 
         page.Controls.Add(title);
@@ -530,48 +532,54 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private TabPage CreateSupportTab()
     {
         var page = CreateTabPage("Support");
-        var title = CreateSectionLabel("Support", 18, 18, 500);
-        var note = CreateMutedLabel("Use this tab when sharing logs for overlay or telemetry issues.", 22, 48, 510);
-        var statusLabel = CreateLabel("App status", 22, 88, 140);
-        _appStatusLabel = CreateValueLabel(string.Empty, 180, 84, 350, 28);
-        var sessionLabel = CreateLabel("Session state", 22, 128, 140);
-        _sessionStateLabel = CreateValueLabel(string.Empty, 180, 124, 350, 28);
-        var issueLabel = CreateLabel("Current issue", 22, 168, 140);
-        _currentIssueLabel = CreateMultiLineValueLabel(string.Empty, 180, 162, 350, 58);
+        const int x = 18;
+        const int width = 900;
+        var title = CreateSectionLabel("Support", x, 18, width);
+        var note = CreateMutedLabel("Use this tab when we ask for diagnostics or version details.", x + 4, 48, width);
+        var versionLabel = CreateLabel("App version", x + 4, 86, 140);
+        _appVersionLabel = CreateValueLabel(SupportStatusText.AppVersionText(AppVersionInfo.Current), x + 150, 82, 420, 28);
 
-        var actionsTitle = CreateSectionLabel("Support actions", 18, 246, 500);
-        var createBundleButton = CreateActionButton("Create Bundle", 22, 286, 140);
+        AddSupportCaptureControls(page, x, 122, width);
+
+        var actionsTitle = CreateSectionLabel("Diagnostics bundle", x, 232, width);
+        var actionsNote = CreateMutedLabel("After testing or reproducing an issue, create a bundle and send back the zip path.", x + 4, 262, width);
+        var createBundleButton = CreateActionButton("Create Bundle", x + 4, 298, 140);
         createBundleButton.Click += (_, _) => CreateDiagnosticsBundleFromTab();
-        var copyBundleButton = CreateActionButton("Copy Latest Path", 172, 286, 140);
+        var copyBundleButton = CreateActionButton("Copy Latest Path", x + 154, 298, 140);
         copyBundleButton.Click += (_, _) => CopyLatestDiagnosticsBundlePath();
-        var openDiagnosticsButton = CreateActionButton("Open Diagnostics", 322, 286, 150);
+        var openDiagnosticsButton = CreateActionButton("Open Diagnostics", x + 304, 298, 150);
         openDiagnosticsButton.Click += (_, _) => OpenSupportDirectory(_storageOptions.DiagnosticsRoot, "diagnostics");
-        _latestDiagnosticsBundleLabel = CreateMutedLabel(string.Empty, 22, 324, 508);
-        _supportStatusLabel = CreateMutedLabel(string.Empty, 22, 350, 508);
+        _latestDiagnosticsBundleLabel = CreateMutedLabel(string.Empty, x + 4, 336, width);
+        _supportStatusLabel = CreateMutedLabel(string.Empty, x + 4, 362, width);
 
-        AddSupportCaptureControls(page, 18, 388, 512);
-        AddAdvancedDiagnosticsControls(page, 88);
-        AddSupportStorageControls(page, 274);
+        var stateTitle = CreateSectionLabel("Current state", x, 394, width);
+        var statusLabel = CreateLabel("App status", x + 4, 430, 100);
+        _appStatusLabel = CreateValueLabel(string.Empty, x + 104, 426, 180, 28);
+        var sessionLabel = CreateLabel("Session", x + 320, 430, 90);
+        _sessionStateLabel = CreateValueLabel(string.Empty, x + 410, 426, 320, 28);
+        var issueLabel = CreateLabel("Issue", x + 4, 472, 100);
+        _currentIssueLabel = CreateMultiLineValueLabel(string.Empty, x + 104, 466, 626, 42);
 
-        var performanceLabel = CreateSectionLabel("App activity", 560, 420, 300);
-        _performanceSnapshotLabel = CreateMultiLineValueLabel(string.Empty, 564, 452, 330, 72);
+        AddSupportStorageControls(page, x, 520, width);
 
         page.Controls.Add(title);
         page.Controls.Add(note);
+        page.Controls.Add(versionLabel);
+        page.Controls.Add(_appVersionLabel);
+        page.Controls.Add(actionsTitle);
+        page.Controls.Add(actionsNote);
+        page.Controls.Add(createBundleButton);
+        page.Controls.Add(copyBundleButton);
+        page.Controls.Add(openDiagnosticsButton);
+        page.Controls.Add(_latestDiagnosticsBundleLabel);
+        page.Controls.Add(_supportStatusLabel);
+        page.Controls.Add(stateTitle);
         page.Controls.Add(statusLabel);
         page.Controls.Add(_appStatusLabel);
         page.Controls.Add(sessionLabel);
         page.Controls.Add(_sessionStateLabel);
         page.Controls.Add(issueLabel);
         page.Controls.Add(_currentIssueLabel);
-        page.Controls.Add(openDiagnosticsButton);
-        page.Controls.Add(actionsTitle);
-        page.Controls.Add(createBundleButton);
-        page.Controls.Add(copyBundleButton);
-        page.Controls.Add(_latestDiagnosticsBundleLabel);
-        page.Controls.Add(_supportStatusLabel);
-        page.Controls.Add(performanceLabel);
-        page.Controls.Add(_performanceSnapshotLabel);
 
         _nextSupportStatusRefreshAtUtc = DateTimeOffset.MinValue;
         _nextSupportHeavyRefreshAtUtc = DateTimeOffset.MinValue;
@@ -1370,7 +1378,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
     private void SyncErrorLoggingTab()
     {
-        if (_appStatusLabel is null
+        if (_appVersionLabel is null
+            && _appStatusLabel is null
             && _sessionStateLabel is null
             && _currentIssueLabel is null
             && _advancedDiagnosticsLabel is null
@@ -1392,21 +1401,26 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         if (statusDue)
         {
             _nextSupportStatusRefreshAtUtc = now + SupportStatusRefreshInterval;
+            if (_appVersionLabel is not null)
+            {
+                SetLabelText(_appVersionLabel, SupportStatusText.AppVersionText(AppVersionInfo.Current));
+            }
+
             if (_appStatusLabel is not null)
             {
-                var appStatus = AppStatus(captureSnapshot);
+                var appStatus = SupportStatusText.AppStatus(captureSnapshot);
                 SetLabelText(_appStatusLabel, appStatus.Text);
-                SetLabelColor(_appStatusLabel, appStatus.Color);
+                SetLabelColor(_appStatusLabel, ColorForSupportStatus(appStatus.Level));
             }
 
             if (_sessionStateLabel is not null)
             {
-                SetLabelText(_sessionStateLabel, SessionStateText(captureSnapshot));
+                SetLabelText(_sessionStateLabel, SupportStatusText.SessionStateText(captureSnapshot));
             }
 
             if (_currentIssueLabel is not null)
             {
-                SetLabelText(_currentIssueLabel, CurrentIssueText(captureSnapshot));
+                SetLabelText(_currentIssueLabel, SupportStatusText.CurrentIssueText(captureSnapshot));
             }
 
             if (_advancedDiagnosticsLabel is not null)
@@ -1422,7 +1436,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             if (_latestDiagnosticsBundleLabel is not null)
             {
                 var latestBundlePath = diagnosticsSnapshot.LastBundlePath ?? LatestDiagnosticsBundlePathCached(now) ?? string.Empty;
-                SetLabelText(_latestDiagnosticsBundleLabel, LatestBundleDisplayText(latestBundlePath));
+                SetLabelText(_latestDiagnosticsBundleLabel, SupportStatusText.LatestBundleDisplayText(latestBundlePath));
                 ReportAutomaticDiagnosticsBundleStatus(diagnosticsSnapshot, latestBundlePath);
             }
 
@@ -1445,7 +1459,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             });
             if (_latestDiagnosticsBundleLabel is not null)
             {
-                _latestDiagnosticsBundleLabel.Text = LatestBundleDisplayText(bundlePath);
+                _latestDiagnosticsBundleLabel.Text = SupportStatusText.LatestBundleDisplayText(bundlePath);
             }
             SetSupportStatus("Created diagnostics bundle.", isError: false);
             OpenSupportDirectory(Path.GetDirectoryName(bundlePath)!, "diagnostics");
@@ -1603,26 +1617,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         }
     }
 
-    private static string CurrentIssueText(TelemetryCaptureStatusSnapshot snapshot)
-    {
-        if (!string.IsNullOrWhiteSpace(snapshot.LastError))
-        {
-            return $"Error: {snapshot.LastError}";
-        }
-
-        if (!string.IsNullOrWhiteSpace(snapshot.LastWarning))
-        {
-            return $"Warning: {snapshot.LastWarning}";
-        }
-
-        if (!string.IsNullOrWhiteSpace(snapshot.AppWarning))
-        {
-            return $"App warning: {snapshot.AppWarning}";
-        }
-
-        return "No current error or warning recorded.";
-    }
-
     private string AdvancedDiagnosticsText()
     {
         var localhost = _localhostOverlayState.Snapshot();
@@ -1644,66 +1638,16 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         return enabled ? "enabled" : "disabled";
     }
 
-    private static (string Text, Color Color) AppStatus(TelemetryCaptureStatusSnapshot snapshot)
+    private static Color ColorForSupportStatus(SupportStatusLevel level)
     {
-        if (!string.IsNullOrWhiteSpace(snapshot.LastError))
+        return level switch
         {
-            return ("Error", OverlayTheme.Colors.ErrorText);
-        }
-
-        if (!string.IsNullOrWhiteSpace(snapshot.LastWarning)
-            || !string.IsNullOrWhiteSpace(snapshot.AppWarning)
-            || snapshot.DroppedFrameCount > 0)
-        {
-            return ("Warning", OverlayTheme.Colors.WarningText);
-        }
-
-        if (snapshot.IsCapturing)
-        {
-            return ("Live telemetry", OverlayTheme.Colors.SuccessText);
-        }
-
-        if (snapshot.IsConnected)
-        {
-            return ("Connected", OverlayTheme.Colors.InfoText);
-        }
-
-        return ("Waiting for iRacing", OverlayTheme.Colors.TextSecondary);
-    }
-
-    private static string SessionStateText(TelemetryCaptureStatusSnapshot snapshot)
-    {
-        if (snapshot.RawCaptureActive)
-        {
-            return $"Diagnostic telemetry active ({snapshot.WrittenFrameCount:N0} frames written)";
-        }
-
-        if (snapshot.RawCaptureEnabled)
-        {
-            return "Diagnostic telemetry requested";
-        }
-
-        if (snapshot.IsCapturing)
-        {
-            return $"Receiving live telemetry ({snapshot.FrameCount:N0} frames)";
-        }
-
-        if (snapshot.IsConnected)
-        {
-            return "iRacing connected; waiting for live session data";
-        }
-
-        return "Not connected";
-    }
-
-    private static string LatestBundleDisplayText(string? bundlePath)
-    {
-        if (string.IsNullOrWhiteSpace(bundlePath))
-        {
-            return "Latest bundle: none created yet";
-        }
-
-        return $"Latest bundle: {Path.GetFileName(bundlePath)}";
+            SupportStatusLevel.Error => OverlayTheme.Colors.ErrorText,
+            SupportStatusLevel.Warning => OverlayTheme.Colors.WarningText,
+            SupportStatusLevel.Success => OverlayTheme.Colors.SuccessText,
+            SupportStatusLevel.Info => OverlayTheme.Colors.InfoText,
+            _ => OverlayTheme.Colors.TextSecondary
+        };
     }
 
     private static string PerformanceSnapshotText(

@@ -17,6 +17,10 @@ git diff --check
 rg -n "^(<<<<<<<|>>>>>>>|=======)$" --glob '!captures/**' --glob '!captures-latest/**' --glob '!local-mac/TmrOverlayMac/.build/**' --glob '!**/*.png' --glob '!**/*.jpg' --glob '!**/*.bin'
 ```
 
+```bash
+python3 tools/validate_overlay_screenshots.py --profile windows-expectations
+```
+
 ## Branch-Complete Release Hygiene
 
 Run this section when a branch is being declared complete, prepared for merge, or promoted to a product milestone.
@@ -28,7 +32,7 @@ Make branch-readiness artifacts current before writing the final squash text:
 - If changing Windows build/release commands, make `README.md`, release-command docs, CI docs, and any in-app command references agree during this branch-complete pass.
 - If changing Windows publishing/package contents, verify PR validation runs a publish dry run with the same package audit, the release workflow audits the publish folder for accidental repo/dev-folder leaks, emits a package manifest, and documents which user data stays outside the install folder.
 - For overlay or settings UI changes, regenerate the deterministic mac-harness screenshots under `mocks/`, keep the contact sheet plus per-state PNGs current, and run `python3 tools/validate_overlay_screenshots.py`.
-- Windows-rendered screenshots are CI artifacts generated from real WinForms forms with `tools/TmrOverlay.WindowsScreenshots`. On Windows, run `dotnet run --project .\tools\TmrOverlay.WindowsScreenshots\TmrOverlay.WindowsScreenshots.csproj --configuration Release -- artifacts\windows-overlay-screenshots` and `python tools/validate_overlay_screenshots.py --profile windows-ci --root artifacts/windows-overlay-screenshots`; on non-Windows machines, inspect the uploaded PR artifact after CI.
+- Windows-rendered screenshots are CI artifacts generated from real WinForms forms with `tools/TmrOverlay.WindowsScreenshots`. Run `python3 tools/validate_overlay_screenshots.py --profile windows-expectations` before CI to catch stale expected dimensions after overlay default-size changes. On Windows, run `dotnet run --project .\tools\TmrOverlay.WindowsScreenshots\TmrOverlay.WindowsScreenshots.csproj --configuration Release -- artifacts\windows-overlay-screenshots` and `python tools/validate_overlay_screenshots.py --profile windows-ci --root artifacts/windows-overlay-screenshots`; on non-Windows machines, inspect the uploaded PR artifact after CI.
 - Tester-facing documentation screenshots under `docs/assets/` should be regenerated when release/install/support handoff steps change. The current Windows release tutorial is generated with `swift tools/render_release_tutorial.swift` and validated with `python3 tools/validate_overlay_screenshots.py --profile release-tutorial --root docs/assets`.
 - Treat screenshot changes as validation artifacts. If screenshots cannot be regenerated on the current machine, say so explicitly and do not describe the branch as fully ready without that gap.
 - Re-run `git diff --name-status "$(git merge-base main HEAD)"..HEAD` after docs and screenshots are current so `VERSION.md` and the final handoff text describe the actual final branch contents.

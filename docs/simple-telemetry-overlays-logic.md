@@ -81,6 +81,6 @@ It displays:
 - water temperature
 - oil temperature plus oil/fuel pressure
 
-The default native input overlay is now smaller and has a compact rendering mode. At compact sizes it replaces the large trace-and-wheel layout with current pedal bars plus a dense readout grid for speed, gear, RPM, steering, water temperature, and oil pressure so resizing does not clip the right-side data. Wider/taller sizes can still show the rolling pedal trace, steering wheel, and car-state readouts.
+The default native input overlay uses the older rolling pedal-trace graph again, but with a wider, shorter default footprint and smoothed trace curves. At normal default size it shows a wide throttle/brake/clutch trace with a dense readout strip for speed, gear, RPM, steering, water temperature, and oil pressure. Very small sizes still fall back to current pedal bars plus compact readouts, while taller custom sizes can show the full trace, steering wheel, and car-state readouts.
 
 Engine warning bits use a warning tone. Otherwise this overlay stays neutral and acts as a compact local-car telemetry surface.

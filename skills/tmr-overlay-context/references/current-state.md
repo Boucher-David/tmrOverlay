@@ -48,7 +48,7 @@ Last updated: 2026-05-06
   - `FuelCalculator/` contains the first strategy overlay, backed by live telemetry plus exact car/track/session history
   - `Standings/` contains a compact same-class timing table backed by `LiveTelemetrySnapshot.Models.Timing`
   - `Relative/` contains the first production model-v2 overlay, a telemetry-first relative table backed by `LiveTelemetrySnapshot.Models.Relative`
-  - `TrackMap/` contains the transparent map-only track-map overlay: generated local map geometry when available, circle fallback otherwise, live car dots placed by lap-distance progress, focused/player `P<N>` text inside the marker dot, full-opacity continuous white track lines, schema-v2 sector boundaries, model-v2 green/purple sector highlights, invalid-lap-counter fallback from valid `LapDistPct`, active-reset-style boundary seeding, and setting-driven internal map fill opacity
+  - `TrackMap/` contains the transparent map-only track-map overlay: generated local map geometry when available, circle fallback otherwise, smoothed live car dots placed by lap-distance progress, focused/player `P<N>` text inside the marker dot, full-opacity continuous white track lines, schema-v2 sector boundaries, model-v2 green/purple sector highlights, invalid-lap-counter fallback from valid `LapDistPct`, active-reset-style boundary seeding, and setting-driven internal map fill opacity
   - `GarageCover/` contains a localhost-only streamer privacy browser source; it appears only while live telemetry reports the iRacing Garage screen as visible, serves an opaque imported image or black TMR fallback to OBS, and copies imported images into app-owned settings storage
   - `Flags/` contains a transparent primary-screen border overlay for live session flag categories; it defaults to the main monitor size, centers a 4:3 frame on ultrawide displays, and requires recognized live session context before the runtime window is shown
   - `CarRadar/` contains a transparent circular local in-car proximity overlay, backed by local player/team progress, player-only `CarLeftRight`, reliable live timing gaps, and nearby `CarIdx*` progress/position telemetry
@@ -77,7 +77,8 @@ Last updated: 2026-05-06
   - uses normal desktop z-order, taskbar, and Alt+Tab behavior instead of the product overlays' tool-window/always-on-top behavior
   - tabs include General, user-facing overlay tabs ordered by common race workflow, and Support last
   - General exposes a metric/imperial unit selector; user-facing font selection stays hidden while cross-platform screenshot parity remains a theme-level concern
-  - Support is task-oriented: compact app status, live/session state, current issue, diagnostics bundle actions, diagnostic telemetry capture, storage shortcuts, discoverable advanced collection status, and compact app activity
+  - Support is task-oriented for teammate handoff: visible app version/build metadata, diagnostic telemetry capture first, diagnostics bundle actions, compact current state, and storage shortcuts without exposing advanced collection internals as normal teammate controls
+  - first-run/no-iRacing waiting states are worded as expected idle states in Support instead of active failures
   - per-overlay tabs expose visibility, scale, opacity, test/practice/qualifying/race session filters, and descriptor-driven overlay-specific display options when those controls make sense for that overlay
   - opening the radar settings tab previews the radar overlay only when the overlay is enabled, so the tab no longer overrides the `Visible` checkbox
   - visibility, scale, opacity, unit, and display-option changes apply to open overlays immediately; session filters are rechecked against live session type
@@ -552,8 +553,8 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 - The current machine does not have `dotnet`, so Windows build/test verification still needs to happen on a .NET-equipped machine.
 - The local mac Swift package builds, but `swift test` currently requires an XCTest-capable Swift/Xcode toolchain.
 - No general-purpose replay/decoder tool exists yet for `telemetry.bin`; targeted analysis scripts exist under `tools/analysis/`.
-- v0.9 portable tester publishing is tag-driven, but broad production distribution still needs a signing decision, installer/update channel, and passive update-check UI.
-- The PR workflow runs restore/build/test, tracked screenshot validation, Windows screenshot artifact generation/validation, and a self-contained publish dry run with package audit. The release workflow audits the publish folder for accidental repo/dev-folder leaks, emits a package manifest, and keeps user data under the app-data root instead of the install folder.
+- v0.9 portable tester publishing is tag-driven, but broad production distribution still needs a signing decision and installer/update channel. v0.12 should prefer Velopack-compatible release metadata for passive once-per-startup update checks, with a manifest/GitHub Release fallback only while portable zip releases remain the active channel.
+- The PR workflow runs restore/build/test, tracked screenshot validation, Windows screenshot expectation checks, Windows screenshot artifact generation/validation, and a self-contained publish dry run with package audit. The release workflow audits the publish folder for accidental repo/dev-folder leaks, emits a package manifest, and keeps user data under the app-data root instead of the install folder.
 - Because the app-data root persists across portable installs, durable settings/history schema changes must include version bumps plus migrations or compatible readers. Incompatible/future history is skipped and left on disk instead of being fed to overlays.
 - Overlay modules now live under `src/TmrOverlay.App/Overlays/`; status, settings, standings, fuel-calculator, relative, track-map, stream-chat, flags, session/weather, pit-service snapshot, input/car-state, car-radar, and gap-to-leader native overlays are wired. Garage Cover is wired as a localhost-only browser-source privacy surface. Browser-source scripts for localhost routes live with their overlay modules. Remaining future product surfaces should be added deliberately rather than as placeholder overlay tabs.
 - Pure models and calculations have started moving into `src/TmrOverlay.Core/`; Windows remains the production app/runtime, while the ignored mac harness remains the mock-telemetry development surface.
@@ -562,8 +563,8 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 
 ## Recommended Next Steps
 
-1. Close `v0.11-standings-track-map-localhost`: validate the CI-generated Windows screenshot artifact path, keep `Directory.Build.props` aligned with the milestone, confirm tracked mock screenshots still describe the intended review states, and leave only vetted bundled track-map JSON in the release package.
-2. Start the next teammate-beta hardening pass: visible version/build metadata, manual update check, clearer first-run/no-iRacing states, Support-tab copy from real feedback, and portable upgrade validation against existing `%LOCALAPPDATA%\TmrOverlay` settings/history/diagnostics data.
+1. Implement the update-check service/UI: once-per-startup plus manual checks from Velopack-compatible metadata where possible, with update warnings shown as a passive yellow banner above the settings tabs.
+2. Validate portable upgrade behavior against existing `%LOCALAPPDATA%\TmrOverlay` settings/history/diagnostics data on Windows before broad teammate handoff.
 3. Decide signing before broad distribution. Private teammate zip builds can remain unsigned, but production sharing should sign the executable or package.
 4. Decide the installer/update channel after the portable baseline: Velopack for installer plus update feed, or MSIX/App Installer if package identity/signing constraints are acceptable.
 5. Identify remaining v1/legacy overlay slices and choose the next safe model-v2 migration target without pulling fuel/gap analysis products into the simple-overlay path prematurely.

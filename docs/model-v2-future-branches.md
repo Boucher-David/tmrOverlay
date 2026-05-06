@@ -54,8 +54,8 @@ Goal: make the first shared builds easier to install, understand, and support.
 Likely scope:
 
 - Add visible in-app version/build metadata in Settings or Support.
-- Add a manual `Check for updates` action that can compare the running version against the latest GitHub Release or release manifest, then point the user to the release page. Avoid modal prompts during active sessions.
-- Tighten the Support tab from real teammate feedback: clearer current issue text, diagnostics bundle status, copied-path behavior, and what to send back.
+- Add startup and manual update checks that compare the running version against Velopack-compatible release metadata where possible, falling back to a release manifest/GitHub Release lookup while the portable zip channel remains active. Avoid modal prompts during active sessions.
+- Tighten the Support tab from real teammate feedback: clearer current issue text, diagnostics bundle status, copied-path behavior, diagnostic-capture guidance, concrete test bullets, and detailed handoff copy.
 - Validate portable upgrade behavior against existing `%LOCALAPPDATA%\TmrOverlay` settings/history/diagnostics data.
 - Polish first-run and no-iRacing-connected states so testers do not confuse expected waiting states with broken installs.
 - Keep signed installer/update automation out of scope unless release friction proves the portable zip is not enough for private testers.

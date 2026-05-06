@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import struct
 import sys
 import zlib
@@ -76,9 +77,29 @@ WINDOWS_EXPECTED_PNGS = {
     "states/flags-blue.png": (960, 540),
     "states/session-weather-live.png": (420, 270),
     "states/pit-service-active.png": (420, 250),
-    "states/input-state-trace.png": (390, 220),
+    "states/input-state-trace.png": (520, 220),
     "states/car-radar-side-pressure.png": (300, 300),
     "states/gap-to-leader-trend.png": (560, 260),
+}
+
+WINDOWS_EXPECTED_SIZE_SOURCES = {
+    "states/status-live-analysis.png": "src/TmrOverlay.App/Overlays/Status/StatusOverlayDefinition.cs",
+    "states/fuel-calculator-live.png": "src/TmrOverlay.App/Overlays/FuelCalculator/FuelCalculatorOverlayDefinition.cs",
+    "states/relative-live.png": "src/TmrOverlay.App/Overlays/Relative/RelativeOverlayDefinition.cs",
+    "states/standings-live.png": "src/TmrOverlay.App/Overlays/Standings/StandingsOverlayDefinition.cs",
+    "states/track-map-placeholder.png": "src/TmrOverlay.App/Overlays/TrackMap/TrackMapOverlayDefinition.cs",
+    "states/session-weather-live.png": "src/TmrOverlay.App/Overlays/SessionWeather/SessionWeatherOverlayDefinition.cs",
+    "states/pit-service-active.png": "src/TmrOverlay.App/Overlays/PitService/PitServiceOverlayDefinition.cs",
+    "states/input-state-trace.png": "src/TmrOverlay.App/Overlays/InputState/InputStateOverlayDefinition.cs",
+    "states/car-radar-side-pressure.png": "src/TmrOverlay.App/Overlays/CarRadar/CarRadarOverlayDefinition.cs",
+    "states/gap-to-leader-trend.png": "src/TmrOverlay.App/Overlays/GapToLeader/GapToLeaderOverlayDefinition.cs",
+}
+
+WINDOWS_GENERATOR_SIZE_SOURCES = {
+    "states/flags-blue.png": (
+        "tools/TmrOverlay.WindowsScreenshots/Program.cs",
+        r"OverlaySettingsFor\(\s*FlagsOverlayDefinition\.Definition,\s*width:\s*(\d+),\s*height:\s*(\d+)\s*\)",
+    ),
 }
 
 WINDOWS_MINIMUM_PNGS = {
@@ -114,7 +135,7 @@ def main() -> int:
     parser.add_argument("--root", default="mocks", help="Screenshot root directory.")
     parser.add_argument(
         "--profile",
-        choices=("tracked", "windows-ci", "release-tutorial"),
+        choices=("tracked", "windows-ci", "windows-expectations", "release-tutorial"),
         default="tracked",
         help="Screenshot artifact profile to validate.",
     )
@@ -130,6 +151,9 @@ def main() -> int:
     failures: list[str] = []
     if args.profile == "windows-ci":
         validate_windows_ci(root, args.min_unique_bytes, failures)
+        return finish(failures)
+    if args.profile == "windows-expectations":
+        validate_windows_expectations(failures)
         return finish(failures)
     if args.profile == "release-tutorial":
         validate_release_tutorial(root, args.min_unique_bytes, failures)
@@ -200,6 +224,90 @@ def validate_windows_ci(root: Path, min_unique_bytes: int, failures: list[str]) 
             failures=failures,
             minimum_size=minimum_size,
         )
+
+
+def validate_windows_expectations(failures: list[str]) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    covered_paths = set(WINDOWS_EXPECTED_SIZE_SOURCES) | set(WINDOWS_GENERATOR_SIZE_SOURCES)
+    for relative_path in sorted(set(WINDOWS_EXPECTED_PNGS) - covered_paths):
+        failures.append(f"{relative_path}: missing Windows screenshot expectation source contract")
+    for relative_path in sorted(covered_paths - set(WINDOWS_EXPECTED_PNGS)):
+        failures.append(f"{relative_path}: source contract exists without a Windows expected PNG entry")
+
+    for relative_path, source_path in WINDOWS_EXPECTED_SIZE_SOURCES.items():
+        expected_size = WINDOWS_EXPECTED_PNGS.get(relative_path)
+        if expected_size is None:
+            continue
+        actual_size = read_overlay_definition_size(repo_root / source_path, source_path, failures)
+        if actual_size is None:
+            continue
+        validate_expected_size_contract(relative_path, expected_size, actual_size, source_path, failures)
+
+    for relative_path, (source_path, pattern) in WINDOWS_GENERATOR_SIZE_SOURCES.items():
+        expected_size = WINDOWS_EXPECTED_PNGS.get(relative_path)
+        if expected_size is None:
+            continue
+        actual_size = read_generator_size(repo_root / source_path, source_path, pattern, failures)
+        if actual_size is None:
+            continue
+        validate_expected_size_contract(relative_path, expected_size, actual_size, source_path, failures)
+
+
+def read_overlay_definition_size(
+    path: Path,
+    display_path: str,
+    failures: list[str],
+) -> Optional[tuple[int, int]]:
+    try:
+        content = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        failures.append(f"{display_path}: {exc}")
+        return None
+
+    width_match = re.search(r"\bDefaultWidth:\s*(\d+)", content)
+    height_match = re.search(r"\bDefaultHeight:\s*(\d+)", content)
+    if width_match is None or height_match is None:
+        failures.append(f"{display_path}: could not find DefaultWidth/DefaultHeight")
+        return None
+
+    return int(width_match.group(1)), int(height_match.group(1))
+
+
+def read_generator_size(
+    path: Path,
+    display_path: str,
+    pattern: str,
+    failures: list[str],
+) -> Optional[tuple[int, int]]:
+    try:
+        content = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        failures.append(f"{display_path}: {exc}")
+        return None
+
+    match = re.search(pattern, content, flags=re.DOTALL)
+    if match is None:
+        failures.append(f"{display_path}: could not find Windows screenshot generator size contract")
+        return None
+
+    return int(match.group(1)), int(match.group(2))
+
+
+def validate_expected_size_contract(
+    relative_path: str,
+    expected_size: tuple[int, int],
+    actual_size: tuple[int, int],
+    source_path: str,
+    failures: list[str],
+) -> None:
+    if expected_size != actual_size:
+        failures.append(
+            f"{relative_path}: WINDOWS_EXPECTED_PNGS says {expected_size[0]}x{expected_size[1]}, "
+            f"but {source_path} declares {actual_size[0]}x{actual_size[1]}"
+        )
+        return
+
+    print(f"ok {relative_path}: expectation matches {source_path} at {expected_size[0]}x{expected_size[1]}")
 
 
 def validate_release_tutorial(root: Path, min_unique_bytes: int, failures: list[str]) -> None:

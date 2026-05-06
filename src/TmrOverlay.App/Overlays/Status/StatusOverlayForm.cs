@@ -233,8 +233,8 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
                 }
                 else if (snapshot.IsConnected)
                 {
-                    nextBackColor = OverlayTheme.Colors.WarningBackground;
-                    nextIndicatorColor = OverlayTheme.Colors.WarningIndicator;
+                    nextBackColor = OverlayTheme.Colors.InfoBackground;
+                    nextIndicatorColor = OverlayTheme.Colors.NeutralIndicator;
                 }
                 else
                 {
@@ -387,21 +387,21 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
             if (!snapshot.IsConnected)
             {
                 return new CaptureHealth(
-                    CaptureHealthLevel.Warning,
+                    appWarning is null ? CaptureHealthLevel.Ok : CaptureHealthLevel.Warning,
                     "Waiting for iRacing",
                     "collector idle",
                     captureText,
-                    Combine(appWarning, "health: sim not connected; no live telemetry source"));
+                    Combine(appWarning, "health: waiting is expected before iRacing is running"));
             }
 
             if (!snapshot.IsCapturing)
             {
                 return new CaptureHealth(
-                    CaptureHealthLevel.Warning,
+                    appWarning is null ? CaptureHealthLevel.Ok : CaptureHealthLevel.Warning,
                     "Connected, waiting for telemetry",
                     "waiting for first telemetry frame",
                     captureText,
-                    Combine(appWarning, "health: SDK connected but no live telemetry frame has started collection"));
+                    Combine(appWarning, "health: live telemetry starts after session data arrives"));
             }
 
             if (snapshot.RawCaptureEnabled && snapshot.FrameCount > 0 && snapshot.WrittenFrameCount == 0)

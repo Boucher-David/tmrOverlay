@@ -16,8 +16,9 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
 {
     private const int RefreshIntervalMilliseconds = 50;
     private const int MaximumTracePoints = 180;
-    private const int CompactLayoutWidthThreshold = 430;
-    private const int CompactLayoutHeightThreshold = 250;
+    private const int CompactLayoutWidthThreshold = 320;
+    private const int CompactLayoutHeightThreshold = 180;
+    private const int FullLayoutHeightThreshold = 270;
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly ILogger _logger;
     private readonly AppPerformanceState _performanceState;
@@ -88,6 +89,10 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
             if (UseCompactLayout())
             {
                 DrawCompactState(e.Graphics);
+            }
+            else if (UseWideTraceLayout())
+            {
+                DrawWideTraceState(e.Graphics);
             }
             else
             {
@@ -205,6 +210,29 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
     private void DrawPedalTraces(Graphics graphics)
     {
         var graph = new Rectangle(14, 44, Math.Max(180, Width - 190), Math.Max(118, Height - 72));
+        DrawPedalTraceGraph(graphics, graph);
+    }
+
+    private void DrawWideTraceState(Graphics graphics)
+    {
+        var graph = new Rectangle(
+            14,
+            44,
+            Math.Max(260, ClientSize.Width - 28),
+            Math.Max(80, ClientSize.Height - 118));
+        DrawPedalTraceGraph(graphics, graph);
+
+        var readoutTop = graph.Bottom + 8;
+        var readoutRect = new Rectangle(
+            14,
+            readoutTop,
+            Math.Max(260, ClientSize.Width - 28),
+            Math.Max(36, ClientSize.Height - readoutTop - 12));
+        DrawCompactReadouts(graphics, readoutRect);
+    }
+
+    private void DrawPedalTraceGraph(Graphics graphics, Rectangle graph)
+    {
         using var background = new SolidBrush(OverlayTheme.Colors.PanelBackground);
         graphics.FillRectangle(background, graph);
         using var border = new Pen(OverlayTheme.Colors.WindowBorder);
@@ -352,7 +380,45 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
         }
 
         using var pen = new Pen(color, 2f);
-        graphics.DrawLines(pen, points);
+        var state = graphics.Save();
+        try
+        {
+            graphics.SetClip(graph, CombineMode.Intersect);
+            if (points.Length < 3)
+            {
+                graphics.DrawLines(pen, points);
+                return;
+            }
+
+            using var path = SmoothTracePath(points);
+            graphics.DrawPath(pen, path);
+        }
+        finally
+        {
+            graphics.Restore(state);
+        }
+    }
+
+    private static GraphicsPath SmoothTracePath(IReadOnlyList<PointF> points)
+    {
+        var path = new GraphicsPath();
+        path.StartFigure();
+        for (var index = 0; index < points.Count - 1; index++)
+        {
+            var p0 = index == 0 ? points[index] : points[index - 1];
+            var p1 = points[index];
+            var p2 = points[index + 1];
+            var p3 = index + 2 < points.Count ? points[index + 2] : p2;
+            var control1 = new PointF(
+                p1.X + (p2.X - p0.X) / 6f,
+                p1.Y + (p2.Y - p0.Y) / 6f);
+            var control2 = new PointF(
+                p2.X - (p3.X - p1.X) / 6f,
+                p2.Y - (p3.Y - p1.Y) / 6f);
+            path.AddBezier(p1, control1, control2, p2);
+        }
+
+        return path;
     }
 
     private void DrawLegend(Graphics graphics, Rectangle graph, Font font)
@@ -419,6 +485,11 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
     {
         return ClientSize.Width < CompactLayoutWidthThreshold
             || ClientSize.Height < CompactLayoutHeightThreshold;
+    }
+
+    private bool UseWideTraceLayout()
+    {
+        return ClientSize.Height < FullLayoutHeightThreshold;
     }
 
     private static void DrawRightAligned(Graphics graphics, string text, Font font, Brush brush, RectangleF rect)
