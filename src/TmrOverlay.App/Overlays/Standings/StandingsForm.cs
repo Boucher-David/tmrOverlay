@@ -222,8 +222,17 @@ internal sealed class StandingsForm : PersistentOverlayForm
                     snapshotSucceeded);
             }
 
-            if (_lastRefreshSequence == snapshot.Sequence && _overlayError is null)
+            var now = DateTimeOffset.UtcNow;
+            var previousSequence = _lastRefreshSequence;
+            if (previousSequence == snapshot.Sequence && _overlayError is null)
             {
+                _performanceState.RecordOverlayRefreshDecision(
+                    StandingsOverlayDefinition.Definition.Id,
+                    now,
+                    previousSequence,
+                    snapshot.Sequence,
+                    snapshot.LastUpdatedAtUtc,
+                    applied: false);
                 succeeded = true;
                 return;
             }
@@ -246,11 +255,12 @@ internal sealed class StandingsForm : PersistentOverlayForm
 
             var applyStarted = Stopwatch.GetTimestamp();
             var applySucceeded = false;
+            var uiChanged = false;
             try
             {
-                ApplyViewModel(viewModel);
-                _lastRefreshSequence = snapshot.Sequence;
                 _overlayError = null;
+                uiChanged = ApplyViewModel(viewModel);
+                _lastRefreshSequence = snapshot.Sequence;
                 applySucceeded = true;
             }
             finally
@@ -259,6 +269,18 @@ internal sealed class StandingsForm : PersistentOverlayForm
                     AppPerformanceMetricIds.OverlayStandingsApplyUi,
                     applyStarted,
                     applySucceeded);
+            }
+
+            _performanceState.RecordOverlayRefreshDecision(
+                StandingsOverlayDefinition.Definition.Id,
+                now,
+                previousSequence,
+                snapshot.Sequence,
+                snapshot.LastUpdatedAtUtc,
+                applied: uiChanged);
+            if (uiChanged)
+            {
+                Invalidate();
             }
 
             succeeded = true;
@@ -273,24 +295,48 @@ internal sealed class StandingsForm : PersistentOverlayForm
         }
     }
 
-    private void ApplyViewModel(StandingsOverlayViewModel viewModel)
+    private bool ApplyViewModel(StandingsOverlayViewModel viewModel)
     {
-        _statusLabel.Text = viewModel.Status;
-        _sourceLabel.Text = viewModel.Source;
-        ClearRows();
-
-        for (var row = 0; row < Math.Min(MaximumRows, viewModel.Rows.Count); row++)
+        var changed = false;
+        SuspendLayout();
+        _table.SuspendLayout();
+        try
         {
-            ApplyRow(row, viewModel.Rows[row]);
+            changed |= SetLabelText(_statusLabel, viewModel.Status);
+            changed |= SetLabelText(_sourceLabel, viewModel.Source);
+
+            var populatedRows = Math.Min(MaximumRows, viewModel.Rows.Count);
+            for (var row = 0; row < populatedRows; row++)
+            {
+                changed |= ApplyRow(row, viewModel.Rows[row]);
+            }
+
+            for (var row = populatedRows; row < MaximumRows; row++)
+            {
+                changed |= ClearRow(row);
+            }
+
+            var backgroundColor = _overlayError is null
+                ? OverlayTheme.Colors.WindowBackground
+                : OverlayTheme.Colors.ErrorBackground;
+            if (BackColor != backgroundColor)
+            {
+                BackColor = backgroundColor;
+                changed = true;
+            }
+        }
+        finally
+        {
+            _table.ResumeLayout(performLayout: false);
+            ResumeLayout(performLayout: false);
         }
 
-        BackColor = _overlayError is null
-            ? OverlayTheme.Colors.WindowBackground
-            : OverlayTheme.Colors.ErrorBackground;
+        return changed;
     }
 
-    private void ApplyRow(int index, StandingsOverlayRowViewModel row)
+    private bool ApplyRow(int index, StandingsOverlayRowViewModel row)
     {
+        var changed = false;
         var values = new[]
         {
             row.ClassPosition,
@@ -303,9 +349,11 @@ internal sealed class StandingsForm : PersistentOverlayForm
 
         for (var column = 0; column < Columns.Length; column++)
         {
-            _rowLabels[index, column].Text = values[column];
-            _rowLabels[index, column].ForeColor = TextColor(row, column);
+            changed |= SetLabelText(_rowLabels[index, column], values[column]);
+            changed |= SetLabelColor(_rowLabels[index, column], TextColor(row, column));
         }
+
+        return changed;
     }
 
     private static Color TextColor(StandingsOverlayRowViewModel row, int column)
@@ -330,24 +378,38 @@ internal sealed class StandingsForm : PersistentOverlayForm
             : OverlayTheme.Colors.TextPrimary;
     }
 
-    private void ClearRows()
+    private bool ClearRow(int row)
     {
-        foreach (var label in RowLabels())
+        var changed = false;
+        for (var column = 0; column < Columns.Length; column++)
         {
-            label.Text = string.Empty;
-            label.ForeColor = OverlayTheme.Colors.TextPrimary;
+            changed |= SetLabelText(_rowLabels[row, column], string.Empty);
+            changed |= SetLabelColor(_rowLabels[row, column], OverlayTheme.Colors.TextPrimary);
         }
+
+        return changed;
     }
 
-    private IEnumerable<Label> RowLabels()
+    private static bool SetLabelText(Label label, string text)
     {
-        for (var row = 0; row < MaximumRows; row++)
+        if (string.Equals(label.Text, text, StringComparison.Ordinal))
         {
-            for (var column = 0; column < Columns.Length; column++)
-            {
-                yield return _rowLabels[row, column];
-            }
+            return false;
         }
+
+        label.Text = text;
+        return true;
+    }
+
+    private static bool SetLabelColor(Label label, Color color)
+    {
+        if (label.ForeColor == color)
+        {
+            return false;
+        }
+
+        label.ForeColor = color;
+        return true;
     }
 
     private Label CreateCellLabel(
@@ -389,10 +451,15 @@ internal sealed class StandingsForm : PersistentOverlayForm
         _overlayError = message;
         _statusLabel.Text = "overlay error";
         _sourceLabel.Text = $"source: error ({message})";
-        ClearRows();
+        for (var row = 0; row < MaximumRows; row++)
+        {
+            ClearRow(row);
+        }
+
         _rowLabels[0, 0].Text = "ERR";
         _rowLabels[0, 2].Text = message;
         _rowLabels[0, 2].ForeColor = OverlayTheme.Colors.ErrorIndicator;
         BackColor = OverlayTheme.Colors.ErrorBackground;
+        Invalidate();
     }
 }

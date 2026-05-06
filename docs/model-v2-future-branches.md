@@ -6,7 +6,7 @@ Relative now consumes `LiveTelemetrySnapshot.Models.Relative` directly, and Car 
 
 ## This Branch Scope
 
-- Keep raw capture and advanced diagnostics bounded with failure isolation. For tester builds, raw capture, model parity, live overlay diagnostics, and edge-case clips should stay opt-in/disabled by default unless a branch explicitly collects evidence.
+- Keep raw capture and advanced diagnostics bounded with failure isolation. For tester builds, raw capture should stay opt-in; compact model parity, live overlay diagnostics, and edge-case clips can run by default when a branch is explicitly collecting evidence.
 - Preserve compatibility with already collected raw captures and synthesized data. New sidecars are additive; older captures remain readable.
 - Record enough evidence to decide future overlay behavior from data:
   - `live-model-parity.json` for model-v2 coverage/mismatch and promotion-readiness.
@@ -41,7 +41,7 @@ Likely scope:
 
 - Ship first-pass production Standings backed by normalized timing rows.
 - Ship a map-only Track Map overlay with bundled-map lookup, optional user IBT-derived map generation, circle fallback, live car dots, and model-v2 sector highlights.
-- Add disabled-by-default `LocalhostOverlays` browser-source routes for OBS/local capture tools, separate from the future teammate-to-teammate Overlay Bridge.
+- Add `LocalhostOverlays` browser-source routes for OBS/local capture tools, separate from the future teammate-to-teammate Overlay Bridge.
 - Add Stream Chat as a normal read-only overlay for saved public Twitch channel chat plus a browser-source route for one selected saved source: Streamlabs Chat Box widget URL or public Twitch channel chat.
 - Keep settings as a flat-tab app control surface with selectable/copyable localhost URLs where routes exist.
 - Harden existing live overlays from tester feedback: Relative/Fuel repaint churn, Relative display-time fallback, smaller Inputs layout, clearer local Radar side warnings, and stale race-data overlay fade behavior.
@@ -276,7 +276,7 @@ That replay provider should be a development tool only. It should read existing 
 
 The mac harness remains the fast local design surface, but Windows is the production/iRacing runtime. v0.10 adds a Windows-only screenshot generator that renders the real WinForms forms with deterministic telemetry fixtures and uploads the resulting contact sheet plus per-state PNGs as GitHub Actions artifacts.
 
-Use this as a parity gate, not as a replacement for the tracked `mocks/` screenshots. The tracked mac screenshots document the intended review states; the Windows artifacts prove the production forms still render, size, and arrange those states under the WinForms runtime. The first parity set should cover settings tabs plus the current production overlays: status, standings, fuel calculator, relative, track map, garage cover, flags, session/weather, pit service, inputs, radar, and gap to leader.
+Use this as a parity gate, not as a replacement for the tracked `mocks/` screenshots. The tracked mac screenshots document the intended review states; the Windows artifacts prove the production forms still render, size, and arrange those states under the WinForms runtime. The first parity set should cover settings tabs plus the current production overlays: status, standings, fuel calculator, relative, track map, flags, session/weather, pit service, inputs, radar, and gap to leader, with Garage Cover validated through its localhost browser route.
 
 Keep the fixtures isolated from local history, app data, raw captures, and real machine paths. If a Windows screenshot state needs live telemetry, build it from normalized `LiveTelemetrySnapshot` data with explicit fixture values. If a future overlay needs replay evidence, add that through a separate capture-replay branch rather than letting the screenshot generator read private capture directories.
 
@@ -365,7 +365,7 @@ The reviewed iRon DDU is useful product research, but it should not be interpret
 
 iRon's fuel block is the clearest functional reference. It averages recent valid green laps, ignores laps affected by pit road or caution-style flags, and applies a safety factor before estimating remaining laps and fuel-to-finish. TMR's fuel work should keep the richer stint/history/strategy model in purpose-built fuel and future engineer surfaces, but the DDU confirms that a compact "what do I need now" dashboard row can be valuable once those model-v2 facts are stable.
 
-The iRon Cover overlay is deliberately just a blank rectangle. TMR's Garage Cover V1 is stronger as a streamer privacy feature because it keys off `IsGarageVisible`, stays opaque, uses app-owned imported artwork, and has a TMR-logo fallback. The V2 opportunity is separate: a stream-facing garage/broadcast state can show safe session, standings, stint, sponsor, or team-art context while still covering setup details.
+The iRon Cover overlay is deliberately just a blank rectangle. TMR's Garage Cover V1 is stronger as a streamer privacy feature because it keys off `IsGarageVisible`, stays opaque, uses app-owned imported artwork, and has a black TMR fallback. The V2 opportunity is separate: a stream-facing garage/broadcast state can show safe session, standings, stint, sponsor, or team-art context while still covering setup details.
 
 Product implication: keep pit release and garage privacy in V1 because they solve direct user pain now. Keep DDU-style layout composition, richer pit/engineer context, garage broadcast content, and user layout profiles in V2/design-v2, after the underlying model contracts and layout primitives are stable enough to make custom surfaces reliable.
 

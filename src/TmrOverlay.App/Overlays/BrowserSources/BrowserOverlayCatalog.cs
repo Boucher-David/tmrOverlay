@@ -1,5 +1,6 @@
 using TmrOverlay.App.Overlays.CarRadar;
 using TmrOverlay.App.Overlays.FuelCalculator;
+using TmrOverlay.App.Overlays.GarageCover;
 using TmrOverlay.App.Overlays.GapToLeader;
 using TmrOverlay.App.Overlays.InputState;
 using TmrOverlay.App.Overlays.PitService;
@@ -24,6 +25,7 @@ internal static class BrowserOverlayCatalog
         CarRadarBrowserSource.Page,
         GapToLeaderBrowserSource.Page,
         TrackMapBrowserSource.Page,
+        GarageCoverBrowserSource.Page,
         StreamChatBrowserSource.Page
     ];
 

@@ -463,9 +463,6 @@ internal static class AppPerformanceMetricIds
     public const string OverlayStreamChatSettingsRefresh = "overlay.stream_chat.settings_refresh";
     public const string OverlayStreamChatConnect = "overlay.stream_chat.connect";
     public const string OverlayStreamChatPaint = "overlay.stream_chat.paint";
-    public const string OverlayGarageCoverRefresh = "overlay.garage_cover.refresh";
-    public const string OverlayGarageCoverSnapshot = "overlay.garage_cover.snapshot";
-    public const string OverlayGarageCoverPaint = "overlay.garage_cover.paint";
     public const string OverlayFlagsRefresh = "overlay.flags.refresh";
     public const string OverlayFlagsSnapshot = "overlay.flags.snapshot";
     public const string OverlayFlagsViewModel = "overlay.flags.view_model";

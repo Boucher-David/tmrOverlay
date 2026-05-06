@@ -24,6 +24,9 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 {
     private const int SideTabThickness = 38;
     private const int SideTabLength = 174;
+    private static readonly TimeSpan SupportStatusRefreshInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan SupportHeavyRefreshInterval = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan LatestDiagnosticsScanInterval = TimeSpan.FromSeconds(5);
 
     private static readonly string[] PreferredOverlayTabOrder =
     [
@@ -51,6 +54,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private readonly AppPerformanceState _performanceState;
     private readonly AppStorageOptions _storageOptions;
     private readonly LocalhostOverlayOptions _localhostOverlayOptions;
+    private readonly LocalhostOverlayState _localhostOverlayState;
     private readonly DiagnosticsBundleService _diagnosticsBundleService;
     private readonly AppEventRecorder _events;
     private readonly Action _saveSettings;
@@ -73,9 +77,14 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private Label? _appStatusLabel;
     private Label? _sessionStateLabel;
     private Label? _currentIssueLabel;
+    private Label? _advancedDiagnosticsLabel;
     private Label? _performanceSnapshotLabel;
     private Label? _latestDiagnosticsBundleLabel;
     private Label? _supportStatusLabel;
+    private DateTimeOffset _nextSupportStatusRefreshAtUtc;
+    private DateTimeOffset _nextSupportHeavyRefreshAtUtc;
+    private DateTimeOffset _nextLatestDiagnosticsScanAtUtc;
+    private string? _cachedLatestDiagnosticsBundlePath;
 
     public SettingsOverlayForm(
         ApplicationSettings applicationSettings,
@@ -88,6 +97,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         AppPerformanceState performanceState,
         AppStorageOptions storageOptions,
         LocalhostOverlayOptions localhostOverlayOptions,
+        LocalhostOverlayState localhostOverlayState,
         DiagnosticsBundleService diagnosticsBundleService,
         AppEventRecorder events,
         OverlaySettings settings,
@@ -111,6 +121,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _performanceState = performanceState;
         _storageOptions = storageOptions;
         _localhostOverlayOptions = localhostOverlayOptions;
+        _localhostOverlayState = localhostOverlayState;
         _diagnosticsBundleService = diagnosticsBundleService;
         _events = events;
         _saveSettings = saveSettings;
@@ -486,12 +497,12 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private void AddAdvancedDiagnosticsControls(TabPage page, int top)
     {
         var title = CreateSectionLabel("Advanced collection", 560, top, 300);
-        var note = CreateMutedLabel("Disabled by default. Enable with appsettings.json or TMR_ overrides.", 564, top + 30, 330);
-        var status = CreateMultiLineValueLabel(AdvancedDiagnosticsText(), 564, top + 62, 330, 104);
+        var note = CreateMutedLabel("Compact diagnostics run by default. Use appsettings.json or TMR_ overrides to disable individual collectors.", 564, top + 30, 330);
+        _advancedDiagnosticsLabel = CreateMultiLineValueLabel(AdvancedDiagnosticsText(), 564, top + 62, 330, 104);
 
         page.Controls.Add(title);
         page.Controls.Add(note);
-        page.Controls.Add(status);
+        page.Controls.Add(_advancedDiagnosticsLabel);
     }
 
     private void AddSupportStorageControls(TabPage page, int top)
@@ -562,6 +573,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         page.Controls.Add(performanceLabel);
         page.Controls.Add(_performanceSnapshotLabel);
 
+        _nextSupportStatusRefreshAtUtc = DateTimeOffset.MinValue;
+        _nextSupportHeavyRefreshAtUtc = DateTimeOffset.MinValue;
         SyncErrorLoggingTab();
         return page;
     }
@@ -577,6 +590,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         page.Tag = definition.Id;
         var title = CreateSectionLabel(definition.DisplayName, 18, 18, 500);
         var isStreamChat = string.Equals(definition.Id, StreamChatOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase);
+        var isGarageCover = string.Equals(definition.Id, GarageCoverOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase);
         var controlTop = 58;
 
         if (isStreamChat)
@@ -589,6 +603,19 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
                 680));
             AddLocalhostOptions(page, definition, 112);
             AddStreamChatOptions(page, settings, 212);
+            return page;
+        }
+
+        if (isGarageCover)
+        {
+            page.Controls.Add(title);
+            page.Controls.Add(CreateMutedLabel(
+                "Localhost-only privacy cover for OBS. It appears in the browser source while iRacing reports the Garage screen as visible.",
+                22,
+                54,
+                720));
+            AddLocalhostOptions(page, definition, 112);
+            AddGarageCoverOptions(page, settings, 212);
             return page;
         }
 
@@ -728,7 +755,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             var copyButton = CreateActionButton("Copy", x + 402, top + 36, 76);
             copyButton.Click += (_, _) => CopyTextToClipboard(url);
             page.Controls.Add(copyButton);
-            page.Controls.Add(CreateMutedLabel("This browser-source route does not require the native overlay to be visible. Enable LocalhostOverlays in configuration before using it.", x + 4, top + 76, 500));
+            page.Controls.Add(CreateMutedLabel("This browser-source route does not require the native overlay to be visible. Disable LocalhostOverlays in configuration if the local server is not needed.", x + 4, top + 76, 500));
             return;
         }
 
@@ -797,39 +824,11 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         };
         page.Controls.Add(clearButton);
 
-        var sizeTop = top + 104;
-        page.Controls.Add(CreateSectionLabel("Cover frame", 18, sizeTop, 500));
-        page.Controls.Add(CreateLabel("Width", 22, sizeTop + 42, 80));
-        var widthInput = CreateIntegerInput(
-            Math.Clamp(settings.Width, GarageCoverOverlayDefinition.MinimumWidth, GarageCoverOverlayDefinition.MaximumWidth),
-            GarageCoverOverlayDefinition.MinimumWidth,
-            GarageCoverOverlayDefinition.MaximumWidth,
-            108,
-            sizeTop + 38);
-        widthInput.Width = 96;
-        widthInput.ValueChanged += (_, _) =>
-        {
-            settings.Width = (int)widthInput.Value;
-            SaveAndApply();
-        };
-        page.Controls.Add(widthInput);
-
-        page.Controls.Add(CreateLabel("Height", 238, sizeTop + 42, 80));
-        var heightInput = CreateIntegerInput(
-            Math.Clamp(settings.Height, GarageCoverOverlayDefinition.MinimumHeight, GarageCoverOverlayDefinition.MaximumHeight),
-            GarageCoverOverlayDefinition.MinimumHeight,
-            GarageCoverOverlayDefinition.MaximumHeight,
-            324,
-            sizeTop + 38);
-        heightInput.Width = 96;
-        heightInput.ValueChanged += (_, _) =>
-        {
-            settings.Height = (int)heightInput.Value;
-            SaveAndApply();
-        };
-        page.Controls.Add(heightInput);
-
-        page.Controls.Add(CreateMutedLabel("The cover appears automatically only while iRacing reports the Garage screen as visible.", 22, sizeTop + 84, 680));
+        page.Controls.Add(CreateMutedLabel(
+            "Set the browser-source size in OBS. The app does not create a desktop Garage Cover window.",
+            22,
+            top + 104,
+            720));
     }
 
     private void ImportGarageCoverImage(OverlaySettings settings)
@@ -1374,41 +1373,63 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         if (_appStatusLabel is null
             && _sessionStateLabel is null
             && _currentIssueLabel is null
+            && _advancedDiagnosticsLabel is null
             && _latestDiagnosticsBundleLabel is null
             && _performanceSnapshotLabel is null)
         {
             return;
         }
 
+        var now = DateTimeOffset.UtcNow;
+        var statusDue = now >= _nextSupportStatusRefreshAtUtc;
+        var heavyDue = now >= _nextSupportHeavyRefreshAtUtc;
+        if (!statusDue && !heavyDue)
+        {
+            return;
+        }
+
         var captureSnapshot = _captureState.Snapshot();
-        var diagnosticsSnapshot = _diagnosticsBundleService.Snapshot();
-        if (_appStatusLabel is not null)
+        if (statusDue)
         {
-            var appStatus = AppStatus(captureSnapshot);
-            _appStatusLabel.Text = appStatus.Text;
-            _appStatusLabel.ForeColor = appStatus.Color;
+            _nextSupportStatusRefreshAtUtc = now + SupportStatusRefreshInterval;
+            if (_appStatusLabel is not null)
+            {
+                var appStatus = AppStatus(captureSnapshot);
+                SetLabelText(_appStatusLabel, appStatus.Text);
+                SetLabelColor(_appStatusLabel, appStatus.Color);
+            }
+
+            if (_sessionStateLabel is not null)
+            {
+                SetLabelText(_sessionStateLabel, SessionStateText(captureSnapshot));
+            }
+
+            if (_currentIssueLabel is not null)
+            {
+                SetLabelText(_currentIssueLabel, CurrentIssueText(captureSnapshot));
+            }
+
+            if (_advancedDiagnosticsLabel is not null)
+            {
+                SetLabelText(_advancedDiagnosticsLabel, AdvancedDiagnosticsText());
+            }
         }
 
-        if (_sessionStateLabel is not null)
+        if (heavyDue)
         {
-            _sessionStateLabel.Text = SessionStateText(captureSnapshot);
-        }
+            _nextSupportHeavyRefreshAtUtc = now + SupportHeavyRefreshInterval;
+            var diagnosticsSnapshot = _diagnosticsBundleService.Snapshot();
+            if (_latestDiagnosticsBundleLabel is not null)
+            {
+                var latestBundlePath = diagnosticsSnapshot.LastBundlePath ?? LatestDiagnosticsBundlePathCached(now) ?? string.Empty;
+                SetLabelText(_latestDiagnosticsBundleLabel, LatestBundleDisplayText(latestBundlePath));
+                ReportAutomaticDiagnosticsBundleStatus(diagnosticsSnapshot, latestBundlePath);
+            }
 
-        if (_currentIssueLabel is not null)
-        {
-            _currentIssueLabel.Text = CurrentIssueText(captureSnapshot);
-        }
-
-        if (_latestDiagnosticsBundleLabel is not null)
-        {
-            var latestBundlePath = diagnosticsSnapshot.LastBundlePath ?? LatestDiagnosticsBundlePath() ?? string.Empty;
-            _latestDiagnosticsBundleLabel.Text = LatestBundleDisplayText(latestBundlePath);
-            ReportAutomaticDiagnosticsBundleStatus(diagnosticsSnapshot, latestBundlePath);
-        }
-
-        if (_performanceSnapshotLabel is not null)
-        {
-            _performanceSnapshotLabel.Text = PerformanceSnapshotText(_performanceState.Snapshot(), captureSnapshot);
+            if (_performanceSnapshotLabel is not null)
+            {
+                SetLabelText(_performanceSnapshotLabel, PerformanceSnapshotText(_performanceState.Snapshot(), captureSnapshot));
+            }
         }
     }
 
@@ -1506,6 +1527,18 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             ?.FullName;
     }
 
+    private string? LatestDiagnosticsBundlePathCached(DateTimeOffset now)
+    {
+        if (now < _nextLatestDiagnosticsScanAtUtc)
+        {
+            return _cachedLatestDiagnosticsBundlePath;
+        }
+
+        _nextLatestDiagnosticsScanAtUtc = now + LatestDiagnosticsScanInterval;
+        _cachedLatestDiagnosticsBundlePath = LatestDiagnosticsBundlePath();
+        return _cachedLatestDiagnosticsBundlePath;
+    }
+
     private void ReportAutomaticDiagnosticsBundleStatus(
         DiagnosticsBundleStatus diagnosticsSnapshot,
         string latestBundlePath)
@@ -1550,8 +1583,24 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             return;
         }
 
-        _supportStatusLabel.ForeColor = isError ? OverlayTheme.Colors.WarningText : OverlayTheme.Colors.SuccessText;
-        _supportStatusLabel.Text = message;
+        SetLabelColor(_supportStatusLabel, isError ? OverlayTheme.Colors.WarningText : OverlayTheme.Colors.SuccessText);
+        SetLabelText(_supportStatusLabel, message);
+    }
+
+    private static void SetLabelText(Label label, string text)
+    {
+        if (!string.Equals(label.Text, text, StringComparison.Ordinal))
+        {
+            label.Text = text;
+        }
+    }
+
+    private static void SetLabelColor(Label label, Color color)
+    {
+        if (label.ForeColor != color)
+        {
+            label.ForeColor = color;
+        }
     }
 
     private static string CurrentIssueText(TelemetryCaptureStatusSnapshot snapshot)
@@ -1576,12 +1625,17 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
     private string AdvancedDiagnosticsText()
     {
+        var localhost = _localhostOverlayState.Snapshot();
+        var localhostStatus = localhost.LastError is { Length: > 0 }
+            ? $"{localhost.Status} ({localhost.LastError})"
+            : $"{localhost.Status}, {localhost.TotalRequests:N0} requests";
         return string.Join(
             Environment.NewLine,
             $"edge clips: {Status(_telemetryEdgeCaseOptions.Enabled)}",
             $"model v2 parity: {Status(_liveModelParityOptions.Enabled)}",
             $"overlay signals: {Status(_liveOverlayDiagnosticsOptions.Enabled)}",
             $"post-race analysis: {Status(_postRaceAnalysisOptions.Enabled)}",
+            $"localhost: {localhostStatus}",
             "Paths: logs + history folders below");
     }
 

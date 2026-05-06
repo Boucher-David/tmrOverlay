@@ -7,11 +7,11 @@ namespace TmrOverlay.App.Tests.Telemetry;
 public sealed class LiveOverlayDiagnosticsOptionsTests
 {
     [Fact]
-    public void FromConfiguration_DefaultsToDisabled()
+    public void FromConfiguration_DefaultsToEnabled()
     {
         var options = LiveOverlayDiagnosticsOptions.FromConfiguration(BuildConfiguration(new Dictionary<string, string?>()));
 
-        Assert.False(options.Enabled);
+        Assert.True(options.Enabled);
     }
 
     [Fact]

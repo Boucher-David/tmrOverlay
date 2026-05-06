@@ -7,13 +7,25 @@ namespace TmrOverlay.App.Tests.Localhost;
 public sealed class LocalhostOverlayOptionsTests
 {
     [Fact]
-    public void FromConfiguration_DefaultsToDisabledLocalhostOverlays()
+    public void FromConfiguration_DefaultsToEnabledLocalhostOverlays()
     {
         var options = LocalhostOverlayOptions.FromConfiguration(BuildConfiguration(new Dictionary<string, string?>()));
 
-        Assert.False(options.Enabled);
+        Assert.True(options.Enabled);
         Assert.Equal(8765, options.Port);
         Assert.Equal("http://localhost:8765/", options.Prefix);
+    }
+
+    [Fact]
+    public void FromConfiguration_HonorsExplicitDisabled()
+    {
+        var options = LocalhostOverlayOptions.FromConfiguration(BuildConfiguration(new Dictionary<string, string?>
+        {
+            ["LocalhostOverlays:Enabled"] = "false"
+        }));
+
+        Assert.False(options.Enabled);
+        Assert.Equal(8765, options.Port);
     }
 
     [Fact]

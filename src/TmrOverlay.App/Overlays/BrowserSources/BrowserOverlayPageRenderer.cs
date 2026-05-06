@@ -178,7 +178,8 @@ internal static class BrowserOverlayPageRenderer
       padding: 8px;
     }
 
-    body.track-map-page {
+    body.track-map-page,
+    body.garage-cover-page {
       padding: 0;
     }
 
@@ -195,15 +196,23 @@ internal static class BrowserOverlayPageRenderer
       transition: opacity 220ms ease;
     }
 
-    body.track-map-page .overlay {
+    body.track-map-page .overlay,
+    body.garage-cover-page .overlay {
       width: 100vw;
       height: 100vh;
       min-width: 0;
       max-width: none;
       border: 0;
       border-radius: 0;
-      background: transparent;
       box-shadow: none;
+    }
+
+    body.track-map-page .overlay {
+      background: transparent;
+    }
+
+    body.garage-cover-page .overlay {
+      background: #000000;
     }
 
     .header {
@@ -216,7 +225,8 @@ internal static class BrowserOverlayPageRenderer
       background: rgba(255, 255, 255, 0.04);
     }
 
-    body.track-map-page .header {
+    body.track-map-page .header,
+    body.garage-cover-page .header {
       display: none;
     }
 
@@ -238,7 +248,8 @@ internal static class BrowserOverlayPageRenderer
       padding: 10px 12px 12px;
     }
 
-    body.track-map-page .content {
+    body.track-map-page .content,
+    body.garage-cover-page .content {
       width: 100%;
       height: 100%;
       display: grid;
@@ -423,6 +434,29 @@ internal static class BrowserOverlayPageRenderer
       min-height: 320px;
       border: 0;
       background: transparent;
+    }
+
+    .garage-cover {
+      width: 100vw;
+      height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #000000;
+      overflow: hidden;
+    }
+
+    .garage-cover img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .garage-cover-fallback div {
+      color: #edf4f8;
+      font-size: 96px;
+      font-weight: 800;
+      letter-spacing: 0;
     }
   </style>
 </head>

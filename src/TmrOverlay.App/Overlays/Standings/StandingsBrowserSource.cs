@@ -15,7 +15,14 @@ internal static class StandingsBrowserSource
     TmrBrowserOverlay.register({
       render(live) {
         const timing = live?.models?.timing;
-        const rows = (timing?.classRows?.length ? timing.classRows : timing?.overallRows || []).slice(0, 14);
+        const referenceCarIdx = timing?.focusRow?.carIdx
+          ?? timing?.playerRow?.carIdx
+          ?? timing?.focusCarIdx
+          ?? timing?.playerCarIdx
+          ?? null;
+        const rows = (timing?.classRows?.length ? timing.classRows : timing?.overallRows || [])
+          .filter((row) => hasStandingDriverIdentity(row, referenceCarIdx))
+          .slice(0, 14);
         contentEl.innerHTML = rowsTable([
           { label: 'Pos', value: (row) => `<span class="pill">P${row.classPosition ?? row.overallPosition ?? '--'}</span>` },
           { label: 'Car', value: (row) => escapeHtml(carNumber(row)) },
@@ -27,5 +34,14 @@ internal static class StandingsBrowserSource
         setStatus(live, timing?.hasData ? `live | ${quality(timing)}` : 'waiting for standings');
       }
     });
+
+    function hasStandingDriverIdentity(row, referenceCarIdx) {
+      return row?.isPlayer
+        || row?.isFocus
+        || row?.carIdx === referenceCarIdx
+        || Boolean(row?.driverName)
+        || Boolean(row?.teamName)
+        || Boolean(row?.carNumber);
+    }
     """;
 }

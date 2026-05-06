@@ -18,6 +18,7 @@ public sealed class BrowserOverlayPageRendererTests
     [InlineData("/overlays/gap-to-leader", "gap-to-leader")]
     [InlineData("/overlays/track-map", "track-map")]
     [InlineData("/overlays/stream-chat", "stream-chat")]
+    [InlineData("/overlays/garage-cover", "garage-cover")]
     public void TryRender_RendersKnownOverlayRoutes(string route, string expectedId)
     {
         var rendered = BrowserOverlayPageRenderer.TryRender(route, out var html);
@@ -32,11 +33,21 @@ public sealed class BrowserOverlayPageRendererTests
             Assert.Contains("renderOffline()", html);
             Assert.Contains("let cachedTrackMapSettings", html);
         }
+        if (expectedId == "standings")
+        {
+            Assert.Contains("hasStandingDriverIdentity", html);
+        }
         if (expectedId == "stream-chat")
         {
             Assert.Contains("fetch('/api/stream-chat'", html);
             Assert.Contains("connectTwitchChat", html);
             Assert.Contains("chat connected", html);
+        }
+        if (expectedId == "garage-cover")
+        {
+            Assert.Contains("garage-cover-page", html);
+            Assert.Contains("fetch('/api/garage-cover'", html);
+            Assert.Contains("/api/garage-cover/image", html);
         }
     }
 
@@ -69,6 +80,7 @@ public sealed class BrowserOverlayPageRendererTests
     [InlineData("gap-to-leader", "/overlays/gap-to-leader")]
     [InlineData("track-map", "/overlays/track-map")]
     [InlineData("stream-chat", "/overlays/stream-chat")]
+    [InlineData("garage-cover", "/overlays/garage-cover")]
     public void TryGetRouteForOverlayId_ReturnsCanonicalRoute(string overlayId, string expectedRoute)
     {
         var found = BrowserOverlayPageRenderer.TryGetRouteForOverlayId(overlayId, out var route);
@@ -101,6 +113,7 @@ public sealed class BrowserOverlayPageRendererTests
         Assert.Contains("/overlays/car-radar", html);
         Assert.Contains("/overlays/track-map", html);
         Assert.Contains("/overlays/stream-chat", html);
+        Assert.Contains("/overlays/garage-cover", html);
         Assert.DoesNotContain("/overlays/calculator", html);
         Assert.DoesNotContain("/overlays/inputs", html);
     }

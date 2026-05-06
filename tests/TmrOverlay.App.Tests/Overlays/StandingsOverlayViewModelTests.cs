@@ -94,6 +94,53 @@ public sealed class StandingsOverlayViewModelTests
             });
     }
 
+    [Fact]
+    public void From_DoesNotShowAnonymousTimingRowsInSoloSessions()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var reference = TimingRow(
+            carIdx: 10,
+            driverName: "Reference Driver",
+            carNumber: "44",
+            classPosition: 1,
+            gapSeconds: 0d,
+            deltaSeconds: 0d,
+            isFocus: true,
+            isLeader: true);
+        var anonymousRow = TimingRow(
+            carIdx: 63,
+            driverName: string.Empty,
+            carNumber: string.Empty,
+            classPosition: 2,
+            gapSeconds: 8.2d,
+            deltaSeconds: 8.2d);
+
+        var snapshot = LiveTelemetrySnapshot.Empty with
+        {
+            IsConnected = true,
+            IsCollecting = true,
+            LastUpdatedAtUtc = now,
+            Sequence = 1,
+            Models = LiveRaceModels.Empty with
+            {
+                Timing = LiveTimingModel.Empty with
+                {
+                    HasData = true,
+                    Quality = LiveModelQuality.Inferred,
+                    FocusCarIdx = 10,
+                    FocusRow = reference,
+                    ClassRows = [reference, anonymousRow]
+                }
+            }
+        };
+
+        var viewModel = StandingsOverlayViewModel.From(snapshot, now);
+
+        var row = Assert.Single(viewModel.Rows);
+        Assert.Equal("#44", row.CarNumber);
+        Assert.Equal("Reference Driver", row.Driver);
+    }
+
     private static LiveTimingRow TimingRow(
         int carIdx,
         string driverName,

@@ -45,11 +45,9 @@ internal sealed record StandingsOverlayViewModel(
         var candidateRows = PreferredRows(timing)
             .Where(row => row.HasTiming || row.OverallPosition is not null || row.ClassPosition is not null)
             .GroupBy(row => row.CarIdx)
-            .Select(group => group
-                .OrderByDescending(row => row.CarIdx == referenceCarIdx)
-                .ThenBy(row => row.ClassPosition ?? int.MaxValue)
-                .ThenBy(row => row.OverallPosition ?? int.MaxValue)
-                .First())
+            .Select(group => SelectDisplayRow(group, referenceCarIdx))
+            .Where(row => row is not null)
+            .Select(row => row!)
             .OrderBy(row => row.ClassPosition ?? int.MaxValue)
             .ThenBy(row => row.OverallPosition ?? int.MaxValue)
             .ThenBy(row => row.GapSecondsToClassLeader ?? double.MaxValue)
@@ -72,6 +70,34 @@ internal sealed record StandingsOverlayViewModel(
             status,
             SourceText(timing),
             candidateRows);
+    }
+
+    private static LiveTimingRow? SelectDisplayRow(
+        IEnumerable<LiveTimingRow> group,
+        int? referenceCarIdx)
+    {
+        var rows = group.ToArray();
+        if (!rows.Any(row => HasDriverIdentity(row, referenceCarIdx)))
+        {
+            return null;
+        }
+
+        return rows
+            .OrderByDescending(row => HasDriverIdentity(row, referenceCarIdx))
+            .ThenByDescending(row => row.CarIdx == referenceCarIdx)
+            .ThenBy(row => row.ClassPosition ?? int.MaxValue)
+            .ThenBy(row => row.OverallPosition ?? int.MaxValue)
+            .First();
+    }
+
+    private static bool HasDriverIdentity(LiveTimingRow row, int? referenceCarIdx)
+    {
+        return row.IsPlayer
+            || row.IsFocus
+            || row.CarIdx == referenceCarIdx
+            || !string.IsNullOrWhiteSpace(row.DriverName)
+            || !string.IsNullOrWhiteSpace(row.TeamName)
+            || !string.IsNullOrWhiteSpace(row.CarNumber);
     }
 
     private static IEnumerable<LiveTimingRow> PreferredRows(LiveTimingModel timing)

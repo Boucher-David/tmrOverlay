@@ -46,12 +46,12 @@ internal sealed class OverlayManager : IDisposable
     private readonly PostRaceAnalysisOptions _postRaceAnalysisOptions;
     private readonly AppPerformanceState _performanceState;
     private readonly LocalhostOverlayOptions _localhostOverlayOptions;
+    private readonly LocalhostOverlayState _localhostOverlayState;
     private readonly TrackMapStore _trackMapStore;
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly SessionHistoryQueryService _historyQueryService;
     private readonly AppEventRecorder _events;
     private readonly ILogger<CarRadarForm> _carRadarLogger;
-    private readonly ILogger<GarageCoverForm> _garageCoverLogger;
     private readonly ILogger<GapToLeaderForm> _gapToLeaderLogger;
     private readonly ILogger<RelativeForm> _relativeLogger;
     private readonly ILogger<StandingsForm> _standingsLogger;
@@ -82,12 +82,12 @@ internal sealed class OverlayManager : IDisposable
         PostRaceAnalysisOptions postRaceAnalysisOptions,
         AppPerformanceState performanceState,
         LocalhostOverlayOptions localhostOverlayOptions,
+        LocalhostOverlayState localhostOverlayState,
         TrackMapStore trackMapStore,
         ILiveTelemetrySource liveTelemetrySource,
         SessionHistoryQueryService historyQueryService,
         AppEventRecorder events,
         ILogger<CarRadarForm> carRadarLogger,
-        ILogger<GarageCoverForm> garageCoverLogger,
         ILogger<GapToLeaderForm> gapToLeaderLogger,
         ILogger<RelativeForm> relativeLogger,
         ILogger<StandingsForm> standingsLogger,
@@ -105,12 +105,12 @@ internal sealed class OverlayManager : IDisposable
         _postRaceAnalysisOptions = postRaceAnalysisOptions;
         _performanceState = performanceState;
         _localhostOverlayOptions = localhostOverlayOptions;
+        _localhostOverlayState = localhostOverlayState;
         _trackMapStore = trackMapStore;
         _liveTelemetrySource = liveTelemetrySource;
         _historyQueryService = historyQueryService;
         _events = events;
         _carRadarLogger = carRadarLogger;
-        _garageCoverLogger = garageCoverLogger;
         _gapToLeaderLogger = gapToLeaderLogger;
         _relativeLogger = relativeLogger;
         _standingsLogger = standingsLogger;
@@ -168,6 +168,7 @@ internal sealed class OverlayManager : IDisposable
                 _performanceState,
                 _storageOptions,
                 _localhostOverlayOptions,
+                _localhostOverlayState,
                 _diagnosticsBundleService,
                 _events,
                 settings,
@@ -299,16 +300,6 @@ internal sealed class OverlayManager : IDisposable
             1490,
             24),
         new OverlayRegistration(
-            GarageCoverOverlayDefinition.Definition,
-            settings => new GarageCoverForm(
-                _liveTelemetrySource,
-                _garageCoverLogger,
-                _performanceState,
-                settings,
-                SaveSettings),
-            0,
-            0),
-        new OverlayRegistration(
             FlagsOverlayDefinition.Definition,
             settings => new FlagsOverlayForm(
                 _liveTelemetrySource,
@@ -398,26 +389,81 @@ internal sealed class OverlayManager : IDisposable
 
     private void EnsureManagedOverlaySettings()
     {
-        foreach (var registration in ManagedOverlayRegistrations)
+        foreach (var definition in ManagedOverlayDefinitions)
         {
+            var defaultLocation = DefaultOverlayLocation(definition);
             var overlay = _settings!.GetOrAddOverlay(
-                registration.Definition.Id,
-                registration.Definition.DefaultWidth,
-                registration.Definition.DefaultHeight,
-                registration.DefaultX,
-                registration.DefaultY,
+                definition.Id,
+                definition.DefaultWidth,
+                definition.DefaultHeight,
+                defaultLocation.X,
+                defaultLocation.Y,
                 defaultEnabled: false);
             overlay.Scale = Math.Clamp(overlay.Scale, 0.6d, 2d);
             if (overlay.Width <= 0 || overlay.Height <= 0)
             {
-                overlay.Width = ScaleDimension(registration.Definition.DefaultWidth, overlay.Scale);
-                overlay.Height = ScaleDimension(registration.Definition.DefaultHeight, overlay.Scale);
+                overlay.Width = ScaleDimension(definition.DefaultWidth, overlay.Scale);
+                overlay.Height = ScaleDimension(definition.DefaultHeight, overlay.Scale);
             }
 
-            ApplyGapToLeaderRaceOnlyPolicy(registration.Definition, overlay);
-            ApplyFlagsBorderPolicy(registration.Definition, overlay);
-            ApplyGarageCoverDefaultFramePolicy(registration.Definition, overlay);
+            ApplyGapToLeaderRaceOnlyPolicy(definition, overlay);
+            ApplyFlagsBorderPolicy(definition, overlay);
         }
+    }
+
+    private static Point DefaultOverlayLocation(OverlayDefinition definition)
+    {
+        if (string.Equals(definition.Id, StandingsOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return new Point(24, 190);
+        }
+
+        if (string.Equals(definition.Id, FuelCalculatorOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return new Point(24, 550);
+        }
+
+        if (string.Equals(definition.Id, RelativeOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return new Point(650, 24);
+        }
+
+        if (string.Equals(definition.Id, TrackMapOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return new Point(650, 400);
+        }
+
+        if (string.Equals(definition.Id, StreamChatOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return new Point(1490, 24);
+        }
+
+        if (string.Equals(definition.Id, SessionWeatherOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return new Point(1070, 24);
+        }
+
+        if (string.Equals(definition.Id, PitServiceOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return new Point(1070, 320);
+        }
+
+        if (string.Equals(definition.Id, InputStateOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return new Point(1070, 590);
+        }
+
+        if (string.Equals(definition.Id, CarRadarOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return new Point(650, 24);
+        }
+
+        if (string.Equals(definition.Id, GapToLeaderOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return new Point(650, 260);
+        }
+
+        return new Point(24, 24);
     }
 
     private void ApplyOverlaySettings()
@@ -444,12 +490,6 @@ internal sealed class OverlayManager : IDisposable
             var settingsPreview = _radarSettingsPreviewVisible
                 && string.Equals(registration.Definition.Id, CarRadarOverlayDefinition.Definition.Id, StringComparison.Ordinal);
             var shouldShow = settingsPreview || (settings.Enabled && IsAllowedForSession(registration.Definition, settings, currentSession));
-
-            if (string.Equals(registration.Definition.Id, GarageCoverOverlayDefinition.Definition.Id, StringComparison.Ordinal))
-            {
-                ApplyGarageCoverRegistration(registration, settings, shouldShow);
-                continue;
-            }
 
             if (string.Equals(registration.Definition.Id, FlagsOverlayDefinition.Definition.Id, StringComparison.Ordinal))
             {
@@ -562,34 +602,6 @@ internal sealed class OverlayManager : IDisposable
             {
                 form.ClientSize = size;
             }
-            var location = new Point(settings.X, settings.Y);
-            if (form.Location != location)
-            {
-                form.Location = location;
-            }
-
-            _appliedScales[definition.Id] = settings.Scale;
-            return;
-        }
-
-        if (string.Equals(definition.Id, GarageCoverOverlayDefinition.Definition.Id, StringComparison.Ordinal))
-        {
-            ApplyGarageCoverDefaultFramePolicy(definition, settings);
-            var size = GarageCoverOverlayDefinition.ResolveSize(settings);
-            settings.Width = size.Width;
-            settings.Height = size.Height;
-            settings.Opacity = 1d;
-            form.TopMost = !_settingsOverlayActive && settings.AlwaysOnTop;
-            if (Math.Abs(form.Opacity - 1d) > 0.001d)
-            {
-                form.Opacity = 1d;
-            }
-
-            if (form.ClientSize != size)
-            {
-                form.ClientSize = size;
-            }
-
             var location = new Point(settings.X, settings.Y);
             if (form.Location != location)
             {
@@ -890,34 +902,6 @@ internal sealed class OverlayManager : IDisposable
         settings.ScreenId = FlagsOverlayDefinition.PrimaryScreenDefaultId;
     }
 
-    private void ApplyGarageCoverRegistration(OverlayRegistration registration, OverlaySettings settings, bool managedEnabled)
-    {
-        if (!managedEnabled)
-        {
-            if (_forms.TryGetValue(registration.Definition.Id, out var hiddenForm))
-            {
-                if (hiddenForm is GarageCoverForm garageCover)
-                {
-                    garageCover.SetManagedEnabled(false);
-                }
-
-                hiddenForm.Hide();
-            }
-
-            return;
-        }
-
-        var form = EnsureForm(
-            registration.Definition.Id,
-            () => registration.Create(settings));
-        ApplyScaleIfChanged(registration.Definition, settings, form);
-        ApplyOpacityIfChanged(registration.Definition, settings, form);
-        if (form is GarageCoverForm cover)
-        {
-            cover.SetManagedEnabled(true);
-        }
-    }
-
     private void ApplyFlagsRegistration(
         OverlayRegistration registration,
         OverlaySettings settings,
@@ -957,42 +941,8 @@ internal sealed class OverlayManager : IDisposable
         }
     }
 
-    private static void ApplyGarageCoverDefaultFramePolicy(OverlayDefinition definition, OverlaySettings settings)
-    {
-        if (!string.Equals(definition.Id, GarageCoverOverlayDefinition.Definition.Id, StringComparison.Ordinal)
-            || settings.GetBooleanOption(OverlayOptionKeys.GarageCoverCompactDefaultApplied, defaultValue: false))
-        {
-            if (string.Equals(definition.Id, GarageCoverOverlayDefinition.Definition.Id, StringComparison.Ordinal))
-            {
-                settings.Opacity = 1d;
-            }
-
-            return;
-        }
-
-        var bounds = Screen.PrimaryScreen?.Bounds ?? new Rectangle(0, 0, 1920, 1080);
-        var shouldApplyCompactDefault =
-            !settings.GetBooleanOption(OverlayOptionKeys.GarageCoverDefaultFrameApplied, defaultValue: false)
-            || settings.Width <= 0
-            || settings.Height <= 0
-            || IsLikelyScreenSizedGarageCover(settings, bounds);
-        if (shouldApplyCompactDefault)
-        {
-            var frame = GarageCoverOverlayDefinition.DefaultFrameForScreen(bounds);
-            settings.X = frame.Left;
-            settings.Y = frame.Top;
-            settings.Width = frame.Width;
-            settings.Height = frame.Height;
-        }
-
-        settings.Opacity = 1d;
-        settings.SetBooleanOption(OverlayOptionKeys.GarageCoverDefaultFrameApplied, true);
-        settings.SetBooleanOption(OverlayOptionKeys.GarageCoverCompactDefaultApplied, true);
-    }
-
     private void ApplyEmergencyOverlayZOrder()
     {
-        ApplyLargeOverlayTopMost(GarageCoverOverlayDefinition.Definition.Id);
         ApplyLargeOverlayTopMost(FlagsOverlayDefinition.Definition.Id);
         if (_settingsOverlayActive
             && _forms.TryGetValue(SettingsOverlayDefinition.Definition.Id, out var settingsForm)
@@ -1031,12 +981,8 @@ internal sealed class OverlayManager : IDisposable
 
         var settings = _settings.GetOrAddOverlay(
             overlayId,
-            overlayId == GarageCoverOverlayDefinition.Definition.Id
-                ? GarageCoverOverlayDefinition.Definition.DefaultWidth
-                : FlagsOverlayDefinition.Definition.DefaultWidth,
-            overlayId == GarageCoverOverlayDefinition.Definition.Id
-                ? GarageCoverOverlayDefinition.Definition.DefaultHeight
-                : FlagsOverlayDefinition.Definition.DefaultHeight,
+            FlagsOverlayDefinition.Definition.DefaultWidth,
+            FlagsOverlayDefinition.Definition.DefaultHeight,
             defaultEnabled: false);
         var shouldBeTopMost = !_settingsOverlayActive && settings.AlwaysOnTop;
         if (form.TopMost != shouldBeTopMost)
@@ -1048,19 +994,6 @@ internal sealed class OverlayManager : IDisposable
         {
             form.SendToBack();
         }
-    }
-
-    private static bool IsLikelyScreenSizedGarageCover(OverlaySettings settings, Rectangle screenBounds)
-    {
-        if (screenBounds.Width <= 0 || screenBounds.Height <= 0)
-        {
-            return false;
-        }
-
-        return settings.Width >= (int)Math.Round(screenBounds.Width * 0.9d)
-            && settings.Height >= (int)Math.Round(screenBounds.Height * 0.9d)
-            && Math.Abs(settings.X - screenBounds.Left) <= 32
-            && Math.Abs(settings.Y - screenBounds.Top) <= 32;
     }
 
     private static Point CenteredDefaultLocation(OverlayDefinition definition)

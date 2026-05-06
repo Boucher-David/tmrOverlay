@@ -72,7 +72,6 @@ For an isolated manual run:
 
 ```powershell
 $env:TMR_Storage__AppDataRoot = "$env:TEMP\TmrOverlay-map-validate"
-$env:TMR_LocalhostOverlays__Enabled = "true"
 $env:TMR_TelemetryCapture__RawCaptureEnabled = "true"
 $env:TMR_IbtAnalysis__Enabled = "true"
 $env:TMR_IbtAnalysis__TelemetryLoggingEnabled = "true"

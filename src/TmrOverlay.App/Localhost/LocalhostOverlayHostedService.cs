@@ -6,6 +6,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.Overlays.BrowserSources;
+using TmrOverlay.App.Overlays.GarageCover;
 using TmrOverlay.App.Overlays.StreamChat;
 using TmrOverlay.App.Overlays.TrackMap;
 using TmrOverlay.App.Performance;
@@ -247,6 +248,38 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
                     statusCode = (int)HttpStatusCode.OK;
                     break;
 
+                case "/api/garage-cover":
+                    route = "garage_cover_settings";
+                    await WriteJsonAsync(context.Response, HttpStatusCode.OK, new
+                    {
+                        generatedAtUtc = DateTimeOffset.UtcNow,
+                        garageCover = ReadGarageCoverSettings()
+                    }, cancellationToken).ConfigureAwait(false);
+                    statusCode = (int)HttpStatusCode.OK;
+                    break;
+
+                case "/api/garage-cover/image":
+                    route = "garage_cover_image";
+                    var imagePath = ReadGarageCoverImagePath();
+                    if (imagePath is null)
+                    {
+                        await WriteJsonAsync(context.Response, HttpStatusCode.NotFound, new
+                        {
+                            error = "garage_cover_image_not_found"
+                        }, cancellationToken).ConfigureAwait(false);
+                        statusCode = (int)HttpStatusCode.NotFound;
+                        break;
+                    }
+
+                    await WriteFileAsync(
+                        context.Response,
+                        HttpStatusCode.OK,
+                        GarageCoverImageContentType(imagePath),
+                        imagePath,
+                        cancellationToken).ConfigureAwait(false);
+                    statusCode = (int)HttpStatusCode.OK;
+                    break;
+
                 default:
                     if (BrowserOverlayPageRenderer.TryRender(path, out var html))
                     {
@@ -316,6 +349,50 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
         }
     }
 
+    private GarageCoverBrowserSettingsSnapshot ReadGarageCoverSettings()
+    {
+        try
+        {
+            return GarageCoverBrowserSettings.From(_settingsStore.Load());
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Failed to read garage cover settings for localhost browser source.");
+            return new GarageCoverBrowserSettingsSnapshot(HasImage: false, ImageVersion: null);
+        }
+    }
+
+    private string? ReadGarageCoverImagePath()
+    {
+        try
+        {
+            var settings = _settingsStore.Load();
+            var overlay = settings.GetOrAddOverlay(
+                GarageCoverOverlayDefinition.Definition.Id,
+                GarageCoverOverlayDefinition.Definition.DefaultWidth,
+                GarageCoverOverlayDefinition.Definition.DefaultHeight,
+                defaultEnabled: false);
+            var imagePath = overlay.GetStringOption(TmrOverlay.Core.Overlays.OverlayOptionKeys.GarageCoverImagePath);
+            return GarageCoverImageStore.GetSupportedImageInfo(imagePath) is null ? null : imagePath;
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Failed to read garage cover image for localhost browser source.");
+            return null;
+        }
+    }
+
+    private static string GarageCoverImageContentType(string path)
+    {
+        return Path.GetExtension(path).ToLowerInvariant() switch
+        {
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".gif" => "image/gif",
+            ".bmp" => "image/bmp",
+            _ => "image/png"
+        };
+    }
+
     private static void AddCorsHeaders(HttpListenerResponse response)
     {
         response.Headers["Access-Control-Allow-Origin"] = "*";
@@ -342,6 +419,17 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
         await WriteBytesAsync(response, statusCode, "text/html; charset=utf-8", html, cancellationToken).ConfigureAwait(false);
     }
 
+    private static async Task WriteFileAsync(
+        HttpListenerResponse response,
+        HttpStatusCode statusCode,
+        string contentType,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        var bytes = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
+        await WriteBytesAsync(response, statusCode, contentType, bytes, cancellationToken).ConfigureAwait(false);
+    }
+
     private static async Task WriteBytesAsync(
         HttpListenerResponse response,
         HttpStatusCode statusCode,
@@ -350,6 +438,16 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
         CancellationToken cancellationToken)
     {
         var bytes = Encoding.UTF8.GetBytes(content);
+        await WriteBytesAsync(response, statusCode, contentType, bytes, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task WriteBytesAsync(
+        HttpListenerResponse response,
+        HttpStatusCode statusCode,
+        string contentType,
+        byte[] bytes,
+        CancellationToken cancellationToken)
+    {
         response.StatusCode = (int)statusCode;
         response.ContentType = contentType;
         response.ContentLength64 = bytes.Length;

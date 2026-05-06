@@ -17,7 +17,7 @@ internal sealed class LocalhostOverlayOptions
         var section = configuration.GetSection("LocalhostOverlays");
         return new LocalhostOverlayOptions
         {
-            Enabled = bool.TryParse(section["Enabled"], out var enabled) && enabled,
+            Enabled = !bool.TryParse(section["Enabled"], out var enabled) || enabled,
             Port = ParsePort(section["Port"])
         };
     }
