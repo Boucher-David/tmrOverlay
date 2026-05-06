@@ -79,18 +79,16 @@ public sealed class LiveTelemetryStoreTests
         ApplyThreeSectorSession(store);
         var startedAtUtc = DateTimeOffset.Parse("2026-05-05T12:00:00Z");
 
-        store.RecordFrame(CreateSample(
-            capturedAtUtc: startedAtUtc,
-            sessionTime: 0d,
-            playerCarIdx: 10,
-            teamLapCompleted: 0,
-            teamLapDistPct: 0.01d));
-        store.RecordFrame(CreateSample(
-            capturedAtUtc: startedAtUtc.AddSeconds(20),
-            sessionTime: 20d,
-            playerCarIdx: 10,
-            teamLapCompleted: 0,
-            teamLapDistPct: 0.51d));
+        var progress = new[] { 0.01d, 0.10d, 0.20d, 0.30d, 0.40d, 0.51d };
+        for (var index = 0; index < progress.Length; index++)
+        {
+            store.RecordFrame(CreateSample(
+                capturedAtUtc: startedAtUtc.AddSeconds(index),
+                sessionTime: index,
+                playerCarIdx: 10,
+                teamLapCompleted: 0,
+                teamLapDistPct: progress[index]));
+        }
 
         var trackMap = store.Snapshot().Models.TrackMap;
 
@@ -108,28 +106,54 @@ public sealed class LiveTelemetryStoreTests
         ApplyThreeSectorSession(store);
         var startedAtUtc = DateTimeOffset.Parse("2026-05-05T12:00:00Z");
 
-        store.RecordFrame(CreateSample(capturedAtUtc: startedAtUtc, sessionTime: 0d, playerCarIdx: 10, teamLapCompleted: 0, teamLapDistPct: 0.01d));
-        store.RecordFrame(CreateSample(capturedAtUtc: startedAtUtc.AddSeconds(20), sessionTime: 20d, playerCarIdx: 10, teamLapCompleted: 0, teamLapDistPct: 0.51d));
-        store.RecordFrame(CreateSample(capturedAtUtc: startedAtUtc.AddSeconds(35), sessionTime: 35d, playerCarIdx: 10, teamLapCompleted: 0, teamLapDistPct: 0.76d));
-        store.RecordFrame(CreateSample(
-            capturedAtUtc: startedAtUtc.AddSeconds(60),
-            sessionTime: 60d,
-            playerCarIdx: 10,
-            teamLapCompleted: 1,
-            teamLapDistPct: 0.01d,
-            lapDeltaToSessionBestLapSeconds: 0d,
-            lapDeltaToSessionBestLapOk: true));
+        var firstLapProgress = new[]
+        {
+            (SessionTime: 0d, LapCompleted: 0, LapDistPct: 0.01d),
+            (SessionTime: 2d, LapCompleted: 0, LapDistPct: 0.10d),
+            (SessionTime: 4d, LapCompleted: 0, LapDistPct: 0.20d),
+            (SessionTime: 6d, LapCompleted: 0, LapDistPct: 0.30d),
+            (SessionTime: 8d, LapCompleted: 0, LapDistPct: 0.40d),
+            (SessionTime: 10d, LapCompleted: 0, LapDistPct: 0.51d),
+            (SessionTime: 12d, LapCompleted: 0, LapDistPct: 0.62d),
+            (SessionTime: 14d, LapCompleted: 0, LapDistPct: 0.72d),
+            (SessionTime: 16d, LapCompleted: 0, LapDistPct: 0.76d),
+            (SessionTime: 18d, LapCompleted: 0, LapDistPct: 0.86d),
+            (SessionTime: 20d, LapCompleted: 0, LapDistPct: 0.96d),
+            (SessionTime: 22d, LapCompleted: 1, LapDistPct: 0.01d)
+        };
+        foreach (var frame in firstLapProgress)
+        {
+            store.RecordFrame(CreateSample(
+                capturedAtUtc: startedAtUtc.AddSeconds(frame.SessionTime),
+                sessionTime: frame.SessionTime,
+                playerCarIdx: 10,
+                teamLapCompleted: frame.LapCompleted,
+                teamLapDistPct: frame.LapDistPct,
+                lapDeltaToSessionBestLapSeconds: frame.LapCompleted == 1 ? 0d : null,
+                lapDeltaToSessionBestLapOk: frame.LapCompleted == 1 ? true : null));
+        }
 
         Assert.All(
             store.Snapshot().Models.TrackMap.Sectors,
             sector => Assert.Equal(LiveTrackSectorHighlights.BestLap, sector.Highlight));
 
-        store.RecordFrame(CreateSample(
-            capturedAtUtc: startedAtUtc.AddSeconds(75),
-            sessionTime: 75d,
-            playerCarIdx: 10,
-            teamLapCompleted: 1,
-            teamLapDistPct: 0.51d));
+        var nextLapProgress = new[]
+        {
+            (SessionTime: 23d, LapDistPct: 0.10d),
+            (SessionTime: 24d, LapDistPct: 0.20d),
+            (SessionTime: 25d, LapDistPct: 0.30d),
+            (SessionTime: 26d, LapDistPct: 0.40d),
+            (SessionTime: 27d, LapDistPct: 0.51d)
+        };
+        foreach (var frame in nextLapProgress)
+        {
+            store.RecordFrame(CreateSample(
+                capturedAtUtc: startedAtUtc.AddSeconds(frame.SessionTime),
+                sessionTime: frame.SessionTime,
+                playerCarIdx: 10,
+                teamLapCompleted: 1,
+                teamLapDistPct: frame.LapDistPct));
+        }
 
         var sectors = store.Snapshot().Models.TrackMap.Sectors;
         Assert.Contains(sectors, sector =>

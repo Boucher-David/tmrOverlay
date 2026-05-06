@@ -202,56 +202,32 @@ public sealed class LiveOverlayDiagnosticsRecorderTests
             var startedAtUtc = DateTimeOffset.Parse("2026-05-02T12:00:00Z");
             recorder.StartCollection("capture-diagnostics", startedAtUtc);
 
-            recorder.RecordFrame(CreateSnapshot(
-                context,
-                CreateSample(
-                    startedAtUtc,
-                    sessionTime: 0d,
-                    focusCarIdx: 10,
-                    carLeftRight: 1,
-                    focusF2TimeSeconds: 700d,
-                    classPosition: 2,
-                    observedPosition: 25,
-                    observedClassPosition: 10,
-                    observedLapDistPct: 0.1d,
-                    focusLapDistPct: 0.49d),
-                sequence: 1));
-            recorder.RecordFrame(CreateSnapshot(
-                context,
-                CreateSample(
-                    startedAtUtc.AddSeconds(1),
-                    sessionTime: 1d,
-                    focusCarIdx: 10,
-                    carLeftRight: 1,
-                    focusF2TimeSeconds: 701d,
-                    classPosition: 2,
-                    observedPosition: 25,
-                    observedClassPosition: 10,
-                    observedLapDistPct: 0.1d,
-                    focusLapDistPct: 0.51d),
-                sequence: 2));
-            recorder.RecordFrame(CreateSnapshot(
-                context,
-                CreateSample(
-                    startedAtUtc.AddSeconds(2),
-                    sessionTime: 2d,
-                    focusCarIdx: 10,
-                    carLeftRight: 1,
-                    focusF2TimeSeconds: 702d,
-                    classPosition: 2,
-                    observedPosition: 25,
-                    observedClassPosition: 10,
-                    observedLapDistPct: 0.1d,
-                    focusLapDistPct: 0.76d),
-                sequence: 3));
+            var progress = new[] { 0.49d, 0.51d, 0.61d, 0.70d, 0.76d };
+            for (var index = 0; index < progress.Length; index++)
+            {
+                recorder.RecordFrame(CreateSnapshot(
+                    context,
+                    CreateSample(
+                        startedAtUtc.AddSeconds(index),
+                        sessionTime: index,
+                        focusCarIdx: 10,
+                        carLeftRight: 1,
+                        focusF2TimeSeconds: 700d + index,
+                        classPosition: 2,
+                        observedPosition: 25,
+                        observedClassPosition: 10,
+                        observedLapDistPct: 0.1d,
+                        focusLapDistPct: progress[index]),
+                    sequence: index + 1));
+            }
 
             var path = recorder.CompleteCollection(startedAtUtc.AddSeconds(3), captureDirectory);
 
             using var document = JsonDocument.Parse(File.ReadAllText(path!));
             var sectorTiming = document.RootElement.GetProperty("sectorTiming");
             Assert.Equal(3, sectorTiming.GetProperty("sectorCount").GetInt32());
-            Assert.Equal(3, sectorTiming.GetProperty("metadataFrames").GetInt32());
-            Assert.Equal(3, sectorTiming.GetProperty("focusTrackedFrames").GetInt32());
+            Assert.Equal(progress.Length, sectorTiming.GetProperty("metadataFrames").GetInt32());
+            Assert.Equal(progress.Length, sectorTiming.GetProperty("focusTrackedFrames").GetInt32());
             Assert.Equal(2, sectorTiming.GetProperty("crossingCount").GetInt32());
             Assert.Equal(1, sectorTiming.GetProperty("completedIntervalCount").GetInt32());
 
