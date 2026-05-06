@@ -32,6 +32,9 @@
 /history/user/
 /artifacts/
 
+# Local PSD/livery experiments can be large binary files.
+/livery-poc/
+
 # Convenience launcher for the ignored macOS harness.
 /run.sh
 

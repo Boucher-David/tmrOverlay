@@ -325,7 +325,7 @@ private func drawSmartScreenPreview(_ c: Canvas, _ rect: CGRect) {
 private func drawAppPreview(_ c: Canvas, rect: CGRect) {
     c.fill(rect, Theme.panel, radius: 8)
     c.stroke(rect, Theme.border, width: 1, radius: 8)
-    c.text("What they should expect in the app", CGRect(x: rect.minX + 24, y: rect.maxY - 42, width: 430, height: 24), size: 19, weight: .bold)
+    c.text("What the app now contains", CGRect(x: rect.minX + 24, y: rect.maxY - 42, width: 430, height: 24), size: 19, weight: .bold)
     c.text("Settings is the control surface. Driving overlays start hidden until enabled.", CGRect(x: rect.minX + 24, y: rect.maxY - 68, width: 640, height: 20), size: 12.5, color: Theme.muted)
 
     let window = CGRect(x: rect.minX + 24, y: rect.minY + 34, width: 425, height: 260)
@@ -338,7 +338,7 @@ private func drawAppPreview(_ c: Canvas, rect: CGRect) {
     c.text("Tech Mates Racing Overlay", CGRect(x: window.minX + 68, y: window.maxY - 24, width: 240, height: 16), size: 11.5, weight: .bold)
     c.text("TMR Overlay", CGRect(x: window.minX + 68, y: window.maxY - 38, width: 180, height: 14), size: 8.5, color: Theme.muted)
 
-    let tabs = ["General", "Standings", "Relative", "Flags", "Radar", "Support"]
+    let tabs = ["General", "Standings", "Relative", "Track Map", "Stream Chat", "Support"]
     for (index, tab) in tabs.enumerated() {
         let y = window.maxY - 72 - CGFloat(index) * 30
         let selected = index == 0
@@ -348,58 +348,68 @@ private func drawAppPreview(_ c: Canvas, rect: CGRect) {
 
     let pane = CGRect(x: window.minX + 130, y: window.minY + 18, width: window.width - 148, height: window.height - 70)
     c.fill(pane, NSColor(red255: 20, green: 25, blue: 29, alpha: 1), radius: 5)
-    c.text("General", CGRect(x: pane.minX + 16, y: pane.maxY - 32, width: pane.width - 32, height: 18), size: 13, weight: .bold)
-    c.text("Units", CGRect(x: pane.minX + 18, y: pane.maxY - 74, width: 70, height: 16), size: 10, color: Theme.secondary)
-    c.fill(CGRect(x: pane.minX + 96, y: pane.maxY - 79, width: 100, height: 24), Theme.panelRaised, radius: 4)
-    c.text("Metric", CGRect(x: pane.minX + 106, y: pane.maxY - 73, width: 70, height: 13), size: 9.5)
+    c.text("Track Map", CGRect(x: pane.minX + 16, y: pane.maxY - 32, width: pane.width - 32, height: 18), size: 13, weight: .bold)
+    c.text("Native overlay", CGRect(x: pane.minX + 18, y: pane.maxY - 70, width: 100, height: 16), size: 10, color: Theme.secondary)
+    c.fill(CGRect(x: pane.minX + 120, y: pane.maxY - 75, width: 94, height: 24), Theme.panelRaised, radius: 4)
+    c.text("Hidden", CGRect(x: pane.minX + 132, y: pane.maxY - 69, width: 70, height: 13), size: 9.5)
+    c.text("OBS route", CGRect(x: pane.minX + 18, y: pane.maxY - 110, width: 100, height: 16), size: 10, color: Theme.secondary)
+    c.fill(CGRect(x: pane.minX + 120, y: pane.maxY - 115, width: 126, height: 24), Theme.infoBackground, radius: 4)
+    c.text("localhost", CGRect(x: pane.minX + 132, y: pane.maxY - 109, width: 92, height: 13), size: 9.5, color: Theme.info)
     c.stroke(CGRect(x: pane.minX + 18, y: pane.minY + 28, width: pane.width - 36, height: 64), Theme.border, width: 1, radius: 4)
-    c.multiline("Enable overlays from their tabs, then join an iRacing session for live telemetry.", CGRect(x: pane.minX + 30, y: pane.minY + 40, width: pane.width - 60, height: 46), size: 10.5, color: Theme.muted)
+    c.multiline("Flat tabs cover standings, relative, track map, stream chat, fuel, inputs, radar, flags, weather, pit service, and support.", CGRect(x: pane.minX + 30, y: pane.minY + 36, width: pane.width - 60, height: 52), size: 10.2, color: Theme.muted)
 
     let notesX = rect.minX + 480
-    drawExpectationRow(c, x: notesX, y: rect.maxY - 130, title: "No iRacing connection", detail: "Overlays show waiting or no live data.", color: Theme.info)
-    drawExpectationRow(c, x: notesX, y: rect.maxY - 200, title: "In-session telemetry", detail: "Enabled overlays update from live iRacing data.", color: Theme.success)
-    drawExpectationRow(c, x: notesX, y: rect.maxY - 270, title: "Portable upgrade", detail: "Replacing the app folder keeps AppData settings/history.", color: Theme.purple)
+    drawExpectationRow(c, x: notesX, y: rect.maxY - 126, title: "Native overlays", detail: "Windows overlay windows.", color: Theme.success)
+    drawExpectationRow(c, x: notesX, y: rect.maxY - 196, title: "Localhost routes", detail: "OBS/browser-source pages.", color: Theme.info)
+    drawExpectationRow(c, x: notesX, y: rect.maxY - 266, title: "Support tab", detail: "Version and diagnostics.", color: Theme.purple)
 }
 
 private func drawExpectationRow(_ c: Canvas, x: CGFloat, y: CGFloat, title: String, detail: String, color: NSColor) {
-    c.fill(CGRect(x: x, y: y + 4, width: 10, height: 10), color, radius: 5)
-    c.text(title, CGRect(x: x + 22, y: y, width: 210, height: 17), size: 12.5, weight: .bold)
-    c.multiline(detail, CGRect(x: x + 22, y: y - 25, width: 190, height: 34), size: 10.5, color: Theme.muted)
+    c.fill(CGRect(x: x, y: y + 8, width: 10, height: 10), color, radius: 5)
+    c.text(title, CGRect(x: x + 22, y: y + 6, width: 220, height: 17), size: 12.5, weight: .bold)
+    c.text(detail, CGRect(x: x + 22, y: y - 18, width: 206, height: 28), size: 10.5, color: Theme.muted)
 }
 
 private func drawSupportPreview(_ c: Canvas, rect: CGRect) {
     c.fill(rect, Theme.panel, radius: 8)
     c.stroke(rect, Theme.border, width: 1, radius: 8)
-    c.text("How they send feedback or errors", CGRect(x: rect.minX + 24, y: rect.maxY - 42, width: 430, height: 24), size: 19, weight: .bold)
-    c.text("Ask teammates to include diagnostics plus a short description of what happened.", CGRect(x: rect.minX + 24, y: rect.maxY - 68, width: 650, height: 20), size: 12.5, color: Theme.muted)
+    c.text("What we need testers to exercise", CGRect(x: rect.minX + 24, y: rect.maxY - 42, width: 430, height: 24), size: 19, weight: .bold)
+    c.text("Ask teammates to try the normal install path, waiting states, live overlays, browser sources, and diagnostics.", CGRect(x: rect.minX + 24, y: rect.maxY - 68, width: 686, height: 20), size: 12.5, color: Theme.muted)
 
     let support = CGRect(x: rect.minX + 24, y: rect.minY + 34, width: 410, height: 260)
     c.fill(support, NSColor(red255: 20, green: 25, blue: 29, alpha: 1), radius: 7)
     c.stroke(support, Theme.borderStrong, width: 1, radius: 7)
     c.text("Support", CGRect(x: support.minX + 18, y: support.maxY - 34, width: 160, height: 20), size: 14, weight: .bold)
-    c.text("Use this tab when sharing logs for overlay or telemetry issues.", CGRect(x: support.minX + 18, y: support.maxY - 60, width: support.width - 36, height: 16), size: 9.5, color: Theme.muted)
-    drawSupportMetric(c, rect: CGRect(x: support.minX + 18, y: support.maxY - 102, width: support.width - 36, height: 22), label: "App status", value: "Connected")
-    drawSupportMetric(c, rect: CGRect(x: support.minX + 18, y: support.maxY - 136, width: support.width - 36, height: 22), label: "Session state", value: "Race - collecting")
-    drawSupportMetric(c, rect: CGRect(x: support.minX + 18, y: support.maxY - 170, width: support.width - 36, height: 22), label: "Current issue", value: "No active issue")
-    c.button("Create Bundle", CGRect(x: support.minX + 18, y: support.minY + 48, width: 116, height: 28), color: Theme.successBackground, textColor: Theme.success)
-    c.button("Copy Latest Path", CGRect(x: support.minX + 144, y: support.minY + 48, width: 120, height: 28))
-    c.button("Open Diagnostics", CGRect(x: support.minX + 274, y: support.minY + 48, width: 118, height: 28), color: Theme.infoBackground, textColor: Theme.info)
-    c.text("Diagnostic telemetry: enable only if asked before reproducing.", CGRect(x: support.minX + 18, y: support.minY + 20, width: support.width - 36, height: 15), size: 9.2, color: Theme.muted)
+    c.text("Share version details and diagnostics.", CGRect(x: support.minX + 18, y: support.maxY - 60, width: support.width - 36, height: 16), size: 9.5, color: Theme.muted)
+    drawSupportMetric(c, rect: CGRect(x: support.minX + 18, y: support.maxY - 94, width: support.width - 36, height: 22), label: "App version", value: "vX.Y.Z")
+    c.text("Diagnostic telemetry", CGRect(x: support.minX + 18, y: support.maxY - 128, width: support.width - 36, height: 15), size: 9.6, weight: .bold)
+    c.text("Enable before a requested repro.", CGRect(x: support.minX + 18, y: support.maxY - 148, width: support.width - 36, height: 15), size: 9.2, color: Theme.muted)
+    c.fill(CGRect(x: support.minX + 18, y: support.maxY - 172, width: 13, height: 13), Theme.panelRaised, radius: 3)
+    c.text("Capture diagnostic telemetry", CGRect(x: support.minX + 38, y: support.maxY - 175, width: support.width - 56, height: 16), size: 9.2, color: Theme.secondary)
+    c.button("Create Bundle", CGRect(x: support.minX + 18, y: support.minY + 58, width: 116, height: 28), color: Theme.successBackground, textColor: Theme.success)
+    c.button("Copy Latest Path", CGRect(x: support.minX + 144, y: support.minY + 58, width: 120, height: 28))
+    c.button("Open Diagnostics", CGRect(x: support.minX + 274, y: support.minY + 58, width: 118, height: 28), color: Theme.infoBackground, textColor: Theme.info)
+    c.text("Current state: Live telemetry | No active issue", CGRect(x: support.minX + 18, y: support.minY + 28, width: support.width - 36, height: 15), size: 9.2, color: Theme.muted)
 
     let checklistX = rect.minX + 470
-    c.text("Send back:", CGRect(x: checklistX, y: rect.maxY - 126, width: 210, height: 20), size: 14, weight: .bold)
+    c.text("Please test:", CGRect(x: checklistX, y: rect.maxY - 118, width: 210, height: 20), size: 14, weight: .bold)
     let feedbackItems = [
-        "Diagnostics zip or copied bundle path",
-        "What you were doing in iRacing",
-        "Approximate time/session and overlay name",
-        "Screenshot or short clip if visible"
+        "Fresh launch with no iRacing running",
+        "Enable diagnostic capture before a repro",
+        "Enable, move, and scale a few overlays",
+        "Open localhost routes in browser or OBS",
+        "Join a live/replay session and drive laps",
+        "Create diagnostics and copy the zip path"
     ]
-    var y = rect.maxY - 162
+    var y = rect.maxY - 150
     for item in feedbackItems {
         c.fill(CGRect(x: checklistX, y: y + 5, width: 8, height: 8), Theme.success, radius: 4)
-        c.multiline(item, CGRect(x: checklistX + 20, y: y - 2, width: 240, height: 34), size: 12, color: Theme.secondary)
-        y -= 42
+        c.multiline(item, CGRect(x: checklistX + 20, y: y - 2, width: 250, height: 28), size: 11.2, color: Theme.secondary)
+        y -= 32
     }
+
+    c.text("Send back:", CGRect(x: checklistX, y: rect.minY + 76, width: 210, height: 18), size: 12.5, weight: .bold)
+    c.multiline("Diagnostics zip path, app version, overlay names, what was happening, and a screenshot or short clip when visible.", CGRect(x: checklistX, y: rect.minY + 22, width: 252, height: 52), size: 10.2, color: Theme.muted)
 }
 
 private func drawSupportMetric(_ c: Canvas, rect: CGRect, label: String, value: String) {

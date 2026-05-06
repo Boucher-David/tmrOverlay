@@ -28,7 +28,7 @@ internal sealed class TrackMapForm : PersistentOverlayForm
     private static readonly Color FocusMarkerColor = Color.FromArgb(255, 98, 199, 255);
     private static readonly Color DefaultMarkerColor = Color.FromArgb(245, 236, 244, 248);
     private const int TrackInteriorMaximumAlpha = 150;
-    private const int RefreshIntervalMilliseconds = 250;
+    private const int RefreshIntervalMilliseconds = 50;
     private const float MapPadding = 20f;
     private const float TrackHaloWidth = 11f;
     private const float TrackLineWidth = 4.4f;
@@ -37,6 +37,7 @@ internal sealed class TrackMapForm : PersistentOverlayForm
     private const float FocusMarkerRadius = 5.7f;
     private const float FocusMarkerTextSize = 7.6f;
     private const double MapReloadIntervalSeconds = 10d;
+    private const double MarkerSmoothingSeconds = 0.14d;
 
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly TrackMapStore _trackMapStore;
@@ -48,6 +49,8 @@ internal sealed class TrackMapForm : PersistentOverlayForm
     private LiveTelemetrySnapshot _latestSnapshot = LiveTelemetrySnapshot.Empty;
     private TrackMapDocument? _trackMap;
     private string? _trackMapIdentityKey;
+    private readonly Dictionary<int, double> _smoothedMarkerProgress = [];
+    private DateTimeOffset? _lastMarkerSmoothingAtUtc;
     private DateTimeOffset _nextMapReloadAtUtc = DateTimeOffset.MinValue;
     private string? _lastLoggedError;
     private DateTimeOffset? _lastLoggedErrorAtUtc;
@@ -178,10 +181,17 @@ internal sealed class TrackMapForm : PersistentOverlayForm
     {
         var now = DateTimeOffset.UtcNow;
         var identity = TrackMapIdentity.From(snapshot.Context.Track);
-        if (string.Equals(identity.Key, _trackMapIdentityKey, StringComparison.Ordinal)
+        var identityChanged = !string.Equals(identity.Key, _trackMapIdentityKey, StringComparison.Ordinal);
+        if (!identityChanged
             && now < _nextMapReloadAtUtc)
         {
             return;
+        }
+
+        if (identityChanged)
+        {
+            _smoothedMarkerProgress.Clear();
+            _lastMarkerSmoothingAtUtc = null;
         }
 
         _trackMapIdentityKey = identity.Key;
@@ -199,7 +209,7 @@ internal sealed class TrackMapForm : PersistentOverlayForm
             return;
         }
 
-        var markers = BuildMarkers(_latestSnapshot);
+        var markers = SmoothMarkers(BuildMarkers(_latestSnapshot));
         using var interiorBrush = TrackInteriorBrush();
         var sectors = _latestSnapshot.Models.TrackMap.Sectors;
         if (_trackMap?.RacingLine.Points is { Count: >= 3 })
@@ -612,6 +622,58 @@ internal sealed class TrackMapForm : PersistentOverlayForm
         return new PointF(
             rect.Left + rect.Width / 2f + (float)Math.Cos(angle) * rect.Width / 2f,
             rect.Top + rect.Height / 2f + (float)Math.Sin(angle) * rect.Height / 2f);
+    }
+
+    private IReadOnlyList<TrackMapMarker> SmoothMarkers(IReadOnlyList<TrackMapMarker> markers)
+    {
+        if (markers.Count == 0)
+        {
+            _smoothedMarkerProgress.Clear();
+            _lastMarkerSmoothingAtUtc = null;
+            return markers;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var elapsedSeconds = _lastMarkerSmoothingAtUtc is { } previous
+            ? Math.Clamp((now - previous).TotalSeconds, 0d, 0.25d)
+            : RefreshIntervalMilliseconds / 1000d;
+        _lastMarkerSmoothingAtUtc = now;
+        var alpha = 1d - Math.Exp(-elapsedSeconds / MarkerSmoothingSeconds);
+        var activeCarIdxs = markers.Select(marker => marker.CarIdx).ToHashSet();
+        foreach (var carIdx in _smoothedMarkerProgress.Keys.Except(activeCarIdxs).ToArray())
+        {
+            _smoothedMarkerProgress.Remove(carIdx);
+        }
+
+        return markers
+            .Select(marker =>
+            {
+                if (!_smoothedMarkerProgress.TryGetValue(marker.CarIdx, out var current))
+                {
+                    _smoothedMarkerProgress[marker.CarIdx] = marker.LapDistPct;
+                    return marker;
+                }
+
+                var smoothed = SmoothProgress(current, marker.LapDistPct, alpha);
+                _smoothedMarkerProgress[marker.CarIdx] = smoothed;
+                return marker with { LapDistPct = smoothed };
+            })
+            .ToArray();
+    }
+
+    private static double SmoothProgress(double current, double target, double alpha)
+    {
+        var delta = target - current;
+        if (delta > 0.5d)
+        {
+            delta -= 1d;
+        }
+        else if (delta < -0.5d)
+        {
+            delta += 1d;
+        }
+
+        return NormalizeProgress(current + delta * Math.Clamp(alpha, 0d, 1d));
     }
 
     private static IReadOnlyList<TrackMapMarker> BuildMarkers(LiveTelemetrySnapshot snapshot)

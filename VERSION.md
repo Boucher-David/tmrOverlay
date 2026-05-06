@@ -9,87 +9,112 @@ TmrOverlay uses SemVer-style annotated Git tags for product milestones:
 
 ## Current Branch Target
 
-### v0.11.0 - Standings, Track Maps, Localhost, And Live Overlay Polish
+### v0.12.0 - Teammate Beta Hardening
 
 Planned branch name:
 
 ```text
-v0.11-standings-track-map-localhost
+v0.12-teammate-beta-hardening
 ```
 
 Planned scope:
 
-- Add production Windows standings visibility backed by normalized timing rows.
-- Add a map-only Track Map overlay with bundled-map support, default-on IBT-derived local map generation with explicit opt-out, circle fallback, live car dots, and model-v2 sector highlights.
-- Add default-on localhost browser-source routes for OBS overlays, with selectable/copyable per-overlay settings URLs and request diagnostics, separate from the future teammate-to-teammate Overlay Bridge.
-- Keep settings as a flat-tab app control surface and make the fixed settings window tall/wide enough for current overlay and Support content.
-- Harden the current live overlays from tester feedback: stable Relative/Fuel number refreshes, iRacing-style relative display-time gaps where available or inferable, a smaller usable Inputs overlay, less confusing side-warning Radar behavior, and fade-out behavior for stale race-data overlays.
-- Carry the v0.9 zip/publish release path forward with shared version metadata aligned to `0.11.0`.
-- Keep the ignored mac harness and tracked mock screenshots aligned with the Windows overlay/settings surface where practical.
+- Add visible in-app version/build metadata in Settings or Support.
+- Decide the startup/manual update-check source and interaction model before implementation so the teammate flow does not get a second throwaway updater surface.
+- Tighten the Support tab from real teammate feedback: clearer current issue text, diagnostics bundle status, copied-path behavior, diagnostic-capture guidance, concrete test bullets, and detailed handoff copy.
+- Validate portable upgrade behavior against existing `%LOCALAPPDATA%\TmrOverlay` settings/history/diagnostics data.
+- Polish first-run and no-iRacing-connected states so testers do not confuse expected waiting states with broken installs.
+- Keep signed installer/update automation out of scope unless release friction proves the portable zip is not enough for private testers.
 
 Technical implementation checklist:
 
-1. Add Standings overlay registration, view model, form, screenshot fixture, and focused unit coverage.
-2. Add Track Map overlay registration, transparent map-only drawing, sector highlights, settings warning/opt-out, mac harness review surface, and screenshot fixtures.
-3. Add `LocalhostOverlays` config, selectable/copyable per-overlay settings URLs, and per-overlay HTML routes for standings, relative, fuel calculator, session/weather, pit service, input state, car radar, gap to leader, track map, and stream chat. Keep Flags disabled for localhost until its browser-source design is worth shipping.
-4. Add IBT-derived map generation, confidence classification, storage skip rules for complete maps, and a batch generator for bundled map JSON assets.
-5. Keep future Overlay Bridge docs scoped to trusted teammate-to-teammate data sharing, not local OBS/browser-source routes.
-6. Reduce Relative and Fuel Calculator repaint churn with stable table layouts and value-only label updates.
-7. Add Relative model-v2 display-time fallback from lap-distance deltas while keeping Radar timing stricter.
-8. Make the Inputs overlay usable at its smaller default size with compact pedal/readout rendering.
-9. Attach likely decoded cars to active Radar side warnings so one passing car is not drawn twice.
-10. Regenerate settings/overlay screenshots after restoring flat tabs, keeping the larger fixed settings window, and adding track-map sector states.
-11. Update docs/context/version metadata and run branch validation available from macOS, with Windows build/test/publish left to Windows CI.
+1. Bump shared .NET product/version metadata to `0.12.0`.
+2. Show version/build metadata in the Support tab and diagnostics handoff flow.
+3. Make first-run, no-iRacing, connected-without-frames, and live-telemetry states read as expected support states instead of ambiguous failures.
+4. Add focused unit coverage for Support status/copy text that does not require WinForms instantiation.
+5. Update the teammate helper screenshot so it reflects the current overlay suite, Support tab, and requested tester validation steps.
+6. Record the update-check service/UI decision: prefer Velopack-compatible release metadata, run once per app launch plus a manual support action, and show passive warnings outside the Support tab.
+7. Expand Support handoff copy around enabling diagnostic capture before a requested repro, what teammate test steps matter most, how to create/copy the diagnostics zip path, and what details to send back.
+8. Validate portable upgrade behavior against existing `%LOCALAPPDATA%\TmrOverlay` settings/history/diagnostics data on Windows.
+9. Update docs/context/version metadata and run branch validation available from macOS, with Windows build/test/publish left to Windows CI.
 
 Implemented baseline in this branch:
 
-- Bumped shared .NET product/version metadata to `0.11.0`.
-- Added Windows Standings and Track Map overlay registrations plus deterministic screenshot coverage.
-- Added a Standings view model that renders compact same-class timing rows from `LiveTelemetrySnapshot.Models.Timing`.
-- Added a transparent map-only Track Map overlay with generated map/circle fallback rendering and live car dots.
-- Added model-v2 track-map sector highlights: personal-best sectors render green, session-best lap sectors render purple, and full-lap highlights clear after sector 1 of the following lap.
-- Hardened track-map sector timing for valid `LapDistPct` with unavailable lap counters, synthetic start/finish wraps, and active-reset-style boundary seeding without scoring skipped track distance.
-- Added local IBT-derived map generation, confidence metrics, layout-aware map identity, complete-map skip rules, default-on generation with user opt-out, single-file/folder manual IBT conversion diagnostics, and a batch generator for bundled track-map JSON assets.
-- Upgraded bundled track-map assets to schema v2 sector metadata and expanded track-map diagnostics for schema/generation/sector/highlight coverage.
-- Added reset/tow context to edge-case diagnostics through watched `EnterExitReset` and `PlayerCarTowTime` SDK channels when available.
-- Added `LocalhostOverlays` options and a default-on localhost server with OBS-ready HTML routes, request diagnostics, and selectable/copyable settings-tab URLs for supported overlays, plus a Stream Chat route that can consume one selected source: Streamlabs Chat Box widget URL or public Twitch channel chat.
-- Separated localhost browser-source overlays from the future Overlay Bridge concept, which remains scoped to trusted teammate-to-teammate data sharing.
-- Restored flat settings tabs and kept the fixed settings window at 1240x680 so the expanded tab list and Support content fit.
-- Added live-telemetry availability fade behavior for race-data overlays while keeping non-race support/status/privacy overlays persistent.
-- Added a double-buffered overlay table primitive and updated Relative/Fuel Calculator refresh paths so routine number changes repaint cells instead of invalidating the whole overlay.
-- Kept Relative live rows in stable configured ahead/reference/behind slots and added inferred display-time gaps from lap-distance delta plus local/focus lap-time context when direct relative seconds are missing.
-- Reduced the default Inputs overlay size and added a compact current-pedal/readout mode so key car-state data remains visible when the overlay is small.
-- Updated local Radar side-warning rendering to attach a likely decoded nearby car to the left/right warning slot, suppress the duplicate center-lane rectangle, and bias the side marker forward/back by longitudinal gap.
+- Bumped shared .NET product/version metadata to `0.12.0`.
+- Added visible Support-tab version/build metadata backed by `AppVersionInfo`.
+- Extracted Support status/current-issue wording into a focused formatter with unit coverage.
+- Polished first-run/no-iRacing and connected-without-frames text so expected waiting states are not presented as broken installs.
+- Mirrored Support-tab wording/version visibility in the ignored mac harness.
+- Updated the teammate helper screenshot renderer to show the current overlay suite and explicit tester validation steps.
+- Recorded the update-check product decision: prefer Velopack-compatible release metadata, check once per app startup, and keep prompts passive.
+- Added livery-editor research for the uploaded BMW M4 GT3 PSD and a future app-native iRacing TGA export path.
+- Restored the Inputs overlay default toward the wider rolling trace graph while preserving compact bars for very small sizes.
+- Simplified the Support tab into a single-column teammate handoff flow and smoothed Inputs graph traces plus Track Map marker movement.
 
 Likely squash title:
 
 ```text
-[v0.11.0] Add standings, track maps, localhost, and live polish
+[v0.12.0] Harden teammate beta install and support flow
 ```
 
 Likely squash body:
 
 ```text
-- Bumped shared .NET product/version metadata to 0.11.0.
-- Added production Standings and Track Map overlay registrations, settings tabs, Windows screenshot fixtures, and mac harness review surfaces.
-- Added compact Standings rendering from normalized model-v2 timing rows, including leader gap, focus interval, and pit-road status.
-- Added a transparent map-only Track Map surface with bundled-map support, circle fallback, live car dots, model-v2 sector highlights, default-on IBT-derived map generation with explicit opt-out, confidence/schema/sector diagnostics, single-file/folder manual conversion diagnostics, and complete-map skip behavior.
-- Hardened track-map sector timing for unavailable lap counters and active-reset-style progress jumps, and added diagnostics for missing lap counters, synthetic wraps, and discontinuities.
-- Upgraded bundled track-map assets to schema v2 with sector metadata and added deterministic screenshot states for normal, green personal-best sector, purple session-best lap, following-sector reset, and mixed live-sector states.
-- Added default-on `LocalhostOverlays` support with request diagnostics and selectable/copyable per-overlay OBS/browser-source HTML routes and settings-tab URLs for standings, relative, fuel calculator, session/weather, pit service, input state, car radar, gap to leader, track map, and stream chat, while leaving Flags native-only for now.
-- Added Stream Chat source selection for Streamlabs Chat Box widget URLs or public Twitch channel chat, with connected status/messaging in the browser-source overlay and Streamlabs URL redaction in diagnostics bundles.
-- Kept Overlay Bridge conceptually separate as a future trusted teammate-to-teammate sharing boundary.
-- Restored flat settings tabs while keeping the larger 1240x680 settings window so current tabs and Support content fit.
-- Added live-telemetry fade behavior and performance metrics for race-data overlays so stale/non-running telemetry surfaces fade out while status/support/privacy surfaces remain persistent.
-- Hardened Relative and Fuel Calculator refresh behavior with a double-buffered table layout, stable Relative slots, and value-only number updates to reduce white flicker.
-- Added Relative display-time gap fallback from lap-distance deltas and local/focus lap-time context while leaving Radar placement on stricter spatial timing/distance evidence.
-- Reduced the default Inputs overlay size and added compact pedal/readout rendering so small layouts keep speed, gear, RPM, steering, water, and oil visible.
-- Updated local Radar side-warning rendering to attach likely decoded cars to left/right warnings, suppress duplicate center-lane cars, and bias the side marker forward/back by longitudinal gap.
-- Regenerated tracked settings/overlay screenshots and updated docs/context for the v0.11 product shape, live-overlay fade behavior, track-map sector lifecycle, reset-context diagnostics, and default-on localhost diagnostics.
-- Validation: git diff --check, conflict-marker sweep, tracked screenshot validation, track-map asset schema-v2 validation, Python screenshot-validator compile, mac `swift build`, full-Xcode `swift test`, isolated mac harness smoke, localhost overlay JS parse smoke, and C# compile-shape scanner. Windows restore/build/test/screenshot/publish validation remains CI-owned from this Mac because `dotnet` is not installed locally.
+- Bumped shared .NET product/version metadata to 0.12.0.
+- Added Support-tab app version/build metadata from `AppVersionInfo`.
+- Extracted Support status/current-issue text into a deterministic formatter with focused unit coverage.
+- Polished first-run/no-iRacing and connected-without-frames states so expected waiting reads as normal setup, not a failure.
+- Updated Status overlay waiting-state health copy to avoid warning treatment for idle startup states.
+- Mirrored Support-tab version/waiting copy in the mac harness.
+- Regenerated the teammate helper screenshot with current app surfaces, Support actions, and concrete install/live/localhost/diagnostics/upgrade validation steps.
+- Documented the v0.12 update-check decision around Velopack-compatible release metadata and once-per-startup passive checking.
+- Added livery-editor research covering the uploaded BMW M4 GT3 PSD, iRacing TGA export expectations, and why a future editor should export app-native projects instead of mutating PSDs directly.
+- Restored the Inputs overlay default to a wider rolling trace layout with compact bars reserved for smaller sizes.
+- Simplified the Support tab for teammate use and smoothed Inputs graph traces plus native/localhost Track Map marker movement.
+- Validation: git diff --check, conflict-marker sweep, tracked screenshot validation, release-tutorial screenshot validation, Track Map browser-source JS parse smoke, isolated mac-harness live smoke, mac `swift build`, and C# compile-shape scanner. Windows restore/build/test/screenshot/publish validation remains CI-owned from this Mac because `dotnet` is not installed locally; mac `swift test` is blocked by the local Command Line Tools XCTest module gap.
 ```
 
 ## Merged Mainline Milestones
+
+### v0.11.0 - Standings, Track Maps, Localhost, And Live Overlay Polish
+
+Commit: `f6be067`
+
+Squash title:
+
+```text
+[v0.11.0] Add standings, track maps, localhost, and live polish
+```
+
+Summary:
+
+- Bumped shared .NET product/version metadata to 0.11.0.
+- Added production Standings and Track Map overlay registrations, settings tabs, Windows screenshot fixtures, and mac harness review surfaces.
+- Added compact Standings rendering from normalized model-v2 timing rows, including leader gap, focus interval, and pit-road status.
+- Added a transparent map-only Track Map surface with bundled-map support, circle fallback, live car dots, IBT-derived local map generation, confidence diagnostics, bundled-map assets, and sector-highlight diagnostics.
+- Added `LocalhostOverlays` browser-source support for the supported overlay suite while keeping Overlay Bridge separate as a future trusted teammate-to-teammate sharing boundary.
+- Added Stream Chat source selection for Streamlabs Chat Box widget URLs or public Twitch channel chat, with diagnostics redaction for private Streamlabs URLs.
+- Restored flat settings tabs, kept the larger fixed settings window, and hardened live overlay refresh/fade behavior for Relative, Fuel Calculator, Inputs, and local Radar.
+- Regenerated tracked settings/overlay screenshots and updated docs/context for the v0.11 product shape.
+
+### v0.10.0 - Windows Screenshot Parity Validation
+
+Commit: `526c47f`
+
+Squash title:
+
+```text
+[v0.10.0] Add Windows screenshot parity validation
+```
+
+Summary:
+
+- Added WinForms screenshot generation and CI validation for Windows overlay parity artifacts.
+- Branded the app entry point with the TMR logo.
+- Removed the user-facing font picker and kept font choice in theme/platform defaults.
+- Added a teammate-facing release install/support tutorial image plus validation/docs for the handoff flow.
+- Stabilized Windows screenshot rendering and validation against CI runner constraints.
+- Updated v0.x/v1/v2 roadmap planning around teammate hardening, overlay bridge, model migration, style v2, replay, track maps, strategy, engineer, streaming, builder, broader platform work, and later VR scope.
 
 ### v0.9.0 - Production Publishing And Updates
 
