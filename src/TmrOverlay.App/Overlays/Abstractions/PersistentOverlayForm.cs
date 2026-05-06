@@ -6,12 +6,20 @@ namespace TmrOverlay.App.Overlays.Abstractions;
 internal abstract class PersistentOverlayForm : Form
 {
     private const int WsExToolWindow = 0x00000080;
+    private const int FadeIntervalMilliseconds = 50;
+    private const double FadeInSeconds = 0.22d;
+    private const double FadeOutSeconds = 0.65d;
 
     private readonly OverlaySettings _settings;
     private readonly Action _saveSettings;
+    private readonly System.Windows.Forms.Timer _fadeTimer;
     private Point _dragCursorOrigin;
     private Point _dragFormOrigin;
     private bool _dragging;
+    private double _baseOpacity;
+    private double _telemetryFadeAlpha = 1d;
+    private double _telemetryFadeTarget = 1d;
+    private DateTimeOffset _lastFadeStepAtUtc = DateTimeOffset.UtcNow;
 
     protected PersistentOverlayForm(
         OverlaySettings settings,
@@ -21,6 +29,7 @@ internal abstract class PersistentOverlayForm : Form
     {
         _settings = settings;
         _saveSettings = saveSettings;
+        _baseOpacity = Math.Clamp(_settings.Opacity, 0d, 1d);
 
         AutoScaleMode = AutoScaleMode.None;
         ClientSize = new Size(
@@ -31,13 +40,52 @@ internal abstract class PersistentOverlayForm : Form
         Location = new Point(_settings.X, _settings.Y);
         MaximizeBox = false;
         MinimizeBox = false;
-        Opacity = _settings.Opacity;
+        Opacity = _baseOpacity;
         ShowIcon = false;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.Manual;
         TopMost = _settings.AlwaysOnTop;
 
         RegisterDragSurface(this);
+
+        _fadeTimer = new System.Windows.Forms.Timer
+        {
+            Interval = FadeIntervalMilliseconds
+        };
+        _fadeTimer.Tick += (_, _) => StepTelemetryFade();
+    }
+
+    public double LiveTelemetryFadeAlpha => _telemetryFadeAlpha;
+
+    public void SetBaseOverlayOpacity(double opacity)
+    {
+        _baseOpacity = Math.Clamp(opacity, 0d, 1d);
+        ApplyEffectiveOpacity();
+    }
+
+    public void SetLiveTelemetryAvailable(bool available, bool immediate = false)
+    {
+        var target = available ? 1d : 0d;
+        if (immediate)
+        {
+            _telemetryFadeTarget = target;
+            _telemetryFadeAlpha = target;
+            _fadeTimer.Stop();
+            ApplyEffectiveOpacity();
+            return;
+        }
+
+        if (Math.Abs(_telemetryFadeTarget - target) < 0.001d)
+        {
+            return;
+        }
+
+        _telemetryFadeTarget = target;
+        _lastFadeStepAtUtc = DateTimeOffset.UtcNow;
+        if (!_fadeTimer.Enabled)
+        {
+            _fadeTimer.Start();
+        }
     }
 
     protected override CreateParams CreateParams
@@ -68,6 +116,17 @@ internal abstract class PersistentOverlayForm : Form
     {
         PersistOverlayFrame();
         base.OnFormClosing(e);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _fadeTimer.Stop();
+            _fadeTimer.Dispose();
+        }
+
+        base.Dispose(disposing);
     }
 
     protected virtual Size GetPersistedOverlaySize()
@@ -126,8 +185,45 @@ internal abstract class PersistentOverlayForm : Form
         _settings.Y = Location.Y;
         _settings.Width = persistedSize.Width;
         _settings.Height = persistedSize.Height;
-        _settings.Opacity = Opacity;
+        _settings.Opacity = _baseOpacity;
         _settings.AlwaysOnTop = TopMost;
         _saveSettings();
+    }
+
+    private void StepTelemetryFade()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var elapsedSeconds = Math.Max(0d, (now - _lastFadeStepAtUtc).TotalSeconds);
+        _lastFadeStepAtUtc = now;
+        var duration = _telemetryFadeTarget > _telemetryFadeAlpha ? FadeInSeconds : FadeOutSeconds;
+        var delta = duration <= 0d ? 1d : elapsedSeconds / duration;
+        _telemetryFadeAlpha = MoveToward(_telemetryFadeAlpha, _telemetryFadeTarget, delta);
+        ApplyEffectiveOpacity();
+
+        if (Math.Abs(_telemetryFadeAlpha - _telemetryFadeTarget) < 0.001d)
+        {
+            _telemetryFadeAlpha = _telemetryFadeTarget;
+            ApplyEffectiveOpacity();
+            _fadeTimer.Stop();
+        }
+    }
+
+    private void ApplyEffectiveOpacity()
+    {
+        var effective = Math.Clamp(_baseOpacity * _telemetryFadeAlpha, 0d, 1d);
+        if (Math.Abs(Opacity - effective) > 0.001d)
+        {
+            Opacity = effective;
+        }
+    }
+
+    private static double MoveToward(double current, double target, double delta)
+    {
+        if (current < target)
+        {
+            return Math.Min(target, current + delta);
+        }
+
+        return Math.Max(target, current - delta);
     }
 }

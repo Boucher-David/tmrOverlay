@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Configuration;
 
-namespace TmrOverlay.App.Bridge;
+namespace TmrOverlay.App.Localhost;
 
-internal sealed class OverlayBridgeOptions
+internal sealed class LocalhostOverlayOptions
 {
     private const int DefaultPort = 8765;
 
@@ -12,12 +12,12 @@ internal sealed class OverlayBridgeOptions
 
     public string Prefix => $"http://localhost:{Port}/";
 
-    public static OverlayBridgeOptions FromConfiguration(IConfiguration configuration)
+    public static LocalhostOverlayOptions FromConfiguration(IConfiguration configuration)
     {
-        var section = configuration.GetSection("OverlayBridge");
-        return new OverlayBridgeOptions
+        var section = configuration.GetSection("LocalhostOverlays");
+        return new LocalhostOverlayOptions
         {
-            Enabled = bool.TryParse(section["Enabled"], out var enabled) && enabled,
+            Enabled = !bool.TryParse(section["Enabled"], out var enabled) || enabled,
             Port = ParsePort(section["Port"])
         };
     }

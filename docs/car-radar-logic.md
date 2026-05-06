@@ -137,6 +137,8 @@ The distance window uses a 4.746 m local-car-length baseline. The seconds fallba
 
 If no timed car qualifies, the radar still draws the generic side-warning rectangle from `CarLeftRight`. This keeps the actual spotter warning visible without pretending a random timed car is alongside.
 
+When a side warning is active and a nearby timed car is close enough to be the likely source of that warning, the radar attaches that car to the side slot and suppresses the same car's normal center-lane rectangle. This avoids showing one opponent twice during a pass. The side marker is biased slightly forward or backward from the local car based on the car's longitudinal gap, so a pass that has moved to the front-right/front-left does not keep looking like a centered side block.
+
 Data review note from the May 2026 capture analysis:
 
 - Long Nürburgring captures showed many frames with physical/timing proximity candidates but no side signal, and a smaller number of frames with a side signal but no clean same-frame contact candidate.
@@ -245,7 +247,7 @@ The radar does not have true lane-level lateral telemetry.
 Approximation:
 
 - `CarLeftRight` creates side slots: one left, one right, both sides, two left, or two right.
-- A rendered car can occupy a side slot only when it is within the side-overlap contact window.
+- A rendered car can occupy a side slot only when it is within a close side-attachment window around the local car. The side signal is still the authority; timing only selects which decoded car should be hidden from the center lane and used to bias the side marker forward or backward.
 - Otherwise distribute multiple radar cars across three simple lanes based on `CarIdx` and draw index.
 - A single visible car is centered.
 

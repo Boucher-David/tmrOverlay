@@ -19,5 +19,6 @@ internal static class FuelCalculatorOverlayDefinition
                 OverlayOptionKeys.FuelSource,
                 "Show source row",
                 defaultValue: true)
-        ]);
+        ],
+        FadeWhenLiveTelemetryUnavailable: true);
 }

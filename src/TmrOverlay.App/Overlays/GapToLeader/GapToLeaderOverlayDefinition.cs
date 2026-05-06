@@ -24,5 +24,6 @@ internal static class GapToLeaderOverlayDefinition
                 12,
                 defaultValue: 5)
         ],
-        ShowSessionFilters: false);
+        ShowSessionFilters: false,
+        FadeWhenLiveTelemetryUnavailable: true);
 }

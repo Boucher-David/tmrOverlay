@@ -24,7 +24,7 @@ internal sealed class RelativeForm : PersistentOverlayForm
     private readonly string _fontFamily;
     private readonly Label _titleLabel;
     private readonly Label _statusLabel;
-    private readonly TableLayoutPanel _table;
+    private readonly OverlayTableLayoutPanel _table;
     private readonly Label _sourceLabel;
     private readonly ClassPositionLabel[] _positionLabels = new ClassPositionLabel[MaximumRows];
     private readonly Label[] _driverLabels = new Label[MaximumRows];
@@ -92,10 +92,8 @@ internal sealed class RelativeForm : PersistentOverlayForm
             TextAlign = ContentAlignment.MiddleRight
         };
 
-        _table = new TableLayoutPanel
+        _table = new OverlayTableLayoutPanel
         {
-            BackColor = OverlayTheme.Colors.PanelBackground,
-            CellBorderStyle = TableLayoutPanelCellBorderStyle.Single,
             ColumnCount = 4,
             Location = new Point(14, 42),
             RowCount = MaximumRows,
@@ -281,11 +279,6 @@ internal sealed class RelativeForm : PersistentOverlayForm
                 snapshot.Sequence,
                 snapshot.LastUpdatedAtUtc,
                 applied: uiChanged);
-            if (uiChanged)
-            {
-                Invalidate();
-            }
-
             succeeded = true;
         }
         catch (Exception exception)
@@ -293,7 +286,6 @@ internal sealed class RelativeForm : PersistentOverlayForm
             ReportOverlayError(exception, "refresh");
             SetTextIfChanged(_statusLabel, "relative error");
             SetTextIfChanged(_sourceLabel, _overlayError);
-            Invalidate();
         }
         finally
         {
@@ -310,26 +302,28 @@ internal sealed class RelativeForm : PersistentOverlayForm
         var succeeded = false;
         try
         {
-            var rows = viewModel.Rows;
-            var visibleRows = rows.Count == 0
-                ? 1
-                : Math.Clamp(rows.Count, 1, MaximumRows);
+            var rows = BuildStableRows(viewModel);
+            var visibleRows = rows.Count;
 
             var changed = false;
-            _table.SuspendLayout();
+            var layoutChanged = UpdateVisibleRows(visibleRows);
+            layoutChanged |= UpdateTableHeight(visibleRows);
+            if (layoutChanged)
+            {
+                _table.SuspendLayout();
+            }
+
             try
             {
-                changed |= UpdateVisibleRows(visibleRows);
-                changed |= UpdateTableHeight(visibleRows);
                 for (var index = 0; index < MaximumRows; index++)
                 {
-                    if (index < rows.Count)
+                    if (index < rows.Count && rows[index] is { } row)
                     {
-                        changed |= ApplyRow(index, rows[index], visible: index < visibleRows);
+                        changed |= ApplyRow(index, row, visible: true);
                         continue;
                     }
 
-                    var placeholder = rows.Count == 0 && index == 0
+                    var placeholder = viewModel.Rows.Count == 0 && index == 0
                         ? viewModel.Status
                         : string.Empty;
                     changed |= ApplyBlankRow(index, placeholder, visible: index < visibleRows);
@@ -337,11 +331,15 @@ internal sealed class RelativeForm : PersistentOverlayForm
             }
             finally
             {
-                _table.ResumeLayout(changed);
+                if (layoutChanged)
+                {
+                    _table.ResumeLayout(changed || layoutChanged);
+                    _table.Invalidate();
+                }
             }
 
             succeeded = true;
-            return changed;
+            return changed || layoutChanged;
         }
         finally
         {
@@ -350,6 +348,49 @@ internal sealed class RelativeForm : PersistentOverlayForm
                 started,
                 succeeded);
         }
+    }
+
+    private IReadOnlyList<RelativeOverlayRowViewModel?> BuildStableRows(RelativeOverlayViewModel viewModel)
+    {
+        if (viewModel.Rows.Count == 0)
+        {
+            return [null];
+        }
+
+        var aheadCapacity = Math.Clamp(CarsAhead, 0, 8);
+        var behindCapacity = Math.Clamp(CarsBehind, 0, 8);
+        var reference = viewModel.Rows.FirstOrDefault(row => row.IsReference);
+        var hasReference = reference is not null;
+        var visibleRows = Math.Clamp(
+            aheadCapacity + behindCapacity + (hasReference ? 1 : 0),
+            1,
+            MaximumRows);
+        var stableRows = new RelativeOverlayRowViewModel?[visibleRows];
+        var ahead = viewModel.Rows.Where(row => row.IsAhead).ToArray();
+        var aheadStart = Math.Max(0, aheadCapacity - ahead.Length);
+        for (var index = 0; index < ahead.Length && aheadStart + index < stableRows.Length; index++)
+        {
+            stableRows[aheadStart + index] = ahead[index];
+        }
+
+        var behindStart = hasReference ? aheadCapacity + 1 : aheadCapacity;
+        if (hasReference && aheadCapacity < stableRows.Length)
+        {
+            stableRows[aheadCapacity] = reference;
+        }
+
+        var behind = viewModel.Rows.Where(row => row.IsBehind).ToArray();
+        for (var index = 0; index < behind.Length && behindStart + index < stableRows.Length; index++)
+        {
+            stableRows[behindStart + index] = behind[index];
+        }
+
+        if (!hasReference && ahead.Length == 0 && behind.Length == 0)
+        {
+            return [null];
+        }
+
+        return stableRows;
     }
 
     private bool ApplyRow(int index, RelativeOverlayRowViewModel row, bool visible)

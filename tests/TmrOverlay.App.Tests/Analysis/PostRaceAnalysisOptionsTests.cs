@@ -7,11 +7,11 @@ namespace TmrOverlay.App.Tests.Analysis;
 public sealed class PostRaceAnalysisOptionsTests
 {
     [Fact]
-    public void FromConfiguration_DefaultsToDisabled()
+    public void FromConfiguration_DefaultsToEnabled()
     {
         var options = PostRaceAnalysisOptions.FromConfiguration(BuildConfiguration(new Dictionary<string, string?>()));
 
-        Assert.False(options.Enabled);
+        Assert.True(options.Enabled);
     }
 
     [Fact]

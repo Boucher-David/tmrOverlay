@@ -16,6 +16,8 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
 {
     private const int RefreshIntervalMilliseconds = 50;
     private const int MaximumTracePoints = 180;
+    private const int CompactLayoutWidthThreshold = 430;
+    private const int CompactLayoutHeightThreshold = 250;
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly ILogger _logger;
     private readonly AppPerformanceState _performanceState;
@@ -83,9 +85,17 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
             e.Graphics.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
 
             DrawHeader(e.Graphics);
-            DrawPedalTraces(e.Graphics);
-            DrawWheel(e.Graphics);
-            DrawCarState(e.Graphics);
+            if (UseCompactLayout())
+            {
+                DrawCompactState(e.Graphics);
+            }
+            else
+            {
+                DrawPedalTraces(e.Graphics);
+                DrawWheel(e.Graphics);
+                DrawCarState(e.Graphics);
+            }
+
             succeeded = true;
         }
         catch (Exception exception)
@@ -194,7 +204,7 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
 
     private void DrawPedalTraces(Graphics graphics)
     {
-        var graph = new Rectangle(14, 44, Math.Max(240, Width - 190), Math.Max(138, Height - 72));
+        var graph = new Rectangle(14, 44, Math.Max(180, Width - 190), Math.Max(118, Height - 72));
         using var background = new SolidBrush(OverlayTheme.Colors.PanelBackground);
         graphics.FillRectangle(background, graph);
         using var border = new Pen(OverlayTheme.Colors.WindowBorder);
@@ -213,6 +223,115 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
 
         using var font = OverlayTheme.Font(_fontFamily, 8.6f, FontStyle.Bold);
         DrawLegend(graphics, graph, font);
+    }
+
+    private void DrawCompactState(Graphics graphics)
+    {
+        var content = new Rectangle(
+            14,
+            42,
+            Math.Max(160, ClientSize.Width - 28),
+            Math.Max(120, ClientSize.Height - 54));
+        using var background = new SolidBrush(OverlayTheme.Colors.PanelBackground);
+        using var border = new Pen(OverlayTheme.Colors.WindowBorder);
+        graphics.FillRectangle(background, content);
+        graphics.DrawRectangle(border, content);
+
+        var pedalHeight = Math.Min(76, Math.Max(58, content.Height / 2 - 8));
+        var pedalRect = new Rectangle(content.Left + 10, content.Top + 8, content.Width - 20, pedalHeight);
+        DrawCompactPedalBars(graphics, pedalRect);
+
+        var readoutTop = pedalRect.Bottom + 8;
+        var readoutRect = new Rectangle(
+            content.Left + 10,
+            readoutTop,
+            content.Width - 20,
+            Math.Max(44, content.Bottom - readoutTop - 8));
+        DrawCompactReadouts(graphics, readoutRect);
+    }
+
+    private void DrawCompactPedalBars(Graphics graphics, Rectangle bounds)
+    {
+        using var labelFont = OverlayTheme.Font(_fontFamily, 8.2f, FontStyle.Bold);
+        using var valueFont = new Font(FontFamily.GenericMonospace, 8.2f);
+        var rowHeight = Math.Max(16, bounds.Height / 3);
+        DrawCompactBar(graphics, bounds.Left, bounds.Top, bounds.Width, rowHeight, "T", Clamp01(_latestInputs.Throttle), Color.FromArgb(48, 214, 109), labelFont, valueFont);
+        DrawCompactBar(graphics, bounds.Left, bounds.Top + rowHeight, bounds.Width, rowHeight, "B", Clamp01(_latestInputs.Brake), Color.FromArgb(236, 112, 99), labelFont, valueFont);
+        DrawCompactBar(graphics, bounds.Left, bounds.Top + rowHeight * 2, bounds.Width, rowHeight, "C", Clamp01(_latestInputs.Clutch), Color.FromArgb(104, 193, 255), labelFont, valueFont);
+    }
+
+    private static void DrawCompactBar(
+        Graphics graphics,
+        int x,
+        int y,
+        int width,
+        int height,
+        string label,
+        double? value,
+        Color color,
+        Font labelFont,
+        Font valueFont)
+    {
+        var labelWidth = 22;
+        var valueWidth = 44;
+        var barRect = new Rectangle(
+            x + labelWidth,
+            y + Math.Max(4, height / 2 - 4),
+            Math.Max(20, width - labelWidth - valueWidth - 8),
+            8);
+        using var labelBrush = new SolidBrush(OverlayTheme.Colors.TextSubtle);
+        using var trackBrush = new SolidBrush(Color.FromArgb(42, 255, 255, 255));
+        using var valueBrush = new SolidBrush(color);
+        using var valueTextBrush = new SolidBrush(OverlayTheme.Colors.TextPrimary);
+        graphics.DrawString(label, labelFont, labelBrush, x, y + Math.Max(0, (height - 15) / 2));
+        graphics.FillRectangle(trackBrush, barRect);
+
+        var normalized = Math.Clamp(value ?? 0d, 0d, 1d);
+        if (normalized > 0d)
+        {
+            graphics.FillRectangle(valueBrush, barRect.Left, barRect.Top, (int)Math.Round(barRect.Width * normalized), barRect.Height);
+        }
+
+        DrawText(
+            graphics,
+            FormatPercent(value),
+            valueFont,
+            valueTextBrush,
+            new RectangleF(barRect.Right + 8, y, valueWidth, height),
+            ContentAlignment.MiddleRight);
+    }
+
+    private void DrawCompactReadouts(Graphics graphics, Rectangle bounds)
+    {
+        using var labelFont = OverlayTheme.Font(_fontFamily, 7.8f);
+        using var valueFont = new Font(FontFamily.GenericMonospace, 8.1f);
+        using var labelBrush = new SolidBrush(OverlayTheme.Colors.TextSubtle);
+        using var valueBrush = new SolidBrush(OverlayTheme.Colors.TextPrimary);
+        var rows = new[]
+        {
+            ("Speed", SimpleTelemetryOverlayViewModel.FormatSpeed(_latestInputs.SpeedMetersPerSecond, _unitSystem)),
+            ("Gear", FormatGear(_latestInputs.Gear)),
+            ("RPM", FormatRpm(_latestInputs.Rpm)),
+            ("Steer", FormatSteering(_latestInputs.SteeringWheelAngle)),
+            ("Water", SimpleTelemetryOverlayViewModel.FormatTemperature(_latestInputs.WaterTempC, _unitSystem)),
+            ("Oil", SimpleTelemetryOverlayViewModel.FormatPressure(_latestInputs.OilPressureBar, _unitSystem))
+        };
+        var columnCount = bounds.Width >= 300 ? 3 : 2;
+        var rowCount = (int)Math.Ceiling(rows.Length / (double)columnCount);
+        var cellWidth = Math.Max(70, bounds.Width / columnCount);
+        var cellHeight = Math.Max(18, bounds.Height / Math.Max(1, rowCount));
+        for (var index = 0; index < rows.Length; index++)
+        {
+            var column = index % columnCount;
+            var row = index / columnCount;
+            var cell = new RectangleF(
+                bounds.Left + column * cellWidth,
+                bounds.Top + row * cellHeight,
+                Math.Min(cellWidth, bounds.Right - (bounds.Left + column * cellWidth)),
+                cellHeight);
+            DrawText(graphics, rows[index].Item1, labelFont, labelBrush, new RectangleF(cell.Left, cell.Top, 42, cell.Height), ContentAlignment.MiddleLeft);
+            DrawText(graphics, rows[index].Item2, valueFont, valueBrush, new RectangleF(cell.Left + 42, cell.Top, Math.Max(20, cell.Width - 44), cell.Height), ContentAlignment.MiddleRight);
+        }
     }
 
     private void DrawTrace(Graphics graphics, Rectangle graph, Func<InputTracePoint, double?> select, Color color)
@@ -296,6 +415,12 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
         y += 19;
     }
 
+    private bool UseCompactLayout()
+    {
+        return ClientSize.Width < CompactLayoutWidthThreshold
+            || ClientSize.Height < CompactLayoutHeightThreshold;
+    }
+
     private static void DrawRightAligned(Graphics graphics, string text, Font font, Brush brush, RectangleF rect)
     {
         using var format = new StringFormat
@@ -332,11 +457,49 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
             : "--";
     }
 
+    private static string FormatSteering(double? radians)
+    {
+        return radians is { } value && SimpleTelemetryOverlayViewModel.IsFinite(value)
+            ? $"{(value * 180d / Math.PI).ToString("+0;-0;0", CultureInfo.InvariantCulture)} deg"
+            : "--";
+    }
+
+    private static string FormatPercent(double? value)
+    {
+        return SimpleTelemetryOverlayViewModel.FormatPercent(value);
+    }
+
     private static double? Clamp01(double? value)
     {
         return value is { } number && SimpleTelemetryOverlayViewModel.IsFinite(number)
             ? Math.Clamp(number, 0d, 1d)
             : null;
+    }
+
+    private static void DrawText(
+        Graphics graphics,
+        string text,
+        Font font,
+        Brush brush,
+        RectangleF bounds,
+        ContentAlignment alignment)
+    {
+        using var format = new StringFormat
+        {
+            Trimming = StringTrimming.EllipsisCharacter,
+            FormatFlags = StringFormatFlags.NoWrap
+        };
+        format.Alignment = alignment is ContentAlignment.TopRight or ContentAlignment.MiddleRight or ContentAlignment.BottomRight
+            ? StringAlignment.Far
+            : alignment is ContentAlignment.TopCenter or ContentAlignment.MiddleCenter or ContentAlignment.BottomCenter
+                ? StringAlignment.Center
+                : StringAlignment.Near;
+        format.LineAlignment = alignment is ContentAlignment.BottomLeft or ContentAlignment.BottomCenter or ContentAlignment.BottomRight
+            ? StringAlignment.Far
+            : alignment is ContentAlignment.MiddleLeft or ContentAlignment.MiddleCenter or ContentAlignment.MiddleRight
+                ? StringAlignment.Center
+                : StringAlignment.Near;
+        graphics.DrawString(text, font, brush, bounds, format);
     }
 
     private void ReportOverlayError(Exception exception, string stage)

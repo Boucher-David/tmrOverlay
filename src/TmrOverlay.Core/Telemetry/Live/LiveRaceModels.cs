@@ -48,6 +48,7 @@ internal sealed record LiveRaceModels(
     LiveTimingModel Timing,
     LiveRelativeModel Relative,
     LiveSpatialModel Spatial,
+    LiveTrackMapModel TrackMap,
     LiveWeatherModel Weather,
     LiveFuelPitModel FuelPit,
     LiveRaceEventModel RaceEvents,
@@ -59,6 +60,7 @@ internal sealed record LiveRaceModels(
         Timing: LiveTimingModel.Empty,
         Relative: LiveRelativeModel.Empty,
         Spatial: LiveSpatialModel.Empty,
+        TrackMap: LiveTrackMapModel.Empty,
         Weather: LiveWeatherModel.Empty,
         FuelPit: LiveFuelPitModel.Empty,
         RaceEvents: LiveRaceEventModel.Empty,
@@ -294,6 +296,32 @@ internal sealed record LiveSpatialCar(
         RelativeSeconds is { } seconds && !double.IsNaN(seconds) && !double.IsInfinity(seconds);
 }
 
+internal static class LiveTrackSectorHighlights
+{
+    public const string None = "none";
+    public const string PersonalBest = "personal-best";
+    public const string BestLap = "best-lap";
+}
+
+internal sealed record LiveTrackMapModel(
+    bool HasSectors,
+    bool HasLiveTiming,
+    LiveModelQuality Quality,
+    IReadOnlyList<LiveTrackSectorSegment> Sectors)
+{
+    public static LiveTrackMapModel Empty { get; } = new(
+        HasSectors: false,
+        HasLiveTiming: false,
+        Quality: LiveModelQuality.Unavailable,
+        Sectors: []);
+}
+
+internal sealed record LiveTrackSectorSegment(
+    int SectorNum,
+    double StartPct,
+    double EndPct,
+    string Highlight);
+
 internal sealed record LiveWeatherModel(
     bool HasData,
     LiveModelQuality Quality,
@@ -335,6 +363,7 @@ internal sealed record LiveFuelPitModel(
     LiveSignalEvidence InstantaneousBurnEvidence,
     LiveSignalEvidence MeasuredBurnEvidence,
     LiveSignalEvidence BaselineEligibilityEvidence,
+    int? PitServiceStatus,
     int? PitServiceFlags,
     double? PitServiceFuelLiters,
     double? PitRepairLeftSeconds,
@@ -355,6 +384,7 @@ internal sealed record LiveFuelPitModel(
         InstantaneousBurnEvidence: LiveSignalEvidence.Unavailable("FuelUsePerHour", "missing_or_zero_fuel_use"),
         MeasuredBurnEvidence: LiveSignalEvidence.Unavailable("rolling-local-fuel-delta", "requires_two_green_distance_samples"),
         BaselineEligibilityEvidence: LiveSignalEvidence.Unavailable("measured-local-fuel-baseline", "requires_rolling_local_driver_window"),
+        PitServiceStatus: null,
         PitServiceFlags: null,
         PitServiceFuelLiters: null,
         PitRepairLeftSeconds: null,
@@ -369,6 +399,7 @@ internal sealed record LiveRaceEventModel(
     LiveModelQuality Quality,
     bool IsOnTrack,
     bool IsInGarage,
+    bool IsGarageVisible,
     bool OnPitRoad,
     int Lap,
     int LapCompleted,
@@ -381,6 +412,7 @@ internal sealed record LiveRaceEventModel(
         Quality: LiveModelQuality.Unavailable,
         IsOnTrack: false,
         IsInGarage: false,
+        IsGarageVisible: false,
         OnPitRoad: false,
         Lap: 0,
         LapCompleted: 0,

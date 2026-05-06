@@ -13,9 +13,11 @@ namespace TmrOverlay.App.Overlays.Flags;
 
 internal sealed class FlagsOverlayForm : PersistentOverlayForm
 {
-    private const int RefreshIntervalMilliseconds = 100;
+    private const int RefreshIntervalMilliseconds = 250;
     private const int BorderThickness = 10;
     private const int WsExTransparent = 0x00000020;
+    private const int WmNcHitTest = 0x0084;
+    private const int HtTransparent = -1;
 
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly ILogger _logger;
@@ -26,6 +28,7 @@ internal sealed class FlagsOverlayForm : PersistentOverlayForm
     private Color? _borderColor;
     private string? _lastLoggedError;
     private DateTimeOffset? _lastLoggedErrorAtUtc;
+    private bool _managedEnabled;
 
     public FlagsOverlayForm(
         ILiveTelemetrySource liveTelemetrySource,
@@ -58,6 +61,21 @@ internal sealed class FlagsOverlayForm : PersistentOverlayForm
         RefreshOverlay();
     }
 
+    public void SetManagedEnabled(bool enabled)
+    {
+        _managedEnabled = enabled;
+        if (enabled)
+        {
+            RefreshOverlay();
+            return;
+        }
+
+        if (Visible)
+        {
+            Hide();
+        }
+    }
+
     protected override CreateParams CreateParams
     {
         get
@@ -65,6 +83,15 @@ internal sealed class FlagsOverlayForm : PersistentOverlayForm
             var createParams = base.CreateParams;
             createParams.ExStyle |= WsExTransparent;
             return createParams;
+        }
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        base.WndProc(ref m);
+        if (m.Msg == WmNcHitTest)
+        {
+            m.Result = new IntPtr(HtTransparent);
         }
     }
 
@@ -167,12 +194,15 @@ internal sealed class FlagsOverlayForm : PersistentOverlayForm
                 Invalidate();
             }
 
+            ApplyVisibility();
+
             succeeded = true;
         }
         catch (Exception exception)
         {
             ReportOverlayError(exception, "refresh");
             _borderColor = Color.FromArgb(236, 112, 99);
+            ApplyVisibility();
             Invalidate();
         }
         finally
@@ -181,6 +211,21 @@ internal sealed class FlagsOverlayForm : PersistentOverlayForm
                 AppPerformanceMetricIds.OverlayFlagsRefresh,
                 started,
                 succeeded);
+        }
+    }
+
+    private void ApplyVisibility()
+    {
+        var shouldShow = _managedEnabled && _borderColor is not null;
+        if (shouldShow && !Visible)
+        {
+            Show();
+            return;
+        }
+
+        if (!shouldShow && Visible)
+        {
+            Hide();
         }
     }
 

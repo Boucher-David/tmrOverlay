@@ -16,5 +16,6 @@ internal static class CarRadarOverlayDefinition
                 "Show multiclass warning",
                 defaultValue: true)
         ],
-        ShowOpacityControl: false);
+        ShowOpacityControl: false,
+        FadeWhenLiveTelemetryUnavailable: true);
 }

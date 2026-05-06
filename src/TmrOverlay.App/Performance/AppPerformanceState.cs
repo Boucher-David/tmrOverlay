@@ -137,6 +137,25 @@ internal sealed class AppPerformanceState
         }
     }
 
+    public void RecordOverlayLiveTelemetryState(
+        string overlayId,
+        DateTimeOffset timestampUtc,
+        bool liveTelemetryAvailable,
+        double fadeAlpha)
+    {
+        if (string.IsNullOrWhiteSpace(overlayId))
+        {
+            return;
+        }
+
+        lock (_sync)
+        {
+            var prefix = $"overlay.{NormalizeMetricSegment(overlayId)}.update";
+            RecordOverlayUpdateValue($"{prefix}.live_available", liveTelemetryAvailable ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.fade_alpha", Math.Clamp(fadeAlpha, 0d, 1d), timestampUtc);
+        }
+    }
+
     public void RecordCaptureWrite(TelemetryCaptureWriteStatus writeStatus)
     {
         lock (_sync)
@@ -433,6 +452,17 @@ internal static class AppPerformanceMetricIds
     public const string OverlayRelativeApplyUi = "overlay.relative.apply_ui";
     public const string OverlayRelativeRows = "overlay.relative.rows";
     public const string OverlayRelativePaint = "overlay.relative.paint";
+    public const string OverlayStandingsRefresh = "overlay.standings.refresh";
+    public const string OverlayStandingsSnapshot = "overlay.standings.snapshot";
+    public const string OverlayStandingsViewModel = "overlay.standings.view_model";
+    public const string OverlayStandingsApplyUi = "overlay.standings.apply_ui";
+    public const string OverlayStandingsPaint = "overlay.standings.paint";
+    public const string OverlayTrackMapRefresh = "overlay.track_map.refresh";
+    public const string OverlayTrackMapSnapshot = "overlay.track_map.snapshot";
+    public const string OverlayTrackMapPaint = "overlay.track_map.paint";
+    public const string OverlayStreamChatSettingsRefresh = "overlay.stream_chat.settings_refresh";
+    public const string OverlayStreamChatConnect = "overlay.stream_chat.connect";
+    public const string OverlayStreamChatPaint = "overlay.stream_chat.paint";
     public const string OverlayFlagsRefresh = "overlay.flags.refresh";
     public const string OverlayFlagsSnapshot = "overlay.flags.snapshot";
     public const string OverlayFlagsViewModel = "overlay.flags.view_model";
@@ -476,6 +506,7 @@ internal static class AppPerformanceMetricIds
     public const string OverlaySettingsSyncCapture = "overlay.settings.sync_capture";
     public const string OverlaySettingsSyncDiagnostics = "overlay.settings.sync_diagnostics";
     public const string OverlaySettingsSyncAnalysis = "overlay.settings.sync_analysis";
+    public const string LocalhostRequest = "localhost.request";
     public const string DiagnosticsBundleCreate = "diagnostics.bundle.create";
     public const string DiagnosticsBundleMetadata = "diagnostics.bundle.metadata";
     public const string DiagnosticsBundleRuntimeSettings = "diagnostics.bundle.runtime_settings";

@@ -4,14 +4,19 @@ using TmrOverlay.App.Analysis;
 using TmrOverlay.App.Brand;
 using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
+using TmrOverlay.App.Localhost;
 using TmrOverlay.App.Overlays.Abstractions;
+using TmrOverlay.App.Overlays.BrowserSources;
 using TmrOverlay.App.Overlays.Flags;
+using TmrOverlay.App.Overlays.GarageCover;
+using TmrOverlay.App.Overlays.StreamChat;
+using TmrOverlay.App.Overlays.TrackMap;
 using TmrOverlay.App.Overlays.Styling;
 using TmrOverlay.App.Performance;
 using TmrOverlay.App.Storage;
+using TmrOverlay.App.Telemetry;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
-using TmrOverlay.App.Telemetry;
 
 namespace TmrOverlay.App.Overlays.SettingsPanel;
 
@@ -19,13 +24,24 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 {
     private const int SideTabThickness = 38;
     private const int SideTabLength = 174;
+    private static readonly TimeSpan SupportStatusRefreshInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan SupportHeavyRefreshInterval = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan LatestDiagnosticsScanInterval = TimeSpan.FromSeconds(5);
 
     private static readonly string[] PreferredOverlayTabOrder =
     [
         "standings",
         "relative",
+        "gap-to-leader",
+        "track-map",
+        "stream-chat",
+        "garage-cover",
+        "fuel-calculator",
+        "input-state",
+        "car-radar",
         "flags",
-        "car-radar"
+        "session-weather",
+        "pit-service"
     ];
 
     private readonly ApplicationSettings _applicationSettings;
@@ -37,6 +53,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private readonly PostRaceAnalysisOptions _postRaceAnalysisOptions;
     private readonly AppPerformanceState _performanceState;
     private readonly AppStorageOptions _storageOptions;
+    private readonly LocalhostOverlayOptions _localhostOverlayOptions;
+    private readonly LocalhostOverlayState _localhostOverlayState;
     private readonly DiagnosticsBundleService _diagnosticsBundleService;
     private readonly AppEventRecorder _events;
     private readonly Action _saveSettings;
@@ -59,9 +77,14 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private Label? _appStatusLabel;
     private Label? _sessionStateLabel;
     private Label? _currentIssueLabel;
+    private Label? _advancedDiagnosticsLabel;
     private Label? _performanceSnapshotLabel;
     private Label? _latestDiagnosticsBundleLabel;
     private Label? _supportStatusLabel;
+    private DateTimeOffset _nextSupportStatusRefreshAtUtc;
+    private DateTimeOffset _nextSupportHeavyRefreshAtUtc;
+    private DateTimeOffset _nextLatestDiagnosticsScanAtUtc;
+    private string? _cachedLatestDiagnosticsBundlePath;
 
     public SettingsOverlayForm(
         ApplicationSettings applicationSettings,
@@ -73,6 +96,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         PostRaceAnalysisOptions postRaceAnalysisOptions,
         AppPerformanceState performanceState,
         AppStorageOptions storageOptions,
+        LocalhostOverlayOptions localhostOverlayOptions,
+        LocalhostOverlayState localhostOverlayState,
         DiagnosticsBundleService diagnosticsBundleService,
         AppEventRecorder events,
         OverlaySettings settings,
@@ -95,6 +120,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _postRaceAnalysisOptions = postRaceAnalysisOptions;
         _performanceState = performanceState;
         _storageOptions = storageOptions;
+        _localhostOverlayOptions = localhostOverlayOptions;
+        _localhostOverlayState = localhostOverlayState;
         _diagnosticsBundleService = diagnosticsBundleService;
         _events = events;
         _saveSettings = saveSettings;
@@ -317,6 +344,19 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _selectedOverlayChanged(_tabs.SelectedTab?.Tag as string);
     }
 
+    private void SelectOverlayTab(string overlayId)
+    {
+        foreach (TabPage page in _tabs.TabPages)
+        {
+            if (string.Equals(page.Tag as string, overlayId, StringComparison.OrdinalIgnoreCase))
+            {
+                _tabs.SelectedTab = page;
+                ReportSelectedOverlayTab();
+                return;
+            }
+        }
+    }
+
     private void RequestApplicationExit()
     {
         if (_applicationExitRequested)
@@ -457,12 +497,12 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private void AddAdvancedDiagnosticsControls(TabPage page, int top)
     {
         var title = CreateSectionLabel("Advanced collection", 560, top, 300);
-        var note = CreateMutedLabel("Disabled by default. Enable with appsettings.json or TMR_ overrides.", 564, top + 30, 330);
-        var status = CreateMultiLineValueLabel(AdvancedDiagnosticsText(), 564, top + 62, 330, 104);
+        var note = CreateMutedLabel("Compact diagnostics run by default. Use appsettings.json or TMR_ overrides to disable individual collectors.", 564, top + 30, 330);
+        _advancedDiagnosticsLabel = CreateMultiLineValueLabel(AdvancedDiagnosticsText(), 564, top + 62, 330, 104);
 
         page.Controls.Add(title);
         page.Controls.Add(note);
-        page.Controls.Add(status);
+        page.Controls.Add(_advancedDiagnosticsLabel);
     }
 
     private void AddSupportStorageControls(TabPage page, int top)
@@ -533,6 +573,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         page.Controls.Add(performanceLabel);
         page.Controls.Add(_performanceSnapshotLabel);
 
+        _nextSupportStatusRefreshAtUtc = DateTimeOffset.MinValue;
+        _nextSupportHeavyRefreshAtUtc = DateTimeOffset.MinValue;
         SyncErrorLoggingTab();
         return page;
     }
@@ -547,8 +589,37 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         var page = CreateTabPage(definition.DisplayName);
         page.Tag = definition.Id;
         var title = CreateSectionLabel(definition.DisplayName, 18, 18, 500);
+        var isStreamChat = string.Equals(definition.Id, StreamChatOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase);
+        var isGarageCover = string.Equals(definition.Id, GarageCoverOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase);
+        var controlTop = 58;
 
-        var enabledCheckBox = CreateCheckBox("Visible", settings.Enabled, 22, 58, 220);
+        if (isStreamChat)
+        {
+            page.Controls.Add(title);
+            page.Controls.Add(CreateMutedLabel(
+                "Browser-source surface for stream chat. Streamlabs uses your Chat Box widget URL; Twitch reads public chat by channel name.",
+                22,
+                54,
+                680));
+            AddLocalhostOptions(page, definition, 112);
+            AddStreamChatOptions(page, settings, 212);
+            return page;
+        }
+
+        if (isGarageCover)
+        {
+            page.Controls.Add(title);
+            page.Controls.Add(CreateMutedLabel(
+                "Localhost-only privacy cover for OBS. It appears in the browser source while iRacing reports the Garage screen as visible.",
+                22,
+                54,
+                720));
+            AddLocalhostOptions(page, definition, 112);
+            AddGarageCoverOptions(page, settings, 212);
+            return page;
+        }
+
+        var enabledCheckBox = CreateCheckBox("Visible", settings.Enabled, 22, controlTop, 220);
         enabledCheckBox.CheckedChanged += (_, _) =>
         {
             settings.Enabled = enabledCheckBox.Checked;
@@ -558,7 +629,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         page.Controls.Add(title);
         page.Controls.Add(enabledCheckBox);
 
-        var optionsTop = 104;
+        var optionsTop = controlTop + 46;
         if (definition.ShowScaleControl)
         {
             var scaleLabel = CreateLabel("Scale", 22, optionsTop + 4, 160);
@@ -591,7 +662,13 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
         if (definition.ShowOpacityControl)
         {
-            var opacityLabel = CreateLabel("Opacity", 22, optionsTop + 4, 160);
+            var opacityLabel = CreateLabel(
+                string.Equals(definition.Id, TrackMapOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase)
+                    ? "Map fill"
+                    : "Opacity",
+                22,
+                optionsTop + 4,
+                160);
             var opacityInput = new NumericUpDown
             {
                 DecimalPlaces = 0,
@@ -661,8 +738,28 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             optionsTop += 176;
         }
 
+        AddLocalhostOptions(page, definition, 58);
         AddOverlaySpecificOptions(page, definition, settings, optionsTop);
         return page;
+    }
+
+    private void AddLocalhostOptions(TabPage page, OverlayDefinition definition, int top)
+    {
+        const int x = 560;
+        page.Controls.Add(CreateSectionLabel("Localhost browser source", x, top, 500));
+        if (BrowserOverlayPageRenderer.TryGetRouteForOverlayId(definition.Id, out var route))
+        {
+            var url = $"{_localhostOverlayOptions.Prefix.TrimEnd('/')}{route}";
+            page.Controls.Add(CreateLabel("URL", x + 4, top + 42, 120));
+            page.Controls.Add(CreateSelectableValueBox(url, x + 92, top + 36, 300, 30));
+            var copyButton = CreateActionButton("Copy", x + 402, top + 36, 76);
+            copyButton.Click += (_, _) => CopyTextToClipboard(url);
+            page.Controls.Add(copyButton);
+            page.Controls.Add(CreateMutedLabel("This browser-source route does not require the native overlay to be visible. Disable LocalhostOverlays in configuration if the local server is not needed.", x + 4, top + 76, 500));
+            return;
+        }
+
+        page.Controls.Add(CreateMutedLabel("No localhost route is available for this overlay yet.", x + 4, top + 42, 560));
     }
 
     private void AddOverlaySpecificOptions(TabPage page, OverlayDefinition definition, OverlaySettings settings, int top)
@@ -673,7 +770,220 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             return;
         }
 
+        if (string.Equals(definition.Id, TrackMapOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            AddTrackMapOptions(page, settings, top);
+            return;
+        }
+
+        if (string.Equals(definition.Id, GarageCoverOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            AddGarageCoverOptions(page, settings, top);
+            return;
+        }
+
         AddDescriptorOptions(page, definition.SettingsOptions, settings, top);
+    }
+
+    private void AddGarageCoverOptions(TabPage page, OverlaySettings settings, int top)
+    {
+        page.Controls.Add(CreateSectionLabel("Cover image", 18, top, 500));
+        var imagePath = settings.GetStringOption(OverlayOptionKeys.GarageCoverImagePath);
+        page.Controls.Add(CreateLabel("Image", 22, top + 42, 90));
+        page.Controls.Add(CreateSelectableValueBox(
+            string.IsNullOrWhiteSpace(imagePath) ? "No image imported" : imagePath,
+            116,
+            top + 36,
+            520,
+            30));
+
+        var importButton = CreateActionButton("Import Image", 650, top + 36, 130);
+        importButton.Click += (_, _) => ImportGarageCoverImage(settings);
+        page.Controls.Add(importButton);
+
+        var clearButton = CreateActionButton("Clear", 790, top + 36, 80);
+        clearButton.Click += (_, _) =>
+        {
+            try
+            {
+                settings.SetStringOption(OverlayOptionKeys.GarageCoverImagePath, null);
+                GarageCoverImageStore.ClearImportedImages(_storageOptions.SettingsRoot);
+                SaveAndApply();
+                BuildTabs();
+                SelectOverlayTab(GarageCoverOverlayDefinition.Definition.Id);
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show(
+                    this,
+                    exception.Message,
+                    "Garage Cover",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+        };
+        page.Controls.Add(clearButton);
+
+        page.Controls.Add(CreateMutedLabel(
+            "Set the browser-source size in OBS. The app does not create a desktop Garage Cover window.",
+            22,
+            top + 104,
+            720));
+    }
+
+    private void ImportGarageCoverImage(OverlaySettings settings)
+    {
+        using var dialog = new OpenFileDialog
+        {
+            AddExtension = true,
+            CheckFileExists = true,
+            Filter = "Image files|*.png;*.jpg;*.jpeg;*.bmp;*.gif|All files|*.*",
+            Multiselect = false,
+            Title = "Import garage cover image"
+        };
+
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            var importedPath = GarageCoverImageStore.ImportImage(dialog.FileName, _storageOptions.SettingsRoot);
+            settings.SetStringOption(OverlayOptionKeys.GarageCoverImagePath, importedPath);
+            _events.Record("garage_cover_image_imported", properties: new Dictionary<string, string?>
+            {
+                ["extension"] = Path.GetExtension(importedPath)
+            });
+            SaveAndApply();
+            BuildTabs();
+            SelectOverlayTab(GarageCoverOverlayDefinition.Definition.Id);
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(
+                this,
+                exception.Message,
+                "Garage Cover",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
+    }
+
+    private void AddTrackMapOptions(TabPage page, OverlaySettings settings, int top)
+    {
+        page.Controls.Add(CreateSectionLabel("Map sources", 18, top, 500));
+        page.Controls.Add(CreateLabel("Source", 22, top + 42, 120));
+        page.Controls.Add(CreateValueLabel("Best available bundled or local map; circle fallback when none match", 150, top + 36, 560, 30));
+        page.Controls.Add(CreateLabel("Generation", 22, top + 84, 120));
+        page.Controls.Add(CreateValueLabel("Automatic after sessions; complete layouts are skipped", 150, top + 78, 520, 30));
+        var buildCheckBox = CreateCheckBox(
+            "Build local maps from IBT telemetry",
+            settings.GetBooleanOption(OverlayOptionKeys.TrackMapBuildFromTelemetry, defaultValue: true),
+            22,
+            top + 122,
+            320);
+        buildCheckBox.CheckedChanged += (_, _) =>
+        {
+            settings.SetBooleanOption(OverlayOptionKeys.TrackMapBuildFromTelemetry, buildCheckBox.Checked);
+            SaveAndApply();
+        };
+        page.Controls.Add(buildCheckBox);
+        page.Controls.Add(CreateMutedLabel("Derived geometry stays on this PC and source IBT files are not copied into TMR storage. Turning this off still uses bundled app maps.", 22, top + 158, 680));
+
+        const int coverageX = 560;
+        const int coverageTop = 206;
+        page.Controls.Add(CreateSectionLabel("Bundled coverage", coverageX, coverageTop, 500));
+        page.Controls.Add(CreateMutedLabel("Reviewed app maps load automatically for matching tracks.", coverageX + 4, coverageTop + 36, 430));
+    }
+
+    private void AddStreamChatOptions(TabPage page, OverlaySettings settings, int top)
+    {
+        page.Controls.Add(CreateSectionLabel("Chat provider", 18, top, 500));
+        page.Controls.Add(CreateLabel("Mode", 22, top + 42, 120));
+        var providerCombo = new ComboBox
+        {
+            BackColor = OverlayTheme.Colors.PanelBackground,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            FlatStyle = FlatStyle.Flat,
+            ForeColor = OverlayTheme.Colors.TextControl,
+            Location = new Point(150, top + 36),
+            Size = new Size(220, 30),
+            TabStop = true
+        };
+        providerCombo.Items.AddRange([
+            new StreamChatProviderItem("Not configured", StreamChatOverlaySettings.ProviderNone),
+            new StreamChatProviderItem("Streamlabs Chat Box URL", StreamChatOverlaySettings.ProviderStreamlabs),
+            new StreamChatProviderItem("Twitch channel", StreamChatOverlaySettings.ProviderTwitch)
+        ]);
+        var provider = StreamChatOverlaySettings.NormalizeProvider(
+            settings.GetStringOption(OverlayOptionKeys.StreamChatProvider, StreamChatOverlaySettings.ProviderNone));
+        providerCombo.SelectedIndex = providerCombo.Items
+            .Cast<StreamChatProviderItem>()
+            .Select((item, index) => new { item, index })
+            .FirstOrDefault(candidate => string.Equals(candidate.item.Value, provider, StringComparison.OrdinalIgnoreCase))
+            ?.index ?? 0;
+        page.Controls.Add(providerCombo);
+
+        page.Controls.Add(CreateLabel("Streamlabs URL", 22, top + 86, 120));
+        var streamlabsBox = CreateEditableTextBox(
+            settings.GetStringOption(OverlayOptionKeys.StreamChatStreamlabsUrl),
+            150,
+            top + 80,
+            520,
+            30);
+        page.Controls.Add(streamlabsBox);
+        page.Controls.Add(CreateMutedLabel("Paste the Streamlabs Chat Box widget URL, for example https://streamlabs.com/widgets/chat-box/...", 150, top + 114, 620));
+
+        page.Controls.Add(CreateLabel("Twitch channel", 22, top + 166, 120));
+        var twitchBox = CreateEditableTextBox(
+            settings.GetStringOption(OverlayOptionKeys.StreamChatTwitchChannel),
+            150,
+            top + 160,
+            220,
+            30);
+        page.Controls.Add(twitchBox);
+        page.Controls.Add(CreateMutedLabel("Use the public channel name only. Streamlabs is the preferred no-login option for this first pass.", 150, top + 194, 620));
+
+        void SyncProviderFields()
+        {
+            var selected = providerCombo.SelectedItem is StreamChatProviderItem item
+                ? item.Value
+                : StreamChatOverlaySettings.ProviderNone;
+            streamlabsBox.Enabled = string.Equals(selected, StreamChatOverlaySettings.ProviderStreamlabs, StringComparison.Ordinal);
+            twitchBox.Enabled = string.Equals(selected, StreamChatOverlaySettings.ProviderTwitch, StringComparison.Ordinal);
+        }
+
+        providerCombo.SelectedIndexChanged += (_, _) => SyncProviderFields();
+        SyncProviderFields();
+
+        var saveButton = CreateActionButton("Save Chat", 150, top + 236, 110);
+        saveButton.Click += (_, _) => SaveStreamChatSettings(settings, providerCombo, streamlabsBox, twitchBox);
+        page.Controls.Add(saveButton);
+        page.Controls.Add(CreateMutedLabel("Open the localhost URL in a browser or OBS after saving. The overlay will show connected status, then append messages as they arrive.", 274, top + 242, 560));
+    }
+
+    private void SaveStreamChatSettings(
+        OverlaySettings settings,
+        ComboBox providerCombo,
+        TextBox streamlabsBox,
+        TextBox twitchBox)
+    {
+        var provider = providerCombo.SelectedItem is StreamChatProviderItem item
+            ? item.Value
+            : StreamChatOverlaySettings.ProviderNone;
+        settings.SetStringOption(OverlayOptionKeys.StreamChatProvider, provider);
+        settings.SetStringOption(OverlayOptionKeys.StreamChatStreamlabsUrl, streamlabsBox.Text);
+        settings.SetStringOption(OverlayOptionKeys.StreamChatTwitchChannel, twitchBox.Text);
+        SaveAndApply();
+    }
+
+    private sealed record StreamChatProviderItem(string Label, string Value)
+    {
+        public override string ToString()
+        {
+            return Label;
+        }
     }
 
     private void AddFlagsOptions(TabPage page, OverlaySettings settings, int top)
@@ -900,6 +1210,23 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         };
     }
 
+    private static Label CreateWarningLabel(string text, int x, int y, int width, int height)
+    {
+        return new Label
+        {
+            AutoSize = false,
+            BackColor = Color.FromArgb(42, 35, 18),
+            BorderStyle = BorderStyle.FixedSingle,
+            ForeColor = OverlayTheme.Colors.WarningIndicator,
+            Font = OverlayTheme.Font(OverlayTheme.DefaultFontFamily, 8.75f, FontStyle.Bold),
+            Location = new Point(x, y),
+            Padding = new Padding(10, 8, 10, 6),
+            Size = new Size(width, height),
+            Text = text,
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+    }
+
     private static Label CreateValueLabel(string text, int x, int y, int width, int height)
     {
         return new Label
@@ -914,6 +1241,37 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             Size = new Size(width, height),
             Text = text,
             TextAlign = ContentAlignment.MiddleLeft
+        };
+    }
+
+    private static TextBox CreateSelectableValueBox(string text, int x, int y, int width, int height)
+    {
+        return new TextBox
+        {
+            BackColor = OverlayTheme.Colors.PanelBackground,
+            BorderStyle = BorderStyle.FixedSingle,
+            Font = OverlayTheme.Font(OverlayTheme.DefaultFontFamily, 9f, FontStyle.Bold),
+            ForeColor = OverlayTheme.Colors.TextSecondary,
+            Location = new Point(x, y),
+            ReadOnly = true,
+            Size = new Size(width, height),
+            TabStop = true,
+            Text = text
+        };
+    }
+
+    private static TextBox CreateEditableTextBox(string text, int x, int y, int width, int height)
+    {
+        return new TextBox
+        {
+            BackColor = OverlayTheme.Colors.PanelBackground,
+            BorderStyle = BorderStyle.FixedSingle,
+            Font = OverlayTheme.Font(OverlayTheme.DefaultFontFamily, 9f),
+            ForeColor = OverlayTheme.Colors.TextControl,
+            Location = new Point(x, y),
+            Size = new Size(width, height),
+            TabStop = true,
+            Text = text
         };
     }
 
@@ -1015,41 +1373,63 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         if (_appStatusLabel is null
             && _sessionStateLabel is null
             && _currentIssueLabel is null
+            && _advancedDiagnosticsLabel is null
             && _latestDiagnosticsBundleLabel is null
             && _performanceSnapshotLabel is null)
         {
             return;
         }
 
+        var now = DateTimeOffset.UtcNow;
+        var statusDue = now >= _nextSupportStatusRefreshAtUtc;
+        var heavyDue = now >= _nextSupportHeavyRefreshAtUtc;
+        if (!statusDue && !heavyDue)
+        {
+            return;
+        }
+
         var captureSnapshot = _captureState.Snapshot();
-        var diagnosticsSnapshot = _diagnosticsBundleService.Snapshot();
-        if (_appStatusLabel is not null)
+        if (statusDue)
         {
-            var appStatus = AppStatus(captureSnapshot);
-            _appStatusLabel.Text = appStatus.Text;
-            _appStatusLabel.ForeColor = appStatus.Color;
+            _nextSupportStatusRefreshAtUtc = now + SupportStatusRefreshInterval;
+            if (_appStatusLabel is not null)
+            {
+                var appStatus = AppStatus(captureSnapshot);
+                SetLabelText(_appStatusLabel, appStatus.Text);
+                SetLabelColor(_appStatusLabel, appStatus.Color);
+            }
+
+            if (_sessionStateLabel is not null)
+            {
+                SetLabelText(_sessionStateLabel, SessionStateText(captureSnapshot));
+            }
+
+            if (_currentIssueLabel is not null)
+            {
+                SetLabelText(_currentIssueLabel, CurrentIssueText(captureSnapshot));
+            }
+
+            if (_advancedDiagnosticsLabel is not null)
+            {
+                SetLabelText(_advancedDiagnosticsLabel, AdvancedDiagnosticsText());
+            }
         }
 
-        if (_sessionStateLabel is not null)
+        if (heavyDue)
         {
-            _sessionStateLabel.Text = SessionStateText(captureSnapshot);
-        }
+            _nextSupportHeavyRefreshAtUtc = now + SupportHeavyRefreshInterval;
+            var diagnosticsSnapshot = _diagnosticsBundleService.Snapshot();
+            if (_latestDiagnosticsBundleLabel is not null)
+            {
+                var latestBundlePath = diagnosticsSnapshot.LastBundlePath ?? LatestDiagnosticsBundlePathCached(now) ?? string.Empty;
+                SetLabelText(_latestDiagnosticsBundleLabel, LatestBundleDisplayText(latestBundlePath));
+                ReportAutomaticDiagnosticsBundleStatus(diagnosticsSnapshot, latestBundlePath);
+            }
 
-        if (_currentIssueLabel is not null)
-        {
-            _currentIssueLabel.Text = CurrentIssueText(captureSnapshot);
-        }
-
-        if (_latestDiagnosticsBundleLabel is not null)
-        {
-            var latestBundlePath = diagnosticsSnapshot.LastBundlePath ?? LatestDiagnosticsBundlePath() ?? string.Empty;
-            _latestDiagnosticsBundleLabel.Text = LatestBundleDisplayText(latestBundlePath);
-            ReportAutomaticDiagnosticsBundleStatus(diagnosticsSnapshot, latestBundlePath);
-        }
-
-        if (_performanceSnapshotLabel is not null)
-        {
-            _performanceSnapshotLabel.Text = PerformanceSnapshotText(_performanceState.Snapshot(), captureSnapshot);
+            if (_performanceSnapshotLabel is not null)
+            {
+                SetLabelText(_performanceSnapshotLabel, PerformanceSnapshotText(_performanceState.Snapshot(), captureSnapshot));
+            }
         }
     }
 
@@ -1101,6 +1481,19 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         }
     }
 
+    private void CopyTextToClipboard(string text)
+    {
+        try
+        {
+            Clipboard.SetText(text);
+            SetSupportStatus("Copied URL.", isError: false);
+        }
+        catch
+        {
+            SetSupportStatus("Clipboard unavailable. Select the URL instead.", isError: true);
+        }
+    }
+
     private void OpenSupportDirectory(string path, string label)
     {
         try
@@ -1132,6 +1525,18 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             .OrderByDescending(file => file.LastWriteTimeUtc)
             .FirstOrDefault()
             ?.FullName;
+    }
+
+    private string? LatestDiagnosticsBundlePathCached(DateTimeOffset now)
+    {
+        if (now < _nextLatestDiagnosticsScanAtUtc)
+        {
+            return _cachedLatestDiagnosticsBundlePath;
+        }
+
+        _nextLatestDiagnosticsScanAtUtc = now + LatestDiagnosticsScanInterval;
+        _cachedLatestDiagnosticsBundlePath = LatestDiagnosticsBundlePath();
+        return _cachedLatestDiagnosticsBundlePath;
     }
 
     private void ReportAutomaticDiagnosticsBundleStatus(
@@ -1178,8 +1583,24 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             return;
         }
 
-        _supportStatusLabel.ForeColor = isError ? OverlayTheme.Colors.WarningText : OverlayTheme.Colors.SuccessText;
-        _supportStatusLabel.Text = message;
+        SetLabelColor(_supportStatusLabel, isError ? OverlayTheme.Colors.WarningText : OverlayTheme.Colors.SuccessText);
+        SetLabelText(_supportStatusLabel, message);
+    }
+
+    private static void SetLabelText(Label label, string text)
+    {
+        if (!string.Equals(label.Text, text, StringComparison.Ordinal))
+        {
+            label.Text = text;
+        }
+    }
+
+    private static void SetLabelColor(Label label, Color color)
+    {
+        if (label.ForeColor != color)
+        {
+            label.ForeColor = color;
+        }
     }
 
     private static string CurrentIssueText(TelemetryCaptureStatusSnapshot snapshot)
@@ -1204,12 +1625,17 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
     private string AdvancedDiagnosticsText()
     {
+        var localhost = _localhostOverlayState.Snapshot();
+        var localhostStatus = localhost.LastError is { Length: > 0 }
+            ? $"{localhost.Status} ({localhost.LastError})"
+            : $"{localhost.Status}, {localhost.TotalRequests:N0} requests";
         return string.Join(
             Environment.NewLine,
             $"edge clips: {Status(_telemetryEdgeCaseOptions.Enabled)}",
             $"model v2 parity: {Status(_liveModelParityOptions.Enabled)}",
             $"overlay signals: {Status(_liveOverlayDiagnosticsOptions.Enabled)}",
             $"post-race analysis: {Status(_postRaceAnalysisOptions.Enabled)}",
+            $"localhost: {localhostStatus}",
             "Paths: logs + history folders below");
     }
 

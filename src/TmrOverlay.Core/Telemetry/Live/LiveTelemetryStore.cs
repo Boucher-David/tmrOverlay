@@ -10,6 +10,7 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
 
     private readonly object _sync = new();
     private readonly Dictionary<int, ProximityHistory> _proximityHistory = [];
+    private readonly TrackMapSectorTracker _trackMapSectorTracker = new();
     private HistoricalSessionContext _context = HistoricalSessionContext.Empty;
     private LiveTelemetrySnapshot _snapshot = LiveTelemetrySnapshot.Empty;
     private int? _lastProximityReferenceCarIdx;
@@ -40,6 +41,11 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
     {
         lock (_sync)
         {
+            if (!string.Equals(_snapshot.SourceId, sourceId, StringComparison.Ordinal))
+            {
+                _trackMapSectorTracker.Reset();
+            }
+
             _snapshot = _snapshot with
             {
                 IsConnected = true,
@@ -58,6 +64,7 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
         {
             _context = HistoricalSessionContext.Empty;
             _proximityHistory.Clear();
+            _trackMapSectorTracker.Reset();
             _lastProximityReferenceCarIdx = null;
             _snapshot = LiveTelemetrySnapshot.Empty with
             {
@@ -73,6 +80,7 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
         lock (_sync)
         {
             _context = context;
+            _trackMapSectorTracker.Reset();
             _snapshot = _snapshot with
             {
                 Context = context,
@@ -99,7 +107,8 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
             UpdateProximityHistory(sample.CapturedAtUtc, proximity);
 
             var leaderGap = LiveLeaderGapSnapshot.From(sample);
-            var models = LiveRaceModelBuilder.From(_context, sample, fuel, proximity, leaderGap);
+            var trackMap = _trackMapSectorTracker.Update(_context, sample);
+            var models = LiveRaceModelBuilder.From(_context, sample, fuel, proximity, leaderGap, trackMap);
 
             _snapshot = new LiveTelemetrySnapshot(
                 IsConnected: true,
@@ -296,6 +305,425 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
         return sample.FocusCarIdx is not null
             && sample.PlayerCarIdx is not null
             && sample.FocusCarIdx != sample.PlayerCarIdx;
+    }
+
+    private sealed class TrackMapSectorTracker
+    {
+        private const double ImprovementEpsilonSeconds = 0.001d;
+        private const double MaximumSectorSeconds = 900d;
+        private const double MaximumLapSeconds = 3600d;
+        private const double LapStartSeedThreshold = 0.02d;
+        private const double SectorBoundarySeedThreshold = 0.0125d;
+        private const double MaximumContinuousProgressDelta = 0.12d;
+
+        private readonly Dictionary<int, double> _bestSectorSeconds = [];
+        private readonly Dictionary<int, string> _activeSectorHighlights = [];
+        private IReadOnlyList<SectorBoundary> _sectors = [];
+        private TrackMapTimingState? _state;
+        private string? _sectorSignature;
+        private string? _fullLapHighlight;
+        private int? _fullLapCompleted;
+        private double? _bestLapSeconds;
+
+        public void Reset()
+        {
+            _sectors = [];
+            _sectorSignature = null;
+            _state = null;
+            _fullLapHighlight = null;
+            _fullLapCompleted = null;
+            _bestLapSeconds = null;
+            _bestSectorSeconds.Clear();
+            _activeSectorHighlights.Clear();
+        }
+
+        public LiveTrackMapModel Update(HistoricalSessionContext context, HistoricalTelemetrySample sample)
+        {
+            EnsureSectors(context.Sectors);
+            if (_sectors.Count < 2)
+            {
+                return LiveTrackMapModel.Empty;
+            }
+
+            if (!TryCreateObservation(sample, out var observation))
+            {
+                ResetLiveProgress();
+                return BuildModel(hasLiveTiming: false);
+            }
+
+            ProcessObservation(observation, sample);
+            return BuildModel(hasLiveTiming: true);
+        }
+
+        private void EnsureSectors(IReadOnlyList<HistoricalTrackSector> sectors)
+        {
+            var normalized = sectors
+                .Where(sector => IsFinite(sector.SectorStartPct) && sector.SectorStartPct >= 0d && sector.SectorStartPct < 1d)
+                .GroupBy(sector => sector.SectorNum)
+                .Select(group => group.OrderBy(sector => sector.SectorStartPct).First())
+                .OrderBy(sector => sector.SectorStartPct)
+                .ThenBy(sector => sector.SectorNum)
+                .ToArray();
+            var signature = string.Join(
+                "|",
+                normalized.Select(sector => $"{sector.SectorNum}:{Math.Round(sector.SectorStartPct, 6):0.######}"));
+            if (string.Equals(signature, _sectorSignature, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _sectorSignature = signature;
+            _sectors = normalized.Length < 2
+                ? []
+                : normalized
+                    .Select((sector, index) => new SectorBoundary(
+                        SectorNum: sector.SectorNum,
+                        SectorIndex: index,
+                        StartPct: sector.SectorStartPct,
+                        EndPct: index + 1 < normalized.Length ? normalized[index + 1].SectorStartPct : 1d))
+                    .ToArray();
+            _state = null;
+            _fullLapHighlight = null;
+            _fullLapCompleted = null;
+            _activeSectorHighlights.Clear();
+            _bestSectorSeconds.Clear();
+            _bestLapSeconds = null;
+        }
+
+        private void ProcessObservation(TrackMapObservation observation, HistoricalTelemetrySample sample)
+        {
+            if (_state is null)
+            {
+                _state = SeedState(observation, observation.LapCompleted ?? 0);
+                return;
+            }
+
+            var lapCompleted = EffectiveLapCompleted(_state, observation);
+            var previousProgress = _state.LapCompleted + _state.LapDistPct;
+            var currentProgress = lapCompleted + observation.LapDistPct;
+            var progressDelta = currentProgress - previousProgress;
+            if (progressDelta < 0d
+                || progressDelta > MaximumContinuousProgressDelta
+                || !IsFinite(progressDelta)
+                || observation.SessionTimeSeconds <= _state.SessionTimeSeconds)
+            {
+                _state = SeedState(observation, lapCompleted);
+                _activeSectorHighlights.Clear();
+                _fullLapHighlight = null;
+                _fullLapCompleted = null;
+                return;
+            }
+
+            var state = _state;
+            foreach (var crossing in SectorCrossings(state, observation, lapCompleted))
+            {
+                if (crossing.SectorIndex == 1
+                    && _fullLapCompleted is { } fullLapCompleted
+                    && crossing.BoundaryLapCompleted > fullLapCompleted)
+                {
+                    _fullLapHighlight = null;
+                    _fullLapCompleted = null;
+                    _activeSectorHighlights.Clear();
+                }
+
+                if (state.LastBoundarySectorIndex is { } previousSectorIndex
+                    && state.LastBoundarySessionTimeSeconds is { } previousBoundaryTime)
+                {
+                    var elapsed = crossing.SessionTimeSeconds - previousBoundaryTime;
+                    if (elapsed is > 0d and < MaximumSectorSeconds)
+                    {
+                        var completedSector = _sectors[previousSectorIndex];
+                        var highlight = ClassifySector(completedSector, elapsed);
+                        if (highlight == LiveTrackSectorHighlights.None)
+                        {
+                            _activeSectorHighlights.Remove(completedSector.SectorNum);
+                        }
+                        else
+                        {
+                            _activeSectorHighlights[completedSector.SectorNum] = highlight;
+                        }
+                    }
+                }
+
+                if (crossing.SectorIndex == 0)
+                {
+                    var lapSeconds = state.LastLapStartSessionTimeSeconds is { } lapStart
+                        ? crossing.SessionTimeSeconds - lapStart
+                        : observation.LapCompleted is not null ? CurrentLastLapTime(sample) : null;
+                    var lapHighlight = ClassifyLap(lapSeconds, sample);
+                    if (lapHighlight == LiveTrackSectorHighlights.None)
+                    {
+                        _fullLapHighlight = null;
+                        _fullLapCompleted = null;
+                    }
+                    else
+                    {
+                        _fullLapHighlight = lapHighlight;
+                        _fullLapCompleted = crossing.BoundaryLapCompleted - 1;
+                    }
+
+                    state = state with
+                    {
+                        LastLapStartSessionTimeSeconds = crossing.SessionTimeSeconds
+                    };
+                }
+
+                state = state with
+                {
+                    LastBoundarySectorIndex = crossing.SectorIndex,
+                    LastBoundarySessionTimeSeconds = crossing.SessionTimeSeconds
+                };
+            }
+
+            _state = state with
+            {
+                LapCompleted = lapCompleted,
+                LapDistPct = observation.LapDistPct,
+                SessionTimeSeconds = observation.SessionTimeSeconds
+            };
+        }
+
+        private TrackMapTimingState SeedState(TrackMapObservation observation, int lapCompleted)
+        {
+            var boundaryIndex = SeedBoundarySectorIndex(observation.LapDistPct);
+            return new TrackMapTimingState(
+                LapCompleted: lapCompleted,
+                LapDistPct: observation.LapDistPct,
+                SessionTimeSeconds: observation.SessionTimeSeconds,
+                LastBoundarySectorIndex: boundaryIndex,
+                LastBoundarySessionTimeSeconds: boundaryIndex is null ? null : observation.SessionTimeSeconds,
+                LastLapStartSessionTimeSeconds: boundaryIndex == 0 ? observation.SessionTimeSeconds : null);
+        }
+
+        private IEnumerable<SectorCrossing> SectorCrossings(
+            TrackMapTimingState previous,
+            TrackMapObservation current,
+            int currentLapCompleted)
+        {
+            var previousProgress = previous.LapCompleted + previous.LapDistPct;
+            var currentProgress = currentLapCompleted + current.LapDistPct;
+            var progressDelta = currentProgress - previousProgress;
+            var timeDelta = current.SessionTimeSeconds - previous.SessionTimeSeconds;
+
+            for (var lap = previous.LapCompleted; lap <= currentLapCompleted; lap++)
+            {
+                foreach (var sector in _sectors)
+                {
+                    var boundaryProgress = lap + sector.StartPct;
+                    if (boundaryProgress <= previousProgress || boundaryProgress > currentProgress)
+                    {
+                        continue;
+                    }
+
+                    var interpolation = (boundaryProgress - previousProgress) / progressDelta;
+                    if (!IsFinite(interpolation) || interpolation < 0d || interpolation > 1d)
+                    {
+                        continue;
+                    }
+
+                    yield return new SectorCrossing(
+                        sector.SectorIndex,
+                        lap,
+                        previous.SessionTimeSeconds + timeDelta * interpolation);
+                }
+            }
+        }
+
+        private int EffectiveLapCompleted(TrackMapTimingState previous, TrackMapObservation observation)
+        {
+            if (observation.LapCompleted is { } reportedLapCompleted)
+            {
+                return reportedLapCompleted;
+            }
+
+            return previous.LapDistPct >= 0.75d && observation.LapDistPct <= 0.25d
+                ? previous.LapCompleted + 1
+                : previous.LapCompleted;
+        }
+
+        private int? SeedBoundarySectorIndex(double lapDistPct)
+        {
+            if (lapDistPct <= LapStartSeedThreshold)
+            {
+                return 0;
+            }
+
+            var nearest = _sectors
+                .Select(sector => new
+                {
+                    sector.SectorIndex,
+                    Distance = lapDistPct - sector.StartPct
+                })
+                .Where(candidate => candidate.Distance >= 0d)
+                .OrderBy(candidate => candidate.Distance)
+                .FirstOrDefault();
+            return nearest is not null && nearest.Distance <= SectorBoundarySeedThreshold
+                ? nearest.SectorIndex
+                : null;
+        }
+
+        private string ClassifySector(SectorBoundary sector, double elapsedSeconds)
+        {
+            if (!_bestSectorSeconds.TryGetValue(sector.SectorNum, out var best)
+                || elapsedSeconds < best - ImprovementEpsilonSeconds)
+            {
+                _bestSectorSeconds[sector.SectorNum] = elapsedSeconds;
+                return LiveTrackSectorHighlights.PersonalBest;
+            }
+
+            return LiveTrackSectorHighlights.None;
+        }
+
+        private string ClassifyLap(double? lapSeconds, HistoricalTelemetrySample sample)
+        {
+            if (lapSeconds is not { } elapsed
+                || !IsFinite(elapsed)
+                || elapsed <= 0d
+                || elapsed >= MaximumLapSeconds)
+            {
+                return LiveTrackSectorHighlights.None;
+            }
+
+            var improved = _bestLapSeconds is null || elapsed < _bestLapSeconds.Value - ImprovementEpsilonSeconds;
+            if (improved)
+            {
+                _bestLapSeconds = elapsed;
+            }
+
+            if (IsSessionBestLapSignal(sample) || (improved && sample.LapDeltaToSessionBestLapOk != true))
+            {
+                return LiveTrackSectorHighlights.BestLap;
+            }
+
+            return improved ? LiveTrackSectorHighlights.PersonalBest : LiveTrackSectorHighlights.None;
+        }
+
+        private bool IsSessionBestLapSignal(HistoricalTelemetrySample sample)
+        {
+            return sample.LapDeltaToSessionBestLapOk == true
+                && sample.LapDeltaToSessionBestLapSeconds is { } delta
+                && IsFinite(delta)
+                && delta <= ImprovementEpsilonSeconds;
+        }
+
+        private LiveTrackMapModel BuildModel(bool hasLiveTiming)
+        {
+            var fullLapHighlight = _fullLapHighlight;
+            var segments = _sectors
+                .Select(sector => new LiveTrackSectorSegment(
+                    SectorNum: sector.SectorNum,
+                    StartPct: Math.Round(sector.StartPct, 6),
+                    EndPct: Math.Round(sector.EndPct, 6),
+                    Highlight: fullLapHighlight
+                        ?? (_activeSectorHighlights.TryGetValue(sector.SectorNum, out var highlight)
+                            ? highlight
+                            : LiveTrackSectorHighlights.None)))
+                .ToArray();
+
+            return new LiveTrackMapModel(
+                HasSectors: segments.Length >= 2,
+                HasLiveTiming: hasLiveTiming,
+                Quality: hasLiveTiming ? LiveModelQuality.Reliable : LiveModelQuality.Partial,
+                Sectors: segments);
+        }
+
+        private void ResetLiveProgress()
+        {
+            _state = null;
+            _fullLapHighlight = null;
+            _fullLapCompleted = null;
+            _activeSectorHighlights.Clear();
+        }
+
+        private static bool TryCreateObservation(HistoricalTelemetrySample sample, out TrackMapObservation observation)
+        {
+            var lapCompleted = LocalLapCompleted(sample);
+            var lapDistPct = LocalLapDistPct(sample);
+            var sessionTime = sample.SessionTime;
+            var onPitRoad = sample.TeamOnPitRoad == true || sample.OnPitRoad || sample.PlayerCarInPitStall;
+            if (onPitRoad
+                || lapDistPct is not { } pct
+                || !IsFinite(pct)
+                || pct < 0d
+                || pct > 1.000001d
+                || !IsFinite(sessionTime))
+            {
+                observation = default;
+                return false;
+            }
+
+            observation = new TrackMapObservation(
+                lapCompleted,
+                Math.Clamp(pct, 0d, 1d),
+                sessionTime);
+            return true;
+        }
+
+        private static int? LocalLapCompleted(HistoricalTelemetrySample sample)
+        {
+            return sample.TeamLapCompleted is >= 0
+                ? sample.TeamLapCompleted
+                : sample.LapCompleted is >= 0
+                    ? sample.LapCompleted
+                    : null;
+        }
+
+        private static double? LocalLapDistPct(HistoricalTelemetrySample sample)
+        {
+            return sample.TeamLapDistPct is { } teamLapDistPct && IsFinite(teamLapDistPct) && teamLapDistPct >= 0d
+                ? teamLapDistPct
+                : sample.LapDistPct;
+        }
+
+        private static double? CurrentLastLapTime(HistoricalTelemetrySample sample)
+        {
+            return FirstPositiveFinite(
+                sample.TeamLastLapTimeSeconds,
+                sample.LapLastLapTimeSeconds,
+                sample.FocusLastLapTimeSeconds);
+        }
+
+        private static double? FirstPositiveFinite(params double?[] values)
+        {
+            foreach (var value in values)
+            {
+                if (value is { } finite && finite > 0d && IsFinite(finite))
+                {
+                    return finite;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool IsFinite(double value)
+        {
+            return !double.IsNaN(value) && !double.IsInfinity(value);
+        }
+
+        private readonly record struct TrackMapObservation(
+            int? LapCompleted,
+            double LapDistPct,
+            double SessionTimeSeconds);
+
+        private sealed record TrackMapTimingState(
+            int LapCompleted,
+            double LapDistPct,
+            double SessionTimeSeconds,
+            int? LastBoundarySectorIndex,
+            double? LastBoundarySessionTimeSeconds,
+            double? LastLapStartSessionTimeSeconds);
+
+        private sealed record SectorBoundary(
+            int SectorNum,
+            int SectorIndex,
+            double StartPct,
+            double EndPct);
+
+        private sealed record SectorCrossing(
+            int SectorIndex,
+            int BoundaryLapCompleted,
+            double SessionTimeSeconds);
     }
 
     private sealed record ProximityHistory(

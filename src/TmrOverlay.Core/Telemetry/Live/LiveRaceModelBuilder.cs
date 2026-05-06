@@ -9,7 +9,8 @@ internal static class LiveRaceModelBuilder
         HistoricalTelemetrySample sample,
         LiveFuelSnapshot fuel,
         LiveProximitySnapshot proximity,
-        LiveLeaderGapSnapshot leaderGap)
+        LiveLeaderGapSnapshot leaderGap,
+        LiveTrackMapModel? trackMap = null)
     {
         var drivers = BuildDriverDirectory(context, sample);
         var timing = BuildTiming(context, sample, leaderGap, drivers);
@@ -20,10 +21,28 @@ internal static class LiveRaceModelBuilder
             Timing: timing,
             Relative: BuildRelative(sample, proximity, timing),
             Spatial: BuildSpatial(context, sample, proximity),
+            TrackMap: trackMap ?? BuildTrackMap(context),
             Weather: BuildWeather(context, sample),
             FuelPit: BuildFuelPit(sample, fuel),
             RaceEvents: BuildRaceEvents(sample),
             Inputs: BuildInputs(sample));
+    }
+
+    private static LiveTrackMapModel BuildTrackMap(HistoricalSessionContext context)
+    {
+        var sectors = NormalizeSectors(context.Sectors)
+            .Select(sector => new LiveTrackSectorSegment(
+                sector.SectorNum,
+                sector.StartPct,
+                sector.EndPct,
+                LiveTrackSectorHighlights.None))
+            .ToArray();
+
+        return new LiveTrackMapModel(
+            HasSectors: sectors.Length >= 2,
+            HasLiveTiming: false,
+            Quality: sectors.Length >= 2 ? LiveModelQuality.Partial : LiveModelQuality.Unavailable,
+            Sectors: sectors);
     }
 
     private static LiveSessionModel BuildSession(HistoricalSessionContext context, HistoricalTelemetrySample sample)
@@ -293,18 +312,23 @@ internal static class LiveRaceModelBuilder
         foreach (var car in proximity.NearbyCars)
         {
             timingByCarIdx.TryGetValue(car.CarIdx, out var timingRow);
+            var inferredRelativeSeconds = car.RelativeSeconds ?? InferRelativeSecondsFromLapDistance(car.RelativeLaps, sample);
             rows.Add(new LiveRelativeRow(
                 CarIdx: car.CarIdx,
                 Quality: car.RelativeSeconds is not null || car.RelativeMeters is not null
                     ? LiveModelQuality.Reliable
-                    : LiveModelQuality.Partial,
+                    : inferredRelativeSeconds is not null
+                        ? LiveModelQuality.Inferred
+                        : LiveModelQuality.Partial,
                 Source: "proximity",
                 IsAhead: car.RelativeLaps > 0d,
                 IsBehind: car.RelativeLaps < 0d,
                 IsSameClass: referenceClass is not null && car.CarClass == referenceClass,
                 TimingEvidence: car.RelativeSeconds is not null
                     ? LiveSignalEvidence.Reliable("proximity-relative-seconds")
-                    : LiveSignalEvidence.Partial("proximity-relative-seconds", "relative_seconds_missing"),
+                    : inferredRelativeSeconds is not null
+                        ? LiveSignalEvidence.Inferred("CarIdxLapDistPct+lap-time")
+                        : LiveSignalEvidence.Partial("proximity-relative-seconds", "relative_seconds_missing"),
                 PlacementEvidence: car.RelativeMeters is not null
                     ? LiveSignalEvidence.Reliable("CarIdxLapDistPct+track-length")
                     : LiveSignalEvidence.Inferred("CarIdxLapDistPct"),
@@ -312,7 +336,7 @@ internal static class LiveRaceModelBuilder
                 OverallPosition: car.OverallPosition ?? timingRow?.OverallPosition,
                 ClassPosition: car.ClassPosition ?? timingRow?.ClassPosition,
                 CarClass: car.CarClass ?? timingRow?.CarClass,
-                RelativeSeconds: car.RelativeSeconds,
+                RelativeSeconds: inferredRelativeSeconds,
                 RelativeLaps: car.RelativeLaps,
                 RelativeMeters: car.RelativeMeters,
                 OnPitRoad: car.OnPitRoad ?? timingRow?.OnPitRoad));
@@ -357,6 +381,18 @@ internal static class LiveRaceModelBuilder
             Quality: orderedRows.Length > 0 ? orderedRows.Max(row => row.Quality) : LiveModelQuality.Unavailable,
             ReferenceCarIdx: FocusCarIdx(sample),
             Rows: orderedRows);
+    }
+
+    private static double? InferRelativeSecondsFromLapDistance(double relativeLaps, HistoricalTelemetrySample sample)
+    {
+        if (!IsFinite(relativeLaps) || Math.Abs(relativeLaps) <= 0.00001d)
+        {
+            return null;
+        }
+
+        return RelativeLapTimeSeconds(sample) is { } lapSeconds
+            ? relativeLaps * lapSeconds
+            : null;
     }
 
     private static LiveSpatialModel BuildSpatial(
@@ -453,6 +489,7 @@ internal static class LiveRaceModelBuilder
             || sample.PitstopActive
             || sample.PlayerCarInPitStall
             || sample.TeamOnPitRoad is not null
+            || sample.PitServiceStatus is not null
             || sample.PitServiceFlags is not null
             || sample.PitServiceFuelLiters is not null
             || sample.PitRepairLeftSeconds is not null
@@ -477,6 +514,7 @@ internal static class LiveRaceModelBuilder
             InstantaneousBurnEvidence: instantaneousBurnEvidence,
             MeasuredBurnEvidence: measuredBurnEvidence,
             BaselineEligibilityEvidence: baselineEligibilityEvidence,
+            PitServiceStatus: sample.PitServiceStatus,
             PitServiceFlags: sample.PitServiceFlags,
             PitServiceFuelLiters: ValidNonNegative(sample.PitServiceFuelLiters),
             PitRepairLeftSeconds: ValidNonNegative(sample.PitRepairLeftSeconds),
@@ -493,6 +531,7 @@ internal static class LiveRaceModelBuilder
             Quality: LiveModelQuality.Partial,
             IsOnTrack: sample.IsOnTrack,
             IsInGarage: sample.IsInGarage,
+            IsGarageVisible: sample.IsGarageVisible == true,
             OnPitRoad: sample.OnPitRoad,
             Lap: sample.Lap,
             LapCompleted: sample.LapCompleted,
@@ -944,6 +983,16 @@ internal static class LiveRaceModelBuilder
             || ValidPositive(bestLapTimeSeconds) is not null;
     }
 
+    private static double? RelativeLapTimeSeconds(HistoricalTelemetrySample sample)
+    {
+        return FirstValue(
+            new double?[]
+            {
+                FocusLastLapTimeSeconds(sample),
+                FocusBestLapTimeSeconds(sample)
+            });
+    }
+
     private static bool IsPitRoadLike(int? trackSurface, bool? onPitRoad)
     {
         return onPitRoad == true || IsPitRoadTrackSurface(trackSurface);
@@ -1237,6 +1286,28 @@ internal static class LiveRaceModelBuilder
         return value is { } number && IsFinite(number) && number >= 0d && number <= 1d ? number : null;
     }
 
+    private static IReadOnlyList<TrackMapSectorSlice> NormalizeSectors(IReadOnlyList<HistoricalTrackSector> sectors)
+    {
+        var ordered = sectors
+            .Where(sector => IsFinite(sector.SectorStartPct) && sector.SectorStartPct >= 0d && sector.SectorStartPct < 1d)
+            .GroupBy(sector => sector.SectorNum)
+            .Select(group => group.OrderBy(sector => sector.SectorStartPct).First())
+            .OrderBy(sector => sector.SectorStartPct)
+            .ThenBy(sector => sector.SectorNum)
+            .ToArray();
+        if (ordered.Length < 2)
+        {
+            return [];
+        }
+
+        return ordered
+            .Select((sector, index) => new TrackMapSectorSlice(
+                sector.SectorNum,
+                Math.Round(sector.SectorStartPct, 6),
+                Math.Round(index + 1 < ordered.Length ? ordered[index + 1].SectorStartPct : 1d, 6)))
+            .ToArray();
+    }
+
     private static bool IsNonNegativeFinite(double value)
     {
         return IsFinite(value) && value >= 0d;
@@ -1316,4 +1387,9 @@ internal static class LiveRaceModelBuilder
     {
         return string.IsNullOrWhiteSpace(trackSkies) ? null : trackSkies.Trim();
     }
+
+    private sealed record TrackMapSectorSlice(
+        int SectorNum,
+        double StartPct,
+        double EndPct);
 }

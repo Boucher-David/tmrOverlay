@@ -10,7 +10,7 @@ Start here when continuing work in this repo.
 - Startup surface: fixed-size settings app window; driving/support overlays are opt-in from settings and default hidden
 - Settings panel owns overlay visibility, scale/custom size, session filters where relevant, shared font/units, and support capture/diagnostics controls; future product surfaces such as Overlay Bridge and post-race analysis should not be exposed as ordinary overlay tabs without a product pass
 - iRacing ingestion through `irsdkSharp`
-- Optional disabled-by-default localhost overlay bridge serving normalized live snapshots
+- Default-on localhost browser-source routes for supported OBS overlays; future Overlay Bridge work remains separate from localhost
 - Raw capture pipeline that writes:
   - `capture-manifest.json`
   - `telemetry-schema.json`

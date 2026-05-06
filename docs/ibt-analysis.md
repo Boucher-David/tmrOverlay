@@ -57,17 +57,89 @@ ibt-analysis/ibt-local-car-summary.json
 
 `ibt-local-car-summary.json` reduces those sampled fields into local-car analysis groups: trajectory, fuel, vehicle dynamics, tires/wheels, pit service, weather, and missing opponent context. It also records track-map readiness from `Lat`/`Lon`/`Alt` plus lap-distance coverage. This sidecar is the committed contract for future local-car post-race analysis; the source `.ibt` file still stays outside the capture directory unless explicitly configured.
 
-## Future Track Map Generation
+## Track Map Generation
 
-The current IBT path does not write a reusable track-map asset. It only records whether the selected `.ibt` has enough local-car trajectory fields to be a candidate.
+The current IBT path can write a reusable user track-map asset after successful IBT analysis when the Track Map setting `track-map.build-from-telemetry` is enabled. The default is enabled, and the Track Map settings tab exposes the `Build local maps from IBT telemetry` checkbox as the user control. Fresh installs use bundled app map JSON when available and otherwise keep the circle fallback until local IBT-derived map generation creates a user map. Disabling the setting returns runtime lookup to bundled app maps plus circle fallback; stored user maps remain on disk but are not used by the overlay while disabled.
 
-A future track-map branch should keep source `.ibt` files external, extract compact derived geometry, and save generated user maps under app-owned local storage such as:
+The app keeps source `.ibt` files external, extracts compact derived geometry, and saves generated user maps under app-owned local storage:
 
 ```text
 %LOCALAPPDATA%\TmrOverlay\track-maps\user
 ```
 
-Those generated maps should be keyed by the normalized track identity from session info, with provenance pointing back to the capture/IBT summary. The reusable map document should prefer local meter coordinates plus `LapDistPct` samples over raw latitude/longitude, include quality metrics for lap coverage and closure, and be read by overlays through a `TrackMapStore` rather than directly from capture folders or the iRacing telemetry directory.
+Generated maps are keyed by the normalized track identity from session info, including track id when available, track/config/layout names, track length, and track version. The reusable schema-v2 map document stores local meter coordinates plus `LapDistPct` samples, not raw latitude/longitude, and carries sector boundaries from `SplitTimeInfo.Sectors`. It includes quality metrics for lap coverage, missing bins, closure, length delta, repeatability, pit-lane samples, and confidence. Overlays read maps through `TrackMapStore` rather than directly from capture folders or the iRacing telemetry directory.
+
+Once a complete map exists for the current generation/schema version and track identity, later sessions skip generation. A complete runtime map requires at least `Medium` confidence and enough generated racing-line points for its bin count. Higher-confidence maps can replace weaker stored maps.
+
+For bundled assets, run `TmrOverlay.TrackMapGenerator` against the ignored `captures/IBT` corpus and output vetted derived JSON into `src/TmrOverlay.App/Assets/TrackMaps`. The generator strips absolute source paths down to source file names for bundled provenance and writes schema-v2 sector metadata when session info contains split sectors. Raw `.ibt` files remain ignored and must not be committed.
+
+### May 2026 Track-Map Probe
+
+A local one-off probe against ignored `.ibt` files confirmed that the raw IBT position fields are good enough to generate recognizable track maps without any external map assets. The probe output was written under ignored local artifacts:
+
+```text
+captures/track-map-probe/
+```
+
+The probe selected complete on-track laps, discarded pit-road and near-stationary samples, projected `Lat`/`Lon` degrees into local meter coordinates with an equirectangular projection, grouped samples by `LapDistPct`, and used per-bin median `x/y` coordinates to collapse many driven laps into one representative loop. It also drew representative raw laps behind the median loop so visual inspection could reveal drift, bad lap selection, or projection mistakes.
+
+Best statistical candidate:
+
+- Source: `captures/IBT/porsche963gtp_lagunaseca 2024-05-11 13-11-59.ibt`
+- Coverage: 594,501 records, 125 complete filtered laps, 563,441 selected points
+- Generated bins: 1,200, with zero missing bins before interpolation
+- Repeatability: 1.04 m median per-bin spread, 1.38 m p95 spread
+- Closure: 3.03 m from final bin back to start
+- Length check: 3,546.7 m derived polyline vs 3,564.8 m median `LapDist` and 3,570.0 m session track length, about 0.5-0.7% short
+
+More complex layout candidate:
+
+- Source: `captures/IBT/mercedesamgevogt3_nurburgring combined 2026-05-01 22-25-32.ibt`
+- Coverage: 421,338 records, 14 complete filtered laps, 413,732 selected points
+- Generated bins: 5,500, with zero missing bins before interpolation
+- Repeatability: 1.24 m median per-bin spread, 1.57 m p95 spread
+- Closure: 4.57 m from final bin back to start
+- Length check: 25,092.5 m derived polyline vs 25,175.7 m median `LapDist` and 25,176.4 m session track length, about 0.33% short
+
+The generated images looked visually sane for both Laguna Seca and Nurburgring Combined. The small length shortfall is acceptable for a visual map prototype, but production should keep `LapDist`/track length as the canonical distance source and treat the generated `x/y` loop as display geometry. If the map is used for distance-sensitive overlays, resample along `LapDistPct` and optionally scale cumulative polyline distance to the session/`LapDist` length.
+
+Production follow-up notes:
+
+- Use complete-lap coverage, missing-bin percentage, per-bin spread, closure distance, and length delta as first-class quality metrics.
+- Prefer median or robust average bins across several clean laps; a single lap is useful for preview but should be lower confidence.
+- Key stored maps by `TrackID` plus normalized track/config identity. Some tested session YAML had empty `TrackConfigName`, so the key must tolerate missing config text.
+- Store derived local meter points and `LapDistPct`, not raw `Lat`/`Lon`, in the app-owned map document. Keep source IBT paths as provenance only.
+- Keep iRacing/Data API map assets as optional QA references, not runtime dependencies and not bundled product assets.
+- The eventual feature should expose generated maps through a `TrackMapStore`; capture folders and the iRacing telemetry directory should remain analysis/provenance inputs only.
+- Ship a deterministic placeholder map shape so the live positioning overlay has something to render before a real map exists. A simple circle/oval keyed only by `LapDistPct` is enough for the first fallback because it proves marker motion, stale-state handling, orientation-independent rendering, and settings behavior without implying track accuracy.
+- Treat high-confidence generated maps as durable. Once a map for the normalized track identity reaches the production confidence threshold, do not regenerate it automatically from later sessions; only retry when no map exists, the stored map is below threshold, the generation algorithm/schema version changes, or the user explicitly requests a rebuild.
+
+#### Confidence and Pit-Lane Follow-up
+
+A second local probe compared Laguna Seca maps generated from one complete lap, the first five complete laps, and all complete positive-numbered laps from the same high-volume IBT. Local artifacts were written under:
+
+```text
+captures/track-map-probe/laguna-lap1-vs-lap5.png
+captures/track-map-probe/laguna-lap1-vs-lap5-error.png
+captures/track-map-probe/laguna-weak-one-lap-vs-reference.png
+captures/track-map-probe/laguna-pit-lane-layer.png
+```
+
+Using the all-lap median as a reference:
+
+- One clean lap from the high-volume Laguna IBT had zero missing bins, 0.48 m median error, 2.23 m p95 error, 3.35 m max error, and 3.47 m closure.
+- The first five clean laps had zero missing bins, 0.24 m median error, 1.21 m p95 error, 2.66 m max error, and 3.39 m closure.
+- A weaker Laguna IBT with only one complete lap had 16 missing bins out of 1,200, 0.56 m median error, 14.15 m p95 error, 18.98 m max error, and a visibly poorer start/pit-area trace.
+- A hard-reject IBT with 11 records and 0.17 seconds of telemetry had no valid moving points and no complete laps.
+
+Draft confidence bands for production:
+
+- Reject: no complete positive lap, no valid moving coordinates, or large missing-bin coverage after attempted generation.
+- Low confidence: one complete lap or no multi-lap repeatability metric; useful for preview only.
+- Medium confidence: two to four complete laps with low missing bins, low closure, and stable length, but limited repeatability evidence.
+- High confidence: five or more complete laps, zero or near-zero missing bins, closure under about 10 m, length delta under about 1%, and multi-lap repeatability p95 under about 3 m.
+
+The same Laguna IBT also confirmed that pit-lane geometry should be handled as a separate open path, not folded into the closed racing line. The file had 9,738 `OnPitRoad` samples, 4,029 moving pit-road samples, and three drawable pit-lane passes. Resampling those passes by cumulative pit-lane distance produced a 327.2 m median pit-lane path with 0.58 m median spread and 1.38 m p95 spread. Production should use `OnPitRoad` to filter race-line coordinates and should store `racingLine` and `pitLane` geometries separately. Pit-lane generation should be resampled by open-lane progress or cumulative distance, not by closed-loop `LapDistPct`, because pit road can run parallel to the racing surface and does not close back on itself.
 
 ## Guardrails
 

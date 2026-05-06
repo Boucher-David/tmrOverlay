@@ -1,6 +1,6 @@
 # Edge-Case Telemetry Logic
 
-This file explains the compact edge-case reports written after live telemetry sessions when edge-case collection is enabled. The collector is disabled by default for tester builds and should be enabled only when collecting diagnostic or analysis evidence.
+This file explains the compact edge-case reports written after live telemetry sessions when edge-case collection is enabled. The collector is enabled by default for tester builds so diagnostics bundles include bounded unusual-state evidence while raw capture remains opt-in.
 
 Implementation files:
 
@@ -23,6 +23,8 @@ The detector treats these as context, not faults:
 - duplicate `SessionTime` during startup/grid/tow/replay context is info.
 - tire-set and fast-repair counters initializing from zero during startup/grid/tow context are info.
 - replay playback near collection start is info.
+- `EnterExitReset` and `PlayerCarTowTime` are watched as reset/tow context signals when they exist in the SDK schema.
+- lap-distance discontinuities are recorded as active-reset/tow/pit/garage/replay context when supporting signals are present, and as warnings only when the jump has no known context.
 - engine warnings while the engine appears off or unpressurized are info.
 
 ## Grid Timing Rows

@@ -61,6 +61,167 @@ public sealed class LiveTelemetryStoreTests
     }
 
     [Fact]
+    public void RecordFrame_PublishesGarageVisibleRaceEvent()
+    {
+        var store = new LiveTelemetryStore();
+
+        store.RecordFrame(CreateSample(isGarageVisible: true));
+
+        var snapshot = store.Snapshot();
+
+        Assert.True(snapshot.Models.RaceEvents.IsGarageVisible);
+    }
+
+    [Fact]
+    public void RecordFrame_PublishesTrackMapSectorHighlightsInModelV2()
+    {
+        var store = new LiveTelemetryStore();
+        ApplyThreeSectorSession(store);
+        var startedAtUtc = DateTimeOffset.Parse("2026-05-05T12:00:00Z");
+
+        var progress = new[] { 0.01d, 0.10d, 0.20d, 0.30d, 0.40d, 0.51d };
+        for (var index = 0; index < progress.Length; index++)
+        {
+            store.RecordFrame(CreateSample(
+                capturedAtUtc: startedAtUtc.AddSeconds(index),
+                sessionTime: index,
+                playerCarIdx: 10,
+                teamLapCompleted: 0,
+                teamLapDistPct: progress[index]));
+        }
+
+        var trackMap = store.Snapshot().Models.TrackMap;
+
+        Assert.True(trackMap.HasSectors);
+        Assert.True(trackMap.HasLiveTiming);
+        Assert.Contains(trackMap.Sectors, sector =>
+            sector.SectorNum == 0
+            && sector.Highlight == LiveTrackSectorHighlights.PersonalBest);
+    }
+
+    [Fact]
+    public void RecordFrame_ClearsFullLapTrackMapHighlightWhenNextFirstSectorCompletes()
+    {
+        var store = new LiveTelemetryStore();
+        ApplyThreeSectorSession(store);
+        var startedAtUtc = DateTimeOffset.Parse("2026-05-05T12:00:00Z");
+
+        var firstLapProgress = new[]
+        {
+            (SessionTime: 0d, LapCompleted: 0, LapDistPct: 0.01d),
+            (SessionTime: 2d, LapCompleted: 0, LapDistPct: 0.10d),
+            (SessionTime: 4d, LapCompleted: 0, LapDistPct: 0.20d),
+            (SessionTime: 6d, LapCompleted: 0, LapDistPct: 0.30d),
+            (SessionTime: 8d, LapCompleted: 0, LapDistPct: 0.40d),
+            (SessionTime: 10d, LapCompleted: 0, LapDistPct: 0.51d),
+            (SessionTime: 12d, LapCompleted: 0, LapDistPct: 0.62d),
+            (SessionTime: 14d, LapCompleted: 0, LapDistPct: 0.72d),
+            (SessionTime: 16d, LapCompleted: 0, LapDistPct: 0.76d),
+            (SessionTime: 18d, LapCompleted: 0, LapDistPct: 0.86d),
+            (SessionTime: 20d, LapCompleted: 0, LapDistPct: 0.96d),
+            (SessionTime: 22d, LapCompleted: 1, LapDistPct: 0.01d)
+        };
+        foreach (var frame in firstLapProgress)
+        {
+            store.RecordFrame(CreateSample(
+                capturedAtUtc: startedAtUtc.AddSeconds(frame.SessionTime),
+                sessionTime: frame.SessionTime,
+                playerCarIdx: 10,
+                teamLapCompleted: frame.LapCompleted,
+                teamLapDistPct: frame.LapDistPct,
+                lapDeltaToSessionBestLapSeconds: frame.LapCompleted == 1 ? 0d : null,
+                lapDeltaToSessionBestLapOk: frame.LapCompleted == 1 ? true : null));
+        }
+
+        Assert.All(
+            store.Snapshot().Models.TrackMap.Sectors,
+            sector => Assert.Equal(LiveTrackSectorHighlights.BestLap, sector.Highlight));
+
+        var nextLapProgress = new[]
+        {
+            (SessionTime: 23d, LapDistPct: 0.10d),
+            (SessionTime: 24d, LapDistPct: 0.20d),
+            (SessionTime: 25d, LapDistPct: 0.30d),
+            (SessionTime: 26d, LapDistPct: 0.40d),
+            (SessionTime: 27d, LapDistPct: 0.51d)
+        };
+        foreach (var frame in nextLapProgress)
+        {
+            store.RecordFrame(CreateSample(
+                capturedAtUtc: startedAtUtc.AddSeconds(frame.SessionTime),
+                sessionTime: frame.SessionTime,
+                playerCarIdx: 10,
+                teamLapCompleted: 1,
+                teamLapDistPct: frame.LapDistPct));
+        }
+
+        var sectors = store.Snapshot().Models.TrackMap.Sectors;
+        Assert.Contains(sectors, sector =>
+            sector.SectorNum == 0
+            && sector.Highlight == LiveTrackSectorHighlights.PersonalBest);
+        Assert.DoesNotContain(sectors, sector =>
+            sector.SectorNum != 0
+            && sector.Highlight != LiveTrackSectorHighlights.None);
+    }
+
+    [Fact]
+    public void RecordFrame_UsesLapDistanceForTrackMapSectorsWhenLapCountersAreInvalid()
+    {
+        var store = new LiveTelemetryStore();
+        ApplyThreeSectorSession(store);
+        var startedAtUtc = DateTimeOffset.Parse("2026-05-05T12:00:00Z");
+
+        var progress = new[] { 0.99d, 0.01d, 0.10d, 0.20d, 0.30d, 0.40d, 0.51d };
+        for (var index = 0; index < progress.Length; index++)
+        {
+            store.RecordFrame(CreateSample(
+                capturedAtUtc: startedAtUtc.AddSeconds(index),
+                sessionTime: index,
+                lapCompleted: -1,
+                playerCarIdx: 10,
+                teamLapCompleted: -1,
+                teamLapDistPct: progress[index]));
+        }
+
+        var trackMap = store.Snapshot().Models.TrackMap;
+
+        Assert.True(trackMap.HasSectors);
+        Assert.True(trackMap.HasLiveTiming);
+        Assert.Contains(trackMap.Sectors, sector =>
+            sector.SectorNum == 0
+            && sector.Highlight == LiveTrackSectorHighlights.PersonalBest);
+    }
+
+    [Fact]
+    public void RecordFrame_SeedsSectorTimingAfterActiveResetStyleProgressJump()
+    {
+        var store = new LiveTelemetryStore();
+        ApplyThreeSectorSession(store);
+        var startedAtUtc = DateTimeOffset.Parse("2026-05-05T12:00:00Z");
+        var progress = new[] { 0.10d, 0.50d, 0.56d, 0.62d, 0.68d, 0.74d, 0.76d };
+
+        for (var index = 0; index < progress.Length; index++)
+        {
+            store.RecordFrame(CreateSample(
+                capturedAtUtc: startedAtUtc.AddSeconds(index),
+                sessionTime: index,
+                lapCompleted: -1,
+                playerCarIdx: 10,
+                teamLapCompleted: -1,
+                teamLapDistPct: progress[index]));
+        }
+
+        var sectors = store.Snapshot().Models.TrackMap.Sectors;
+
+        Assert.Contains(sectors, sector =>
+            sector.SectorNum == 1
+            && sector.Highlight == LiveTrackSectorHighlights.PersonalBest);
+        Assert.Contains(sectors, sector =>
+            sector.SectorNum == 0
+            && sector.Highlight == LiveTrackSectorHighlights.None);
+    }
+
+    [Fact]
     public void RecordFrame_CarriesSessionInfoClassColorToProximityCars()
     {
         var store = new LiveTelemetryStore();
@@ -138,6 +299,27 @@ SplitTimeInfo:
                 Assert.Equal(2, sector.SectorNum);
                 Assert.Equal(0.114229d, sector.SectorStartPct);
             });
+    }
+
+    private static void ApplyThreeSectorSession(LiveTelemetryStore store)
+    {
+        store.ApplySessionInfo("""
+WeekendInfo:
+ TrackName: synthetic
+DriverInfo:
+ DriverCarIdx: 10
+ Drivers:
+ - CarIdx: 10
+   UserName: Player
+SplitTimeInfo:
+ Sectors:
+ - SectorNum: 0
+   SectorStartPct: 0.000000
+ - SectorNum: 1
+   SectorStartPct: 0.500000
+ - SectorNum: 2
+   SectorStartPct: 0.750000
+""");
     }
 
     [Fact]
@@ -432,6 +614,46 @@ DriverInfo:
     }
 
     [Fact]
+    public void RecordFrame_InferRelativeOverlaySecondsWithoutChangingRadarTiming()
+    {
+        var store = new LiveTelemetryStore();
+
+        store.RecordFrame(CreateSample(
+            playerCarIdx: 10,
+            teamLapDistPct: 0.50d,
+            teamCarClass: 4098,
+            nearbyCars:
+            [
+                new HistoricalCarProximity(
+                    CarIdx: 12,
+                    LapCompleted: 2,
+                    LapDistPct: 0.53d,
+                    F2TimeSeconds: null,
+                    EstimatedTimeSeconds: null,
+                    Position: 8,
+                    ClassPosition: 4,
+                    CarClass: 4098,
+                    TrackSurface: 3,
+                    OnPitRoad: false)
+            ]));
+
+        var snapshot = store.Snapshot();
+
+        var proximityCar = Assert.Single(snapshot.Proximity.NearbyCars);
+        Assert.Null(proximityCar.RelativeSeconds);
+
+        var relativeRow = Assert.Single(snapshot.Models.Relative.Rows);
+        Assert.Equal(2.7d, relativeRow.RelativeSeconds!.Value, precision: 6);
+        Assert.Equal("CarIdxLapDistPct+lap-time", relativeRow.TimingEvidence.Source);
+
+        var spatialCar = Assert.Single(snapshot.Models.Spatial.Cars);
+        Assert.Null(spatialCar.RelativeSeconds);
+
+        var parity = LiveModelParityAnalyzer.Analyze(snapshot);
+        Assert.False(parity.HasMismatch);
+    }
+
+    [Fact]
     public void RecordFrame_FlagsFuelUseWithoutFuelLevelAsDiagnosticOnly()
     {
         var store = new LiveTelemetryStore();
@@ -637,11 +859,14 @@ DriverInfo:
 
     private static HistoricalTelemetrySample CreateSample(
         DateTimeOffset? capturedAtUtc = null,
+        double sessionTime = 123d,
+        int lapCompleted = 2,
         double fuelLevelLiters = 42d,
         double fuelLevelPercent = 0.4d,
         double fuelUsePerHourKg = 60d,
         int? playerCarIdx = null,
         double? teamLapDistPct = null,
+        int? teamLapCompleted = null,
         double? teamEstimatedTimeSeconds = null,
         int? teamCarClass = null,
         int? teamPosition = null,
@@ -655,11 +880,14 @@ DriverInfo:
         double? classLeaderF2TimeSeconds = null,
         IReadOnlyList<HistoricalCarProximity>? focusClassCars = null,
         IReadOnlyList<HistoricalCarProximity>? nearbyCars = null,
-        int? carLeftRight = null)
+        int? carLeftRight = null,
+        bool? isGarageVisible = null,
+        double? lapDeltaToSessionBestLapSeconds = null,
+        bool? lapDeltaToSessionBestLapOk = null)
     {
         return new HistoricalTelemetrySample(
             CapturedAtUtc: capturedAtUtc ?? DateTimeOffset.UtcNow,
-            SessionTime: 123d,
+            SessionTime: sessionTime,
             SessionTick: 100,
             SessionInfoUpdate: 1,
             IsOnTrack: true,
@@ -672,7 +900,7 @@ DriverInfo:
             FuelUsePerHourKg: fuelUsePerHourKg,
             SpeedMetersPerSecond: 50d,
             Lap: 3,
-            LapCompleted: 2,
+            LapCompleted: lapCompleted,
             LapDistPct: 0.5d,
             LapLastLapTimeSeconds: 90d,
             LapBestLapTimeSeconds: 89d,
@@ -681,6 +909,7 @@ DriverInfo:
             TrackWetness: 1,
             WeatherDeclaredWet: false,
             PlayerTireCompound: 0,
+            IsGarageVisible: isGarageVisible,
             PlayerCarIdx: playerCarIdx,
             FocusCarIdx: focusCarIdx,
             FocusLapCompleted: focusLapDistPct is null ? null : 2,
@@ -688,7 +917,7 @@ DriverInfo:
             FocusEstimatedTimeSeconds: focusEstimatedTimeSeconds,
             FocusCarClass: focusCarClass,
             CarLeftRight: carLeftRight,
-            TeamLapCompleted: teamLapDistPct is null ? null : 2,
+            TeamLapCompleted: teamLapCompleted ?? (teamLapDistPct is null ? null : 2),
             TeamLapDistPct: teamLapDistPct,
             TeamEstimatedTimeSeconds: teamEstimatedTimeSeconds,
             TeamF2TimeSeconds: teamEstimatedTimeSeconds,
@@ -700,6 +929,8 @@ DriverInfo:
             FocusClassLeaderLapDistPct: classLeaderLapDistPct,
             FocusClassLeaderF2TimeSeconds: classLeaderF2TimeSeconds,
             FocusClassCars: focusClassCars,
-            NearbyCars: nearbyCars);
+            NearbyCars: nearbyCars,
+            LapDeltaToSessionBestLapSeconds: lapDeltaToSessionBestLapSeconds,
+            LapDeltaToSessionBestLapOk: lapDeltaToSessionBestLapOk);
     }
 }

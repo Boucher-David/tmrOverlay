@@ -24,7 +24,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
     private readonly OverlaySettings _settings;
     private readonly Label _titleLabel;
     private readonly Label _statusLabel;
-    private readonly TableLayoutPanel _table;
+    private readonly OverlayTableLayoutPanel _table;
     private readonly Label _overviewValueLabel;
     private readonly Label _sourceLabel;
     private readonly string _fontFamily;
@@ -94,10 +94,8 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
             Text = "waiting"
         };
 
-        _table = new TableLayoutPanel
+        _table = new OverlayTableLayoutPanel
         {
-            BackColor = OverlayTheme.Colors.PanelBackground,
-            CellBorderStyle = TableLayoutPanelCellBorderStyle.Single,
             ColumnCount = 3,
             Location = new Point(14, 42),
             RowCount = StintRowCount + 1,
@@ -333,34 +331,30 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
             var rowsSucceeded = false;
             try
             {
-                var layoutChanged = false;
-                _table.SuspendLayout();
-                try
+                var rowsChanged = false;
+                for (var index = 0; index < StintRowCount; index++)
                 {
-                    for (var index = 0; index < StintRowCount; index++)
+                    if (index < rows.Count)
                     {
-                        if (index < rows.Count)
-                        {
-                            var row = rows[index];
-                            layoutChanged |= SetTextIfChanged(_stintNumberLabels[index], row.Label);
-                            layoutChanged |= SetTextIfChanged(_stintLengthLabels[index], row.Value);
-                            layoutChanged |= SetTextIfChanged(_stintTireLabels[index], row.Advice);
-                            continue;
-                        }
-
-                        layoutChanged |= SetTextIfChanged(_stintNumberLabels[index], $"Stint {index + 1}");
-                        layoutChanged |= SetTextIfChanged(_stintLengthLabels[index], string.Empty);
-                        layoutChanged |= SetTextIfChanged(_stintTireLabels[index], string.Empty);
+                        var row = rows[index];
+                        rowsChanged |= SetTextIfChanged(_stintNumberLabels[index], row.Label);
+                        rowsChanged |= SetTextIfChanged(_stintLengthLabels[index], row.Value);
+                        rowsChanged |= SetTextIfChanged(_stintTireLabels[index], row.Advice);
+                        continue;
                     }
 
-                    layoutChanged |= UpdateVisibleRows(rows.Count, showAdvice);
-                    uiChanged |= layoutChanged;
-                }
-                finally
-                {
-                    _table.ResumeLayout(layoutChanged);
+                    rowsChanged |= SetTextIfChanged(_stintNumberLabels[index], $"Stint {index + 1}");
+                    rowsChanged |= SetTextIfChanged(_stintLengthLabels[index], string.Empty);
+                    rowsChanged |= SetTextIfChanged(_stintTireLabels[index], string.Empty);
                 }
 
+                var layoutChanged = UpdateVisibleRows(rows.Count, showAdvice);
+                if (layoutChanged)
+                {
+                    _table.Invalidate();
+                }
+
+                uiChanged |= rowsChanged || layoutChanged;
                 rowsSucceeded = true;
             }
             finally
@@ -381,11 +375,6 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
                 live.Sequence,
                 live.LastUpdatedAtUtc,
                 applied: uiChanged);
-            if (uiChanged)
-            {
-                Invalidate();
-            }
-
             succeeded = true;
         }
         finally

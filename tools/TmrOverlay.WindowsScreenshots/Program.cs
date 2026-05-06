@@ -6,6 +6,7 @@ using TmrOverlay.App.Analysis;
 using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.History;
+using TmrOverlay.App.Localhost;
 using TmrOverlay.App.Overlays.CarRadar;
 using TmrOverlay.App.Overlays.Flags;
 using TmrOverlay.App.Overlays.FuelCalculator;
@@ -17,10 +18,14 @@ using TmrOverlay.App.Overlays.SessionWeather;
 using TmrOverlay.App.Overlays.SettingsPanel;
 using TmrOverlay.App.Overlays.SimpleTelemetry;
 using TmrOverlay.App.Overlays.Status;
+using TmrOverlay.App.Overlays.Standings;
+using TmrOverlay.App.Overlays.StreamChat;
 using TmrOverlay.App.Overlays.Styling;
+using TmrOverlay.App.Overlays.TrackMap;
 using TmrOverlay.App.Performance;
 using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
+using TmrOverlay.App.TrackMaps;
 using TmrOverlay.Core.AppInfo;
 using TmrOverlay.Core.History;
 using TmrOverlay.Core.Overlays;
@@ -87,6 +92,11 @@ internal static class Program
             () => CreateSettingsForm("Relative")));
         screenshots.Add(RenderForm(
             outputRoot,
+            "settings-track-map",
+            "Settings - Track Map",
+            () => CreateSettingsForm("Track Map")));
+        screenshots.Add(RenderForm(
+            outputRoot,
             "settings-support",
             "Settings - Support",
             () => CreateSettingsForm("Support")));
@@ -123,6 +133,30 @@ internal static class Program
                 OverlaySettingsFor(RelativeOverlayDefinition.Definition),
                 ScreenshotFontFamily,
                 Noop)));
+        screenshots.Add(RenderForm(
+            outputRoot,
+            "standings-live",
+            "Standings",
+            () => new StandingsForm(
+                fixture.SourceFor(frame => fixture.CreateSnapshot(frame, sessionFlags: 0x00000004)),
+                NullLogger<StandingsForm>.Instance,
+                new AppPerformanceState(),
+                OverlaySettingsFor(StandingsOverlayDefinition.Definition),
+                ScreenshotFontFamily,
+                Noop)));
+        screenshots.Add(RenderForm(
+            outputRoot,
+            "track-map-placeholder",
+            "Track Map",
+            () => new TrackMapForm(
+                fixture.SourceFor(frame => fixture.CreateSnapshot(frame, sessionFlags: 0x00000004)),
+                new TrackMapStore(StorageOptionsFor(Path.Combine(outputRoot, "track-map-store"))),
+                NullLogger<TrackMapForm>.Instance,
+                new AppPerformanceState(),
+                OverlaySettingsFor(TrackMapOverlayDefinition.Definition),
+                ScreenshotFontFamily,
+                Noop),
+            refreshPasses: 3));
         screenshots.Add(RenderForm(
             outputRoot,
             "flags-blue",
@@ -245,11 +279,15 @@ internal static class Program
         captureState.MarkCollectionStarted(DateTimeOffset.UtcNow);
         captureState.RecordFrame(DateTimeOffset.UtcNow);
         var performanceState = new AppPerformanceState();
+        var localhostOptions = new LocalhostOverlayOptions();
+        var localhostState = new LocalhostOverlayState(localhostOptions);
         var diagnostics = new DiagnosticsBundleService(
             storage,
             new LiveModelParityOptions(),
             new LiveOverlayDiagnosticsOptions(),
             captureState,
+            localhostState,
+            new TrackMapStore(storage),
             performanceState,
             new AppPerformanceSnapshotRecorder(storage),
             NullLogger<DiagnosticsBundleService>.Instance);
@@ -265,6 +303,8 @@ internal static class Program
             new PostRaceAnalysisOptions(),
             performanceState,
             storage,
+            localhostOptions,
+            localhostState,
             diagnostics,
             new AppEventRecorder(storage),
             settings.GetOrAddOverlay(
@@ -304,8 +344,11 @@ internal static class Program
         return
         [
             StatusOverlayDefinition.Definition,
+            StandingsOverlayDefinition.Definition,
             FuelCalculatorOverlayDefinition.Definition,
             RelativeOverlayDefinition.Definition,
+            TrackMapOverlayDefinition.Definition,
+            StreamChatOverlayDefinition.Definition,
             FlagsOverlayDefinition.Definition,
             SessionWeatherOverlayDefinition.Definition,
             PitServiceOverlayDefinition.Definition,
@@ -561,6 +604,7 @@ internal static class Program
             LogsRoot = Path.Combine(root, "logs"),
             SettingsRoot = Path.Combine(root, "settings"),
             DiagnosticsRoot = Path.Combine(root, "diagnostics"),
+            TrackMapRoot = Path.Combine(root, "track-maps", "user"),
             EventsRoot = Path.Combine(root, "logs", "events"),
             RuntimeStatePath = Path.Combine(root, "runtime-state.json")
         };

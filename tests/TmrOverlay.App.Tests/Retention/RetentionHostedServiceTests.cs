@@ -115,6 +115,7 @@ public sealed class RetentionHostedServiceTests
             LogsRoot = Path.Combine(root, "logs"),
             SettingsRoot = Path.Combine(root, "settings"),
             DiagnosticsRoot = Path.Combine(root, "diagnostics"),
+            TrackMapRoot = Path.Combine(root, "track-maps", "user"),
             EventsRoot = Path.Combine(root, "logs", "events"),
             RuntimeStatePath = Path.Combine(root, "runtime-state.json")
         };

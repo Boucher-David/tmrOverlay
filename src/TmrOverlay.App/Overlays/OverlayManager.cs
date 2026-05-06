@@ -1,7 +1,9 @@
 using TmrOverlay.Core.Overlays;
+using TmrOverlay.App.Overlays.Abstractions;
 using TmrOverlay.App.Overlays.CarRadar;
 using TmrOverlay.App.Overlays.Flags;
 using TmrOverlay.App.Overlays.FuelCalculator;
+using TmrOverlay.App.Overlays.GarageCover;
 using TmrOverlay.App.Overlays.GapToLeader;
 using TmrOverlay.App.Overlays.InputState;
 using TmrOverlay.App.Overlays.PitService;
@@ -10,7 +12,10 @@ using TmrOverlay.App.Overlays.SettingsPanel;
 using TmrOverlay.App.Overlays.SessionWeather;
 using TmrOverlay.App.Overlays.SimpleTelemetry;
 using TmrOverlay.App.Overlays.Status;
+using TmrOverlay.App.Overlays.Standings;
+using TmrOverlay.App.Overlays.StreamChat;
 using TmrOverlay.App.Overlays.Styling;
+using TmrOverlay.App.Overlays.TrackMap;
 using TmrOverlay.App.Settings;
 using TmrOverlay.App.Storage;
 using TmrOverlay.Core.Settings;
@@ -20,13 +25,17 @@ using TmrOverlay.App.History;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
+using TmrOverlay.App.Localhost;
 using TmrOverlay.App.Performance;
 using TmrOverlay.App.Analysis;
+using TmrOverlay.App.TrackMaps;
 
 namespace TmrOverlay.App.Overlays;
 
 internal sealed class OverlayManager : IDisposable
 {
+    private const double LiveTelemetryFreshnessSeconds = 1.5d;
+
     private readonly AppSettingsStore _settingsStore;
     private readonly AppStorageOptions _storageOptions;
     private readonly DiagnosticsBundleService _diagnosticsBundleService;
@@ -36,12 +45,18 @@ internal sealed class OverlayManager : IDisposable
     private readonly LiveOverlayDiagnosticsOptions _liveOverlayDiagnosticsOptions;
     private readonly PostRaceAnalysisOptions _postRaceAnalysisOptions;
     private readonly AppPerformanceState _performanceState;
+    private readonly LocalhostOverlayOptions _localhostOverlayOptions;
+    private readonly LocalhostOverlayState _localhostOverlayState;
+    private readonly TrackMapStore _trackMapStore;
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly SessionHistoryQueryService _historyQueryService;
     private readonly AppEventRecorder _events;
     private readonly ILogger<CarRadarForm> _carRadarLogger;
     private readonly ILogger<GapToLeaderForm> _gapToLeaderLogger;
     private readonly ILogger<RelativeForm> _relativeLogger;
+    private readonly ILogger<StandingsForm> _standingsLogger;
+    private readonly ILogger<TrackMapForm> _trackMapLogger;
+    private readonly ILogger<StreamChatForm> _streamChatLogger;
     private readonly ILogger<SimpleTelemetryOverlayForm> _simpleTelemetryLogger;
     private readonly Dictionary<string, Form> _forms = [];
     private readonly Dictionary<string, double> _appliedScales = [];
@@ -49,7 +64,9 @@ internal sealed class OverlayManager : IDisposable
     private ApplicationSettings? _settings;
     private string? _appliedFontFamily;
     private string? _appliedUnitSystem;
+    private Form? _settingsZOrderForm;
     private bool _radarSettingsPreviewVisible;
+    private bool _settingsOverlayActive;
     private bool _startupShown;
 
     public event EventHandler? ApplicationExitRequested;
@@ -64,12 +81,18 @@ internal sealed class OverlayManager : IDisposable
         LiveOverlayDiagnosticsOptions liveOverlayDiagnosticsOptions,
         PostRaceAnalysisOptions postRaceAnalysisOptions,
         AppPerformanceState performanceState,
+        LocalhostOverlayOptions localhostOverlayOptions,
+        LocalhostOverlayState localhostOverlayState,
+        TrackMapStore trackMapStore,
         ILiveTelemetrySource liveTelemetrySource,
         SessionHistoryQueryService historyQueryService,
         AppEventRecorder events,
         ILogger<CarRadarForm> carRadarLogger,
         ILogger<GapToLeaderForm> gapToLeaderLogger,
         ILogger<RelativeForm> relativeLogger,
+        ILogger<StandingsForm> standingsLogger,
+        ILogger<TrackMapForm> trackMapLogger,
+        ILogger<StreamChatForm> streamChatLogger,
         ILogger<SimpleTelemetryOverlayForm> simpleTelemetryLogger)
     {
         _settingsStore = settingsStore;
@@ -81,12 +104,18 @@ internal sealed class OverlayManager : IDisposable
         _liveOverlayDiagnosticsOptions = liveOverlayDiagnosticsOptions;
         _postRaceAnalysisOptions = postRaceAnalysisOptions;
         _performanceState = performanceState;
+        _localhostOverlayOptions = localhostOverlayOptions;
+        _localhostOverlayState = localhostOverlayState;
+        _trackMapStore = trackMapStore;
         _liveTelemetrySource = liveTelemetrySource;
         _historyQueryService = historyQueryService;
         _events = events;
         _carRadarLogger = carRadarLogger;
         _gapToLeaderLogger = gapToLeaderLogger;
         _relativeLogger = relativeLogger;
+        _standingsLogger = standingsLogger;
+        _trackMapLogger = trackMapLogger;
+        _streamChatLogger = streamChatLogger;
         _simpleTelemetryLogger = simpleTelemetryLogger;
 
         _sessionVisibilityTimer = new System.Windows.Forms.Timer
@@ -138,6 +167,8 @@ internal sealed class OverlayManager : IDisposable
                 _postRaceAnalysisOptions,
                 _performanceState,
                 _storageOptions,
+                _localhostOverlayOptions,
+                _localhostOverlayState,
                 _diagnosticsBundleService,
                 _events,
                 settings,
@@ -145,6 +176,7 @@ internal sealed class OverlayManager : IDisposable
                 ApplyOverlaySettings,
                 RequestApplicationExit,
                 SelectSettingsOverlayTab));
+        WireSettingsEmergencyZOrder(form);
         form.Location = new Point(settings.X, settings.Y);
         form.ClientSize = new Size(
             SettingsOverlayDefinition.Definition.DefaultWidth,
@@ -156,6 +188,8 @@ internal sealed class OverlayManager : IDisposable
             form.Show();
         }
 
+        _settingsOverlayActive = true;
+        ApplyEmergencyOverlayZOrder();
         if (settingsSizeChanged)
         {
             SaveSettings();
@@ -182,8 +216,12 @@ internal sealed class OverlayManager : IDisposable
     private IReadOnlyList<OverlayDefinition> ManagedOverlayDefinitions =>
     [
         StatusOverlayDefinition.Definition,
+        StandingsOverlayDefinition.Definition,
         FuelCalculatorOverlayDefinition.Definition,
         RelativeOverlayDefinition.Definition,
+        TrackMapOverlayDefinition.Definition,
+        StreamChatOverlayDefinition.Definition,
+        GarageCoverOverlayDefinition.Definition,
         FlagsOverlayDefinition.Definition,
         SessionWeatherOverlayDefinition.Definition,
         PitServiceOverlayDefinition.Definition,
@@ -205,6 +243,17 @@ internal sealed class OverlayManager : IDisposable
             24,
             24),
         new OverlayRegistration(
+            StandingsOverlayDefinition.Definition,
+            settings => new StandingsForm(
+                _liveTelemetrySource,
+                _standingsLogger,
+                _performanceState,
+                settings,
+                SelectedFontFamily,
+                SaveSettings),
+            24,
+            190),
+        new OverlayRegistration(
             FuelCalculatorOverlayDefinition.Definition,
             settings => new FuelCalculatorForm(
                 _liveTelemetrySource,
@@ -215,7 +264,7 @@ internal sealed class OverlayManager : IDisposable
                 SelectedUnitSystem,
                 SaveSettings),
             24,
-            190),
+            550),
         new OverlayRegistration(
             RelativeOverlayDefinition.Definition,
             settings => new RelativeForm(
@@ -225,8 +274,31 @@ internal sealed class OverlayManager : IDisposable
                 settings,
                 SelectedFontFamily,
                 SaveSettings),
-            24,
-            530),
+            650,
+            24),
+        new OverlayRegistration(
+            TrackMapOverlayDefinition.Definition,
+            settings => new TrackMapForm(
+                _liveTelemetrySource,
+                _trackMapStore,
+                _trackMapLogger,
+                _performanceState,
+                settings,
+                SelectedFontFamily,
+                SaveSettings),
+            650,
+            400),
+        new OverlayRegistration(
+            StreamChatOverlayDefinition.Definition,
+            settings => new StreamChatForm(
+                _settingsStore,
+                _streamChatLogger,
+                _performanceState,
+                settings,
+                SelectedFontFamily,
+                SaveSettings),
+            1490,
+            24),
         new OverlayRegistration(
             FlagsOverlayDefinition.Definition,
             settings => new FlagsOverlayForm(
@@ -317,25 +389,81 @@ internal sealed class OverlayManager : IDisposable
 
     private void EnsureManagedOverlaySettings()
     {
-        foreach (var registration in ManagedOverlayRegistrations)
+        foreach (var definition in ManagedOverlayDefinitions)
         {
+            var defaultLocation = DefaultOverlayLocation(definition);
             var overlay = _settings!.GetOrAddOverlay(
-                registration.Definition.Id,
-                registration.Definition.DefaultWidth,
-                registration.Definition.DefaultHeight,
-                registration.DefaultX,
-                registration.DefaultY,
+                definition.Id,
+                definition.DefaultWidth,
+                definition.DefaultHeight,
+                defaultLocation.X,
+                defaultLocation.Y,
                 defaultEnabled: false);
             overlay.Scale = Math.Clamp(overlay.Scale, 0.6d, 2d);
             if (overlay.Width <= 0 || overlay.Height <= 0)
             {
-                overlay.Width = ScaleDimension(registration.Definition.DefaultWidth, overlay.Scale);
-                overlay.Height = ScaleDimension(registration.Definition.DefaultHeight, overlay.Scale);
+                overlay.Width = ScaleDimension(definition.DefaultWidth, overlay.Scale);
+                overlay.Height = ScaleDimension(definition.DefaultHeight, overlay.Scale);
             }
 
-            ApplyGapToLeaderRaceOnlyPolicy(registration.Definition, overlay);
-            ApplyFlagsBorderPolicy(registration.Definition, overlay);
+            ApplyGapToLeaderRaceOnlyPolicy(definition, overlay);
+            ApplyFlagsBorderPolicy(definition, overlay);
         }
+    }
+
+    private static Point DefaultOverlayLocation(OverlayDefinition definition)
+    {
+        if (string.Equals(definition.Id, StandingsOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return new Point(24, 190);
+        }
+
+        if (string.Equals(definition.Id, FuelCalculatorOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return new Point(24, 550);
+        }
+
+        if (string.Equals(definition.Id, RelativeOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return new Point(650, 24);
+        }
+
+        if (string.Equals(definition.Id, TrackMapOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return new Point(650, 400);
+        }
+
+        if (string.Equals(definition.Id, StreamChatOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return new Point(1490, 24);
+        }
+
+        if (string.Equals(definition.Id, SessionWeatherOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return new Point(1070, 24);
+        }
+
+        if (string.Equals(definition.Id, PitServiceOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return new Point(1070, 320);
+        }
+
+        if (string.Equals(definition.Id, InputStateOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return new Point(1070, 590);
+        }
+
+        if (string.Equals(definition.Id, CarRadarOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return new Point(650, 24);
+        }
+
+        if (string.Equals(definition.Id, GapToLeaderOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return new Point(650, 260);
+        }
+
+        return new Point(24, 24);
     }
 
     private void ApplyOverlaySettings()
@@ -347,7 +475,9 @@ internal sealed class OverlayManager : IDisposable
 
         RecreateManagedFormsIfFontChanged();
         RecreateManagedFormsIfUnitsChanged();
-        var currentSession = CurrentSessionKind();
+        var liveSnapshot = _liveTelemetrySource.Snapshot();
+        var liveTelemetryAvailable = IsLiveTelemetryAvailable(liveSnapshot);
+        var currentSession = CurrentSessionKind(liveSnapshot);
         foreach (var registration in ManagedOverlayRegistrations)
         {
             var settings = _settings.GetOrAddOverlay(
@@ -360,6 +490,12 @@ internal sealed class OverlayManager : IDisposable
             var settingsPreview = _radarSettingsPreviewVisible
                 && string.Equals(registration.Definition.Id, CarRadarOverlayDefinition.Definition.Id, StringComparison.Ordinal);
             var shouldShow = settingsPreview || (settings.Enabled && IsAllowedForSession(registration.Definition, settings, currentSession));
+
+            if (string.Equals(registration.Definition.Id, FlagsOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+            {
+                ApplyFlagsRegistration(registration, settings, shouldShow, liveTelemetryAvailable);
+                continue;
+            }
 
             if (!shouldShow)
             {
@@ -375,14 +511,22 @@ internal sealed class OverlayManager : IDisposable
             var form = EnsureForm(
                 registration.Definition.Id,
                 () => registration.Create(settings));
+            var wasVisible = form.Visible;
             ApplyScaleIfChanged(registration.Definition, settings, form);
             ApplyOpacityIfChanged(registration.Definition, settings, form);
             ApplyRadarSettingsPreview(form, settingsPreview);
+            ApplyLiveTelemetryFade(
+                registration.Definition,
+                form,
+                liveTelemetryAvailable || settingsPreview,
+                immediate: !wasVisible);
             if (!form.Visible)
             {
                 form.Show();
             }
         }
+
+        ApplyEmergencyOverlayZOrder();
     }
 
     private static string SelectedFontFamily => OverlayTheme.DefaultFontFamily;
@@ -485,10 +629,36 @@ internal sealed class OverlayManager : IDisposable
     {
         if (!definition.ShowOpacityControl)
         {
+            if (form is PersistentOverlayForm persistent)
+            {
+                persistent.SetBaseOverlayOpacity(1d);
+            }
+
             return;
         }
 
         settings.Opacity = Math.Clamp(settings.Opacity, 0.2d, 1d);
+        if (string.Equals(definition.Id, TrackMapOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            if (form is PersistentOverlayForm persistent)
+            {
+                persistent.SetBaseOverlayOpacity(1d);
+            }
+            else if (Math.Abs(form.Opacity - 1d) > 0.001d)
+            {
+                form.Opacity = 1d;
+            }
+
+            form.Invalidate();
+            return;
+        }
+
+        if (form is PersistentOverlayForm persistentForm)
+        {
+            persistentForm.SetBaseOverlayOpacity(settings.Opacity);
+            return;
+        }
+
         if (Math.Abs(form.Opacity - settings.Opacity) > 0.001d)
         {
             form.Opacity = settings.Opacity;
@@ -553,9 +723,9 @@ internal sealed class OverlayManager : IDisposable
         _appliedUnitSystem = unitSystem;
     }
 
-    private OverlaySessionKind? CurrentSessionKind()
+    private OverlaySessionKind? CurrentSessionKind(LiveTelemetrySnapshot snapshot)
     {
-        var context = _liveTelemetrySource.Snapshot().Context;
+        var context = snapshot.Context;
         return ClassifySession(
             context.Session.SessionType
             ?? context.Session.SessionName
@@ -609,6 +779,41 @@ internal sealed class OverlayManager : IDisposable
             OverlaySessionKind.Race => settings.ShowInRace,
             _ => true
         };
+    }
+
+    private static bool IsLiveTelemetryAvailable(LiveTelemetrySnapshot snapshot)
+    {
+        if (!snapshot.IsConnected || !snapshot.IsCollecting)
+        {
+            return false;
+        }
+
+        if (snapshot.LastUpdatedAtUtc is not { } lastUpdatedAtUtc)
+        {
+            return false;
+        }
+
+        return (DateTimeOffset.UtcNow - lastUpdatedAtUtc).TotalSeconds <= LiveTelemetryFreshnessSeconds;
+    }
+
+    private void ApplyLiveTelemetryFade(
+        OverlayDefinition definition,
+        Form form,
+        bool liveTelemetryAvailable,
+        bool immediate)
+    {
+        if (form is not PersistentOverlayForm persistent)
+        {
+            return;
+        }
+
+        var shouldBeVisible = !definition.FadeWhenLiveTelemetryUnavailable || liveTelemetryAvailable;
+        persistent.SetLiveTelemetryAvailable(shouldBeVisible, immediate);
+        _performanceState.RecordOverlayLiveTelemetryState(
+            definition.Id,
+            DateTimeOffset.UtcNow,
+            liveTelemetryAvailable,
+            persistent.LiveTelemetryFadeAlpha);
     }
 
     private static int ScaleDimension(int defaultDimension, double scale)
@@ -695,6 +900,100 @@ internal sealed class OverlayManager : IDisposable
         settings.X = targetFrame.Left;
         settings.Y = targetFrame.Top;
         settings.ScreenId = FlagsOverlayDefinition.PrimaryScreenDefaultId;
+    }
+
+    private void ApplyFlagsRegistration(
+        OverlayRegistration registration,
+        OverlaySettings settings,
+        bool managedEnabled,
+        bool liveTelemetryAvailable)
+    {
+        if (!managedEnabled)
+        {
+            if (_forms.TryGetValue(registration.Definition.Id, out var hiddenForm))
+            {
+                if (hiddenForm is FlagsOverlayForm hiddenFlags)
+                {
+                    hiddenFlags.SetManagedEnabled(false);
+                }
+
+                hiddenForm.Hide();
+            }
+
+            return;
+        }
+
+        var form = EnsureForm(
+            registration.Definition.Id,
+            () => registration.Create(settings));
+        var wasVisible = form.Visible;
+        ApplyScaleIfChanged(registration.Definition, settings, form);
+        ApplyOpacityIfChanged(registration.Definition, settings, form);
+        ApplyLiveTelemetryFade(
+            registration.Definition,
+            form,
+            liveTelemetryAvailable,
+            immediate: !wasVisible);
+        if (form is FlagsOverlayForm visibleFlags)
+        {
+            visibleFlags.TopMost = !_settingsOverlayActive && settings.AlwaysOnTop;
+            visibleFlags.SetManagedEnabled(true);
+        }
+    }
+
+    private void ApplyEmergencyOverlayZOrder()
+    {
+        ApplyLargeOverlayTopMost(FlagsOverlayDefinition.Definition.Id);
+        if (_settingsOverlayActive
+            && _forms.TryGetValue(SettingsOverlayDefinition.Definition.Id, out var settingsForm)
+            && settingsForm.Visible)
+        {
+            settingsForm.BringToFront();
+        }
+    }
+
+    private void WireSettingsEmergencyZOrder(Form form)
+    {
+        if (ReferenceEquals(_settingsZOrderForm, form))
+        {
+            return;
+        }
+
+        _settingsZOrderForm = form;
+        form.Activated += (_, _) =>
+        {
+            _settingsOverlayActive = true;
+            ApplyEmergencyOverlayZOrder();
+        };
+        form.Deactivate += (_, _) =>
+        {
+            _settingsOverlayActive = false;
+            ApplyEmergencyOverlayZOrder();
+        };
+    }
+
+    private void ApplyLargeOverlayTopMost(string overlayId)
+    {
+        if (_settings is null || !_forms.TryGetValue(overlayId, out var form) || form.IsDisposed)
+        {
+            return;
+        }
+
+        var settings = _settings.GetOrAddOverlay(
+            overlayId,
+            FlagsOverlayDefinition.Definition.DefaultWidth,
+            FlagsOverlayDefinition.Definition.DefaultHeight,
+            defaultEnabled: false);
+        var shouldBeTopMost = !_settingsOverlayActive && settings.AlwaysOnTop;
+        if (form.TopMost != shouldBeTopMost)
+        {
+            form.TopMost = shouldBeTopMost;
+        }
+
+        if (_settingsOverlayActive)
+        {
+            form.SendToBack();
+        }
     }
 
     private static Point CenteredDefaultLocation(OverlayDefinition definition)

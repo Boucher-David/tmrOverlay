@@ -1,10 +1,14 @@
 using System.IO.Compression;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.Core.AppInfo;
+using TmrOverlay.App.Localhost;
 using TmrOverlay.App.Performance;
 using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
+using TmrOverlay.App.TrackMaps;
+using TmrOverlay.Core.Overlays;
 
 namespace TmrOverlay.App.Diagnostics;
 
@@ -17,6 +21,7 @@ internal sealed class DiagnosticsBundleService
     private const int MaxLatestCaptureIbtAnalysisFiles = 12;
     private const int MaxRecentModelParityFiles = 10;
     private const int MaxRecentOverlayDiagnosticsFiles = 10;
+    private const int MaxRecentTrackMapReports = 10;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -28,6 +33,8 @@ internal sealed class DiagnosticsBundleService
     private readonly LiveModelParityOptions _liveModelParityOptions;
     private readonly LiveOverlayDiagnosticsOptions _liveOverlayDiagnosticsOptions;
     private readonly TelemetryCaptureState _captureState;
+    private readonly LocalhostOverlayState _localhostOverlayState;
+    private readonly TrackMapStore _trackMapStore;
     private readonly AppPerformanceState _performanceState;
     private readonly AppPerformanceSnapshotRecorder _performanceRecorder;
     private readonly ILogger<DiagnosticsBundleService> _logger;
@@ -44,6 +51,8 @@ internal sealed class DiagnosticsBundleService
         LiveModelParityOptions liveModelParityOptions,
         LiveOverlayDiagnosticsOptions liveOverlayDiagnosticsOptions,
         TelemetryCaptureState captureState,
+        LocalhostOverlayState localhostOverlayState,
+        TrackMapStore trackMapStore,
         AppPerformanceState performanceState,
         AppPerformanceSnapshotRecorder performanceRecorder,
         ILogger<DiagnosticsBundleService> logger)
@@ -52,6 +61,8 @@ internal sealed class DiagnosticsBundleService
         _liveModelParityOptions = liveModelParityOptions;
         _liveOverlayDiagnosticsOptions = liveOverlayDiagnosticsOptions;
         _captureState = captureState;
+        _localhostOverlayState = localhostOverlayState;
+        _trackMapStore = trackMapStore;
         _performanceState = performanceState;
         _performanceRecorder = performanceRecorder;
         _logger = logger;
@@ -97,6 +108,8 @@ internal sealed class DiagnosticsBundleService
                 }, JsonOptions));
                 AddTextEntry(archive, "metadata/storage.json", JsonSerializer.Serialize(_storageOptions, JsonOptions));
                 AddTextEntry(archive, "metadata/telemetry-state.json", JsonSerializer.Serialize(_captureState.Snapshot(), JsonOptions));
+                AddTextEntry(archive, "metadata/localhost-overlays.json", JsonSerializer.Serialize(_localhostOverlayState.Snapshot(), JsonOptions));
+                AddTextEntry(archive, "metadata/track-maps.json", JsonSerializer.Serialize(_trackMapStore.DiagnosticsSnapshot(), JsonOptions));
                 metadataSucceeded = true;
             }
             finally
@@ -112,7 +125,7 @@ internal sealed class DiagnosticsBundleService
             try
             {
                 AddFileIfExists(archive, _storageOptions.RuntimeStatePath, "runtime/runtime-state.json");
-                AddFileIfExists(archive, Path.Combine(_storageOptions.SettingsRoot, "settings.json"), "settings/settings.json");
+                AddSanitizedSettingsIfExists(archive, Path.Combine(_storageOptions.SettingsRoot, "settings.json"));
                 runtimeSettingsSucceeded = true;
             }
             finally
@@ -256,6 +269,26 @@ internal sealed class DiagnosticsBundleService
                     AppPerformanceMetricIds.DiagnosticsBundleHistory,
                     historyStarted,
                     historySucceeded);
+            }
+
+            var trackMapsStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+            var trackMapsSucceeded = false;
+            try
+            {
+                AddRecentFiles(
+                    archive,
+                    Path.Combine(_storageOptions.LogsRoot, "track-maps"),
+                    "*.json",
+                    "track-maps",
+                    MaxRecentTrackMapReports);
+                trackMapsSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    "diagnostics.bundle.track-maps",
+                    trackMapsStarted,
+                    trackMapsSucceeded);
             }
 
             AddTextEntry(archive, "metadata/performance.json", JsonSerializer.Serialize(_performanceState.Snapshot(), JsonOptions));
@@ -426,6 +459,58 @@ internal sealed class DiagnosticsBundleService
         }
 
         archive.CreateEntryFromFile(sourcePath, entryName, CompressionLevel.Fastest);
+    }
+
+    private static void AddSanitizedSettingsIfExists(ZipArchive archive, string path)
+    {
+        if (!File.Exists(path))
+        {
+            return;
+        }
+
+        try
+        {
+            var node = JsonNode.Parse(File.ReadAllText(path));
+            if (node is not null)
+            {
+                RedactStreamChatSecrets(node);
+                AddTextEntry(archive, "settings/settings.json", node.ToJsonString(JsonOptions));
+                return;
+            }
+        }
+        catch
+        {
+            AddTextEntry(
+                archive,
+                "settings/settings-redacted.txt",
+                "Settings could not be parsed; omitted to avoid copying private stream chat widget URLs.");
+            return;
+        }
+
+        AddTextEntry(
+            archive,
+            "settings/settings-redacted.txt",
+            "Settings were empty or invalid; omitted to avoid copying private stream chat widget URLs.");
+    }
+
+    private static void RedactStreamChatSecrets(JsonNode node)
+    {
+        if (node["overlays"] is not JsonArray overlays)
+        {
+            return;
+        }
+
+        foreach (var overlay in overlays.OfType<JsonObject>())
+        {
+            if (!string.Equals((string?)overlay["id"], "stream-chat", StringComparison.OrdinalIgnoreCase)
+                || overlay["options"] is not JsonObject options
+                || !options.ContainsKey(OverlayOptionKeys.StreamChatStreamlabsUrl))
+            {
+                continue;
+            }
+
+            options[OverlayOptionKeys.StreamChatStreamlabsUrl] = "<redacted>";
+        }
     }
 
     private static void AddTextEntry(ZipArchive archive, string entryName, string content)

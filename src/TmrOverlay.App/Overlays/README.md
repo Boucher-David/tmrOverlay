@@ -26,16 +26,19 @@ Shared data sources intended for overlays:
 Current modules:
 
 - `Status/` - tiny display-only collector status overlay
-- `SettingsPanel/` - branded fixed-size tabbed settings window with the TMR logo, `Tech Mates Racing Overlay` header, and vertical left tabs for user-managed visibility, scale when applicable, session filters, units, support/log/performance access, runtime diagnostic capture, and overlay-specific display options
+- `SettingsPanel/` - branded fixed-size tabbed settings window with the TMR logo, `Tech Mates Racing Overlay` header, and flat vertical left tabs for user-managed visibility, scale when applicable, session filters, units, support/log/performance access, runtime diagnostic capture, and overlay-specific display options
 - `FuelCalculator/` - fuel/stint strategy overlay with tire-stop guidance from history
-- `Relative/` - telemetry-first relative table from `LiveTelemetrySnapshot.Models.Relative`, with configurable ahead/behind row counts, a reference row, timing fallback labeling, and quiet source text unless rows are waiting or degraded
-- `CarRadar/` - transparent circular local in-car proximity radar from `LiveTelemetrySnapshot.Models.Spatial`, using fresh local player/team progress, `CarLeftRight`, `CarIdxF2Time`, `CarIdxEstTime`, and `CarIdx*` progress arrays, hidden for explicit non-player focus/garage/pit contexts, with car rectangles placed from physical lap-distance meters when available, timing fallback when needed, side occupancy anchored by local `CarLeftRight`, neutral-white car rectangles fading in between radar entry and the yellow-warning threshold, and proximity color moving through yellow toward saturated alert red only inside the close bumper-gap warning buffer around the local car
+- `Standings/` - compact same-class timing table from `LiveTelemetrySnapshot.Models.Timing`, with class position, car number, driver, leader gap, focus interval, pit-road status, and waiting/error states
+- `Relative/` - telemetry-first relative table from `LiveTelemetrySnapshot.Models.Relative`, with stable configured ahead/reference/behind row slots, live or inferred display-time gaps, timing fallback labeling, and quiet source text unless rows are waiting or degraded
+- `TrackMap/` - transparent map-only track surface with generated local geometry when available, circle fallback otherwise, and live car dots placed from lap-distance progress
+- `StreamChat/` - native read-only Twitch chat overlay plus localhost browser-source route for one saved chat source at a time: Streamlabs Chat Box widget URL or public Twitch channel chat
+- `GarageCover/` - localhost-only opaque streamer privacy browser source that appears only while iRacing reports the Garage screen as visible; imported cover images are copied into app-owned settings storage
+- `CarRadar/` - transparent circular local in-car proximity radar from `LiveTelemetrySnapshot.Models.Spatial`, using fresh local player/team progress, `CarLeftRight`, `CarIdxF2Time`, `CarIdxEstTime`, and `CarIdx*` progress arrays, hidden for explicit non-player focus/garage/pit contexts, with car rectangles placed from physical lap-distance meters when available, timing fallback when needed, side occupancy anchored by local `CarLeftRight`, likely side-warning cars attached to the side slot instead of duplicated in the center lane, neutral-white car rectangles fading in between radar entry and the yellow-warning threshold, and proximity color moving through yellow toward saturated alert red only inside the close bumper-gap warning buffer around the local car
 - `GapToLeader/` - four-hour in-class gap trend graph from `CamCarIdx`, `CarIdxF2Time`, standings, and `CarIdx*` progress, with a bounded in-memory trace, adaptive Y-axis scaling, left-side axis labels, lap reference lines, weather bands, driver/leader-change markers, and endpoint position labels for the focused car context
 
 Windows overlay code is production-facing and should stay real-data-driven. Use the ignored mac harness for looser development scenes such as fixed race offsets, named mock drivers, synthetic weather windows, and exaggerated graph events.
 
 Expected future modules:
 
-- `Standings/`
 - `CompetitionDistanceGraph/`
 - `Weather/`

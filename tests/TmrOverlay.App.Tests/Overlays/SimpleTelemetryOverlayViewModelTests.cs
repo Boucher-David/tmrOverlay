@@ -119,6 +119,7 @@ public sealed class SimpleTelemetryOverlayViewModelTests
                 Quality = LiveModelQuality.Reliable,
                 OnPitRoad = true,
                 PitstopActive = true,
+                PitServiceStatus = PitServiceStatusFormatter.InProgress,
                 PitServiceFlags = 0x1f,
                 PitServiceFuelLiters = 45.5d,
                 PitRepairLeftSeconds = 12.2d,
@@ -130,10 +131,38 @@ public sealed class SimpleTelemetryOverlayViewModelTests
 
         var viewModel = PitServiceOverlayViewModel.From(snapshot, now, "Metric");
 
-        Assert.Equal("service active", viewModel.Status);
+        Assert.Equal("hold", viewModel.Status);
+        Assert.Contains(viewModel.Rows, row => row.Label == "Release" && row.Value == "RED - service active");
+        Assert.Contains(viewModel.Rows, row => row.Label == "Pit status" && row.Value == "in progress");
         Assert.Contains(viewModel.Rows, row => row.Label == "Service" && row.Value.Contains("active", StringComparison.Ordinal));
         Assert.Contains(viewModel.Rows, row => row.Label == "Fuel request" && row.Value == "45.5 L");
         Assert.Contains(viewModel.Rows, row => row.Label == "Repair" && row.Value.Contains("12s required", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void PitService_FromTelemetry_ShowsGreenReleaseWhenServiceComplete()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = Snapshot(now, LiveRaceModels.Empty with
+        {
+            FuelPit = LiveFuelPitModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                PlayerCarInPitStall = true,
+                PitstopActive = false,
+                PitServiceStatus = PitServiceStatusFormatter.Complete,
+                PitServiceFlags = 0x1f,
+                PitServiceFuelLiters = 0d
+            }
+        });
+
+        var viewModel = PitServiceOverlayViewModel.From(snapshot, now, "Metric");
+
+        Assert.Equal("release ready", viewModel.Status);
+        Assert.Equal(SimpleTelemetryTone.Success, viewModel.Tone);
+        Assert.Contains(viewModel.Rows, row => row.Label == "Release" && row.Value == "GREEN - go");
+        Assert.Contains(viewModel.Rows, row => row.Label == "Pit status" && row.Value == "complete");
     }
 
     [Fact]

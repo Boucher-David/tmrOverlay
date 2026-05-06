@@ -13,6 +13,9 @@ internal sealed class TelemetryEdgeCaseDetector
     private const double EngineOffOilPressureThreshold = 0.2d;
     private const int RacingSessionState = 4;
     private const double StartLapDistanceWindow = 0.05d;
+    private const double MaximumContinuousLapProgressDelta = 0.12d;
+    private const double LapWrapPreviousThreshold = 0.75d;
+    private const double LapWrapCurrentThreshold = 0.25d;
 
     private readonly HashSet<string> _emittedOnce = new(StringComparer.OrdinalIgnoreCase);
     private HistoricalTelemetrySample? _previousSample;
@@ -27,6 +30,7 @@ internal sealed class TelemetryEdgeCaseDetector
         DetectTimingContradictions(sample, observations);
         DetectSideOccupancyWithoutAdjacentCar(sample, observations);
         DetectFocusDataGaps(sample, observations);
+        DetectProgressDiscontinuities(sample, raw, observations);
         DetectPitStateConflicts(sample, observations);
         DetectFuelAnomalies(sample, observations);
         DetectTireAndServiceAnomalies(sample, raw, observations);
@@ -370,6 +374,61 @@ internal sealed class TelemetryEdgeCaseDetector
                     ["playerCarIdx"] = sample.PlayerCarIdx?.ToString()
                 });
         }
+    }
+
+    private void DetectProgressDiscontinuities(
+        HistoricalTelemetrySample sample,
+        RawTelemetryWatchSnapshot raw,
+        List<TelemetryEdgeCaseObservation> observations)
+    {
+        if (_previousSample is null)
+        {
+            return;
+        }
+
+        var previousProgress = LocalLapProgress(_previousSample);
+        var currentProgress = LocalLapProgress(sample);
+        if (previousProgress is null || currentProgress is null)
+        {
+            return;
+        }
+
+        var deltaLaps = LapProgressDelta(previousProgress, currentProgress);
+        if (deltaLaps >= 0d && deltaLaps <= MaximumContinuousLapProgressDelta)
+        {
+            return;
+        }
+
+        var context = ProgressDiscontinuityContext(_previousSample, sample, raw);
+        var fields = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["context"] = context,
+            ["previousSource"] = previousProgress.Source,
+            ["currentSource"] = currentProgress.Source,
+            ["previousLapCompleted"] = previousProgress.LapCompleted?.ToString(),
+            ["currentLapCompleted"] = currentProgress.LapCompleted?.ToString(),
+            ["previousLapDistPct"] = Format(previousProgress.LapDistPct),
+            ["currentLapDistPct"] = Format(currentProgress.LapDistPct),
+            ["deltaLaps"] = Format(deltaLaps),
+            ["enterExitReset"] = Format(raw.Get("EnterExitReset")),
+            ["playerCarTowTime"] = Format(raw.Get("PlayerCarTowTime")),
+            ["isOnTrack"] = sample.IsOnTrack.ToString(),
+            ["isInGarage"] = sample.IsInGarage.ToString(),
+            ["onPitRoad"] = sample.OnPitRoad.ToString(),
+            ["teamOnPitRoad"] = sample.TeamOnPitRoad?.ToString(),
+            ["sessionState"] = sample.SessionState?.ToString()
+        };
+        EmitOnce(
+            observations,
+            context == "unknown"
+                ? "progress.discontinuity.local"
+                : $"progress.discontinuity.{context}",
+            context == "unknown" ? TelemetryEdgeCaseSeverity.Warning : TelemetryEdgeCaseSeverity.Info,
+            context == "active-reset"
+                ? "Lap-distance progress jumped while the reset-key action indicated active reset context."
+                : "Lap-distance progress jumped or moved backward outside a normal start/finish wrap.",
+            sample,
+            fields);
     }
 
     private void DetectFuelAnomalies(
@@ -771,6 +830,51 @@ internal sealed class TelemetryEdgeCaseDetector
             TelemetryEdgeCaseSeverity.Info,
             "Raw PlayerTrackSurface changed.",
             observations);
+        DetectRawChanged(
+            sample,
+            raw,
+            "EnterExitReset",
+            "raw.active-reset.action-changed",
+            TelemetryEdgeCaseSeverity.Info,
+            "Raw EnterExitReset changed.",
+            observations);
+
+        if (raw.Get("EnterExitReset") is { } resetAction && Math.Abs(resetAction - 2d) <= 0.0001d)
+        {
+            EmitOnce(
+                observations,
+                "raw.active-reset.reset-key-action",
+                TelemetryEdgeCaseSeverity.Info,
+                "Raw EnterExitReset indicated the reset key would reset the car.",
+                sample,
+                new Dictionary<string, string?>
+                {
+                    ["enterExitReset"] = Format(resetAction),
+                    ["playerCarTowTime"] = Format(raw.Get("PlayerCarTowTime")),
+                    ["lapCompleted"] = sample.LapCompleted.ToString(),
+                    ["lapDistPct"] = Format(sample.LapDistPct),
+                    ["teamLapCompleted"] = sample.TeamLapCompleted?.ToString(),
+                    ["teamLapDistPct"] = Format(sample.TeamLapDistPct)
+                });
+        }
+
+        if (raw.Get("PlayerCarTowTime") is { } towTime && towTime > 0d)
+        {
+            EmitOnce(
+                observations,
+                "raw.tow.active",
+                TelemetryEdgeCaseSeverity.Info,
+                "PlayerCarTowTime was active.",
+                sample,
+                new Dictionary<string, string?>
+                {
+                    ["playerCarTowTime"] = Format(towTime),
+                    ["enterExitReset"] = Format(raw.Get("EnterExitReset")),
+                    ["isOnTrack"] = sample.IsOnTrack.ToString(),
+                    ["isInGarage"] = sample.IsInGarage.ToString(),
+                    ["onPitRoad"] = sample.OnPitRoad.ToString()
+                });
+        }
 
         var previousFlags = _previousRaw.Get("SessionFlags");
         var currentFlags = raw.Get("SessionFlags");
@@ -1051,6 +1155,80 @@ internal sealed class TelemetryEdgeCaseDetector
             || current.PlayerCarInPitStall;
     }
 
+    private static LapProgress? LocalLapProgress(HistoricalTelemetrySample sample)
+    {
+        if (sample.TeamLapDistPct is { } teamPct
+            && IsFinite(teamPct)
+            && teamPct >= 0d
+            && teamPct <= 1.000001d)
+        {
+            int? teamLapCompleted = sample.TeamLapCompleted is >= 0 ? sample.TeamLapCompleted.Value : null;
+            return new LapProgress(
+                "team",
+                teamLapCompleted,
+                Math.Clamp(teamPct, 0d, 1d));
+        }
+
+        if (IsFinite(sample.LapDistPct)
+            && sample.LapDistPct >= 0d
+            && sample.LapDistPct <= 1.000001d)
+        {
+            int? lapCompleted = sample.LapCompleted >= 0 ? sample.LapCompleted : null;
+            return new LapProgress(
+                "scalar",
+                lapCompleted,
+                Math.Clamp(sample.LapDistPct, 0d, 1d));
+        }
+
+        return null;
+    }
+
+    private static double LapProgressDelta(LapProgress previous, LapProgress current)
+    {
+        if (previous.LapCompleted is { } previousLapCompleted
+            && current.LapCompleted is { } currentLapCompleted)
+        {
+            return currentLapCompleted + current.LapDistPct - (previousLapCompleted + previous.LapDistPct);
+        }
+
+        return previous.LapDistPct >= LapWrapPreviousThreshold && current.LapDistPct <= LapWrapCurrentThreshold
+            ? 1d - previous.LapDistPct + current.LapDistPct
+            : current.LapDistPct - previous.LapDistPct;
+    }
+
+    private static string ProgressDiscontinuityContext(
+        HistoricalTelemetrySample previous,
+        HistoricalTelemetrySample current,
+        RawTelemetryWatchSnapshot raw)
+    {
+        if (raw.Get("EnterExitReset") is { } resetAction && Math.Abs(resetAction - 2d) <= 0.0001d)
+        {
+            return "active-reset";
+        }
+
+        if (raw.Get("PlayerCarTowTime") is { } towTime && towTime > 0d)
+        {
+            return "tow";
+        }
+
+        if (previous.IsInGarage || current.IsInGarage)
+        {
+            return "garage";
+        }
+
+        if (!previous.IsOnTrack || !current.IsOnTrack)
+        {
+            return "off-track-or-replay";
+        }
+
+        if (IsPitContext(previous, current))
+        {
+            return "pit-or-tow";
+        }
+
+        return "unknown";
+    }
+
     private static bool IsStartupGridOrTowContext(
         HistoricalTelemetrySample? previous,
         HistoricalTelemetrySample current)
@@ -1249,3 +1427,8 @@ internal sealed record TelemetryEdgeCaseObservation(
     double? SessionTime,
     int SessionTick,
     IReadOnlyDictionary<string, string?> Fields);
+
+internal sealed record LapProgress(
+    string Source,
+    int? LapCompleted,
+    double LapDistPct);

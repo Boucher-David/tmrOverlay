@@ -1,10 +1,10 @@
 # Windows Tester Releases
 
-TmrOverlay v0.9 starts with portable Windows tester builds. A release tag such as `v0.9.0` produces a GitHub Release with:
+TmrOverlay publishes portable Windows tester builds from GitHub Actions. A release tag such as `v0.11.0` produces a GitHub Release with:
 
-- `TmrOverlay-v0.9.0-win-x64.zip`
-- `TmrOverlay-v0.9.0-win-x64.zip.sha256`
-- `TmrOverlay-v0.9.0-win-x64-manifest.txt`
+- `TmrOverlay-v0.11.0-win-x64.zip`
+- `TmrOverlay-v0.11.0-win-x64.zip.sha256`
+- `TmrOverlay-v0.11.0-win-x64-manifest.txt`
 - generated GitHub release notes
 
 The zip is self-contained for Windows x64. Testers do not need to install the .NET runtime.
@@ -28,8 +28,8 @@ python3 tools/validate_overlay_screenshots.py --profile release-tutorial --root 
 2. Create an annotated tag on the merge commit:
 
    ```bash
-   git tag -a v0.9.0 -m "v0.9.0 - Production publishing baseline" -m "Publishes a portable Windows tester build with checksum and release metadata."
-   git push origin v0.9.0
+   git tag -a v0.11.0 -m "v0.11.0 - Track map and localhost overlays" -m "Publishes a portable Windows tester build with standings, track map, and localhost browser overlays."
+   git push origin v0.11.0
    ```
 
 3. GitHub Actions runs `.github/workflows/windows-dotnet.yml`.
@@ -42,11 +42,12 @@ Manual workflow dispatch can still produce package artifacts for a branch test r
 
 The portable zip should contain the runtime app only. The release workflow fails if top-level repo/development folders such as `.github`, `captures`, `docs`, `history`, `local-mac`, `mocks`, `skills`, `tests`, or `tools` appear in the publish folder.
 
-The expected v0.9 package shape is intentionally small:
+The expected package shape is intentionally small:
 
 - `TmrOverlay.App.exe`
 - `appsettings.json`
 - `Assets/TMRLogo.png`
+- optional `Assets/TrackMaps/*.json` bundled derived track maps
 
 The executable icon is embedded from `src/TmrOverlay.App/Assets/TmrOverlay.ico`. The release manifest asset lists the exact published files and sizes for each build, so package review can happen without downloading and unzipping the app.
 
@@ -85,7 +86,7 @@ If a release changes a durable user-data schema, the branch must update the matc
 From PowerShell in the folder containing the downloaded zip:
 
 ```powershell
-$zip = "TmrOverlay-v0.9.0-win-x64.zip"
+$zip = "TmrOverlay-v0.11.0-win-x64.zip"
 $expected = (Get-Content "$zip.sha256").Split(" ")[0]
 $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
 $actual -eq $expected

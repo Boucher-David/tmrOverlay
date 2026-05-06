@@ -19,6 +19,8 @@ internal sealed class CarRadarForm : PersistentOverlayForm
     private const double FocusedCarLengthMeters = 4.746d;
     private const double RadarRangeMeters = FocusedCarLengthMeters * 6d;
     private const double ContactWindowMeters = FocusedCarLengthMeters;
+    private const double SideAttachmentWindowMeters = FocusedCarLengthMeters * 2d;
+    private const double MinimumSideAttachmentWindowSeconds = 0.8d;
     private const double ProximityWarningGapMeters = 2.0d;
     private const double MulticlassWarningRangeSeconds = 5d;
     private const double SnapshotStaleSeconds = 1.5d;
@@ -476,8 +478,9 @@ internal sealed class CarRadarForm : PersistentOverlayForm
 
         DrawMulticlassApproachWarning(graphics, bounds);
         DrawDistanceRings(graphics, bounds);
-        DrawNearbyCars(graphics, bounds);
-        DrawSideWarningCars(graphics, bounds);
+        var sideAttachments = CurrentSideWarningAttachments();
+        DrawNearbyCars(graphics, bounds, sideAttachments);
+        DrawSideWarningCars(graphics, bounds, sideAttachments);
         DrawPlayerCar(graphics, bounds);
     }
 
@@ -606,9 +609,9 @@ internal sealed class CarRadarForm : PersistentOverlayForm
         graphics.DrawString(FormatMulticlassWarning(approach), font, textBrush, labelBounds, format);
     }
 
-    private void DrawNearbyCars(Graphics graphics, RectangleF bounds)
+    private void DrawNearbyCars(Graphics graphics, RectangleF bounds, SideWarningAttachments sideAttachments)
     {
-        foreach (var placement in RadarCarPlacements(bounds))
+        foreach (var placement in RadarCarPlacements(bounds, sideAttachments))
         {
             var visual = placement.Visual;
             var car = visual.Car;
@@ -622,18 +625,23 @@ internal sealed class CarRadarForm : PersistentOverlayForm
         }
     }
 
-    private IReadOnlyList<RadarCarPlacement> RadarCarPlacements(RectangleF bounds)
+    private IReadOnlyList<RadarCarPlacement> RadarCarPlacements(
+        RectangleF bounds,
+        SideWarningAttachments sideAttachments)
     {
-        return WideRowPositionedNearbyCars(bounds);
+        return WideRowPositionedNearbyCars(bounds, sideAttachments);
     }
 
-    private IReadOnlyList<RadarCarPlacement> WideRowPositionedNearbyCars(RectangleF bounds)
+    private IReadOnlyList<RadarCarPlacement> WideRowPositionedNearbyCars(
+        RectangleF bounds,
+        SideWarningAttachments sideAttachments)
     {
         var centerX = bounds.X + bounds.Width / 2f;
         var centerY = bounds.Y + bounds.Height / 2f;
         var usableRadius = bounds.Width / 2f - 34f;
         var visibleCars = _carVisuals.Values
             .Where(visual => visual.Alpha > MinimumVisibleAlpha)
+            .Where(visual => !sideAttachments.Contains(visual.Car.CarIdx))
             .OrderBy(visual => Math.Abs(RangeRatio(visual.Car)))
             .Take(MaxWideRowRadarCars)
             .ToArray();
@@ -739,7 +747,62 @@ internal sealed class CarRadarForm : PersistentOverlayForm
         return index % 2 == 0 ? 1f : -1f;
     }
 
-    private void DrawSideWarningCars(Graphics graphics, RectangleF bounds)
+    private SideWarningAttachments CurrentSideWarningAttachments()
+    {
+        var usedCarIdxs = new HashSet<int>();
+        var left = _leftSideAlpha > MinimumVisibleAlpha
+            ? SelectSideAttachment(usedCarIdxs)
+            : null;
+        if (left is not null)
+        {
+            usedCarIdxs.Add(left.Car.CarIdx);
+        }
+
+        var right = _rightSideAlpha > MinimumVisibleAlpha
+            ? SelectSideAttachment(usedCarIdxs)
+            : null;
+        return new SideWarningAttachments(left, right);
+    }
+
+    private RadarCarVisual? SelectSideAttachment(ISet<int> excludedCarIdxs)
+    {
+        return _carVisuals.Values
+            .Where(visual => visual.Alpha > MinimumVisibleAlpha)
+            .Where(visual => !excludedCarIdxs.Contains(visual.Car.CarIdx))
+            .Where(visual => IsSideAttachmentCandidate(visual.Car))
+            .OrderBy(visual => Math.Abs(RangeRatio(visual.Car)))
+            .ThenByDescending(visual => visual.Alpha)
+            .ThenBy(visual => visual.Car.CarIdx)
+            .FirstOrDefault();
+    }
+
+    private bool IsSideAttachmentCandidate(LiveSpatialCar car)
+    {
+        if (!IsInRadarRange(car))
+        {
+            return false;
+        }
+
+        if (ReliableRelativeMeters(car) is { } meters)
+        {
+            return Math.Abs(meters) <= SideAttachmentWindowMeters;
+        }
+
+        if (!car.HasReliableRelativeSeconds)
+        {
+            return false;
+        }
+
+        var windowSeconds = Math.Max(
+            MinimumSideAttachmentWindowSeconds,
+            _spatial.SideOverlapWindowSeconds * 2d);
+        return Math.Abs(car.RelativeSeconds!.Value) <= windowSeconds;
+    }
+
+    private void DrawSideWarningCars(
+        Graphics graphics,
+        RectangleF bounds,
+        SideWarningAttachments sideAttachments)
     {
         if (_leftSideAlpha <= MinimumVisibleAlpha && _rightSideAlpha <= MinimumVisibleAlpha)
         {
@@ -748,31 +811,55 @@ internal sealed class CarRadarForm : PersistentOverlayForm
 
         var centerX = bounds.X + bounds.Width / 2f;
         var centerY = bounds.Y + bounds.Height / 2f;
+        var usableRadius = bounds.Width / 2f - 34f;
         if (_leftSideAlpha > MinimumVisibleAlpha)
         {
-            DrawWarningCar(graphics, centerX - 42f, centerY, _leftSideAlpha * _radarAlpha, mappedToTimedCar: false);
+            DrawWarningCar(
+                graphics,
+                centerX - 42f,
+                SideWarningCenterY(centerY, usableRadius, sideAttachments.Left),
+                _leftSideAlpha * _radarAlpha * SideAttachmentAlpha(sideAttachments.Left),
+                mappedToTimedCar: sideAttachments.Left is not null);
         }
 
         if (_rightSideAlpha > MinimumVisibleAlpha)
         {
-            DrawWarningCar(graphics, centerX + 42f, centerY, _rightSideAlpha * _radarAlpha, mappedToTimedCar: false);
+            DrawWarningCar(
+                graphics,
+                centerX + 42f,
+                SideWarningCenterY(centerY, usableRadius, sideAttachments.Right),
+                _rightSideAlpha * _radarAlpha * SideAttachmentAlpha(sideAttachments.Right),
+                mappedToTimedCar: sideAttachments.Right is not null);
         }
+    }
+
+    private float SideWarningCenterY(float centerY, float usableRadius, RadarCarVisual? visual)
+    {
+        if (visual is null)
+        {
+            return centerY;
+        }
+
+        var maximumBias = FocusedCarHeight * 0.55f;
+        var offset = Math.Clamp(LongitudinalOffset(visual.Car, usableRadius), -maximumBias, maximumBias);
+        return centerY - offset;
+    }
+
+    private static double SideAttachmentAlpha(RadarCarVisual? visual)
+    {
+        return visual is null ? 1d : Math.Max(0.45d, visual.Alpha);
     }
 
     private static void DrawWarningCar(Graphics graphics, float x, float y, double alphaMultiplier, bool mappedToTimedCar)
     {
-        if (mappedToTimedCar)
-        {
-            return;
-        }
-
         var carRect = new RectangleF(
             x - RadarCarWidth / 2f,
             y - RadarCarHeight / 2f,
             RadarCarWidth,
             RadarCarHeight);
-        using var brush = new SolidBrush(Color.FromArgb(ScaleAlpha(238, alphaMultiplier), 236, 112, 99));
-        using var pen = new Pen(Color.FromArgb(ScaleAlpha(245, alphaMultiplier), 255, 255, 255), 1f);
+        var fillAlpha = mappedToTimedCar ? 245 : 238;
+        using var brush = new SolidBrush(Color.FromArgb(ScaleAlpha(fillAlpha, alphaMultiplier), 236, 112, 99));
+        using var pen = new Pen(Color.FromArgb(ScaleAlpha(fillAlpha, alphaMultiplier), 255, 255, 255), 1f);
         graphics.FillRoundedRectangle(brush, carRect, CarCornerRadius);
         graphics.DrawRoundedRectangle(pen, carRect, CarCornerRadius);
     }
@@ -1041,6 +1128,14 @@ internal sealed class CarRadarForm : PersistentOverlayForm
     }
 
     private sealed record RadarCarPlacement(RadarCarVisual Visual, RectangleF Bounds, float Offset);
+
+    private sealed record SideWarningAttachments(RadarCarVisual? Left, RadarCarVisual? Right)
+    {
+        public bool Contains(int carIdx)
+        {
+            return Left?.Car.CarIdx == carIdx || Right?.Car.CarIdx == carIdx;
+        }
+    }
 
     private sealed record WideRowCandidate(
         RadarCarVisual Visual,

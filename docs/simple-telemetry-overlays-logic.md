@@ -49,17 +49,22 @@ Wet or declared-wet states use an info tone. Declared-wet surface mismatches use
 
 It displays:
 
+- release signal:
+  - `GREEN - go` when `PlayerCarPitSvStatus` reports service complete
+  - `RED - service active` while pit service is in progress or `PitstopActive` is true
+  - `RED - repair active` while required or optional repair time remains in the stall
+  - `GREEN - go (inferred)` when the car is in the stall, service is not active, and no repair timer is blocking release but the explicit service-complete status is unavailable
 - player/team pit-road or pit-stall state
+- decoded pit service status from `PlayerCarPitSvStatus`
 - active/requested service flags
 - requested fuel amount in the selected unit system
 - required and optional repair time
 - requested tire service and tire sets used
 - local/team fast repair counters
-- raw pit service flags
 
 The overlay does not send iRacing pit commands. A future pit crew/engineer overlay should own command-capable controls for refuel amount, tire/repair/tearoff choices, and operator workflow so read-only pit telemetry and active simulator control do not get mixed.
 
-The mac harness standings candidate uses synthetic pit windows derived from the four-hour preview pit entry/exit timing to show how a live `Pit` column can behave before a production standings data contract is added.
+The mac harness standings view uses synthetic pit windows derived from the four-hour preview pit entry/exit timing so the local review surface can exercise the same `Pit` column now exposed by the production Windows standings overlay.
 
 ## Input / Car State
 
@@ -75,5 +80,7 @@ It displays:
 - voltage
 - water temperature
 - oil temperature plus oil/fuel pressure
+
+The default native input overlay is now smaller and has a compact rendering mode. At compact sizes it replaces the large trace-and-wheel layout with current pedal bars plus a dense readout grid for speed, gear, RPM, steering, water temperature, and oil pressure so resizing does not clip the right-side data. Wider/taller sizes can still show the rolling pedal trace, steering wheel, and car-state readouts.
 
 Engine warning bits use a warning tone. Otherwise this overlay stays neutral and acts as a compact local-car telemetry surface.

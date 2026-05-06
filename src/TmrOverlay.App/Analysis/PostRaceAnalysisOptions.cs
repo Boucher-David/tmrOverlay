@@ -11,7 +11,7 @@ internal sealed class PostRaceAnalysisOptions
         var section = configuration.GetSection("PostRaceAnalysis");
         return new PostRaceAnalysisOptions
         {
-            Enabled = ParseBoolean(section["Enabled"], defaultValue: false)
+            Enabled = ParseBoolean(section["Enabled"], defaultValue: true)
         };
     }
 
