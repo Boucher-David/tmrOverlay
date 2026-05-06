@@ -8,6 +8,7 @@ internal static class StandingsBrowserSource
         id: StandingsOverlayDefinition.Definition.Id,
         title: StandingsOverlayDefinition.Definition.DisplayName,
         canonicalRoute: "/overlays/standings",
+        fadeWhenTelemetryUnavailable: StandingsOverlayDefinition.Definition.FadeWhenLiveTelemetryUnavailable,
         script: Script);
 
     private const string Script = """

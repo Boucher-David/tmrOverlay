@@ -137,6 +137,25 @@ internal sealed class AppPerformanceState
         }
     }
 
+    public void RecordOverlayLiveTelemetryState(
+        string overlayId,
+        DateTimeOffset timestampUtc,
+        bool liveTelemetryAvailable,
+        double fadeAlpha)
+    {
+        if (string.IsNullOrWhiteSpace(overlayId))
+        {
+            return;
+        }
+
+        lock (_sync)
+        {
+            var prefix = $"overlay.{NormalizeMetricSegment(overlayId)}.update";
+            RecordOverlayUpdateValue($"{prefix}.live_available", liveTelemetryAvailable ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.fade_alpha", Math.Clamp(fadeAlpha, 0d, 1d), timestampUtc);
+        }
+    }
+
     public void RecordCaptureWrite(TelemetryCaptureWriteStatus writeStatus)
     {
         lock (_sync)

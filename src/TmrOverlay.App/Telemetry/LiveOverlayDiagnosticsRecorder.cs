@@ -103,6 +103,13 @@ internal sealed class LiveOverlayDiagnosticsRecorder
     private int _sectorResetFrames;
     private int _sectorCrossingCount;
     private int _sectorCompletedIntervalCount;
+    private readonly Dictionary<string, int> _trackMapSectorHighlightCounts = new(StringComparer.OrdinalIgnoreCase);
+    private int _trackMapSectorFrames;
+    private int _trackMapLiveTimingFrames;
+    private int _trackMapHighlightedSectorFrames;
+    private int _trackMapPersonalBestSectorFrames;
+    private int _trackMapBestLapSectorFrames;
+    private int _trackMapFullLapHighlightFrames;
 
     public LiveOverlayDiagnosticsRecorder(
         LiveOverlayDiagnosticsOptions options,
@@ -195,6 +202,12 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             _sectorResetFrames = 0;
             _sectorCrossingCount = 0;
             _sectorCompletedIntervalCount = 0;
+            _trackMapSectorFrames = 0;
+            _trackMapLiveTimingFrames = 0;
+            _trackMapHighlightedSectorFrames = 0;
+            _trackMapPersonalBestSectorFrames = 0;
+            _trackMapBestLapSectorFrames = 0;
+            _trackMapFullLapHighlightFrames = 0;
             _sessionFrameCounts.Clear();
             _gapClassSourceCounts.Clear();
             _gapClassEvidenceCounts.Clear();
@@ -207,6 +220,7 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             _fuelBaselineEvidenceCounts.Clear();
             _lapDeltaValueCounts.Clear();
             _lapDeltaUsableCounts.Clear();
+            _trackMapSectorHighlightCounts.Clear();
             _eventSampleCountsByKind.Clear();
             _eventSampleKeys.Clear();
             _positionStates.Clear();
@@ -241,6 +255,7 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             RecordPositionCadence(snapshot, capturedAtUtc);
             RecordLapDelta(snapshot);
             RecordSectorTiming(snapshot, capturedAtUtc);
+            RecordTrackMap(snapshot);
             RecordSampleFrame(snapshot, capturedAtUtc);
         }
     }
@@ -351,6 +366,14 @@ internal sealed class LiveOverlayDiagnosticsRecorder
                         CrossingCount: _sectorCrossingCount,
                         CompletedIntervalCount: _sectorCompletedIntervalCount,
                         TrackedCarCount: _sectorStates.Count),
+                    TrackMap: new TrackMapOverlayDiagnosticsSummary(
+                        FramesWithSectors: _trackMapSectorFrames,
+                        FramesWithLiveTiming: _trackMapLiveTimingFrames,
+                        FramesWithHighlightedSectors: _trackMapHighlightedSectorFrames,
+                        PersonalBestSectorFrames: _trackMapPersonalBestSectorFrames,
+                        BestLapSectorFrames: _trackMapBestLapSectorFrames,
+                        FullLapHighlightFrames: _trackMapFullLapHighlightFrames,
+                        SectorHighlightCounts: Sorted(_trackMapSectorHighlightCounts)),
                     SampleFrames: _sampleFrames.ToArray(),
                     EventSamples: _eventSamples.ToArray());
 
@@ -897,6 +920,54 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             LapDistPct = currentLapDistPct,
             SessionTimeSeconds = observation.SessionTimeSeconds
         };
+    }
+
+    private void RecordTrackMap(LiveTelemetrySnapshot snapshot)
+    {
+        var trackMap = snapshot.Models.TrackMap;
+        if (trackMap.HasSectors)
+        {
+            _trackMapSectorFrames++;
+        }
+
+        if (trackMap.HasLiveTiming)
+        {
+            _trackMapLiveTimingFrames++;
+        }
+
+        var highlighted = trackMap.Sectors
+            .Where(sector => !string.Equals(sector.Highlight, LiveTrackSectorHighlights.None, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (highlighted.Length == 0)
+        {
+            return;
+        }
+
+        _trackMapHighlightedSectorFrames++;
+        foreach (var sector in highlighted)
+        {
+            Increment(_trackMapSectorHighlightCounts, sector.Highlight);
+        }
+
+        if (highlighted.Any(sector => string.Equals(sector.Highlight, LiveTrackSectorHighlights.PersonalBest, StringComparison.OrdinalIgnoreCase)))
+        {
+            _trackMapPersonalBestSectorFrames++;
+        }
+
+        if (highlighted.Any(sector => string.Equals(sector.Highlight, LiveTrackSectorHighlights.BestLap, StringComparison.OrdinalIgnoreCase)))
+        {
+            _trackMapBestLapSectorFrames++;
+        }
+
+        if (trackMap.Sectors.Count > 0
+            && highlighted.Length == trackMap.Sectors.Count
+            && highlighted
+                .Select(sector => sector.Highlight)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count() == 1)
+        {
+            _trackMapFullLapHighlightFrames++;
+        }
     }
 
     private IEnumerable<LapDeltaSignal> LapDeltaSignals(HistoricalTelemetrySample sample)
@@ -1584,6 +1655,7 @@ internal sealed record LiveOverlayDiagnosticsArtifact(
     PositionCadenceDiagnosticsSummary PositionCadence,
     LapDeltaDiagnosticsSummary LapDelta,
     SectorTimingDiagnosticsSummary SectorTiming,
+    TrackMapOverlayDiagnosticsSummary TrackMap,
     IReadOnlyList<LiveOverlayDiagnosticsFrameSample> SampleFrames,
     IReadOnlyList<LiveOverlayDiagnosticsEventSample> EventSamples);
 
@@ -1679,6 +1751,15 @@ internal sealed record SectorTimingDiagnosticsSummary(
     int CrossingCount,
     int CompletedIntervalCount,
     int TrackedCarCount);
+
+internal sealed record TrackMapOverlayDiagnosticsSummary(
+    int FramesWithSectors,
+    int FramesWithLiveTiming,
+    int FramesWithHighlightedSectors,
+    int PersonalBestSectorFrames,
+    int BestLapSectorFrames,
+    int FullLapHighlightFrames,
+    IReadOnlyDictionary<string, int> SectorHighlightCounts);
 
 internal sealed record LiveOverlayDiagnosticsFrameSample(
     DateTimeOffset CapturedAtUtc,

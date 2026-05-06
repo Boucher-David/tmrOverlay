@@ -46,7 +46,8 @@ internal sealed class IbtTrackMapBuilder
                 SourcePath: ibtPath,
                 SourceBytes: fileInfo.Exists ? fileInfo.Length : null,
                 SourceRecordCount: ibt.DiskHeader.RecordCount,
-                CaptureId: captureId));
+                CaptureId: captureId),
+            context.Sectors);
     }
 
     private static HistoricalTrackIdentity HistoricalTrackIdentityFromPath(string path)
@@ -60,7 +61,8 @@ internal sealed class IbtTrackMapBuilder
     internal TrackMapBuildResult BuildFromSamples(
         IReadOnlyList<IbtTrackMapSample> samples,
         HistoricalTrackIdentity track,
-        TrackMapProvenance provenance)
+        TrackMapProvenance provenance,
+        IReadOnlyList<HistoricalTrackSector>? sectors = null)
     {
         var identity = TrackMapIdentity.From(track);
         var racingSamples = samples
@@ -153,7 +155,8 @@ internal sealed class IbtTrackMapBuilder
                 PitLanePassCount: PitLanePassCount(samples),
                 PitLaneRepeatabilityP95Meters: null,
                 Reasons: reasons),
-            Provenance: provenance);
+            Provenance: provenance,
+            Sectors: TrackMapSector.FromHistorical(sectors ?? []));
         return new TrackMapBuildResult(document, []);
     }
 

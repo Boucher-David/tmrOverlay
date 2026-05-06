@@ -9,6 +9,7 @@ internal sealed class BrowserOverlayPage
         string script,
         bool requiresTelemetry = true,
         bool renderWhenTelemetryUnavailable = false,
+        bool fadeWhenTelemetryUnavailable = false,
         string bodyClass = "",
         int refreshIntervalMilliseconds = 250,
         IReadOnlyList<string>? aliases = null)
@@ -19,6 +20,7 @@ internal sealed class BrowserOverlayPage
         Script = script;
         RequiresTelemetry = requiresTelemetry;
         RenderWhenTelemetryUnavailable = renderWhenTelemetryUnavailable;
+        FadeWhenTelemetryUnavailable = fadeWhenTelemetryUnavailable;
         BodyClass = bodyClass;
         RefreshIntervalMilliseconds = refreshIntervalMilliseconds;
         Aliases = aliases?.Select(NormalizeRoute).ToArray() ?? [];
@@ -36,6 +38,8 @@ internal sealed class BrowserOverlayPage
     public bool RequiresTelemetry { get; }
 
     public bool RenderWhenTelemetryUnavailable { get; }
+
+    public bool FadeWhenTelemetryUnavailable { get; }
 
     public string BodyClass { get; }
 

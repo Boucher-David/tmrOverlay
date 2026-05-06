@@ -8,5 +8,6 @@ internal static class InputStateOverlayDefinition
         Id: "input-state",
         DisplayName: "Inputs",
         DefaultWidth: 390,
-        DefaultHeight: 220);
+        DefaultHeight: 220,
+        FadeWhenLiveTelemetryUnavailable: true);
 }

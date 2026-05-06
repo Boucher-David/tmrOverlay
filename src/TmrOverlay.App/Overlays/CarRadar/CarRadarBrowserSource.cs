@@ -8,6 +8,7 @@ internal static class CarRadarBrowserSource
         id: CarRadarOverlayDefinition.Definition.Id,
         title: CarRadarOverlayDefinition.Definition.DisplayName,
         canonicalRoute: "/overlays/car-radar",
+        fadeWhenTelemetryUnavailable: CarRadarOverlayDefinition.Definition.FadeWhenLiveTelemetryUnavailable,
         script: Script);
 
     private const string Script = """

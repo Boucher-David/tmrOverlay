@@ -8,6 +8,7 @@ internal static class SessionWeatherBrowserSource
         id: SessionWeatherOverlayDefinition.Definition.Id,
         title: SessionWeatherOverlayDefinition.Definition.DisplayName,
         canonicalRoute: "/overlays/session-weather",
+        fadeWhenTelemetryUnavailable: SessionWeatherOverlayDefinition.Definition.FadeWhenLiveTelemetryUnavailable,
         script: Script);
 
     private const string Script = """

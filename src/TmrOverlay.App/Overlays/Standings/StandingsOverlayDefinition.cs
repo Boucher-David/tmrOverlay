@@ -8,5 +8,6 @@ internal static class StandingsOverlayDefinition
         Id: "standings",
         DisplayName: "Standings",
         DefaultWidth: 620,
-        DefaultHeight: 340);
+        DefaultHeight: 340,
+        FadeWhenLiveTelemetryUnavailable: true);
 }

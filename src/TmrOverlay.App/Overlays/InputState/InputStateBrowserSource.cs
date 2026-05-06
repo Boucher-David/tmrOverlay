@@ -9,6 +9,7 @@ internal static class InputStateBrowserSource
         title: InputStateOverlayDefinition.Definition.DisplayName,
         canonicalRoute: "/overlays/input-state",
         aliases: ["/overlays/inputs"],
+        fadeWhenTelemetryUnavailable: InputStateOverlayDefinition.Definition.FadeWhenLiveTelemetryUnavailable,
         script: Script);
 
     private const string Script = """

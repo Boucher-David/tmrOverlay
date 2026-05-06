@@ -13,6 +13,7 @@ mocks/
   design-v2/
   standings/
   relative/
+  track-map/
   competition-distance-graph/
   weather/
 ```

@@ -1,4 +1,5 @@
 using TmrOverlay.Core.Overlays;
+using TmrOverlay.App.Overlays.Abstractions;
 using TmrOverlay.App.Overlays.CarRadar;
 using TmrOverlay.App.Overlays.Flags;
 using TmrOverlay.App.Overlays.FuelCalculator;
@@ -33,6 +34,8 @@ namespace TmrOverlay.App.Overlays;
 
 internal sealed class OverlayManager : IDisposable
 {
+    private const double LiveTelemetryFreshnessSeconds = 1.5d;
+
     private readonly AppSettingsStore _settingsStore;
     private readonly AppStorageOptions _storageOptions;
     private readonly DiagnosticsBundleService _diagnosticsBundleService;
@@ -426,7 +429,9 @@ internal sealed class OverlayManager : IDisposable
 
         RecreateManagedFormsIfFontChanged();
         RecreateManagedFormsIfUnitsChanged();
-        var currentSession = CurrentSessionKind();
+        var liveSnapshot = _liveTelemetrySource.Snapshot();
+        var liveTelemetryAvailable = IsLiveTelemetryAvailable(liveSnapshot);
+        var currentSession = CurrentSessionKind(liveSnapshot);
         foreach (var registration in ManagedOverlayRegistrations)
         {
             var settings = _settings.GetOrAddOverlay(
@@ -448,7 +453,7 @@ internal sealed class OverlayManager : IDisposable
 
             if (string.Equals(registration.Definition.Id, FlagsOverlayDefinition.Definition.Id, StringComparison.Ordinal))
             {
-                ApplyFlagsRegistration(registration, settings, shouldShow);
+                ApplyFlagsRegistration(registration, settings, shouldShow, liveTelemetryAvailable);
                 continue;
             }
 
@@ -466,9 +471,15 @@ internal sealed class OverlayManager : IDisposable
             var form = EnsureForm(
                 registration.Definition.Id,
                 () => registration.Create(settings));
+            var wasVisible = form.Visible;
             ApplyScaleIfChanged(registration.Definition, settings, form);
             ApplyOpacityIfChanged(registration.Definition, settings, form);
             ApplyRadarSettingsPreview(form, settingsPreview);
+            ApplyLiveTelemetryFade(
+                registration.Definition,
+                form,
+                liveTelemetryAvailable || settingsPreview,
+                immediate: !wasVisible);
             if (!form.Visible)
             {
                 form.Show();
@@ -606,18 +617,33 @@ internal sealed class OverlayManager : IDisposable
     {
         if (!definition.ShowOpacityControl)
         {
+            if (form is PersistentOverlayForm persistent)
+            {
+                persistent.SetBaseOverlayOpacity(1d);
+            }
+
             return;
         }
 
         settings.Opacity = Math.Clamp(settings.Opacity, 0.2d, 1d);
         if (string.Equals(definition.Id, TrackMapOverlayDefinition.Definition.Id, StringComparison.Ordinal))
         {
-            if (Math.Abs(form.Opacity - 1d) > 0.001d)
+            if (form is PersistentOverlayForm persistent)
+            {
+                persistent.SetBaseOverlayOpacity(1d);
+            }
+            else if (Math.Abs(form.Opacity - 1d) > 0.001d)
             {
                 form.Opacity = 1d;
             }
 
             form.Invalidate();
+            return;
+        }
+
+        if (form is PersistentOverlayForm persistentForm)
+        {
+            persistentForm.SetBaseOverlayOpacity(settings.Opacity);
             return;
         }
 
@@ -685,9 +711,9 @@ internal sealed class OverlayManager : IDisposable
         _appliedUnitSystem = unitSystem;
     }
 
-    private OverlaySessionKind? CurrentSessionKind()
+    private OverlaySessionKind? CurrentSessionKind(LiveTelemetrySnapshot snapshot)
     {
-        var context = _liveTelemetrySource.Snapshot().Context;
+        var context = snapshot.Context;
         return ClassifySession(
             context.Session.SessionType
             ?? context.Session.SessionName
@@ -741,6 +767,41 @@ internal sealed class OverlayManager : IDisposable
             OverlaySessionKind.Race => settings.ShowInRace,
             _ => true
         };
+    }
+
+    private static bool IsLiveTelemetryAvailable(LiveTelemetrySnapshot snapshot)
+    {
+        if (!snapshot.IsConnected || !snapshot.IsCollecting)
+        {
+            return false;
+        }
+
+        if (snapshot.LastUpdatedAtUtc is not { } lastUpdatedAtUtc)
+        {
+            return false;
+        }
+
+        return (DateTimeOffset.UtcNow - lastUpdatedAtUtc).TotalSeconds <= LiveTelemetryFreshnessSeconds;
+    }
+
+    private void ApplyLiveTelemetryFade(
+        OverlayDefinition definition,
+        Form form,
+        bool liveTelemetryAvailable,
+        bool immediate)
+    {
+        if (form is not PersistentOverlayForm persistent)
+        {
+            return;
+        }
+
+        var shouldBeVisible = !definition.FadeWhenLiveTelemetryUnavailable || liveTelemetryAvailable;
+        persistent.SetLiveTelemetryAvailable(shouldBeVisible, immediate);
+        _performanceState.RecordOverlayLiveTelemetryState(
+            definition.Id,
+            DateTimeOffset.UtcNow,
+            liveTelemetryAvailable,
+            persistent.LiveTelemetryFadeAlpha);
     }
 
     private static int ScaleDimension(int defaultDimension, double scale)
@@ -857,15 +918,19 @@ internal sealed class OverlayManager : IDisposable
         }
     }
 
-    private void ApplyFlagsRegistration(OverlayRegistration registration, OverlaySettings settings, bool managedEnabled)
+    private void ApplyFlagsRegistration(
+        OverlayRegistration registration,
+        OverlaySettings settings,
+        bool managedEnabled,
+        bool liveTelemetryAvailable)
     {
         if (!managedEnabled)
         {
             if (_forms.TryGetValue(registration.Definition.Id, out var hiddenForm))
             {
-                if (hiddenForm is FlagsOverlayForm flags)
+                if (hiddenForm is FlagsOverlayForm hiddenFlags)
                 {
-                    flags.SetManagedEnabled(false);
+                    hiddenFlags.SetManagedEnabled(false);
                 }
 
                 hiddenForm.Hide();
@@ -877,12 +942,18 @@ internal sealed class OverlayManager : IDisposable
         var form = EnsureForm(
             registration.Definition.Id,
             () => registration.Create(settings));
+        var wasVisible = form.Visible;
         ApplyScaleIfChanged(registration.Definition, settings, form);
         ApplyOpacityIfChanged(registration.Definition, settings, form);
-        if (form is FlagsOverlayForm flags)
+        ApplyLiveTelemetryFade(
+            registration.Definition,
+            form,
+            liveTelemetryAvailable,
+            immediate: !wasVisible);
+        if (form is FlagsOverlayForm visibleFlags)
         {
-            flags.TopMost = !_settingsOverlayActive && settings.AlwaysOnTop;
-            flags.SetManagedEnabled(true);
+            visibleFlags.TopMost = !_settingsOverlayActive && settings.AlwaysOnTop;
+            visibleFlags.SetManagedEnabled(true);
         }
     }
 

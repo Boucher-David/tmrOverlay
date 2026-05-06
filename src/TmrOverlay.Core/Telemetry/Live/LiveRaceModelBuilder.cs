@@ -9,7 +9,8 @@ internal static class LiveRaceModelBuilder
         HistoricalTelemetrySample sample,
         LiveFuelSnapshot fuel,
         LiveProximitySnapshot proximity,
-        LiveLeaderGapSnapshot leaderGap)
+        LiveLeaderGapSnapshot leaderGap,
+        LiveTrackMapModel? trackMap = null)
     {
         var drivers = BuildDriverDirectory(context, sample);
         var timing = BuildTiming(context, sample, leaderGap, drivers);
@@ -20,10 +21,28 @@ internal static class LiveRaceModelBuilder
             Timing: timing,
             Relative: BuildRelative(sample, proximity, timing),
             Spatial: BuildSpatial(context, sample, proximity),
+            TrackMap: trackMap ?? BuildTrackMap(context),
             Weather: BuildWeather(context, sample),
             FuelPit: BuildFuelPit(sample, fuel),
             RaceEvents: BuildRaceEvents(sample),
             Inputs: BuildInputs(sample));
+    }
+
+    private static LiveTrackMapModel BuildTrackMap(HistoricalSessionContext context)
+    {
+        var sectors = NormalizeSectors(context.Sectors)
+            .Select(sector => new LiveTrackSectorSegment(
+                sector.SectorNum,
+                sector.StartPct,
+                sector.EndPct,
+                LiveTrackSectorHighlights.None))
+            .ToArray();
+
+        return new LiveTrackMapModel(
+            HasSectors: sectors.Length >= 2,
+            HasLiveTiming: false,
+            Quality: sectors.Length >= 2 ? LiveModelQuality.Partial : LiveModelQuality.Unavailable,
+            Sectors: sectors);
     }
 
     private static LiveSessionModel BuildSession(HistoricalSessionContext context, HistoricalTelemetrySample sample)
@@ -1267,6 +1286,28 @@ internal static class LiveRaceModelBuilder
         return value is { } number && IsFinite(number) && number >= 0d && number <= 1d ? number : null;
     }
 
+    private static IReadOnlyList<TrackMapSectorSlice> NormalizeSectors(IReadOnlyList<HistoricalTrackSector> sectors)
+    {
+        var ordered = sectors
+            .Where(sector => IsFinite(sector.SectorStartPct) && sector.SectorStartPct >= 0d && sector.SectorStartPct < 1d)
+            .GroupBy(sector => sector.SectorNum)
+            .Select(group => group.OrderBy(sector => sector.SectorStartPct).First())
+            .OrderBy(sector => sector.SectorStartPct)
+            .ThenBy(sector => sector.SectorNum)
+            .ToArray();
+        if (ordered.Length < 2)
+        {
+            return [];
+        }
+
+        return ordered
+            .Select((sector, index) => new TrackMapSectorSlice(
+                sector.SectorNum,
+                Math.Round(sector.SectorStartPct, 6),
+                Math.Round(index + 1 < ordered.Length ? ordered[index + 1].SectorStartPct : 1d, 6)))
+            .ToArray();
+    }
+
     private static bool IsNonNegativeFinite(double value)
     {
         return IsFinite(value) && value >= 0d;
@@ -1346,4 +1387,9 @@ internal static class LiveRaceModelBuilder
     {
         return string.IsNullOrWhiteSpace(trackSkies) ? null : trackSkies.Trim();
     }
+
+    private sealed record TrackMapSectorSlice(
+        int SectorNum,
+        double StartPct,
+        double EndPct);
 }

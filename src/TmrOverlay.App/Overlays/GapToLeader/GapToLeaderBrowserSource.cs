@@ -8,6 +8,7 @@ internal static class GapToLeaderBrowserSource
         id: GapToLeaderOverlayDefinition.Definition.Id,
         title: GapToLeaderOverlayDefinition.Definition.DisplayName,
         canonicalRoute: "/overlays/gap-to-leader",
+        fadeWhenTelemetryUnavailable: GapToLeaderOverlayDefinition.Definition.FadeWhenLiveTelemetryUnavailable,
         script: Script);
 
     private const string Script = """

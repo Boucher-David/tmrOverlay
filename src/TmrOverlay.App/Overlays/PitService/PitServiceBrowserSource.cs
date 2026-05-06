@@ -8,6 +8,7 @@ internal static class PitServiceBrowserSource
         id: PitServiceOverlayDefinition.Definition.Id,
         title: PitServiceOverlayDefinition.Definition.DisplayName,
         canonicalRoute: "/overlays/pit-service",
+        fadeWhenTelemetryUnavailable: PitServiceOverlayDefinition.Definition.FadeWhenLiveTelemetryUnavailable,
         script: Script);
 
     private const string Script = """

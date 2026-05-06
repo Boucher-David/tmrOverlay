@@ -48,6 +48,7 @@ internal sealed record LiveRaceModels(
     LiveTimingModel Timing,
     LiveRelativeModel Relative,
     LiveSpatialModel Spatial,
+    LiveTrackMapModel TrackMap,
     LiveWeatherModel Weather,
     LiveFuelPitModel FuelPit,
     LiveRaceEventModel RaceEvents,
@@ -59,6 +60,7 @@ internal sealed record LiveRaceModels(
         Timing: LiveTimingModel.Empty,
         Relative: LiveRelativeModel.Empty,
         Spatial: LiveSpatialModel.Empty,
+        TrackMap: LiveTrackMapModel.Empty,
         Weather: LiveWeatherModel.Empty,
         FuelPit: LiveFuelPitModel.Empty,
         RaceEvents: LiveRaceEventModel.Empty,
@@ -293,6 +295,32 @@ internal sealed record LiveSpatialCar(
     public bool HasReliableRelativeSeconds =>
         RelativeSeconds is { } seconds && !double.IsNaN(seconds) && !double.IsInfinity(seconds);
 }
+
+internal static class LiveTrackSectorHighlights
+{
+    public const string None = "none";
+    public const string PersonalBest = "personal-best";
+    public const string BestLap = "best-lap";
+}
+
+internal sealed record LiveTrackMapModel(
+    bool HasSectors,
+    bool HasLiveTiming,
+    LiveModelQuality Quality,
+    IReadOnlyList<LiveTrackSectorSegment> Sectors)
+{
+    public static LiveTrackMapModel Empty { get; } = new(
+        HasSectors: false,
+        HasLiveTiming: false,
+        Quality: LiveModelQuality.Unavailable,
+        Sectors: []);
+}
+
+internal sealed record LiveTrackSectorSegment(
+    int SectorNum,
+    double StartPct,
+    double EndPct,
+    string Highlight);
 
 internal sealed record LiveWeatherModel(
     bool HasData,

@@ -152,7 +152,13 @@ public sealed class TrackMapStoreTests
             Assert.Equal(1, snapshot.UserMapCount);
             Assert.Equal(0, snapshot.BundledMapCount);
             Assert.Equal(1, snapshot.InvalidBundledMapCount);
-            Assert.Contains(snapshot.RecentMaps, item => item.Source == "user" && item.Key == identity.Key && item.IsCompleteForRuntime == true);
+            Assert.Contains(snapshot.RecentMaps, item =>
+                item.Source == "user"
+                && item.Key == identity.Key
+                && item.IsCompleteForRuntime == true
+                && item.SchemaVersion == TrackMapDocument.CurrentSchemaVersion
+                && item.GenerationVersion == TrackMapDocument.CurrentGenerationVersion
+                && item.SectorCount == 3);
             Assert.Contains(snapshot.RecentMaps, item => item.Source == "bundled" && item.Readable == false && !string.IsNullOrWhiteSpace(item.Error));
         }
         finally
@@ -202,7 +208,13 @@ public sealed class TrackMapStoreTests
                 PitLanePassCount: 0,
                 PitLaneRepeatabilityP95Meters: null,
                 Reasons: []),
-            Provenance: new TrackMapProvenance("unit-test", null, null, null, "capture-test"));
+            Provenance: new TrackMapProvenance("unit-test", null, null, null, "capture-test"),
+            Sectors:
+            [
+                new TrackMapSector(0, 0d, 0.5d),
+                new TrackMapSector(1, 0.5d, 0.75d),
+                new TrackMapSector(2, 0.75d, 1d)
+            ]);
     }
 
     private static HistoricalTrackIdentity TestTrack()

@@ -22,7 +22,8 @@ internal static class FlagsOverlayDefinition
         DefaultHeight: 1080,
         ShowSessionFilters: false,
         ShowScaleControl: false,
-        ShowOpacityControl: false);
+        ShowOpacityControl: false,
+        FadeWhenLiveTelemetryUnavailable: true);
 
     public static Size ResolveSize(OverlaySettings settings)
     {

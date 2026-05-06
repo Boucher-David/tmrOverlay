@@ -38,6 +38,11 @@ public sealed class AppPerformanceSnapshotRecorderTests
                 currentSequence: 12,
                 latestInputAtUtc: timestamp.AddMilliseconds(-125),
                 applied: true);
+            state.RecordOverlayLiveTelemetryState(
+                "fuel-calculator",
+                timestamp,
+                liveTelemetryAvailable: false,
+                fadeAlpha: 0.25d);
             var recorder = new AppPerformanceSnapshotRecorder(storage);
 
             recorder.Record(state.Snapshot());
@@ -52,6 +57,8 @@ public sealed class AppPerformanceSnapshotRecorderTests
             Assert.Contains("\"overlayUpdates\"", content);
             Assert.Contains("\"id\":\"overlay.fuel_calculator.update.input_changed\"", content);
             Assert.Contains("\"id\":\"overlay.fuel_calculator.update.applied\"", content);
+            Assert.Contains("\"id\":\"overlay.fuel_calculator.update.live_available\"", content);
+            Assert.Contains("\"id\":\"overlay.fuel_calculator.update.fade_alpha\"", content);
         }
         finally
         {

@@ -67,11 +67,11 @@ The app keeps source `.ibt` files external, extracts compact derived geometry, a
 %LOCALAPPDATA%\TmrOverlay\track-maps\user
 ```
 
-Generated maps are keyed by the normalized track identity from session info, including track id when available, track/config/layout names, track length, and track version. The reusable map document stores local meter coordinates plus `LapDistPct` samples, not raw latitude/longitude. It includes quality metrics for lap coverage, missing bins, closure, length delta, repeatability, pit-lane samples, and confidence. Overlays read maps through `TrackMapStore` rather than directly from capture folders or the iRacing telemetry directory.
+Generated maps are keyed by the normalized track identity from session info, including track id when available, track/config/layout names, track length, and track version. The reusable schema-v2 map document stores local meter coordinates plus `LapDistPct` samples, not raw latitude/longitude, and carries sector boundaries from `SplitTimeInfo.Sectors`. It includes quality metrics for lap coverage, missing bins, closure, length delta, repeatability, pit-lane samples, and confidence. Overlays read maps through `TrackMapStore` rather than directly from capture folders or the iRacing telemetry directory.
 
 Once a complete map exists for the current generation/schema version and track identity, later sessions skip generation. A complete runtime map requires at least `Medium` confidence and enough generated racing-line points for its bin count. Higher-confidence maps can replace weaker stored maps.
 
-For bundled assets, run `TmrOverlay.TrackMapGenerator` against the ignored `captures/IBT` corpus and output vetted derived JSON into `src/TmrOverlay.App/Assets/TrackMaps`. The generator strips absolute source paths down to source file names for bundled provenance. Raw `.ibt` files remain ignored and must not be committed.
+For bundled assets, run `TmrOverlay.TrackMapGenerator` against the ignored `captures/IBT` corpus and output vetted derived JSON into `src/TmrOverlay.App/Assets/TrackMaps`. The generator strips absolute source paths down to source file names for bundled provenance and writes schema-v2 sector metadata when session info contains split sectors. Raw `.ibt` files remain ignored and must not be committed.
 
 ### May 2026 Track-Map Probe
 

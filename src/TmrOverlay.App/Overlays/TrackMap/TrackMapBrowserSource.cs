@@ -10,6 +10,7 @@ internal static class TrackMapBrowserSource
         canonicalRoute: "/overlays/track-map",
         bodyClass: "track-map-page",
         renderWhenTelemetryUnavailable: true,
+        fadeWhenTelemetryUnavailable: TrackMapOverlayDefinition.Definition.FadeWhenLiveTelemetryUnavailable,
         refreshIntervalMilliseconds: 250,
         script: Script);
 
@@ -56,7 +57,8 @@ internal static class TrackMapBrowserSource
           ? race.lapDistPct
           : 0;
       const markers = trackMapMarkers(live, focusPct);
-      const svg = trackMapSvg(trackMap, markers, trackMapSettings);
+      const sectors = live?.models?.trackMap?.sectors || [];
+      const svg = trackMapSvg(trackMap, markers, sectors, trackMapSettings);
       contentEl.innerHTML = `
         <div class="track">
           ${svg}
@@ -64,7 +66,7 @@ internal static class TrackMapBrowserSource
       setStatus(live, spatial.hasData || race.hasData ? 'live | track map' : 'waiting for position');
     }
 
-    function trackMapSvg(trackMap, markers, settings) {
+    function trackMapSvg(trackMap, markers, sectors, settings) {
       const interior = trackMapInteriorFill(settings);
       const racingLine = trackMap?.racingLine;
       if (racingLine?.points?.length >= 3) {
@@ -77,24 +79,28 @@ internal static class TrackMapBrowserSource
           const pitPath = trackMap?.pitLane?.points?.length >= 2
             ? `<path d="${pathForGeometry(trackMap.pitLane, transform)}" fill="none" stroke="rgba(98,199,255,0.74)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path>`
             : '';
+          const sectorPaths = sectorHighlightPaths(sectors, racingLine, transform);
           const dots = markers.map((marker) => markerSvg(marker, pointOnGeometry(racingLine, transform, marker.lapDistPct))).join('');
           return `
             <svg viewBox="0 0 320 320" role="img" aria-label="Track map">
               ${interiorPath}
               <path d="${racingPath}" fill="none" stroke="rgba(255,255,255,0.32)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"></path>
               <path d="${racingPath}" fill="none" stroke="rgba(222,238,246,1)" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"></path>
+              ${sectorPaths}
               ${pitPath}
               ${dots}
             </svg>`;
         }
       }
 
+      const sectorPaths = circleSectorHighlightPaths(sectors);
       const dots = markers.map((marker) => markerSvg(marker, pointOnCircle(marker.lapDistPct))).join('');
       return `
         <svg viewBox="0 0 320 320" role="img" aria-label="Track map">
           <circle cx="160" cy="160" r="138" fill="${interior}" stroke="none"></circle>
           <circle cx="160" cy="160" r="138" fill="none" stroke="rgba(255,255,255,0.32)" stroke-width="11"></circle>
           <circle cx="160" cy="160" r="138" fill="none" stroke="rgba(222,238,246,1)" stroke-width="4.4"></circle>
+          ${sectorPaths}
           ${dots}
         </svg>`;
     }
@@ -140,6 +146,73 @@ internal static class TrackMapBrowserSource
       const mapped = points.map((point) => mapPoint(point, transform));
       const commands = mapped.map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(1)} ${point.y.toFixed(1)}`);
       return `${commands.join(' ')}${geometry.closed ? ' Z' : ''}`;
+    }
+
+    function sectorHighlightPaths(sectors, geometry, transform) {
+      return (sectors || [])
+        .filter(hasSectorHighlight)
+        .flatMap((sector) => segmentRanges(sector.startPct, sector.endPct).map((range) => {
+          const d = pathForGeometrySegment(geometry, transform, range.startPct, range.endPct);
+          if (!d) return '';
+          return `<path d="${d}" fill="none" stroke="${sectorHighlightColor(sector.highlight)}" stroke-width="5.6" stroke-linecap="round" stroke-linejoin="round"></path>`;
+        }))
+        .join('');
+    }
+
+    function pathForGeometrySegment(geometry, transform, startPct, endPct) {
+      const points = geometry?.points || [];
+      if (points.length < 2 || endPct <= startPct) return '';
+      const start = pointOnGeometry(geometry, transform, startPct);
+      const end = pointOnGeometry(geometry, transform, endPct);
+      if (!start || !end) return '';
+      const commands = [`M${start.x.toFixed(1)} ${start.y.toFixed(1)}`];
+      for (const point of points) {
+        if (point.lapDistPct > startPct && point.lapDistPct < endPct) {
+          const mapped = mapPoint(point, transform);
+          commands.push(`L${mapped.x.toFixed(1)} ${mapped.y.toFixed(1)}`);
+        }
+      }
+      commands.push(`L${end.x.toFixed(1)} ${end.y.toFixed(1)}`);
+      return commands.join(' ');
+    }
+
+    function circleSectorHighlightPaths(sectors) {
+      return (sectors || [])
+        .filter(hasSectorHighlight)
+        .flatMap((sector) => segmentRanges(sector.startPct, sector.endPct).map((range) => {
+          const d = arcForCircleSegment(range.startPct, range.endPct);
+          if (!d) return '';
+          return `<path d="${d}" fill="none" stroke="${sectorHighlightColor(sector.highlight)}" stroke-width="5.6" stroke-linecap="round"></path>`;
+        }))
+        .join('');
+    }
+
+    function arcForCircleSegment(startPct, endPct) {
+      if (endPct <= startPct) return '';
+      const start = pointOnCircle(startPct);
+      const end = pointOnCircle(endPct);
+      const largeArc = endPct - startPct > 0.5 ? 1 : 0;
+      return `M${start.x.toFixed(1)} ${start.y.toFixed(1)} A138 138 0 ${largeArc} 1 ${end.x.toFixed(1)} ${end.y.toFixed(1)}`;
+    }
+
+    function segmentRanges(startPct, endPct) {
+      const start = normalizeProgress(startPct);
+      const end = endPct >= 1 ? 1 : normalizeProgress(endPct);
+      if (end <= start && endPct < 1) {
+        return [
+          { startPct: start, endPct: 1 },
+          { startPct: 0, endPct: end }
+        ];
+      }
+      return [{ startPct: start, endPct: Math.max(0, Math.min(1, end)) }];
+    }
+
+    function hasSectorHighlight(sector) {
+      return sector?.highlight === 'personal-best' || sector?.highlight === 'best-lap';
+    }
+
+    function sectorHighlightColor(highlight) {
+      return highlight === 'best-lap' ? '#b65cff' : '#50d67c';
     }
 
     function pointOnGeometry(geometry, transform, progress) {

@@ -40,11 +40,11 @@ Goal: close the pulled-forward user-visible overlay branch before the next teamm
 Likely scope:
 
 - Ship first-pass production Standings backed by normalized timing rows.
-- Ship a map-only Track Map overlay with bundled-map lookup, optional user IBT-derived map generation, circle fallback, and live car dots.
+- Ship a map-only Track Map overlay with bundled-map lookup, optional user IBT-derived map generation, circle fallback, live car dots, and model-v2 sector highlights.
 - Add disabled-by-default `LocalhostOverlays` browser-source routes for OBS/local capture tools, separate from the future teammate-to-teammate Overlay Bridge.
 - Add Stream Chat as a normal read-only overlay for saved public Twitch channel chat plus a browser-source route for one selected saved source: Streamlabs Chat Box widget URL or public Twitch channel chat.
 - Keep settings as a flat-tab app control surface with selectable/copyable localhost URLs where routes exist.
-- Harden existing live overlays from tester feedback: Relative/Fuel repaint churn, Relative display-time fallback, smaller Inputs layout, and clearer local Radar side warnings.
+- Harden existing live overlays from tester feedback: Relative/Fuel repaint churn, Relative display-time fallback, smaller Inputs layout, clearer local Radar side warnings, and stale race-data overlay fade behavior.
 - Keep Windows build/test/publish and Windows-rendered screenshot validation CI-owned when local macOS validation cannot run `dotnet`.
 
 ### v0.12.0 - Teammate Beta Hardening
@@ -153,7 +153,7 @@ Goal: improve the v0.11 Track Map implementation with better assets, status repo
 
 Likely scope:
 
-- Run the batch track-map generator on vetted `.ibt` sources and commit only reviewed bundled map JSON.
+- Continue bundled-map QA as more `.ibt` sources are vetted; the current committed asset set is schema v2 and sector-capable.
 - Expand settings/support status around current map source, quality, last generation result, and manual rebuild/replace actions.
 - Add deterministic screenshot states for placeholder, preview/low confidence, high confidence, stale markers, and pit-lane marker placement.
 - Improve pit-lane-aware marker placement when live telemetry exposes a reliable pit-lane progress signal.
@@ -292,7 +292,7 @@ The first implementation keeps source `.ibt` files external and persists only co
 
 Keep future work behind `IbtTrackMapBuilder` and `TrackMapStore` instead of extending overlays to read IBT files directly. The builder should continue selecting clean complete laps, filtering pit/outlap/noisy samples where possible, converting `Lat`/`Lon` to a local tangent-plane coordinate system, smoothing/resampling/simplifying the line, scoring coverage and closure quality, and merging only when a new source improves an existing map for the same track identity.
 
-The remaining roadmap is hardening and asset QA: richer current-map status, manual rebuild/replace UX, bundled map generation from vetted sources, deterministic screenshot states for confidence/stale/pit-lane cases, and pit-lane-aware live marker placement when reliable live progress is available. The overlay should keep treating an IBT-derived map as the learned driven line for that track/config, not as official track boundaries.
+The remaining roadmap is hardening and asset QA: richer current-map status, manual rebuild/replace UX, continued bundled-map review from vetted sources, deterministic screenshot states for confidence/stale/pit-lane cases, and pit-lane-aware live marker placement when reliable live progress is available. The overlay should keep treating an IBT-derived map as the learned driven line for that track/config, not as official track boundaries.
 
 ### Uniform Model V2 Migration
 

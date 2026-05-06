@@ -86,6 +86,7 @@ public sealed class LiveOverlayDiagnosticsRecorderTests
             Assert.Equal(2, rootElement.GetProperty("lapDelta").GetProperty("valueFrameCounts").GetProperty("toBestLap").GetInt32());
             Assert.Equal(2, rootElement.GetProperty("lapDelta").GetProperty("usableFrameCounts").GetProperty("toBestLap").GetInt32());
             Assert.Equal(2, rootElement.GetProperty("sectorTiming").GetProperty("metadataFrames").GetInt32());
+            Assert.Equal(2, rootElement.GetProperty("trackMap").GetProperty("framesWithSectors").GetInt32());
 
             var eventKinds = rootElement
                 .GetProperty("eventSamples")
@@ -98,6 +99,73 @@ public sealed class LiveOverlayDiagnosticsRecorderTests
             Assert.Contains("radar.side-suppressed-focus", eventKinds);
             Assert.Contains("fuel.instantaneous-without-level", eventKinds);
             Assert.Contains("position.overall-intra-lap", eventKinds);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void CompleteCollection_SummarizesTrackMapSectorHighlights()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "tmr-overlay-live-overlay-diagnostics-test", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var storage = CreateStorage(root);
+            var captureDirectory = Path.Combine(storage.CaptureRoot, "capture-diagnostics");
+            Directory.CreateDirectory(captureDirectory);
+            var recorder = new LiveOverlayDiagnosticsRecorder(
+                new LiveOverlayDiagnosticsOptions
+                {
+                    Enabled = true,
+                    MinimumFrameSpacingSeconds = 0.1d,
+                    MaxSampleFramesPerSession = 10,
+                    MaxEventExamplesPerSession = 20
+                },
+                storage,
+                new AppEventRecorder(storage),
+                NullLogger<LiveOverlayDiagnosticsRecorder>.Instance);
+            var context = CreateContext();
+            var startedAtUtc = DateTimeOffset.Parse("2026-05-02T12:00:00Z");
+            recorder.StartCollection("capture-diagnostics", startedAtUtc);
+
+            var trackMap = new LiveTrackMapModel(
+                HasSectors: true,
+                HasLiveTiming: true,
+                Quality: LiveModelQuality.Reliable,
+                Sectors:
+                [
+                    new LiveTrackSectorSegment(0, 0d, 0.5d, LiveTrackSectorHighlights.BestLap),
+                    new LiveTrackSectorSegment(1, 0.5d, 0.75d, LiveTrackSectorHighlights.BestLap),
+                    new LiveTrackSectorSegment(2, 0.75d, 1d, LiveTrackSectorHighlights.BestLap)
+                ]);
+            recorder.RecordFrame(CreateSnapshot(
+                context,
+                CreateSample(
+                    startedAtUtc,
+                    sessionTime: 0d,
+                    focusCarIdx: 10,
+                    carLeftRight: 1,
+                    focusF2TimeSeconds: 700d,
+                    classPosition: 2,
+                    observedPosition: 25,
+                    observedClassPosition: 10,
+                    observedLapDistPct: 0.1d),
+                sequence: 1,
+                trackMap: trackMap));
+
+            var path = recorder.CompleteCollection(startedAtUtc.AddSeconds(1), captureDirectory);
+
+            using var document = JsonDocument.Parse(File.ReadAllText(path!));
+            var trackMapElement = document.RootElement.GetProperty("trackMap");
+            Assert.Equal(1, trackMapElement.GetProperty("framesWithLiveTiming").GetInt32());
+            Assert.Equal(1, trackMapElement.GetProperty("bestLapSectorFrames").GetInt32());
+            Assert.Equal(1, trackMapElement.GetProperty("fullLapHighlightFrames").GetInt32());
+            Assert.Equal(3, trackMapElement.GetProperty("sectorHighlightCounts").GetProperty("best-lap").GetInt32());
         }
         finally
         {
@@ -274,7 +342,8 @@ public sealed class LiveOverlayDiagnosticsRecorderTests
     private static LiveTelemetrySnapshot CreateSnapshot(
         HistoricalSessionContext context,
         HistoricalTelemetrySample sample,
-        long sequence)
+        long sequence,
+        LiveTrackMapModel? trackMap = null)
     {
         var fuel = LiveFuelSnapshot.From(context, sample);
         var proximity = LiveProximitySnapshot.From(context, sample);
@@ -293,7 +362,7 @@ public sealed class LiveOverlayDiagnosticsRecorderTests
             Proximity: proximity,
             LeaderGap: leaderGap)
         {
-            Models = LiveRaceModelBuilder.From(context, sample, fuel, proximity, leaderGap)
+            Models = LiveRaceModelBuilder.From(context, sample, fuel, proximity, leaderGap, trackMap)
         };
     }
 

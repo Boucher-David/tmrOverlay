@@ -23,5 +23,6 @@ internal static class RelativeOverlayDefinition
                 0,
                 8,
                 defaultValue: 5)
-        ]);
+        ],
+        FadeWhenLiveTelemetryUnavailable: true);
 }

@@ -45,6 +45,7 @@ internal static class BrowserOverlayPageRenderer
             page.Title,
             page.RequiresTelemetry,
             page.RenderWhenTelemetryUnavailable,
+            page.FadeWhenTelemetryUnavailable,
             page.RefreshIntervalMilliseconds), JsonOptions);
         return OverlayTemplate
             .Replace("{{TITLE}}", page.Title, StringComparison.Ordinal)
@@ -63,6 +64,7 @@ internal static class BrowserOverlayPageRenderer
         string Title,
         bool RequiresTelemetry,
         bool RenderWhenTelemetryUnavailable,
+        bool FadeWhenTelemetryUnavailable,
         int RefreshIntervalMilliseconds);
 
     private const string IndexTemplate = """
@@ -189,6 +191,8 @@ internal static class BrowserOverlayPageRenderer
       background: rgba(10, 14, 17, 0.84);
       box-shadow: 0 10px 36px rgba(0, 0, 0, 0.34);
       overflow: hidden;
+      opacity: 1;
+      transition: opacity 220ms ease;
     }
 
     body.track-map-page .overlay {
@@ -435,6 +439,7 @@ internal static class BrowserOverlayPageRenderer
 
   <script>
     const page = {{PAGE_JSON}};
+    const overlayEl = document.querySelector('.overlay');
     const statusEl = document.getElementById('status');
     const contentEl = document.getElementById('content');
     let lastSequence = null;
@@ -473,7 +478,17 @@ internal static class BrowserOverlayPageRenderer
     const driverName = (row) => row?.driverName || row?.teamName || `Car ${row?.carIdx ?? '--'}`;
     const carNumber = (row) => row?.carNumber ? `#${row.carNumber}` : `#${row?.carIdx ?? '--'}`;
     const isWaiting = (live) => !live?.isConnected || !live?.isCollecting;
+    const isLiveTelemetryAvailable = (live) => {
+      if (!live?.isConnected || !live?.isCollecting || !live?.lastUpdatedAtUtc) return false;
+      const lastUpdated = Date.parse(live.lastUpdatedAtUtc);
+      return Number.isFinite(lastUpdated) && Date.now() - lastUpdated <= 1500;
+    };
     const quality = (model) => model?.quality ?? 'unavailable';
+
+    function updateTelemetryFade(live) {
+      if (!page.fadeWhenTelemetryUnavailable || !overlayEl) return;
+      overlayEl.style.opacity = isLiveTelemetryAvailable(live) ? '1' : '0';
+    }
 
     function setStatus(live, detail) {
       if (!live?.isConnected) {
@@ -520,6 +535,7 @@ internal static class BrowserOverlayPageRenderer
 
     function render(live) {
       const module = browserOverlay.module;
+      updateTelemetryFade(live);
       if (!module?.render) {
         contentEl.innerHTML = '<div class="empty">Unknown overlay route.</div>';
         statusEl.textContent = 'not configured';
@@ -552,6 +568,7 @@ internal static class BrowserOverlayPageRenderer
         const payload = await response.json();
         render(payload.live);
       } catch (error) {
+        updateTelemetryFade(null);
         if (module?.renderOffline) {
           module.renderOffline(error);
           return;

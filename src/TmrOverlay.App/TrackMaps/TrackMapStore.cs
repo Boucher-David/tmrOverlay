@@ -125,7 +125,7 @@ internal sealed class TrackMapStore
             try
             {
                 document = JsonSerializer.Deserialize<TrackMapDocument>(File.ReadAllText(path), JsonOptions);
-                if (document?.SchemaVersion != TrackMapDocument.CurrentSchemaVersion)
+                if (document?.IsSupportedRuntimeSchema != true)
                 {
                     error = document is null ? "empty_or_unreadable_document" : "unsupported_schema_version";
                     document = null;
@@ -152,9 +152,12 @@ internal sealed class TrackMapStore
                 GeneratedAtUtc: document?.GeneratedAtUtc,
                 Confidence: document?.Quality.Confidence.ToString(),
                 IsCompleteForRuntime: document?.IsCompleteForRuntime,
+                SchemaVersion: document?.SchemaVersion,
+                GenerationVersion: document?.GenerationVersion,
                 BinCount: document?.Quality.BinCount,
                 MissingBinCount: document?.Quality.MissingBinCount,
                 RacingLinePointCount: document?.RacingLine.Points.Count,
+                SectorCount: document?.Sectors?.Count ?? 0,
                 HasPitLane: document?.PitLane is not null);
         }
     }
@@ -169,7 +172,7 @@ internal sealed class TrackMapStore
         try
         {
             var document = JsonSerializer.Deserialize<TrackMapDocument>(File.ReadAllText(path), JsonOptions);
-            return document?.SchemaVersion == TrackMapDocument.CurrentSchemaVersion
+            return document?.IsSupportedRuntimeSchema == true
                 ? document
                 : null;
         }
@@ -211,7 +214,10 @@ internal sealed record TrackMapDiagnosticsItem(
     DateTimeOffset? GeneratedAtUtc,
     string? Confidence,
     bool? IsCompleteForRuntime,
+    int? SchemaVersion,
+    int? GenerationVersion,
     int? BinCount,
     int? MissingBinCount,
     int? RacingLinePointCount,
+    int SectorCount,
     bool? HasPitLane);

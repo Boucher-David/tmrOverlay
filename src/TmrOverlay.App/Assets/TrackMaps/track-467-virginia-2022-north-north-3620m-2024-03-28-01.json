@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "generationVersion": 1,
   "generatedAtUtc": "2026-05-04T20:53:47.6758693+00:00",
   "identity": {
@@ -8381,5 +8381,27 @@
     "sourceBytes": 47191122,
     "sourceRecordCount": 44579
   },
-  "isCompleteForRuntime": true
+  "isCompleteForRuntime": true,
+  "sectors": [
+    {
+      "sectorNum": 0,
+      "startPct": 0,
+      "endPct": 0.265666
+    },
+    {
+      "sectorNum": 1,
+      "startPct": 0.265666,
+      "endPct": 0.47339
+    },
+    {
+      "sectorNum": 2,
+      "startPct": 0.47339,
+      "endPct": 0.754181
+    },
+    {
+      "sectorNum": 3,
+      "startPct": 0.754181,
+      "endPct": 1
+    }
+  ]
 }

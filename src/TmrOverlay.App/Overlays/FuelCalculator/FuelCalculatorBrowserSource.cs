@@ -9,6 +9,7 @@ internal static class FuelCalculatorBrowserSource
         title: FuelCalculatorOverlayDefinition.Definition.DisplayName,
         canonicalRoute: "/overlays/fuel-calculator",
         aliases: ["/overlays/calculator"],
+        fadeWhenTelemetryUnavailable: FuelCalculatorOverlayDefinition.Definition.FadeWhenLiveTelemetryUnavailable,
         script: Script);
 
     private const string Script = """

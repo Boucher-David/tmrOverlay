@@ -8,7 +8,8 @@ internal sealed record OverlayDefinition(
     IReadOnlyList<OverlaySettingsOptionDescriptor>? Options = null,
     bool ShowSessionFilters = true,
     bool ShowScaleControl = true,
-    bool ShowOpacityControl = true)
+    bool ShowOpacityControl = true,
+    bool FadeWhenLiveTelemetryUnavailable = false)
 {
     public IReadOnlyList<OverlaySettingsOptionDescriptor> SettingsOptions { get; } = Options ?? [];
 }

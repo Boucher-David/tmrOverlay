@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using TmrOverlay.Core.History;
 
 namespace TmrOverlay.Core.TrackMaps;
@@ -66,13 +67,17 @@ internal sealed record TrackMapDocument(
     TrackMapGeometry RacingLine,
     TrackMapGeometry? PitLane,
     TrackMapQuality Quality,
-    TrackMapProvenance Provenance)
+    TrackMapProvenance Provenance,
+    IReadOnlyList<TrackMapSector>? Sectors = null)
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
     public const int CurrentGenerationVersion = 1;
 
+    [JsonIgnore]
+    public bool IsSupportedRuntimeSchema => SchemaVersion is 1 or CurrentSchemaVersion;
+
     public bool IsCompleteForRuntime =>
-        SchemaVersion == CurrentSchemaVersion
+        IsSupportedRuntimeSchema
         && GenerationVersion == CurrentGenerationVersion
         && Quality.Confidence >= TrackMapConfidence.Medium
         && RacingLine.Points.Count >= Math.Max(1, Quality.BinCount);
@@ -87,6 +92,45 @@ internal sealed record TrackMapPoint(
     double X,
     double Y,
     double? DistanceMeters = null);
+
+internal sealed record TrackMapSector(
+    int SectorNum,
+    double StartPct,
+    double EndPct)
+{
+    public static IReadOnlyList<TrackMapSector> FromHistorical(IReadOnlyList<HistoricalTrackSector> sectors)
+    {
+        var ordered = sectors
+            .Where(sector => IsFinite(sector.SectorStartPct) && sector.SectorStartPct >= 0d && sector.SectorStartPct < 1d)
+            .GroupBy(sector => sector.SectorNum)
+            .Select(group => group.OrderBy(sector => sector.SectorStartPct).First())
+            .OrderBy(sector => sector.SectorStartPct)
+            .ThenBy(sector => sector.SectorNum)
+            .ToArray();
+        if (ordered.Length < 2)
+        {
+            return [];
+        }
+
+        return ordered
+            .Select((sector, index) =>
+            {
+                var endPct = index + 1 < ordered.Length
+                    ? ordered[index + 1].SectorStartPct
+                    : 1d;
+                return new TrackMapSector(
+                    SectorNum: sector.SectorNum,
+                    StartPct: Math.Round(sector.SectorStartPct, 6),
+                    EndPct: Math.Round(Math.Clamp(endPct, sector.SectorStartPct, 1d), 6));
+            })
+            .ToArray();
+    }
+
+    private static bool IsFinite(double value)
+    {
+        return !double.IsNaN(value) && !double.IsInfinity(value);
+    }
+}
 
 internal sealed record TrackMapQuality(
     TrackMapConfidence Confidence,

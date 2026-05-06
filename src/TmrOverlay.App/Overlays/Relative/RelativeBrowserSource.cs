@@ -8,6 +8,7 @@ internal static class RelativeBrowserSource
         id: RelativeOverlayDefinition.Definition.Id,
         title: RelativeOverlayDefinition.Definition.DisplayName,
         canonicalRoute: "/overlays/relative",
+        fadeWhenTelemetryUnavailable: RelativeOverlayDefinition.Definition.FadeWhenLiveTelemetryUnavailable,
         script: Script);
 
     private const string Script = """

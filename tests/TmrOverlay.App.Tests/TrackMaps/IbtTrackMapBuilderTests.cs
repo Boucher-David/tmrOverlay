@@ -18,7 +18,8 @@ public sealed class IbtTrackMapBuilderTests
         var result = builder.BuildFromSamples(
             samples,
             TestTrack(),
-            new TrackMapProvenance("unit-test", null, null, samples.Count, "capture-test"));
+            new TrackMapProvenance("unit-test", null, null, samples.Count, "capture-test"),
+            TestSectors());
 
         Assert.NotNull(result.Document);
         var document = result.Document!;
@@ -27,6 +28,26 @@ public sealed class IbtTrackMapBuilderTests
         Assert.Equal(5, document.Quality.CompleteLapCount);
         Assert.Equal(0, document.Quality.MissingBinCount);
         Assert.True(document.RacingLine.Points.Count >= 400);
+        Assert.Collection(
+            document.Sectors!,
+            sector =>
+            {
+                Assert.Equal(0, sector.SectorNum);
+                Assert.Equal(0d, sector.StartPct);
+                Assert.Equal(0.5d, sector.EndPct);
+            },
+            sector =>
+            {
+                Assert.Equal(1, sector.SectorNum);
+                Assert.Equal(0.5d, sector.StartPct);
+                Assert.Equal(0.75d, sector.EndPct);
+            },
+            sector =>
+            {
+                Assert.Equal(2, sector.SectorNum);
+                Assert.Equal(0.75d, sector.StartPct);
+                Assert.Equal(1d, sector.EndPct);
+            });
         Assert.Empty(result.RejectionReasons);
     }
 
@@ -91,6 +112,16 @@ public sealed class IbtTrackMapBuilderTests
             TrackLengthKm = 2d * Math.PI * 240d / 1000d,
             TrackVersion = "2026.05"
         };
+    }
+
+    private static IReadOnlyList<HistoricalTrackSector> TestSectors()
+    {
+        return
+        [
+            new HistoricalTrackSector { SectorNum = 0, SectorStartPct = 0d },
+            new HistoricalTrackSector { SectorNum = 1, SectorStartPct = 0.5d },
+            new HistoricalTrackSector { SectorNum = 2, SectorStartPct = 0.75d }
+        ];
     }
 
     private static double DegreesToRadians(double degrees)
