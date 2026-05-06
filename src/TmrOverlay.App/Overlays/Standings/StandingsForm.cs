@@ -334,6 +334,21 @@ internal sealed class StandingsForm : PersistentOverlayForm
         return changed;
     }
 
+    private Label[] RowLabels()
+    {
+        var labels = new Label[MaximumRows * Columns.Length];
+        var labelIndex = 0;
+        for (var row = 0; row < MaximumRows; row++)
+        {
+            for (var column = 0; column < Columns.Length; column++)
+            {
+                labels[labelIndex++] = _rowLabels[row, column];
+            }
+        }
+
+        return labels;
+    }
+
     private bool ApplyRow(int index, StandingsOverlayRowViewModel row)
     {
         var changed = false;
