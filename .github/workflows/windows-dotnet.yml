@@ -46,6 +46,9 @@ jobs:
       - name: Validate release tutorial image
         run: python tools/validate_overlay_screenshots.py --profile release-tutorial --root docs/assets
 
+      - name: Check Windows screenshot expectations
+        run: python tools/validate_overlay_screenshots.py --profile windows-expectations
+
       - name: Generate Windows overlay screenshots
         shell: pwsh
         run: |

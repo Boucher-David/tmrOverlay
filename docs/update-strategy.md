@@ -4,7 +4,7 @@ Last updated: 2026-05-06
 
 ## Current State
 
-The v0.9 publishing branch defines a tag-driven portable Windows release path. The PR/main workflow restores, builds, tests, validates tracked screenshots, and runs a publish dry run with package audit. A `vMAJOR.MINOR.PATCH` tag publishes the app as a self-contained `win-x64` package, audits the publish folder, zips it, writes a package manifest and SHA-256 checksum, uploads workflow artifacts, and attaches the zip/manifest/checksum to a GitHub Release.
+The v0.9 publishing branch defines a tag-driven portable Windows release path. The PR/main workflow restores, builds, tests, validates tracked screenshots, checks Windows screenshot expectations, and runs a publish dry run with package audit. A `vMAJOR.MINOR.PATCH` tag publishes the app as a self-contained `win-x64` package, audits the publish folder, zips it, writes a package manifest and SHA-256 checksum, uploads workflow artifacts, and attaches the zip/manifest/checksum to a GitHub Release.
 
 That is enough for teammate tester downloads, but it is not a full updater surface:
 
@@ -21,7 +21,7 @@ Use two phases.
 
 The v0.9 branch should make the app publishable for teammates even before automatic install/update is solved:
 
-1. Keep the PR/main Windows validation workflow as the merge gate, including restore/build/test, tracked screenshot validation, and a self-contained publish dry run with package audit. Implemented in `.github/workflows/windows-dotnet.yml`.
+1. Keep the PR/main Windows validation workflow as the merge gate, including restore/build/test, tracked screenshot validation, Windows screenshot expectation checks, and a self-contained publish dry run with package audit. Implemented in `.github/workflows/windows-dotnet.yml`.
 2. On `v*.*.*` tags or manual release dispatch, run Release restore/build/test, then publish `src/TmrOverlay.App` for `win-x64` as a self-contained single-file output. Implemented for tags and manual package artifacts.
 3. Audit the publish folder, zip it, generate a package manifest and SHA-256 checksum file, and upload the release artifacts. Implemented.
 4. Promote the zip/manifest/checksum into a GitHub Release with versioned release notes, rather than requiring teammates to download from a workflow run. Implemented for `vMAJOR.MINOR.PATCH` tags.
