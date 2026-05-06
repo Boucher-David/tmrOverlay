@@ -141,6 +141,63 @@ public sealed class LiveTelemetryStoreTests
     }
 
     [Fact]
+    public void RecordFrame_UsesLapDistanceForTrackMapSectorsWhenLapCountersAreInvalid()
+    {
+        var store = new LiveTelemetryStore();
+        ApplyThreeSectorSession(store);
+        var startedAtUtc = DateTimeOffset.Parse("2026-05-05T12:00:00Z");
+
+        var progress = new[] { 0.99d, 0.01d, 0.10d, 0.20d, 0.30d, 0.40d, 0.51d };
+        for (var index = 0; index < progress.Length; index++)
+        {
+            store.RecordFrame(CreateSample(
+                capturedAtUtc: startedAtUtc.AddSeconds(index),
+                sessionTime: index,
+                lapCompleted: -1,
+                playerCarIdx: 10,
+                teamLapCompleted: -1,
+                teamLapDistPct: progress[index]));
+        }
+
+        var trackMap = store.Snapshot().Models.TrackMap;
+
+        Assert.True(trackMap.HasSectors);
+        Assert.True(trackMap.HasLiveTiming);
+        Assert.Contains(trackMap.Sectors, sector =>
+            sector.SectorNum == 0
+            && sector.Highlight == LiveTrackSectorHighlights.PersonalBest);
+    }
+
+    [Fact]
+    public void RecordFrame_SeedsSectorTimingAfterActiveResetStyleProgressJump()
+    {
+        var store = new LiveTelemetryStore();
+        ApplyThreeSectorSession(store);
+        var startedAtUtc = DateTimeOffset.Parse("2026-05-05T12:00:00Z");
+        var progress = new[] { 0.10d, 0.50d, 0.56d, 0.62d, 0.68d, 0.74d, 0.76d };
+
+        for (var index = 0; index < progress.Length; index++)
+        {
+            store.RecordFrame(CreateSample(
+                capturedAtUtc: startedAtUtc.AddSeconds(index),
+                sessionTime: index,
+                lapCompleted: -1,
+                playerCarIdx: 10,
+                teamLapCompleted: -1,
+                teamLapDistPct: progress[index]));
+        }
+
+        var sectors = store.Snapshot().Models.TrackMap.Sectors;
+
+        Assert.Contains(sectors, sector =>
+            sector.SectorNum == 1
+            && sector.Highlight == LiveTrackSectorHighlights.PersonalBest);
+        Assert.Contains(sectors, sector =>
+            sector.SectorNum == 0
+            && sector.Highlight == LiveTrackSectorHighlights.None);
+    }
+
+    [Fact]
     public void RecordFrame_CarriesSessionInfoClassColorToProximityCars()
     {
         var store = new LiveTelemetryStore();
@@ -779,6 +836,7 @@ DriverInfo:
     private static HistoricalTelemetrySample CreateSample(
         DateTimeOffset? capturedAtUtc = null,
         double sessionTime = 123d,
+        int lapCompleted = 2,
         double fuelLevelLiters = 42d,
         double fuelLevelPercent = 0.4d,
         double fuelUsePerHourKg = 60d,
@@ -818,7 +876,7 @@ DriverInfo:
             FuelUsePerHourKg: fuelUsePerHourKg,
             SpeedMetersPerSecond: 50d,
             Lap: 3,
-            LapCompleted: 2,
+            LapCompleted: lapCompleted,
             LapDistPct: 0.5d,
             LapLastLapTimeSeconds: 90d,
             LapBestLapTimeSeconds: 89d,

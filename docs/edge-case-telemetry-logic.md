@@ -23,6 +23,8 @@ The detector treats these as context, not faults:
 - duplicate `SessionTime` during startup/grid/tow/replay context is info.
 - tire-set and fast-repair counters initializing from zero during startup/grid/tow context are info.
 - replay playback near collection start is info.
+- `EnterExitReset` and `PlayerCarTowTime` are watched as reset/tow context signals when they exist in the SDK schema.
+- lap-distance discontinuities are recorded as active-reset/tow/pit/garage/replay context when supporting signals are present, and as warnings only when the jump has no known context.
 - engine warnings while the engine appears off or unpressurized are info.
 
 ## Grid Timing Rows

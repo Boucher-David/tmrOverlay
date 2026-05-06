@@ -187,7 +187,7 @@ internal sealed class IbtTrackMapBuilder
                 continue;
             }
 
-            var lapNumber = ReadInt(payload, fields.LapCompleted) ?? ReadInt(payload, fields.Lap) ?? -1;
+            var lapNumber = ChooseLapNumber(ReadInt(payload, fields.LapCompleted), ReadInt(payload, fields.Lap));
             samples.Add(new IbtTrackMapSample(
                 Sequence: recordIndex,
                 LapNumber: lapNumber,
@@ -200,6 +200,15 @@ internal sealed class IbtTrackMapBuilder
         }
 
         return samples;
+    }
+
+    internal static int ChooseLapNumber(int? lapCompleted, int? lapStarted)
+    {
+        return lapCompleted is >= 0
+            ? lapCompleted.Value
+            : lapStarted is >= 0
+                ? lapStarted.Value
+                : -1;
     }
 
     private static int BinCount(HistoricalTrackIdentity track, IReadOnlyList<CompleteLapCandidate> laps)

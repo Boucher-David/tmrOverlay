@@ -21,7 +21,7 @@ Planned scope:
 
 - Add production Windows standings visibility backed by normalized timing rows.
 - Add a map-only Track Map overlay with bundled-map support, default-on IBT-derived local map generation with explicit opt-out, circle fallback, live car dots, and model-v2 sector highlights.
-- Add disabled-by-default localhost browser-source routes for OBS overlays, with selectable/copyable per-overlay settings URLs, separate from the future teammate-to-teammate Overlay Bridge.
+- Add default-on localhost browser-source routes for OBS overlays, with selectable/copyable per-overlay settings URLs and request diagnostics, separate from the future teammate-to-teammate Overlay Bridge.
 - Keep settings as a flat-tab app control surface and make the fixed settings window tall/wide enough for current overlay and Support content.
 - Harden the current live overlays from tester feedback: stable Relative/Fuel number refreshes, iRacing-style relative display-time gaps where available or inferable, a smaller usable Inputs overlay, less confusing side-warning Radar behavior, and fade-out behavior for stale race-data overlays.
 - Carry the v0.9 zip/publish release path forward with shared version metadata aligned to `0.11.0`.
@@ -48,9 +48,11 @@ Implemented baseline in this branch:
 - Added a Standings view model that renders compact same-class timing rows from `LiveTelemetrySnapshot.Models.Timing`.
 - Added a transparent map-only Track Map overlay with generated map/circle fallback rendering and live car dots.
 - Added model-v2 track-map sector highlights: personal-best sectors render green, session-best lap sectors render purple, and full-lap highlights clear after sector 1 of the following lap.
+- Hardened track-map sector timing for valid `LapDistPct` with unavailable lap counters, synthetic start/finish wraps, and active-reset-style boundary seeding without scoring skipped track distance.
 - Added local IBT-derived map generation, confidence metrics, layout-aware map identity, complete-map skip rules, default-on generation with user opt-out, single-file/folder manual IBT conversion diagnostics, and a batch generator for bundled track-map JSON assets.
 - Upgraded bundled track-map assets to schema v2 sector metadata and expanded track-map diagnostics for schema/generation/sector/highlight coverage.
-- Added `LocalhostOverlays` options and a disabled-by-default localhost server with OBS-ready HTML routes and selectable/copyable settings-tab URLs for supported overlays, plus a Stream Chat route that can consume one selected source: Streamlabs Chat Box widget URL or public Twitch channel chat.
+- Added reset/tow context to edge-case diagnostics through watched `EnterExitReset` and `PlayerCarTowTime` SDK channels when available.
+- Added `LocalhostOverlays` options and a default-on localhost server with OBS-ready HTML routes, request diagnostics, and selectable/copyable settings-tab URLs for supported overlays, plus a Stream Chat route that can consume one selected source: Streamlabs Chat Box widget URL or public Twitch channel chat.
 - Separated localhost browser-source overlays from the future Overlay Bridge concept, which remains scoped to trusted teammate-to-teammate data sharing.
 - Restored flat settings tabs and kept the fixed settings window at 1240x680 so the expanded tab list and Support content fit.
 - Added live-telemetry availability fade behavior for race-data overlays while keeping non-race support/status/privacy overlays persistent.
@@ -72,8 +74,9 @@ Likely squash body:
 - Added production Standings and Track Map overlay registrations, settings tabs, Windows screenshot fixtures, and mac harness review surfaces.
 - Added compact Standings rendering from normalized model-v2 timing rows, including leader gap, focus interval, and pit-road status.
 - Added a transparent map-only Track Map surface with bundled-map support, circle fallback, live car dots, model-v2 sector highlights, default-on IBT-derived map generation with explicit opt-out, confidence/schema/sector diagnostics, single-file/folder manual conversion diagnostics, and complete-map skip behavior.
+- Hardened track-map sector timing for unavailable lap counters and active-reset-style progress jumps, and added diagnostics for missing lap counters, synthetic wraps, and discontinuities.
 - Upgraded bundled track-map assets to schema v2 with sector metadata and added deterministic screenshot states for normal, green personal-best sector, purple session-best lap, following-sector reset, and mixed live-sector states.
-- Added disabled-by-default `LocalhostOverlays` support with selectable/copyable per-overlay OBS/browser-source HTML routes and settings-tab URLs for standings, relative, fuel calculator, session/weather, pit service, input state, car radar, gap to leader, track map, and stream chat, while leaving Flags native-only for now.
+- Added default-on `LocalhostOverlays` support with request diagnostics and selectable/copyable per-overlay OBS/browser-source HTML routes and settings-tab URLs for standings, relative, fuel calculator, session/weather, pit service, input state, car radar, gap to leader, track map, and stream chat, while leaving Flags native-only for now.
 - Added Stream Chat source selection for Streamlabs Chat Box widget URLs or public Twitch channel chat, with connected status/messaging in the browser-source overlay and Streamlabs URL redaction in diagnostics bundles.
 - Kept Overlay Bridge conceptually separate as a future trusted teammate-to-teammate sharing boundary.
 - Restored flat settings tabs while keeping the larger 1240x680 settings window so current tabs and Support content fit.
@@ -82,8 +85,8 @@ Likely squash body:
 - Added Relative display-time gap fallback from lap-distance deltas and local/focus lap-time context while leaving Radar placement on stricter spatial timing/distance evidence.
 - Reduced the default Inputs overlay size and added compact pedal/readout rendering so small layouts keep speed, gear, RPM, steering, water, and oil visible.
 - Updated local Radar side-warning rendering to attach likely decoded cars to left/right warnings, suppress duplicate center-lane cars, and bias the side marker forward/back by longitudinal gap.
-- Regenerated tracked settings/overlay screenshots and updated docs/context for the v0.11 product shape, live-overlay fade behavior, and track-map sector lifecycle.
-- Validation: git diff --check, conflict-marker sweep, tracked screenshot validation, track-map asset schema-v2 validation, Python screenshot-validator compile, mac `swift build`, localhost overlay JS parse smoke, and C# compile-shape scanner. Windows restore/build/test/screenshot/publish validation remains CI-owned from this Mac because `dotnet` is not installed locally.
+- Regenerated tracked settings/overlay screenshots and updated docs/context for the v0.11 product shape, live-overlay fade behavior, track-map sector lifecycle, reset-context diagnostics, and default-on localhost diagnostics.
+- Validation: git diff --check, conflict-marker sweep, tracked screenshot validation, track-map asset schema-v2 validation, Python screenshot-validator compile, mac `swift build`, full-Xcode `swift test`, isolated mac harness smoke, localhost overlay JS parse smoke, and C# compile-shape scanner. Windows restore/build/test/screenshot/publish validation remains CI-owned from this Mac because `dotnet` is not installed locally.
 ```
 
 ## Merged Mainline Milestones

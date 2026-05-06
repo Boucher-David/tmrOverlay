@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-05-05
+Last updated: 2026-05-06
 
 ## Project Goal
 
@@ -48,7 +48,7 @@ Last updated: 2026-05-05
   - `FuelCalculator/` contains the first strategy overlay, backed by live telemetry plus exact car/track/session history
   - `Standings/` contains a compact same-class timing table backed by `LiveTelemetrySnapshot.Models.Timing`
   - `Relative/` contains the first production model-v2 overlay, a telemetry-first relative table backed by `LiveTelemetrySnapshot.Models.Relative`
-  - `TrackMap/` contains the transparent map-only track-map overlay: generated local map geometry when available, circle fallback otherwise, live car dots placed by lap-distance progress, focused/player `P<N>` text inside the marker dot, full-opacity continuous white track lines, schema-v2 sector boundaries, model-v2 green/purple sector highlights, and setting-driven internal map fill opacity
+  - `TrackMap/` contains the transparent map-only track-map overlay: generated local map geometry when available, circle fallback otherwise, live car dots placed by lap-distance progress, focused/player `P<N>` text inside the marker dot, full-opacity continuous white track lines, schema-v2 sector boundaries, model-v2 green/purple sector highlights, invalid-lap-counter fallback from valid `LapDistPct`, active-reset-style boundary seeding, and setting-driven internal map fill opacity
   - `GarageCover/` contains a localhost-only streamer privacy browser source; it appears only while live telemetry reports the iRacing Garage screen as visible, serves an opaque imported image or black TMR fallback to OBS, and copies imported images into app-owned settings storage
   - `Flags/` contains a transparent primary-screen border overlay for live session flag categories; it defaults to the main monitor size, centers a 4:3 frame on ultrawide displays, and requires recognized live session context before the runtime window is shown
   - `CarRadar/` contains a transparent circular local in-car proximity overlay, backed by local player/team progress, player-only `CarLeftRight`, reliable live timing gaps, and nearby `CarIdx*` progress/position telemetry

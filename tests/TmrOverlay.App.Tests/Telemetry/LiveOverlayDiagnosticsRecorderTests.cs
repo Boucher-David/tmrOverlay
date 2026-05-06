@@ -272,6 +272,75 @@ public sealed class LiveOverlayDiagnosticsRecorderTests
     }
 
     [Fact]
+    public void CompleteCollection_DerivesSectorIntervalsWhenLapCountersAreInvalid()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "tmr-overlay-live-overlay-diagnostics-test", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var storage = CreateStorage(root);
+            var captureDirectory = Path.Combine(storage.CaptureRoot, "capture-diagnostics");
+            Directory.CreateDirectory(captureDirectory);
+            var recorder = new LiveOverlayDiagnosticsRecorder(
+                new LiveOverlayDiagnosticsOptions
+                {
+                    Enabled = true,
+                    MinimumFrameSpacingSeconds = 0.1d,
+                    MaxSampleFramesPerSession = 10,
+                    MaxEventExamplesPerSession = 20
+                },
+                storage,
+                new AppEventRecorder(storage),
+                NullLogger<LiveOverlayDiagnosticsRecorder>.Instance);
+            var context = CreateContext();
+            var startedAtUtc = DateTimeOffset.Parse("2026-05-02T12:00:00Z");
+            recorder.StartCollection("capture-diagnostics", startedAtUtc);
+
+            var progress = new[] { 0.99d, 0.01d, 0.10d, 0.20d, 0.30d, 0.40d, 0.51d };
+            for (var index = 0; index < progress.Length; index++)
+            {
+                recorder.RecordFrame(CreateSnapshot(
+                    context,
+                    CreateSample(
+                        startedAtUtc.AddSeconds(index),
+                        sessionTime: index,
+                        focusCarIdx: 10,
+                        carLeftRight: 1,
+                        focusF2TimeSeconds: 700d + index,
+                        classPosition: 2,
+                        observedPosition: 25,
+                        observedClassPosition: 10,
+                        observedLapDistPct: 0.1d,
+                        focusLapDistPct: progress[index],
+                        focusLapCompleted: -1),
+                    sequence: index + 1));
+            }
+
+            var path = recorder.CompleteCollection(startedAtUtc.AddSeconds(8), captureDirectory);
+
+            using var document = JsonDocument.Parse(File.ReadAllText(path!));
+            var sectorTiming = document.RootElement.GetProperty("sectorTiming");
+            Assert.Equal(progress.Length, sectorTiming.GetProperty("lapCounterUnavailableFrames").GetInt32());
+            Assert.Equal(1, sectorTiming.GetProperty("syntheticLapWrapFrames").GetInt32());
+            Assert.True(sectorTiming.GetProperty("crossingCount").GetInt32() >= 2);
+            Assert.True(sectorTiming.GetProperty("completedIntervalCount").GetInt32() >= 1);
+
+            var eventKinds = document.RootElement
+                .GetProperty("eventSamples")
+                .EnumerateArray()
+                .Select(item => item.GetProperty("kind").GetString())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            Assert.Contains("sector.interval-derived", eventKinds);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void CompleteCollection_DeduplicatesAndCapsEventSamplesByKind()
     {
         var root = Path.Combine(Path.GetTempPath(), "tmr-overlay-live-overlay-diagnostics-test", Guid.NewGuid().ToString("N"));

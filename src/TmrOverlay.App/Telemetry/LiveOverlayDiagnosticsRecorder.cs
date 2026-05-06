@@ -11,6 +11,10 @@ namespace TmrOverlay.App.Telemetry;
 
 internal sealed class LiveOverlayDiagnosticsRecorder
 {
+    private const double SectorBoundarySeedThreshold = 0.0125d;
+    private const double LapStartSeedThreshold = 0.02d;
+    private const double MaximumContinuousSectorProgressDelta = 0.12d;
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -101,6 +105,9 @@ internal sealed class LiveOverlayDiagnosticsRecorder
     private int _sectorComparisonFrames;
     private int _sectorInvalidProgressFrames;
     private int _sectorResetFrames;
+    private int _sectorLapCounterUnavailableFrames;
+    private int _sectorSyntheticLapWrapFrames;
+    private int _sectorProgressDiscontinuityFrames;
     private int _sectorCrossingCount;
     private int _sectorCompletedIntervalCount;
     private readonly Dictionary<string, int> _trackMapSectorHighlightCounts = new(StringComparer.OrdinalIgnoreCase);
@@ -200,6 +207,9 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             _sectorComparisonFrames = 0;
             _sectorInvalidProgressFrames = 0;
             _sectorResetFrames = 0;
+            _sectorLapCounterUnavailableFrames = 0;
+            _sectorSyntheticLapWrapFrames = 0;
+            _sectorProgressDiscontinuityFrames = 0;
             _sectorCrossingCount = 0;
             _sectorCompletedIntervalCount = 0;
             _trackMapSectorFrames = 0;
@@ -363,6 +373,9 @@ internal sealed class LiveOverlayDiagnosticsRecorder
                         ComparisonFrames: _sectorComparisonFrames,
                         InvalidProgressFrames: _sectorInvalidProgressFrames,
                         ResetFrames: _sectorResetFrames,
+                        LapCounterUnavailableFrames: _sectorLapCounterUnavailableFrames,
+                        SyntheticLapWrapFrames: _sectorSyntheticLapWrapFrames,
+                        ProgressDiscontinuityFrames: _sectorProgressDiscontinuityFrames,
                         CrossingCount: _sectorCrossingCount,
                         CompletedIntervalCount: _sectorCompletedIntervalCount,
                         TrackedCarCount: _sectorStates.Count),
@@ -845,7 +858,9 @@ internal sealed class LiveOverlayDiagnosticsRecorder
         IReadOnlyList<HistoricalTrackSector> sectors,
         SectorObservation observation)
     {
-        if (observation.OnPitRoad == true || !IsValidSectorProgress(observation.LapCompleted, observation.LapDistPct))
+        if (observation.OnPitRoad == true
+            || !IsValidSectorLapDistPct(observation.LapDistPct)
+            || !IsFinite(observation.SessionTimeSeconds))
         {
             _sectorInvalidProgressFrames++;
             if (_sectorStates.Remove(observation.CarIdx))
@@ -856,38 +871,47 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             return;
         }
 
-        var currentLapCompleted = observation.LapCompleted!.Value;
         var currentLapDistPct = observation.LapDistPct!.Value;
+        if (ValidLapCompleted(observation.LapCompleted) is null)
+        {
+            _sectorLapCounterUnavailableFrames++;
+        }
+
         if (!_sectorStates.TryGetValue(observation.CarIdx, out var previous))
         {
-            _sectorStates[observation.CarIdx] = new SectorTimingState(
-                observation.CarIdx,
-                currentLapCompleted,
-                currentLapDistPct,
-                observation.SessionTimeSeconds,
-                LastCrossingSector: null,
-                LastCrossingSessionTimeSeconds: null);
+            _sectorStates[observation.CarIdx] = SeedSectorTimingState(sectors, observation, ValidLapCompleted(observation.LapCompleted) ?? 0, currentLapDistPct);
             return;
+        }
+
+        var currentLapCompleted = EffectiveLapCompleted(previous, observation, currentLapDistPct);
+        var previousProgress = previous.LapCompleted + previous.LapDistPct;
+        var currentProgress = currentLapCompleted + currentLapDistPct;
+        var progressDelta = currentProgress - previousProgress;
+        if (observation.LapCompleted is not >= 0 && currentLapCompleted > previous.LapCompleted)
+        {
+            _sectorSyntheticLapWrapFrames++;
         }
 
         if (currentLapCompleted < previous.LapCompleted
             || currentLapCompleted - previous.LapCompleted > 1
+            || progressDelta < 0d
+            || progressDelta > MaximumContinuousSectorProgressDelta
+            || !IsFinite(progressDelta)
             || !IsFinite(observation.SessionTimeSeconds)
             || observation.SessionTimeSeconds <= previous.SessionTimeSeconds)
         {
             _sectorResetFrames++;
-            _sectorStates[observation.CarIdx] = previous with
-            {
-                LapCompleted = currentLapCompleted,
-                LapDistPct = currentLapDistPct,
-                SessionTimeSeconds = observation.SessionTimeSeconds,
-                LastCrossingSector = null,
-                LastCrossingSessionTimeSeconds = null
-            };
+            _sectorProgressDiscontinuityFrames++;
+            AddEvent(
+                "sector.progress-discontinuity",
+                $"car {observation.CarIdx} {observation.Role} previous {previous.LapCompleted + previous.LapDistPct:0.###} current {currentProgress:0.###} delta {progressDelta:0.###}",
+                snapshot,
+                capturedAtUtc);
+            _sectorStates[observation.CarIdx] = SeedSectorTimingState(sectors, observation, currentLapCompleted, currentLapDistPct);
             return;
         }
 
-        var crossings = SectorCrossings(sectors, previous, observation).ToArray();
+        var crossings = SectorCrossings(sectors, previous, observation, currentLapCompleted).ToArray();
         var state = previous;
         foreach (var crossing in crossings)
         {
@@ -920,6 +944,22 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             LapDistPct = currentLapDistPct,
             SessionTimeSeconds = observation.SessionTimeSeconds
         };
+    }
+
+    private static SectorTimingState SeedSectorTimingState(
+        IReadOnlyList<HistoricalTrackSector> sectors,
+        SectorObservation observation,
+        int lapCompleted,
+        double lapDistPct)
+    {
+        var boundarySectorNum = SeedBoundarySectorNum(sectors, lapDistPct);
+        return new SectorTimingState(
+            observation.CarIdx,
+            lapCompleted,
+            lapDistPct,
+            observation.SessionTimeSeconds,
+            LastCrossingSector: boundarySectorNum,
+            LastCrossingSessionTimeSeconds: boundarySectorNum is null ? null : observation.SessionTimeSeconds);
     }
 
     private void RecordTrackMap(LiveTelemetrySnapshot snapshot)
@@ -1111,9 +1151,9 @@ internal sealed class LiveOverlayDiagnosticsRecorder
     private static IEnumerable<SectorCrossing> SectorCrossings(
         IReadOnlyList<HistoricalTrackSector> sectors,
         SectorTimingState previous,
-        SectorObservation current)
+        SectorObservation current,
+        int currentLapCompleted)
     {
-        var currentLapCompleted = current.LapCompleted!.Value;
         var currentLapDistPct = current.LapDistPct!.Value;
         var previousProgress = previous.LapCompleted + previous.LapDistPct;
         var currentProgress = currentLapCompleted + currentLapDistPct;
@@ -1147,13 +1187,53 @@ internal sealed class LiveOverlayDiagnosticsRecorder
         }
     }
 
-    private static bool IsValidSectorProgress(int? lapCompleted, double? lapDistPct)
+    private static int EffectiveLapCompleted(SectorTimingState previous, SectorObservation current, double currentLapDistPct)
     {
-        return lapCompleted is >= 0
-            && lapDistPct is { } pct
+        if (ValidLapCompleted(current.LapCompleted) is { } reportedLapCompleted)
+        {
+            return reportedLapCompleted;
+        }
+
+        return previous.LapDistPct >= 0.75d && currentLapDistPct <= 0.25d
+            ? previous.LapCompleted + 1
+            : previous.LapCompleted;
+    }
+
+    private static int? ValidLapCompleted(int? lapCompleted)
+    {
+        return lapCompleted is >= 0 ? lapCompleted : null;
+    }
+
+    private static bool IsValidSectorLapDistPct(double? lapDistPct)
+    {
+        return lapDistPct is { } pct
             && IsFinite(pct)
             && pct >= 0d
             && pct <= 1d;
+    }
+
+    private static int? SeedBoundarySectorNum(IReadOnlyList<HistoricalTrackSector> sectors, double lapDistPct)
+    {
+        if (lapDistPct <= LapStartSeedThreshold)
+        {
+            return sectors
+                .OrderBy(sector => Math.Abs(sector.SectorStartPct))
+                .FirstOrDefault()
+                ?.SectorNum;
+        }
+
+        var nearest = sectors
+            .Select(sector => new
+            {
+                sector.SectorNum,
+                Distance = lapDistPct - sector.SectorStartPct
+            })
+            .Where(candidate => candidate.Distance >= 0d)
+            .OrderBy(candidate => candidate.Distance)
+            .FirstOrDefault();
+        return nearest is not null && nearest.Distance <= SectorBoundarySeedThreshold
+            ? nearest.SectorNum
+            : null;
     }
 
     private static LiveTimingRow? MatchingTimingRow(LiveTimingRow? row, int carIdx)
@@ -1748,6 +1828,9 @@ internal sealed record SectorTimingDiagnosticsSummary(
     int ComparisonFrames,
     int InvalidProgressFrames,
     int ResetFrames,
+    int LapCounterUnavailableFrames,
+    int SyntheticLapWrapFrames,
+    int ProgressDiscontinuityFrames,
     int CrossingCount,
     int CompletedIntervalCount,
     int TrackedCarCount);

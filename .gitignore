@@ -20,6 +20,7 @@
 
 # Logs and local diagnostics
 *.log
+/tmroverlay-diagnostics-*.zip
 
 # Repo-local app data when development overrides are enabled.
 # Raw/imported captures can be multi-GB and must stay out of git.

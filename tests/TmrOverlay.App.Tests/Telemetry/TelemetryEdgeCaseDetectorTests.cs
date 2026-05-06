@@ -213,6 +213,70 @@ public sealed class TelemetryEdgeCaseDetectorTests
             observation.Key == "tires.set-count-increased-outside-pit-context");
     }
 
+    [Fact]
+    public void Analyze_RecordsActiveResetContextForProgressJump()
+    {
+        var detector = new TelemetryEdgeCaseDetector();
+        detector.Analyze(
+            CreateSample(
+                sessionTime: 1d,
+                sessionTick: 1,
+                lapCompleted: -1,
+                lapDistPct: 0.50d,
+                focusLapCompleted: -1,
+                focusLapDistPct: 0.50d),
+            RawTelemetryWatchSnapshot.Empty);
+
+        var observations = detector.Analyze(
+            CreateSample(
+                sessionTime: 2d,
+                sessionTick: 2,
+                lapCompleted: -1,
+                lapDistPct: 0.92d,
+                focusLapCompleted: -1,
+                focusLapDistPct: 0.92d),
+            new RawTelemetryWatchSnapshot(new Dictionary<string, double>
+            {
+                ["EnterExitReset"] = 2d
+            }));
+
+        Assert.Contains(observations, observation =>
+            observation.Key == "progress.discontinuity.active-reset"
+            && observation.Severity == TelemetryEdgeCaseSeverity.Info
+            && observation.Fields["context"] == "active-reset");
+        Assert.Contains(observations, observation =>
+            observation.Key == "raw.active-reset.reset-key-action"
+            && observation.Severity == TelemetryEdgeCaseSeverity.Info);
+    }
+
+    [Fact]
+    public void Analyze_DoesNotFlagNormalStartFinishWrapWhenLapCounterIsUnavailable()
+    {
+        var detector = new TelemetryEdgeCaseDetector();
+        detector.Analyze(
+            CreateSample(
+                sessionTime: 1d,
+                sessionTick: 1,
+                lapCompleted: -1,
+                lapDistPct: 0.99d,
+                focusLapCompleted: -1,
+                focusLapDistPct: 0.99d),
+            RawTelemetryWatchSnapshot.Empty);
+
+        var observations = detector.Analyze(
+            CreateSample(
+                sessionTime: 2d,
+                sessionTick: 2,
+                lapCompleted: -1,
+                lapDistPct: 0.01d,
+                focusLapCompleted: -1,
+                focusLapDistPct: 0.01d),
+            RawTelemetryWatchSnapshot.Empty);
+
+        Assert.DoesNotContain(observations, observation =>
+            observation.Key.StartsWith("progress.discontinuity.", StringComparison.Ordinal));
+    }
+
     private static HistoricalTelemetrySample CreateSample(
         double sessionTime = 123d,
         int sessionTick = 100,

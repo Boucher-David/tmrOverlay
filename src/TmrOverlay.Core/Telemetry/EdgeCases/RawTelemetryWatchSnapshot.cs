@@ -125,6 +125,7 @@ internal static class RawTelemetryWatchVariables
             "LeftTireSetsUsed", "RightTireSetsUsed", "FrontTireSetsUsed", "RearTireSetsUsed",
             "LFTiresUsed", "RFTiresUsed", "LRTiresUsed", "RRTiresUsed"
         ],
+        ["reset-tow"] = ["EnterExitReset", "PlayerCarTowTime"],
         ["engine"] =
         [
             "EngineWarnings", "OilTemp", "OilPress", "OilLevel",

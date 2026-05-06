@@ -68,6 +68,14 @@ public sealed class IbtTrackMapBuilderTests
         Assert.Contains("no_complete_positive_lap", result.RejectionReasons);
     }
 
+    [Fact]
+    public void ChooseLapNumber_FallsBackToStartedLapWhenCompletedLapIsInvalid()
+    {
+        Assert.Equal(3, IbtTrackMapBuilder.ChooseLapNumber(3, 4));
+        Assert.Equal(4, IbtTrackMapBuilder.ChooseLapNumber(-1, 4));
+        Assert.Equal(-1, IbtTrackMapBuilder.ChooseLapNumber(-1, -1));
+    }
+
     private static IReadOnlyList<IbtTrackMapSample> BuildCircularSamples(
         int lapCount,
         int samplesPerLap,
