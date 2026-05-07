@@ -84,7 +84,10 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private Label? _advancedDiagnosticsLabel;
     private Label? _latestDiagnosticsBundleLabel;
     private Label? _supportStatusLabel;
+    private TextBox? _garageCoverImagePathBox;
     private Label? _garageCoverStateLabel;
+    private Panel? _garageCoverPreviewPanel;
+    private Label? _garageCoverPreviewCaptionLabel;
     private DateTimeOffset _nextSupportStatusRefreshAtUtc;
     private DateTimeOffset _nextSupportHeavyRefreshAtUtc;
     private DateTimeOffset _nextLatestDiagnosticsScanAtUtc;
@@ -214,7 +217,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             TabIndex = 0
         };
         _tabs.DrawItem += DrawSettingsTab;
-        _tabs.SelectedIndexChanged += (_, _) => ReportSelectedOverlayTab();
+        _tabs.SelectedIndexChanged += (_, _) => SelectedSettingsTabChanged();
 
         _titleBar.Controls.Add(_brandLogo);
         _titleBar.Controls.Add(_titleLabel);
@@ -227,6 +230,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
         BuildTabs();
         ReportSelectedOverlayTab();
+        RefreshSelectedSettingsTab(force: true);
         ApplyFontFamily(OverlayTheme.DefaultFontFamily);
         _refreshTimer = new System.Windows.Forms.Timer
         {
@@ -307,17 +311,24 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
     private void BuildTabs()
     {
+        _garageCoverImagePathBox = null;
         _garageCoverStateLabel = null;
-        _tabs.TabPages.Clear();
-        _tabs.TabPages.Add(CreateGeneralTab());
+        _garageCoverPreviewPanel = null;
+        _garageCoverPreviewCaptionLabel = null;
 
-        foreach (var overlay in OrderedSettingsOverlays())
+        SuspendLayoutWhile(_tabs, () =>
         {
-            _tabs.TabPages.Add(CreateOverlayTab(overlay));
-        }
+            _tabs.TabPages.Clear();
+            _tabs.TabPages.Add(CreateGeneralTab());
 
-        _tabs.TabPages.Add(CreateSupportTab());
-        _tabs.SelectedIndex = 0;
+            foreach (var overlay in OrderedSettingsOverlays())
+            {
+                _tabs.TabPages.Add(CreateOverlayTab(overlay));
+            }
+
+            _tabs.TabPages.Add(CreateSupportTab());
+            _tabs.SelectedIndex = 0;
+        });
     }
 
     private IEnumerable<OverlayDefinition> OrderedSettingsOverlays()
@@ -349,14 +360,27 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _selectedOverlayChanged(_tabs.SelectedTab?.Tag as string);
     }
 
+    private void SelectedSettingsTabChanged()
+    {
+        ReportSelectedOverlayTab();
+        RefreshSelectedSettingsTab(force: true);
+    }
+
     private void SelectOverlayTab(string overlayId)
     {
         foreach (TabPage page in _tabs.TabPages)
         {
             if (string.Equals(page.Tag as string, overlayId, StringComparison.OrdinalIgnoreCase))
             {
-                _tabs.SelectedTab = page;
-                ReportSelectedOverlayTab();
+                if (ReferenceEquals(_tabs.SelectedTab, page))
+                {
+                    SelectedSettingsTabChanged();
+                }
+                else
+                {
+                    _tabs.SelectedTab = page;
+                }
+
                 return;
             }
         }
@@ -383,8 +407,16 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             var captureSucceeded = false;
             try
             {
-                SyncRawCaptureCheckBox();
-                SyncGarageCoverStateLabel();
+                if (IsSupportTabSelected())
+                {
+                    SyncRawCaptureCheckBox();
+                }
+
+                if (IsGarageCoverTabSelected())
+                {
+                    SyncGarageCoverStateLabel();
+                }
+
                 captureSucceeded = true;
             }
             finally
@@ -399,7 +431,11 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             var diagnosticsSucceeded = false;
             try
             {
-                SyncErrorLoggingTab();
+                if (IsSupportTabSelected())
+                {
+                    SyncErrorLoggingTab();
+                }
+
                 diagnosticsSucceeded = true;
             }
             finally
@@ -419,6 +455,39 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
                 started,
                 succeeded);
         }
+    }
+
+    private void RefreshSelectedSettingsTab(bool force)
+    {
+        if (force && IsSupportTabSelected())
+        {
+            _nextSupportStatusRefreshAtUtc = DateTimeOffset.MinValue;
+            _nextSupportHeavyRefreshAtUtc = DateTimeOffset.MinValue;
+        }
+
+        if (IsSupportTabSelected())
+        {
+            SyncRawCaptureCheckBox();
+            SyncErrorLoggingTab();
+        }
+
+        if (IsGarageCoverTabSelected())
+        {
+            SyncGarageCoverStateLabel();
+        }
+    }
+
+    private bool IsSupportTabSelected()
+    {
+        return string.Equals(_tabs.SelectedTab?.Text, "Support", StringComparison.Ordinal);
+    }
+
+    private bool IsGarageCoverTabSelected()
+    {
+        return string.Equals(
+            _tabs.SelectedTab?.Tag as string,
+            GarageCoverOverlayDefinition.Definition.Id,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     private void DrawSettingsTab(object? sender, DrawItemEventArgs e)
@@ -731,12 +800,13 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         var imagePath = settings.GetStringOption(OverlayOptionKeys.GarageCoverImagePath);
         var imageStatus = GarageCoverImageStore.InspectImage(imagePath);
         page.Controls.Add(CreateLabel("Image", 22, top + 42, 90));
-        page.Controls.Add(CreateSelectableValueBox(
+        _garageCoverImagePathBox = CreateSelectableValueBox(
             imageStatus.IsUsable ? imagePath : GarageCoverImageStatusText(imageStatus),
             116,
             top + 36,
             500,
-            30));
+            30);
+        page.Controls.Add(_garageCoverImagePathBox);
 
         var importButton = CreateActionButton("Import Image", 116, top + 78, 130);
         importButton.Click += (_, _) => ImportGarageCoverImage(settings);
@@ -750,8 +820,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
                 settings.SetStringOption(OverlayOptionKeys.GarageCoverImagePath, null);
                 GarageCoverImageStore.ClearImportedImages(_storageOptions.SettingsRoot);
                 SaveAndApply();
-                BuildTabs();
-                SelectOverlayTab(GarageCoverOverlayDefinition.Definition.Id);
+                RefreshGarageCoverImageState(settings);
             }
             catch (Exception exception)
             {
@@ -781,12 +850,14 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             600));
 
         page.Controls.Add(CreateSectionLabel("Preview", 650, top, 220));
-        page.Controls.Add(CreateGarageCoverPreviewPanel(imagePath, 650, top + 36, 220, 124));
-        page.Controls.Add(CreateMutedLabel(
+        _garageCoverPreviewPanel = CreateGarageCoverPreviewPanel(imagePath, 650, top + 36, 220, 124);
+        page.Controls.Add(_garageCoverPreviewPanel);
+        _garageCoverPreviewCaptionLabel = CreateMutedLabel(
             imageStatus.IsUsable ? "Selected cover image" : "Fallback cover",
             650,
             top + 168,
-            220));
+            220);
+        page.Controls.Add(_garageCoverPreviewCaptionLabel);
     }
 
     private void ShowGarageCoverPreview(OverlaySettings settings)
@@ -798,8 +869,27 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         });
         SaveAndApply();
         SetSupportStatus("Garage Cover test is visible in OBS for 10 seconds.", isError: false);
-        BuildTabs();
-        SelectOverlayTab(GarageCoverOverlayDefinition.Definition.Id);
+        SyncGarageCoverStateLabel();
+    }
+
+    private void RefreshGarageCoverImageState(OverlaySettings settings)
+    {
+        var imagePath = settings.GetStringOption(OverlayOptionKeys.GarageCoverImagePath);
+        var imageStatus = GarageCoverImageStore.InspectImage(imagePath);
+        SetTextIfChanged(
+            _garageCoverImagePathBox,
+            imageStatus.IsUsable ? imagePath ?? string.Empty : GarageCoverImageStatusText(imageStatus));
+        SetTextIfChanged(
+            _garageCoverPreviewCaptionLabel,
+            imageStatus.IsUsable ? "Selected cover image" : "Fallback cover");
+
+        if (_garageCoverPreviewPanel is not null)
+        {
+            _garageCoverPreviewPanel.Tag = imagePath;
+            _garageCoverPreviewPanel.Invalidate();
+        }
+
+        SyncGarageCoverStateLabel();
     }
 
     private void SyncGarageCoverStateLabel()
@@ -851,9 +941,10 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             BackColor = Color.Black,
             BorderStyle = BorderStyle.FixedSingle,
             Location = new Point(x, y),
-            Size = new Size(width, height)
+            Size = new Size(width, height),
+            Tag = imagePath
         };
-        panel.Paint += (_, e) => DrawGarageCoverPreview(e.Graphics, panel.ClientRectangle, imagePath);
+        panel.Paint += (_, e) => DrawGarageCoverPreview(e.Graphics, panel.ClientRectangle, panel.Tag as string);
         return panel;
     }
 
@@ -909,8 +1000,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
                 ["extension"] = Path.GetExtension(importedPath)
             });
             SaveAndApply();
-            BuildTabs();
-            SelectOverlayTab(GarageCoverOverlayDefinition.Definition.Id);
+            RefreshGarageCoverImageState(settings);
         }
         catch (Exception exception)
         {
@@ -1149,11 +1239,11 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _syncingRawCaptureCheckBox = true;
         try
         {
-            _rawCaptureCheckBox.Checked = snapshot.RawCaptureEnabled || snapshot.RawCaptureActive;
-            _rawCaptureCheckBox.Enabled = !snapshot.RawCaptureActive;
-            _rawCaptureCheckBox.Text = snapshot.RawCaptureActive
+            SetCheckedIfChanged(_rawCaptureCheckBox, snapshot.RawCaptureEnabled || snapshot.RawCaptureActive);
+            SetEnabledIfChanged(_rawCaptureCheckBox, !snapshot.RawCaptureActive);
+            SetTextIfChanged(_rawCaptureCheckBox, snapshot.RawCaptureActive
                 ? "Diagnostic telemetry capture active"
-                : "Capture diagnostic telemetry";
+                : "Capture diagnostic telemetry");
         }
         finally
         {
@@ -1383,18 +1473,12 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
     private static void SetLabelText(Label label, string text)
     {
-        if (!string.Equals(label.Text, text, StringComparison.Ordinal))
-        {
-            label.Text = text;
-        }
+        SetTextIfChanged(label, text);
     }
 
     private static void SetLabelColor(Label label, Color color)
     {
-        if (label.ForeColor != color)
-        {
-            label.ForeColor = color;
-        }
+        SetForeColorIfChanged(label, color);
     }
 
     private string AdvancedDiagnosticsText()

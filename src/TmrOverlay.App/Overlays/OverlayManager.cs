@@ -57,6 +57,7 @@ internal sealed class OverlayManager : IDisposable
     private readonly ILogger<SimpleTelemetryOverlayForm> _simpleTelemetryLogger;
     private readonly Dictionary<string, Form> _forms = [];
     private readonly Dictionary<string, double> _appliedScales = [];
+    private readonly Dictionary<string, double> _appliedOpacities = [];
     private readonly System.Windows.Forms.Timer _sessionVisibilityTimer;
     private ApplicationSettings? _settings;
     private string? _appliedFontFamily;
@@ -209,6 +210,7 @@ internal sealed class OverlayManager : IDisposable
 
         _forms.Clear();
         _appliedScales.Clear();
+        _appliedOpacities.Clear();
     }
 
     private IReadOnlyList<OverlayDefinition> ManagedOverlayDefinitions =>
@@ -609,44 +611,66 @@ internal sealed class OverlayManager : IDisposable
         _appliedScales[definition.Id] = settings.Scale;
     }
 
-    private static void ApplyOpacityIfChanged(OverlayDefinition definition, OverlaySettings settings, Form form)
+    private void ApplyOpacityIfChanged(OverlayDefinition definition, OverlaySettings settings, Form form)
     {
         if (!definition.ShowOpacityControl)
         {
-            if (form is PersistentOverlayForm persistent)
+            if (!_appliedOpacities.TryGetValue(definition.Id, out var appliedOpacity)
+                || Math.Abs(appliedOpacity - 1d) > 0.001d)
             {
-                persistent.SetBaseOverlayOpacity(1d);
+                if (form is PersistentOverlayForm persistent)
+                {
+                    persistent.SetBaseOverlayOpacity(1d);
+                }
+                else if (Math.Abs(form.Opacity - 1d) > 0.001d)
+                {
+                    form.Opacity = 1d;
+                }
+
+                _appliedOpacities[definition.Id] = 1d;
             }
 
             return;
         }
 
         settings.Opacity = Math.Clamp(settings.Opacity, 0.2d, 1d);
+        var opacityChanged = !_appliedOpacities.TryGetValue(definition.Id, out var previousOpacity)
+            || Math.Abs(previousOpacity - settings.Opacity) > 0.001d;
         if (string.Equals(definition.Id, TrackMapOverlayDefinition.Definition.Id, StringComparison.Ordinal))
         {
-            if (form is PersistentOverlayForm persistent)
+            if (opacityChanged || !_appliedOpacities.ContainsKey(definition.Id))
             {
-                persistent.SetBaseOverlayOpacity(1d);
-            }
-            else if (Math.Abs(form.Opacity - 1d) > 0.001d)
-            {
-                form.Opacity = 1d;
+                if (form is PersistentOverlayForm persistent)
+                {
+                    persistent.SetBaseOverlayOpacity(1d);
+                }
+                else if (Math.Abs(form.Opacity - 1d) > 0.001d)
+                {
+                    form.Opacity = 1d;
+                }
+
+                _appliedOpacities[definition.Id] = settings.Opacity;
+                form.Invalidate();
             }
 
-            form.Invalidate();
+            return;
+        }
+
+        if (!opacityChanged)
+        {
             return;
         }
 
         if (form is PersistentOverlayForm persistentForm)
         {
             persistentForm.SetBaseOverlayOpacity(settings.Opacity);
-            return;
         }
-
-        if (Math.Abs(form.Opacity - settings.Opacity) > 0.001d)
+        else if (Math.Abs(form.Opacity - settings.Opacity) > 0.001d)
         {
             form.Opacity = settings.Opacity;
         }
+
+        _appliedOpacities[definition.Id] = settings.Opacity;
     }
 
     private void RecreateManagedFormsIfFontChanged()
@@ -673,6 +697,7 @@ internal sealed class OverlayManager : IDisposable
             form.Close();
             form.Dispose();
             _appliedScales.Remove(definition.Id);
+            _appliedOpacities.Remove(definition.Id);
         }
 
         _appliedFontFamily = fontFamily;
@@ -702,6 +727,7 @@ internal sealed class OverlayManager : IDisposable
             form.Close();
             form.Dispose();
             _appliedScales.Remove(definition.Id);
+            _appliedOpacities.Remove(definition.Id);
         }
 
         _appliedUnitSystem = unitSystem;

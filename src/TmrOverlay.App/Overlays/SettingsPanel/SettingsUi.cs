@@ -5,6 +5,19 @@ namespace TmrOverlay.App.Overlays.SettingsPanel;
 
 internal static class SettingsUi
 {
+    public static void SuspendLayoutWhile(Control control, Action action)
+    {
+        control.SuspendLayout();
+        try
+        {
+            action();
+        }
+        finally
+        {
+            control.ResumeLayout(false);
+        }
+    }
+
     public static TabPage CreateTabPage(string text)
     {
         return new TabPage(text)
@@ -183,5 +196,37 @@ internal static class SettingsUi
             TextAlign = HorizontalAlignment.Right,
             Value = Math.Clamp(value, minimum, maximum)
         };
+    }
+
+    public static void SetTextIfChanged(Control? control, string text)
+    {
+        if (control is not null && !string.Equals(control.Text, text, StringComparison.Ordinal))
+        {
+            control.Text = text;
+        }
+    }
+
+    public static void SetEnabledIfChanged(Control? control, bool enabled)
+    {
+        if (control is not null && control.Enabled != enabled)
+        {
+            control.Enabled = enabled;
+        }
+    }
+
+    public static void SetCheckedIfChanged(CheckBox? checkBox, bool isChecked)
+    {
+        if (checkBox is not null && checkBox.Checked != isChecked)
+        {
+            checkBox.Checked = isChecked;
+        }
+    }
+
+    public static void SetForeColorIfChanged(Control? control, Color color)
+    {
+        if (control is not null && control.ForeColor != color)
+        {
+            control.ForeColor = color;
+        }
     }
 }
