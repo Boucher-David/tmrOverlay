@@ -17,6 +17,11 @@ internal sealed class StandingsForm : PersistentOverlayForm
     private const int RefreshIntervalMilliseconds = 500;
     private static readonly string[] Columns = ["CLS", "CAR", "DRIVER", "GAP", "INT", "PIT"];
     private static readonly float[] ColumnWidths = [10f, 10f, 40f, 16f, 16f, 8f];
+    private static readonly Padding StandingsCellPadding = new(
+        OverlayTheme.Layout.OverlayDenseCellHorizontalPadding,
+        OverlayTheme.Layout.OverlayDenseCellVerticalPadding,
+        OverlayTheme.Layout.OverlayDenseCellHorizontalPadding,
+        OverlayTheme.Layout.OverlayDenseCellVerticalPadding);
 
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly ILogger<StandingsForm> _logger;
@@ -24,7 +29,7 @@ internal sealed class StandingsForm : PersistentOverlayForm
     private readonly string _fontFamily;
     private readonly Label _titleLabel;
     private readonly Label _statusLabel;
-    private readonly TableLayoutPanel _table;
+    private readonly OverlayTableLayoutPanel _table;
     private readonly Label _sourceLabel;
     private readonly Label[] _headerLabels = new Label[Columns.Length];
     private readonly Label[,] _rowLabels = new Label[MaximumRows, 6];
@@ -55,37 +60,17 @@ internal sealed class StandingsForm : PersistentOverlayForm
         _fontFamily = fontFamily;
 
         BackColor = OverlayTheme.Colors.WindowBackground;
-        Padding = new Padding(12);
+        Padding = new Padding(OverlayTheme.Layout.OverlayChromePadding);
 
-        _titleLabel = new Label
-        {
-            AutoSize = false,
-            ForeColor = OverlayTheme.Colors.TextPrimary,
-            Font = OverlayTheme.Font(_fontFamily, 11f, FontStyle.Bold),
-            Location = new Point(14, 10),
-            Size = new Size(160, 24),
-            Text = "Standings"
-        };
+        _titleLabel = OverlayChrome.CreateTitleLabel(_fontFamily, "Standings", width: 160);
+        _statusLabel = OverlayChrome.CreateStatusLabel(_fontFamily, titleWidth: 160, clientWidth: ClientSize.Width, minimumWidth: 120);
 
-        _statusLabel = new Label
+        _table = new OverlayTableLayoutPanel
         {
-            AutoSize = false,
-            ForeColor = OverlayTheme.Colors.TextSubtle,
-            Font = OverlayTheme.Font(_fontFamily, 9f),
-            Location = new Point(174, 11),
-            Size = new Size(ClientSize.Width - 188, 22),
-            Text = "waiting",
-            TextAlign = ContentAlignment.MiddleRight
-        };
-
-        _table = new TableLayoutPanel
-        {
-            BackColor = OverlayTheme.Colors.PanelBackground,
-            CellBorderStyle = TableLayoutPanelCellBorderStyle.Single,
             ColumnCount = Columns.Length,
-            Location = new Point(14, 42),
+            Location = OverlayChrome.TableLocation(),
             RowCount = MaximumRows + 1,
-            Size = new Size(ClientSize.Width - 28, ClientSize.Height - 76)
+            Size = OverlayChrome.TableSize(ClientSize.Width, ClientSize.Height, minimumWidth: 420, minimumHeight: MinimumTableHeight)
         };
 
         foreach (var width in ColumnWidths)
@@ -100,11 +85,14 @@ internal sealed class StandingsForm : PersistentOverlayForm
 
         for (var column = 0; column < Columns.Length; column++)
         {
-            _headerLabels[column] = CreateCellLabel(
+            _headerLabels[column] = OverlayChrome.CreateTableCellLabel(
+                _fontFamily,
                 Columns[column],
                 bold: true,
                 alignRight: column != 2,
-                muted: true);
+                foreColor: OverlayTheme.Colors.TextMuted,
+                padding: StandingsCellPadding,
+                monospaceTextSize: 8.5f);
             _table.Controls.Add(_headerLabels[column], column, 0);
         }
 
@@ -112,24 +100,19 @@ internal sealed class StandingsForm : PersistentOverlayForm
         {
             for (var column = 0; column < Columns.Length; column++)
             {
-                _rowLabels[row, column] = CreateCellLabel(
+                _rowLabels[row, column] = OverlayChrome.CreateTableCellLabel(
+                    _fontFamily,
                     string.Empty,
                     alignRight: column != 2,
-                    monospace: column is 0 or 1 or 3 or 4 or 5);
+                    monospace: column is 0 or 1 or 3 or 4 or 5,
+                    foreColor: OverlayTheme.Colors.TextPrimary,
+                    padding: StandingsCellPadding,
+                    monospaceTextSize: 8.5f);
                 _table.Controls.Add(_rowLabels[row, column], column, row + 1);
             }
         }
 
-        _sourceLabel = new Label
-        {
-            AutoSize = false,
-            ForeColor = OverlayTheme.Colors.TextMuted,
-            Font = OverlayTheme.Font(_fontFamily, 8.5f),
-            Location = new Point(14, ClientSize.Height - 28),
-            Size = new Size(ClientSize.Width - 28, 18),
-            Text = "source: waiting",
-            TextAlign = ContentAlignment.MiddleLeft
-        };
+        _sourceLabel = OverlayChrome.CreateSourceLabel(_fontFamily, ClientSize.Width, ClientSize.Height, minimumWidth: 420);
 
         Controls.Add(_titleLabel);
         Controls.Add(_statusLabel);
@@ -157,14 +140,12 @@ internal sealed class StandingsForm : PersistentOverlayForm
             return;
         }
 
-        _statusLabel.Location = new Point(174, 11);
-        _statusLabel.Size = new Size(Math.Max(120, ClientSize.Width - 188), 22);
-        _table.Location = new Point(14, 42);
-        _table.Size = new Size(
-            Math.Max(420, ClientSize.Width - 28),
-            Math.Max(MinimumTableHeight, ClientSize.Height - 76));
-        _sourceLabel.Location = new Point(14, ClientSize.Height - 28);
-        _sourceLabel.Size = new Size(Math.Max(420, ClientSize.Width - 28), 18);
+        _statusLabel.Location = OverlayChrome.StatusLocation(titleWidth: 160);
+        _statusLabel.Size = OverlayChrome.StatusSize(ClientSize.Width, titleWidth: 160, minimumWidth: 120);
+        _table.Location = OverlayChrome.TableLocation();
+        _table.Size = OverlayChrome.TableSize(ClientSize.Width, ClientSize.Height, minimumWidth: 420, minimumHeight: MinimumTableHeight);
+        _sourceLabel.Location = OverlayChrome.SourceLocation(ClientSize.Height);
+        _sourceLabel.Size = OverlayChrome.SourceSize(ClientSize.Width, minimumWidth: 420);
     }
 
     protected override void Dispose(bool disposing)
@@ -189,8 +170,7 @@ internal sealed class StandingsForm : PersistentOverlayForm
         try
         {
             base.OnPaint(e);
-            using var borderPen = new Pen(OverlayTheme.Colors.WindowBorder);
-            e.Graphics.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
+            OverlayChrome.DrawWindowBorder(e.Graphics, ClientSize);
             succeeded = true;
         }
         catch (Exception exception)
@@ -266,7 +246,7 @@ internal sealed class StandingsForm : PersistentOverlayForm
             try
             {
                 _overlayError = null;
-                uiChanged = ApplyViewModel(viewModel);
+                uiChanged = ApplyViewModel(viewModel, snapshot);
                 _lastRefreshSequence = snapshot.Sequence;
                 applySucceeded = true;
             }
@@ -302,15 +282,14 @@ internal sealed class StandingsForm : PersistentOverlayForm
         }
     }
 
-    private bool ApplyViewModel(StandingsOverlayViewModel viewModel)
+    private bool ApplyViewModel(StandingsOverlayViewModel viewModel, LiveTelemetrySnapshot snapshot)
     {
         var changed = false;
         SuspendLayout();
         _table.SuspendLayout();
         try
         {
-            changed |= SetLabelText(_statusLabel, viewModel.Status);
-            changed |= SetLabelText(_sourceLabel, viewModel.Source);
+            changed |= OverlayChrome.ApplyChromeState(this, _titleLabel, _statusLabel, _sourceLabel, ChromeStateFor(viewModel, snapshot, _settings), titleWidth: 160);
 
             var populatedRows = Math.Min(MaximumRows, viewModel.Rows.Count);
             for (var row = 0; row < populatedRows; row++)
@@ -323,14 +302,6 @@ internal sealed class StandingsForm : PersistentOverlayForm
                 changed |= ClearRow(row);
             }
 
-            var backgroundColor = _overlayError is null
-                ? OverlayTheme.Colors.WindowBackground
-                : OverlayTheme.Colors.ErrorBackground;
-            if (BackColor != backgroundColor)
-            {
-                BackColor = backgroundColor;
-                changed = true;
-            }
         }
         finally
         {
@@ -371,8 +342,8 @@ internal sealed class StandingsForm : PersistentOverlayForm
 
         for (var column = 0; column < Columns.Length; column++)
         {
-            changed |= SetLabelText(_rowLabels[index, column], values[column]);
-            changed |= SetLabelColor(_rowLabels[index, column], TextColor(row, column));
+            changed |= OverlayChrome.SetTextIfChanged(_rowLabels[index, column], values[column]);
+            changed |= OverlayChrome.SetForeColorIfChanged(_rowLabels[index, column], TextColor(row, column));
         }
 
         return changed;
@@ -426,56 +397,11 @@ internal sealed class StandingsForm : PersistentOverlayForm
         var changed = false;
         for (var column = 0; column < Columns.Length; column++)
         {
-            changed |= SetLabelText(_rowLabels[row, column], string.Empty);
-            changed |= SetLabelColor(_rowLabels[row, column], OverlayTheme.Colors.TextPrimary);
+            changed |= OverlayChrome.SetTextIfChanged(_rowLabels[row, column], string.Empty);
+            changed |= OverlayChrome.SetForeColorIfChanged(_rowLabels[row, column], OverlayTheme.Colors.TextPrimary);
         }
 
         return changed;
-    }
-
-    private static bool SetLabelText(Label label, string text)
-    {
-        if (string.Equals(label.Text, text, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        label.Text = text;
-        return true;
-    }
-
-    private static bool SetLabelColor(Label label, Color color)
-    {
-        if (label.ForeColor == color)
-        {
-            return false;
-        }
-
-        label.ForeColor = color;
-        return true;
-    }
-
-    private Label CreateCellLabel(
-        string text,
-        bool bold = false,
-        bool alignRight = false,
-        bool monospace = false,
-        bool muted = false)
-    {
-        return new Label
-        {
-            AutoSize = false,
-            BackColor = Color.Transparent,
-            Dock = DockStyle.Fill,
-            ForeColor = muted ? OverlayTheme.Colors.TextMuted : OverlayTheme.Colors.TextPrimary,
-            Font = monospace
-                ? OverlayTheme.MonospaceFont(8.5f, bold ? FontStyle.Bold : FontStyle.Regular)
-                : OverlayTheme.Font(_fontFamily, 8.8f, bold ? FontStyle.Bold : FontStyle.Regular),
-            Margin = Padding.Empty,
-            Padding = new Padding(5, 2, 5, 2),
-            Text = text,
-            TextAlign = alignRight ? ContentAlignment.MiddleRight : ContentAlignment.MiddleLeft
-        };
     }
 
     private void ReportOverlayError(Exception exception, string stage)
@@ -492,8 +418,13 @@ internal sealed class StandingsForm : PersistentOverlayForm
         }
 
         _overlayError = message;
-        _statusLabel.Text = "overlay error";
-        _sourceLabel.Text = $"source: error ({message})";
+        OverlayChrome.ApplyChromeState(
+            this,
+            _titleLabel,
+            _statusLabel,
+            _sourceLabel,
+            OverlayChromeState.Error("Standings", "overlay error", $"source: error ({message})"),
+            titleWidth: 160);
         for (var row = 0; row < MaximumRows; row++)
         {
             ClearRow(row);
@@ -502,7 +433,23 @@ internal sealed class StandingsForm : PersistentOverlayForm
         _rowLabels[0, 0].Text = "ERR";
         _rowLabels[0, 2].Text = message;
         _rowLabels[0, 2].ForeColor = OverlayTheme.Colors.ErrorIndicator;
-        BackColor = OverlayTheme.Colors.ErrorBackground;
         Invalidate();
+    }
+
+    private static OverlayChromeState ChromeStateFor(
+        StandingsOverlayViewModel viewModel,
+        LiveTelemetrySnapshot snapshot,
+        OverlaySettings settings)
+    {
+        var showStatus = OverlayChromeSettings.ShowHeaderStatus(settings, snapshot);
+        var footerMode = OverlayChromeSettings.ShowFooterSource(settings, snapshot)
+            ? OverlayChromeFooterMode.Always
+            : OverlayChromeFooterMode.Never;
+        return new OverlayChromeState(
+            "Standings",
+            showStatus ? viewModel.Status : string.Empty,
+            viewModel.Rows.Count == 0 ? OverlayChromeTone.Waiting : OverlayChromeTone.Normal,
+            viewModel.Source,
+            footerMode);
     }
 }

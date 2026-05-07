@@ -69,35 +69,17 @@ internal sealed class RelativeForm : PersistentOverlayForm
         _fontFamily = fontFamily;
 
         BackColor = OverlayTheme.Colors.WindowBackground;
-        Padding = new Padding(12);
+        Padding = new Padding(OverlayTheme.Layout.OverlayChromePadding);
 
-        _titleLabel = new Label
-        {
-            AutoSize = false,
-            ForeColor = OverlayTheme.Colors.TextPrimary,
-            Font = OverlayTheme.Font(_fontFamily, 11f, FontStyle.Bold),
-            Location = new Point(14, 10),
-            Size = new Size(150, 24),
-            Text = "Relative"
-        };
-
-        _statusLabel = new Label
-        {
-            AutoSize = false,
-            ForeColor = OverlayTheme.Colors.TextSubtle,
-            Font = OverlayTheme.Font(_fontFamily, 9f),
-            Location = new Point(164, 11),
-            Size = new Size(ClientSize.Width - 178, 22),
-            Text = "waiting",
-            TextAlign = ContentAlignment.MiddleRight
-        };
+        _titleLabel = OverlayChrome.CreateTitleLabel(_fontFamily, "Relative", width: 150);
+        _statusLabel = OverlayChrome.CreateStatusLabel(_fontFamily, titleWidth: 150, clientWidth: ClientSize.Width, minimumWidth: 120);
 
         _table = new OverlayTableLayoutPanel
         {
             ColumnCount = 4,
-            Location = new Point(14, 42),
+            Location = OverlayChrome.TableLocation(),
             RowCount = MaximumRows,
-            Size = new Size(ClientSize.Width - 28, ClientSize.Height - 76)
+            Size = OverlayChrome.TableSize(ClientSize.Width, ClientSize.Height, minimumWidth: 250, minimumHeight: NormalMinimumTableHeight)
         };
         _table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 13f));
         _table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 52f));
@@ -107,25 +89,16 @@ internal sealed class RelativeForm : PersistentOverlayForm
         {
             _table.RowStyles.Add(new RowStyle(SizeType.Percent, 100f / MaximumRows));
             _positionLabels[row] = CreatePositionCellLabel(_fontFamily, "--");
-            _driverLabels[row] = CreateCellLabel(_fontFamily, string.Empty);
-            _gapLabels[row] = CreateCellLabel(_fontFamily, "--", alignRight: true, monospace: true);
-            _detailLabels[row] = CreateCellLabel(_fontFamily, string.Empty, alignRight: true);
+            _driverLabels[row] = OverlayChrome.CreateTableCellLabel(_fontFamily, string.Empty);
+            _gapLabels[row] = OverlayChrome.CreateTableCellLabel(_fontFamily, "--", alignRight: true, monospace: true);
+            _detailLabels[row] = OverlayChrome.CreateTableCellLabel(_fontFamily, string.Empty, alignRight: true);
             _table.Controls.Add(_positionLabels[row], 0, row);
             _table.Controls.Add(_driverLabels[row], 1, row);
             _table.Controls.Add(_gapLabels[row], 2, row);
             _table.Controls.Add(_detailLabels[row], 3, row);
         }
 
-        _sourceLabel = new Label
-        {
-            AutoSize = false,
-            ForeColor = OverlayTheme.Colors.TextMuted,
-            Font = OverlayTheme.Font(_fontFamily, 8.5f),
-            Location = new Point(14, ClientSize.Height - 28),
-            Size = new Size(ClientSize.Width - 28, 18),
-            Text = "source: waiting",
-            TextAlign = ContentAlignment.MiddleLeft
-        };
+        _sourceLabel = OverlayChrome.CreateSourceLabel(_fontFamily, ClientSize.Width, ClientSize.Height, minimumWidth: 250);
 
         Controls.Add(_titleLabel);
         Controls.Add(_statusLabel);
@@ -159,14 +132,12 @@ internal sealed class RelativeForm : PersistentOverlayForm
             return;
         }
 
-        _statusLabel.Location = new Point(164, 11);
-        _statusLabel.Size = new Size(Math.Max(120, ClientSize.Width - 178), 22);
-        _table.Location = new Point(14, 42);
-        _table.Size = new Size(
-            Math.Max(250, ClientSize.Width - 28),
-            Math.Max(NormalMinimumTableHeight, ClientSize.Height - 76));
-        _sourceLabel.Location = new Point(14, ClientSize.Height - 28);
-        _sourceLabel.Size = new Size(Math.Max(250, ClientSize.Width - 28), 18);
+        _statusLabel.Location = OverlayChrome.StatusLocation(titleWidth: 150);
+        _statusLabel.Size = OverlayChrome.StatusSize(ClientSize.Width, titleWidth: 150, minimumWidth: 120);
+        _table.Location = OverlayChrome.TableLocation();
+        _table.Size = OverlayChrome.TableSize(ClientSize.Width, ClientSize.Height, minimumWidth: 250, minimumHeight: NormalMinimumTableHeight);
+        _sourceLabel.Location = OverlayChrome.SourceLocation(ClientSize.Height);
+        _sourceLabel.Size = OverlayChrome.SourceSize(ClientSize.Width, minimumWidth: 250);
     }
 
     protected override void Dispose(bool disposing)
@@ -191,8 +162,7 @@ internal sealed class RelativeForm : PersistentOverlayForm
         try
         {
             base.OnPaint(e);
-            using var borderPen = new Pen(OverlayTheme.Colors.WindowBorder);
-            e.Graphics.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
+            OverlayChrome.DrawWindowBorder(e.Graphics, ClientSize);
             succeeded = true;
         }
         catch (Exception exception)
@@ -257,9 +227,7 @@ internal sealed class RelativeForm : PersistentOverlayForm
             try
             {
                 _overlayError = null;
-                uiChanged |= SetTextIfChanged(_statusLabel, viewModel.Status);
-                uiChanged |= SetTextIfChanged(_sourceLabel, viewModel.Source);
-                uiChanged |= ApplyStatusColor(viewModel);
+                uiChanged |= OverlayChrome.ApplyChromeState(this, _titleLabel, _statusLabel, _sourceLabel, ChromeStateFor(viewModel, snapshot, _settings), titleWidth: 150);
                 uiChanged |= ApplyRows(viewModel);
                 applySucceeded = true;
             }
@@ -284,8 +252,13 @@ internal sealed class RelativeForm : PersistentOverlayForm
         catch (Exception exception)
         {
             ReportOverlayError(exception, "refresh");
-            SetTextIfChanged(_statusLabel, "relative error");
-            SetTextIfChanged(_sourceLabel, _overlayError);
+            OverlayChrome.ApplyChromeState(
+                this,
+                _titleLabel,
+                _statusLabel,
+                _sourceLabel,
+                OverlayChromeState.Error("Relative", "relative error", _overlayError),
+                titleWidth: 150);
         }
         finally
         {
@@ -396,14 +369,14 @@ internal sealed class RelativeForm : PersistentOverlayForm
     private bool ApplyRow(int index, RelativeOverlayRowViewModel row, bool visible)
     {
         var changed = false;
-        changed |= SetVisibleIfChanged(_positionLabels[index], visible);
-        changed |= SetVisibleIfChanged(_driverLabels[index], visible);
-        changed |= SetVisibleIfChanged(_gapLabels[index], visible);
-        changed |= SetVisibleIfChanged(_detailLabels[index], visible);
-        changed |= SetTextIfChanged(_positionLabels[index], row.Position);
-        changed |= SetTextIfChanged(_driverLabels[index], row.Driver);
-        changed |= SetTextIfChanged(_gapLabels[index], row.Gap);
-        changed |= SetTextIfChanged(_detailLabels[index], row.Detail);
+        changed |= OverlayChrome.SetVisibleIfChanged(_positionLabels[index], visible);
+        changed |= OverlayChrome.SetVisibleIfChanged(_driverLabels[index], visible);
+        changed |= OverlayChrome.SetVisibleIfChanged(_gapLabels[index], visible);
+        changed |= OverlayChrome.SetVisibleIfChanged(_detailLabels[index], visible);
+        changed |= OverlayChrome.SetTextIfChanged(_positionLabels[index], row.Position);
+        changed |= OverlayChrome.SetTextIfChanged(_driverLabels[index], row.Driver);
+        changed |= OverlayChrome.SetTextIfChanged(_gapLabels[index], row.Gap);
+        changed |= OverlayChrome.SetTextIfChanged(_detailLabels[index], row.Detail);
 
         var backColor = row.IsReference
             ? OverlayTheme.Colors.InfoBackground
@@ -441,14 +414,14 @@ internal sealed class RelativeForm : PersistentOverlayForm
     private bool ApplyBlankRow(int index, string placeholder, bool visible)
     {
         var changed = false;
-        changed |= SetVisibleIfChanged(_positionLabels[index], visible);
-        changed |= SetVisibleIfChanged(_driverLabels[index], visible);
-        changed |= SetVisibleIfChanged(_gapLabels[index], visible);
-        changed |= SetVisibleIfChanged(_detailLabels[index], visible);
-        changed |= SetTextIfChanged(_positionLabels[index], string.Empty);
-        changed |= SetTextIfChanged(_driverLabels[index], placeholder);
-        changed |= SetTextIfChanged(_gapLabels[index], string.Empty);
-        changed |= SetTextIfChanged(_detailLabels[index], string.Empty);
+        changed |= OverlayChrome.SetVisibleIfChanged(_positionLabels[index], visible);
+        changed |= OverlayChrome.SetVisibleIfChanged(_driverLabels[index], visible);
+        changed |= OverlayChrome.SetVisibleIfChanged(_gapLabels[index], visible);
+        changed |= OverlayChrome.SetVisibleIfChanged(_detailLabels[index], visible);
+        changed |= OverlayChrome.SetTextIfChanged(_positionLabels[index], string.Empty);
+        changed |= OverlayChrome.SetTextIfChanged(_driverLabels[index], placeholder);
+        changed |= OverlayChrome.SetTextIfChanged(_gapLabels[index], string.Empty);
+        changed |= OverlayChrome.SetTextIfChanged(_detailLabels[index], string.Empty);
         changed |= _positionLabels[index].SetClassColor(null);
         changed |= ApplyCellColors(
             index,
@@ -466,23 +439,7 @@ internal sealed class RelativeForm : PersistentOverlayForm
             return false;
         }
 
-        var changed = false;
-        for (var row = 0; row < _table.RowStyles.Count; row++)
-        {
-            var sizeType = SizeType.Absolute;
-            var height = row < visibleRows ? CompactRowHeight : 0f;
-            if (_table.RowStyles[row].SizeType != sizeType)
-            {
-                _table.RowStyles[row].SizeType = sizeType;
-                changed = true;
-            }
-
-            if (Math.Abs(_table.RowStyles[row].Height - height) > 0.001f)
-            {
-                _table.RowStyles[row].Height = height;
-                changed = true;
-            }
-        }
+        var changed = OverlayChrome.SetAbsoluteRows(_table, visibleRows, CompactRowHeight);
 
         _lastVisibleRows = visibleRows;
         return changed;
@@ -490,7 +447,7 @@ internal sealed class RelativeForm : PersistentOverlayForm
 
     private bool UpdateTableHeight(int visibleRows)
     {
-        var maximumHeight = Math.Max(CompactRowHeight, ClientSize.Height - 76);
+        var maximumHeight = Math.Max(CompactRowHeight, ClientSize.Height - OverlayTheme.Layout.OverlayTableWithFooterReservedHeight);
         var desiredHeight = Math.Min(maximumHeight, Math.Max(CompactRowHeight, visibleRows * CompactRowHeight + 2));
         if (_table.Height == desiredHeight)
         {
@@ -501,38 +458,17 @@ internal sealed class RelativeForm : PersistentOverlayForm
         return true;
     }
 
-    private bool ApplyStatusColor(RelativeOverlayViewModel viewModel)
-    {
-        if (_overlayError is not null)
-        {
-            var errorChanged = SetBackColorIfChanged(this, OverlayTheme.Colors.ErrorBackground);
-            errorChanged |= SetForeColorIfChanged(_statusLabel, OverlayTheme.Colors.ErrorText);
-            return errorChanged;
-        }
-
-        if (viewModel.Rows.Count == 0)
-        {
-            var waitingChanged = SetBackColorIfChanged(this, OverlayTheme.Colors.WindowBackground);
-            waitingChanged |= SetForeColorIfChanged(_statusLabel, OverlayTheme.Colors.TextSubtle);
-            return waitingChanged;
-        }
-
-        var changed = SetBackColorIfChanged(this, OverlayTheme.Colors.InfoBackground);
-        changed |= SetForeColorIfChanged(_statusLabel, OverlayTheme.Colors.InfoText);
-        return changed;
-    }
-
     private bool ApplyCellColors(int index, Color backColor, Color textColor, Color gapColor, Color detailColor)
     {
         var changed = false;
-        changed |= SetBackColorIfChanged(_positionLabels[index], backColor);
-        changed |= SetBackColorIfChanged(_driverLabels[index], backColor);
-        changed |= SetBackColorIfChanged(_gapLabels[index], backColor);
-        changed |= SetBackColorIfChanged(_detailLabels[index], backColor);
-        changed |= SetForeColorIfChanged(_positionLabels[index], textColor);
-        changed |= SetForeColorIfChanged(_driverLabels[index], textColor);
-        changed |= SetForeColorIfChanged(_gapLabels[index], gapColor);
-        changed |= SetForeColorIfChanged(_detailLabels[index], detailColor);
+        changed |= OverlayChrome.SetBackColorIfChanged(_positionLabels[index], backColor);
+        changed |= OverlayChrome.SetBackColorIfChanged(_driverLabels[index], backColor);
+        changed |= OverlayChrome.SetBackColorIfChanged(_gapLabels[index], backColor);
+        changed |= OverlayChrome.SetBackColorIfChanged(_detailLabels[index], backColor);
+        changed |= OverlayChrome.SetForeColorIfChanged(_positionLabels[index], textColor);
+        changed |= OverlayChrome.SetForeColorIfChanged(_driverLabels[index], textColor);
+        changed |= OverlayChrome.SetForeColorIfChanged(_gapLabels[index], gapColor);
+        changed |= OverlayChrome.SetForeColorIfChanged(_detailLabels[index], detailColor);
         return changed;
     }
 
@@ -553,27 +489,24 @@ internal sealed class RelativeForm : PersistentOverlayForm
         _logger.LogWarning(exception, "Relative overlay {Stage} failed.", stage);
     }
 
-    private static Label CreateCellLabel(
-        string fontFamily,
-        string text,
-        bool alignRight = false,
-        bool bold = false,
-        bool monospace = false)
+    private static OverlayChromeState ChromeStateFor(
+        RelativeOverlayViewModel viewModel,
+        LiveTelemetrySnapshot snapshot,
+        OverlaySettings settings)
     {
-        return new Label
-        {
-            AutoSize = false,
-            BackColor = OverlayTheme.Colors.PanelBackground,
-            Dock = DockStyle.Fill,
-            Font = monospace
-                ? new Font(FontFamily.GenericMonospace, bold ? 9f : 8.8f, bold ? FontStyle.Bold : FontStyle.Regular)
-                : OverlayTheme.Font(fontFamily, bold ? 9.2f : 8.8f, bold ? FontStyle.Bold : FontStyle.Regular),
-            ForeColor = bold ? OverlayTheme.Colors.TextPrimary : OverlayTheme.Colors.TextSecondary,
-            Margin = Padding.Empty,
-            Padding = new Padding(7, 0, 7, 0),
-            Text = text,
-            TextAlign = alignRight ? ContentAlignment.MiddleRight : ContentAlignment.MiddleLeft
-        };
+        var tone = viewModel.Rows.Count == 0
+            ? OverlayChromeTone.Waiting
+            : OverlayChromeTone.Info;
+        var showStatus = OverlayChromeSettings.ShowHeaderStatus(settings, snapshot);
+        var footerMode = OverlayChromeSettings.ShowFooterSource(settings, snapshot)
+            ? OverlayChromeFooterMode.Always
+            : OverlayChromeFooterMode.Never;
+        return new OverlayChromeState(
+            "Relative",
+            showStatus ? viewModel.Status : string.Empty,
+            tone,
+            viewModel.Source,
+            footerMode);
     }
 
     private static ClassPositionLabel CreatePositionCellLabel(string fontFamily, string text)
@@ -590,51 +523,6 @@ internal sealed class RelativeForm : PersistentOverlayForm
             Text = text,
             TextAlign = ContentAlignment.MiddleLeft
         };
-    }
-
-    private static bool SetTextIfChanged(Label label, string? value)
-    {
-        var text = value ?? string.Empty;
-        if (string.Equals(label.Text, text, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        label.Text = text;
-        return true;
-    }
-
-    private static bool SetVisibleIfChanged(Control control, bool visible)
-    {
-        if (control.Visible == visible)
-        {
-            return false;
-        }
-
-        control.Visible = visible;
-        return true;
-    }
-
-    private static bool SetBackColorIfChanged(Control control, Color color)
-    {
-        if (control.BackColor == color)
-        {
-            return false;
-        }
-
-        control.BackColor = color;
-        return true;
-    }
-
-    private static bool SetForeColorIfChanged(Control control, Color color)
-    {
-        if (control.ForeColor == color)
-        {
-            return false;
-        }
-
-        control.ForeColor = color;
-        return true;
     }
 
     private static Color? TryParseColor(string? hex)

@@ -80,39 +80,11 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         _fontFamily = fontFamily;
 
         BackColor = OverlayTheme.Colors.WindowBackground;
-        Padding = new Padding(12);
+        Padding = new Padding(OverlayTheme.Layout.OverlayChromePadding);
 
-        _titleLabel = new Label
-        {
-            AutoSize = false,
-            ForeColor = OverlayTheme.Colors.TextPrimary,
-            Font = OverlayTheme.Font(_fontFamily, 11f, FontStyle.Bold),
-            Location = new Point(14, 10),
-            Size = new Size(210, 24),
-            Text = "Class Gap Trend"
-        };
-
-        _statusLabel = new Label
-        {
-            AutoSize = false,
-            ForeColor = OverlayTheme.Colors.TextSubtle,
-            Font = OverlayTheme.Font(_fontFamily, 9f),
-            Location = new Point(224, 11),
-            Size = new Size(ClientSize.Width - 238, 22),
-            Text = "waiting",
-            TextAlign = ContentAlignment.MiddleRight
-        };
-
-        _sourceLabel = new Label
-        {
-            AutoSize = false,
-            ForeColor = OverlayTheme.Colors.TextMuted,
-            Font = OverlayTheme.Font(_fontFamily, 8.5f),
-            Location = new Point(14, ClientSize.Height - 28),
-            Size = new Size(ClientSize.Width - 28, 18),
-            Text = "source: waiting",
-            TextAlign = ContentAlignment.MiddleLeft
-        };
+        _titleLabel = OverlayChrome.CreateTitleLabel(_fontFamily, "Class Gap Trend", width: 210);
+        _statusLabel = OverlayChrome.CreateStatusLabel(_fontFamily, titleWidth: 210, clientWidth: ClientSize.Width, minimumWidth: 120);
+        _sourceLabel = OverlayChrome.CreateSourceLabel(_fontFamily, ClientSize.Width, ClientSize.Height, minimumWidth: 260);
 
         Controls.Add(_titleLabel);
         Controls.Add(_statusLabel);
@@ -138,10 +110,10 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
             return;
         }
 
-        _statusLabel.Location = new Point(224, 11);
-        _statusLabel.Size = new Size(Math.Max(120, ClientSize.Width - 238), 22);
-        _sourceLabel.Location = new Point(14, ClientSize.Height - 28);
-        _sourceLabel.Size = new Size(Math.Max(260, ClientSize.Width - 28), 18);
+        _statusLabel.Location = OverlayChrome.StatusLocation(titleWidth: 210);
+        _statusLabel.Size = OverlayChrome.StatusSize(ClientSize.Width, titleWidth: 210, minimumWidth: 120);
+        _sourceLabel.Location = OverlayChrome.SourceLocation(ClientSize.Height);
+        _sourceLabel.Size = OverlayChrome.SourceSize(ClientSize.Width, minimumWidth: 260);
     }
 
     protected override void Dispose(bool disposing)
@@ -168,7 +140,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
 
             using var borderPen = new Pen(OverlayTheme.Colors.WindowBorder);
-            e.Graphics.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
+            OverlayChrome.DrawWindowBorder(e.Graphics, ClientSize);
 
             var graphBounds = new Rectangle(
                 14,
@@ -269,7 +241,6 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
             }
 
             _overlayError = null;
-            var uiChanged = ApplyStatusColor(_gap);
             IReadOnlyList<ChartSeriesSelection> selectedSeries = [];
             if (_gap.HasData)
             {
@@ -289,17 +260,14 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
                 }
             }
 
-            uiChanged |= SetTextIfChanged(
-                _statusLabel,
-                _gap.HasData
-                    ? $"C{FormatPosition(_gap.ReferenceClassPosition)} {FormatGap(_gap.ClassLeaderGap)}"
-                    : "waiting");
             var trendDomain = SelectTimeDomain(selectedSeries);
-            uiChanged |= SetTextIfChanged(
+            var uiChanged = OverlayChrome.ApplyChromeState(
+                this,
+                _titleLabel,
+                _statusLabel,
                 _sourceLabel,
-                _gap.HasData
-                    ? $"{FormatTrendWindow(TimeSpan.FromSeconds(trendDomain.DurationSeconds))} class trend | cars {selectedSeries.Count}"
-                    : "source: waiting");
+                ChromeStateFor(snapshot, _gap, selectedSeries.Count, trendDomain.DurationSeconds),
+                titleWidth: 210);
             var sequenceChanged = previousSequence != snapshot.Sequence;
             _performanceState.RecordOverlayRefreshDecision(
                 GapToLeaderOverlayDefinition.Definition.Id,
@@ -319,9 +287,13 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         catch (Exception exception)
         {
             ReportOverlayError(exception, "refresh");
-            ApplyErrorStatusColor();
-            _statusLabel.Text = "graph error";
-            _sourceLabel.Text = TrimError(_overlayError);
+            OverlayChrome.ApplyChromeState(
+                this,
+                _titleLabel,
+                _statusLabel,
+                _sourceLabel,
+                OverlayChromeState.Error("Class Gap Trend", "graph error", TrimError(_overlayError)),
+                titleWidth: 210);
             Invalidate();
         }
         finally
@@ -1272,58 +1244,28 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
             labelFormat);
     }
 
-    private bool ApplyStatusColor(LiveLeaderGapSnapshot gap)
+    private OverlayChromeState ChromeStateFor(
+        LiveTelemetrySnapshot snapshot,
+        LiveLeaderGapSnapshot gap,
+        int selectedSeriesCount,
+        double trendDurationSeconds)
     {
-        if (!gap.HasData)
-        {
-            var changed = SetBackColorIfChanged(this, OverlayTheme.Colors.WindowBackground);
-            changed |= SetForeColorIfChanged(_statusLabel, OverlayTheme.Colors.TextSubtle);
-            return changed;
-        }
-
-        var infoChanged = SetBackColorIfChanged(this, OverlayTheme.Colors.InfoBackground);
-        infoChanged |= SetForeColorIfChanged(_statusLabel, OverlayTheme.Colors.InfoText);
-        return infoChanged;
-    }
-
-    private void ApplyErrorStatusColor()
-    {
-        BackColor = OverlayTheme.Colors.ErrorGraphBackground;
-        _statusLabel.ForeColor = OverlayTheme.Colors.ErrorText;
-    }
-
-    private static bool SetTextIfChanged(Label label, string? value)
-    {
-        var text = value ?? string.Empty;
-        if (string.Equals(label.Text, text, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        label.Text = text;
-        return true;
-    }
-
-    private static bool SetBackColorIfChanged(Control control, Color color)
-    {
-        if (control.BackColor == color)
-        {
-            return false;
-        }
-
-        control.BackColor = color;
-        return true;
-    }
-
-    private static bool SetForeColorIfChanged(Control control, Color color)
-    {
-        if (control.ForeColor == color)
-        {
-            return false;
-        }
-
-        control.ForeColor = color;
-        return true;
+        var showStatus = OverlayChromeSettings.ShowHeaderStatus(_settings, snapshot);
+        var footerMode = OverlayChromeSettings.ShowFooterSource(_settings, snapshot)
+            ? OverlayChromeFooterMode.Always
+            : OverlayChromeFooterMode.Never;
+        var status = gap.HasData
+            ? $"C{FormatPosition(gap.ReferenceClassPosition)} {FormatGap(gap.ClassLeaderGap)}"
+            : "waiting";
+        var source = gap.HasData
+            ? $"{FormatTrendWindow(TimeSpan.FromSeconds(trendDurationSeconds))} class trend | cars {selectedSeriesCount}"
+            : "source: waiting";
+        return new OverlayChromeState(
+            "Class Gap Trend",
+            showStatus ? status : string.Empty,
+            gap.HasData ? OverlayChromeTone.Info : OverlayChromeTone.Waiting,
+            source,
+            footerMode);
     }
 
     private void DrawError(Graphics graphics, Rectangle graphBounds)

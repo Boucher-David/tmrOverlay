@@ -35,6 +35,7 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
     private readonly AppEventRecorder _events;
     private readonly AppPerformanceState _performanceState;
     private readonly ILogger<LocalhostOverlayHostedService> _logger;
+    private readonly LocalhostSnapshotResponseCache _snapshotResponseCache = new(JsonOptions);
     private CancellationTokenSource? _cancellation;
     private HttpListener? _listener;
     private Task? _listenerTask;
@@ -214,11 +215,12 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
                 case "/snapshot":
                     route = "snapshot";
                     var live = _liveTelemetrySource.Snapshot();
-                    await WriteJsonAsync(context.Response, HttpStatusCode.OK, new
-                    {
-                        generatedAtUtc = DateTimeOffset.UtcNow,
-                        live
-                    }, cancellationToken).ConfigureAwait(false);
+                    await WriteBytesAsync(
+                        context.Response,
+                        HttpStatusCode.OK,
+                        "application/json; charset=utf-8",
+                        _snapshotResponseCache.GetOrCreate(live, DateTimeOffset.UtcNow),
+                        cancellationToken).ConfigureAwait(false);
                     statusCode = (int)HttpStatusCode.OK;
                     break;
 
@@ -511,5 +513,37 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
         response.ContentLength64 = bytes.Length;
         await response.OutputStream.WriteAsync(bytes, cancellationToken).ConfigureAwait(false);
         response.Close();
+    }
+}
+
+internal sealed class LocalhostSnapshotResponseCache
+{
+    private readonly JsonSerializerOptions _jsonOptions;
+    private readonly object _sync = new();
+    private long? _sequence;
+    private byte[]? _bytes;
+
+    public LocalhostSnapshotResponseCache(JsonSerializerOptions jsonOptions)
+    {
+        _jsonOptions = jsonOptions;
+    }
+
+    public byte[] GetOrCreate(LiveTelemetrySnapshot live, DateTimeOffset generatedAtUtc)
+    {
+        lock (_sync)
+        {
+            if (_sequence == live.Sequence && _bytes is not null)
+            {
+                return _bytes;
+            }
+
+            _sequence = live.Sequence;
+            _bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new
+            {
+                generatedAtUtc,
+                live
+            }, _jsonOptions));
+            return _bytes;
+        }
     }
 }

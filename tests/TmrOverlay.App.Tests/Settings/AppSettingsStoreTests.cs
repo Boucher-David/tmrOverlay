@@ -19,7 +19,7 @@ public sealed class AppSettingsStoreTests
             var settings = store.Load();
             settings.General.FontFamily = "Verdana";
             settings.General.UnitSystem = "Imperial";
-            var overlay = settings.GetOrAddOverlay("status", 304, 92);
+            var overlay = settings.GetOrAddOverlay("standings", 620, 340);
             overlay.X = 128;
             overlay.Y = 256;
             overlay.Opacity = 0.75;
@@ -33,7 +33,7 @@ public sealed class AppSettingsStoreTests
             Assert.Equal(AppSettingsMigrator.CurrentVersion, reloaded.SettingsVersion);
             Assert.Equal("Verdana", reloaded.General.FontFamily);
             Assert.Equal("Imperial", reloaded.General.UnitSystem);
-            Assert.Equal("status", persisted.Id);
+            Assert.Equal("standings", persisted.Id);
             Assert.Equal(128, persisted.X);
             Assert.Equal(256, persisted.Y);
             Assert.Equal(0.75, persisted.Opacity);
@@ -101,6 +101,8 @@ public sealed class AppSettingsStoreTests
             Assert.Equal(5, overlay.GetIntegerOption(OverlayOptionKeys.RelativeCarsBehind, 5, 0, 8));
             Assert.Equal(2, overlay.GetIntegerOption(OverlayOptionKeys.StandingsOtherClassRows, 2, 0, 6));
             Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.FuelAdvice, defaultValue: true));
+            Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.ChromeHeaderStatusPractice, defaultValue: false));
+            Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.ChromeFooterSourcePractice, defaultValue: false));
             Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true));
             Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.TrackMapBuildFromTelemetry, defaultValue: true));
             Assert.False(overlay.Options.ContainsKey("flags.green-seconds"));
@@ -125,18 +127,18 @@ public sealed class AppSettingsStoreTests
     {
         var settings = new ApplicationSettings();
 
-        var status = settings.GetOrAddOverlay("status", 520, 150);
+        var standings = settings.GetOrAddOverlay("standings", 620, 340);
         var fuel = settings.GetOrAddOverlay("fuel-calculator", 360, 180);
-        status.X = 64;
+        standings.X = 64;
         fuel.X = 512;
 
-        var reloadedStatus = settings.GetOrAddOverlay("status", 100, 100);
+        var reloadedStandings = settings.GetOrAddOverlay("standings", 100, 100);
 
         Assert.Equal(2, settings.Overlays.Count);
-        Assert.Same(status, reloadedStatus);
-        Assert.Equal(64, status.X);
+        Assert.Same(standings, reloadedStandings);
+        Assert.Equal(64, standings.X);
         Assert.Equal(512, fuel.X);
-        Assert.Equal(520, status.Width);
+        Assert.Equal(620, standings.Width);
         Assert.Equal(360, fuel.Width);
     }
 

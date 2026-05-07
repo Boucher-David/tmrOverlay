@@ -81,6 +81,19 @@ internal static class OverlayTheme
     public static class Layout
     {
         public const int OuterPadding = 14;
+        public const int OverlayChromePadding = 12;
+        public const int OverlayTitleTop = 10;
+        public const int OverlayStatusTop = 11;
+        public const int OverlayTitleHeight = 24;
+        public const int OverlayStatusHeight = 22;
+        public const int OverlayTableTop = 42;
+        public const int OverlayFooterTopOffset = 28;
+        public const int OverlayFooterHeight = 18;
+        public const int OverlayTableWithFooterReservedHeight = 76;
+        public const int OverlayTableWithoutFooterReservedHeight = 56;
+        public const int OverlayCellHorizontalPadding = 7;
+        public const int OverlayDenseCellHorizontalPadding = 5;
+        public const int OverlayDenseCellVerticalPadding = 2;
         public const int OverlayHeaderHeight = 34;
         public const int OverlayTableRowHeight = 28;
         public const int OverlayCompactRowHeight = 24;

@@ -2,6 +2,8 @@ namespace TmrOverlay.App.Localhost;
 
 internal sealed class LocalhostOverlayState
 {
+    private static readonly TimeSpan RecentRequestWindow = TimeSpan.FromSeconds(10);
+
     private const string StatusDisabled = "disabled";
     private const string StatusFailed = "failed";
     private const string StatusListening = "listening";
@@ -139,6 +141,9 @@ internal sealed class LocalhostOverlayState
     {
         lock (_sync)
         {
+            var lastRequestAgeSeconds = _lastRequestAtUtc is { } lastRequestAtUtc
+                ? Math.Max(0d, (DateTimeOffset.UtcNow - lastRequestAtUtc).TotalSeconds)
+                : (double?)null;
             return new LocalhostOverlaySnapshot(
                 Enabled: _options.Enabled,
                 Port: _options.Port,
@@ -160,6 +165,8 @@ internal sealed class LocalhostOverlayState
                 LastRequestStatusCode: _lastRequestStatusCode,
                 LastRequestDurationMs: _lastRequestDurationMs,
                 LastRequestError: _lastRequestError,
+                LastRequestAgeSeconds: lastRequestAgeSeconds,
+                HasRecentRequests: lastRequestAgeSeconds is not null && lastRequestAgeSeconds <= RecentRequestWindow.TotalSeconds,
                 RouteCounts: CopyCounts(_routeCounts),
                 StatusCodeCounts: CopyCounts(_statusCodeCounts));
         }
@@ -194,5 +201,7 @@ internal sealed record LocalhostOverlaySnapshot(
     int? LastRequestStatusCode,
     double? LastRequestDurationMs,
     string? LastRequestError,
+    double? LastRequestAgeSeconds,
+    bool HasRecentRequests,
     IReadOnlyDictionary<string, long> RouteCounts,
     IReadOnlyDictionary<string, long> StatusCodeCounts);

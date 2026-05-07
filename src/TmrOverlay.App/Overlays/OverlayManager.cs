@@ -11,7 +11,6 @@ using TmrOverlay.App.Overlays.Relative;
 using TmrOverlay.App.Overlays.SettingsPanel;
 using TmrOverlay.App.Overlays.SessionWeather;
 using TmrOverlay.App.Overlays.SimpleTelemetry;
-using TmrOverlay.App.Overlays.Status;
 using TmrOverlay.App.Overlays.Standings;
 using TmrOverlay.App.Overlays.StreamChat;
 using TmrOverlay.App.Overlays.Styling;
@@ -214,7 +213,6 @@ internal sealed class OverlayManager : IDisposable
 
     private IReadOnlyList<OverlayDefinition> ManagedOverlayDefinitions =>
     [
-        StatusOverlayDefinition.Definition,
         StandingsOverlayDefinition.Definition,
         FuelCalculatorOverlayDefinition.Definition,
         RelativeOverlayDefinition.Definition,
@@ -231,16 +229,6 @@ internal sealed class OverlayManager : IDisposable
 
     private IReadOnlyList<OverlayRegistration> ManagedOverlayRegistrations =>
     [
-        new OverlayRegistration(
-            StatusOverlayDefinition.Definition,
-            settings => new StatusOverlayForm(
-                _telemetryCaptureState,
-                _performanceState,
-                settings,
-                SelectedFontFamily,
-                SaveSettings),
-            24,
-            24),
         new OverlayRegistration(
             StandingsOverlayDefinition.Definition,
             settings => new StandingsForm(
@@ -399,14 +387,20 @@ internal sealed class OverlayManager : IDisposable
                 defaultLocation.Y,
                 defaultEnabled: false);
             overlay.Scale = Math.Clamp(overlay.Scale, 0.6d, 2d);
-            if (overlay.Width <= 0 || overlay.Height <= 0)
+            ApplyGapToLeaderRaceOnlyPolicy(definition, overlay);
+            ApplyFlagsCompactPolicy(definition, overlay);
+
+            if (UsesScaleDerivedSize(definition))
+            {
+                var size = ScaledOverlaySize(definition, overlay.Scale);
+                overlay.Width = size.Width;
+                overlay.Height = size.Height;
+            }
+            else if (overlay.Width <= 0 || overlay.Height <= 0)
             {
                 overlay.Width = ScaleDimension(definition.DefaultWidth, overlay.Scale);
                 overlay.Height = ScaleDimension(definition.DefaultHeight, overlay.Scale);
             }
-
-            ApplyGapToLeaderRaceOnlyPolicy(definition, overlay);
-            ApplyFlagsCompactPolicy(definition, overlay);
         }
     }
 
@@ -599,36 +593,19 @@ internal sealed class OverlayManager : IDisposable
 
     private void ApplyScaleIfChanged(OverlayDefinition definition, OverlaySettings settings, Form form)
     {
-        if (string.Equals(definition.Id, FlagsOverlayDefinition.Definition.Id, StringComparison.Ordinal))
-        {
-            ApplyFlagsCompactPolicy(definition, settings);
-            var size = FlagsOverlayDefinition.ResolveSize(settings);
-            settings.Width = size.Width;
-            settings.Height = size.Height;
-            if (form.ClientSize != size)
-            {
-                form.ClientSize = size;
-            }
-            var location = new Point(settings.X, settings.Y);
-            if (form.Location != location)
-            {
-                form.Location = location;
-            }
-
-            _appliedScales[definition.Id] = settings.Scale;
-            return;
-        }
-
         settings.Scale = Math.Clamp(settings.Scale, 0.6d, 2d);
+        ApplyFlagsCompactPolicy(definition, settings);
+        var size = ScaledOverlaySize(definition, settings.Scale);
+        settings.Width = size.Width;
+        settings.Height = size.Height;
         if (_appliedScales.TryGetValue(definition.Id, out var appliedScale)
-            && Math.Abs(appliedScale - settings.Scale) < 0.001d)
+            && Math.Abs(appliedScale - settings.Scale) < 0.001d
+            && form.ClientSize == size)
         {
             return;
         }
 
-        form.ClientSize = new Size(
-            ScaleDimension(definition.DefaultWidth, settings.Scale),
-            ScaleDimension(definition.DefaultHeight, settings.Scale));
+        form.ClientSize = size;
         _appliedScales[definition.Id] = settings.Scale;
     }
 
@@ -776,6 +753,18 @@ internal sealed class OverlayManager : IDisposable
         return Math.Max(80, (int)Math.Round(defaultDimension * Math.Clamp(scale, 0.6d, 2d)));
     }
 
+    private static Size ScaledOverlaySize(OverlayDefinition definition, double scale)
+    {
+        return new Size(
+            ScaleDimension(definition.DefaultWidth, scale),
+            ScaleDimension(definition.DefaultHeight, scale));
+    }
+
+    private static bool UsesScaleDerivedSize(OverlayDefinition definition)
+    {
+        return definition.ShowScaleControl;
+    }
+
     private static bool EnsureSettingsOverlayFixedSize(OverlaySettings settings)
     {
         var changed = false;
@@ -837,20 +826,28 @@ internal sealed class OverlayManager : IDisposable
         var hadFullScreenSize = settings.Width > FlagsOverlayDefinition.MaximumWidth
             || settings.Height > FlagsOverlayDefinition.MaximumHeight
             || (settings.Width >= 900 && settings.Height >= 500);
-        var size = hadPrimaryScreenDefault || hadFullScreenSize
-            ? new Size(definition.DefaultWidth, definition.DefaultHeight)
-            : FlagsOverlayDefinition.ResolveSize(settings);
 
-        settings.Scale = 1d;
-        settings.Width = size.Width;
-        settings.Height = size.Height;
-        if (hadPrimaryScreenDefault || hadFullScreenSize)
+        if (!hadPrimaryScreenDefault && !hadFullScreenSize)
         {
-            var location = DefaultOverlayLocation(definition);
-            settings.X = location.X;
-            settings.Y = location.Y;
+            if (settings.Width > 0
+                && settings.Height > 0
+                && Math.Abs(settings.Scale - 1d) < 0.001d)
+            {
+                var widthScale = settings.Width / (double)definition.DefaultWidth;
+                var heightScale = settings.Height / (double)definition.DefaultHeight;
+                settings.Scale = Math.Clamp((widthScale + heightScale) / 2d, 0.6d, 2d);
+            }
+
+            settings.ScreenId = null;
+            return;
         }
 
+        settings.Scale = 1d;
+        settings.Width = definition.DefaultWidth;
+        settings.Height = definition.DefaultHeight;
+        var location = DefaultOverlayLocation(definition);
+        settings.X = location.X;
+        settings.Y = location.Y;
         settings.ScreenId = null;
     }
 

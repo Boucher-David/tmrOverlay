@@ -17,7 +17,6 @@ using TmrOverlay.App.Overlays.Relative;
 using TmrOverlay.App.Overlays.SessionWeather;
 using TmrOverlay.App.Overlays.SettingsPanel;
 using TmrOverlay.App.Overlays.SimpleTelemetry;
-using TmrOverlay.App.Overlays.Status;
 using TmrOverlay.App.Overlays.Standings;
 using TmrOverlay.App.Overlays.StreamChat;
 using TmrOverlay.App.Overlays.Styling;
@@ -101,11 +100,6 @@ internal static class Program
             "settings-support",
             "Settings - Support",
             () => CreateSettingsForm("Support")));
-        screenshots.Add(RenderForm(
-            outputRoot,
-            "status-live-analysis",
-            "Collector Status",
-            CreateStatusForm));
         screenshots.Add(RenderForm(
             outputRoot,
             "fuel-calculator-live",
@@ -331,30 +325,10 @@ internal static class Program
         return form;
     }
 
-    private static StatusOverlayForm CreateStatusForm()
-    {
-        var state = new TelemetryCaptureState();
-        state.SetCaptureRoot(Path.Combine(Path.GetTempPath(), "tmr-overlay-windows-screenshots", "captures"));
-        state.MarkConnected();
-        state.MarkCollectionStarted(DateTimeOffset.UtcNow);
-        for (var index = 0; index < 1842; index++)
-        {
-            state.RecordFrame(DateTimeOffset.UtcNow);
-        }
-
-        return new StatusOverlayForm(
-            state,
-            new AppPerformanceState(),
-            OverlaySettingsFor(StatusOverlayDefinition.Definition),
-            ScreenshotFontFamily,
-            Noop);
-    }
-
     private static IReadOnlyList<OverlayDefinition> ManagedOverlayDefinitions()
     {
         return
         [
-            StatusOverlayDefinition.Definition,
             StandingsOverlayDefinition.Definition,
             FuelCalculatorOverlayDefinition.Definition,
             RelativeOverlayDefinition.Definition,

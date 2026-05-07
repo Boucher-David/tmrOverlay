@@ -322,9 +322,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
     private IEnumerable<OverlayDefinition> OrderedSettingsOverlays()
     {
-        var userFacingOverlays = _managedOverlays
-            .Where(overlay => !string.Equals(overlay.Id, "status", StringComparison.OrdinalIgnoreCase))
-            .ToArray();
+        var userFacingOverlays = _managedOverlays.ToArray();
         foreach (var preferredId in PreferredOverlayTabOrder)
         {
             var preferred = userFacingOverlays.FirstOrDefault(
@@ -615,7 +613,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
                 22,
                 54,
                 680));
-            AddLocalhostOptions(page, definition, 112);
+            AddOverlayGeneralOptions(page, definition, settings, controlTop: 112, localhostTop: 112);
             AddStreamChatOptions(page, settings, 212);
             return page;
         }
@@ -628,133 +626,254 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
                 22,
                 54,
                 720));
+            var garageOptionsTop = 112;
+            AddScaleOption(page, definition, settings, ref garageOptionsTop);
             AddLocalhostOptions(page, definition, 112);
             AddGarageCoverOptions(page, settings, 212);
             return page;
         }
 
+        page.Controls.Add(title);
+        if (SupportsSharedChromeSettings(definition.Id))
+        {
+            page.Controls.Add(CreateSharedChromeOverlayTabs(definition, settings));
+            return page;
+        }
+
+        AddOverlayGeneralOptions(page, definition, settings, controlTop, localhostTop: 58);
+        return page;
+    }
+
+    private TabControl CreateSharedChromeOverlayTabs(OverlayDefinition definition, OverlaySettings settings)
+    {
+        var chromeTabs = new TabControl
+        {
+            Location = new Point(18, 54),
+            Size = new Size(1080, 548),
+            TabIndex = 0
+        };
+
+        var generalPage = CreateTabPage("General");
+        AddOverlayGeneralOptions(generalPage, definition, settings, controlTop: 18, localhostTop: 18);
+        chromeTabs.TabPages.Add(generalPage);
+
+        var headerPage = CreateTabPage("Header");
+        AddChromeSettingsPage(
+            headerPage,
+            settings,
+            "Header",
+            "Status",
+            OverlayOptionKeys.ChromeHeaderStatusTest,
+            OverlayOptionKeys.ChromeHeaderStatusPractice,
+            OverlayOptionKeys.ChromeHeaderStatusQualifying,
+            OverlayOptionKeys.ChromeHeaderStatusRace);
+        chromeTabs.TabPages.Add(headerPage);
+
+        var footerPage = CreateTabPage("Footer");
+        AddChromeSettingsPage(
+            footerPage,
+            settings,
+            "Footer",
+            "Source",
+            OverlayOptionKeys.ChromeFooterSourceTest,
+            OverlayOptionKeys.ChromeFooterSourcePractice,
+            OverlayOptionKeys.ChromeFooterSourceQualifying,
+            OverlayOptionKeys.ChromeFooterSourceRace);
+        chromeTabs.TabPages.Add(footerPage);
+
+        return chromeTabs;
+    }
+
+    private void AddOverlayGeneralOptions(
+        TabPage page,
+        OverlayDefinition definition,
+        OverlaySettings settings,
+        int controlTop,
+        int localhostTop)
+    {
         var enabledCheckBox = CreateCheckBox("Visible", settings.Enabled, 22, controlTop, 220);
         enabledCheckBox.CheckedChanged += (_, _) =>
         {
             settings.Enabled = enabledCheckBox.Checked;
             SaveAndApply();
         };
-
-        page.Controls.Add(title);
         page.Controls.Add(enabledCheckBox);
 
         var optionsTop = controlTop + 46;
-        if (definition.ShowScaleControl)
-        {
-            var scaleLabel = CreateLabel("Scale", 22, optionsTop + 4, 160);
-            var scaleInput = new NumericUpDown
-            {
-                DecimalPlaces = 0,
-                Increment = 5,
-                Location = new Point(180, optionsTop),
-                Maximum = 200,
-                Minimum = 60,
-                Size = new Size(90, 28),
-                TabStop = true,
-                TextAlign = HorizontalAlignment.Right,
-                Value = (decimal)Math.Round(Math.Clamp(settings.Scale, 0.6d, 2d) * 100d)
-            };
-            var percentLabel = CreateLabel("%", 278, optionsTop + 4, 40);
-            scaleInput.ValueChanged += (_, _) =>
-            {
-                settings.Scale = Math.Clamp((double)scaleInput.Value / 100d, 0.6d, 2d);
-                settings.Width = ScaleDimension(definition.DefaultWidth, settings.Scale);
-                settings.Height = ScaleDimension(definition.DefaultHeight, settings.Scale);
-                SaveAndApply();
-            };
+        AddScaleOption(page, definition, settings, ref optionsTop);
+        AddOpacityOption(page, definition, settings, ref optionsTop);
+        AddSessionFilterOptions(page, definition, settings, ref optionsTop);
 
-            page.Controls.Add(scaleLabel);
-            page.Controls.Add(scaleInput);
-            page.Controls.Add(percentLabel);
-            optionsTop += 50;
-        }
-
-        if (definition.ShowOpacityControl)
-        {
-            var opacityLabel = CreateLabel(
-                string.Equals(definition.Id, TrackMapOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase)
-                    ? "Map fill"
-                    : "Opacity",
-                22,
-                optionsTop + 4,
-                160);
-            var opacityInput = new NumericUpDown
-            {
-                DecimalPlaces = 0,
-                Increment = 5,
-                Location = new Point(180, optionsTop),
-                Maximum = 100,
-                Minimum = 20,
-                Size = new Size(90, 28),
-                TabStop = true,
-                TextAlign = HorizontalAlignment.Right,
-                Value = (decimal)Math.Round(Math.Clamp(settings.Opacity, 0.2d, 1d) * 100d)
-            };
-            var percentLabel = CreateLabel("%", 278, optionsTop + 4, 40);
-            opacityInput.ValueChanged += (_, _) =>
-            {
-                settings.Opacity = Math.Clamp((double)opacityInput.Value / 100d, 0.2d, 1d);
-                SaveAndApply();
-            };
-
-            page.Controls.Add(opacityLabel);
-            page.Controls.Add(opacityInput);
-            page.Controls.Add(percentLabel);
-            optionsTop += 50;
-        }
-
-        if (definition.ShowSessionFilters)
-        {
-            var sessionBox = new GroupBox
-            {
-                ForeColor = OverlayTheme.Colors.TextControl,
-                Location = new Point(22, optionsTop),
-                Size = new Size(360, 154),
-                Text = "Display in sessions"
-            };
-
-            var testCheckBox = CreateCheckBox("Test", settings.ShowInTest, 16, 28, 150);
-            var practiceCheckBox = CreateCheckBox("Practice", settings.ShowInPractice, 180, 28, 150);
-            var qualifyingCheckBox = CreateCheckBox("Qualifying", settings.ShowInQualifying, 16, 72, 150);
-            var raceCheckBox = CreateCheckBox("Race", settings.ShowInRace, 180, 72, 150);
-
-            testCheckBox.CheckedChanged += (_, _) =>
-            {
-                settings.ShowInTest = testCheckBox.Checked;
-                SaveAndApply();
-            };
-            practiceCheckBox.CheckedChanged += (_, _) =>
-            {
-                settings.ShowInPractice = practiceCheckBox.Checked;
-                SaveAndApply();
-            };
-            qualifyingCheckBox.CheckedChanged += (_, _) =>
-            {
-                settings.ShowInQualifying = qualifyingCheckBox.Checked;
-                SaveAndApply();
-            };
-            raceCheckBox.CheckedChanged += (_, _) =>
-            {
-                settings.ShowInRace = raceCheckBox.Checked;
-                SaveAndApply();
-            };
-
-            sessionBox.Controls.Add(testCheckBox);
-            sessionBox.Controls.Add(practiceCheckBox);
-            sessionBox.Controls.Add(qualifyingCheckBox);
-            sessionBox.Controls.Add(raceCheckBox);
-            page.Controls.Add(sessionBox);
-            optionsTop += 176;
-        }
-
-        AddLocalhostOptions(page, definition, 58);
+        AddLocalhostOptions(page, definition, localhostTop);
         AddOverlaySpecificOptions(page, definition, settings, optionsTop);
-        return page;
+    }
+
+    private void AddScaleOption(TabPage page, OverlayDefinition definition, OverlaySettings settings, ref int optionsTop)
+    {
+        if (!definition.ShowScaleControl)
+        {
+            return;
+        }
+
+        var scaleLabel = CreateLabel("Scale", 22, optionsTop + 4, 160);
+        var scaleInput = new NumericUpDown
+        {
+            DecimalPlaces = 0,
+            Increment = 5,
+            Location = new Point(180, optionsTop),
+            Maximum = 200,
+            Minimum = 60,
+            Size = new Size(90, 28),
+            TabStop = true,
+            TextAlign = HorizontalAlignment.Right,
+            Value = (decimal)Math.Round(Math.Clamp(settings.Scale, 0.6d, 2d) * 100d)
+        };
+        var percentLabel = CreateLabel("%", 278, optionsTop + 4, 40);
+        scaleInput.ValueChanged += (_, _) =>
+        {
+            settings.Scale = Math.Clamp((double)scaleInput.Value / 100d, 0.6d, 2d);
+            settings.Width = ScaleDimension(definition.DefaultWidth, settings.Scale);
+            settings.Height = ScaleDimension(definition.DefaultHeight, settings.Scale);
+            SaveAndApply();
+        };
+
+        page.Controls.Add(scaleLabel);
+        page.Controls.Add(scaleInput);
+        page.Controls.Add(percentLabel);
+        optionsTop += 50;
+    }
+
+    private void AddOpacityOption(TabPage page, OverlayDefinition definition, OverlaySettings settings, ref int optionsTop)
+    {
+        if (!definition.ShowOpacityControl)
+        {
+            return;
+        }
+
+        var opacityLabel = CreateLabel(
+            string.Equals(definition.Id, TrackMapOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase)
+                ? "Map fill"
+                : "Opacity",
+            22,
+            optionsTop + 4,
+            160);
+        var opacityInput = new NumericUpDown
+        {
+            DecimalPlaces = 0,
+            Increment = 5,
+            Location = new Point(180, optionsTop),
+            Maximum = 100,
+            Minimum = 20,
+            Size = new Size(90, 28),
+            TabStop = true,
+            TextAlign = HorizontalAlignment.Right,
+            Value = (decimal)Math.Round(Math.Clamp(settings.Opacity, 0.2d, 1d) * 100d)
+        };
+        var percentLabel = CreateLabel("%", 278, optionsTop + 4, 40);
+        opacityInput.ValueChanged += (_, _) =>
+        {
+            settings.Opacity = Math.Clamp((double)opacityInput.Value / 100d, 0.2d, 1d);
+            SaveAndApply();
+        };
+
+        page.Controls.Add(opacityLabel);
+        page.Controls.Add(opacityInput);
+        page.Controls.Add(percentLabel);
+        optionsTop += 50;
+    }
+
+    private void AddSessionFilterOptions(TabPage page, OverlayDefinition definition, OverlaySettings settings, ref int optionsTop)
+    {
+        if (!definition.ShowSessionFilters)
+        {
+            return;
+        }
+
+        var sessionBox = new GroupBox
+        {
+            ForeColor = OverlayTheme.Colors.TextControl,
+            Location = new Point(22, optionsTop),
+            Size = new Size(360, 154),
+            Text = "Display in sessions"
+        };
+
+        var testCheckBox = CreateCheckBox("Test", settings.ShowInTest, 16, 28, 150);
+        var practiceCheckBox = CreateCheckBox("Practice", settings.ShowInPractice, 180, 28, 150);
+        var qualifyingCheckBox = CreateCheckBox("Qualifying", settings.ShowInQualifying, 16, 72, 150);
+        var raceCheckBox = CreateCheckBox("Race", settings.ShowInRace, 180, 72, 150);
+
+        testCheckBox.CheckedChanged += (_, _) =>
+        {
+            settings.ShowInTest = testCheckBox.Checked;
+            SaveAndApply();
+        };
+        practiceCheckBox.CheckedChanged += (_, _) =>
+        {
+            settings.ShowInPractice = practiceCheckBox.Checked;
+            SaveAndApply();
+        };
+        qualifyingCheckBox.CheckedChanged += (_, _) =>
+        {
+            settings.ShowInQualifying = qualifyingCheckBox.Checked;
+            SaveAndApply();
+        };
+        raceCheckBox.CheckedChanged += (_, _) =>
+        {
+            settings.ShowInRace = raceCheckBox.Checked;
+            SaveAndApply();
+        };
+
+        sessionBox.Controls.Add(testCheckBox);
+        sessionBox.Controls.Add(practiceCheckBox);
+        sessionBox.Controls.Add(qualifyingCheckBox);
+        sessionBox.Controls.Add(raceCheckBox);
+        page.Controls.Add(sessionBox);
+        optionsTop += 176;
+    }
+
+    private void AddChromeSettingsPage(
+        TabPage page,
+        OverlaySettings settings,
+        string title,
+        string itemLabel,
+        string testKey,
+        string practiceKey,
+        string qualifyingKey,
+        string raceKey)
+    {
+        page.Controls.Add(CreateSectionLabel(title, 18, 18, 500));
+        page.Controls.Add(CreateLabel("Item", 22, 62, 120));
+        page.Controls.Add(CreateLabel("Test", 196, 62, 90));
+        page.Controls.Add(CreateLabel("Practice", 296, 62, 110));
+        page.Controls.Add(CreateLabel("Qualifying", 416, 62, 120));
+        page.Controls.Add(CreateLabel("Race", 548, 62, 90));
+
+        page.Controls.Add(CreateLabel(itemLabel, 22, 104, 150));
+        AddChromeSessionCheckBox(page, settings, testKey, 196, 100);
+        AddChromeSessionCheckBox(page, settings, practiceKey, 296, 100);
+        AddChromeSessionCheckBox(page, settings, qualifyingKey, 416, 100);
+        AddChromeSessionCheckBox(page, settings, raceKey, 548, 100);
+    }
+
+    private void AddChromeSessionCheckBox(TabPage page, OverlaySettings settings, string optionKey, int x, int y)
+    {
+        var checkBox = CreateCheckBox(
+            string.Empty,
+            settings.GetBooleanOption(optionKey, defaultValue: true),
+            x,
+            y,
+            32);
+        checkBox.CheckedChanged += (_, _) =>
+        {
+            settings.SetBooleanOption(optionKey, checkBox.Checked);
+            SaveAndApply();
+        };
+        page.Controls.Add(checkBox);
+    }
+
+    private static bool SupportsSharedChromeSettings(string overlayId)
+    {
+        return overlayId is "standings" or "relative" or "fuel-calculator" or "input-state" or "gap-to-leader";
     }
 
     private void AddLocalhostOptions(TabPage page, OverlayDefinition definition, int top)
@@ -937,7 +1056,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         using var image = GarageCoverImageStore.TryLoadPreviewImage(imagePath);
         if (image is not null && image.Width > 0 && image.Height > 0)
         {
-            var scale = Math.Min(
+            var scale = Math.Max(
                 bounds.Width / (double)image.Width,
                 bounds.Height / (double)image.Height);
             var width = (int)Math.Round(image.Width * scale);
@@ -1153,39 +1272,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             defaultEnabled: true,
             rowTop: top + 182);
 
-        var sizeTop = top + 236;
-        page.Controls.Add(CreateSectionLabel("Overlay size", 18, sizeTop, 500));
-        page.Controls.Add(CreateLabel("Width", 22, sizeTop + 42, 80));
-        var widthInput = CreateIntegerInput(
-            Math.Clamp(settings.Width, FlagsOverlayDefinition.MinimumWidth, FlagsOverlayDefinition.MaximumWidth),
-            FlagsOverlayDefinition.MinimumWidth,
-            FlagsOverlayDefinition.MaximumWidth,
-            108,
-            sizeTop + 38);
-        widthInput.Width = 96;
-        widthInput.ValueChanged += (_, _) =>
-        {
-            settings.Width = (int)widthInput.Value;
-            settings.ScreenId = null;
-            SaveAndApply();
-        };
-        page.Controls.Add(widthInput);
-
-        page.Controls.Add(CreateLabel("Height", 238, sizeTop + 42, 80));
-        var heightInput = CreateIntegerInput(
-            Math.Clamp(settings.Height, FlagsOverlayDefinition.MinimumHeight, FlagsOverlayDefinition.MaximumHeight),
-            FlagsOverlayDefinition.MinimumHeight,
-            FlagsOverlayDefinition.MaximumHeight,
-            324,
-            sizeTop + 38);
-        heightInput.Width = 96;
-        heightInput.ValueChanged += (_, _) =>
-        {
-            settings.Height = (int)heightInput.Value;
-            settings.ScreenId = null;
-            SaveAndApply();
-        };
-        page.Controls.Add(heightInput);
+        page.Controls.Add(CreateMutedLabel("Overlay dimensions follow the shared Scale setting.", 22, top + 236, 520));
     }
 
     private void AddFlagDisplayRow(
@@ -1736,7 +1823,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         var localhost = _localhostOverlayState.Snapshot();
         var localhostStatus = localhost.LastError is { Length: > 0 }
             ? $"{localhost.Status} ({localhost.LastError})"
-            : $"{localhost.Status}, {localhost.TotalRequests:N0} requests";
+            : $"{localhost.Status}, {localhost.TotalRequests:N0} requests, {LocalhostActivityText(localhost)}";
         return string.Join(
             Environment.NewLine,
             $"edge clips: {Status(_telemetryEdgeCaseOptions.Enabled)}",
@@ -1745,6 +1832,24 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             $"post-race analysis: {Status(_postRaceAnalysisOptions.Enabled)}",
             $"localhost: {localhostStatus}",
             "Paths: logs + history folders below");
+    }
+
+    private static string LocalhostActivityText(LocalhostOverlaySnapshot localhost)
+    {
+        if (!localhost.Enabled)
+        {
+            return "disabled";
+        }
+
+        if (!localhost.HasRecentRequests)
+        {
+            return "idle";
+        }
+
+        var route = string.IsNullOrWhiteSpace(localhost.LastRequestRoute)
+            ? "request"
+            : localhost.LastRequestRoute.Replace('_', ' ');
+        return $"active {route} {localhost.LastRequestAgeSeconds:0}s ago";
     }
 
     private static string Status(bool enabled)

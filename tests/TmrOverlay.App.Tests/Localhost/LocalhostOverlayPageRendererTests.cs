@@ -35,6 +35,7 @@ public sealed class BrowserOverlayPageRendererTests
             Assert.Contains("renderOffline()", html);
             Assert.Contains("let cachedTrackMapSettings", html);
             Assert.Contains("row.hasSpatialProgress === false", html);
+            Assert.Contains("\"refreshIntervalMilliseconds\":100", html);
             Assert.Contains(": null", html);
         }
         if (expectedId == "standings")

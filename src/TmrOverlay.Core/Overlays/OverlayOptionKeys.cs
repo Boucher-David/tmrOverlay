@@ -6,6 +6,14 @@ internal static class OverlayOptionKeys
     public const string StatusHealthDetails = "status.health-details";
     public const string FuelAdvice = "fuel.advice";
     public const string FuelSource = "fuel.source";
+    public const string ChromeHeaderStatusTest = "chrome.header.status.test";
+    public const string ChromeHeaderStatusPractice = "chrome.header.status.practice";
+    public const string ChromeHeaderStatusQualifying = "chrome.header.status.qualifying";
+    public const string ChromeHeaderStatusRace = "chrome.header.status.race";
+    public const string ChromeFooterSourceTest = "chrome.footer.source.test";
+    public const string ChromeFooterSourcePractice = "chrome.footer.source.practice";
+    public const string ChromeFooterSourceQualifying = "chrome.footer.source.qualifying";
+    public const string ChromeFooterSourceRace = "chrome.footer.source.race";
     public const string RadarMulticlassWarning = "radar.multiclass-warning";
     public const string StandingsOtherClassRows = "standings.other-class-rows";
     public const string RelativeCarsAhead = "relative.cars-ahead";

@@ -10,6 +10,6 @@ internal static class StreamChatOverlayDefinition
         DefaultWidth: 380,
         DefaultHeight: 520,
         ShowSessionFilters: false,
-        ShowScaleControl: false,
+        ShowScaleControl: true,
         ShowOpacityControl: false);
 }

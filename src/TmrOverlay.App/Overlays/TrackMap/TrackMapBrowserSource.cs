@@ -11,7 +11,7 @@ internal static class TrackMapBrowserSource
         bodyClass: "track-map-page",
         renderWhenTelemetryUnavailable: true,
         fadeWhenTelemetryUnavailable: TrackMapOverlayDefinition.Definition.FadeWhenLiveTelemetryUnavailable,
-        refreshIntervalMilliseconds: 50,
+        refreshIntervalMilliseconds: 100,
         script: Script);
 
     private const string Script = """
