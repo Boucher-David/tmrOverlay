@@ -23,6 +23,8 @@ internal sealed class HistoricalSessionContext
     public IReadOnlyList<HistoricalSessionDriver> Drivers { get; init; } = [];
 
     public IReadOnlyList<HistoricalTrackSector> Sectors { get; init; } = [];
+
+    public IReadOnlyList<HistoricalSessionResultPosition> ResultPositions { get; init; } = [];
 }
 
 internal sealed class HistoricalSessionSummary
@@ -213,6 +215,33 @@ internal sealed class HistoricalSessionDriver
     public string? CarClassColorHex { get; init; }
 
     public bool? IsSpectator { get; init; }
+}
+
+internal sealed class HistoricalSessionResultPosition
+{
+    public int? Position { get; init; }
+
+    public int? ClassPosition { get; init; }
+
+    public int? CarIdx { get; init; }
+
+    public int? Lap { get; init; }
+
+    public double? TimeSeconds { get; init; }
+
+    public int? FastestLap { get; init; }
+
+    public double? FastestTimeSeconds { get; init; }
+
+    public double? LastTimeSeconds { get; init; }
+
+    public int? LapsLed { get; init; }
+
+    public int? LapsComplete { get; init; }
+
+    public double? LapsDriven { get; init; }
+
+    public string? ReasonOut { get; init; }
 }
 
 internal sealed class HistoricalConditions
@@ -477,6 +506,15 @@ internal sealed record HistoricalTelemetrySample(
     int TrackWetness,
     bool WeatherDeclaredWet,
     int PlayerTireCompound,
+    int? Skies = null,
+    double? PrecipitationPercent = null,
+    double? WindVelocityMetersPerSecond = null,
+    double? WindDirectionRadians = null,
+    double? RelativeHumidityPercent = null,
+    double? FogLevelPercent = null,
+    double? AirPressurePa = null,
+    double? SolarAltitudeRadians = null,
+    double? SolarAzimuthRadians = null,
     bool? IsGarageVisible = null,
     double? SessionTimeRemain = null,
     double? SessionTimeTotal = null,
@@ -571,7 +609,8 @@ internal sealed record HistoricalTelemetrySample(
     double? WaterTempC = null,
     double? FuelPressureBar = null,
     double? OilTempC = null,
-    double? OilPressureBar = null);
+    double? OilPressureBar = null,
+    bool? BrakeAbsActive = null);
 
 internal sealed record HistoricalCarProximity(
     int CarIdx,

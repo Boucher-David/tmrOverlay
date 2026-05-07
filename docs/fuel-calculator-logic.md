@@ -5,6 +5,8 @@ This file explains how the fuel calculator derives strategy numbers and display 
 Implementation files:
 
 - `src/TmrOverlay.Core/Telemetry/Live/LiveTelemetrySnapshot.cs`
+- `src/TmrOverlay.Core/Telemetry/Live/LiveRaceModels.cs`
+- `src/TmrOverlay.Core/Telemetry/Live/LiveRaceProgressProjector.cs`
 - `src/TmrOverlay.Core/Fuel/FuelStrategyCalculator.cs`
 - `src/TmrOverlay.App/Overlays/FuelCalculator/FuelCalculatorViewModel.cs`
 - `src/TmrOverlay.App/Overlays/FuelCalculator/FuelCalculatorForm.cs`
@@ -25,7 +27,7 @@ The fuel calculator estimates:
 - Whether a longer rhythm avoids stops.
 - Whether tire service is likely free under refueling time.
 
-It uses live telemetry first, then exact user history for the same car/track/session combo, then optional baseline history only when baseline lookup is enabled.
+It uses model-v2 live telemetry first, then exact user history for the same car/track/session combo, then optional baseline history only when baseline lookup is enabled.
 
 ## Refresh Loop
 
@@ -41,6 +43,19 @@ Each refresh:
 6. Applies status color, source visibility, advice-column visibility, and row text only when the target UI value changed.
 7. Keeps all six stint rows visible, using blank future rows when fewer rows are available.
 8. Records whether the timer tick saw new input, how old that input was, and whether the tick actually changed UI state.
+
+## Model V2 Inputs
+
+Fuel V2 separates reusable live race facts from fuel strategy math.
+
+The calculator builds `FuelStrategyInputs` from:
+
+- `LiveFuelPitModel`: current fuel level/percent, fuel burn projection, fuel confidence, and pit/service signals.
+- `LiveSessionModel`: session state, remaining clock, and lap limits.
+- `LiveRaceProgressModel`: strategy-car progress, reference progress, leader progress, lap gaps, race pace, positions, and race-laps-remaining estimates.
+- `HistoricalSessionAggregate`: fuel burn history, lap history, tank metadata fallback, teammate stint targets, fill-rate evidence, pit lane time, and tire-service estimates.
+
+`LiveRaceProgressProjector` owns the shared race-laps-remaining calculation so Fuel, future Pit Service suggested-refuel rows, and other strategy overlays do not each recalculate leader progress and timed-race finish laps differently.
 
 ## Live Fuel Snapshot
 
@@ -109,7 +124,7 @@ History contributes:
 
 The calculator selects fuel per lap in this order:
 
-1. Live fuel per lap from `LiveFuelSnapshot`.
+1. Live fuel per lap from `LiveFuelPitModel.Fuel`.
 2. Preferred history aggregate mean fuel per lap.
 3. Unavailable.
 
@@ -126,13 +141,14 @@ Planned hardening:
 
 The calculator selects strategy lap time in this order:
 
-1. Live fuel snapshot lap time.
-2. Team last lap from latest sample.
+1. Live fuel/pit model lap time.
+2. Live race-progress strategy lap time when it is based on a completed team/player lap.
 3. History median lap.
 4. History average lap.
 5. Driver estimated lap time from live context.
 6. Driver estimated lap time from history aggregate car metadata.
-7. Unavailable.
+7. Live race-progress strategy lap time when only an estimate is available.
+8. Unavailable.
 
 Valid lap times must be finite and between 20 and 1800 seconds.
 
@@ -151,7 +167,7 @@ Selection order:
 
 ## Race Laps Remaining
 
-The calculator estimates race laps remaining in this order:
+`LiveRaceProgressProjector` estimates race laps remaining in this order:
 
 1. If session state indicates ended, return `0`.
 2. If `SessionLapsRemainEx` is valid, use it.
@@ -170,6 +186,8 @@ The calculator estimates race laps remaining in this order:
 7. Otherwise unavailable.
 
 Progress prefers team car progress, then player progress, then `RaceLaps`.
+
+Fuel reuses the shared projector with its selected race pace. That allows the live model to provide the normal estimate while still allowing Fuel to substitute a better history-derived lap time when live leader/team pace is unavailable.
 
 ## Fuel To Finish
 

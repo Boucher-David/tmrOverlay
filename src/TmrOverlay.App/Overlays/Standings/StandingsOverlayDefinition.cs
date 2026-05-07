@@ -9,5 +9,14 @@ internal static class StandingsOverlayDefinition
         DisplayName: "Standings",
         DefaultWidth: 620,
         DefaultHeight: 340,
+        Options:
+        [
+            OverlaySettingsOptionDescriptor.Integer(
+                OverlayOptionKeys.StandingsOtherClassRows,
+                "Other-class rows",
+                0,
+                6,
+                defaultValue: 2)
+        ],
         FadeWhenLiveTelemetryUnavailable: true);
 }

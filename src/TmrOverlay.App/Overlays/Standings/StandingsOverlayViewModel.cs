@@ -1,3 +1,4 @@
+using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Telemetry.Live;
 
 namespace TmrOverlay.App.Overlays.Standings;
@@ -7,40 +8,57 @@ internal sealed record StandingsOverlayViewModel(
     string Source,
     IReadOnlyList<StandingsOverlayRowViewModel> Rows)
 {
-    private static readonly TimeSpan StaleAfter = TimeSpan.FromSeconds(1.5d);
-
     public static StandingsOverlayViewModel From(
         LiveTelemetrySnapshot snapshot,
         DateTimeOffset now,
-        int maximumRows = 8)
+        int maximumRows = 8,
+        int otherClassRowsPerClass = 2)
     {
-        if (!snapshot.IsConnected)
+        var availability = OverlayAvailabilityEvaluator.FromSnapshot(
+            snapshot,
+            now,
+            staleStatusText: "waiting for fresh timing");
+        if (!availability.IsAvailable)
         {
-            return Waiting("waiting for iRacing");
-        }
-
-        if (!snapshot.IsCollecting)
-        {
-            return Waiting("waiting for telemetry");
-        }
-
-        if (snapshot.LastUpdatedAtUtc is null || now - snapshot.LastUpdatedAtUtc.Value > StaleAfter)
-        {
-            return Waiting("waiting for fresh timing");
+            return Waiting(availability.StatusText);
         }
 
         var timing = snapshot.Models.Timing;
-        if (!timing.HasData)
+        var scoring = snapshot.Models.Scoring;
+        if (!timing.HasData && !scoring.HasData)
         {
-            return Waiting("waiting for timing");
+            return Waiting("waiting for standings");
         }
 
-        var referenceCarIdx = timing.FocusRow?.CarIdx
+        var referenceCarIdx = scoring.ReferenceCarIdx
+            ?? timing.FocusRow?.CarIdx
             ?? timing.PlayerRow?.CarIdx
             ?? timing.FocusCarIdx
             ?? timing.PlayerCarIdx
             ?? snapshot.Models.DriverDirectory.FocusCarIdx
             ?? snapshot.Models.DriverDirectory.PlayerCarIdx;
+        if (scoring.HasData)
+        {
+            var scoringRows = ScoringRows(
+                snapshot,
+                referenceCarIdx,
+                Math.Clamp(maximumRows, 1, 20),
+                Math.Clamp(otherClassRowsPerClass, 0, 6));
+            if (scoringRows.Length == 0)
+            {
+                return Waiting("waiting for scoring rows");
+            }
+
+            var shownCars = scoringRows.Count(row => !row.IsClassHeader);
+            var reference = scoringRows.FirstOrDefault(row => row.IsReference);
+            var status = reference?.ClassPosition is { Length: > 1 } classPosition
+                ? $"{classPosition} - {shownCars}/{scoring.Rows.Count} rows"
+                : $"{shownCars}/{scoring.Rows.Count} rows";
+            return new StandingsOverlayViewModel(
+                status,
+                SourceText(snapshot.Models.Coverage),
+                scoringRows);
+        }
 
         var candidateRows = PreferredRows(timing)
             .Where(row => row.HasTiming || row.OverallPosition is not null || row.ClassPosition is not null)
@@ -70,6 +88,132 @@ internal sealed record StandingsOverlayViewModel(
             status,
             SourceText(timing),
             candidateRows);
+    }
+
+    private static StandingsOverlayRowViewModel[] ScoringRows(
+        LiveTelemetrySnapshot snapshot,
+        int? referenceCarIdx,
+        int maximumRows,
+        int otherClassRowsPerClass)
+    {
+        var scoring = snapshot.Models.Scoring;
+        var groups = scoring.ClassGroups.Count > 0
+            ? scoring.ClassGroups
+            : [new LiveScoringClassGroup(
+                CarClass: null,
+                ClassName: "Standings",
+                CarClassColorHex: null,
+                IsReferenceClass: true,
+                RowCount: scoring.Rows.Count,
+                Rows: scoring.Rows)];
+        var orderedGroups = groups
+            .OrderByDescending(group => group.IsReferenceClass)
+            .ThenBy(group => group.Rows.Min(row => row.OverallPosition ?? int.MaxValue))
+            .ThenBy(group => group.CarClass ?? int.MaxValue)
+            .ToArray();
+        var primaryGroup = orderedGroups.FirstOrDefault(group => group.IsReferenceClass)
+            ?? orderedGroups.First();
+        var otherGroups = orderedGroups
+            .Where(group => !ReferenceEquals(group, primaryGroup) && otherClassRowsPerClass > 0)
+            .ToArray();
+        var includeHeaders = orderedGroups.Length > 1;
+        var rows = new List<StandingsOverlayRowViewModel>();
+        var timingByCarIdx = snapshot.Models.Timing.OverallRows
+            .Concat(snapshot.Models.Timing.ClassRows)
+            .GroupBy(row => row.CarIdx)
+            .ToDictionary(group => group.Key, SelectTimingRow);
+        var reservedOtherRows = otherGroups.Sum(_ => includeHeaders ? 1 + otherClassRowsPerClass : otherClassRowsPerClass);
+        var minimumPrimaryRows = Math.Min(maximumRows, includeHeaders ? 2 : 1);
+        var primaryLimit = Math.Clamp(maximumRows - reservedOtherRows, minimumPrimaryRows, maximumRows);
+        AddScoringGroup(
+            rows,
+            primaryGroup,
+            timingByCarIdx,
+            referenceCarIdx,
+            maximumRows,
+            primaryLimit,
+            includeHeaders);
+
+        foreach (var group in otherGroups)
+        {
+            if (rows.Count >= maximumRows)
+            {
+                break;
+            }
+
+            var groupLimit = Math.Min(
+                maximumRows - rows.Count,
+                includeHeaders ? 1 + otherClassRowsPerClass : otherClassRowsPerClass);
+            AddScoringGroup(
+                rows,
+                group,
+                timingByCarIdx,
+                referenceCarIdx,
+                maximumRows,
+                groupLimit,
+                includeHeaders);
+        }
+
+        return rows.ToArray();
+    }
+
+    private static LiveTimingRow SelectTimingRow(IEnumerable<LiveTimingRow> group)
+    {
+        return group
+            .OrderByDescending(row => row.IsFocus)
+            .ThenByDescending(row => row.IsPlayer)
+            .ThenByDescending(row => row.HasTiming)
+            .ThenByDescending(row => row.HasSpatialProgress)
+            .ThenByDescending(row => row.Quality)
+            .First();
+    }
+
+    private static void AddScoringGroup(
+        List<StandingsOverlayRowViewModel> rows,
+        LiveScoringClassGroup group,
+        IReadOnlyDictionary<int, LiveTimingRow> timingByCarIdx,
+        int? referenceCarIdx,
+        int maximumRows,
+        int groupLimit,
+        bool includeHeader)
+    {
+        if (groupLimit <= 0 || rows.Count >= maximumRows)
+        {
+            return;
+        }
+
+        if (includeHeader)
+        {
+            rows.Add(ClassHeaderRow(group));
+            groupLimit--;
+        }
+
+        foreach (var scoringRow in group.Rows.Take(Math.Max(0, groupLimit)))
+        {
+            if (rows.Count >= maximumRows)
+            {
+                break;
+            }
+
+            timingByCarIdx.TryGetValue(scoringRow.CarIdx, out var timingRow);
+            rows.Add(ToRow(scoringRow, timingRow, referenceCarIdx));
+        }
+    }
+
+    private static StandingsOverlayRowViewModel ClassHeaderRow(LiveScoringClassGroup group)
+    {
+        return new StandingsOverlayRowViewModel(
+            ClassPosition: string.Empty,
+            CarNumber: string.Empty,
+            Driver: group.ClassName,
+            Gap: $"{group.RowCount} cars",
+            Interval: string.Empty,
+            Pit: string.Empty,
+            IsReference: false,
+            IsLeader: false,
+            IsClassHeader: true,
+            IsPartial: false,
+            CarClassColorHex: group.CarClassColorHex);
     }
 
     private static LiveTimingRow? SelectDisplayRow(
@@ -133,7 +277,36 @@ internal sealed record StandingsOverlayViewModel(
             Pit: row.OnPitRoad == true ? "IN" : string.Empty,
             IsReference: isReference,
             IsLeader: row.IsClassLeader,
+            IsClassHeader: false,
+            IsPartial: false,
             CarClassColorHex: row.CarClassColorHex);
+    }
+
+    private static StandingsOverlayRowViewModel ToRow(
+        LiveScoringRow scoringRow,
+        LiveTimingRow? timingRow,
+        int? referenceCarIdx)
+    {
+        var isReference = referenceCarIdx is not null && scoringRow.CarIdx == referenceCarIdx;
+        return new StandingsOverlayRowViewModel(
+            ClassPosition: scoringRow.ClassPosition is { } classPosition ? $"C{classPosition}" : "--",
+            CarNumber: FormatCarNumber(scoringRow),
+            Driver: ShortDriverName(scoringRow.DriverName, scoringRow.TeamName, scoringRow.CarIdx),
+            Gap: FormatGap(scoringRow, timingRow),
+            Interval: timingRow is not null ? FormatInterval(timingRow, isReference) : "--",
+            Pit: timingRow?.OnPitRoad == true ? "IN" : string.Empty,
+            IsReference: isReference,
+            IsLeader: scoringRow.ClassPosition == 1,
+            IsClassHeader: false,
+            IsPartial: timingRow is null || !timingRow.HasTiming,
+            CarClassColorHex: scoringRow.CarClassColorHex);
+    }
+
+    private static string SourceText(LiveCoverageModel coverage)
+    {
+        return coverage.HasFullLiveScoring
+            ? "source: scoring snapshot + live timing"
+            : "source: scoring snapshot (partial live)";
     }
 
     private static string SourceText(LiveTimingModel timing)
@@ -152,6 +325,13 @@ internal sealed record StandingsOverlayViewModel(
     }
 
     private static string FormatCarNumber(LiveTimingRow row)
+    {
+        return string.IsNullOrWhiteSpace(row.CarNumber)
+            ? $"#{row.CarIdx}"
+            : $"#{row.CarNumber.Trim().TrimStart('#')}";
+    }
+
+    private static string FormatCarNumber(LiveScoringRow row)
     {
         return string.IsNullOrWhiteSpace(row.CarNumber)
             ? $"#{row.CarIdx}"
@@ -188,6 +368,16 @@ internal sealed record StandingsOverlayViewModel(
         }
 
         return "--";
+    }
+
+    private static string FormatGap(LiveScoringRow scoringRow, LiveTimingRow? timingRow)
+    {
+        if (scoringRow.ClassPosition == 1)
+        {
+            return "Leader";
+        }
+
+        return timingRow is not null ? FormatGap(timingRow) : "--";
     }
 
     private static string FormatInterval(LiveTimingRow row, bool isReference)
@@ -230,4 +420,6 @@ internal sealed record StandingsOverlayRowViewModel(
     string Pit,
     bool IsReference,
     bool IsLeader,
+    bool IsClassHeader,
+    bool IsPartial,
     string? CarClassColorHex);

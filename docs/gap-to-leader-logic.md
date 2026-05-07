@@ -5,11 +5,15 @@ This file explains how the class gap trend graph derives and draws its data.
 Implementation files:
 
 - `src/TmrOverlay.Core/Telemetry/Live/LiveTelemetrySnapshot.cs`
+- `src/TmrOverlay.Core/Telemetry/Live/LiveRaceModels.cs`
+- `src/TmrOverlay.App/Overlays/GapToLeader/GapToLeaderLiveModelAdapter.cs`
 - `src/TmrOverlay.App/Overlays/GapToLeader/GapToLeaderForm.cs`
 
 ## Purpose
 
-The gap-to-leader overlay is a live in-class trend graph. It shows how the currently focused car and nearby same-class cars relate to that car's class leader over time.
+The gap-to-leader overlay is a live in-class race trend graph. It shows how the currently focused car and nearby same-class cars relate to that car's class leader over time.
+
+The overlay is race-only product UI. The settings tab omits ordinary session filters, and the overlay manager normalizes its visibility to race sessions only.
 
 It is separate from radar. Radar needs live proximity placement. The gap graph can use same-class timing rows even when lap-distance placement is unavailable.
 
@@ -29,7 +33,15 @@ Snapshots are ignored when no new sequence exists.
 
 ## Live Gap Input
 
-`LiveLeaderGapSnapshot.From` builds:
+Gap V2 reads promoted model state first:
+
+- `LiveTimingModel` supplies focus/class rows, class leader identity, gap evidence, class positions, deltas to the focused car, and same-class rows for graphing.
+- `LiveRaceProgressModel` supplies reference/leader lap-progress gaps and race-progress fallback when second-based timing evidence is partial or unavailable.
+- `LiveWeatherModel`, `LiveRaceEventModel`, `LiveDriverDirectoryModel`, and `LiveFuelPitModel.Fuel` supply the supporting graph context previously read directly from the latest sample.
+
+`LiveLeaderGapSnapshot` remains a compatibility/fallback slice. `GapToLeaderLiveModelAdapter` converts the promoted model state into the graph's existing internal row shape and falls back to `LiveLeaderGapSnapshot` only when promoted model data is absent.
+
+The graph input contains:
 
 - Overall leader gap.
 - Class leader gap.
@@ -49,27 +61,28 @@ Reference progress:
 
 ## Leader Gap Values
 
-For overall and class leader gaps, the first valid rule wins:
+For model-v2 class leader gaps, the first valid rule wins:
 
 1. If reference position is 1, or leader car id equals reference car id:
    - Gap is zero.
    - Source is `position`.
-2. If reference `CarIdxF2Time` is valid:
-   - Use leader `CarIdxF2Time` when valid, otherwise zero.
-   - If reference F2 time is greater than or equal to leader F2 time:
-     - `gapSeconds = referenceF2 - leaderF2`
-     - Source is `CarIdxF2Time`.
-3. If reference progress and leader progress exist:
+2. If the timing row's gap evidence is usable and second-based gap exists:
+   - Use `GapSecondsToClassLeader`.
+   - Keep the timing evidence source, normally `CarIdxF2Time`.
+3. If the timing row's gap evidence is usable and lap-based gap exists:
+   - Use `GapLapsToClassLeader`.
+   - Keep the timing evidence source.
+4. If promoted race progress has a reference-to-class-leader lap gap:
    - `gapLaps = max(0, leaderProgress - referenceProgress)`
-   - Source is `CarIdxLapDistPct`.
-4. Otherwise unavailable.
+   - Source is `LiveRaceProgress`.
+5. Otherwise unavailable.
 
-Valid F2 gap seconds must be finite, non-negative, and less than 86400.
+Valid second gaps must be finite, non-negative, and less than 86400.
 
 Data review note from the May 2026 capture analysis:
 
 - Long raw captures confirmed `CarIdxF2Time` is the best available source for class-gap seconds when leader and reference rows are both valid.
-- Some sampled frames had a valid reference `CarIdxF2Time` while the leader F2 row was missing or not trustworthy. Treating the missing leader as zero can overstate or jump the displayed gap.
+- Some sampled frames had a valid reference `CarIdxF2Time` while the leader F2 row was missing or not trustworthy. Model-v2 gap evidence marks those rows partial, so the graph does not use the misleading second gap and falls back to race-progress lap gap when available.
 - Same-class timing rows can have standings/F2 data while lap-distance progress is missing. The graph should keep accepting those rows for timing, but it should flag the source as partial and avoid using them for radar-style placement.
 - Large class-gap jumps can happen around leader changes, session transitions, pit windows, and stale/uninitialized timing rows. Model-v2 should carry source quality and missing-leader reasons so the overlay can segment or de-emphasize those points instead of drawing them as normal continuity.
 
@@ -81,26 +94,16 @@ The graph list always attempts to include:
 - Focused/reference car row.
 - Same-class candidate rows.
 
-Candidate source:
-
-- Prefer `FocusClassCars` when available.
-- Fall back to team `ClassCars` only when the focus car is the player car.
-- Otherwise use `NearbyCars`.
-
-When using `NearbyCars`, candidates must explicitly match the focused car's class if that class is known.
+Candidate source is `LiveTimingModel.ClassRows` when model-v2 timing is available. Those rows already merge focus, player/team, class leader, focus-class rows, class-gap rows, and nearby rows under the shared timing contract.
 
 For each candidate:
 
-1. Skip reference car and class leader duplicates.
-2. Skip non-reference-class cars.
-3. Try seconds gap:
-   - `carF2Time - classLeaderF2Time`
-   - Only when both are valid and car F2 is greater than or equal to leader F2.
-4. If seconds gap is unavailable, try laps gap:
-   - `classLeaderProgress - carProgress`
-5. Skip if both seconds and laps are unavailable.
-6. Calculate delta to the focused car when both car gap seconds and reference gap seconds exist:
-   - `carGapSeconds - referenceGapSeconds`
+1. Keep class leader, focused/reference, usable-gap, and focused-delta rows.
+2. Use second-based gap only when row `GapEvidence.IsUsable`.
+3. Use lap-based gap only when row `GapEvidence.IsUsable`.
+4. For the focused/reference row, fall back to `LiveRaceProgressModel.ReferenceClassLeaderGapLaps` when timing evidence is partial.
+5. Use delta to the focused car only when the row's gap evidence is usable.
+6. Skip rows that have no chartable gap and no focused-car delta, unless they are the class leader or reference row.
 
 Duplicate car ids are grouped. Focused/reference rows win, then class leader rows.
 
@@ -121,7 +124,7 @@ When a new snapshot is recorded:
 
 1. Choose timestamp from latest sample, last updated time, or now.
 2. Choose axis seconds:
-   - Use sample `SessionTime` when finite and non-negative.
+   - Use `LiveSessionModel.SessionTimeSeconds` when finite and non-negative.
    - Otherwise use Unix time seconds.
 3. Store latest timestamp and axis seconds.
 4. Set trend start to the first recorded axis seconds.

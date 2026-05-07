@@ -39,6 +39,9 @@ internal sealed class LiveOverlayDiagnosticsRecorder
     private readonly Dictionary<string, int> _fuelBaselineEvidenceCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _lapDeltaValueCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _lapDeltaUsableCounts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _relativeLapRelationshipCounts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _relativeLapRelationshipPitCounts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _relativeLapPendingCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _eventSampleCountsByKind = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _eventSampleKeys = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<int, PositionState> _positionStates = [];
@@ -95,6 +98,12 @@ internal sealed class LiveOverlayDiagnosticsRecorder
     private int _lapDeltaFramesWithAnyValue;
     private int _lapDeltaFramesWithAnyUsableValue;
     private double? _maxAbsLapDeltaSeconds;
+    private int _relativeLapObservedFrames;
+    private int _relativeLapReferenceProgressFrames;
+    private int _relativeLapNearbyFrames;
+    private int _relativeLapOfficialDeltaFrames;
+    private int _relativeLapPendingFrames;
+    private int _maxRelativeLapNearbyCars;
     private IReadOnlyList<HistoricalTrackSector> _sectorDefinitions = [];
     private int _sectorMetadataFrames;
     private int _sectorMissingMetadataFrames;
@@ -197,6 +206,12 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             _lapDeltaFramesWithAnyValue = 0;
             _lapDeltaFramesWithAnyUsableValue = 0;
             _maxAbsLapDeltaSeconds = null;
+            _relativeLapObservedFrames = 0;
+            _relativeLapReferenceProgressFrames = 0;
+            _relativeLapNearbyFrames = 0;
+            _relativeLapOfficialDeltaFrames = 0;
+            _relativeLapPendingFrames = 0;
+            _maxRelativeLapNearbyCars = 0;
             _sectorDefinitions = [];
             _sectorMetadataFrames = 0;
             _sectorMissingMetadataFrames = 0;
@@ -230,6 +245,9 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             _fuelBaselineEvidenceCounts.Clear();
             _lapDeltaValueCounts.Clear();
             _lapDeltaUsableCounts.Clear();
+            _relativeLapRelationshipCounts.Clear();
+            _relativeLapRelationshipPitCounts.Clear();
+            _relativeLapPendingCounts.Clear();
             _trackMapSectorHighlightCounts.Clear();
             _eventSampleCountsByKind.Clear();
             _eventSampleKeys.Clear();
@@ -264,6 +282,7 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             RecordFuel(snapshot, capturedAtUtc);
             RecordPositionCadence(snapshot, capturedAtUtc);
             RecordLapDelta(snapshot);
+            RecordRelativeLapRelationship(snapshot, capturedAtUtc);
             RecordSectorTiming(snapshot, capturedAtUtc);
             RecordTrackMap(snapshot);
             RecordSampleFrame(snapshot, capturedAtUtc);
@@ -361,6 +380,16 @@ internal sealed class LiveOverlayDiagnosticsRecorder
                         MaxAbsDeltaSeconds: Round(_maxAbsLapDeltaSeconds),
                         ValueFrameCounts: Sorted(_lapDeltaValueCounts),
                         UsableFrameCounts: Sorted(_lapDeltaUsableCounts)),
+                    RelativeLapRelationship: new RelativeLapRelationshipDiagnosticsSummary(
+                        ObservedFrames: _relativeLapObservedFrames,
+                        FramesWithReferenceProgress: _relativeLapReferenceProgressFrames,
+                        FramesWithNearbyCars: _relativeLapNearbyFrames,
+                        FramesWithOfficialLapDelta: _relativeLapOfficialDeltaFrames,
+                        FramesWithPendingRelationship: _relativeLapPendingFrames,
+                        MaxNearbyCars: _maxRelativeLapNearbyCars,
+                        OfficialRelationshipCounts: Sorted(_relativeLapRelationshipCounts),
+                        PitRelationshipCounts: Sorted(_relativeLapRelationshipPitCounts),
+                        PendingRelationshipCounts: Sorted(_relativeLapPendingCounts)),
                     SectorTiming: new SectorTimingDiagnosticsSummary(
                         SectorCount: _sectorDefinitions.Count,
                         SectorStartPcts: _sectorDefinitions.Select(sector => Round(sector.SectorStartPct) ?? sector.SectorStartPct).ToArray(),
@@ -802,6 +831,74 @@ internal sealed class LiveOverlayDiagnosticsRecorder
         }
     }
 
+    private void RecordRelativeLapRelationship(LiveTelemetrySnapshot snapshot, DateTimeOffset capturedAtUtc)
+    {
+        var sample = snapshot.LatestSample;
+        if (sample is null)
+        {
+            return;
+        }
+
+        _relativeLapObservedFrames++;
+        var referenceLapCompleted = FocusLapCompleted(sample);
+        var referenceLapDistPct = FocusLapDistPct(sample);
+        var hasReferenceProgress = ValidLapCompleted(referenceLapCompleted) is not null
+            && IsValidSectorLapDistPct(referenceLapDistPct);
+        if (hasReferenceProgress)
+        {
+            _relativeLapReferenceProgressFrames++;
+        }
+
+        var cars = (sample.NearbyCars ?? [])
+            .GroupBy(car => car.CarIdx)
+            .Select(group => group.First())
+            .ToArray();
+        if (cars.Length > 0)
+        {
+            _relativeLapNearbyFrames++;
+            _maxRelativeLapNearbyCars = Math.Max(_maxRelativeLapNearbyCars, cars.Length);
+        }
+
+        var frameHasOfficialDelta = false;
+        var frameHasPending = false;
+        foreach (var car in cars)
+        {
+            if (hasReferenceProgress
+                && ValidLapCompleted(car.LapCompleted) is { } carLapCompleted
+                && referenceLapCompleted is { } referenceLap)
+            {
+                frameHasOfficialDelta = true;
+                var relationship = RelationshipKey(carLapCompleted - referenceLap);
+                Increment(_relativeLapRelationshipCounts, relationship);
+                if (car.OnPitRoad == true || IsPitRoadTrackSurface(car.TrackSurface))
+                {
+                    Increment(_relativeLapRelationshipPitCounts, relationship);
+                }
+            }
+
+            if (PendingRelationshipKey(car, referenceLapCompleted, referenceLapDistPct) is { } pending)
+            {
+                frameHasPending = true;
+                Increment(_relativeLapPendingCounts, pending);
+                AddEvent(
+                    $"relative-lap.{pending}",
+                    $"car {car.CarIdx} {pending} at lap {car.LapCompleted} pct {car.LapDistPct:0.###}",
+                    snapshot,
+                    capturedAtUtc);
+            }
+        }
+
+        if (frameHasOfficialDelta)
+        {
+            _relativeLapOfficialDeltaFrames++;
+        }
+
+        if (frameHasPending)
+        {
+            _relativeLapPendingFrames++;
+        }
+    }
+
     private void RecordSectorTiming(LiveTelemetrySnapshot snapshot, DateTimeOffset capturedAtUtc)
     {
         var sample = snapshot.LatestSample;
@@ -1236,6 +1333,61 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             : null;
     }
 
+    private static string? PendingRelationshipKey(
+        HistoricalCarProximity car,
+        int? referenceLapCompleted,
+        double? referenceLapDistPct)
+    {
+        if (ValidLapCompleted(referenceLapCompleted) is not { } referenceLap
+            || ValidLapCompleted(car.LapCompleted) is not { } carLap
+            || !IsValidSectorLapDistPct(referenceLapDistPct)
+            || !IsValidSectorLapDistPct(car.LapDistPct)
+            || carLap != referenceLap)
+        {
+            return null;
+        }
+
+        var relativeLaps = RelativeLaps(car.LapDistPct, referenceLapDistPct!.Value);
+        if (relativeLaps >= 0.35d)
+        {
+            return "same-lap-car-ahead-near-lapping-reference";
+        }
+
+        if (relativeLaps <= -0.35d)
+        {
+            return "same-lap-reference-catching-car-to-lap";
+        }
+
+        return null;
+    }
+
+    private static string RelationshipKey(int lapDelta)
+    {
+        return lapDelta switch
+        {
+            >= 2 => "two-plus-laps-ahead",
+            1 => "one-lap-ahead",
+            0 => "same-lap",
+            -1 => "one-lap-behind",
+            <= -2 => "two-plus-laps-behind"
+        };
+    }
+
+    private static double RelativeLaps(double carLapDistPct, double referenceLapDistPct)
+    {
+        var relativeLaps = carLapDistPct - referenceLapDistPct;
+        if (relativeLaps > 0.5d)
+        {
+            relativeLaps -= 1d;
+        }
+        else if (relativeLaps < -0.5d)
+        {
+            relativeLaps += 1d;
+        }
+
+        return relativeLaps;
+    }
+
     private static LiveTimingRow? MatchingTimingRow(LiveTimingRow? row, int carIdx)
     {
         return row?.CarIdx == carIdx ? row : null;
@@ -1528,48 +1680,22 @@ internal sealed class LiveOverlayDiagnosticsRecorder
 
     private static bool CanUseLocalRadarContext(HistoricalTelemetrySample sample)
     {
-        return sample.IsOnTrack
-            && !sample.IsInGarage
-            && (sample.PlayerCarIdx is not null || sample.FocusCarIdx is null)
-            && !HasExplicitNonPlayerFocus(sample);
+        return LiveLocalRadarContext.CanUse(sample);
     }
 
     private static bool IsLocalRadarPitOrGarage(HistoricalTelemetrySample sample)
     {
-        return !sample.IsOnTrack
-            || sample.IsInGarage
-            || sample.OnPitRoad
-            || sample.PlayerCarInPitStall
-            || sample.TeamOnPitRoad == true
-            || IsPitRoadTrackSurface(sample.FocusTrackSurface)
-            || IsPitRoadTrackSurface(sample.PlayerTrackSurface);
+        return LiveLocalRadarContext.IsUnavailableBecausePitGarageOrOffTrack(sample);
     }
 
     private static double? LocalRadarLapDistPct(HistoricalTelemetrySample sample)
     {
-        if (!HasExplicitNonPlayerFocus(sample)
-            && sample.FocusLapDistPct is { } focusLapDistPct
-            && IsFinite(focusLapDistPct)
-            && focusLapDistPct >= 0d)
-        {
-            return focusLapDistPct;
-        }
-
-        if (sample.TeamLapDistPct is { } teamLapDistPct && IsFinite(teamLapDistPct) && teamLapDistPct >= 0d)
-        {
-            return teamLapDistPct;
-        }
-
-        return IsFinite(sample.LapDistPct) && sample.LapDistPct >= 0d
-            ? sample.LapDistPct
-            : null;
+        return LiveLocalRadarContext.LapDistPct(sample);
     }
 
     private static bool HasExplicitNonPlayerFocus(HistoricalTelemetrySample sample)
     {
-        return sample.FocusCarIdx is not null
-            && sample.PlayerCarIdx is not null
-            && sample.FocusCarIdx != sample.PlayerCarIdx;
+        return LiveLocalRadarContext.HasExplicitNonPlayerFocus(sample);
     }
 
     private static bool IsPitRoadTrackSurface(int? trackSurface)
@@ -1734,6 +1860,7 @@ internal sealed record LiveOverlayDiagnosticsArtifact(
     FuelOverlayDiagnosticsSummary Fuel,
     PositionCadenceDiagnosticsSummary PositionCadence,
     LapDeltaDiagnosticsSummary LapDelta,
+    RelativeLapRelationshipDiagnosticsSummary RelativeLapRelationship,
     SectorTimingDiagnosticsSummary SectorTiming,
     TrackMapOverlayDiagnosticsSummary TrackMap,
     IReadOnlyList<LiveOverlayDiagnosticsFrameSample> SampleFrames,
@@ -1815,6 +1942,17 @@ internal sealed record LapDeltaDiagnosticsSummary(
     double? MaxAbsDeltaSeconds,
     IReadOnlyDictionary<string, int> ValueFrameCounts,
     IReadOnlyDictionary<string, int> UsableFrameCounts);
+
+internal sealed record RelativeLapRelationshipDiagnosticsSummary(
+    int ObservedFrames,
+    int FramesWithReferenceProgress,
+    int FramesWithNearbyCars,
+    int FramesWithOfficialLapDelta,
+    int FramesWithPendingRelationship,
+    int MaxNearbyCars,
+    IReadOnlyDictionary<string, int> OfficialRelationshipCounts,
+    IReadOnlyDictionary<string, int> PitRelationshipCounts,
+    IReadOnlyDictionary<string, int> PendingRelationshipCounts);
 
 internal sealed record SectorTimingDiagnosticsSummary(
     int SectorCount,

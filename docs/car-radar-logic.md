@@ -14,18 +14,18 @@ Implementation files:
 
 The radar is a live proximity overlay. It is not a historical or replay overlay.
 
-The production radar is local in-car first. It builds proximity only when the local player/team car is on track, not in the garage or pit context, and the active camera focus is either the local player car or unknown. When the camera is explicitly focused on another car, the production radar is hidden instead of trying to reinterpret local side telemetry for that watched car.
+The production radar is local-player in-car only. It builds proximity only when a valid local player car exists, that car is on track, not in the garage or pit context, and the active camera focus is either the local player car or unknown. When the camera is explicitly focused on another car, the production radar is hidden instead of trying to reinterpret local side telemetry for that watched car.
 
 It renders from `LiveTelemetrySnapshot.Models.Spatial`, which is populated from the local-only live proximity model. It uses fresh live telemetry only:
 
 - Local player/team lap-distance, timing, and car-class fields. `Focus*` fields are used only when focus is not explicitly another car.
 - `CarLeftRight` for side occupancy.
 - Nearby `CarIdxLapDistPct` and lap completion for physical-distance placement when track length is known.
-- Nearby `CarIdxEstTime` or `CarIdxF2Time` for live relative seconds when available and plausible.
+- Nearby `CarIdxEstTime` or `CarIdxF2Time` for diagnostics, Relative, and optional multiclass warning context when available and plausible.
 
 Non-local focus, teammate/spectator camera states, and richer multiclass interpretation are collected as diagnostics and future model-v2 analysis inputs. They are not the first product radar contract.
 
-If live timing is missing or suspicious, the car may remain in the live proximity snapshot for diagnostics and non-radar consumers. When track length is known, the radar can still use current lap-distance progress as a physical distance; it does not synthesize a seconds gap from lap distance, fuel, or history estimates.
+If live timing is missing or suspicious, the car may remain in the live proximity snapshot for diagnostics and non-radar consumers. Radar car rectangles require physical distance from live lap-distance progress plus known track length. Timing-only rows do not draw radar targets.
 
 ## Freshness
 
@@ -46,6 +46,7 @@ Stale snapshots are treated as unavailable so old traffic does not remain painte
 
 1. Check the local radar context:
    - Require the local player/team car to be on track.
+   - Require a valid local `PlayerCarIdx`.
    - Hide the radar while the user is in garage/replay/off-track context.
    - Hide the radar when `CamCarIdx`/focus is explicitly another car.
 2. Determine local-car lap distance:
@@ -129,15 +130,15 @@ Right side is active for `3`, `4`, and `6`.
 
 For side-by-side placement, `CarLeftRight` is authoritative. Timing never creates an alongside state by itself.
 
-When a side warning exists, the radar may attach that side slot to a rendered timed car only when:
+When a side warning exists, the radar may attach that side slot to a rendered decoded car only when:
 
-- The car has reliable relative meters inside the contact-length window, or it has reliable relative seconds inside the fallback timing window.
+- The car has reliable relative meters inside the contact-length window.
 
-The distance window uses a 4.746 m local-car-length baseline. The seconds fallback is derived from that same assumed length divided by local-car speed, clamped between 0.18 and 0.45 seconds. If speed is unavailable, the fallback window is 0.22 seconds.
+The distance window uses a 4.746 m local-car-length baseline.
 
-If no timed car qualifies, the radar still draws the generic side-warning rectangle from `CarLeftRight`. This keeps the actual spotter warning visible without pretending a random timed car is alongside.
+If no physically placed car qualifies, the radar still draws the generic side-warning rectangle from `CarLeftRight`. This keeps the actual spotter warning visible without pretending a random timed car is alongside.
 
-When a side warning is active and a nearby timed car is close enough to be the likely source of that warning, the radar attaches that car to the side slot and suppresses the same car's normal center-lane rectangle. This avoids showing one opponent twice during a pass. The side marker is biased slightly forward or backward from the local car based on the car's longitudinal gap, so a pass that has moved to the front-right/front-left does not keep looking like a centered side block.
+When a side warning is active and a nearby physically placed car is close enough to be the likely source of that warning, the radar attaches that car to the side slot and suppresses the same car's normal center-lane rectangle. This avoids showing one opponent twice during a pass. The side marker is biased slightly forward or backward from the local car based on the car's longitudinal gap, so a pass that has moved to the front-right/front-left does not keep looking like a centered side block.
 
 Data review note from the May 2026 capture analysis:
 
@@ -164,22 +165,20 @@ The Windows form clips the overlay window to a circular region, uses a black tra
 
 ## Radar Range
 
-Radar range is:
+Radar car range is:
 
-- 6 local-car lengths, currently `4.746 m * 6 = 28.476 m`, when relative meters exists.
-- 2 seconds for cars without relative meters but with reliable relative seconds.
+- 6 local-car lengths, currently `4.746 m * 6 = 28.476 m`.
 
-Cars are in range when the best available live relative value is inside that range. Distance is preferred over seconds because it is a direct physical threshold and avoids showing multiple cars as overlapping simply because their timing rows are similar.
+Cars are in range when physical relative meters are inside that range. Timing-only cars are deliberately excluded from radar placement because this overlay is a local safety instrument, not a relative table.
 
 Range ratio:
 
-- `relativeMeters / RadarRangeMeters` when meters exists.
-- `relativeSeconds / RadarRangeSeconds` otherwise.
+- `relativeMeters / RadarRangeMeters`.
 - Clamped from `-1` to `1`.
 
 Range ratio drives color and ordering.
 
-Longitudinal placement uses signed relative meters with a car-length contact window when possible, falling back to signed relative seconds:
+Longitudinal placement uses signed relative meters with a car-length contact window:
 
 - `0.0 m` maps to the local car rectangle.
 - A non-zero car whose absolute gap is at least the local-car-length contact window is placed outside the local car rectangle.
@@ -217,10 +216,10 @@ The radar draws:
 5. Side-warning rectangles.
 6. Focused car rectangle.
 
-Ring labels show approximate seconds because timing is more useful to drivers than the internal physical range threshold:
+Ring labels show approximate physical distance:
 
-- Inner/outer labels show seconds within the fallback timing window, for example `1.3s` and `0.7s`.
-- Distance remains an internal placement/range input when relative meters exists.
+- Inner/outer labels show meters inside the radar range, for example `19m` and `9m`.
+- Timing remains available to Relative and diagnostics, but it does not place radar cars.
 
 ## Car Color
 
@@ -234,7 +233,7 @@ Proximity color does not begin across the full radar range; it begins only when 
 - Inside that buffer, the car blends from white toward yellow, then saturated alert red.
 - At nose-to-tail contact or overlap, the car reaches alert red.
 
-When only timing fallback exists, the same idea is approximated from the side-overlap timing window: the side-overlap seconds represent contact, and the extra warning seconds are scaled from the same 2.0 m buffer.
+Timing-only nearby cars do not draw radar rectangles, so there is no timing fallback proximity color.
 
 The focused/user car remains white.
 
@@ -247,7 +246,7 @@ The radar does not have true lane-level lateral telemetry.
 Approximation:
 
 - `CarLeftRight` creates side slots: one left, one right, both sides, two left, or two right.
-- A rendered car can occupy a side slot only when it is within a close side-attachment window around the local car. The side signal is still the authority; timing only selects which decoded car should be hidden from the center lane and used to bias the side marker forward or backward.
+- A rendered car can occupy a side slot only when physical distance places it within a close side-attachment window around the local car. The side signal is still the authority; timing does not select a decoded car for the side marker.
 - Otherwise distribute multiple radar cars across three simple lanes based on `CarIdx` and draw index.
 - A single visible car is centered.
 
@@ -255,9 +254,9 @@ Approximation:
 
 `LiveTelemetryStore` tracks short per-car local proximity history and can build early multiclass warnings from other-class traffic behind the local car.
 
-The early-warning seconds range is outside the fallback timing proximity range:
+The early-warning seconds range is outside the physical radar-car range:
 
-- Fallback timing proximity range: 2 seconds.
+- Physical radar-car range: 6 local-car lengths when track length is known.
 - Multiclass warning range: greater than 2 seconds behind and up to 5 seconds behind.
 
 When the local radar context is unavailable, or the local reference car changes, the short closing-rate history is reset so approach rates measured against an old reference are not applied to the next local radar frame.

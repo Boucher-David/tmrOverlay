@@ -12,7 +12,8 @@ internal static class SessionInfoSummaryParser
         }
 
         var parsed = ParseSections(yaml);
-        var session = SelectSession(parsed);
+        var selectedSession = SelectSession(parsed);
+        var session = selectedSession?.Values ?? EmptyDictionary;
         var driver = SelectDriver(parsed);
 
         return new HistoricalSessionContext
@@ -80,6 +81,10 @@ internal static class SessionInfoSummaryParser
                 .Select(ToSector)
                 .Where(sector => sector.SectorStartPct >= 0d && sector.SectorStartPct < 1d)
                 .OrderBy(sector => sector.SectorStartPct)
+                .ToArray(),
+            ResultPositions = (selectedSession?.ResultPositions ?? [])
+                .Select(ToResultPosition)
+                .Where(position => position.CarIdx is not null)
                 .ToArray()
         };
     }
@@ -88,12 +93,14 @@ internal static class SessionInfoSummaryParser
     {
         var parsed = new ParsedSessionInfo();
         var section = string.Empty;
-        Dictionary<string, string>? currentSession = null;
+        ParsedSession? currentSession = null;
+        Dictionary<string, string>? currentResultPosition = null;
         Dictionary<string, string>? currentDriver = null;
         Dictionary<string, string>? currentSector = null;
         var inSessions = false;
         var inDrivers = false;
         var inSectors = false;
+        var inResultPositions = false;
 
         foreach (var rawLine in yaml.Split('\n'))
         {
@@ -108,6 +115,7 @@ internal static class SessionInfoSummaryParser
 
             if (indent == 0 && trimmed.EndsWith(':') && !trimmed.StartsWith('-'))
             {
+                FinishCurrentResultPosition();
                 FinishCurrentSession();
                 FinishCurrentDriver();
                 FinishCurrentSector();
@@ -115,6 +123,7 @@ internal static class SessionInfoSummaryParser
                 inSessions = false;
                 inDrivers = false;
                 inSectors = false;
+                inResultPositions = false;
                 continue;
             }
 
@@ -142,20 +151,57 @@ internal static class SessionInfoSummaryParser
 
                     if (inSessions)
                     {
-                        if (trimmed.StartsWith("- ", StringComparison.Ordinal))
+                        if (indent == 1 && trimmed.StartsWith("- ", StringComparison.Ordinal))
                         {
+                            FinishCurrentResultPosition();
                             FinishCurrentSession();
-                            currentSession = [];
+                            currentSession = new ParsedSession();
+                            inResultPositions = false;
                             if (TryReadKeyValue(trimmed, out var listKey, out var listValue))
                             {
-                                currentSession[listKey] = listValue;
+                                currentSession.Values[listKey] = listValue;
                             }
                             break;
                         }
 
+                        if (currentSession is not null
+                            && indent >= 3
+                            && string.Equals(trimmed, "ResultsPositions:", StringComparison.Ordinal))
+                        {
+                            FinishCurrentResultPosition();
+                            inResultPositions = true;
+                            break;
+                        }
+
+                        if (currentSession is not null && inResultPositions)
+                        {
+                            if (indent == 3 && trimmed.StartsWith("- ", StringComparison.Ordinal))
+                            {
+                                FinishCurrentResultPosition();
+                                currentResultPosition = [];
+                                if (TryReadKeyValue(trimmed, out var resultKey, out var resultValue))
+                                {
+                                    currentResultPosition[resultKey] = resultValue;
+                                }
+                                break;
+                            }
+
+                            if (currentResultPosition is not null && indent > 3)
+                            {
+                                if (TryReadKeyValue(trimmed, out var resultKey, out var resultValue))
+                                {
+                                    currentResultPosition[resultKey] = resultValue;
+                                }
+                                break;
+                            }
+
+                            FinishCurrentResultPosition();
+                            inResultPositions = false;
+                        }
+
                         if (currentSession is not null && TryReadKeyValue(trimmed, out var activeSessionKey, out var activeSessionValue))
                         {
-                            currentSession[activeSessionKey] = activeSessionValue;
+                            currentSession.Values[activeSessionKey] = activeSessionValue;
                         }
                     }
                     break;
@@ -222,6 +268,7 @@ internal static class SessionInfoSummaryParser
             }
         }
 
+        FinishCurrentResultPosition();
         FinishCurrentSession();
         FinishCurrentDriver();
         FinishCurrentSector();
@@ -233,6 +280,15 @@ internal static class SessionInfoSummaryParser
             {
                 parsed.Sessions.Add(currentSession);
                 currentSession = null;
+            }
+        }
+
+        void FinishCurrentResultPosition()
+        {
+            if (currentSession is not null && currentResultPosition is not null)
+            {
+                currentSession.ResultPositions.Add(currentResultPosition);
+                currentResultPosition = null;
             }
         }
 
@@ -255,19 +311,19 @@ internal static class SessionInfoSummaryParser
         }
     }
 
-    private static IReadOnlyDictionary<string, string> SelectSession(ParsedSessionInfo parsed)
+    private static ParsedSession? SelectSession(ParsedSessionInfo parsed)
     {
         var currentSessionNum = ReadInt(parsed.SessionInfo, "CurrentSessionNum");
         if (currentSessionNum is not null)
         {
-            var currentSession = parsed.Sessions.FirstOrDefault(session => ReadInt(session, "SessionNum") == currentSessionNum);
+            var currentSession = parsed.Sessions.FirstOrDefault(session => ReadInt(session.Values, "SessionNum") == currentSessionNum);
             if (currentSession is not null)
             {
                 return currentSession;
             }
         }
 
-        return parsed.Sessions.FirstOrDefault() ?? EmptyDictionary;
+        return parsed.Sessions.FirstOrDefault();
     }
 
     private static IReadOnlyDictionary<string, string> SelectDriver(ParsedSessionInfo parsed)
@@ -310,6 +366,25 @@ internal static class SessionInfoSummaryParser
         {
             SectorNum = ReadInt(values, "SectorNum") ?? 0,
             SectorStartPct = ReadDouble(values, "SectorStartPct") ?? -1d
+        };
+    }
+
+    private static HistoricalSessionResultPosition ToResultPosition(IReadOnlyDictionary<string, string> values)
+    {
+        return new HistoricalSessionResultPosition
+        {
+            Position = ReadInt(values, "Position"),
+            ClassPosition = ReadInt(values, "ClassPosition"),
+            CarIdx = ReadInt(values, "CarIdx"),
+            Lap = ReadInt(values, "Lap"),
+            TimeSeconds = ReadDouble(values, "Time"),
+            FastestLap = ReadInt(values, "FastestLap"),
+            FastestTimeSeconds = ReadDouble(values, "FastestTime"),
+            LastTimeSeconds = ReadDouble(values, "LastTime"),
+            LapsLed = ReadInt(values, "LapsLed"),
+            LapsComplete = ReadInt(values, "LapsComplete"),
+            LapsDriven = ReadDouble(values, "LapsDriven"),
+            ReasonOut = ReadString(values, "ReasonOutStr")
         };
     }
 
@@ -443,10 +518,17 @@ internal static class SessionInfoSummaryParser
 
         public Dictionary<string, string> DriverInfo { get; } = new(StringComparer.OrdinalIgnoreCase);
 
-        public List<Dictionary<string, string>> Sessions { get; } = [];
+        public List<ParsedSession> Sessions { get; } = [];
 
         public List<Dictionary<string, string>> Drivers { get; } = [];
 
         public List<Dictionary<string, string>> Sectors { get; } = [];
+    }
+
+    private sealed class ParsedSession
+    {
+        public Dictionary<string, string> Values { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public List<Dictionary<string, string>> ResultPositions { get; } = [];
     }
 }

@@ -61,6 +61,68 @@ public sealed class TelemetryEdgeCaseDetectorTests
     }
 
     [Fact]
+    public void Analyze_CapturesForecastLikeWeatherSignalsWhenPresent()
+    {
+        var detector = new TelemetryEdgeCaseDetector();
+
+        var observations = detector.Analyze(
+            CreateSample(),
+            new RawTelemetryWatchSnapshot(new Dictionary<string, double>
+            {
+                ["WeatherForecastRainChance"] = 42d
+            }));
+
+        Assert.True(RawTelemetryWatchVariables.ShouldWatch("WeatherForecastRainChance"));
+        Assert.Contains(observations, observation =>
+            observation.Key == "weather.forecast-signal-present"
+            && observation.Fields.ContainsKey("WeatherForecastRainChance"));
+    }
+
+    [Fact]
+    public void RawTelemetryWatchVariables_IncludeDynamicDriverAdjustmentCandidates()
+    {
+        Assert.True(RawTelemetryWatchVariables.ShouldWatch("dcFrontARB"));
+        Assert.True(RawTelemetryWatchVariables.ShouldWatch("dcRearWingLevel"));
+        Assert.True(RawTelemetryWatchVariables.ShouldWatch("SomeFutureControl", "Anti-roll bar adjustment"));
+        Assert.Equal("driver.controls", RawTelemetryWatchVariables.GroupFor("dcRearWingLevel"));
+        Assert.True(RawTelemetryWatchVariables.ShouldWatch("dcDualClutchLeft"));
+        Assert.Equal("driver.inputs", RawTelemetryWatchVariables.GroupFor("dcDualClutchLeft"));
+    }
+
+    [Fact]
+    public void Analyze_UsesSchemaGroupsForDescriptionOnlyDriverAdjustmentCandidates()
+    {
+        var detector = new TelemetryEdgeCaseDetector();
+        var groups = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["SomeFutureControl"] = "driver.controls"
+        };
+
+        detector.Analyze(
+            CreateSample(sessionTime: 1d, sessionTick: 1),
+            new RawTelemetryWatchSnapshot(new Dictionary<string, double>
+            {
+                ["SomeFutureControl"] = 1d
+            })
+            {
+                VariableGroups = groups
+            });
+
+        var observations = detector.Analyze(
+            CreateSample(sessionTime: 2d, sessionTick: 2),
+            new RawTelemetryWatchSnapshot(new Dictionary<string, double>
+            {
+                ["SomeFutureControl"] = 2d
+            })
+            {
+                VariableGroups = groups
+            });
+
+        Assert.Contains(observations, observation =>
+            observation.Key == "raw.driver-control.changed.SomeFutureControl");
+    }
+
+    [Fact]
     public void Analyze_DowngradesZeroF2TimingDuringGridContext()
     {
         var detector = new TelemetryEdgeCaseDetector();
@@ -173,6 +235,41 @@ public sealed class TelemetryEdgeCaseDetectorTests
         Assert.Contains("dpLFTireChange", pitCommands.Fields["variables"] ?? string.Empty);
         Assert.Equal(1, observations.Count(observation =>
             observation.Key.StartsWith("raw.pit-commands.", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void Analyze_ReportsPitCommandChangesWithViewerContext()
+    {
+        var detector = new TelemetryEdgeCaseDetector();
+
+        detector.Analyze(
+            CreateSample(isOnTrack: false, speedMetersPerSecond: 0d),
+            new RawTelemetryWatchSnapshot(new Dictionary<string, double>
+            {
+                ["dpFuelAddKg"] = 0d,
+                ["IsReplayPlaying"] = 1d,
+                ["IsOnTrackCar"] = 0d,
+                ["CamCarIdx"] = 43d,
+                ["CamGroupNumber"] = 12d
+            }));
+        var observations = detector.Analyze(
+            CreateSample(isOnTrack: false, speedMetersPerSecond: 0d),
+            new RawTelemetryWatchSnapshot(new Dictionary<string, double>
+            {
+                ["dpFuelAddKg"] = 60d,
+                ["IsReplayPlaying"] = 1d,
+                ["IsOnTrackCar"] = 0d,
+                ["CamCarIdx"] = 43d,
+                ["CamGroupNumber"] = 12d
+            }));
+
+        var changed = Assert.Single(observations, observation =>
+            observation.Key == "raw.pit-command.changed.dpFuelAddKg.60");
+        Assert.Equal("0", changed.Fields["previousValue"]);
+        Assert.Equal("60", changed.Fields["currentValue"]);
+        Assert.Equal("False", changed.Fields["isOnTrack"]);
+        Assert.Equal("1", changed.Fields["isReplayPlaying"]);
+        Assert.Equal("43", changed.Fields["camCarIdx"]);
     }
 
     [Fact]

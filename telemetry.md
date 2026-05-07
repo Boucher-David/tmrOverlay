@@ -8,7 +8,7 @@ This file describes the current raw capture model in three layers:
 
 The current production path analyzes live SDK data and stores compact session history. Raw capture remains available as an opt-in diagnostic/development mode; when enabled it stores raw frame payloads in `telemetry.bin`, variable definitions in `telemetry-schema.json`, session YAML in `latest-session.yaml`, and capture metadata in `capture-manifest.json`. Post-session tooling can also add compact sidecars: `capture-synthesis.json` for sampled raw-capture investigation, `ibt-analysis/*.json` for bounded analysis of the best matching iRacing `.ibt` file, `live-model-parity.json` for comparing current overlay inputs with the additive model-v2 live state, and `live-overlay-diagnostics.json` for passive gap/radar/fuel/position-cadence assumption checks. The IBT sidecars include `ibt-local-car-summary.json`, which focuses on local-car trajectory/fuel/vehicle-dynamics readiness without copying the source `.ibt`. The parity sidecar includes a promotion-readiness signal and emits a `live_model_v2_promotion_candidate` app event when the session meets the configured evidence thresholds.
 
-The app also writes compact edge-case telemetry artifacts after each live session under `logs/edge-cases/` and, when raw capture is not active, live overlay diagnostics under `logs/overlay-diagnostics/`. These JSON files are independent of raw capture and are meant to answer targeted diagnostics questions without storing full-frame payloads. Edge-case artifacts include short pre/post clips around detector triggers, selected normalized live fields, selected nearby/class timing rows, watched scalar raw values, watched-variable schema, and the watched variables that were missing for the current car/session. They also watch reset/tow context such as `EnterExitReset` and `PlayerCarTowTime` when the SDK exposes those variables. Overlay diagnostics summarize current-overlay assumptions such as non-race gap use, large gap scaling, radar side/focus evidence, fuel burn without level, intra-lap position cadence, sector timing with missing lap counters, and reset-style progress discontinuities.
+The app also writes compact edge-case telemetry artifacts after each live session under `logs/edge-cases/` and, when raw capture is not active, live overlay diagnostics under `logs/overlay-diagnostics/`. These JSON files are independent of raw capture and are meant to answer targeted diagnostics questions without storing full-frame payloads. Edge-case artifacts include short pre/post clips around detector triggers, selected normalized live fields, selected nearby/class timing rows, watched scalar raw values, watched-variable schema, and the watched variables that were missing for the current car/session. They also watch reset/tow context such as `EnterExitReset` and `PlayerCarTowTime` when the SDK exposes those variables, pit-request command changes with viewer/camera context, ARB/anti-roll/wing-like adjustment channels when present, and forecast-like weather channels if a future SDK schema exposes a matching variable. Overlay diagnostics summarize current-overlay assumptions such as non-race gap use, large gap scaling, radar side/focus evidence, fuel burn without level, intra-lap position cadence, sector timing with missing lap counters, and reset-style progress discontinuities.
 
 ## Event Schema
 
@@ -54,11 +54,14 @@ Event-level data is the highest-level context for a capture. It combines the loc
   - `TrackSkies`
   - `TrackSurfaceTemp`
   - `TrackAirTemp`
-  - `TrackWindVel`
-  - `TrackWindDir`
+  - `TrackWindVel` / live `WindVel`
+  - `TrackWindDir` / live `WindDir`
   - `TrackRelativeHumidity`
-  - `TrackPrecipitation`
+  - live `RelativeHumidity`
+  - `TrackPrecipitation` / live `Precipitation`
   - `TrackWetness` from live telemetry
+  - live `FogLevel`, `AirPressure`, `SolarAltitude`, and `SolarAzimuth`
+  - forecast-like raw variables if a future SDK schema exposes a name or description containing `forecast`
 
 ### Example from short diagnostic capture
 
@@ -174,6 +177,7 @@ Primary source:
 - `ClutchRaw`
 - `SteeringWheelAngle`
 - `BrakeABSactive`
+- future clutch-like fields by name/description, so dual-clutch support can be validated before UI promotion
 
 #### Motion and powertrain
 
@@ -198,12 +202,15 @@ Primary source:
 - `PitOptRepairLeft`
 - `PitSvFuel`
 - `PitSvTireCompound`
+- `PitSvFlags`
+- pit request controls such as `dpLFTireChange`, `dpRFTireChange`, `dpLRTireChange`, `dpRRTireChange`, `dpFuelFill`, `dpFuelAddKg`, `dpFastRepair`, `dpWindshieldTearoff`, and cold-pressure adjustment channels
 
 #### In-car controls and condition
 
 - `dcBrakeBias`
 - `dcABS`
 - `dcTractionControl`
+- ARB/anti-roll/wing-like `dc*` or `dp*` adjustment channels when a future SDK schema exposes them
 - `OilTemp`
 - `OilPress`
 - `WaterTemp`
@@ -252,7 +259,7 @@ Primary source:
   - throttle/brake/clutch input
   - gear and RPM progression
   - ABS activity
-  - brake-bias, ABS, and TC settings
+  - brake-bias, ABS, and TC settings/toggles
   - fuel burn from about 106.0 L down to about 104.934 L
 
 ## Gaps And Limits

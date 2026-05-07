@@ -85,6 +85,7 @@ public sealed class LiveOverlayDiagnosticsRecorderTests
             Assert.Equal(2, rootElement.GetProperty("lapDelta").GetProperty("framesWithAnyUsableValue").GetInt32());
             Assert.Equal(2, rootElement.GetProperty("lapDelta").GetProperty("valueFrameCounts").GetProperty("toBestLap").GetInt32());
             Assert.Equal(2, rootElement.GetProperty("lapDelta").GetProperty("usableFrameCounts").GetProperty("toBestLap").GetInt32());
+            Assert.Equal(2, rootElement.GetProperty("relativeLapRelationship").GetProperty("observedFrames").GetInt32());
             Assert.Equal(2, rootElement.GetProperty("sectorTiming").GetProperty("metadataFrames").GetInt32());
             Assert.Equal(2, rootElement.GetProperty("trackMap").GetProperty("framesWithSectors").GetInt32());
 
@@ -99,6 +100,125 @@ public sealed class LiveOverlayDiagnosticsRecorderTests
             Assert.Contains("radar.side-suppressed-focus", eventKinds);
             Assert.Contains("fuel.instantaneous-without-level", eventKinds);
             Assert.Contains("position.overall-intra-lap", eventKinds);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void CompleteCollection_SummarizesRelativeLapRelationshipProbe()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "tmr-overlay-live-overlay-diagnostics-test", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var storage = CreateStorage(root);
+            var captureDirectory = Path.Combine(storage.CaptureRoot, "capture-diagnostics");
+            Directory.CreateDirectory(captureDirectory);
+            var recorder = new LiveOverlayDiagnosticsRecorder(
+                new LiveOverlayDiagnosticsOptions
+                {
+                    Enabled = true,
+                    MinimumFrameSpacingSeconds = 0.1d,
+                    MaxSampleFramesPerSession = 10,
+                    MaxEventExamplesPerSession = 20,
+                    MaxEventExamplesPerKind = 10
+                },
+                storage,
+                new AppEventRecorder(storage),
+                NullLogger<LiveOverlayDiagnosticsRecorder>.Instance);
+            var context = CreateContext();
+            var startedAtUtc = DateTimeOffset.Parse("2026-05-02T12:00:00Z");
+            recorder.StartCollection("capture-diagnostics", startedAtUtc);
+
+            recorder.RecordFrame(CreateSnapshot(
+                context,
+                CreateSample(
+                    startedAtUtc,
+                    sessionTime: 0d,
+                    focusCarIdx: 10,
+                    carLeftRight: 0,
+                    focusF2TimeSeconds: 500d,
+                    classPosition: 3,
+                    observedPosition: 25,
+                    observedClassPosition: 10,
+                    observedLapDistPct: 0.86d,
+                    focusLapDistPct: 0.5d,
+                    nearbyCars:
+                    [
+                        new HistoricalCarProximity(
+                            CarIdx: 44,
+                            LapCompleted: 109,
+                            LapDistPct: 0.60d,
+                            F2TimeSeconds: 420d,
+                            EstimatedTimeSeconds: 420d,
+                            Position: 5,
+                            ClassPosition: 2,
+                            CarClass: 4098,
+                            TrackSurface: 3,
+                            OnPitRoad: false),
+                        new HistoricalCarProximity(
+                            CarIdx: 45,
+                            LapCompleted: 106,
+                            LapDistPct: 0.40d,
+                            F2TimeSeconds: 650d,
+                            EstimatedTimeSeconds: 650d,
+                            Position: 40,
+                            ClassPosition: 16,
+                            CarClass: 4098,
+                            TrackSurface: 1,
+                            OnPitRoad: true),
+                        new HistoricalCarProximity(
+                            CarIdx: 46,
+                            LapCompleted: 108,
+                            LapDistPct: 0.86d,
+                            F2TimeSeconds: 520d,
+                            EstimatedTimeSeconds: 520d,
+                            Position: 18,
+                            ClassPosition: 8,
+                            CarClass: 4098,
+                            TrackSurface: 3,
+                            OnPitRoad: false),
+                        new HistoricalCarProximity(
+                            CarIdx: 47,
+                            LapCompleted: 108,
+                            LapDistPct: 0.14d,
+                            F2TimeSeconds: 540d,
+                            EstimatedTimeSeconds: 540d,
+                            Position: 19,
+                            ClassPosition: 9,
+                            CarClass: 4098,
+                            TrackSurface: 3,
+                            OnPitRoad: false)
+                    ]),
+                sequence: 1));
+
+            var path = recorder.CompleteCollection(startedAtUtc.AddSeconds(1), captureDirectory);
+
+            using var document = JsonDocument.Parse(File.ReadAllText(path!));
+            var summary = document.RootElement.GetProperty("relativeLapRelationship");
+            Assert.Equal(1, summary.GetProperty("framesWithReferenceProgress").GetInt32());
+            Assert.Equal(1, summary.GetProperty("framesWithNearbyCars").GetInt32());
+            Assert.Equal(1, summary.GetProperty("framesWithOfficialLapDelta").GetInt32());
+            Assert.Equal(1, summary.GetProperty("framesWithPendingRelationship").GetInt32());
+            Assert.Equal(4, summary.GetProperty("maxNearbyCars").GetInt32());
+            Assert.Equal(1, summary.GetProperty("officialRelationshipCounts").GetProperty("one-lap-ahead").GetInt32());
+            Assert.Equal(1, summary.GetProperty("officialRelationshipCounts").GetProperty("two-plus-laps-behind").GetInt32());
+            Assert.Equal(1, summary.GetProperty("pitRelationshipCounts").GetProperty("two-plus-laps-behind").GetInt32());
+            Assert.Equal(1, summary.GetProperty("pendingRelationshipCounts").GetProperty("same-lap-car-ahead-near-lapping-reference").GetInt32());
+            Assert.Equal(1, summary.GetProperty("pendingRelationshipCounts").GetProperty("same-lap-reference-catching-car-to-lap").GetInt32());
+
+            var eventKinds = document.RootElement
+                .GetProperty("eventSamples")
+                .EnumerateArray()
+                .Select(item => item.GetProperty("kind").GetString())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            Assert.Contains("relative-lap.same-lap-car-ahead-near-lapping-reference", eventKinds);
+            Assert.Contains("relative-lap.same-lap-reference-catching-car-to-lap", eventKinds);
         }
         finally
         {
@@ -422,7 +542,8 @@ public sealed class LiveOverlayDiagnosticsRecorderTests
         int observedClassPosition,
         double observedLapDistPct,
         double focusLapDistPct = 0.5d,
-        int focusLapCompleted = 108)
+        int focusLapCompleted = 108,
+        IReadOnlyList<HistoricalCarProximity>? nearbyCars = null)
     {
         return new HistoricalTelemetrySample(
             CapturedAtUtc: capturedAtUtc,
@@ -494,6 +615,7 @@ public sealed class LiveOverlayDiagnosticsRecorderTests
                     TrackSurface: 3,
                     OnPitRoad: false)
             ],
+            NearbyCars: nearbyCars,
             TeamOnPitRoad: false,
             DriversSoFar: 1,
             LapDeltaToBestLapSeconds: -0.2d,

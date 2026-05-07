@@ -9,69 +9,71 @@ TmrOverlay uses SemVer-style annotated Git tags for product milestones:
 
 ## Current Branch Target
 
-### v0.12.0 - Teammate Beta Hardening
+### v0.13.0 - Core Overlay Readiness
 
 Planned branch name:
 
 ```text
-v0.12-teammate-beta-hardening
+v0.13-core-overlay-readiness
 ```
 
 Planned scope:
 
-- Add visible in-app version/build metadata in Settings or Support.
-- Decide the startup/manual update-check source and interaction model before implementation so the teammate flow does not get a second throwaway updater surface.
-- Tighten the Support tab from real teammate feedback: clearer current issue text, diagnostics bundle status, copied-path behavior, diagnostic-capture guidance, concrete test bullets, and detailed handoff copy.
-- Validate portable upgrade behavior against existing `%LOCALAPPDATA%\TmrOverlay` settings/history/diagnostics data.
-- Polish first-run and no-iRacing-connected states so testers do not confuse expected waiting states with broken installs.
-- Keep signed installer/update automation out of scope unless release friction proves the portable zip is not enough for private testers.
+- Promote core overlays to model-v2 consumers where the data contracts are now stable.
+- Treat live row coverage, scoring snapshots, and rendered-car limits as first-class assumptions instead of silently compressing missing competitors.
+- Keep local in-car radar scoped to player-in-car proximity and side-warning telemetry.
+- Harden flags, session/weather, pit service, inputs, garage cover, fuel, gap, standings, relative, and track map behavior around real telemetry evidence.
+- Add diagnostic-first probes for future penalty detail, TC/dual-clutch, forecast, relative-lap pending, and spotter/teammate pit-change questions.
+- Add shared overlay availability/freshness and app diagnostics status models.
+- Keep remaining V2 candidates, such as driver role/focus, race events/penalties, pit strategy, track asset quality, and post-race summaries, as V1.N follow-up foundations.
 
 Technical implementation checklist:
 
-1. Bump shared .NET product/version metadata to `0.12.0`.
-2. Show version/build metadata in the Support tab and diagnostics handoff flow.
-3. Make first-run, no-iRacing, connected-without-frames, and live-telemetry states read as expected support states instead of ambiguous failures.
-4. Add focused unit coverage for Support status/copy text that does not require WinForms instantiation.
-5. Update the teammate helper screenshot so it reflects the current overlay suite, Support tab, and requested tester validation steps.
-6. Record the update-check service/UI decision: prefer Velopack-compatible release metadata, run once per app launch plus a manual support action, and show passive warnings outside the Support tab.
-7. Expand Support handoff copy around enabling diagnostic capture before a requested repro, what teammate test steps matter most, how to create/copy the diagnostics zip path, and what details to send back.
-8. Validate portable upgrade behavior against existing `%LOCALAPPDATA%\TmrOverlay` settings/history/diagnostics data on Windows.
-9. Update docs/context/version metadata and run branch validation available from macOS, with Windows build/test/publish left to Windows CI.
+1. Bump shared .NET product/version metadata to `0.13.0`.
+2. Move standings to scoring-snapshot ordering with timing enrichment and class-group/browser settings.
+3. Keep Track Map plotted from real spatial progress while using scoring rows only for marker identity/color enrichment.
+4. Promote Relative, local in-car Radar, Flags, Session / Weather, Pit Service, Input / Car State, Fuel, and Gap To Leader to stable model-v2 inputs where appropriate.
+5. Keep Garage Cover localhost-only, image-backed, previewable, and fail-closed when telemetry is unavailable or stale.
+6. Add shared race-progress and overlay-availability/status-diagnostics models with focused unit coverage.
+7. Keep uncertain telemetry semantics diagnostic-first and document V1.N model follow-ups.
+8. Refresh docs/context/version metadata and run branch validation available from macOS, with Windows build/test/publish left to Windows CI.
 
 Implemented baseline in this branch:
 
-- Bumped shared .NET product/version metadata to `0.12.0`.
-- Added visible Support-tab version/build metadata backed by `AppVersionInfo`.
-- Extracted Support status/current-issue wording into a focused formatter with unit coverage.
-- Polished first-run/no-iRacing and connected-without-frames text so expected waiting states are not presented as broken installs.
-- Mirrored Support-tab wording/version visibility in the ignored mac harness.
-- Updated the teammate helper screenshot renderer to show the current overlay suite and explicit tester validation steps.
-- Recorded the update-check product decision: prefer Velopack-compatible release metadata, check once per app startup, and keep prompts passive.
-- Added livery-editor research for the uploaded BMW M4 GT3 PSD and a future app-native iRacing TGA export path.
-- Restored the Inputs overlay default toward the wider rolling trace graph while preserving compact bars for very small sizes.
-- Simplified the Support tab into a single-column teammate handoff flow and smoothed Inputs graph traces plus Track Map marker movement.
+- Bumped shared .NET product/version metadata to `0.13.0`.
+- Added shared model-v2 race progress, overlay availability/freshness, and app diagnostics status contracts.
+- Promoted core overlays to normalized model-v2 consumers across standings, relative, local radar, flags, session/weather, pit service, inputs, fuel, gap, and track map behavior.
+- Reworked Standings around scoring snapshots, class grouping, configurable other-class rows, pit labels, and browser-source settings.
+- Kept Track Map from compressing missing competitors by plotting only cars with usable spatial progress while enriching labels/colors from scoring rows.
+- Scoped Radar to accurate local player-in-car telemetry, keeping timing-only and non-local focus cases diagnostic/future.
+- Reworked Flags into multi-flag procedural display with steady green suppressed and penalty detail kept diagnostic-first.
+- Added Garage Cover image import/preview/fail-closed localhost behavior plus diagnostics.
+- Split Fuel strategy inputs around shared fuel/pit and race-progress models while preserving history fallback.
+- Moved Gap To Leader to race-only model-v2 timing/race-progress inputs with legacy fallback.
+- Extended diagnostics and docs for forecast-like channels, spotter/teammate pit changes, TC/dual-clutch evidence, relative lap relationships, and future model branches.
+- Added focused unit coverage for new settings, browser-source, diagnostics, race-progress, gap, availability, and model-v2 consumer behavior.
 
 Likely squash title:
 
 ```text
-[v0.12.0] Harden teammate beta install and support flow
+[v0.13.0] Harden core overlays on model-v2 telemetry
 ```
 
 Likely squash body:
 
 ```text
-- Bumped shared .NET product/version metadata to 0.12.0.
-- Added Support-tab app version/build metadata from `AppVersionInfo`.
-- Extracted Support status/current-issue text into a deterministic formatter with focused unit coverage.
-- Polished first-run/no-iRacing and connected-without-frames states so expected waiting reads as normal setup, not a failure.
-- Updated Status overlay waiting-state health copy to avoid warning treatment for idle startup states.
-- Mirrored Support-tab version/waiting copy in the mac harness.
-- Regenerated the teammate helper screenshot with current app surfaces, Support actions, and concrete install/live/localhost/diagnostics/upgrade validation steps.
-- Documented the v0.12 update-check decision around Velopack-compatible release metadata and once-per-startup passive checking.
-- Added livery-editor research covering the uploaded BMW M4 GT3 PSD, iRacing TGA export expectations, and why a future editor should export app-native projects instead of mutating PSDs directly.
-- Restored the Inputs overlay default to a wider rolling trace layout with compact bars reserved for smaller sizes.
-- Simplified the Support tab for teammate use and smoothed Inputs graph traces plus native/localhost Track Map marker movement.
-- Validation: git diff --check, conflict-marker sweep, tracked screenshot validation, release-tutorial screenshot validation, Track Map browser-source JS parse smoke, isolated mac-harness live smoke, mac `swift build`, and C# compile-shape scanner. Windows restore/build/test/screenshot/publish validation remains CI-owned from this Mac because `dotnet` is not installed locally; mac `swift test` is blocked by the local Command Line Tools XCTest module gap.
+- Bumped shared .NET product/version metadata to 0.13.0.
+- Added shared model-v2 race-progress, overlay availability/freshness, and app diagnostics status contracts.
+- Promoted core overlays to normalized model-v2 consumers across Standings, Relative, local Radar, Flags, Session / Weather, Pit Service, Input / Car State, Fuel, Gap To Leader, and Track Map.
+- Reworked Standings around scoring-snapshot ordering, class grouping, configurable other-class rows, pit labels, and localhost browser-source settings.
+- Kept Track Map marker placement honest under partial live coverage by plotting only cars with usable spatial progress and using scoring rows only for identity/color enrichment.
+- Scoped Radar to accurate local player-in-car proximity and side-warning telemetry while leaving non-local focus and timing-only placement as future evidence-aware work.
+- Reworked Flags into a multi-flag procedural display, suppressed steady green running, and kept exact penalty instruction text diagnostic-first.
+- Added Garage Cover image import, preview, localhost fail-closed behavior, and diagnostics.
+- Split Fuel strategy inputs around shared fuel/pit and race-progress models while preserving history fallback.
+- Moved Gap To Leader to race-only model-v2 timing/race-progress inputs with legacy leader-gap fallback.
+- Extended compact diagnostics and docs for forecast-like weather, spotter/teammate pit changes, TC/dual-clutch evidence, relative lap-relationship probes, and future V1.N model foundations.
+- Validation: git diff --check, conflict-marker sweep, C# compile-shape scanner, tracked screenshot validation, and Windows screenshot expectation validation. Windows restore/build/test/screenshot/publish validation remains CI-owned from this Mac because `dotnet` is not installed locally.
 ```
 
 ## Merged Mainline Milestones

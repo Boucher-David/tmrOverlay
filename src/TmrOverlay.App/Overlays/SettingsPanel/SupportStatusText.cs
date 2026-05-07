@@ -1,4 +1,4 @@
-using System.Globalization;
+using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Telemetry;
 using TmrOverlay.Core.AppInfo;
 
@@ -8,84 +8,18 @@ internal static class SupportStatusText
 {
     public static SupportAppStatus AppStatus(TelemetryCaptureStatusSnapshot snapshot)
     {
-        if (!string.IsNullOrWhiteSpace(snapshot.LastError))
-        {
-            return new SupportAppStatus("Error", SupportStatusLevel.Error);
-        }
-
-        if (!string.IsNullOrWhiteSpace(snapshot.LastWarning)
-            || !string.IsNullOrWhiteSpace(snapshot.AppWarning)
-            || snapshot.DroppedFrameCount > 0)
-        {
-            return new SupportAppStatus("Warning", SupportStatusLevel.Warning);
-        }
-
-        if (snapshot.IsCapturing)
-        {
-            return new SupportAppStatus("Live telemetry", SupportStatusLevel.Success);
-        }
-
-        if (snapshot.IsConnected)
-        {
-            return new SupportAppStatus("Connected", SupportStatusLevel.Info);
-        }
-
-        return new SupportAppStatus("Waiting for iRacing", SupportStatusLevel.Neutral);
+        var status = AppDiagnosticsStatusModel.From(snapshot);
+        return new SupportAppStatus(status.SupportStatusText, ToSupportStatusLevel(status.SupportSeverity));
     }
 
     public static string SessionStateText(TelemetryCaptureStatusSnapshot snapshot)
     {
-        if (snapshot.RawCaptureActive)
-        {
-            return $"Diagnostic telemetry active ({FormatCount(snapshot.WrittenFrameCount)} frames written)";
-        }
-
-        if (snapshot.RawCaptureEnabled)
-        {
-            return "Diagnostic telemetry requested; starts with live data";
-        }
-
-        if (snapshot.IsCapturing)
-        {
-            return $"Receiving live telemetry ({FormatCount(snapshot.FrameCount)} frames)";
-        }
-
-        if (snapshot.IsConnected)
-        {
-            return "iRacing connected; waiting for live session data";
-        }
-
-        return "Not connected; start iRacing when ready";
+        return AppDiagnosticsStatusModel.From(snapshot).SessionStateText;
     }
 
     public static string CurrentIssueText(TelemetryCaptureStatusSnapshot snapshot)
     {
-        if (!string.IsNullOrWhiteSpace(snapshot.LastError))
-        {
-            return $"Error: {snapshot.LastError}";
-        }
-
-        if (!string.IsNullOrWhiteSpace(snapshot.LastWarning))
-        {
-            return $"Warning: {snapshot.LastWarning}";
-        }
-
-        if (!string.IsNullOrWhiteSpace(snapshot.AppWarning))
-        {
-            return $"App warning: {snapshot.AppWarning}";
-        }
-
-        if (!snapshot.IsConnected)
-        {
-            return "No active issue. Waiting is expected before iRacing is running.";
-        }
-
-        if (!snapshot.IsCapturing)
-        {
-            return "No active issue. Live telemetry starts after session data arrives.";
-        }
-
-        return "No active issue recorded.";
+        return AppDiagnosticsStatusModel.From(snapshot).CurrentIssueText;
     }
 
     public static string LatestBundleDisplayText(string? bundlePath)
@@ -124,9 +58,16 @@ internal static class SupportStatusText
             : version;
     }
 
-    private static string FormatCount(int value)
+    private static SupportStatusLevel ToSupportStatusLevel(AppDiagnosticsSeverity severity)
     {
-        return value.ToString("N0", CultureInfo.InvariantCulture);
+        return severity switch
+        {
+            AppDiagnosticsSeverity.Info => SupportStatusLevel.Info,
+            AppDiagnosticsSeverity.Success => SupportStatusLevel.Success,
+            AppDiagnosticsSeverity.Warning => SupportStatusLevel.Warning,
+            AppDiagnosticsSeverity.Error => SupportStatusLevel.Error,
+            _ => SupportStatusLevel.Neutral
+        };
     }
 }
 

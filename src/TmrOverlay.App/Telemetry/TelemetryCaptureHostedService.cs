@@ -48,6 +48,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     private string? _activeSourceId;
     private DateTimeOffset? _activeStartedAtUtc;
     private IReadOnlyList<string> _activeRawWatchVariableNames = [];
+    private IReadOnlyDictionary<string, string> _activeRawWatchVariableGroups = new Dictionary<string, string>();
     private int _sessionInfoSnapshotCount;
     private int _frameIndex;
     private int _lastSessionInfoUpdate = -1;
@@ -151,6 +152,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             _activeSourceId = null;
             _activeStartedAtUtc = null;
             _activeRawWatchVariableNames = [];
+            _activeRawWatchVariableGroups = new Dictionary<string, string>();
             _sessionInfoSnapshotCount = 0;
             _lastSessionInfoUpdate = -1;
         }
@@ -211,6 +213,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             _activeSourceId = null;
             _activeStartedAtUtc = null;
             _activeRawWatchVariableNames = [];
+            _activeRawWatchVariableGroups = new Dictionary<string, string>();
             _sessionInfoSnapshotCount = 0;
             _lastSessionInfoUpdate = -1;
             _frameIndex = 0;
@@ -382,6 +385,11 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             _activeRawWatchVariableNames = edgeCaseSchema.WatchedVariables
                 .Select(variable => variable.Name)
                 .ToArray();
+            _activeRawWatchVariableGroups = edgeCaseSchema.WatchedVariables
+                .ToDictionary(
+                    variable => variable.Name,
+                    variable => variable.Group,
+                    StringComparer.OrdinalIgnoreCase);
             _sessionInfoSnapshotCount = 0;
             _frameIndex = 0;
             _lastSessionInfoUpdate = -1;
@@ -583,11 +591,11 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         }
 
         var watched = headers.Values
-            .Where(header => RawTelemetryWatchVariables.Names.Contains(header.Name, StringComparer.OrdinalIgnoreCase))
+            .Where(header => RawTelemetryWatchVariables.ShouldWatch(header.Name, header.Desc))
             .OrderBy(header => header.Name, StringComparer.OrdinalIgnoreCase)
             .Select(header => new RawTelemetryWatchedVariable(
                 Name: header.Name,
-                Group: RawTelemetryWatchVariables.GroupFor(header.Name),
+                Group: RawTelemetryWatchVariables.GroupFor(header.Name, header.Desc),
                 TypeName: header.Type.ToString(),
                 Count: header.Count,
                 Unit: string.IsNullOrWhiteSpace(header.Unit) ? null : header.Unit,
@@ -603,7 +611,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 
     private static RawTelemetryWatchSnapshot ReadRawTelemetryWatchSnapshot(
         IRacingSDK sdk,
-        IReadOnlyCollection<string> variableNames)
+        IReadOnlyCollection<string> variableNames,
+        IReadOnlyDictionary<string, string> variableGroups)
     {
         var values = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
         foreach (var name in variableNames)
@@ -616,7 +625,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 
         return values.Count == 0
             ? RawTelemetryWatchSnapshot.Empty
-            : new RawTelemetryWatchSnapshot(values);
+            : new RawTelemetryWatchSnapshot(values) { VariableGroups = variableGroups };
     }
 
     private static bool TryReadRawWatchValue(IRacingSDK sdk, string variableName, out double value)
@@ -1316,10 +1325,12 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
     {
         HistoricalSessionAccumulator? history;
         IReadOnlyList<string> rawWatchVariableNames;
+        IReadOnlyDictionary<string, string> rawWatchVariableGroups;
         lock (_sync)
         {
             history = _activeHistory;
             rawWatchVariableNames = _activeRawWatchVariableNames;
+            rawWatchVariableGroups = _activeRawWatchVariableGroups;
         }
 
         HistoricalTelemetrySample sample;
@@ -1428,6 +1439,15 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 TrackWetness: ReadInt32(sdk, "TrackWetness"),
                 WeatherDeclaredWet: ReadBoolean(sdk, "WeatherDeclaredWet"),
                 PlayerTireCompound: ReadInt32(sdk, "PlayerTireCompound"),
+                Skies: ReadNullableInt32(sdk, "Skies"),
+                PrecipitationPercent: ReadNullableDouble(sdk, "Precipitation"),
+                WindVelocityMetersPerSecond: ReadNullableDouble(sdk, "WindVel"),
+                WindDirectionRadians: ReadNullableDouble(sdk, "WindDir"),
+                RelativeHumidityPercent: ReadNullableDouble(sdk, "RelativeHumidity"),
+                FogLevelPercent: ReadNullableDouble(sdk, "FogLevel"),
+                AirPressurePa: ReadNullableDouble(sdk, "AirPressure"),
+                SolarAltitudeRadians: ReadNullableFiniteDouble(sdk, "SolarAltitude"),
+                SolarAzimuthRadians: ReadNullableFiniteDouble(sdk, "SolarAzimuth"),
                 IsGarageVisible: ReadNullableBoolean(sdk, "IsGarageVisible"),
                 SessionTimeRemain: ReadNullableDouble(sdk, "SessionTimeRemain"),
                 SessionTimeTotal: ReadNullableDouble(sdk, "SessionTimeTotal"),
@@ -1517,13 +1537,14 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 Brake: ReadNullableFiniteDouble(sdk, "Brake"),
                 Clutch: ReadNullableFiniteDouble(sdk, "Clutch"),
                 SteeringWheelAngle: ReadNullableFiniteDouble(sdk, "SteeringWheelAngle"),
+                BrakeAbsActive: ReadNullableBoolean(sdk, "BrakeABSactive"),
                 EngineWarnings: ReadNullableInt32(sdk, "EngineWarnings"),
                 Voltage: ReadNullableFiniteDouble(sdk, "Voltage"),
                 WaterTempC: ReadNullableFiniteDouble(sdk, "WaterTemp"),
                 FuelPressureBar: ReadNullableFiniteDouble(sdk, "FuelPress"),
                 OilTempC: ReadNullableFiniteDouble(sdk, "OilTemp"),
                 OilPressureBar: ReadNullableFiniteDouble(sdk, "OilPress"));
-            rawWatch = ReadRawTelemetryWatchSnapshot(sdk, rawWatchVariableNames);
+            rawWatch = ReadRawTelemetryWatchSnapshot(sdk, rawWatchVariableNames, rawWatchVariableGroups);
             _performance.RecordIRacingSystemTelemetry(
                 capturedAtUtc,
                 chanQuality: rawWatch.Get("ChanQuality"),

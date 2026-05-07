@@ -1,0 +1,79 @@
+using TmrOverlay.Core.History;
+using Xunit;
+
+namespace TmrOverlay.App.Tests.History;
+
+public sealed class SessionInfoSummaryParserTests
+{
+    [Fact]
+    public void Parse_SelectsCurrentSessionResultsPositions()
+    {
+        var context = SessionInfoSummaryParser.Parse("""
+SessionInfo:
+ CurrentSessionNum: 1
+ Sessions:
+ - SessionNum: 0
+   SessionType: Practice
+   ResultsPositions:
+   - Position: 1
+     ClassPosition: 0
+     CarIdx: 40
+     LapsComplete: 4
+ - SessionNum: 1
+   SessionType: Race
+   SessionName: RACE
+   ResultsPositions:
+   - Position: 1
+     ClassPosition: 0
+     CarIdx: 10
+     Lap: 7
+     Time: 0.0000
+     FastestLap: 4
+     FastestTime: 90.1234
+     LastTime: 91.2345
+     LapsLed: 2
+     LapsComplete: 7
+     LapsDriven: 7.420
+     ReasonOutStr: Running
+   - Position: 2
+     ClassPosition: 1
+     CarIdx: 12
+     Lap: 7
+     Time: 4.5000
+     FastestLap: 3
+     FastestTime: 90.9000
+     LastTime: 92.0000
+     LapsLed: 0
+     LapsComplete: 7
+     LapsDriven: 7.100
+     ReasonOutStr: Running
+DriverInfo:
+ DriverCarIdx: 10
+ Drivers:
+ - CarIdx: 10
+   UserName: Driver One
+ - CarIdx: 12
+   UserName: Driver Two
+""");
+
+        Assert.Equal("Race", context.Session.SessionType);
+        Assert.Equal("RACE", context.Session.SessionName);
+        Assert.Collection(
+            context.ResultPositions,
+            row =>
+            {
+                Assert.Equal(1, row.Position);
+                Assert.Equal(0, row.ClassPosition);
+                Assert.Equal(10, row.CarIdx);
+                Assert.Equal(7, row.LapsComplete);
+                Assert.Equal(90.1234d, row.FastestTimeSeconds!.Value);
+            },
+            row =>
+            {
+                Assert.Equal(2, row.Position);
+                Assert.Equal(1, row.ClassPosition);
+                Assert.Equal(12, row.CarIdx);
+                Assert.Equal(4.5d, row.TimeSeconds!.Value);
+            });
+    }
+}

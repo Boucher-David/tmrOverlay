@@ -3,10 +3,12 @@ using System.Text.Json.Nodes;
 using TmrOverlay.App.Localhost;
 using Microsoft.Extensions.Logging.Abstractions;
 using TmrOverlay.App.Diagnostics;
+using TmrOverlay.App.Settings;
 using TmrOverlay.App.Performance;
 using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
 using TmrOverlay.App.TrackMaps;
+using TmrOverlay.Core.Telemetry.Live;
 using Xunit;
 
 namespace TmrOverlay.App.Tests.Diagnostics;
@@ -24,6 +26,11 @@ public sealed class DiagnosticsBundleServiceTests
             Directory.CreateDirectory(storage.EventsRoot);
             Directory.CreateDirectory(storage.SettingsRoot);
             Directory.CreateDirectory(Path.GetDirectoryName(storage.RuntimeStatePath)!);
+            var garageCoverDirectory = Path.Combine(storage.SettingsRoot, "garage-cover");
+            Directory.CreateDirectory(garageCoverDirectory);
+            var garageCoverPath = Path.Combine(garageCoverDirectory, "cover.png");
+            File.WriteAllText(garageCoverPath, "fake image");
+            var escapedGarageCoverPath = garageCoverPath.Replace("\\", "\\\\", StringComparison.Ordinal);
             var edgeCaseDirectory = Path.Combine(storage.LogsRoot, "edge-cases");
             var modelParityDirectory = Path.Combine(storage.LogsRoot, "model-parity");
             var overlayDiagnosticsDirectory = Path.Combine(storage.LogsRoot, "overlay-diagnostics");
@@ -37,7 +44,7 @@ public sealed class DiagnosticsBundleServiceTests
             File.WriteAllText(Path.Combine(storage.EventsRoot, "events-20260426.jsonl"), "{}");
             File.WriteAllText(
                 Path.Combine(storage.SettingsRoot, "settings.json"),
-                """
+                $$"""
                 {
                   "overlays": [
                     {
@@ -45,6 +52,12 @@ public sealed class DiagnosticsBundleServiceTests
                       "options": {
                         "stream-chat.provider": "streamlabs",
                         "stream-chat.streamlabs-url": "https://streamlabs.com/widgets/chat-box/private-token"
+                      }
+                    },
+                    {
+                      "id": "garage-cover",
+                      "options": {
+                        "garage-cover.image-path": "{{escapedGarageCoverPath}}"
                       }
                     }
                   ]
@@ -105,6 +118,22 @@ public sealed class DiagnosticsBundleServiceTests
             var performanceRecorder = new AppPerformanceSnapshotRecorder(storage);
             performanceRecorder.Record(performance.Snapshot());
             var trackMapStore = new TrackMapStore(storage);
+            var settingsStore = new AppSettingsStore(storage);
+            var liveTelemetry = new TestLiveTelemetrySource(LiveTelemetrySnapshot.Empty with
+            {
+                IsConnected = true,
+                IsCollecting = true,
+                LastUpdatedAtUtc = DateTimeOffset.UtcNow,
+                Models = LiveRaceModels.Empty with
+                {
+                    RaceEvents = LiveRaceEventModel.Empty with
+                    {
+                        HasData = true,
+                        Quality = LiveModelQuality.Reliable,
+                        IsGarageVisible = true
+                    }
+                }
+            });
             var service = new DiagnosticsBundleService(
                 storage,
                 new LiveModelParityOptions(),
@@ -112,6 +141,8 @@ public sealed class DiagnosticsBundleServiceTests
                 state,
                 localhostState,
                 trackMapStore,
+                settingsStore,
+                liveTelemetry,
                 performance,
                 performanceRecorder,
                 NullLogger<DiagnosticsBundleService>.Instance);
@@ -125,6 +156,7 @@ public sealed class DiagnosticsBundleServiceTests
             Assert.Contains("metadata/telemetry-state.json", entryNames);
             Assert.Contains("metadata/localhost-overlays.json", entryNames);
             Assert.Contains("metadata/track-maps.json", entryNames);
+            Assert.Contains("metadata/garage-cover.json", entryNames);
             Assert.Contains("metadata/performance.json", entryNames);
             Assert.Contains("runtime/runtime-state.json", entryNames);
             Assert.Contains("settings/settings.json", entryNames);
@@ -149,6 +181,7 @@ public sealed class DiagnosticsBundleServiceTests
             Assert.Contains("history/user/cars/car-156-mercedesamgevogt3/tracks/track-262-nurburgring-combinedshortb/sessions/race/summaries/capture-20260426-120000-000.json", entryNames);
             Assert.DoesNotContain("latest-capture/telemetry.bin", entryNames);
             Assert.DoesNotContain("latest-capture/ibt-analysis/source.ibt", entryNames);
+            Assert.DoesNotContain("settings/garage-cover/cover.png", entryNames);
 
             var localhostEntry = archive.GetEntry("metadata/localhost-overlays.json");
             Assert.NotNull(localhostEntry);
@@ -174,10 +207,21 @@ public sealed class DiagnosticsBundleServiceTests
             using var settingsReader = new StreamReader(settingsEntry.Open());
             var bundledSettings = settingsReader.ReadToEnd();
             var bundledSettingsJson = JsonNode.Parse(bundledSettings);
-            var bundledOverlay = Assert.IsType<JsonObject>(Assert.Single(Assert.IsType<JsonArray>(bundledSettingsJson?["overlays"])));
+            var overlays = Assert.IsType<JsonArray>(bundledSettingsJson?["overlays"]);
+            var bundledOverlay = overlays.OfType<JsonObject>().Single(overlay =>
+                string.Equals((string?)overlay["id"], "stream-chat", StringComparison.OrdinalIgnoreCase));
             var bundledOptions = Assert.IsType<JsonObject>(bundledOverlay["options"]);
             Assert.Equal("<redacted>", (string?)bundledOptions["stream-chat.streamlabs-url"]);
             Assert.DoesNotContain("private-token", bundledSettings);
+
+            var garageCoverEntry = archive.GetEntry("metadata/garage-cover.json");
+            Assert.NotNull(garageCoverEntry);
+            using var garageCoverReader = new StreamReader(garageCoverEntry.Open());
+            var garageCoverJson = JsonNode.Parse(garageCoverReader.ReadToEnd());
+            Assert.Equal("/overlays/garage-cover", (string?)garageCoverJson?["route"]);
+            Assert.Equal("ready", (string?)garageCoverJson?["imageStatus"]);
+            Assert.Equal("cover.png", (string?)garageCoverJson?["imageFileName"]);
+            Assert.True((bool?)garageCoverJson?["lastGarageVisible"]);
         }
         finally
         {
@@ -203,5 +247,20 @@ public sealed class DiagnosticsBundleServiceTests
             EventsRoot = Path.Combine(root, "logs", "events"),
             RuntimeStatePath = Path.Combine(root, "runtime-state.json")
         };
+    }
+
+    private sealed class TestLiveTelemetrySource : ILiveTelemetrySource
+    {
+        private readonly LiveTelemetrySnapshot _snapshot;
+
+        public TestLiveTelemetrySource(LiveTelemetrySnapshot snapshot)
+        {
+            _snapshot = snapshot;
+        }
+
+        public LiveTelemetrySnapshot Snapshot()
+        {
+            return _snapshot;
+        }
     }
 }

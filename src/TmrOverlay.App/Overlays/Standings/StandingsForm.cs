@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Overlays.Abstractions;
 using TmrOverlay.App.Overlays.Styling;
 using TmrOverlay.App.Performance;
+using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 using TmrOverlay.Core.Telemetry.Live;
 
@@ -28,6 +29,7 @@ internal sealed class StandingsForm : PersistentOverlayForm
     private readonly Label[] _headerLabels = new Label[Columns.Length];
     private readonly Label[,] _rowLabels = new Label[MaximumRows, 6];
     private readonly System.Windows.Forms.Timer _refreshTimer;
+    private readonly OverlaySettings _settings;
     private long? _lastRefreshSequence;
     private string? _overlayError;
     private string? _lastLoggedError;
@@ -49,6 +51,7 @@ internal sealed class StandingsForm : PersistentOverlayForm
         _liveTelemetrySource = liveTelemetrySource;
         _logger = logger;
         _performanceState = performanceState;
+        _settings = settings;
         _fontFamily = fontFamily;
 
         BackColor = OverlayTheme.Colors.WindowBackground;
@@ -242,7 +245,11 @@ internal sealed class StandingsForm : PersistentOverlayForm
             StandingsOverlayViewModel viewModel;
             try
             {
-                viewModel = StandingsOverlayViewModel.From(snapshot, DateTimeOffset.UtcNow, MaximumRows);
+                viewModel = StandingsOverlayViewModel.From(
+                    snapshot,
+                    DateTimeOffset.UtcNow,
+                    MaximumRows,
+                    OtherClassRowsPerClass());
                 viewModelSucceeded = true;
             }
             finally
@@ -371,8 +378,29 @@ internal sealed class StandingsForm : PersistentOverlayForm
         return changed;
     }
 
+    private int OtherClassRowsPerClass()
+    {
+        return _settings.GetIntegerOption(
+            OverlayOptionKeys.StandingsOtherClassRows,
+            defaultValue: 2,
+            minimum: 0,
+            maximum: 6);
+    }
+
     private static Color TextColor(StandingsOverlayRowViewModel row, int column)
     {
+        if (row.IsClassHeader)
+        {
+            return column == 2
+                ? OverlayTheme.Colors.TextPrimary
+                : OverlayTheme.Colors.TextMuted;
+        }
+
+        if (row.IsPartial)
+        {
+            return OverlayTheme.Colors.TextMuted;
+        }
+
         if (column == 5 && !string.IsNullOrEmpty(row.Pit))
         {
             return OverlayTheme.Colors.WarningIndicator;

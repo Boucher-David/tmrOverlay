@@ -1,5 +1,6 @@
 using System.Globalization;
 using TmrOverlay.App.Overlays.SimpleTelemetry;
+using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Telemetry.Live;
 
 namespace TmrOverlay.App.Overlays.InputState;
@@ -11,9 +12,15 @@ internal static class InputStateOverlayViewModel
         DateTimeOffset now,
         string unitSystem)
     {
-        if (!SimpleTelemetryOverlayViewModel.IsFresh(snapshot, now, out var waitingStatus))
+        var availability = OverlayAvailabilityEvaluator.FromSnapshot(snapshot, now);
+        if (!availability.IsAvailable)
         {
-            return SimpleTelemetryOverlayViewModel.Waiting("Input / Car State", waitingStatus);
+            return SimpleTelemetryOverlayViewModel.Waiting("Input / Car State", availability.StatusText);
+        }
+
+        if (!IsPlayerInCar(snapshot))
+        {
+            return SimpleTelemetryOverlayViewModel.Waiting("Input / Car State", "waiting for player in car");
         }
 
         var inputs = snapshot.Models.Inputs;
@@ -25,7 +32,7 @@ internal static class InputStateOverlayViewModel
         var warningTone = inputs.EngineWarnings is > 0 ? SimpleTelemetryTone.Warning : SimpleTelemetryTone.Normal;
         var status = inputs.EngineWarnings is > 0
             ? "engine warning"
-            : SimpleTelemetryOverlayViewModel.JoinAvailable(FormatGear(inputs.Gear), FormatRpm(inputs.Rpm));
+            : FormatStatus(inputs);
         var rows = new[]
         {
             new SimpleTelemetryRowViewModel("Speed", SimpleTelemetryOverlayViewModel.FormatSpeed(inputs.SpeedMetersPerSecond, unitSystem)),
@@ -54,9 +61,31 @@ internal static class InputStateOverlayViewModel
         }
 
         return SimpleTelemetryOverlayViewModel.JoinAvailable(
-            $"T {SimpleTelemetryOverlayViewModel.FormatPercent(inputs.Throttle)}",
-            $"B {SimpleTelemetryOverlayViewModel.FormatPercent(inputs.Brake)}",
+            FormatPedal("T", inputs.Throttle, activity: null),
+            FormatPedal("B", inputs.Brake, inputs.BrakeAbsActive == true ? "ABS" : null),
             $"C {SimpleTelemetryOverlayViewModel.FormatPercent(inputs.Clutch)}");
+    }
+
+    private static bool IsPlayerInCar(LiveTelemetrySnapshot snapshot)
+    {
+        var race = snapshot.Models.RaceEvents;
+        return !race.HasData || (race.IsOnTrack && !race.IsInGarage);
+    }
+
+    private static string FormatStatus(LiveInputTelemetryModel inputs)
+    {
+        return SimpleTelemetryOverlayViewModel.JoinAvailable(
+            FormatGear(inputs.Gear),
+            FormatRpm(inputs.Rpm),
+            inputs.BrakeAbsActive == true ? "ABS" : null);
+    }
+
+    private static string FormatPedal(string label, double? value, string? activity)
+    {
+        var formatted = $"{label} {SimpleTelemetryOverlayViewModel.FormatPercent(value)}";
+        return string.IsNullOrWhiteSpace(activity)
+            ? formatted
+            : $"{formatted} {activity}";
     }
 
     private static string FormatGear(int? gear)

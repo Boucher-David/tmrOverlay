@@ -679,19 +679,36 @@ internal sealed class TrackMapForm : PersistentOverlayForm
     private static IReadOnlyList<TrackMapMarker> BuildMarkers(LiveTelemetrySnapshot snapshot)
     {
         var markers = new Dictionary<int, TrackMapMarker>();
+        var scoringByCarIdx = snapshot.Models.Scoring.Rows
+            .GroupBy(row => row.CarIdx)
+            .ToDictionary(group => group.Key, group => group.First());
+        var referenceCarIdx = snapshot.Models.Scoring.ReferenceCarIdx
+            ?? snapshot.Models.Timing.FocusCarIdx
+            ?? snapshot.Models.Timing.PlayerCarIdx
+            ?? snapshot.Models.Spatial.ReferenceCarIdx
+            ?? snapshot.LatestSample?.FocusCarIdx
+            ?? snapshot.LatestSample?.PlayerCarIdx;
         foreach (var row in snapshot.Models.Timing.OverallRows.Concat(snapshot.Models.Timing.ClassRows))
         {
-            if (row.LapDistPct is not { } lapDistPct || !IsValidProgress(lapDistPct))
+            if (!row.HasSpatialProgress
+                || row.LapDistPct is not { } lapDistPct
+                || !IsValidProgress(lapDistPct))
             {
                 continue;
             }
 
+            scoringByCarIdx.TryGetValue(row.CarIdx, out var scoringRow);
+            var isFocus = row.IsFocus
+                || row.IsPlayer
+                || row.CarIdx == referenceCarIdx
+                || scoringRow?.IsFocus == true
+                || scoringRow?.IsPlayer == true;
             var marker = new TrackMapMarker(
                 row.CarIdx,
                 NormalizeProgress(lapDistPct),
-                row.IsFocus || row.IsPlayer,
-                MarkerColor(row.CarClassColorHex, row.IsFocus || row.IsPlayer),
-                PositionLabel(row));
+                isFocus,
+                MarkerColor(scoringRow?.CarClassColorHex ?? row.CarClassColorHex, isFocus),
+                PositionLabel(row, scoringRow, referenceCarIdx));
             if (!markers.TryGetValue(row.CarIdx, out var existing)
                 || marker.IsFocus
                 || !existing.IsFocus)
@@ -700,40 +717,58 @@ internal sealed class TrackMapForm : PersistentOverlayForm
             }
         }
 
-        var focusCarIdx = snapshot.Models.Timing.FocusCarIdx
-            ?? snapshot.Models.Timing.PlayerCarIdx
-            ?? snapshot.Models.Spatial.ReferenceCarIdx
-            ?? snapshot.LatestSample?.FocusCarIdx
-            ?? snapshot.LatestSample?.PlayerCarIdx
-            ?? -1;
         var focusProgress = snapshot.Models.Spatial.ReferenceLapDistPct
             ?? MarkerProgress(snapshot.LatestSample);
+        var focusMarkerCarIdx = referenceCarIdx ?? -1;
         if (focusProgress is { } progress && IsValidProgress(progress))
         {
-            markers[focusCarIdx] = new TrackMapMarker(
-                focusCarIdx,
+            markers[focusMarkerCarIdx] = new TrackMapMarker(
+                focusMarkerCarIdx,
                 NormalizeProgress(progress),
                 IsFocus: true,
                 FocusMarkerColor,
-                FocusPositionLabel(snapshot));
+                FocusPositionLabel(snapshot, scoringByCarIdx, focusMarkerCarIdx));
         }
 
         return markers.Values.ToArray();
     }
 
-    private static string? PositionLabel(LiveTimingRow row)
+    private static string? PositionLabel(LiveTimingRow row, LiveScoringRow? scoringRow, int? referenceCarIdx)
     {
-        if (!row.IsFocus && !row.IsPlayer)
+        if (!row.IsFocus
+            && !row.IsPlayer
+            && row.CarIdx != referenceCarIdx
+            && scoringRow?.IsFocus != true
+            && scoringRow?.IsPlayer != true)
         {
             return null;
         }
 
+        return PositionLabel(scoringRow) ?? PositionLabel(row);
+    }
+
+    private static string? PositionLabel(LiveTimingRow row)
+    {
         var position = row.ClassPosition ?? row.OverallPosition;
         return position is > 0 ? $"P{position.Value}" : null;
     }
 
-    private static string? FocusPositionLabel(LiveTelemetrySnapshot snapshot)
+    private static string? PositionLabel(LiveScoringRow? row)
     {
+        var position = row?.ClassPosition ?? row?.OverallPosition;
+        return position is > 0 ? $"P{position.Value}" : null;
+    }
+
+    private static string? FocusPositionLabel(
+        LiveTelemetrySnapshot snapshot,
+        IReadOnlyDictionary<int, LiveScoringRow> scoringByCarIdx,
+        int focusCarIdx)
+    {
+        if (scoringByCarIdx.TryGetValue(focusCarIdx, out var scoringRow))
+        {
+            return PositionLabel(scoringRow);
+        }
+
         var row = snapshot.Models.Timing.FocusRow
             ?? snapshot.Models.Timing.PlayerRow;
         return row is not null

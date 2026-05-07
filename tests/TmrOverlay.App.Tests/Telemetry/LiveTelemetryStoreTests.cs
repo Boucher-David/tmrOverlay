@@ -100,6 +100,32 @@ public sealed class LiveTelemetryStoreTests
     }
 
     [Fact]
+    public void RecordFrame_PublishesRaceProgressModel()
+    {
+        var store = new LiveTelemetryStore();
+
+        store.RecordFrame(CreateSample(
+            teamLapCompleted: 4,
+            teamLapDistPct: 0.2d,
+            teamPosition: 2,
+            teamClassPosition: 1,
+            leaderLapCompleted: 4,
+            leaderLapDistPct: 0.5d,
+            sessionTimeRemain: 250d,
+            teamLastLapTimeSeconds: 100d));
+
+        var progress = store.Snapshot().Models.RaceProgress;
+
+        Assert.True(progress.HasData);
+        Assert.Equal(4.2d, progress.StrategyCarProgressLaps!.Value, precision: 3);
+        Assert.Equal(0.3d, progress.StrategyOverallLeaderGapLaps!.Value, precision: 3);
+        Assert.Equal(2.8d, progress.RaceLapsRemaining!.Value, precision: 3);
+        Assert.Equal("timed race by team last lap", progress.RaceLapsRemainingSource);
+        Assert.Equal(2, progress.StrategyOverallPosition);
+        Assert.Equal(1, progress.StrategyClassPosition);
+    }
+
+    [Fact]
     public void RecordFrame_ClearsFullLapTrackMapHighlightWhenNextFirstSectorCompletes()
     {
         var store = new LiveTelemetryStore();
@@ -444,6 +470,9 @@ SplitTimeInfo:
         Assert.Empty(snapshot.Proximity.NearbyCars);
         Assert.Empty(snapshot.Proximity.MulticlassApproaches);
         Assert.Null(snapshot.Proximity.StrongestMulticlassApproach);
+        Assert.False(snapshot.Models.Spatial.HasData);
+        Assert.Null(snapshot.Models.Spatial.ReferenceCarIdx);
+        Assert.Null(snapshot.Models.Spatial.ReferenceLapDistPct);
         Assert.Empty(snapshot.Models.Spatial.Cars);
         Assert.Empty(snapshot.Models.Spatial.MulticlassApproaches);
     }
@@ -468,6 +497,31 @@ SessionInfo:
    SessionType: Race
    SessionName: Race
    SessionTrackRubberState: Moderate Usage
+   ResultsPositions:
+   - Position: 1
+     ClassPosition: 0
+     CarIdx: 11
+     Lap: 2
+     FastestTime: 89.1000
+     LastTime: 91.2000
+     LapsComplete: 2
+     ReasonOutStr: Running
+   - Position: 2
+     ClassPosition: 1
+     CarIdx: 10
+     Lap: 2
+     FastestTime: 89.5000
+     LastTime: 92.3000
+     LapsComplete: 2
+     ReasonOutStr: Running
+   - Position: 3
+     ClassPosition: 2
+     CarIdx: 12
+     Lap: 2
+     FastestTime: 90.0000
+     LastTime: 93.4000
+     LapsComplete: 2
+     ReasonOutStr: Running
 DriverInfo:
  DriverCarIdx: 10
  DriverCarFuelKgPerLtr: 0.75
@@ -566,6 +620,30 @@ DriverInfo:
         Assert.Equal(10, models.Timing.FocusRow?.CarIdx);
         Assert.Contains(models.Timing.ClassRows, row => row.CarIdx == 12 && row.DriverName == "Chaser One");
         Assert.Contains(models.Relative.Rows, row => row.CarIdx == 12 && row.IsBehind);
+        Assert.True(models.Scoring.HasData);
+        Assert.Equal(3, models.Scoring.Rows.Count);
+        Assert.Collection(
+            models.Scoring.Rows,
+            row =>
+            {
+                Assert.Equal(11, row.CarIdx);
+                Assert.Equal(1, row.ClassPosition);
+            },
+            row =>
+            {
+                Assert.Equal(10, row.CarIdx);
+                Assert.Equal(2, row.ClassPosition);
+            },
+            row =>
+            {
+                Assert.Equal(12, row.CarIdx);
+                Assert.Equal(3, row.ClassPosition);
+            });
+        Assert.Equal(3, models.Coverage.ResultRowCount);
+        Assert.Equal(3, models.Coverage.LiveScoringRowCount);
+        Assert.Equal(3, models.Coverage.LiveTimingRowCount);
+        Assert.Equal(3, models.Coverage.LiveSpatialRowCount);
+        Assert.Equal(1, models.Coverage.LiveProximityRowCount);
         Assert.Equal("Partly Cloudy", models.Weather.SkiesLabel);
         Assert.True(models.FuelPit.Fuel.HasValidFuel);
         Assert.True(models.Timing.ClassLeaderGapEvidence.IsUsable);
@@ -646,11 +724,44 @@ DriverInfo:
         Assert.Equal(2.7d, relativeRow.RelativeSeconds!.Value, precision: 6);
         Assert.Equal("CarIdxLapDistPct+lap-time", relativeRow.TimingEvidence.Source);
 
-        var spatialCar = Assert.Single(snapshot.Models.Spatial.Cars);
-        Assert.Null(spatialCar.RelativeSeconds);
+        Assert.Empty(snapshot.Models.Spatial.Cars);
 
         var parity = LiveModelParityAnalyzer.Analyze(snapshot);
         Assert.False(parity.HasMismatch);
+    }
+
+    [Fact]
+    public void RecordFrame_KeepsPitRoadCarsInRelativeButOutOfSpatial()
+    {
+        var store = new LiveTelemetryStore();
+
+        store.RecordFrame(CreateSample(
+            playerCarIdx: 10,
+            teamLapCompleted: 2,
+            teamLapDistPct: 0.50d,
+            teamCarClass: 4098,
+            nearbyCars:
+            [
+                new HistoricalCarProximity(
+                    CarIdx: 12,
+                    LapCompleted: 1,
+                    LapDistPct: 0.49d,
+                    F2TimeSeconds: null,
+                    EstimatedTimeSeconds: null,
+                    Position: 8,
+                    ClassPosition: 4,
+                    CarClass: 4098,
+                    TrackSurface: 1,
+                    OnPitRoad: true)
+            ]));
+
+        var snapshot = store.Snapshot();
+
+        Assert.Empty(snapshot.Proximity.NearbyCars);
+        Assert.Empty(snapshot.Models.Spatial.Cars);
+        var relativeRow = Assert.Single(snapshot.Models.Relative.Rows);
+        Assert.Equal(12, relativeRow.CarIdx);
+        Assert.True(relativeRow.OnPitRoad);
     }
 
     [Fact]
@@ -802,6 +913,8 @@ DriverInfo:
         Assert.False(models.Timing.HasData);
         Assert.Equal(LiveModelQuality.Unavailable, models.Timing.Quality);
         Assert.False(models.Relative.HasData);
+        Assert.False(models.Spatial.HasData);
+        Assert.Null(models.Spatial.ReferenceCarIdx);
         Assert.Equal(LiveModelQuality.Unavailable, models.FuelPit.Quality);
         Assert.True(models.Session.HasData);
     }
@@ -871,6 +984,7 @@ DriverInfo:
         int? teamCarClass = null,
         int? teamPosition = null,
         int? teamClassPosition = null,
+        double? teamLastLapTimeSeconds = null,
         int? focusCarIdx = null,
         double? focusLapDistPct = null,
         double? focusEstimatedTimeSeconds = null,
@@ -878,6 +992,9 @@ DriverInfo:
         int? classLeaderCarIdx = null,
         double? classLeaderLapDistPct = null,
         double? classLeaderF2TimeSeconds = null,
+        int? leaderLapCompleted = null,
+        double? leaderLapDistPct = null,
+        double? sessionTimeRemain = null,
         IReadOnlyList<HistoricalCarProximity>? focusClassCars = null,
         IReadOnlyList<HistoricalCarProximity>? nearbyCars = null,
         int? carLeftRight = null,
@@ -909,6 +1026,7 @@ DriverInfo:
             TrackWetness: 1,
             WeatherDeclaredWet: false,
             PlayerTireCompound: 0,
+            SessionTimeRemain: sessionTimeRemain,
             IsGarageVisible: isGarageVisible,
             PlayerCarIdx: playerCarIdx,
             FocusCarIdx: focusCarIdx,
@@ -924,10 +1042,13 @@ DriverInfo:
             TeamPosition: teamPosition,
             TeamClassPosition: teamClassPosition,
             TeamCarClass: teamCarClass,
+            TeamLastLapTimeSeconds: teamLastLapTimeSeconds,
             FocusClassLeaderCarIdx: classLeaderCarIdx,
             FocusClassLeaderLapCompleted: classLeaderLapDistPct is null ? null : 2,
             FocusClassLeaderLapDistPct: classLeaderLapDistPct,
             FocusClassLeaderF2TimeSeconds: classLeaderF2TimeSeconds,
+            LeaderLapCompleted: leaderLapCompleted,
+            LeaderLapDistPct: leaderLapDistPct,
             FocusClassCars: focusClassCars,
             NearbyCars: nearbyCars,
             LapDeltaToSessionBestLapSeconds: lapDeltaToSessionBestLapSeconds,

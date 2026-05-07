@@ -1,6 +1,6 @@
 # Livery Editor Research
 
-This note records the first local inspection of the uploaded iRacing livery template and what it implies for a future TmrOverlay livery editor. It is research only; no production livery feature is currently planned for v0.12.
+This note records the first local inspection of the uploaded iRacing livery template and what it implies for a future TmrOverlay livery editor. It is research only; no production livery feature is currently planned for the current core-overlay milestone.
 
 ## Local PSD Under Review
 

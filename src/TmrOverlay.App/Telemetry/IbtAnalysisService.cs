@@ -120,7 +120,14 @@ internal sealed class IbtAnalysisService
         "TrackWetness",
         "WeatherDeclaredWet",
         "Precipitation",
-        "Skies"
+        "Skies",
+        "WindVel",
+        "WindDir",
+        "RelativeHumidity",
+        "FogLevel",
+        "AirPressure",
+        "SolarAltitude",
+        "SolarAzimuth"
     ];
 
     private readonly IbtAnalysisOptions _options;
@@ -746,7 +753,7 @@ internal sealed class IbtAnalysisService
             BuildLocalCarSignalGroup("vehicle-dynamics", fieldsByName, ["Speed", "VelocityX", "VelocityY", "VelocityZ", "Yaw", "Pitch", "Roll", "YawRate", "PitchRate", "RollRate", "LatAccel", "LongAccel", "VertAccel"]),
             BuildLocalCarSignalGroup("tires-wheels", fieldsByName, ["LFspeed", "RFspeed", "LRspeed", "RRspeed", "LFpressure", "RFpressure", "LRpressure", "RRpressure", "LFrideHeight", "RFrideHeight", "LRrideHeight", "RRrideHeight"]),
             BuildLocalCarSignalGroup("pit-service", fieldsByName, ["OnPitRoad", "PitstopActive", "PlayerCarInPitStall", "PitSvFuel", "dpFuelFill", "dpFuelAddKg"]),
-            BuildLocalCarSignalGroup("weather", fieldsByName, ["AirTemp", "TrackTempCrew", "TrackWetness", "WeatherDeclaredWet", "Precipitation", "Skies"]),
+            BuildLocalCarSignalGroup("weather", fieldsByName, ["AirTemp", "TrackTempCrew", "TrackWetness", "WeatherDeclaredWet", "Precipitation", "Skies", "WindVel", "WindDir", "RelativeHumidity", "FogLevel", "AirPressure", "SolarAltitude", "SolarAzimuth"]),
             BuildLocalCarSignalGroup("opponent-context", fieldsByName, ExpectedOpponentContextFields)
         ];
     }

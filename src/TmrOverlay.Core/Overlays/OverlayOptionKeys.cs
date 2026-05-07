@@ -7,6 +7,7 @@ internal static class OverlayOptionKeys
     public const string FuelAdvice = "fuel.advice";
     public const string FuelSource = "fuel.source";
     public const string RadarMulticlassWarning = "radar.multiclass-warning";
+    public const string StandingsOtherClassRows = "standings.other-class-rows";
     public const string RelativeCarsAhead = "relative.cars-ahead";
     public const string RelativeCarsBehind = "relative.cars-behind";
     public const string GapCarsAhead = "gap.cars-ahead";
@@ -17,6 +18,7 @@ internal static class OverlayOptionKeys
     public const string StreamChatStreamlabsUrl = "stream-chat.streamlabs-url";
     public const string StreamChatTwitchChannel = "stream-chat.twitch-channel";
     public const string GarageCoverImagePath = "garage-cover.image-path";
+    public const string GarageCoverPreviewUntilUtc = "garage-cover.preview-until-utc";
     public const string FlagsShowGreen = "flags.show-green";
     public const string FlagsShowBlue = "flags.show-blue";
     public const string FlagsShowYellow = "flags.show-yellow";

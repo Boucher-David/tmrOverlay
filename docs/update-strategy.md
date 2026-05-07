@@ -34,7 +34,7 @@ This keeps v0.9 focused on a reliable release artifact and teammate feedback loo
 
 ### Phase 1: Update Notification Only
 
-Add an `UpdateCheckService` that checks once on each app startup. The preferred source is Velopack-compatible release metadata/feed, even before we expose automatic install/apply behavior. If the portable zip channel remains the only published artifact during v0.12, use a stable HTTPS manifest or latest GitHub Release lookup as a temporary compatibility path behind the same service interface.
+Add an `UpdateCheckService` that checks once on each app startup. The preferred source is Velopack-compatible release metadata/feed, even before we expose automatic install/apply behavior. If the portable zip channel remains the only published artifact, use a stable HTTPS manifest or latest GitHub Release lookup as a temporary compatibility path behind the same service interface.
 
 Suggested manifest:
 

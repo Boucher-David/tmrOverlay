@@ -4,6 +4,8 @@ internal sealed record RawTelemetryWatchSnapshot(IReadOnlyDictionary<string, dou
 {
     public static RawTelemetryWatchSnapshot Empty { get; } = new(new Dictionary<string, double>());
 
+    public IReadOnlyDictionary<string, string> VariableGroups { get; init; } = new Dictionary<string, string>();
+
     public double? Get(string name)
     {
         return Values.TryGetValue(name, out var value) && IsFinite(value)
@@ -23,6 +25,13 @@ internal sealed record RawTelemetryWatchSnapshot(IReadOnlyDictionary<string, dou
         }
 
         return selected;
+    }
+
+    public string GroupFor(string name)
+    {
+        return VariableGroups.TryGetValue(name, out var group)
+            ? group
+            : RawTelemetryWatchVariables.GroupFor(name);
     }
 
     private static bool IsFinite(double value)
@@ -56,7 +65,8 @@ internal static class RawTelemetryWatchVariables
             "SessionTimeRemain", "SessionLapsRemainEx",
             "IsOnTrack", "IsOnTrackCar", "IsInGarage", "IsGarageVisible", "OnPitRoad", "PitstopActive", "PlayerCarInPitStall",
             "PlayerTrackSurface", "PlayerTrackSurfaceMaterial",
-            "CamCarIdx", "CarLeftRight"
+            "CamCarIdx", "CamGroupNumber", "CamCameraNumber", "CamCameraState",
+            "CarLeftRight"
         ],
         ["car.motion"] =
         [
@@ -73,6 +83,10 @@ internal static class RawTelemetryWatchVariables
         ["driver.controls"] =
         [
             "dcBrakeBias", "dcABS", "dcTractionControl", "dcTractionControl2",
+            "dcTractionControlToggle", "dcABSToggle",
+            "dcFrontARB", "dcRearARB", "dcARBFront", "dcARBRear",
+            "dcAntiRollFront", "dcAntiRollRear",
+            "dcFrontWing", "dcRearWing", "dcWing",
             "dpBrakeBias"
         ],
         ["incidents"] =
@@ -114,8 +128,11 @@ internal static class RawTelemetryWatchVariables
         ["pit.commands"] =
         [
             "dpLFTireChange", "dpRFTireChange", "dpLRTireChange", "dpRRTireChange",
-            "dpFuelFill", "dpFuelAddKg", "dpFastRepair",
-            "PitSvFlags", "PitSvFuel", "PitSvTireCompound"
+            "dpFuelFill", "dpFuelAddKg", "dpFastRepair", "dpWindshieldTearoff",
+            "dpLFTireColdPress", "dpRFTireColdPress", "dpLRTireColdPress", "dpRRTireColdPress",
+            "dpFuelAutoFillEnabled", "dpFuelAutoFillActive",
+            "PitSvFlags", "PitSvFuel", "PitSvTireCompound",
+            "PitSvLFP", "PitSvRFP", "PitSvLRP", "PitSvRRP"
         ],
         ["pit.state"] =
         [
@@ -131,7 +148,14 @@ internal static class RawTelemetryWatchVariables
             "EngineWarnings", "OilTemp", "OilPress", "OilLevel",
             "WaterTemp", "WaterLevel", "FuelPress", "Voltage", "ManifoldPress"
         ],
-        ["weather"] = ["TrackWetness", "WeatherDeclaredWet", "Precipitation", "Skies", "FogLevel"],
+        ["weather"] =
+        [
+            "AirTemp", "TrackTemp", "TrackTempCrew",
+            "TrackWetness", "WeatherDeclaredWet",
+            "Precipitation", "Skies", "FogLevel",
+            "WindVel", "WindDir", "RelativeHumidity", "AirPressure",
+            "SolarAltitude", "SolarAzimuth"
+        ],
         ["replay"] = ["IsReplayPlaying", "IsDiskLoggingEnabled", "IsDiskLoggingActive"],
         ["system"] =
         [
@@ -150,6 +174,11 @@ internal static class RawTelemetryWatchVariables
 
     public static string GroupFor(string variableName)
     {
+        return GroupFor(variableName, description: null);
+    }
+
+    public static string GroupFor(string variableName, string? description)
+    {
         foreach (var group in Groups)
         {
             if (group.Value.Contains(variableName, StringComparer.OrdinalIgnoreCase))
@@ -158,6 +187,62 @@ internal static class RawTelemetryWatchVariables
             }
         }
 
+        if (IsForecastCandidate(variableName)
+            || (!string.IsNullOrWhiteSpace(description) && IsForecastCandidate(description)))
+        {
+            return "weather.forecast";
+        }
+
+        if (IsDriverInputCandidate(variableName)
+            || (!string.IsNullOrWhiteSpace(description) && IsDriverInputCandidate(description)))
+        {
+            return "driver.inputs";
+        }
+
+        if (IsDriverControlCandidate(variableName)
+            || (!string.IsNullOrWhiteSpace(description) && IsDriverControlCandidate(description)))
+        {
+            return "driver.controls";
+        }
+
         return "other";
+    }
+
+    public static bool ShouldWatch(string variableName, string? description = null)
+    {
+        return Names.Contains(variableName, StringComparer.OrdinalIgnoreCase)
+            || IsForecastCandidate(variableName)
+            || (!string.IsNullOrWhiteSpace(description) && IsForecastCandidate(description))
+            || IsDriverInputCandidate(variableName)
+            || (!string.IsNullOrWhiteSpace(description) && IsDriverInputCandidate(description))
+            || IsDriverControlCandidate(variableName)
+            || (!string.IsNullOrWhiteSpace(description) && IsDriverControlCandidate(description));
+    }
+
+    private static bool IsForecastCandidate(string value)
+    {
+        return value.Contains("forecast", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsDriverControlCandidate(string value)
+    {
+        var normalized = value
+            .Replace("-", string.Empty, StringComparison.Ordinal)
+            .Replace("_", string.Empty, StringComparison.Ordinal)
+            .Replace(" ", string.Empty, StringComparison.Ordinal)
+            .ToLowerInvariant();
+        return normalized.Contains("arb", StringComparison.Ordinal)
+            || normalized.Contains("antiroll", StringComparison.Ordinal)
+            || normalized.Contains("wing", StringComparison.Ordinal);
+    }
+
+    private static bool IsDriverInputCandidate(string value)
+    {
+        var normalized = value
+            .Replace("-", string.Empty, StringComparison.Ordinal)
+            .Replace("_", string.Empty, StringComparison.Ordinal)
+            .Replace(" ", string.Empty, StringComparison.Ordinal)
+            .ToLowerInvariant();
+        return normalized.Contains("clutch", StringComparison.Ordinal);
     }
 }

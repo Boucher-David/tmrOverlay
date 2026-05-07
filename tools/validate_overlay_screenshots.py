@@ -74,7 +74,7 @@ WINDOWS_EXPECTED_PNGS = {
     "states/relative-live.png": (520, 360),
     "states/standings-live.png": (620, 340),
     "states/track-map-placeholder.png": (360, 360),
-    "states/flags-blue.png": (960, 540),
+    "states/flags-blue.png": (360, 170),
     "states/session-weather-live.png": (420, 270),
     "states/pit-service-active.png": (420, 250),
     "states/input-state-trace.png": (520, 220),
@@ -93,13 +93,10 @@ WINDOWS_EXPECTED_SIZE_SOURCES = {
     "states/input-state-trace.png": "src/TmrOverlay.App/Overlays/InputState/InputStateOverlayDefinition.cs",
     "states/car-radar-side-pressure.png": "src/TmrOverlay.App/Overlays/CarRadar/CarRadarOverlayDefinition.cs",
     "states/gap-to-leader-trend.png": "src/TmrOverlay.App/Overlays/GapToLeader/GapToLeaderOverlayDefinition.cs",
+    "states/flags-blue.png": "src/TmrOverlay.App/Overlays/Flags/FlagsOverlayDefinition.cs",
 }
 
 WINDOWS_GENERATOR_SIZE_SOURCES = {
-    "states/flags-blue.png": (
-        "tools/TmrOverlay.WindowsScreenshots/Program.cs",
-        r"OverlaySettingsFor\(\s*FlagsOverlayDefinition\.Definition,\s*width:\s*(\d+),\s*height:\s*(\d+)\s*\)",
-    ),
 }
 
 WINDOWS_MINIMUM_PNGS = {
@@ -114,9 +111,9 @@ WINDOWS_MINIMUM_PNGS = {
 }
 
 WINDOWS_MIN_UNIQUE_BYTES = {
-    # Flags is intentionally a simple mostly-empty border overlay. The
-    # generator paints a review backdrop behind its transparent window color,
-    # but it should not need the same texture complexity as table/graph views.
+    # Flags is a compact transparent renderer. The generator paints a review
+    # backdrop behind its transparent window color, but it should not need the
+    # same texture complexity as table/graph views.
     "states/flags-blue.png": 8,
 }
 

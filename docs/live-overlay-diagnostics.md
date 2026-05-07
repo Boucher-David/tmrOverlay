@@ -9,6 +9,7 @@ The recorder does not change overlay output. It watches normalized live snapshot
 - fuel semantics: valid level frames, instantaneous burn frames, burn-without-level frames, team timing without local fuel, pit context, and driver-control changes
 - position cadence: sampled position/class-position changes that happen before the car completes another lap
 - lap-delta readiness: availability and `_OK` usability counts for live iRacing delta channels such as best lap, optimal lap, session best, session optimal, and session last lap
+- relative lap-relationship probe: diagnostics-only counts for official completed-lap relationships among nearby cars, pit-road relationship counts, and same-lap cars near the wrap where a future branch might infer "about to lap" or "about to be lapped" behavior
 - sector-timing readiness: session-info sector metadata coverage, focus/ahead/behind progress coverage, missing lap-counter frames, synthetic start/finish wraps, progress discontinuities, derived sector-boundary crossings, and bounded examples of completed sector intervals derived from car progress
 - track-map sector highlights: model-v2 sector availability, live timing frames, personal-best sector frames, best-lap sector frames, full-lap highlight frames, and highlight counts by status
 
@@ -34,6 +35,7 @@ The mac harness mirrors this path under `~/Library/Application Support/TmrOverla
 - Bounded by sampled frame and event caps.
 - Event examples are exact-duplicate suppressed and capped per kind before the global cap, so a stable condition such as a multi-lap class gap cannot crowd out unrelated radar/fuel/position examples.
 - Radar event examples include the focus kind, raw `CarLeftRight`, raw nearby-car count, whether the production radar had data, and nearby/timing/spatial row counts. This lets suppressed spectator/teammate focus and other partial radar cases be reviewed from the capture without making them normal overlay UI.
+- Relative lap relationship examples are probe-only. They use raw nearby `CarIdxLapCompleted` and `CarIdxLapDistPct` against the current focus/player progress to help decide a later Relative V2.5 color treatment; current overlays do not consume these counts.
 - Sector timing interval examples are derived diagnostics only for future timing-table work. They can use valid `LapDistPct` when lap counters are unavailable, but large reset-style progress jumps are counted as discontinuities instead of completed sectors. Track Map sector highlight state is now a production model-v2 contract under `LiveTelemetrySnapshot.Models.TrackMap`.
 - Best-effort: failures are logged and must not stop live telemetry, history, raw capture, IBT analysis, or overlays.
 - Additive: older captures without this file remain valid.

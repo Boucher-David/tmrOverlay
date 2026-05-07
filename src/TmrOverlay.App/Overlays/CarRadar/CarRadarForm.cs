@@ -20,10 +20,8 @@ internal sealed class CarRadarForm : PersistentOverlayForm
     private const double RadarRangeMeters = FocusedCarLengthMeters * 6d;
     private const double ContactWindowMeters = FocusedCarLengthMeters;
     private const double SideAttachmentWindowMeters = FocusedCarLengthMeters * 2d;
-    private const double MinimumSideAttachmentWindowSeconds = 0.8d;
     private const double ProximityWarningGapMeters = 2.0d;
     private const double MulticlassWarningRangeSeconds = 5d;
-    private const double SnapshotStaleSeconds = 1.5d;
     private const double FadeInSeconds = 0.25d;
     private const double FadeOutSeconds = 0.85d;
     private const double MinimumVisibleAlpha = 0.02d;
@@ -319,13 +317,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
 
     private static bool IsFresh(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
     {
-        if (!snapshot.IsConnected || !snapshot.IsCollecting || snapshot.LastUpdatedAtUtc is not { } lastUpdated)
-        {
-            return false;
-        }
-
-        var ageSeconds = (now - lastUpdated).TotalSeconds;
-        return ageSeconds >= 0d && ageSeconds <= SnapshotStaleSeconds;
+        return OverlayAvailabilityEvaluator.FromSnapshot(snapshot, now).IsAvailable;
     }
 
     private bool UpdateFadeState(DateTimeOffset now, double elapsedSeconds)
@@ -788,15 +780,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             return Math.Abs(meters) <= SideAttachmentWindowMeters;
         }
 
-        if (!car.HasReliableRelativeSeconds)
-        {
-            return false;
-        }
-
-        var windowSeconds = Math.Max(
-            MinimumSideAttachmentWindowSeconds,
-            _spatial.SideOverlapWindowSeconds * 2d);
-        return Math.Abs(car.RelativeSeconds!.Value) <= windowSeconds;
+        return false;
     }
 
     private void DrawSideWarningCars(
@@ -871,33 +855,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             return LongitudinalOffsetFromDistance(meters, usableRadius);
         }
 
-        if (!car.HasReliableRelativeSeconds)
-        {
-            return Math.Sign(car.RelativeLaps) * usableRadius;
-        }
-
-        var seconds = car.RelativeSeconds!.Value;
-        var sign = Math.Sign(seconds);
-        if (sign == 0)
-        {
-            return 0f;
-        }
-
-        var absSeconds = Math.Abs(seconds);
-        var contactSeconds = Math.Clamp(_spatial.SideOverlapWindowSeconds, 0.05d, RadarRangeSeconds * 0.5d);
-        var separatedCenterOffset = Math.Min(
-            usableRadius,
-            FocusedCarHeight / 2f + RadarCarHeight / 2f + SeparatedCarPaddingPixels);
-
-        if (absSeconds <= contactSeconds)
-        {
-            return (float)(sign * (absSeconds / contactSeconds) * separatedCenterOffset);
-        }
-
-        var remainingSeconds = Math.Max(0.001d, RadarRangeSeconds - contactSeconds);
-        var remainingPixels = Math.Max(0f, usableRadius - separatedCenterOffset);
-        var outerRatio = Math.Clamp((absSeconds - contactSeconds) / remainingSeconds, 0d, 1d);
-        return (float)(sign * (separatedCenterOffset + outerRatio * remainingPixels));
+        return Math.Sign(car.RelativeLaps) * usableRadius;
     }
 
     private static float LongitudinalOffsetFromDistance(double meters, float usableRadius)
@@ -967,15 +925,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             return BumperGapProximity(Math.Abs(meters));
         }
 
-        if (!car.HasReliableRelativeSeconds)
-        {
-            return 0d;
-        }
-
-        var contactSeconds = Math.Clamp(_spatial.SideOverlapWindowSeconds, 0.05d, RadarRangeSeconds * 0.5d);
-        var warningGapSeconds = contactSeconds * ProximityWarningGapMeters / FocusedCarLengthMeters;
-        var secondsGapPastContact = Math.Abs(car.RelativeSeconds!.Value) - contactSeconds;
-        return 1d - Math.Clamp(secondsGapPastContact / Math.Max(0.001d, warningGapSeconds), 0d, 1d);
+        return 0d;
     }
 
     private double RadarEntryOpacity(LiveSpatialCar car)
@@ -989,17 +939,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
                 RadarRangeMeters);
         }
 
-        if (!car.HasReliableRelativeSeconds)
-        {
-            return 0d;
-        }
-
-        var contactSeconds = Math.Clamp(_spatial.SideOverlapWindowSeconds, 0.05d, RadarRangeSeconds * 0.5d);
-        var warningGapSeconds = contactSeconds * ProximityWarningGapMeters / FocusedCarLengthMeters;
-        return OpacityBetweenRangeEdgeAndWarningStart(
-            Math.Abs(car.RelativeSeconds!.Value),
-            contactSeconds + warningGapSeconds,
-            RadarRangeSeconds);
+        return 0d;
     }
 
     private static double OpacityBetweenRangeEdgeAndWarningStart(
@@ -1050,15 +990,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             return Math.Clamp(meters / RadarRangeMeters, -1d, 1d);
         }
 
-        if (!car.HasReliableRelativeSeconds)
-        {
-            return Math.Sign(car.RelativeLaps);
-        }
-
-        return Math.Clamp(
-            car.RelativeSeconds!.Value / RadarRangeSeconds,
-            -1d,
-            1d);
+        return Math.Sign(car.RelativeLaps);
     }
 
     private bool IsInRadarRange(LiveSpatialCar car)
@@ -1068,8 +1000,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             return Math.Abs(meters) <= RadarRangeMeters;
         }
 
-        return car.HasReliableRelativeSeconds
-            && Math.Abs(car.RelativeSeconds!.Value) <= RadarRangeSeconds;
+        return false;
     }
 
     private static double? ReliableRelativeMeters(LiveSpatialCar car)
@@ -1091,8 +1022,8 @@ internal sealed class CarRadarForm : PersistentOverlayForm
 
     private static string FormatRingGap(int ringIndex)
     {
-        var seconds = RadarRangeSeconds * (1d - ringIndex / 3d);
-        return FormattableString.Invariant($"{seconds:0.0}s");
+        var meters = RadarRangeMeters * (1d - ringIndex / 3d);
+        return FormattableString.Invariant($"{meters:0}m");
     }
 
     private static string FormatMulticlassWarning(LiveMulticlassApproach approach)

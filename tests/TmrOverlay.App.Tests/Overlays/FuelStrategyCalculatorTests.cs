@@ -84,6 +84,30 @@ public sealed class FuelStrategyCalculatorTests
     }
 
     [Fact]
+    public void From_UsesModelV2FuelAndRaceProgressWhenLegacySlicesAreUnavailable()
+    {
+        var live = CreateLiveSnapshot(
+            fuelLevelLiters: 80d,
+            fuelUsePerHourKg: 75d,
+            teamLapCompleted: 4,
+            teamLapDistPct: 0.2d,
+            leaderLapCompleted: 4,
+            leaderLapDistPct: 0.5d,
+            sessionTimeRemain: 250d,
+            teamLastLapTimeSeconds: 100d) with
+        {
+            Fuel = LiveFuelSnapshot.Unavailable
+        };
+
+        var strategy = FuelStrategyCalculator.From(live, EmptyHistory(live.Combo));
+
+        Assert.Equal(80d, strategy.CurrentFuelLiters);
+        Assert.Equal(2.8d, strategy.RaceLapsRemaining!.Value, precision: 3);
+        Assert.Equal(0.3d, strategy.OverallLeaderGapLaps!.Value, precision: 3);
+        Assert.Equal(2, strategy.TeamOverallPosition);
+    }
+
+    [Fact]
     public void From_UsesFourHourHistoryToPlanEightLapTargets()
     {
         var live = CreateLiveSnapshot(
@@ -404,6 +428,11 @@ public sealed class FuelStrategyCalculatorTests
             LeaderLapDistPct: leaderLapDistPct,
             LeaderLastLapTimeSeconds: leaderLastLapTimeSeconds);
 
+        var fuel = LiveFuelSnapshot.From(context, sample);
+        var proximity = LiveProximitySnapshot.From(context, sample);
+        var leaderGap = LiveLeaderGapSnapshot.From(sample);
+        var models = LiveRaceModelBuilder.From(context, sample, fuel, proximity, leaderGap);
+
         return new LiveTelemetrySnapshot(
             IsConnected: true,
             IsCollecting: true,
@@ -414,9 +443,12 @@ public sealed class FuelStrategyCalculatorTests
             Context: context,
             Combo: combo,
             LatestSample: sample,
-            Fuel: LiveFuelSnapshot.From(context, sample),
-            Proximity: LiveProximitySnapshot.From(context, sample),
-            LeaderGap: LiveLeaderGapSnapshot.From(sample));
+            Fuel: fuel,
+            Proximity: proximity,
+            LeaderGap: leaderGap)
+        {
+            Models = models
+        };
     }
 
     private static SessionHistoryLookupResult EmptyHistory(HistoricalComboIdentity combo)

@@ -247,7 +247,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
 
             var now = DateTimeOffset.UtcNow;
             var previousSequence = _lastRefreshSequence;
-            _gap = snapshot.LeaderGap;
+            _gap = GapToLeaderLiveModelAdapter.Select(snapshot);
             _lapReferenceSeconds = SelectLapReferenceSeconds(snapshot);
             if (snapshot.Sequence != _lastSequence)
             {
@@ -256,7 +256,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
                 var recordSucceeded = false;
                 try
                 {
-                    RecordGapSnapshot(snapshot);
+                    RecordGapSnapshot(snapshot, _gap);
                     recordSucceeded = true;
                 }
                 finally
@@ -333,12 +333,12 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         }
     }
 
-    private void RecordGapSnapshot(LiveTelemetrySnapshot snapshot)
+    private void RecordGapSnapshot(LiveTelemetrySnapshot snapshot, LiveLeaderGapSnapshot gap)
     {
         var timestamp = snapshot.LatestSample?.CapturedAtUtc
             ?? snapshot.LastUpdatedAtUtc
             ?? DateTimeOffset.UtcNow;
-        var axisSeconds = SelectAxisSeconds(timestamp, snapshot.LatestSample?.SessionTime);
+        var axisSeconds = SelectAxisSeconds(timestamp, snapshot.Models.Session.SessionTimeSeconds ?? snapshot.LatestSample?.SessionTime);
         _latestPointAtUtc = timestamp;
         _latestAxisSeconds = axisSeconds;
         if (_trendStartAxisSeconds is null || axisSeconds < _trendStartAxisSeconds.Value)
@@ -347,11 +347,11 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         }
 
         RecordWeatherSnapshot(snapshot, axisSeconds);
-        RecordDriverChangeMarkers(snapshot, timestamp, axisSeconds);
+        RecordDriverChangeMarkers(snapshot, gap, timestamp, axisSeconds);
         RecordReferenceContext(snapshot);
-        RecordLeaderChange(snapshot, timestamp, axisSeconds);
+        RecordLeaderChange(gap, timestamp, axisSeconds);
 
-        foreach (var car in snapshot.LeaderGap.ClassCars)
+        foreach (var car in gap.ClassCars)
         {
             var gapSeconds = ChartGapSeconds(car);
             if (gapSeconds is null)
@@ -381,7 +381,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
             }
         }
 
-        UpdateCarRenderStates(snapshot, axisSeconds);
+        UpdateCarRenderStates(gap, axisSeconds);
         PruneOldPoints(axisSeconds);
     }
 
@@ -523,15 +523,23 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         }
     }
 
-    private void RecordDriverChangeMarkers(LiveTelemetrySnapshot snapshot, DateTimeOffset timestamp, double axisSeconds)
+    private void RecordDriverChangeMarkers(
+        LiveTelemetrySnapshot snapshot,
+        LiveLeaderGapSnapshot gap,
+        DateTimeOffset timestamp,
+        double axisSeconds)
     {
-        RecordExplicitTeamDriverChangeMarker(snapshot, timestamp, axisSeconds);
-        RecordSessionInfoDriverChangeMarkers(snapshot, timestamp, axisSeconds);
+        RecordExplicitTeamDriverChangeMarker(snapshot, gap, timestamp, axisSeconds);
+        RecordSessionInfoDriverChangeMarkers(snapshot, gap, timestamp, axisSeconds);
     }
 
-    private void RecordExplicitTeamDriverChangeMarker(LiveTelemetrySnapshot snapshot, DateTimeOffset timestamp, double axisSeconds)
+    private void RecordExplicitTeamDriverChangeMarker(
+        LiveTelemetrySnapshot snapshot,
+        LiveLeaderGapSnapshot gap,
+        DateTimeOffset timestamp,
+        double axisSeconds)
     {
-        if (snapshot.LatestSample?.DriversSoFar is not { } driversSoFar || driversSoFar <= 0)
+        if (snapshot.Models.RaceEvents.DriversSoFar is not { } driversSoFar || driversSoFar <= 0)
         {
             return;
         }
@@ -546,7 +554,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
 
             if (driversSoFar > previousDrivers
                 && ReferenceUsesPlayerCar(snapshot)
-                && snapshot.LeaderGap.ClassCars.FirstOrDefault(car => car.IsReferenceCar) is { } reference
+                && gap.ClassCars.FirstOrDefault(car => car.IsReferenceCar) is { } reference
                 && ChartGapSeconds(reference) is { } gapSeconds)
             {
                 AddDriverChangeMarker(new DriverChangeMarker(
@@ -565,13 +573,17 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
 
     private static bool ReferenceUsesPlayerCar(LiveTelemetrySnapshot snapshot)
     {
-        var sample = snapshot.LatestSample;
-        return sample?.FocusCarIdx is null
-            || sample.PlayerCarIdx is null
-            || sample.FocusCarIdx == sample.PlayerCarIdx;
+        var directory = snapshot.Models.DriverDirectory;
+        return directory.FocusCarIdx is null
+            || directory.PlayerCarIdx is null
+            || directory.FocusCarIdx == directory.PlayerCarIdx;
     }
 
-    private void RecordSessionInfoDriverChangeMarkers(LiveTelemetrySnapshot snapshot, DateTimeOffset timestamp, double axisSeconds)
+    private void RecordSessionInfoDriverChangeMarkers(
+        LiveTelemetrySnapshot snapshot,
+        LiveLeaderGapSnapshot gap,
+        DateTimeOffset timestamp,
+        double axisSeconds)
     {
         if (snapshot.Context.Drivers.Count == 0)
         {
@@ -587,7 +599,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
 
             if (_driverIdentities.TryGetValue(identity.CarIdx, out var previous)
                 && !previous.HasSameDriver(identity)
-                && snapshot.LeaderGap.ClassCars.FirstOrDefault(car => car.CarIdx == identity.CarIdx) is { } car
+                && gap.ClassCars.FirstOrDefault(car => car.CarIdx == identity.CarIdx) is { } car
                 && ChartGapSeconds(car) is { } gapSeconds)
             {
                 AddDriverChangeMarker(new DriverChangeMarker(
@@ -620,9 +632,9 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         }
     }
 
-    private void RecordLeaderChange(LiveTelemetrySnapshot snapshot, DateTimeOffset timestamp, double axisSeconds)
+    private void RecordLeaderChange(LiveLeaderGapSnapshot gap, DateTimeOffset timestamp, double axisSeconds)
     {
-        if (snapshot.LeaderGap.ClassLeaderCarIdx is not { } leaderCarIdx)
+        if (gap.ClassLeaderCarIdx is not { } leaderCarIdx)
         {
             return;
         }
@@ -651,10 +663,10 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         _lastReferenceContext = context;
     }
 
-    private void UpdateCarRenderStates(LiveTelemetrySnapshot snapshot, double axisSeconds)
+    private void UpdateCarRenderStates(LiveLeaderGapSnapshot gap, double axisSeconds)
     {
-        var desiredCarIds = SelectDesiredCarIds(snapshot.LeaderGap.ClassCars);
-        foreach (var car in snapshot.LeaderGap.ClassCars)
+        var desiredCarIds = SelectDesiredCarIds(gap.ClassCars);
+        foreach (var car in gap.ClassCars)
         {
             if (ChartGapSeconds(car) is not { } gapSeconds)
             {
@@ -1418,17 +1430,18 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
 
     private static WeatherCondition SelectWeatherCondition(LiveTelemetrySnapshot snapshot)
     {
-        if (snapshot.LatestSample is not { } sample)
+        var weather = snapshot.Models.Weather;
+        if (!weather.HasData)
         {
             return WeatherCondition.Unknown;
         }
 
-        if (sample.WeatherDeclaredWet)
+        if (weather.WeatherDeclaredWet)
         {
             return WeatherCondition.DeclaredWet;
         }
 
-        return sample.TrackWetness switch
+        return weather.TrackWetness switch
         {
             >= 4 => WeatherCondition.Wet,
             >= 2 => WeatherCondition.Damp,
@@ -1498,20 +1511,25 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
 
     private static double? SelectLapReferenceSeconds(LiveTelemetrySnapshot snapshot)
     {
-        var sample = snapshot.LatestSample;
-        if (IsValidLapReference(sample?.FocusLastLapTimeSeconds))
+        var focusRow = snapshot.Models.Timing.FocusRow;
+        if (IsValidLapReference(focusRow?.LastLapTimeSeconds))
         {
-            return sample?.FocusLastLapTimeSeconds;
+            return focusRow?.LastLapTimeSeconds;
         }
 
-        if (IsValidLapReference(sample?.FocusBestLapTimeSeconds))
+        if (IsValidLapReference(focusRow?.BestLapTimeSeconds))
         {
-            return sample?.FocusBestLapTimeSeconds;
+            return focusRow?.BestLapTimeSeconds;
         }
 
-        if (ReferenceUsesPlayerCar(snapshot) && IsValidLapReference(snapshot.Fuel.LapTimeSeconds))
+        if (ReferenceUsesPlayerCar(snapshot) && IsValidLapReference(snapshot.Models.FuelPit.Fuel.LapTimeSeconds))
         {
-            return snapshot.Fuel.LapTimeSeconds;
+            return snapshot.Models.FuelPit.Fuel.LapTimeSeconds;
+        }
+
+        if (IsValidLapReference(snapshot.Models.RaceProgress.StrategyLapTimeSeconds))
+        {
+            return snapshot.Models.RaceProgress.StrategyLapTimeSeconds;
         }
 
         if (ReferenceUsesPlayerCar(snapshot) && IsValidLapReference(snapshot.Context.Car.DriverCarEstLapTimeSeconds))
@@ -1526,24 +1544,26 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
 
     private static bool ReferenceUsesTeamClass(LiveTelemetrySnapshot snapshot)
     {
-        var sample = snapshot.LatestSample;
-        return sample?.FocusCarClass is null
-            || sample.TeamCarClass is null
-            || sample.FocusCarClass == sample.TeamCarClass;
+        var directory = snapshot.Models.DriverDirectory;
+        var focusClass = directory.FocusDriver?.CarClassId ?? directory.ReferenceCarClass;
+        var playerClass = directory.PlayerDriver?.CarClassId ?? directory.ReferenceCarClass;
+        return focusClass is null
+            || playerClass is null
+            || focusClass == playerClass;
     }
 
     private static ReferenceContext? SelectReferenceContext(LiveTelemetrySnapshot snapshot)
     {
-        var sample = snapshot.LatestSample;
-        if (sample is null)
+        var directory = snapshot.Models.DriverDirectory;
+        if (!directory.HasData)
         {
             return null;
         }
 
-        var referenceCarIdx = sample.FocusCarIdx ?? sample.PlayerCarIdx;
+        var referenceCarIdx = directory.FocusCarIdx ?? directory.PlayerCarIdx;
         var referenceClass = ReferenceUsesPlayerCar(snapshot)
-            ? sample.FocusCarClass ?? sample.TeamCarClass
-            : sample.FocusCarClass;
+            ? directory.FocusDriver?.CarClassId ?? directory.PlayerDriver?.CarClassId ?? directory.ReferenceCarClass
+            : directory.FocusDriver?.CarClassId ?? directory.ReferenceCarClass;
         return new ReferenceContext(referenceCarIdx, referenceClass);
     }
 

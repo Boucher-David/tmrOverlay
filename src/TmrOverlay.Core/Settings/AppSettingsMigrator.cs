@@ -60,6 +60,7 @@ internal static class AppSettingsMigrator
             EnsureOption(overlay, OverlayOptionKeys.FuelAdvice, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.FuelSource, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true);
+            EnsureOption(overlay, OverlayOptionKeys.StandingsOtherClassRows, defaultValue: 2, minimum: 0, maximum: 6);
             EnsureOption(overlay, OverlayOptionKeys.RelativeCarsAhead, defaultValue: 5, minimum: 0, maximum: 8);
             EnsureOption(overlay, OverlayOptionKeys.RelativeCarsBehind, defaultValue: 5, minimum: 0, maximum: 8);
             EnsureOption(overlay, OverlayOptionKeys.GapCarsAhead, defaultValue: 5, minimum: 0, maximum: 12);

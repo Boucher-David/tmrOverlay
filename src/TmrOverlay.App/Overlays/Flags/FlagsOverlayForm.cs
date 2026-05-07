@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Text;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Overlays.Abstractions;
 using TmrOverlay.App.Overlays.SimpleTelemetry;
@@ -13,19 +14,28 @@ namespace TmrOverlay.App.Overlays.Flags;
 
 internal sealed class FlagsOverlayForm : PersistentOverlayForm
 {
+    private static readonly Color TransparentColor = Color.FromArgb(1, 2, 3);
+    private static readonly Color PoleColor = Color.FromArgb(225, 214, 220, 226);
+    private static readonly Color PoleShadowColor = Color.FromArgb(120, 0, 0, 0);
+    private static readonly FlagOverlayDisplayItem ErrorDisplayFlag = new(
+        FlagDisplayKind.Red,
+        FlagDisplayCategory.Critical,
+        "Flags",
+        "error",
+        SimpleTelemetryTone.Error);
+
     private const int RefreshIntervalMilliseconds = 250;
-    private const int BorderThickness = 10;
-    private const int WsExTransparent = 0x00000020;
-    private const int WmNcHitTest = 0x0084;
-    private const int HtTransparent = -1;
+    private const float OuterPadding = 8f;
+    private const float CellGap = 8f;
 
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly ILogger _logger;
     private readonly AppPerformanceState _performanceState;
     private readonly OverlaySettings _settings;
     private readonly System.Windows.Forms.Timer _refreshTimer;
+    private IReadOnlyList<FlagOverlayDisplayItem> _displayFlags = [];
     private long? _lastRefreshSequence;
-    private Color? _borderColor;
+    private string _displaySignature = string.Empty;
     private string? _lastLoggedError;
     private DateTimeOffset? _lastLoggedErrorAtUtc;
     private bool _managedEnabled;
@@ -47,8 +57,8 @@ internal sealed class FlagsOverlayForm : PersistentOverlayForm
         _performanceState = performanceState;
         _settings = settings;
 
-        BackColor = Color.Magenta;
-        TransparencyKey = Color.Magenta;
+        BackColor = TransparentColor;
+        TransparencyKey = TransparentColor;
         ShowInTaskbar = false;
 
         _refreshTimer = new System.Windows.Forms.Timer
@@ -76,25 +86,6 @@ internal sealed class FlagsOverlayForm : PersistentOverlayForm
         }
     }
 
-    protected override CreateParams CreateParams
-    {
-        get
-        {
-            var createParams = base.CreateParams;
-            createParams.ExStyle |= WsExTransparent;
-            return createParams;
-        }
-    }
-
-    protected override void WndProc(ref Message m)
-    {
-        base.WndProc(ref m);
-        if (m.Msg == WmNcHitTest)
-        {
-            m.Result = new IntPtr(HtTransparent);
-        }
-    }
-
     protected override void Dispose(bool disposing)
     {
         if (disposing)
@@ -113,16 +104,16 @@ internal sealed class FlagsOverlayForm : PersistentOverlayForm
         try
         {
             base.OnPaint(e);
-            if (_borderColor is { } borderColor)
+            if (_displayFlags.Count == 0)
             {
-                e.Graphics.SmoothingMode = SmoothingMode.None;
-                using var pen = new Pen(borderColor, BorderThickness)
-                {
-                    Alignment = PenAlignment.Inset
-                };
-                e.Graphics.DrawRectangle(pen, 0, 0, ClientSize.Width - 1, ClientSize.Height - 1);
+                succeeded = true;
+                return;
             }
 
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            e.Graphics.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+            e.Graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            DrawFlagGrid(e.Graphics, ClientRectangle, _displayFlags);
             succeeded = true;
         }
         catch (Exception exception)
@@ -162,12 +153,12 @@ internal sealed class FlagsOverlayForm : PersistentOverlayForm
 
             var now = DateTimeOffset.UtcNow;
             var previousSequence = _lastRefreshSequence;
-            SimpleTelemetryOverlayViewModel viewModel;
+            FlagOverlayDisplayViewModel viewModel;
             var viewModelStarted = Stopwatch.GetTimestamp();
             var viewModelSucceeded = false;
             try
             {
-                viewModel = FlagsOverlayViewModel.From(snapshot, now, unitSystem: "Metric");
+                viewModel = FlagsOverlayViewModel.ForDisplay(snapshot, now);
                 viewModelSucceeded = true;
             }
             finally
@@ -178,10 +169,13 @@ internal sealed class FlagsOverlayForm : PersistentOverlayForm
                     viewModelSucceeded);
             }
 
-            var oldColor = _borderColor;
-            _borderColor = SelectBorderColor(viewModel);
+            var oldSignature = _displaySignature;
+            _displayFlags = viewModel.Flags
+                .Where(flag => IsCategoryEnabled(flag.Category))
+                .ToArray();
+            _displaySignature = DisplaySignature(viewModel.IsWaiting, _displayFlags);
             _lastRefreshSequence = snapshot.Sequence;
-            var uiChanged = !ColorEquals(oldColor, _borderColor);
+            var uiChanged = !string.Equals(oldSignature, _displaySignature, StringComparison.Ordinal);
             _performanceState.RecordOverlayRefreshDecision(
                 FlagsOverlayDefinition.Definition.Id,
                 now,
@@ -195,13 +189,13 @@ internal sealed class FlagsOverlayForm : PersistentOverlayForm
             }
 
             ApplyVisibility();
-
             succeeded = true;
         }
         catch (Exception exception)
         {
             ReportOverlayError(exception, "refresh");
-            _borderColor = Color.FromArgb(236, 112, 99);
+            _displayFlags = [ErrorDisplayFlag];
+            _displaySignature = "error";
             ApplyVisibility();
             Invalidate();
         }
@@ -216,7 +210,7 @@ internal sealed class FlagsOverlayForm : PersistentOverlayForm
 
     private void ApplyVisibility()
     {
-        var shouldShow = _managedEnabled && _borderColor is not null;
+        var shouldShow = _managedEnabled && _displayFlags.Count > 0;
         if (shouldShow && !Visible)
         {
             Show();
@@ -229,98 +223,258 @@ internal sealed class FlagsOverlayForm : PersistentOverlayForm
         }
     }
 
-    private Color? SelectBorderColor(SimpleTelemetryOverlayViewModel viewModel)
-    {
-        if (viewModel.Tone == SimpleTelemetryTone.Waiting)
-        {
-            return null;
-        }
-
-        var key = viewModel.Status.Trim().ToLowerInvariant();
-        if (string.IsNullOrWhiteSpace(key))
-        {
-            return null;
-        }
-
-        var category = FlagCategoryFor(key);
-        if (category is null || !IsCategoryEnabled(category.Value))
-        {
-            return null;
-        }
-
-        if (category == FlagCategory.Blue)
-        {
-            return Color.FromArgb(55, 162, 255);
-        }
-
-        return category.Value switch
-        {
-            FlagCategory.Green => Color.FromArgb(48, 214, 109),
-            FlagCategory.Yellow => Color.FromArgb(255, 207, 74),
-            FlagCategory.Critical => Color.FromArgb(236, 112, 99),
-            FlagCategory.Finish => Color.White,
-            _ => null
-        };
-    }
-
-    private static FlagCategory? FlagCategoryFor(string key)
-    {
-        if (key.Contains("red", StringComparison.Ordinal)
-            || key.Contains("black", StringComparison.Ordinal)
-            || key.Contains("service", StringComparison.Ordinal)
-            || key.Contains("repair", StringComparison.Ordinal)
-            || key.Contains("disqualified", StringComparison.Ordinal)
-            || key.Contains("driver flag", StringComparison.Ordinal)
-            || key.Contains("scoring invalid", StringComparison.Ordinal)
-            || key.Contains("unknown driver", StringComparison.Ordinal)
-            || key.Contains("furled", StringComparison.Ordinal))
-        {
-            return FlagCategory.Critical;
-        }
-
-        if (key.Contains("yellow", StringComparison.Ordinal)
-            || key.Contains("caution", StringComparison.Ordinal)
-            || key.Contains("debris", StringComparison.Ordinal)
-            || key.Contains("one lap to green", StringComparison.Ordinal)
-            || key.Contains("random", StringComparison.Ordinal))
-        {
-            return FlagCategory.Yellow;
-        }
-
-        if (key.Contains("blue", StringComparison.Ordinal))
-        {
-            return FlagCategory.Blue;
-        }
-
-        if (key.Contains("checkered", StringComparison.Ordinal)
-            || key.Contains("white", StringComparison.Ordinal)
-            || key.Contains("countdown", StringComparison.Ordinal)
-            || key.Contains("crossed", StringComparison.Ordinal)
-            || key.Contains("ten to go", StringComparison.Ordinal)
-            || key.Contains("five to go", StringComparison.Ordinal))
-        {
-            return FlagCategory.Finish;
-        }
-
-        if (key.Contains("green", StringComparison.Ordinal) || key.Contains("start go", StringComparison.Ordinal))
-        {
-            return FlagCategory.Green;
-        }
-
-        return null;
-    }
-
-    private bool IsCategoryEnabled(FlagCategory category)
+    private bool IsCategoryEnabled(FlagDisplayCategory category)
     {
         return category switch
         {
-            FlagCategory.Green => _settings.GetBooleanOption(OverlayOptionKeys.FlagsShowGreen, defaultValue: true),
-            FlagCategory.Blue => _settings.GetBooleanOption(OverlayOptionKeys.FlagsShowBlue, defaultValue: true),
-            FlagCategory.Yellow => _settings.GetBooleanOption(OverlayOptionKeys.FlagsShowYellow, defaultValue: true),
-            FlagCategory.Critical => _settings.GetBooleanOption(OverlayOptionKeys.FlagsShowCritical, defaultValue: true),
-            FlagCategory.Finish => _settings.GetBooleanOption(OverlayOptionKeys.FlagsShowFinish, defaultValue: true),
+            FlagDisplayCategory.Green => _settings.GetBooleanOption(OverlayOptionKeys.FlagsShowGreen, defaultValue: true),
+            FlagDisplayCategory.Blue => _settings.GetBooleanOption(OverlayOptionKeys.FlagsShowBlue, defaultValue: true),
+            FlagDisplayCategory.Yellow => _settings.GetBooleanOption(OverlayOptionKeys.FlagsShowYellow, defaultValue: true),
+            FlagDisplayCategory.Critical => _settings.GetBooleanOption(OverlayOptionKeys.FlagsShowCritical, defaultValue: true),
+            FlagDisplayCategory.Finish => _settings.GetBooleanOption(OverlayOptionKeys.FlagsShowFinish, defaultValue: true),
             _ => true
         };
+    }
+
+    private void DrawFlagGrid(
+        Graphics graphics,
+        Rectangle clientRectangle,
+        IReadOnlyList<FlagOverlayDisplayItem> flags)
+    {
+        var bounds = new RectangleF(
+            clientRectangle.Left + OuterPadding,
+            clientRectangle.Top + OuterPadding,
+            Math.Max(1f, clientRectangle.Width - OuterPadding * 2f),
+            Math.Max(1f, clientRectangle.Height - OuterPadding * 2f));
+        var (columns, rows) = GridFor(flags.Count);
+        var cellWidth = (bounds.Width - (columns - 1) * CellGap) / columns;
+        var cellHeight = (bounds.Height - (rows - 1) * CellGap) / rows;
+
+        for (var index = 0; index < flags.Count; index++)
+        {
+            var row = index / columns;
+            var column = index % columns;
+            var cell = new RectangleF(
+                bounds.Left + column * (cellWidth + CellGap),
+                bounds.Top + row * (cellHeight + CellGap),
+                cellWidth,
+                cellHeight);
+            DrawFlagCell(graphics, cell, flags[index], index);
+        }
+    }
+
+    private void DrawFlagCell(
+        Graphics graphics,
+        RectangleF cell,
+        FlagOverlayDisplayItem flag,
+        int index)
+    {
+        var compact = cell.Height < 92f || cell.Width < 132f;
+        var flagArea = new RectangleF(
+            cell.Left,
+            cell.Top,
+            cell.Width,
+            Math.Max(32f, cell.Height));
+        var poleX = flagArea.Left + Math.Max(12f, flagArea.Width * 0.16f);
+        var poleTop = flagArea.Top + 4f;
+        var poleBottom = flagArea.Bottom - 2f;
+        using (var shadowPen = new Pen(PoleShadowColor, compact ? 2f : 3f))
+        {
+            graphics.DrawLine(shadowPen, poleX + 1f, poleTop + 1f, poleX + 1f, poleBottom + 1f);
+        }
+
+        using (var polePen = new Pen(PoleColor, compact ? 2f : 3f)
+        {
+            StartCap = LineCap.Round,
+            EndCap = LineCap.Round
+        })
+        {
+            graphics.DrawLine(polePen, poleX, poleTop, poleX, poleBottom);
+        }
+
+        var clothLeft = poleX + 1f;
+        var clothWidth = Math.Max(48f, flagArea.Right - clothLeft - 8f);
+        var clothHeight = Math.Max(24f, Math.Min(flagArea.Height * 0.7f, clothWidth * 0.58f));
+        var clothTop = flagArea.Top + Math.Max(4f, (flagArea.Height - clothHeight) * 0.32f);
+        var clothBounds = new RectangleF(clothLeft, clothTop, clothWidth, clothHeight);
+        using var path = CreateFlagPath(clothBounds, compact ? 3.5f : 5.5f, index);
+        DrawFlagCloth(graphics, path, flag, clothBounds);
+    }
+
+    private void DrawFlagCloth(
+        Graphics graphics,
+        GraphicsPath path,
+        FlagOverlayDisplayItem flag,
+        RectangleF clothBounds)
+    {
+        if (flag.Kind == FlagDisplayKind.Checkered)
+        {
+            DrawCheckeredFlag(graphics, path, clothBounds);
+            return;
+        }
+
+        var fill = FillColor(flag.Kind);
+        using (var brush = new SolidBrush(fill))
+        {
+            graphics.FillPath(brush, path);
+        }
+
+        if (flag.Kind == FlagDisplayKind.Meatball)
+        {
+            var diameter = Math.Min(clothBounds.Width, clothBounds.Height) * 0.44f;
+            var disc = new RectangleF(
+                clothBounds.Left + (clothBounds.Width - diameter) / 2f,
+                clothBounds.Top + (clothBounds.Height - diameter) / 2f,
+                diameter,
+                diameter);
+            using var discBrush = new SolidBrush(Color.FromArgb(245, 124, 38));
+            graphics.FillEllipse(discBrush, disc);
+        }
+        else if (flag.Kind == FlagDisplayKind.Caution)
+        {
+            using var stripeBrush = new SolidBrush(Color.FromArgb(72, 0, 0, 0));
+            var stripeWidth = Math.Max(8f, clothBounds.Width * 0.12f);
+            var oldClip = graphics.Clip;
+            try
+            {
+                graphics.SetClip(path, CombineMode.Intersect);
+                for (var x = clothBounds.Left - clothBounds.Height; x < clothBounds.Right; x += stripeWidth * 2.5f)
+                {
+                    var points = new[]
+                    {
+                        new PointF(x, clothBounds.Bottom),
+                        new PointF(x + stripeWidth, clothBounds.Bottom),
+                        new PointF(x + stripeWidth + clothBounds.Height, clothBounds.Top),
+                        new PointF(x + clothBounds.Height, clothBounds.Top)
+                    };
+                    graphics.FillPolygon(stripeBrush, points);
+                }
+            }
+            finally
+            {
+                graphics.SetClip(oldClip, CombineMode.Replace);
+                oldClip.Dispose();
+            }
+        }
+
+        DrawFlagOutline(graphics, path, flag.Kind);
+    }
+
+    private void DrawCheckeredFlag(
+        Graphics graphics,
+        GraphicsPath path,
+        RectangleF clothBounds)
+    {
+        var oldClip = graphics.Clip;
+        try
+        {
+            graphics.SetClip(path, CombineMode.Intersect);
+            using var whiteBrush = new SolidBrush(Color.FromArgb(245, 247, 250));
+            using var blackBrush = new SolidBrush(Color.FromArgb(8, 10, 12));
+            graphics.FillRectangle(whiteBrush, clothBounds);
+            const int columns = 6;
+            const int rows = 4;
+            var squareWidth = clothBounds.Width / columns;
+            var squareHeight = clothBounds.Height / rows;
+            for (var row = 0; row < rows; row++)
+            {
+                for (var column = 0; column < columns; column++)
+                {
+                    if ((row + column) % 2 == 0)
+                    {
+                        continue;
+                    }
+
+                    graphics.FillRectangle(
+                        blackBrush,
+                        clothBounds.Left + column * squareWidth,
+                        clothBounds.Top + row * squareHeight,
+                        squareWidth + 1f,
+                        squareHeight + 1f);
+                }
+            }
+        }
+        finally
+        {
+            graphics.SetClip(oldClip, CombineMode.Replace);
+            oldClip.Dispose();
+        }
+
+        DrawFlagOutline(graphics, path, FlagDisplayKind.Checkered);
+    }
+
+    private void DrawFlagOutline(Graphics graphics, GraphicsPath path, FlagDisplayKind kind)
+    {
+        var outline = kind == FlagDisplayKind.White || kind == FlagDisplayKind.Checkered
+            ? Color.FromArgb(220, 26, 30, 34)
+            : Color.FromArgb(172, 255, 255, 255);
+        using var pen = new Pen(outline, 1.4f)
+        {
+            LineJoin = LineJoin.Round
+        };
+        graphics.DrawPath(pen, path);
+    }
+
+    private static GraphicsPath CreateFlagPath(RectangleF bounds, float wave, int index)
+    {
+        var phase = index % 2 == 0 ? 1f : -1f;
+        var path = new GraphicsPath();
+        var leftTop = new PointF(bounds.Left, bounds.Top);
+        var rightTop = new PointF(bounds.Right, bounds.Top + wave * phase);
+        var rightBottom = new PointF(bounds.Right, bounds.Bottom + wave * 0.4f * phase);
+        var leftBottom = new PointF(bounds.Left, bounds.Bottom);
+        path.StartFigure();
+        path.AddBezier(
+            leftTop,
+            new PointF(bounds.Left + bounds.Width * 0.28f, bounds.Top - wave * phase),
+            new PointF(bounds.Left + bounds.Width * 0.62f, bounds.Top + wave * phase),
+            rightTop);
+        path.AddLine(rightTop, rightBottom);
+        path.AddBezier(
+            rightBottom,
+            new PointF(bounds.Left + bounds.Width * 0.62f, bounds.Bottom - wave * phase),
+            new PointF(bounds.Left + bounds.Width * 0.28f, bounds.Bottom + wave * phase),
+            leftBottom);
+        path.CloseFigure();
+        return path;
+    }
+
+    private static Color FillColor(FlagDisplayKind kind)
+    {
+        return kind switch
+        {
+            FlagDisplayKind.Green => Color.FromArgb(48, 214, 109),
+            FlagDisplayKind.Blue => Color.FromArgb(55, 162, 255),
+            FlagDisplayKind.Yellow or FlagDisplayKind.Caution => Color.FromArgb(255, 207, 74),
+            FlagDisplayKind.Red => Color.FromArgb(236, 76, 86),
+            FlagDisplayKind.Black or FlagDisplayKind.Meatball => Color.FromArgb(8, 10, 12),
+            FlagDisplayKind.White => Color.FromArgb(246, 248, 250),
+            _ => Color.White
+        };
+    }
+
+    private static (int Columns, int Rows) GridFor(int count)
+    {
+        return count switch
+        {
+            <= 1 => (1, 1),
+            2 => (2, 1),
+            <= 4 => (2, 2),
+            <= 6 => (3, 2),
+            _ => (4, 2)
+        };
+    }
+
+    private static string DisplaySignature(bool isWaiting, IReadOnlyList<FlagOverlayDisplayItem> flags)
+    {
+        if (isWaiting || flags.Count == 0)
+        {
+            return isWaiting ? "waiting" : "none";
+        }
+
+        return string.Join(
+            "|",
+            flags.Select(flag => $"{flag.Kind}:{flag.Category}:{flag.Label}:{flag.Detail}"));
     }
 
     private void ReportOverlayError(Exception exception, string stage)
@@ -337,24 +491,5 @@ internal sealed class FlagsOverlayForm : PersistentOverlayForm
         _lastLoggedError = message;
         _lastLoggedErrorAtUtc = now;
         _logger.LogWarning(exception, "Flags overlay {Stage} failed.", stage);
-    }
-
-    private static bool ColorEquals(Color? left, Color? right)
-    {
-        if (left.HasValue != right.HasValue)
-        {
-            return false;
-        }
-
-        return !left.HasValue || left.Value.ToArgb() == right.GetValueOrDefault().ToArgb();
-    }
-
-    private enum FlagCategory
-    {
-        Green,
-        Blue,
-        Yellow,
-        Critical,
-        Finish
     }
 }

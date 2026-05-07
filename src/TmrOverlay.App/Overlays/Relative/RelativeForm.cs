@@ -408,24 +408,30 @@ internal sealed class RelativeForm : PersistentOverlayForm
         var backColor = row.IsReference
             ? OverlayTheme.Colors.InfoBackground
             : row.IsPit
-                ? OverlayTheme.Colors.WarningBackground
+                ? PitRowBackground
                 : OverlayTheme.Colors.PanelBackground;
         var textColor = row.IsPartial
             ? OverlayTheme.Colors.TextMuted
             : row.IsReference
                 ? OverlayTheme.Colors.TextPrimary
-                : OverlayTheme.Colors.TextSecondary;
+                : row.IsPit
+                    ? OverlayTheme.Colors.TextMuted
+                    : OverlayTheme.Colors.TextSecondary;
         var gapColor = row.IsReference
             ? OverlayTheme.Colors.TextPrimary
             : row.IsPartial
                 ? OverlayTheme.Colors.TextMuted
-                : row.IsAhead
-                    ? OverlayTheme.Colors.InfoText
-                    : OverlayTheme.Colors.SuccessText;
+                : row.IsPit
+                    ? OverlayTheme.Colors.TextSubtle
+                    : row.IsAhead
+                        ? OverlayTheme.Colors.InfoText
+                        : OverlayTheme.Colors.SuccessText;
         var classColor = TryParseColor(row.ClassColorHex);
-        changed |= _positionLabels[index].SetClassColor(classColor);
+        changed |= _positionLabels[index].SetClassColor(row.IsPit
+            ? MutedClassColor(classColor)
+            : classColor);
         var detailColor = row.IsPit
-            ? OverlayTheme.Colors.WarningText
+            ? OverlayTheme.Colors.TextSubtle
             : classColor ?? (row.IsSameClass ? OverlayTheme.Colors.TextSubtle : OverlayTheme.Colors.InfoText);
 
         changed |= ApplyCellColors(index, backColor, textColor, gapColor, detailColor);
@@ -643,6 +649,39 @@ internal sealed class RelativeForm : PersistentOverlayForm
             && int.TryParse(value, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var rgb)
             ? Color.FromArgb((rgb >> 16) & 0xff, (rgb >> 8) & 0xff, rgb & 0xff)
             : null;
+    }
+
+    private static Color? MutedClassColor(Color? color)
+    {
+        if (color is not { } value)
+        {
+            return null;
+        }
+
+        var background = OverlayTheme.Colors.PanelBackground;
+        return Blend(value, background, panelWeight: 1, accentWeight: 2);
+    }
+
+    private static Color PitRowBackground
+    {
+        get
+        {
+            var panel = OverlayTheme.Colors.PanelBackground;
+            return Color.FromArgb(
+                panel.A,
+                Math.Min(255, panel.R + 10),
+                Math.Min(255, panel.G + 10),
+                Math.Min(255, panel.B + 10));
+        }
+    }
+
+    private static Color Blend(Color panel, Color accent, int panelWeight, int accentWeight)
+    {
+        var total = Math.Max(1, panelWeight + accentWeight);
+        return Color.FromArgb(
+            (panel.R * panelWeight + accent.R * accentWeight) / total,
+            (panel.G * panelWeight + accent.G * accentWeight) / total,
+            (panel.B * panelWeight + accent.B * accentWeight) / total);
     }
 
     private sealed class ClassPositionLabel : Label

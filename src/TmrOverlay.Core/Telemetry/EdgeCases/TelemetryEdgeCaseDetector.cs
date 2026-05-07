@@ -599,7 +599,7 @@ internal sealed class TelemetryEdgeCaseDetector
             }
         }
 
-        var activePitCommands = RawTelemetryWatchVariables.Groups["pit.commands"]
+        var activePitCommands = WatchedNamesForGroup(raw, "pit.commands")
             .Select(name => new { Name = name, Value = raw.Get(name) })
             .Where(row => row.Value is { } value && Math.Abs(value) > 0.0001d)
             .ToArray();
@@ -608,14 +608,39 @@ internal sealed class TelemetryEdgeCaseDetector
             var fields = activePitCommands
                 .ToDictionary(row => row.Name, row => (string?)Format(row.Value), StringComparer.OrdinalIgnoreCase);
             fields["variables"] = string.Join(",", activePitCommands.Select(row => row.Name));
-            fields["onPitRoad"] = sample.OnPitRoad.ToString();
-            fields["teamOnPitRoad"] = sample.TeamOnPitRoad?.ToString();
-            fields["playerCarInPitStall"] = sample.PlayerCarInPitStall.ToString();
+            AddPitCommandContext(fields, sample, raw);
             EmitOnce(
                 observations,
                 "raw.pit-commands.active",
                 TelemetryEdgeCaseSeverity.Info,
                 "Raw pit-service command channels became active.",
+                sample,
+                fields);
+        }
+
+        foreach (var name in WatchedNamesForGroup(raw, "pit.commands"))
+        {
+            var previous = _previousRaw.Get(name);
+            var current = raw.Get(name);
+            if (previous is null
+                || current is null
+                || Math.Abs(current.Value - previous.Value) <= 0.0001d)
+            {
+                continue;
+            }
+
+            var fields = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["variable"] = name,
+                ["previousValue"] = Format(previous),
+                ["currentValue"] = Format(current)
+            };
+            AddPitCommandContext(fields, sample, raw);
+            EmitOnce(
+                observations,
+                $"raw.pit-command.changed.{name}.{current.Value:0.###}",
+                TelemetryEdgeCaseSeverity.Info,
+                "A raw pit-service request channel changed.",
                 sample,
                 fields);
         }
@@ -760,6 +785,26 @@ internal sealed class TelemetryEdgeCaseDetector
                     ["trackWetness"] = sample.TrackWetness.ToString(),
                     ["declaredWet"] = sample.WeatherDeclaredWet.ToString()
                 });
+        }
+
+        var forecastValues = raw.Values
+            .Where(pair => RawTelemetryWatchVariables.GroupFor(pair.Key) == "weather.forecast"
+                && Math.Abs(pair.Value) > 0.0001d)
+            .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+            .Take(8)
+            .ToArray();
+        if (forecastValues.Length > 0)
+        {
+            EmitOnce(
+                observations,
+                "weather.forecast-signal-present",
+                TelemetryEdgeCaseSeverity.Info,
+                "A raw forecast-like weather channel was present and active.",
+                sample,
+                forecastValues.ToDictionary(
+                    pair => pair.Key,
+                    pair => (string?)Format(pair.Value),
+                    StringComparer.OrdinalIgnoreCase));
         }
     }
 
@@ -918,7 +963,7 @@ internal sealed class TelemetryEdgeCaseDetector
                 });
         }
 
-        foreach (var name in RawTelemetryWatchVariables.Groups["driver.controls"])
+        foreach (var name in WatchedNamesForGroup(raw, "driver.controls"))
         {
             var previous = _previousRaw.Get(name);
             var current = raw.Get(name);
@@ -1002,12 +1047,41 @@ internal sealed class TelemetryEdgeCaseDetector
         string group,
         RawTelemetryWatchSnapshot raw)
     {
-        var names = RawTelemetryWatchVariables.Groups[group];
-        return names
+        return WatchedNamesForGroup(raw, group)
             .Select(name => new { Name = name, Value = raw.Get(name) })
             .Where(row => row.Value is { } value && Math.Abs(value) > 0.0001d)
             .Take(12)
             .ToDictionary(row => row.Name, row => row.Value!.Value.ToString("0.###"), StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static IEnumerable<string> WatchedNamesForGroup(
+        RawTelemetryWatchSnapshot raw,
+        string group)
+    {
+        return RawTelemetryWatchVariables.Groups[group]
+            .Concat(raw.Values.Keys.Where(name => string.Equals(
+                raw.GroupFor(name),
+                group,
+                StringComparison.OrdinalIgnoreCase)))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static void AddPitCommandContext(
+        Dictionary<string, string?> fields,
+        HistoricalTelemetrySample sample,
+        RawTelemetryWatchSnapshot raw)
+    {
+        fields["isOnTrack"] = sample.IsOnTrack.ToString();
+        fields["isInGarage"] = sample.IsInGarage.ToString();
+        fields["onPitRoad"] = sample.OnPitRoad.ToString();
+        fields["teamOnPitRoad"] = sample.TeamOnPitRoad?.ToString();
+        fields["playerCarInPitStall"] = sample.PlayerCarInPitStall.ToString();
+        fields["isReplayPlaying"] = Format(raw.Get("IsReplayPlaying"));
+        fields["isOnTrackCar"] = Format(raw.Get("IsOnTrackCar"));
+        fields["camCarIdx"] = Format(raw.Get("CamCarIdx"));
+        fields["camGroupNumber"] = Format(raw.Get("CamGroupNumber"));
+        fields["camCameraNumber"] = Format(raw.Get("CamCameraNumber"));
+        fields["camCameraState"] = Format(raw.Get("CamCameraState"));
     }
 
     private void DetectRawRuntimeWarnings(

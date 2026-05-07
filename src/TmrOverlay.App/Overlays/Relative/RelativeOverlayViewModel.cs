@@ -1,4 +1,5 @@
 using System.Globalization;
+using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Telemetry.Live;
 
 namespace TmrOverlay.App.Overlays.Relative;
@@ -8,23 +9,16 @@ internal sealed record RelativeOverlayViewModel(
     string Source,
     IReadOnlyList<RelativeOverlayRowViewModel> Rows)
 {
-    private const double StaleSeconds = 1.5d;
-
     public static RelativeOverlayViewModel From(
         LiveTelemetrySnapshot snapshot,
         DateTimeOffset now,
         int carsAhead,
         int carsBehind)
     {
-        if (!snapshot.IsConnected || !snapshot.IsCollecting)
+        var availability = OverlayAvailabilityEvaluator.FromSnapshot(snapshot, now);
+        if (!availability.IsAvailable)
         {
-            return Waiting("waiting for iRacing");
-        }
-
-        if (snapshot.LastUpdatedAtUtc is not { } updatedAt
-            || Math.Abs((now - updatedAt).TotalSeconds) > StaleSeconds)
-        {
-            return Waiting("waiting for fresh telemetry");
+            return Waiting(availability.StatusText);
         }
 
         var reference = ReferenceRow(snapshot);
@@ -82,12 +76,20 @@ internal sealed record RelativeOverlayViewModel(
             ?? MatchingTimingRow(snapshot.Models.Timing.FocusRow, referenceCarIdx.Value)
             ?? MatchingTimingRow(snapshot.Models.Timing.PlayerRow, referenceCarIdx.Value);
         var driver = snapshot.Models.DriverDirectory.Drivers.FirstOrDefault(row => row.CarIdx == referenceCarIdx);
+        var scoring = snapshot.Models.Scoring.Rows.FirstOrDefault(row => row.CarIdx == referenceCarIdx);
         return new RelativeOverlayRowViewModel(
-            Position: FormatPosition(timing?.OverallPosition, timing?.ClassPosition),
-            Driver: FormatDriver(driver?.CarNumber, timing?.DriverName ?? driver?.DriverName, referenceCarIdx.Value),
+            Position: FormatPosition(
+                timing?.OverallPosition ?? scoring?.OverallPosition,
+                timing?.ClassPosition ?? scoring?.ClassPosition),
+            Driver: FormatDriver(
+                scoring?.CarNumber ?? driver?.CarNumber,
+                FirstNonEmpty(timing?.DriverName, scoring?.DriverName, scoring?.TeamName, driver?.DriverName),
+                referenceCarIdx.Value),
             Gap: "0.000",
-            Detail: FormatDetail(timing?.CarClassName ?? driver?.CarClassName, timing?.OnPitRoad),
-            ClassColorHex: driver?.CarClassColorHex,
+            Detail: FormatDetail(
+                FirstNonEmpty(timing?.CarClassName, driver?.CarClassName, scoring?.CarClassName),
+                timing?.OnPitRoad),
+            ClassColorHex: FirstNonEmpty(scoring?.CarClassColorHex, driver?.CarClassColorHex),
             IsReference: true,
             IsAhead: false,
             IsBehind: false,
@@ -102,12 +104,18 @@ internal sealed record RelativeOverlayViewModel(
         RelativeRowDirection direction)
     {
         var driver = snapshot.Models.DriverDirectory.Drivers.FirstOrDefault(driver => driver.CarIdx == row.CarIdx);
+        var scoring = snapshot.Models.Scoring.Rows.FirstOrDefault(scoringRow => scoringRow.CarIdx == row.CarIdx);
         return new RelativeOverlayRowViewModel(
-            Position: FormatPosition(row.OverallPosition, row.ClassPosition),
-            Driver: FormatDriver(driver?.CarNumber, row.DriverName ?? driver?.DriverName, row.CarIdx),
+            Position: FormatPosition(
+                row.OverallPosition ?? scoring?.OverallPosition,
+                row.ClassPosition ?? scoring?.ClassPosition),
+            Driver: FormatDriver(
+                scoring?.CarNumber ?? driver?.CarNumber,
+                FirstNonEmpty(row.DriverName, scoring?.DriverName, scoring?.TeamName, driver?.DriverName),
+                row.CarIdx),
             Gap: FormatRelativeGap(row, direction),
-            Detail: FormatDetail(driver?.CarClassName, row.OnPitRoad),
-            ClassColorHex: driver?.CarClassColorHex,
+            Detail: FormatDetail(FirstNonEmpty(driver?.CarClassName, scoring?.CarClassName), row.OnPitRoad),
+            ClassColorHex: FirstNonEmpty(scoring?.CarClassColorHex, driver?.CarClassColorHex),
             IsReference: false,
             IsAhead: direction == RelativeRowDirection.Ahead,
             IsBehind: direction == RelativeRowDirection.Behind,
@@ -195,9 +203,10 @@ internal sealed record RelativeOverlayViewModel(
     private static string FormatDetail(string? carClassName, bool? onPitRoad)
     {
         var classLabel = string.IsNullOrWhiteSpace(carClassName) ? "class" : carClassName.Trim();
-        if (classLabel.Length > 8)
+        var maximumClassLength = onPitRoad == true ? 6 : 8;
+        if (classLabel.Length > maximumClassLength)
         {
-            classLabel = classLabel[..8].TrimEnd();
+            classLabel = classLabel[..maximumClassLength].TrimEnd();
         }
 
         return onPitRoad == true ? $"{classLabel} PIT" : classLabel;
@@ -227,6 +236,11 @@ internal sealed record RelativeOverlayViewModel(
     private static LiveTimingRow? MatchingTimingRow(LiveTimingRow? row, int carIdx)
     {
         return row?.CarIdx == carIdx ? row : null;
+    }
+
+    private static string? FirstNonEmpty(params string?[] values)
+    {
+        return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
     }
 
     private static double RelativeSortKey(LiveRelativeRow row)

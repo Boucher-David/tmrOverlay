@@ -7,6 +7,8 @@ using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.Overlays.BrowserSources;
 using TmrOverlay.App.Overlays.GarageCover;
+using TmrOverlay.App.Overlays.Relative;
+using TmrOverlay.App.Overlays.Standings;
 using TmrOverlay.App.Overlays.StreamChat;
 using TmrOverlay.App.Overlays.TrackMap;
 using TmrOverlay.App.Performance;
@@ -248,6 +250,26 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
                     statusCode = (int)HttpStatusCode.OK;
                     break;
 
+                case "/api/standings":
+                    route = "standings_settings";
+                    await WriteJsonAsync(context.Response, HttpStatusCode.OK, new
+                    {
+                        generatedAtUtc = DateTimeOffset.UtcNow,
+                        standingsSettings = ReadStandingsSettings()
+                    }, cancellationToken).ConfigureAwait(false);
+                    statusCode = (int)HttpStatusCode.OK;
+                    break;
+
+                case "/api/relative":
+                    route = "relative_settings";
+                    await WriteJsonAsync(context.Response, HttpStatusCode.OK, new
+                    {
+                        generatedAtUtc = DateTimeOffset.UtcNow,
+                        relativeSettings = ReadRelativeSettings()
+                    }, cancellationToken).ConfigureAwait(false);
+                    statusCode = (int)HttpStatusCode.OK;
+                    break;
+
                 case "/api/garage-cover":
                     route = "garage_cover_settings";
                     await WriteJsonAsync(context.Response, HttpStatusCode.OK, new
@@ -349,6 +371,32 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
         }
     }
 
+    private StandingsBrowserSettings ReadStandingsSettings()
+    {
+        try
+        {
+            return StandingsBrowserSettings.From(_settingsStore.Load());
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Failed to read standings settings for localhost browser source.");
+            return StandingsBrowserSettings.Default;
+        }
+    }
+
+    private RelativeBrowserSettings ReadRelativeSettings()
+    {
+        try
+        {
+            return RelativeBrowserSettings.From(_settingsStore.Load());
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Failed to read relative settings for localhost browser source.");
+            return RelativeBrowserSettings.Default;
+        }
+    }
+
     private GarageCoverBrowserSettingsSnapshot ReadGarageCoverSettings()
     {
         try
@@ -358,7 +406,17 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
         catch (Exception exception)
         {
             _logger.LogWarning(exception, "Failed to read garage cover settings for localhost browser source.");
-            return new GarageCoverBrowserSettingsSnapshot(HasImage: false, ImageVersion: null);
+            return new GarageCoverBrowserSettingsSnapshot(
+                HasImage: false,
+                ImageVersion: null,
+                ImageStatus: "settings_unavailable",
+                FallbackReason: "settings_unavailable",
+                PreviewVisible: false,
+                PreviewUntilUtc: null,
+                ImageFileName: null,
+                ImageExtension: null,
+                ImageLength: null,
+                ImageLastWriteTimeUtc: null);
         }
     }
 
