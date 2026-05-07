@@ -560,16 +560,17 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 3. Validate portable upgrade behavior against existing `%LOCALAPPDATA%\TmrOverlay` settings/history/diagnostics data on Windows before broad teammate handoff.
 4. Decide signing before broad distribution. Private teammate zip builds can remain unsigned, but production sharing should sign the executable or package.
 5. Decide the installer/update channel after the portable baseline: Velopack for installer plus update feed, or MSIX/App Installer if package identity/signing constraints are acceptable.
-6. Identify remaining v1/legacy overlay slices and choose the next safe model-v2 migration target without pulling fuel/gap analysis products into the simple-overlay path prematurely.
-7. Keep collecting radar diagnostics for suppressed non-local focus, local progress-missing, side-without-placement, and multiclass cases before expanding beyond local in-car radar.
-8. Harden Track Map after first real usage: current-map quality/status, manual rebuild/replace UX, bundled map QA, confidence/stale/pit-lane screenshot states, and pit-lane-aware live markers when reliable telemetry exists.
-9. Decide the Overlay Bridge v2 shape for teammate-to-teammate data sharing: enable/disable, allowed peers, schema version, connection health, and which normalized model-v2 context should become the trusted peer contract.
-10. Expand Stream Chat beyond the current Streamlabs-widget browser source and public Twitch channel modes when needed, keeping provider auth, moderation, rate limits, and offline preview states separate from iRacing telemetry.
-11. Treat overlay builder as a later creator/development platform on top of design-v2 primitives and the bridge schema, not as a prerequisite for the first hand-authored production overlays.
-12. Improve historical aggregation and confidence/source tracking as more user sessions are collected.
-13. Keep raw capture available for diagnostics, but avoid making it the normal user data path.
-14. Expand post-race strategy review/export beyond the first saved-analysis view; see `docs/post-race-strategy-analysis.md`.
-15. When summary or other durable history shapes change, add ordered migrations or compatible readers to the historical data maintenance flow, update `HistorySchemaCompatibilityTests`, and keep car/track/session history higher priority than performance/logging data.
+6. Treat overlay lifecycle/timer efficiency as an important V1.x foundation: hidden, session-filtered, or fully faded native overlays should pause high-frequency refresh timers through a shared lifecycle contract, then resume cleanly when visible.
+7. Identify remaining v1/legacy overlay slices and choose the next safe model-v2 migration target without pulling fuel/gap analysis products into the simple-overlay path prematurely.
+8. Keep collecting radar diagnostics for suppressed non-local focus, local progress-missing, side-without-placement, and multiclass cases before expanding beyond local in-car radar.
+9. Harden Track Map after first real usage: current-map quality/status, manual rebuild/replace UX, bundled map QA, confidence/stale/pit-lane screenshot states, and pit-lane-aware live markers when reliable telemetry exists.
+10. Decide the Overlay Bridge v2 shape for teammate-to-teammate data sharing: enable/disable, allowed peers, schema version, connection health, and which normalized model-v2 context should become the trusted peer contract.
+11. Expand Stream Chat beyond the current Streamlabs-widget browser source and public Twitch channel modes when needed, keeping provider auth, moderation, rate limits, and offline preview states separate from iRacing telemetry.
+12. Treat overlay builder as a later creator/development platform on top of design-v2 primitives and the bridge schema, not as a prerequisite for the first hand-authored production overlays.
+13. Improve historical aggregation and confidence/source tracking as more user sessions are collected.
+14. Keep raw capture available for diagnostics, but avoid making it the normal user data path.
+15. Expand post-race strategy review/export beyond the first saved-analysis view; see `docs/post-race-strategy-analysis.md`.
+16. When summary or other durable history shapes change, add ordered migrations or compatible readers to the historical data maintenance flow, update `HistorySchemaCompatibilityTests`, and keep car/track/session history higher priority than performance/logging data.
 
 ## Files Most Likely To Change Next
 

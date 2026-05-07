@@ -125,6 +125,18 @@ Likely triggers:
 
 V1.x is where heavy analysis overlays and broader platform features should mature, except for the engineer/operator mode, which is large enough to treat as V2.0. These branches can assume the V1.0 core app already has reliable release/support flow and stable core telemetry contracts.
 
+### Important V1.x Foundation - Overlay Lifecycle And Timer Efficiency
+
+Goal: make overlay refresh work proportional to what is actually visible or actively needed, without weakening telemetry freshness for overlays that are on screen.
+
+Likely scope:
+
+- Add a shared overlay lifecycle contract so native overlays can pause high-frequency refresh timers while hidden, session-filtered out, or fully faded, then resume cleanly when shown again.
+- Keep lifecycle handling centralized in shared overlay base/helper code instead of adding one-off timer checks to every overlay form.
+- Preserve safety-critical refresh behavior for Radar, Track Map, Inputs, Flags, and live timing overlays when they are visible; this work is about hidden/disabled churn, not making active overlays stale.
+- Extend performance diagnostics to distinguish visible refreshes, hidden skipped refreshes, fade-only work, and settings-driven lifecycle transitions.
+- Validate with screenshot parity, overlay performance counters, and teammate long-session usage before using the pattern for heavier analysis or broadcast overlays.
+
 ### v1.1 - Analysis Evidence Loop And Capture Replay
 
 Goal: make real race evidence easier to replay through overlays without manually driving the app.
