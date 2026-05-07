@@ -82,7 +82,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private Label? _sessionStateLabel;
     private Label? _currentIssueLabel;
     private Label? _advancedDiagnosticsLabel;
-    private Label? _performanceSnapshotLabel;
     private Label? _latestDiagnosticsBundleLabel;
     private Label? _supportStatusLabel;
     private Label? _garageCoverStateLabel;
@@ -1503,8 +1502,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             && _sessionStateLabel is null
             && _currentIssueLabel is null
             && _advancedDiagnosticsLabel is null
-            && _latestDiagnosticsBundleLabel is null
-            && _performanceSnapshotLabel is null)
+            && _latestDiagnosticsBundleLabel is null)
         {
             return;
         }
@@ -1560,10 +1558,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
                 ReportAutomaticDiagnosticsBundleStatus(diagnosticsSnapshot, latestBundlePath);
             }
 
-            if (_performanceSnapshotLabel is not null)
-            {
-                SetLabelText(_performanceSnapshotLabel, PerformanceSnapshotText(_performanceState.Snapshot(), captureSnapshot));
-            }
         }
     }
 
@@ -1768,62 +1762,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             SupportStatusLevel.Info => OverlayTheme.Colors.InfoText,
             _ => OverlayTheme.Colors.TextSecondary
         };
-    }
-
-    private static string PerformanceSnapshotText(
-        AppPerformanceSnapshot performance,
-        TelemetryCaptureStatusSnapshot capture)
-    {
-        var telemetryState = capture.IsCapturing
-            ? $"{performance.TelemetryFrameCount:N0} frames, {performance.TelemetryFramesPerSecond:0.##} fps"
-            : "waiting for live telemetry";
-        var rawState = capture.RawCaptureActive || capture.RawCaptureEnabled
-            ? $"{capture.WrittenFrameCount:N0} written, {capture.DroppedFrameCount:N0} dropped, {FormatBytes(capture.TelemetryFileBytes)}"
-            : "diagnostic capture off";
-
-        return string.Join(
-            Environment.NewLine,
-            $"telemetry: {telemetryState}",
-            $"iRacing: quality {ValueLast(performance, AppPerformanceValueIds.IRacingChanQuality)}, latency {ValueLast(performance, AppPerformanceValueIds.IRacingChanLatency, "s")}",
-            $"raw: {rawState}",
-            $"process: {FormatBytes(performance.Process.WorkingSetBytes)} working set");
-    }
-
-    private static string ValueLast(AppPerformanceSnapshot performance, string valueId, string suffix = "")
-    {
-        var value = FindValue(performance, valueId);
-        return value?.Last is null ? "n/a" : FormatValue(value.Last, suffix);
-    }
-
-    private static PerformanceValueSnapshot? FindValue(AppPerformanceSnapshot performance, string valueId)
-    {
-        return performance.IRacingSystem
-            .Concat(performance.OverlayUpdates)
-            .FirstOrDefault(value => string.Equals(value.Id, valueId, StringComparison.OrdinalIgnoreCase));
-    }
-
-    private static string FormatValue(double? value, string suffix = "")
-    {
-        return value is null ? "n/a" : $"{value.Value:0.###}{suffix}";
-    }
-
-    private static string FormatBytes(long? bytes)
-    {
-        if (bytes is null)
-        {
-            return "n/a";
-        }
-
-        string[] units = ["B", "KB", "MB", "GB"];
-        var value = (double)Math.Max(0, bytes.Value);
-        var unitIndex = 0;
-        while (value >= 1024d && unitIndex < units.Length - 1)
-        {
-            value /= 1024d;
-            unitIndex++;
-        }
-
-        return $"{value:0.#} {units[unitIndex]}";
     }
 
     private static int ScaleDimension(int defaultDimension, double scale)

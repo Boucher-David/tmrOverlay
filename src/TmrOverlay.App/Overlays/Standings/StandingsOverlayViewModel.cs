@@ -51,11 +51,11 @@ internal sealed record StandingsOverlayViewModel(
 
             var shownCars = scoringRows.Count(row => !row.IsClassHeader);
             var scoringReference = scoringRows.FirstOrDefault(row => row.IsReference);
-            var status = scoringReference?.ClassPosition is { Length: > 1 } classPosition
-                ? $"{classPosition} - {shownCars}/{scoring.Rows.Count} rows"
+            var scoringStatus = scoringReference?.ClassPosition is { Length: > 1 } scoringClassPosition
+                ? $"{scoringClassPosition} - {shownCars}/{scoring.Rows.Count} rows"
                 : $"{shownCars}/{scoring.Rows.Count} rows";
             return new StandingsOverlayViewModel(
-                status,
+                scoringStatus,
                 SourceText(snapshot.Models.Coverage),
                 scoringRows);
         }
@@ -81,11 +81,11 @@ internal sealed record StandingsOverlayViewModel(
         }
 
         var timingReference = candidateRows.FirstOrDefault(row => row.IsReference);
-        var status = timingReference?.ClassPosition is { Length: > 1 } classPosition
-            ? $"{classPosition} - {candidateRows.Length} rows"
+        var timingStatus = timingReference?.ClassPosition is { Length: > 1 } timingClassPosition
+            ? $"{timingClassPosition} - {candidateRows.Length} rows"
             : $"{candidateRows.Length} rows";
         return new StandingsOverlayViewModel(
-            status,
+            timingStatus,
             SourceText(timing),
             candidateRows);
     }
