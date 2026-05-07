@@ -1,12 +1,13 @@
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Overlays.Abstractions;
 using TmrOverlay.App.Overlays.Styling;
 using TmrOverlay.App.Performance;
+using TmrOverlay.App.Telemetry;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
-using TmrOverlay.App.Telemetry;
 
 namespace TmrOverlay.App.Overlays.Status;
 
@@ -191,12 +192,12 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
                     snapshotSucceeded);
             }
 
-            CaptureHealth health;
+            AppDiagnosticsStatusModel health;
             var healthStarted = Stopwatch.GetTimestamp();
             var healthSucceeded = false;
             try
             {
-                health = CaptureHealth.From(snapshot);
+                health = AppDiagnosticsStatusModel.From(snapshot);
                 healthSucceeded = true;
             }
             finally
@@ -216,22 +217,22 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
             {
                 Color nextBackColor;
                 Color nextIndicatorColor;
-                if (health.Level == CaptureHealthLevel.Error)
+                if (health.Severity == AppDiagnosticsSeverity.Error)
                 {
                     nextBackColor = OverlayTheme.Colors.ErrorBackground;
                     nextIndicatorColor = OverlayTheme.Colors.ErrorIndicator;
                 }
-                else if (health.Level == CaptureHealthLevel.Warning)
+                else if (health.Severity == AppDiagnosticsSeverity.Warning)
                 {
                     nextBackColor = OverlayTheme.Colors.WarningBackground;
                     nextIndicatorColor = OverlayTheme.Colors.WarningIndicator;
                 }
-                else if (snapshot.IsCapturing)
+                else if (health.Severity == AppDiagnosticsSeverity.Success)
                 {
                     nextBackColor = OverlayTheme.Colors.SuccessStrongBackground;
                     nextIndicatorColor = OverlayTheme.Colors.SuccessIndicator;
                 }
-                else if (snapshot.IsConnected)
+                else if (health.Severity == AppDiagnosticsSeverity.Info)
                 {
                     nextBackColor = OverlayTheme.Colors.InfoBackground;
                     nextIndicatorColor = OverlayTheme.Colors.NeutralIndicator;
@@ -342,212 +343,4 @@ internal sealed class StatusOverlayForm : PersistentOverlayForm
         return true;
     }
 
-    private enum CaptureHealthLevel
-    {
-        Ok,
-        Warning,
-        Error
-    }
-
-    private sealed record CaptureHealth(
-        CaptureHealthLevel Level,
-        string StatusText,
-        string DetailText,
-        string CaptureText,
-        string MessageText)
-    {
-        public static CaptureHealth From(TelemetryCaptureStatusSnapshot snapshot)
-        {
-            var now = DateTimeOffset.UtcNow;
-            var capturePath = snapshot.CurrentCaptureDirectory ?? snapshot.LastCaptureDirectory ?? snapshot.CaptureRoot;
-            var captureText = snapshot.RawCaptureEnabled
-                ? $"raw: {CompactPath(capturePath)}"
-                : "raw: disabled; history ready";
-            var frameAge = AgeSeconds(snapshot.LastFrameCapturedAtUtc, now);
-            var diskAge = AgeSeconds(snapshot.LastDiskWriteAtUtc, now);
-            var bytes = FormatBytes(snapshot.TelemetryFileBytes);
-            var detail = snapshot.RawCaptureEnabled
-                ? $"queued {snapshot.FrameCount,7:N0}  written {snapshot.WrittenFrameCount,7:N0}  drops {snapshot.DroppedFrameCount,4:N0}  file {bytes}"
-                : $"frames {snapshot.FrameCount,7:N0}  history on  raw off";
-
-            if (!string.IsNullOrWhiteSpace(snapshot.LastError))
-            {
-                return new CaptureHealth(
-                    CaptureHealthLevel.Error,
-                    "Capture error",
-                    detail,
-                    captureText,
-                    $"error: {Trim(snapshot.LastError)}");
-            }
-
-            var appWarning = string.IsNullOrWhiteSpace(snapshot.AppWarning)
-                ? null
-                : $"warning: {Trim(snapshot.AppWarning)}";
-
-            if (!snapshot.IsConnected)
-            {
-                return new CaptureHealth(
-                    appWarning is null ? CaptureHealthLevel.Ok : CaptureHealthLevel.Warning,
-                    "Waiting for iRacing",
-                    "collector idle",
-                    captureText,
-                    Combine(appWarning, "health: waiting is expected before iRacing is running"));
-            }
-
-            if (!snapshot.IsCapturing)
-            {
-                return new CaptureHealth(
-                    appWarning is null ? CaptureHealthLevel.Ok : CaptureHealthLevel.Warning,
-                    "Connected, waiting for telemetry",
-                    "waiting for first telemetry frame",
-                    captureText,
-                    Combine(appWarning, "health: live telemetry starts after session data arrives"));
-            }
-
-            if (snapshot.RawCaptureEnabled && snapshot.FrameCount > 0 && snapshot.WrittenFrameCount == 0)
-            {
-                return new CaptureHealth(
-                    CaptureHealthLevel.Error,
-                    "Frames queued, not written",
-                    detail,
-                    captureText,
-                    "error: telemetry frames arrived but disk writer has not confirmed writes");
-            }
-
-            if (snapshot.RawCaptureEnabled && snapshot.WrittenFrameCount > snapshot.FrameCount + 2)
-            {
-                return new CaptureHealth(
-                    CaptureHealthLevel.Warning,
-                    "Capture counters inconsistent",
-                    detail,
-                    captureText,
-                    "warning: written frame count is ahead of queued frame count");
-            }
-
-            if (snapshot.DroppedFrameCount > 0)
-            {
-                return new CaptureHealth(
-                    CaptureHealthLevel.Warning,
-                    "Collecting with dropped frames",
-                    detail,
-                    captureText,
-                    "warning: capture queue overflowed; disk may be too slow");
-            }
-
-            if (frameAge is not null && frameAge > 5)
-            {
-                return new CaptureHealth(
-                    CaptureHealthLevel.Error,
-                    "Telemetry frames stalled",
-                    detail,
-                    captureText,
-                    $"error: no SDK frame for {frameAge:N0}s; sim may be paused/disconnected");
-            }
-
-            if (snapshot.RawCaptureEnabled && diskAge is not null && diskAge > 5)
-            {
-                return new CaptureHealth(
-                    CaptureHealthLevel.Error,
-                    "Disk writes stalled",
-                    detail,
-                    captureText,
-                    $"error: no telemetry.bin write confirmation for {diskAge:N0}s");
-            }
-
-            if (!string.IsNullOrWhiteSpace(snapshot.LastWarning))
-            {
-                return new CaptureHealth(
-                    CaptureHealthLevel.Warning,
-                    "Collecting with warning",
-                    detail,
-                    captureText,
-                    $"warning: {Trim(snapshot.LastWarning)}");
-            }
-
-            if (appWarning is not null)
-            {
-                return new CaptureHealth(
-                    CaptureHealthLevel.Warning,
-                    "Build may be stale",
-                    detail,
-                    captureText,
-                    appWarning);
-            }
-
-            var healthMessage = snapshot.RawCaptureEnabled
-                ? $"health: live frames ok; last frame {FormatAge(frameAge)}, disk {FormatAge(diskAge)}"
-                : $"health: live analysis ok; last frame {FormatAge(frameAge)}";
-            return new CaptureHealth(
-                CaptureHealthLevel.Ok,
-                snapshot.RawCaptureEnabled ? "Collecting raw telemetry" : "Analyzing live telemetry",
-                detail,
-                captureText,
-                healthMessage);
-        }
-
-        private static double? AgeSeconds(DateTimeOffset? timestampUtc, DateTimeOffset now)
-        {
-            return timestampUtc is null
-                ? null
-                : Math.Max(0d, (now - timestampUtc.Value).TotalSeconds);
-        }
-
-        private static string FormatAge(double? seconds)
-        {
-            return seconds is null ? "n/a" : $"{seconds.Value:N1}s ago";
-        }
-
-        private static string FormatBytes(long? bytes)
-        {
-            if (bytes is null)
-            {
-                return "n/a";
-            }
-
-            if (bytes < 1024)
-            {
-                return $"{bytes:N0} B";
-            }
-
-            if (bytes < 1024 * 1024)
-            {
-                return $"{bytes.Value / 1024d:N1} KB";
-            }
-
-            return $"{bytes.Value / 1024d / 1024d:N1} MB";
-        }
-
-        private static string CompactPath(string? path)
-        {
-            if (string.IsNullOrWhiteSpace(path))
-            {
-                return "not resolved";
-            }
-
-            var normalized = path.Replace('\\', '/');
-            var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            if (segments.Length <= 3)
-            {
-                return normalized;
-            }
-
-            return $".../{string.Join('/', segments.TakeLast(3))}";
-        }
-
-        private static string Trim(string value)
-        {
-            const int maxLength = 96;
-            var normalized = value.ReplaceLineEndings(" ");
-            return normalized.Length <= maxLength
-                ? normalized
-                : normalized[..(maxLength - 1)] + "...";
-        }
-
-        private static string Combine(string? first, string second)
-        {
-            return string.IsNullOrWhiteSpace(first)
-                ? second
-                : $"{first} | {second}";
-        }
-    }
 }

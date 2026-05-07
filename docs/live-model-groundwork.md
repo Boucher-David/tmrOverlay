@@ -19,18 +19,25 @@ This does not change:
 - existing capture synthesis artifacts
 - existing overlay-specific snapshot properties
 
-Relative and Car Radar are additive on top of those compatibility rules: Relative reads `LiveTelemetrySnapshot.Models.Relative`, and Car Radar reads `LiveTelemetrySnapshot.Models.Spatial` for local in-car radar, while the older fuel/gap overlays keep their current inputs until each one is migrated deliberately.
+Relative and Car Radar are additive on top of those compatibility rules: Relative reads `LiveTelemetrySnapshot.Models.Relative`, Car Radar reads `LiveTelemetrySnapshot.Models.Spatial` for local in-car radar, Fuel reads `LiveTelemetrySnapshot.Models.FuelPit` plus shared race progress, and Gap To Leader reads model-v2 timing/race-progress first while retaining legacy leader-gap fallback for older snapshot shapes.
 
 Older data collected on Windows remains readable because the new models are derived from the normalized `HistoricalTelemetrySample` already produced by the collector. The builder tolerates missing timing, driver, weather, pit, and proximity fields by marking the affected model as `Unavailable` or `Partial` instead of throwing.
+
+Overlay availability is now a shared Core contract through `OverlayAvailabilityEvaluator`: disconnected, waiting-for-telemetry, stale, fresh/live, and session-kind classification are derived once from the promoted live snapshot. Native overlays, browser sources, Garage Cover detection, and the overlay manager consume that shared language instead of each feature inventing its own freshness window.
+
+Status / Diagnostics V2 is the app-health companion to the live overlay model. `AppDiagnosticsStatusModel` converts `TelemetryCaptureStatusSnapshot` into common status, detail, capture, health, Support-tab status, session-state, and current-issue text. The Status overlay and Support tab now consume that model so first-run waiting, stale build warnings, raw-capture writer errors, dropped frames, and healthy live analysis follow one priority order.
 
 ## Model Families
 
 - `LiveSessionModel`: session clock, lap limits, session labels, track/car display labels, and missing live session signals.
 - `LiveDriverDirectoryModel`: session-info driver identity keyed by `CarIdx`, plus player/focus references.
-- `LiveTimingModel`: reusable overall/class rows with position, class, lap progress, timing, gap, pit, and driver identity fields.
+- `LiveCoverageModel`: roster, scoring-result, live-position, live-timing, live-spatial, and live-proximity row counts so consumers can distinguish full live coverage from partial iRacing-transmitted rows.
+- `LiveScoringModel`: scoring-snapshot rows parsed from session YAML `ResultsPositions`, grouped by class and enriched with driver identity, class labels/colors, lap totals, and best/last lap values.
+- `LiveTimingModel`: reusable overall/class rows with live position, class, lap progress, timing, gap, pit, and driver identity fields.
+- `LiveRaceProgressModel`: shared strategy/reference race progress, leader progress, lap gaps, live race pace, and race-laps-remaining estimates used by Fuel and future pit/strategy consumers.
 - `LiveRelativeModel`: local-radar proximity first, with focus/class-gap timing as a fallback for timing-table and relative-style consumers. When proximity has lap-distance placement but no direct relative seconds, relative rows may carry an inferred display-time gap from live lap-distance delta and current lap-time context; radar keeps using the stricter spatial model instead.
-- `LiveSpatialModel`: local-radar side occupancy, lap/meter/timing placement, nearest-car, and multiclass-approach state for radar-style consumers; broader focus-relative placement remains an advanced branch.
-- `LiveWeatherModel`: live wetness, declared-wet state, temperatures, skies, precipitation, and rubber state.
+- `LiveSpatialModel`: local-radar side occupancy, physical lap/meter placement, nearest-car, and multiclass-approach state for radar-style consumers; timing-only nearby context stays in Relative/diagnostics, and broader focus-relative placement remains an advanced branch.
+- `LiveWeatherModel`: live wetness, declared-wet state, temperatures, skies, current precipitation, wind, humidity, fog, pressure, solar angle, and session-info rubber state.
 - `LiveFuelPitModel`: live fuel plus pit-road/service signals.
 - `LiveRaceEventModel`: basic on-track, in-garage, Garage-screen-visible, lap, and driver-change context.
 - `LiveInputTelemetryModel`: local speed, tire compound, gear/RPM, pedals, steering, engine-warning, electrical, temperature, and pressure signals from normalized samples.
@@ -68,7 +75,7 @@ The registry keeps display keys stable for future shared standings/relative UI s
 
 ## Parity Mode
 
-Relative was the first product overlay to read the additive model-v2 live state directly through `LiveTelemetrySnapshot.Models.Relative`. The simple Flags, Session / Weather, Pit Service, and Input / Car State overlays also consume `LiveTelemetrySnapshot.Models` directly. Car Radar now reads `LiveTelemetrySnapshot.Models.Spatial` for the simplified local in-car radar contract. The fuel and gap overlays still read their existing overlay-specific snapshot slices while model v2 is observed in parallel.
+Relative was the first product overlay to read the additive model-v2 live state directly through `LiveTelemetrySnapshot.Models.Relative`. Standings now uses `LiveTelemetrySnapshot.Models.Scoring` for scoring-snapshot row order and class grouping, with `LiveTelemetrySnapshot.Models.Timing` as live enrichment only. Track Map still plots cars from valid live lap-distance progress, but scoring rows provide preferred marker labels and class colors when available. The simple Flags, Session / Weather, Pit Service, and Input / Car State overlays also consume `LiveTelemetrySnapshot.Models` directly. Car Radar reads `LiveTelemetrySnapshot.Models.Spatial` for the simplified local in-car radar contract. Fuel strategy now consumes `LiveFuelPitModel`, `LiveSessionModel`, and `LiveRaceProgressModel` before combining those live facts with history-derived strategy inputs. Gap To Leader now derives graph rows from `LiveTimingModel` and leader/reference lap context from `LiveRaceProgressModel`, falling back to the legacy leader-gap slice only when promoted model data is absent.
 
 `LiveModelParityAnalyzer` compares those existing slices against equivalent values in `LiveTelemetrySnapshot.Models` for fuel/pit, proximity/relative/spatial, timing/leader-gap, weather, session, and race-event state. Track Map now consumes `LiveTelemetrySnapshot.Models.TrackMap` directly for live sector-highlight segments over schema-v2 map assets. The Windows collector records sampled parity frames and mismatch summaries through `LiveModelParityRecorder`. A separate `LiveOverlayDiagnosticsRecorder` watches the same normalized snapshots for product assumptions found during the 24-hour race and design-v2 candidate work, including non-race gap semantics, large gap scaling, local-only radar suppression and side/placement evidence, fuel source stitching, intra-lap position cadence, lap-delta channel availability, derived sector-timing coverage, and track-map sector highlight coverage.
 

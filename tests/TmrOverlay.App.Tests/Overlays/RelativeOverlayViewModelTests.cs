@@ -123,6 +123,74 @@ public sealed class RelativeOverlayViewModelTests
         Assert.Equal("--", viewModel.Rows[0].Gap);
     }
 
+    [Fact]
+    public void From_UsesScoringOnlyAsRelativeRowEnrichment()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var nearbyRow = RelativeRow(
+            carIdx: 11,
+            isAhead: true,
+            seconds: 1.1d,
+            classPosition: 0,
+            driverName: null);
+        var snapshot = Snapshot(
+            now,
+            nearbyRow) with
+        {
+            Models = Snapshot(now, nearbyRow).Models with
+            {
+                Scoring = new LiveScoringModel(
+                    HasData: true,
+                    Quality: LiveModelQuality.Reliable,
+                    ReferenceCarIdx: 10,
+                    ReferenceCarClass: 4098,
+                    ClassGroups: [],
+                    Rows:
+                    [
+                        ScoringRow(10, overallPosition: 6, classPosition: 6, carNumber: "10", driverName: "Reference Driver"),
+                        ScoringRow(11, overallPosition: 5, classPosition: 5, carNumber: "88", driverName: "Scored Nearby"),
+                        ScoringRow(99, overallPosition: 4, classPosition: 4, carNumber: "99", driverName: "Scoring Only")
+                    ])
+            }
+        };
+
+        var viewModel = RelativeOverlayViewModel.From(
+            snapshot,
+            now,
+            carsAhead: 5,
+            carsBehind: 5);
+
+        Assert.DoesNotContain(viewModel.Rows, row => row.Driver.Contains("Scoring Only", StringComparison.Ordinal));
+        Assert.Contains(viewModel.Rows, row =>
+            row.IsAhead
+            && row.Position == "C5"
+            && row.Driver == "#88 Scored Nearby");
+    }
+
+    [Fact]
+    public void From_KeepsPitRoadRelativeRowsVisible()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = Snapshot(
+            now,
+            RelativeRow(
+                carIdx: 11,
+                isAhead: false,
+                seconds: -0.7d,
+                classPosition: 7,
+                onPitRoad: true));
+
+        var viewModel = RelativeOverlayViewModel.From(
+            snapshot,
+            now,
+            carsAhead: 5,
+            carsBehind: 5);
+
+        var pitRow = Assert.Single(viewModel.Rows.Where(row => row.IsPit));
+        Assert.True(pitRow.IsBehind);
+        Assert.Contains("PIT", pitRow.Detail, StringComparison.Ordinal);
+    }
+
     private static LiveTelemetrySnapshot Snapshot(DateTimeOffset now, params LiveRelativeRow[] rows)
     {
         var reference = TimingRow(10, "Reference Driver", classPosition: 6, isPlayer: true, isFocus: true);
@@ -168,6 +236,16 @@ public sealed class RelativeOverlayViewModelTests
                     OverallRows = timingRows,
                     ClassRows = timingRows
                 },
+                Scoring = new LiveScoringModel(
+                    HasData: true,
+                    Quality: LiveModelQuality.Reliable,
+                    ReferenceCarIdx: 10,
+                    ReferenceCarClass: 4098,
+                    ClassGroups: [],
+                    Rows:
+                    [
+                        ScoringRow(10, overallPosition: 8, classPosition: 6, carNumber: "10", driverName: "Reference Driver")
+                    ]),
                 Relative = new LiveRelativeModel(
                     HasData: rows.Length > 0,
                     Quality: rows.Length == 0 ? LiveModelQuality.Unavailable : rows.Max(row => row.Quality),
@@ -185,8 +263,13 @@ public sealed class RelativeOverlayViewModelTests
         string source = "proximity",
         LiveModelQuality quality = LiveModelQuality.Reliable,
         LiveSignalEvidence? timingEvidence = null,
-        LiveSignalEvidence? placementEvidence = null)
+        LiveSignalEvidence? placementEvidence = null,
+        string? driverName = "default",
+        bool onPitRoad = false)
     {
+        var resolvedDriverName = string.Equals(driverName, "default", StringComparison.Ordinal)
+            ? $"Driver {carIdx}"
+            : driverName;
         return new LiveRelativeRow(
             CarIdx: carIdx,
             Quality: quality,
@@ -196,14 +279,14 @@ public sealed class RelativeOverlayViewModelTests
             IsSameClass: true,
             TimingEvidence: timingEvidence ?? LiveSignalEvidence.Reliable("proximity-relative-seconds"),
             PlacementEvidence: placementEvidence ?? LiveSignalEvidence.Reliable("CarIdxLapDistPct+track-length"),
-            DriverName: $"Driver {carIdx}",
+            DriverName: resolvedDriverName,
             OverallPosition: classPosition + 2,
-            ClassPosition: classPosition,
+            ClassPosition: classPosition > 0 ? classPosition : null,
             CarClass: 4098,
             RelativeSeconds: seconds,
             RelativeLaps: seconds is { } value ? value / 120d : null,
             RelativeMeters: seconds is { } meters ? meters * 45d : null,
-            OnPitRoad: false);
+            OnPitRoad: onPitRoad);
     }
 
     private static LiveTimingRow TimingRow(
@@ -266,5 +349,34 @@ public sealed class RelativeOverlayViewModelTests
             CarClassName: "GT3",
             CarClassColorHex: "#FFDA59",
             IsSpectator: false);
+    }
+
+    private static LiveScoringRow ScoringRow(
+        int carIdx,
+        int overallPosition,
+        int classPosition,
+        string carNumber,
+        string driverName)
+    {
+        return new LiveScoringRow(
+            CarIdx: carIdx,
+            OverallPositionRaw: overallPosition,
+            ClassPositionRaw: classPosition - 1,
+            OverallPosition: overallPosition,
+            ClassPosition: classPosition,
+            CarClass: 4098,
+            DriverName: driverName,
+            TeamName: null,
+            CarNumber: carNumber,
+            CarClassName: "GT3",
+            CarClassColorHex: "#FFDA59",
+            IsPlayer: carIdx == 10,
+            IsFocus: carIdx == 10,
+            IsReferenceClass: true,
+            Lap: null,
+            LapsComplete: null,
+            LastLapTimeSeconds: null,
+            BestLapTimeSeconds: null,
+            ReasonOut: null);
     }
 }

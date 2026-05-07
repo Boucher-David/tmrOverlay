@@ -18,6 +18,7 @@ using TmrOverlay.App.Telemetry;
 using TmrOverlay.Core.AppInfo;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
+using TmrOverlay.Core.Telemetry.Live;
 
 namespace TmrOverlay.App.Overlays.SettingsPanel;
 
@@ -56,6 +57,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private readonly AppStorageOptions _storageOptions;
     private readonly LocalhostOverlayOptions _localhostOverlayOptions;
     private readonly LocalhostOverlayState _localhostOverlayState;
+    private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly DiagnosticsBundleService _diagnosticsBundleService;
     private readonly AppEventRecorder _events;
     private readonly Action _saveSettings;
@@ -80,9 +82,9 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private Label? _sessionStateLabel;
     private Label? _currentIssueLabel;
     private Label? _advancedDiagnosticsLabel;
-    private Label? _performanceSnapshotLabel;
     private Label? _latestDiagnosticsBundleLabel;
     private Label? _supportStatusLabel;
+    private Label? _garageCoverStateLabel;
     private DateTimeOffset _nextSupportStatusRefreshAtUtc;
     private DateTimeOffset _nextSupportHeavyRefreshAtUtc;
     private DateTimeOffset _nextLatestDiagnosticsScanAtUtc;
@@ -100,6 +102,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         AppStorageOptions storageOptions,
         LocalhostOverlayOptions localhostOverlayOptions,
         LocalhostOverlayState localhostOverlayState,
+        ILiveTelemetrySource liveTelemetrySource,
         DiagnosticsBundleService diagnosticsBundleService,
         AppEventRecorder events,
         OverlaySettings settings,
@@ -124,6 +127,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _storageOptions = storageOptions;
         _localhostOverlayOptions = localhostOverlayOptions;
         _localhostOverlayState = localhostOverlayState;
+        _liveTelemetrySource = liveTelemetrySource;
         _diagnosticsBundleService = diagnosticsBundleService;
         _events = events;
         _saveSettings = saveSettings;
@@ -303,6 +307,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
     private void BuildTabs()
     {
+        _garageCoverStateLabel = null;
         _tabs.TabPages.Clear();
         _tabs.TabPages.Add(CreateGeneralTab());
 
@@ -381,6 +386,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             try
             {
                 SyncRawCaptureCheckBox();
+                SyncGarageCoverStateLabel();
                 captureSucceeded = true;
             }
             finally
@@ -797,19 +803,20 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     {
         page.Controls.Add(CreateSectionLabel("Cover image", 18, top, 500));
         var imagePath = settings.GetStringOption(OverlayOptionKeys.GarageCoverImagePath);
+        var imageStatus = GarageCoverImageStore.InspectImage(imagePath);
         page.Controls.Add(CreateLabel("Image", 22, top + 42, 90));
         page.Controls.Add(CreateSelectableValueBox(
-            string.IsNullOrWhiteSpace(imagePath) ? "No image imported" : imagePath,
+            imageStatus.IsUsable ? imagePath : GarageCoverImageStatusText(imageStatus),
             116,
             top + 36,
-            520,
+            500,
             30));
 
-        var importButton = CreateActionButton("Import Image", 650, top + 36, 130);
+        var importButton = CreateActionButton("Import Image", 116, top + 78, 130);
         importButton.Click += (_, _) => ImportGarageCoverImage(settings);
         page.Controls.Add(importButton);
 
-        var clearButton = CreateActionButton("Clear", 790, top + 36, 80);
+        var clearButton = CreateActionButton("Clear", 256, top + 78, 80);
         clearButton.Click += (_, _) =>
         {
             try
@@ -832,11 +839,123 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         };
         page.Controls.Add(clearButton);
 
+        var previewButton = CreateActionButton("Show Test Cover", 346, top + 78, 150);
+        previewButton.Click += (_, _) => ShowGarageCoverPreview(settings);
+        page.Controls.Add(previewButton);
+
+        page.Controls.Add(CreateLabel("Detection", 22, top + 132, 90));
+        _garageCoverStateLabel = CreateValueLabel("waiting", 116, top + 126, 238, 28);
+        page.Controls.Add(_garageCoverStateLabel);
+        SyncGarageCoverStateLabel();
+
         page.Controls.Add(CreateMutedLabel(
-            "Set the browser-source size in OBS. The app does not create a desktop Garage Cover window.",
+            "The browser source fails closed to the configured cover or TMR fallback while telemetry is unavailable or stale.",
             22,
-            top + 104,
-            720));
+            top + 170,
+            600));
+
+        page.Controls.Add(CreateSectionLabel("Preview", 650, top, 220));
+        page.Controls.Add(CreateGarageCoverPreviewPanel(imagePath, 650, top + 36, 220, 124));
+        page.Controls.Add(CreateMutedLabel(
+            imageStatus.IsUsable ? "Selected cover image" : "Fallback cover",
+            650,
+            top + 168,
+            220));
+    }
+
+    private void ShowGarageCoverPreview(OverlaySettings settings)
+    {
+        GarageCoverBrowserSettings.SetPreviewUntil(settings, DateTimeOffset.UtcNow.AddSeconds(10));
+        _events.Record("garage_cover_preview_requested", properties: new Dictionary<string, string?>
+        {
+            ["durationSeconds"] = "10"
+        });
+        SaveAndApply();
+        SetSupportStatus("Garage Cover test is visible in OBS for 10 seconds.", isError: false);
+        BuildTabs();
+        SelectOverlayTab(GarageCoverOverlayDefinition.Definition.Id);
+    }
+
+    private void SyncGarageCoverStateLabel()
+    {
+        if (_garageCoverStateLabel is null)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var detection = GarageCoverBrowserSettings.DetectGarageState(_liveTelemetrySource.Snapshot(), now);
+        var settings = _applicationSettings.GetOrAddOverlay(
+            GarageCoverOverlayDefinition.Definition.Id,
+            GarageCoverOverlayDefinition.Definition.DefaultWidth,
+            GarageCoverOverlayDefinition.Definition.DefaultHeight,
+            defaultEnabled: false);
+        var previewUntil = GarageCoverBrowserSettings.ReadPreviewUntilUtc(settings);
+        var previewVisible = previewUntil is not null && previewUntil > now;
+        SetLabelText(
+            _garageCoverStateLabel,
+            previewVisible ? $"{detection.DisplayText} (test visible)" : detection.DisplayText);
+        SetLabelColor(
+            _garageCoverStateLabel,
+            previewVisible
+                ? OverlayTheme.Colors.InfoText
+                : detection.State switch
+                {
+                    "garage_visible" => OverlayTheme.Colors.SuccessText,
+                    "garage_hidden" => OverlayTheme.Colors.TextSecondary,
+                    _ => OverlayTheme.Colors.WarningText
+                });
+    }
+
+    private static string GarageCoverImageStatusText(GarageCoverImageStatus status)
+    {
+        return status.Status switch
+        {
+            "not_configured" => "No image imported; using TMR fallback",
+            "unsupported_extension" => "Saved image has an unsupported extension",
+            "file_missing" => "Saved image is missing; using TMR fallback",
+            _ => "Cover image unavailable; using TMR fallback"
+        };
+    }
+
+    private static Panel CreateGarageCoverPreviewPanel(string? imagePath, int x, int y, int width, int height)
+    {
+        var panel = new Panel
+        {
+            BackColor = Color.Black,
+            BorderStyle = BorderStyle.FixedSingle,
+            Location = new Point(x, y),
+            Size = new Size(width, height)
+        };
+        panel.Paint += (_, e) => DrawGarageCoverPreview(e.Graphics, panel.ClientRectangle, imagePath);
+        return panel;
+    }
+
+    private static void DrawGarageCoverPreview(Graphics graphics, Rectangle bounds, string? imagePath)
+    {
+        graphics.Clear(Color.Black);
+        using var image = GarageCoverImageStore.TryLoadPreviewImage(imagePath);
+        if (image is not null && image.Width > 0 && image.Height > 0)
+        {
+            var scale = Math.Min(
+                bounds.Width / (double)image.Width,
+                bounds.Height / (double)image.Height);
+            var width = (int)Math.Round(image.Width * scale);
+            var height = (int)Math.Round(image.Height * scale);
+            var x = bounds.Left + (bounds.Width - width) / 2;
+            var y = bounds.Top + (bounds.Height - height) / 2;
+            graphics.DrawImage(image, new Rectangle(x, y, width, height));
+            return;
+        }
+
+        using var font = OverlayTheme.Font(OverlayTheme.DefaultFontFamily, 26f, FontStyle.Bold);
+        using var brush = new SolidBrush(OverlayTheme.Colors.TextPrimary);
+        using var format = new StringFormat
+        {
+            Alignment = StringAlignment.Center,
+            LineAlignment = StringAlignment.Center
+        };
+        graphics.DrawString("TMR", font, brush, bounds, format);
     }
 
     private void ImportGarageCoverImage(OverlaySettings settings)
@@ -996,12 +1115,12 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
     private void AddFlagsOptions(TabPage page, OverlaySettings settings, int top)
     {
-        page.Controls.Add(CreateSectionLabel("Display flags", 18, top, 500));
+        page.Controls.Add(CreateSectionLabel("Displayed flags", 18, top, 500));
 
         AddFlagDisplayRow(
             page,
             settings,
-            label: "Green",
+            label: "Green start/resume",
             enabledKey: OverlayOptionKeys.FlagsShowGreen,
             defaultEnabled: true,
             rowTop: top + 38);
@@ -1035,7 +1154,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             rowTop: top + 182);
 
         var sizeTop = top + 236;
-        page.Controls.Add(CreateSectionLabel("Border size", 18, sizeTop, 500));
+        page.Controls.Add(CreateSectionLabel("Overlay size", 18, sizeTop, 500));
         page.Controls.Add(CreateLabel("Width", 22, sizeTop + 42, 80));
         var widthInput = CreateIntegerInput(
             Math.Clamp(settings.Width, FlagsOverlayDefinition.MinimumWidth, FlagsOverlayDefinition.MaximumWidth),
@@ -1383,8 +1502,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             && _sessionStateLabel is null
             && _currentIssueLabel is null
             && _advancedDiagnosticsLabel is null
-            && _latestDiagnosticsBundleLabel is null
-            && _performanceSnapshotLabel is null)
+            && _latestDiagnosticsBundleLabel is null)
         {
             return;
         }
@@ -1440,10 +1558,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
                 ReportAutomaticDiagnosticsBundleStatus(diagnosticsSnapshot, latestBundlePath);
             }
 
-            if (_performanceSnapshotLabel is not null)
-            {
-                SetLabelText(_performanceSnapshotLabel, PerformanceSnapshotText(_performanceState.Snapshot(), captureSnapshot));
-            }
         }
     }
 
@@ -1648,62 +1762,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             SupportStatusLevel.Info => OverlayTheme.Colors.InfoText,
             _ => OverlayTheme.Colors.TextSecondary
         };
-    }
-
-    private static string PerformanceSnapshotText(
-        AppPerformanceSnapshot performance,
-        TelemetryCaptureStatusSnapshot capture)
-    {
-        var telemetryState = capture.IsCapturing
-            ? $"{performance.TelemetryFrameCount:N0} frames, {performance.TelemetryFramesPerSecond:0.##} fps"
-            : "waiting for live telemetry";
-        var rawState = capture.RawCaptureActive || capture.RawCaptureEnabled
-            ? $"{capture.WrittenFrameCount:N0} written, {capture.DroppedFrameCount:N0} dropped, {FormatBytes(capture.TelemetryFileBytes)}"
-            : "diagnostic capture off";
-
-        return string.Join(
-            Environment.NewLine,
-            $"telemetry: {telemetryState}",
-            $"iRacing: quality {ValueLast(performance, AppPerformanceValueIds.IRacingChanQuality)}, latency {ValueLast(performance, AppPerformanceValueIds.IRacingChanLatency, "s")}",
-            $"raw: {rawState}",
-            $"process: {FormatBytes(performance.Process.WorkingSetBytes)} working set");
-    }
-
-    private static string ValueLast(AppPerformanceSnapshot performance, string valueId, string suffix = "")
-    {
-        var value = FindValue(performance, valueId);
-        return value?.Last is null ? "n/a" : FormatValue(value.Last, suffix);
-    }
-
-    private static PerformanceValueSnapshot? FindValue(AppPerformanceSnapshot performance, string valueId)
-    {
-        return performance.IRacingSystem
-            .Concat(performance.OverlayUpdates)
-            .FirstOrDefault(value => string.Equals(value.Id, valueId, StringComparison.OrdinalIgnoreCase));
-    }
-
-    private static string FormatValue(double? value, string suffix = "")
-    {
-        return value is null ? "n/a" : $"{value.Value:0.###}{suffix}";
-    }
-
-    private static string FormatBytes(long? bytes)
-    {
-        if (bytes is null)
-        {
-            return "n/a";
-        }
-
-        string[] units = ["B", "KB", "MB", "GB"];
-        var value = (double)Math.Max(0, bytes.Value);
-        var unitIndex = 0;
-        while (value >= 1024d && unitIndex < units.Length - 1)
-        {
-            value /= 1024d;
-            unitIndex++;
-        }
-
-        return $"{value:0.#} {units[unitIndex]}";
     }
 
     private static int ScaleDimension(int defaultDimension, double scale)

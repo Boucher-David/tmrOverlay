@@ -7,6 +7,10 @@ internal static class LiveModelParityAnalyzer
     private const double LapDistanceTolerance = 0.00001d;
     private const double TemperatureTolerance = 0.05d;
     private const double FuelTolerance = 0.01d;
+    private const double SpeedTolerance = 0.01d;
+    private const double PercentTolerance = 0.01d;
+    private const double PressureTolerance = 1d;
+    private const double AngleTolerance = 0.0001d;
 
     public static LiveModelParityFrame Analyze(LiveTelemetrySnapshot snapshot)
     {
@@ -51,7 +55,16 @@ internal static class LiveModelParityAnalyzer
                 && (IsFinite(sample.AirTempC)
                     || IsFinite(sample.TrackTempCrewC)
                     || sample.TrackWetness >= 0
-                    || sample.WeatherDeclaredWet),
+                    || sample.WeatherDeclaredWet
+                    || sample.Skies is not null
+                    || ValidPercent(sample.PrecipitationPercent) is not null
+                    || ValidNonNegative(sample.WindVelocityMetersPerSecond) is not null
+                    || ValidFinite(sample.WindDirectionRadians) is not null
+                    || ValidPercent(sample.RelativeHumidityPercent) is not null
+                    || ValidPercent(sample.FogLevelPercent) is not null
+                    || ValidNonNegative(sample.AirPressurePa) is not null
+                    || ValidFinite(sample.SolarAltitudeRadians) is not null
+                    || ValidFinite(sample.SolarAzimuthRadians) is not null),
             HasModelWeather: models.Weather.HasData,
             LegacyProximityCarCount: snapshot.Proximity.NearbyCars.Count,
             ModelRelativeRowCount: models.Relative.Rows.Count,
@@ -106,9 +119,10 @@ internal static class LiveModelParityAnalyzer
             return;
         }
 
-        var expectedReferenceCarIdx = sample.FocusCarIdx ?? sample.PlayerCarIdx;
-        CompareNullableInt(observations, "proximity", "relative-reference-car-idx", expectedReferenceCarIdx, snapshot.Models.Relative.ReferenceCarIdx);
-        CompareNullableInt(observations, "proximity", "spatial-reference-car-idx", expectedReferenceCarIdx, snapshot.Models.Spatial.ReferenceCarIdx);
+        var expectedRelativeReferenceCarIdx = sample.FocusCarIdx ?? sample.PlayerCarIdx;
+        var expectedSpatialReferenceCarIdx = LiveLocalRadarContext.ReferenceCarIdx(sample);
+        CompareNullableInt(observations, "proximity", "relative-reference-car-idx", expectedRelativeReferenceCarIdx, snapshot.Models.Relative.ReferenceCarIdx);
+        CompareNullableInt(observations, "proximity", "spatial-reference-car-idx", expectedSpatialReferenceCarIdx, snapshot.Models.Spatial.ReferenceCarIdx);
         CompareNullableInt(observations, "proximity", "spatial-side-raw", snapshot.Proximity.CarLeftRight, snapshot.Models.Spatial.CarLeftRight);
         CompareString(observations, "proximity", "spatial-side-status", snapshot.Proximity.SideStatus, snapshot.Models.Spatial.SideStatus);
         CompareBoolean(observations, "proximity", "spatial-has-car-left", snapshot.Proximity.HasCarLeft, snapshot.Models.Spatial.HasCarLeft);
@@ -134,6 +148,11 @@ internal static class LiveModelParityAnalyzer
                 CompareNullableDouble(observations, "proximity", $"relative-meters-{legacyCar.CarIdx}", legacyCar.RelativeMeters, relative.RelativeMeters, DistanceMetersTolerance);
                 CompareNullableInt(observations, "proximity", $"relative-class-{legacyCar.CarIdx}", legacyCar.CarClass, relative.CarClass);
                 CompareNullableBoolean(observations, "proximity", $"relative-pit-road-{legacyCar.CarIdx}", legacyCar.OnPitRoad, relative.OnPitRoad);
+            }
+
+            if (legacyCar.RelativeMeters is null)
+            {
+                continue;
             }
 
             if (!spatialByCarIdx.TryGetValue(legacyCar.CarIdx, out var spatial))
@@ -199,7 +218,16 @@ internal static class LiveModelParityAnalyzer
         CompareNullableDouble(observations, "weather", "track-temp-crew-c", ValidFinite(sample.TrackTempCrewC), model.TrackTempCrewC, TemperatureTolerance);
         CompareNullableInt(observations, "weather", "track-wetness", sample.TrackWetness >= 0 ? sample.TrackWetness : null, model.TrackWetness);
         CompareNullableBoolean(observations, "weather", "declared-wet", sample.WeatherDeclaredWet, model.WeatherDeclaredWet);
-        CompareString(observations, "weather", "skies-label", TrimToNull(snapshot.Context.Conditions.TrackSkies), model.SkiesLabel);
+        CompareNullableInt(observations, "weather", "skies", sample.Skies, model.Skies);
+        CompareNullableDouble(observations, "weather", "precipitation-percent", ValidPercent(sample.PrecipitationPercent) ?? snapshot.Context.Conditions.TrackPrecipitationPercent, model.PrecipitationPercent, PercentTolerance);
+        CompareNullableDouble(observations, "weather", "wind-velocity-mps", ValidNonNegative(sample.WindVelocityMetersPerSecond), model.WindVelocityMetersPerSecond, SpeedTolerance);
+        CompareNullableDouble(observations, "weather", "wind-direction-rad", ValidFinite(sample.WindDirectionRadians), model.WindDirectionRadians, AngleTolerance);
+        CompareNullableDouble(observations, "weather", "relative-humidity-percent", ValidPercent(sample.RelativeHumidityPercent), model.RelativeHumidityPercent, PercentTolerance);
+        CompareNullableDouble(observations, "weather", "fog-level-percent", ValidPercent(sample.FogLevelPercent), model.FogLevelPercent, PercentTolerance);
+        CompareNullableDouble(observations, "weather", "air-pressure-pa", ValidNonNegative(sample.AirPressurePa), model.AirPressurePa, PressureTolerance);
+        CompareNullableDouble(observations, "weather", "solar-altitude-rad", ValidFinite(sample.SolarAltitudeRadians), model.SolarAltitudeRadians, AngleTolerance);
+        CompareNullableDouble(observations, "weather", "solar-azimuth-rad", ValidFinite(sample.SolarAzimuthRadians), model.SolarAzimuthRadians, AngleTolerance);
+        CompareString(observations, "weather", "skies-label", ExpectedSkiesLabel(sample.Skies, snapshot.Context.Conditions.TrackSkies), model.SkiesLabel);
         CompareString(observations, "weather", "weather-type", TrimToNull(snapshot.Context.Conditions.TrackWeatherType), model.WeatherType);
     }
 
@@ -354,6 +382,11 @@ internal static class LiveModelParityAnalyzer
         return IsFinite(value) ? value : null;
     }
 
+    private static double? ValidFinite(double? value)
+    {
+        return value is { } number && IsFinite(number) ? number : null;
+    }
+
     private static double? ValidNonNegative(double value)
     {
         return IsFinite(value) && value >= 0d ? value : null;
@@ -369,9 +402,27 @@ internal static class LiveModelParityAnalyzer
         return value is { } number && IsFinite(number) && number > 0d ? number : null;
     }
 
+    private static double? ValidPercent(double? value)
+    {
+        return value is { } number && IsFinite(number) && number >= 0d ? Math.Min(number, 100d) : null;
+    }
+
     private static string? TrimToNull(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static string? ExpectedSkiesLabel(int? skies, string? sessionSkies)
+    {
+        return skies switch
+        {
+            0 => "clear",
+            1 => "partly cloudy",
+            2 => "mostly cloudy",
+            3 => "overcast",
+            null => TrimToNull(sessionSkies),
+            _ => $"skies {skies.Value}"
+        };
     }
 
     private static bool IsFinite(double value)

@@ -4,11 +4,14 @@ using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.Core.AppInfo;
 using TmrOverlay.App.Localhost;
+using TmrOverlay.App.Overlays.GarageCover;
 using TmrOverlay.App.Performance;
+using TmrOverlay.App.Settings;
 using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
 using TmrOverlay.App.TrackMaps;
 using TmrOverlay.Core.Overlays;
+using TmrOverlay.Core.Telemetry.Live;
 
 namespace TmrOverlay.App.Diagnostics;
 
@@ -35,6 +38,8 @@ internal sealed class DiagnosticsBundleService
     private readonly TelemetryCaptureState _captureState;
     private readonly LocalhostOverlayState _localhostOverlayState;
     private readonly TrackMapStore _trackMapStore;
+    private readonly AppSettingsStore _settingsStore;
+    private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly AppPerformanceState _performanceState;
     private readonly AppPerformanceSnapshotRecorder _performanceRecorder;
     private readonly ILogger<DiagnosticsBundleService> _logger;
@@ -53,6 +58,8 @@ internal sealed class DiagnosticsBundleService
         TelemetryCaptureState captureState,
         LocalhostOverlayState localhostOverlayState,
         TrackMapStore trackMapStore,
+        AppSettingsStore settingsStore,
+        ILiveTelemetrySource liveTelemetrySource,
         AppPerformanceState performanceState,
         AppPerformanceSnapshotRecorder performanceRecorder,
         ILogger<DiagnosticsBundleService> logger)
@@ -63,6 +70,8 @@ internal sealed class DiagnosticsBundleService
         _captureState = captureState;
         _localhostOverlayState = localhostOverlayState;
         _trackMapStore = trackMapStore;
+        _settingsStore = settingsStore;
+        _liveTelemetrySource = liveTelemetrySource;
         _performanceState = performanceState;
         _performanceRecorder = performanceRecorder;
         _logger = logger;
@@ -110,6 +119,7 @@ internal sealed class DiagnosticsBundleService
                 AddTextEntry(archive, "metadata/telemetry-state.json", JsonSerializer.Serialize(_captureState.Snapshot(), JsonOptions));
                 AddTextEntry(archive, "metadata/localhost-overlays.json", JsonSerializer.Serialize(_localhostOverlayState.Snapshot(), JsonOptions));
                 AddTextEntry(archive, "metadata/track-maps.json", JsonSerializer.Serialize(_trackMapStore.DiagnosticsSnapshot(), JsonOptions));
+                AddTextEntry(archive, "metadata/garage-cover.json", JsonSerializer.Serialize(GarageCoverDiagnostics(), JsonOptions));
                 metadataSucceeded = true;
             }
             finally
@@ -395,6 +405,26 @@ internal sealed class DiagnosticsBundleService
             "*.json",
             "latest-capture/ibt-analysis",
             MaxLatestCaptureIbtAnalysisFiles);
+    }
+
+    private object GarageCoverDiagnostics()
+    {
+        try
+        {
+            return GarageCoverBrowserSettings.Diagnostics(
+                _settingsStore.Load(),
+                _localhostOverlayState.Snapshot(),
+                _liveTelemetrySource.Snapshot());
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Failed to collect Garage Cover diagnostics metadata.");
+            return new
+            {
+                Route = "/overlays/garage-cover",
+                Error = exception.Message
+            };
+        }
     }
 
     private static void AddRecentFiles(

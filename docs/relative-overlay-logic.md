@@ -5,6 +5,8 @@ The Relative overlay is the first production overlay using the model-v2 live sta
 ## Code Paths
 
 - `src/TmrOverlay.App/Overlays/Relative/RelativeOverlayDefinition.cs`
+- `src/TmrOverlay.App/Overlays/Relative/RelativeBrowserSource.cs`
+- `src/TmrOverlay.App/Overlays/Relative/RelativeBrowserSettings.cs`
 - `src/TmrOverlay.App/Overlays/Relative/RelativeOverlayViewModel.cs`
 - `src/TmrOverlay.App/Overlays/Relative/RelativeForm.cs`
 - `src/TmrOverlay.Core/Telemetry/Live/LiveRaceModelBuilder.cs`
@@ -16,7 +18,8 @@ The mac harness mirrors the surface in `local-mac/TmrOverlayMac/Sources/TmrOverl
 The Windows overlay reads:
 
 - `LiveTelemetrySnapshot.Models.Relative` for relative rows and reference car index.
-- `LiveTelemetrySnapshot.Models.Timing` for the reference row position/class context.
+- `LiveTelemetrySnapshot.Models.Timing` for the reference row position/class context and pit-road status.
+- `LiveTelemetrySnapshot.Models.Scoring` for scoring-only enrichment of rows that already exist in relative telemetry.
 - `LiveTelemetrySnapshot.Models.DriverDirectory` for car number, driver name, class label, and class color.
 - Snapshot connection, collection, sequence, and freshness metadata.
 
@@ -42,6 +45,10 @@ The live table uses fixed slots once a reference row exists: configured ahead sl
 
 The reference row stays between the selected ahead and behind rows instead of drifting into a standings-style sort.
 
+Scoring snapshot rows do not create Relative rows. If a car exists only in scoring/results data, it is deliberately excluded from Relative because there is no honest live relative placement for it. Scoring can only enrich cars that already have relative/timing placement.
+
+Pit-road cars are allowed to stay in Relative when they come from live nearby-car telemetry. Radar and spatial placement still exclude them, but Relative keeps them visible so the driver can see pit-lane cars being passed.
+
 ## Display Rules
 
 Rows show:
@@ -53,7 +60,7 @@ Rows show:
 - Seconds first, then meters, then lap fraction.
 - Class detail, with `PIT` appended for pit-road rows.
 
-Normal rows are quiet. Reference rows are visually emphasized; pit rows use warning color; fully degraded rows are muted.
+Normal rows are quiet. Reference rows are visually emphasized; pit rows remain visible but are de-emphasized with muted text/background so the driver can see they are being passed in pit lane rather than treated as an on-track threat. Fully degraded rows are muted.
 
 Relative seconds come from live proximity timing when available. If proximity has only lap-distance placement, the model-v2 relative row can infer a display seconds gap from live lap-distance delta multiplied by the current local/focus lap-time signal. Radar does not consume that inferred seconds value; it remains stricter and uses only live proximity seconds or physical distance for proximity placement.
 
@@ -88,3 +95,5 @@ Unexpected refresh/render failures are logged through the overlay logger and sur
 - Default position: `(24, 530)`, below the fuel calculator.
 - Settings expose cars ahead and cars behind.
 - Theme font, visibility, scale, opacity, session filters, and persistence follow the same managed-overlay behavior as the other product overlays.
+
+The localhost browser-source route also reads `/api/relative` so it can honor the same cars-ahead and cars-behind settings as the native overlay.

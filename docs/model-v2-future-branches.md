@@ -29,6 +29,8 @@ V1.0 should be a polished core desktop overlay app, not the finish line for ever
 
 Heavy analysis products should move to V1.x, where they can build on stable core telemetry contracts and teammate evidence without blocking the first product milestone. Scenario-based layout profiles and engineer/operator mode are large enough to be V2.0 product modes, and VR is a later V2.N platform item because it is a separate renderer with different performance, UX, and comfort constraints.
 
+The remaining model-v2 candidates from the v0.13 review should also be treated as V1.N foundations unless teammate testing proves one must move earlier: Driver Role / Focus V2, Race Events / Penalties V2, Pit / Service Strategy V2, Track Asset / Map Quality V2, and Post-Race / Session Summary V2. They are good model contracts, but each needs either broader product design, more telemetry proof, or replay-backed validation before becoming V1.0 surface area.
+
 ## Suggested V0.X Roadmap To V1.0
 
 Treat these as branch-size product bets, not fixed promises. If teammate testing exposes a painful install, support, or telemetry issue, pull that forward even if the nominal version order says otherwise.
@@ -60,9 +62,9 @@ Likely scope:
 - Polish first-run and no-iRacing-connected states so testers do not confuse expected waiting states with broken installs.
 - Keep signed installer/update automation out of scope unless release friction proves the portable zip is not enough for private testers.
 
-### v0.13.0 - Core Model V2 Readiness
+### v0.13.0 - Core Overlay Readiness
 
-Goal: make the normalized model layer reliable enough for the V1.0 core overlays.
+Goal: make the normalized model layer reliable enough for V1.0 by proving it through the core overlay consumers in the same branch.
 
 Likely scope:
 
@@ -70,24 +72,19 @@ Likely scope:
 - Make mid-session joins explicit: local observation start, session clock, roster availability, current timing rows, best/last lap availability, and missing local history.
 - Treat iRacing car-count/transmitted-row limits as first-class completeness signals rather than silently hiding missing competitors.
 - Expose roster count, live row count, rows with timing, rows with spatial progress, and missing-row reasons.
-- Keep legacy live slices stable until no production core overlay depends on them.
-
-### v0.14.0 - Core Overlay Completion
-
-Goal: make the V1.0 overlay set useful and consistent without heavy interpretation.
-
-Likely scope:
-
-- Harden production Standings around partial coverage, class labels/colors, pit labels, focus behavior, and larger-field edge cases.
-- Harden Relative around model-v2 rows, user-centered context, class color, pit labels, and partial coverage.
+- Harden production Standings around the stable timing contract: partial coverage, class labels/colors, pit labels, focus behavior, and larger-field edge cases.
+- Harden Relative around stable model-v2 rows, user-centered context, class color, pit labels, and partial coverage.
 - Harden local in-car Radar/Blindspot around player-only telemetry, clear unavailable states, and no spectator/team-analysis promises.
 - Harden Flags around normalized flag categories and simple display behavior.
 - Keep session/weather and pit-service as optional simple snapshots, not analysis products.
+- Add shared overlay availability/freshness and status/diagnostics health models so V1.0 overlays use consistent waiting, stale, unavailable, session, and app-health language.
+- Add passive once-per-startup/manual update checks in this branch if v0.12 teammate feedback shows release-discovery friction; keep prompts out of active sessions.
+- Keep legacy live slices stable until no production core overlay depends on them.
 - Use Windows screenshot artifacts and tracked mac mocks to catch visual regressions.
 
-### v0.15.0 - Overlay Style V2 / Designer-Friendly UI
+### v0.14.0 - UI Polish And V1 Candidate Prep
 
-Goal: make the core overlays and settings surface easier to review, maintain, and hand to a designer.
+Goal: make the core overlays/settings surface easier to review, maintain, and hand to a designer while tightening the remaining V1.0 release-candidate risks.
 
 Likely scope:
 
@@ -96,17 +93,20 @@ Likely scope:
 - Use the mac harness for fast style iteration, then port stable primitives back to Windows.
 - Keep normal telemetry-first overlays quiet; only surface source/evidence chrome for stale, unavailable, modeled, or derived values.
 - Refresh tracked `mocks/` and compare Windows CI artifacts before calling the branch done.
-
-### v0.16.0 - V1.0 Release Candidate Hardening
-
-Goal: make the core desktop overlay app ready to call V1.0.
-
-Likely scope:
-
 - Validate install, upgrade, support, diagnostics, and release/update handoff with real teammates.
 - Verify AppData compatibility for settings, history, logs, diagnostics, runtime state, and optional captures.
-- Decide whether private tester zip distribution remains sufficient or whether signed artifacts/installer work must happen before V1.0.
-- Tighten performance and startup behavior for the core overlay set.
+- Tighten performance, startup behavior, and settings-window responsiveness for the core overlay set.
+
+### v0.15.0 - Optional V1.0 Release-Candidate Escape Hatch
+
+Goal: reserve one more 0.x milestone only if a hard release risk remains after v0.14.
+
+Likely triggers:
+
+- Private tester zip distribution is not sufficient and signed artifacts or installer/update channel work must happen before V1.0.
+- Windows packaging, release workflow, or update-check behavior proves unreliable under teammate use.
+- A durable AppData migration or compatibility issue needs a dedicated hardening branch.
+- Core overlay performance, layout, or telemetry completeness regressions need focused stabilization.
 - Keep deep fuel/strategy/engineer/advanced-track-map/streaming/builder work out of the V1.0 release candidate unless it is hidden development tooling.
 
 ## Suggested V1.X Roadmap
@@ -236,11 +236,11 @@ Do this before trusting time-saving stint suggestions. Strategy output should re
 
 ### Local In-Car Radar V2
 
-Keep the first radar v2 path simple by wiring it entirely to the local player while the user is in the car. In that mode, `CarLeftRight` and local proximity/timing can be treated as direct telemetry for a compact warning surface instead of a broad focus-relative analysis product.
+Keep the first radar v2 path simple by wiring it entirely to the local player while the user is in the car. In that mode, `CarLeftRight` and physically placed local proximity can be treated as direct telemetry for a compact warning surface instead of a broad focus-relative analysis product.
 
 Hide or degrade the local radar when the user is not in the car, is spectating, is in replay/garage, or when the local-player telemetry needed for side/proximity display is unavailable. Do not try to explain teammate/spectator focus in this simple overlay. The current live proximity slice follows that rule by suppressing explicit non-player focus and pit/garage contexts.
 
-Windows Car Radar now follows this v2 path by reading `LiveTelemetrySnapshot.Models.Spatial` for local side occupancy, local placement, timing fallback, and multiclass warning state. The legacy `LiveProximitySnapshot` remains as an internal compatibility/diagnostic slice until parity and diagnostics no longer need it.
+Windows Car Radar now follows this v2 path by reading `LiveTelemetrySnapshot.Models.Spatial` for local side occupancy, physically placed local cars, and multiclass warning state. Timing-only nearby cars remain available to Relative and diagnostics, but they do not draw radar targets. The legacy `LiveProximitySnapshot` remains as an internal compatibility/diagnostic slice until parity and diagnostics no longer need it.
 
 ### Radar Focus And Multiclass V2
 
@@ -341,7 +341,7 @@ The peer context path should be treated as derived context exchange, not raw tel
 
 Treat VR support as a future renderer/client, not as a tweak to the current WinForms desktop overlays. Keep the Windows tray app as the telemetry, settings, storage, diagnostics, and release owner; use the Overlay Bridge or a future model-v2 snapshot boundary for a separate VR renderer when the normalized contracts are stable enough.
 
-The first VR candidates should be sparse and local: flag border/status, blindspot/radar warnings, and a compact relative surface. Dense standings tables, gap graphs, strategy grids, and long text diagnostics should stay desktop-first until they have a VR-specific interaction model.
+The first VR candidates should be sparse and local: compact flag/status, blindspot/radar warnings, and a compact relative surface. Dense standings tables, gap graphs, strategy grids, and long text diagnostics should stay desktop-first until they have a VR-specific interaction model.
 
 VR has stricter performance constraints than desktop overlays. At 90 Hz, the frame budget is about 11.1 ms; at 120 Hz, it is about 8.3 ms. Dropped frames are a comfort problem, not just a visual quality issue. A VR renderer should never perform disk IO, JSON parsing, history lookup, image decode, network calls, or avoidable allocations in the render loop. Precompute and double-buffer telemetry snapshots, cache/rasterize text only when values change, minimize transparent overdraw and many independent quads, and prefer stable low-motion positions with larger text and fewer simultaneous overlays.
 
@@ -387,7 +387,7 @@ Do not wait for the deep-dive analysis products before building every overlay. S
 
 For these overlays, model v2 should prioritize stable row identity, column formatting, class/session labels, pit/flag/session state, freshness, and predictable unavailable states. It should still carry `LiveSignalEvidence`, but normal UI should only surface that evidence when the data is stale, unavailable, modeled, or derived.
 
-The flag pass adds one model-v2 requirement: normalize flag categories rather than making each overlay inspect raw SDK bits. Preserve raw global `SessionFlags` and per-car `CarIdxSessionFlags`, but expose user-facing categories such as green/start, blue, yellow/debris/caution, finish/countdown, and critical driver flags. Treat `serviceable` and `start hidden` as background context unless combined with a displayable category.
+The flag pass adds one model-v2 requirement: normalize flag categories rather than making each overlay inspect raw SDK bits. Preserve raw global `SessionFlags` and per-car `CarIdxSessionFlags`, but expose user-facing categories such as green start/resume, blue, yellow/debris/caution, finish/countdown, and critical driver flags. Treat `serviceable`, `start hidden`, and plain steady-state green running as background context unless combined with a displayable category.
 
 Current design-v2 candidate readiness:
 

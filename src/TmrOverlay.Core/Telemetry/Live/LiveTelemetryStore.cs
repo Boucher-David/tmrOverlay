@@ -131,7 +131,7 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
 
     private void ResetProximityHistoryIfReferenceChanged(HistoricalTelemetrySample sample)
     {
-        var referenceCarIdx = LocalRadarReferenceCarIdx(sample);
+        var referenceCarIdx = LiveLocalRadarContext.ReferenceCarIdx(sample);
         if (referenceCarIdx is null)
         {
             _proximityHistory.Clear();
@@ -151,7 +151,7 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
         HistoricalTelemetrySample sample,
         LiveProximitySnapshot proximity)
     {
-        var localCarClass = LocalRadarCarClass(sample);
+        var localCarClass = LiveLocalRadarContext.CarClass(sample);
         if (localCarClass is null || proximity.NearbyCars.Count == 0)
         {
             return [];
@@ -278,33 +278,6 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
         }
 
         return 1d - Math.Clamp((distance - closeRange) / Math.Max(0.001d, warningRange - closeRange), 0d, 1d);
-    }
-
-    private static int? LocalRadarCarClass(HistoricalTelemetrySample sample)
-    {
-        return HasExplicitNonPlayerFocus(sample)
-            ? sample.TeamCarClass
-            : sample.FocusCarClass ?? sample.TeamCarClass;
-    }
-
-    private static int? LocalRadarReferenceCarIdx(HistoricalTelemetrySample sample)
-    {
-        if (!sample.IsOnTrack
-            || sample.IsInGarage
-            || (sample.PlayerCarIdx is null && sample.FocusCarIdx is not null)
-            || HasExplicitNonPlayerFocus(sample))
-        {
-            return null;
-        }
-
-        return sample.PlayerCarIdx ?? sample.FocusCarIdx;
-    }
-
-    private static bool HasExplicitNonPlayerFocus(HistoricalTelemetrySample sample)
-    {
-        return sample.FocusCarIdx is not null
-            && sample.PlayerCarIdx is not null
-            && sample.FocusCarIdx != sample.PlayerCarIdx;
     }
 
     private sealed class TrackMapSectorTracker

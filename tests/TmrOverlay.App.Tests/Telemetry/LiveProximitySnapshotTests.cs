@@ -186,6 +186,46 @@ public sealed class LiveProximitySnapshotTests
     }
 
     [Fact]
+    public void From_HidesRadarWhenPlayerCarIdxIsUnavailable()
+    {
+        var context = new HistoricalSessionContext
+        {
+            Car = new HistoricalCarIdentity(),
+            Track = new HistoricalTrackIdentity(),
+            Session = new HistoricalSessionIdentity(),
+            Conditions = new HistoricalSessionInfoConditions()
+        };
+        var sample = CreateSample(
+            playerCarIdx: null,
+            focusCarIdx: null,
+            carLeftRight: 4,
+            teamLapDistPct: 0.50d,
+            nearbyCars:
+            [
+                new HistoricalCarProximity(
+                    CarIdx: 12,
+                    LapCompleted: 5,
+                    LapDistPct: 0.53d,
+                    F2TimeSeconds: 16d,
+                    EstimatedTimeSeconds: null,
+                    Position: 3,
+                    ClassPosition: 3,
+                    CarClass: 1,
+                    TrackSurface: 3,
+                    OnPitRoad: false)
+            ]);
+
+        var proximity = LiveProximitySnapshot.From(context, sample);
+
+        Assert.False(proximity.HasData);
+        Assert.Empty(proximity.NearbyCars);
+        Assert.Null(proximity.CarLeftRight);
+        Assert.False(proximity.HasCarLeft);
+        Assert.False(proximity.HasCarRight);
+        Assert.Equal("waiting", proximity.SideStatus);
+    }
+
+    [Fact]
     public void From_UsesLiveF2TimingWhenEstimatedTimingIsUnavailable()
     {
         var context = new HistoricalSessionContext
@@ -530,6 +570,7 @@ public sealed class LiveProximitySnapshotTests
 
     private static HistoricalTelemetrySample CreateSample(
         double teamLapDistPct = 0.42d,
+        int? playerCarIdx = 10,
         int? carLeftRight = null,
         IReadOnlyList<HistoricalCarProximity>? nearbyCars = null,
         IReadOnlyList<HistoricalCarProximity>? classCars = null,
@@ -578,7 +619,7 @@ public sealed class LiveProximitySnapshotTests
             TrackWetness: 1,
             WeatherDeclaredWet: false,
             PlayerTireCompound: 0,
-            PlayerCarIdx: 10,
+            PlayerCarIdx: playerCarIdx,
             FocusCarIdx: focusCarIdx,
             FocusLapCompleted: focusLapDistPct is null ? null : 5,
             FocusLapDistPct: focusLapDistPct,

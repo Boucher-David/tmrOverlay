@@ -1,4 +1,5 @@
 using System.Globalization;
+using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Telemetry.Live;
 
 namespace TmrOverlay.App.Overlays.SimpleTelemetry;
@@ -10,8 +11,6 @@ internal sealed record SimpleTelemetryOverlayViewModel(
     SimpleTelemetryTone Tone,
     IReadOnlyList<SimpleTelemetryRowViewModel> Rows)
 {
-    private const double StaleSeconds = 1.5d;
-
     public static SimpleTelemetryOverlayViewModel Waiting(string title, string status)
     {
         return new SimpleTelemetryOverlayViewModel(
@@ -24,21 +23,9 @@ internal sealed record SimpleTelemetryOverlayViewModel(
 
     public static bool IsFresh(LiveTelemetrySnapshot snapshot, DateTimeOffset now, out string waitingStatus)
     {
-        if (!snapshot.IsConnected || !snapshot.IsCollecting)
-        {
-            waitingStatus = "waiting for iRacing";
-            return false;
-        }
-
-        if (snapshot.LastUpdatedAtUtc is not { } updatedAt
-            || Math.Abs((now - updatedAt).TotalSeconds) > StaleSeconds)
-        {
-            waitingStatus = "waiting for fresh telemetry";
-            return false;
-        }
-
-        waitingStatus = string.Empty;
-        return true;
+        var availability = OverlayAvailabilityEvaluator.FromSnapshot(snapshot, now);
+        waitingStatus = availability.IsAvailable ? string.Empty : availability.StatusText;
+        return availability.IsAvailable;
     }
 
     public static string FormatDuration(double? seconds, bool compact = false)

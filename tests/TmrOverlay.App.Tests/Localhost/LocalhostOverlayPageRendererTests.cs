@@ -26,16 +26,43 @@ public sealed class BrowserOverlayPageRendererTests
         Assert.True(rendered);
         Assert.Contains("\"id\":\"" + expectedId + "\"", html);
         Assert.Contains("fetch('/api/snapshot'", html);
+        Assert.Contains("telemetryAvailability", html);
+        Assert.Contains("waiting for fresh telemetry", html);
         if (expectedId == "track-map")
         {
             Assert.Contains("track-map-page", html);
             Assert.Contains("fetch('/api/track-map'", html);
             Assert.Contains("renderOffline()", html);
             Assert.Contains("let cachedTrackMapSettings", html);
+            Assert.Contains("row.hasSpatialProgress === false", html);
+            Assert.Contains(": null", html);
         }
         if (expectedId == "standings")
         {
             Assert.Contains("hasStandingDriverIdentity", html);
+            Assert.Contains("fetch('/api/standings'", html);
+            Assert.Contains("otherClassRowsPerClass", html);
+            Assert.Contains("class-header", html);
+        }
+        if (expectedId == "relative")
+        {
+            Assert.Contains("models?.relative", html);
+            Assert.Contains("fetch('/api/relative'", html);
+            Assert.Contains("relativeSettings", html);
+            Assert.Contains("row.onPitRoad ? 'IN'", html);
+        }
+        if (expectedId == "pit-service")
+        {
+            Assert.Contains("YELLOW - optional repair", html);
+            Assert.Contains("hasFastRepairSelected", html);
+            Assert.Contains("pitStatus.complete", html);
+            Assert.Contains("pitValueChanged", html);
+        }
+        if (expectedId == "input-state")
+        {
+            Assert.Contains("waiting for player in car", html);
+            Assert.Contains("brakeAbsActive", html);
+            Assert.DoesNotContain("tractionControlActive", html);
         }
         if (expectedId == "stream-chat")
         {
@@ -48,6 +75,9 @@ public sealed class BrowserOverlayPageRendererTests
             Assert.Contains("garage-cover-page", html);
             Assert.Contains("fetch('/api/garage-cover'", html);
             Assert.Contains("/api/garage-cover/image", html);
+            Assert.Contains("preview visible", html);
+            Assert.Contains("shouldFailClosed", html);
+            Assert.Contains("isGarageVisible", html);
         }
     }
 

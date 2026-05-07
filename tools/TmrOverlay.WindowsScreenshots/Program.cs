@@ -23,6 +23,7 @@ using TmrOverlay.App.Overlays.StreamChat;
 using TmrOverlay.App.Overlays.Styling;
 using TmrOverlay.App.Overlays.TrackMap;
 using TmrOverlay.App.Performance;
+using TmrOverlay.App.Settings;
 using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
 using TmrOverlay.App.TrackMaps;
@@ -165,9 +166,9 @@ internal static class Program
                 fixture.SourceFor(frame => fixture.CreateSnapshot(frame, sessionFlags: 0x00000020)),
                 NullLogger<SimpleTelemetryOverlayForm>.Instance,
                 new AppPerformanceState(),
-                OverlaySettingsFor(FlagsOverlayDefinition.Definition, width: 960, height: 540),
+                OverlaySettingsFor(FlagsOverlayDefinition.Definition),
                 Noop),
-            postProcess: bitmap => ReplaceColorWithReviewBackdrop(bitmap, Color.Magenta)));
+            postProcess: bitmap => ReplaceColorWithReviewBackdrop(bitmap, Color.FromArgb(1, 2, 3))));
         screenshots.Add(RenderForm(
             outputRoot,
             "session-weather-live",
@@ -281,6 +282,13 @@ internal static class Program
         var performanceState = new AppPerformanceState();
         var localhostOptions = new LocalhostOverlayOptions();
         var localhostState = new LocalhostOverlayState(localhostOptions);
+        var settingsStore = new AppSettingsStore(storage);
+        var liveTelemetry = new SequenceTelemetrySource(_ => LiveTelemetrySnapshot.Empty with
+        {
+            IsConnected = true,
+            IsCollecting = true,
+            LastUpdatedAtUtc = DateTimeOffset.UtcNow
+        });
         var diagnostics = new DiagnosticsBundleService(
             storage,
             new LiveModelParityOptions(),
@@ -288,6 +296,8 @@ internal static class Program
             captureState,
             localhostState,
             new TrackMapStore(storage),
+            settingsStore,
+            liveTelemetry,
             performanceState,
             new AppPerformanceSnapshotRecorder(storage),
             NullLogger<DiagnosticsBundleService>.Instance);
@@ -305,6 +315,7 @@ internal static class Program
             storage,
             localhostOptions,
             localhostState,
+            liveTelemetry,
             diagnostics,
             new AppEventRecorder(storage),
             settings.GetOrAddOverlay(
@@ -717,9 +728,16 @@ internal static class Program
                 LapBestLapTimeSeconds: 127.6d,
                 AirTempC: 21.3d,
                 TrackTempCrewC: 30.8d,
-                TrackWetness: 0,
+                TrackWetness: 1,
                 WeatherDeclaredWet: false,
                 PlayerTireCompound: 0,
+                Skies: 1,
+                PrecipitationPercent: 12d,
+                WindVelocityMetersPerSecond: 4.2d,
+                WindDirectionRadians: 4.32d,
+                RelativeHumidityPercent: 67d,
+                FogLevelPercent: 0d,
+                AirPressurePa: 94_600d,
                 SessionTimeRemain: 9090d,
                 SessionTimeTotal: 14400d,
                 SessionState: 4,

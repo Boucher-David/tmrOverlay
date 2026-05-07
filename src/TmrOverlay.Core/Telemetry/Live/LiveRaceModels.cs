@@ -45,7 +45,10 @@ internal sealed record LiveSignalEvidence(
 internal sealed record LiveRaceModels(
     LiveSessionModel Session,
     LiveDriverDirectoryModel DriverDirectory,
+    LiveCoverageModel Coverage,
+    LiveScoringModel Scoring,
     LiveTimingModel Timing,
+    LiveRaceProgressModel RaceProgress,
     LiveRelativeModel Relative,
     LiveSpatialModel Spatial,
     LiveTrackMapModel TrackMap,
@@ -57,7 +60,10 @@ internal sealed record LiveRaceModels(
     public static LiveRaceModels Empty { get; } = new(
         Session: LiveSessionModel.Empty,
         DriverDirectory: LiveDriverDirectoryModel.Empty,
+        Coverage: LiveCoverageModel.Empty,
+        Scoring: LiveScoringModel.Empty,
         Timing: LiveTimingModel.Empty,
+        RaceProgress: LiveRaceProgressModel.Empty,
         Relative: LiveRelativeModel.Empty,
         Spatial: LiveSpatialModel.Empty,
         TrackMap: LiveTrackMapModel.Empty,
@@ -145,6 +151,73 @@ internal sealed record LiveDriverIdentity(
     string? CarClassColorHex,
     bool? IsSpectator);
 
+internal sealed record LiveCoverageModel(
+    int RosterCount,
+    int ResultRowCount,
+    int LiveScoringRowCount,
+    int LiveTimingRowCount,
+    int LiveSpatialRowCount,
+    int LiveProximityRowCount)
+{
+    public bool HasFullLiveScoring => ResultRowCount > 0 && LiveScoringRowCount >= ResultRowCount;
+
+    public bool HasFullLiveSpatial => ResultRowCount > 0 && LiveSpatialRowCount >= ResultRowCount;
+
+    public static LiveCoverageModel Empty { get; } = new(
+        RosterCount: 0,
+        ResultRowCount: 0,
+        LiveScoringRowCount: 0,
+        LiveTimingRowCount: 0,
+        LiveSpatialRowCount: 0,
+        LiveProximityRowCount: 0);
+}
+
+internal sealed record LiveScoringModel(
+    bool HasData,
+    LiveModelQuality Quality,
+    int? ReferenceCarIdx,
+    int? ReferenceCarClass,
+    IReadOnlyList<LiveScoringClassGroup> ClassGroups,
+    IReadOnlyList<LiveScoringRow> Rows)
+{
+    public static LiveScoringModel Empty { get; } = new(
+        HasData: false,
+        Quality: LiveModelQuality.Unavailable,
+        ReferenceCarIdx: null,
+        ReferenceCarClass: null,
+        ClassGroups: [],
+        Rows: []);
+}
+
+internal sealed record LiveScoringClassGroup(
+    int? CarClass,
+    string ClassName,
+    string? CarClassColorHex,
+    bool IsReferenceClass,
+    int RowCount,
+    IReadOnlyList<LiveScoringRow> Rows);
+
+internal sealed record LiveScoringRow(
+    int CarIdx,
+    int? OverallPositionRaw,
+    int? ClassPositionRaw,
+    int? OverallPosition,
+    int? ClassPosition,
+    int? CarClass,
+    string? DriverName,
+    string? TeamName,
+    string? CarNumber,
+    string? CarClassName,
+    string? CarClassColorHex,
+    bool IsPlayer,
+    bool IsFocus,
+    bool IsReferenceClass,
+    int? Lap,
+    int? LapsComplete,
+    double? LastLapTimeSeconds,
+    double? BestLapTimeSeconds,
+    string? ReasonOut);
+
 internal sealed record LiveTimingModel(
     bool HasData,
     LiveModelQuality Quality,
@@ -209,6 +282,53 @@ internal sealed record LiveTimingRow(
     double? DeltaSecondsToFocus,
     int? TrackSurface,
     bool? OnPitRoad);
+
+internal sealed record LiveRaceProgressModel(
+    bool HasData,
+    LiveModelQuality Quality,
+    double? StrategyCarProgressLaps,
+    double? ReferenceCarProgressLaps,
+    double? OverallLeaderProgressLaps,
+    double? ClassLeaderProgressLaps,
+    double? StrategyOverallLeaderGapLaps,
+    double? StrategyClassLeaderGapLaps,
+    double? ReferenceOverallLeaderGapLaps,
+    double? ReferenceClassLeaderGapLaps,
+    int? StrategyOverallPosition,
+    int? StrategyClassPosition,
+    int? ReferenceOverallPosition,
+    int? ReferenceClassPosition,
+    double? StrategyLapTimeSeconds,
+    string StrategyLapTimeSource,
+    double? RacePaceSeconds,
+    string RacePaceSource,
+    double? RaceLapsRemaining,
+    string RaceLapsRemainingSource,
+    IReadOnlyList<string> MissingSignals)
+{
+    public static LiveRaceProgressModel Empty { get; } = new(
+        HasData: false,
+        Quality: LiveModelQuality.Unavailable,
+        StrategyCarProgressLaps: null,
+        ReferenceCarProgressLaps: null,
+        OverallLeaderProgressLaps: null,
+        ClassLeaderProgressLaps: null,
+        StrategyOverallLeaderGapLaps: null,
+        StrategyClassLeaderGapLaps: null,
+        ReferenceOverallLeaderGapLaps: null,
+        ReferenceClassLeaderGapLaps: null,
+        StrategyOverallPosition: null,
+        StrategyClassPosition: null,
+        ReferenceOverallPosition: null,
+        ReferenceClassPosition: null,
+        StrategyLapTimeSeconds: null,
+        StrategyLapTimeSource: "unavailable",
+        RacePaceSeconds: null,
+        RacePaceSource: "unavailable",
+        RaceLapsRemaining: null,
+        RaceLapsRemainingSource: "unavailable",
+        MissingSignals: []);
+}
 
 internal sealed record LiveRelativeModel(
     bool HasData,
@@ -333,7 +453,15 @@ internal sealed record LiveWeatherModel(
     bool DeclaredWetSurfaceMismatch,
     string? WeatherType,
     string? SkiesLabel,
+    int? Skies,
     double? PrecipitationPercent,
+    double? WindVelocityMetersPerSecond,
+    double? WindDirectionRadians,
+    double? RelativeHumidityPercent,
+    double? FogLevelPercent,
+    double? AirPressurePa,
+    double? SolarAltitudeRadians,
+    double? SolarAzimuthRadians,
     string? RubberState)
 {
     public static LiveWeatherModel Empty { get; } = new(
@@ -347,7 +475,15 @@ internal sealed record LiveWeatherModel(
         DeclaredWetSurfaceMismatch: false,
         WeatherType: null,
         SkiesLabel: null,
+        Skies: null,
         PrecipitationPercent: null,
+        WindVelocityMetersPerSecond: null,
+        WindDirectionRadians: null,
+        RelativeHumidityPercent: null,
+        FogLevelPercent: null,
+        AirPressurePa: null,
+        SolarAltitudeRadians: null,
+        SolarAzimuthRadians: null,
         RubberState: null);
 }
 
@@ -434,6 +570,7 @@ internal sealed record LiveInputTelemetryModel(
     double? Brake,
     double? Clutch,
     double? SteeringWheelAngle,
+    bool? BrakeAbsActive,
     int? EngineWarnings,
     double? Voltage,
     double? WaterTempC,
@@ -454,6 +591,7 @@ internal sealed record LiveInputTelemetryModel(
         Brake: null,
         Clutch: null,
         SteeringWheelAngle: null,
+        BrakeAbsActive: null,
         EngineWarnings: null,
         Voltage: null,
         WaterTempC: null,

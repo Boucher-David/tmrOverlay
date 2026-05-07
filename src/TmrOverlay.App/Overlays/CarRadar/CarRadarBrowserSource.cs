@@ -15,7 +15,8 @@ internal static class CarRadarBrowserSource
     TmrBrowserOverlay.register({
       render(live) {
         const spatial = live?.models?.spatial || {};
-        const cars = spatial.cars || [];
+        const cars = (spatial.cars || [])
+          .filter((row) => Number.isFinite(row.relativeMeters));
         contentEl.innerHTML = rowsTable([
           { label: 'Car', value: (row) => `#${row.carIdx}` },
           { label: 'Dir', value: (row) => row.relativeLaps > 0 ? 'Ahead' : 'Behind' },

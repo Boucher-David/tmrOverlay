@@ -7,6 +7,7 @@ using TmrOverlay.App.Overlays.Abstractions;
 using TmrOverlay.App.Overlays.SimpleTelemetry;
 using TmrOverlay.App.Overlays.Styling;
 using TmrOverlay.App.Performance;
+using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 using TmrOverlay.Core.Telemetry.Live;
 
@@ -19,6 +20,10 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
     private const int CompactLayoutWidthThreshold = 320;
     private const int CompactLayoutHeightThreshold = 180;
     private const int FullLayoutHeightThreshold = 270;
+    private static readonly Color ThrottleTraceColor = Color.FromArgb(48, 214, 109);
+    private static readonly Color BrakeTraceColor = Color.FromArgb(236, 112, 99);
+    private static readonly Color AbsActiveTraceColor = Color.FromArgb(255, 209, 102);
+    private static readonly Color ClutchTraceColor = Color.FromArgb(104, 193, 255);
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly ILogger _logger;
     private readonly AppPerformanceState _performanceState;
@@ -140,17 +145,18 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
 
             var previousSequence = _lastRefreshSequence;
             var now = DateTimeOffset.UtcNow;
-            if (!snapshot.IsConnected || !snapshot.IsCollecting)
+            var availability = OverlayAvailabilityEvaluator.FromSnapshot(snapshot, now);
+            if (!availability.IsAvailable)
             {
-                _status = "waiting for iRacing";
+                ResetInputState(availability.StatusText);
             }
-            else if (snapshot.LastUpdatedAtUtc is not { } updatedAt || Math.Abs((now - updatedAt).TotalSeconds) > 1.5d)
+            else if (!IsPlayerInCar(snapshot))
             {
-                _status = "waiting for fresh telemetry";
+                ResetInputState("waiting for player in car");
             }
             else if (!snapshot.Models.Inputs.HasData)
             {
-                _status = "waiting for inputs";
+                ResetInputState("waiting for inputs");
             }
             else
             {
@@ -190,11 +196,19 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
         _trace.Add(new InputTracePoint(
             Throttle: Clamp01(inputs.Throttle),
             Brake: Clamp01(inputs.Brake),
-            Clutch: Clamp01(inputs.Clutch)));
+            Clutch: Clamp01(inputs.Clutch),
+            BrakeAbsActive: inputs.BrakeAbsActive == true));
         if (_trace.Count > MaximumTracePoints)
         {
             _trace.RemoveRange(0, _trace.Count - MaximumTracePoints);
         }
+    }
+
+    private void ResetInputState(string status)
+    {
+        _latestInputs = LiveInputTelemetryModel.Empty;
+        _trace.Clear();
+        _status = status;
     }
 
     private void DrawHeader(Graphics graphics)
@@ -245,9 +259,15 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
             graphics.DrawLine(gridPen, graph.Left, y, graph.Right, y);
         }
 
-        DrawTrace(graphics, graph, point => point.Throttle, Color.FromArgb(48, 214, 109));
-        DrawTrace(graphics, graph, point => point.Brake, Color.FromArgb(236, 112, 99));
-        DrawTrace(graphics, graph, point => point.Clutch, Color.FromArgb(104, 193, 255));
+        DrawTrace(graphics, graph, point => point.Throttle, ThrottleTraceColor);
+        DrawTrace(graphics, graph, point => point.Brake, BrakeTraceColor);
+        DrawTrace(graphics, graph, point => point.Clutch, ClutchTraceColor);
+        DrawActiveTraceSegments(
+            graphics,
+            graph,
+            point => point.Brake,
+            point => point.BrakeAbsActive,
+            AbsActiveTraceColor);
 
         using var font = OverlayTheme.Font(_fontFamily, 8.6f, FontStyle.Bold);
         DrawLegend(graphics, graph, font);
@@ -283,9 +303,20 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
         using var labelFont = OverlayTheme.Font(_fontFamily, 8.2f, FontStyle.Bold);
         using var valueFont = new Font(FontFamily.GenericMonospace, 8.2f);
         var rowHeight = Math.Max(16, bounds.Height / 3);
-        DrawCompactBar(graphics, bounds.Left, bounds.Top, bounds.Width, rowHeight, "T", Clamp01(_latestInputs.Throttle), Color.FromArgb(48, 214, 109), labelFont, valueFont);
-        DrawCompactBar(graphics, bounds.Left, bounds.Top + rowHeight, bounds.Width, rowHeight, "B", Clamp01(_latestInputs.Brake), Color.FromArgb(236, 112, 99), labelFont, valueFont);
-        DrawCompactBar(graphics, bounds.Left, bounds.Top + rowHeight * 2, bounds.Width, rowHeight, "C", Clamp01(_latestInputs.Clutch), Color.FromArgb(104, 193, 255), labelFont, valueFont);
+        DrawCompactBar(graphics, bounds.Left, bounds.Top, bounds.Width, rowHeight, "T", Clamp01(_latestInputs.Throttle), ThrottleTraceColor, labelFont, valueFont);
+        var brakeAbsActive = _latestInputs.BrakeAbsActive == true;
+        DrawCompactBar(
+            graphics,
+            bounds.Left,
+            bounds.Top + rowHeight,
+            bounds.Width,
+            rowHeight,
+            brakeAbsActive ? "B ABS" : "B",
+            Clamp01(_latestInputs.Brake),
+            brakeAbsActive ? AbsActiveTraceColor : BrakeTraceColor,
+            labelFont,
+            valueFont);
+        DrawCompactBar(graphics, bounds.Left, bounds.Top + rowHeight * 2, bounds.Width, rowHeight, "C", Clamp01(_latestInputs.Clutch), ClutchTraceColor, labelFont, valueFont);
     }
 
     private static void DrawCompactBar(
@@ -300,7 +331,7 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
         Font labelFont,
         Font valueFont)
     {
-        var labelWidth = 22;
+        var labelWidth = Math.Max(22, (int)Math.Ceiling(graphics.MeasureString(label, labelFont).Width) + 6);
         var valueWidth = 44;
         var barRect = new Rectangle(
             x + labelWidth,
@@ -368,11 +399,7 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
             .Select((point, index) => (Value: select(point), Index: index))
             .Where(point => point.Value is { } value && value >= 0d)
             .Select(point =>
-            {
-                var x = graph.Left + (float)point.Index / Math.Max(1, MaximumTracePoints - 1) * graph.Width;
-                var y = graph.Bottom - (float)point.Value!.Value * graph.Height;
-                return new PointF(x, y);
-            })
+                TracePoint(graph, point.Index, point.Value!.Value))
             .ToArray();
         if (points.Length < 2)
         {
@@ -397,6 +424,63 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
         {
             graphics.Restore(state);
         }
+    }
+
+    private void DrawActiveTraceSegments(
+        Graphics graphics,
+        Rectangle graph,
+        Func<InputTracePoint, double?> select,
+        Func<InputTracePoint, bool> isActive,
+        Color color)
+    {
+        if (_trace.Count < 2)
+        {
+            return;
+        }
+
+        using var pen = new Pen(color, 3f)
+        {
+            StartCap = LineCap.Round,
+            EndCap = LineCap.Round
+        };
+        var state = graphics.Save();
+        try
+        {
+            graphics.SetClip(graph, CombineMode.Intersect);
+            for (var index = 1; index < _trace.Count; index++)
+            {
+                if (!isActive(_trace[index]))
+                {
+                    continue;
+                }
+
+                var previous = select(_trace[index - 1]);
+                var current = select(_trace[index]);
+                if (previous is not { } previousValue
+                    || current is not { } currentValue
+                    || previousValue < 0d
+                    || currentValue < 0d)
+                {
+                    continue;
+                }
+
+                graphics.DrawLine(
+                    pen,
+                    TracePoint(graph, index - 1, previousValue),
+                    TracePoint(graph, index, currentValue));
+            }
+        }
+        finally
+        {
+            graphics.Restore(state);
+        }
+    }
+
+    private static PointF TracePoint(Rectangle graph, int index, double value)
+    {
+        var x = graph.Left + (float)index / Math.Max(1, MaximumTracePoints - 1) * graph.Width;
+        var y = graph.Bottom - (float)Math.Clamp(value, 0d, 1d) * graph.Height;
+        return new PointF(x, y);
     }
 
     private static GraphicsPath SmoothTracePath(IReadOnlyList<PointF> points)
@@ -424,9 +508,15 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
     private void DrawLegend(Graphics graphics, Rectangle graph, Font font)
     {
         var x = graph.Left + 8;
-        DrawLegendItem(graphics, "Throttle", Color.FromArgb(48, 214, 109), font, ref x, graph.Top + 8);
-        DrawLegendItem(graphics, "Brake", Color.FromArgb(236, 112, 99), font, ref x, graph.Top + 8);
-        DrawLegendItem(graphics, "Clutch", Color.FromArgb(104, 193, 255), font, ref x, graph.Top + 8);
+        DrawLegendItem(graphics, "Throttle", ThrottleTraceColor, font, ref x, graph.Top + 8);
+        DrawLegendItem(
+            graphics,
+            _latestInputs.BrakeAbsActive == true ? "Brake ABS" : "Brake",
+            _latestInputs.BrakeAbsActive == true ? AbsActiveTraceColor : BrakeTraceColor,
+            font,
+            ref x,
+            graph.Top + 8);
+        DrawLegendItem(graphics, "Clutch", ClutchTraceColor, font, ref x, graph.Top + 8);
     }
 
     private void DrawLegendItem(Graphics graphics, string label, Color color, Font font, ref int x, int y)
@@ -506,8 +596,19 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
     {
         var status = string.Join(
             " | ",
-            new[] { FormatGear(inputs.Gear), FormatRpm(inputs.Rpm) }.Where(value => value != "--"));
+            new[]
+            {
+                FormatGear(inputs.Gear),
+                FormatRpm(inputs.Rpm),
+                inputs.BrakeAbsActive == true ? "ABS" : "--"
+            }.Where(value => value != "--"));
         return string.IsNullOrWhiteSpace(status) ? "--" : status;
+    }
+
+    private static bool IsPlayerInCar(LiveTelemetrySnapshot snapshot)
+    {
+        var race = snapshot.Models.RaceEvents;
+        return !race.HasData || (race.IsOnTrack && !race.IsInGarage);
     }
 
     private static string FormatGear(int? gear)
@@ -589,5 +690,5 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
         _logger.LogWarning(exception, "Input overlay {Stage} failed.", stage);
     }
 
-    private sealed record InputTracePoint(double? Throttle, double? Brake, double? Clutch);
+    private sealed record InputTracePoint(double? Throttle, double? Brake, double? Clutch, bool BrakeAbsActive);
 }

@@ -1,4 +1,3 @@
-using System.Globalization;
 using TmrOverlay.Core.History;
 using TmrOverlay.Core.Telemetry.Live;
 
@@ -6,26 +5,31 @@ namespace TmrOverlay.Core.Fuel;
 
 internal static class FuelStrategyCalculator
 {
-    private const int UnlimitedLapsSentinel = 32000;
     private const double RealisticFuelSaveThresholdPercent = 0.05d;
 
     public static FuelStrategySnapshot From(LiveTelemetrySnapshot live, SessionHistoryLookupResult history)
     {
+        return From(FuelStrategyInputs.From(live), history);
+    }
+
+    private static FuelStrategySnapshot From(FuelStrategyInputs inputs, SessionHistoryLookupResult history)
+    {
         var aggregate = history.PreferredAggregate;
         var aggregateSource = history.PreferredAggregateSource;
-        var sample = live.LatestSample;
-        var currentFuelLiters = ValidPositive(live.Fuel.FuelLevelLiters);
+        var fuel = inputs.FuelPit.Fuel;
+        var raceProgress = inputs.RaceProgress;
+        var currentFuelLiters = ValidPositive(fuel.FuelLevelLiters);
         var maxFuelLiters = FirstValidPositive(
-            live.Context.Car.DriverCarFuelMaxLiters,
+            inputs.Context.Car.DriverCarFuelMaxLiters,
             aggregate?.Car?.DriverCarFuelMaxLiters);
-        var lapTime = SelectLapTime(live, aggregate);
-        var racePace = SelectRacePace(sample, lapTime);
-        var fuelPerLap = SelectFuelPerLap(live, aggregate, aggregateSource);
-        var fuelPerHour = FirstValidPositive(live.Fuel.FuelUsePerHourLiters, aggregate?.FuelPerHourLiters.Mean);
+        var lapTime = SelectLapTime(inputs, aggregate);
+        var racePace = SelectRacePace(inputs, lapTime);
+        var fuelPerLap = SelectFuelPerLap(inputs, aggregate, aggregateSource);
+        var fuelPerHour = FirstValidPositive(fuel.FuelUsePerHourLiters, aggregate?.FuelPerHourLiters.Mean);
         var teammateStintTarget = SelectTeammateStintTarget(aggregate, aggregateSource, maxFuelLiters, fuelPerLap.Value);
-        var completedStintCount = EstimateCompletedStintCount(live, maxFuelLiters, fuelPerLap.Value, teammateStintTarget.TargetLaps);
+        var completedStintCount = EstimateCompletedStintCount(inputs, maxFuelLiters, fuelPerLap.Value, teammateStintTarget.TargetLaps);
         var pitStrategy = SelectPitStrategy(aggregate, aggregateSource);
-        var raceLapEstimate = EstimateRaceLapsRemaining(live.Context, sample, lapTime.Value, racePace);
+        var raceLapEstimate = SelectRaceLapEstimate(inputs, racePace);
         var raceLapsRemaining = raceLapEstimate.LapsRemaining;
         double? fuelToFinish = fuelPerLap.Value is not null && raceLapsRemaining is not null
             ? fuelPerLap.Value.Value * raceLapsRemaining.Value
@@ -48,7 +52,7 @@ internal static class FuelStrategyCalculator
             HasData: currentFuelLiters is not null || fuelPerLap.Value is not null,
             Status: status,
             CurrentFuelLiters: currentFuelLiters,
-            FuelPercent: live.Fuel.FuelLevelPercent,
+            FuelPercent: fuel.FuelLevelPercent,
             FuelPerLapLiters: fuelPerLap.Value,
             FuelPerLapSource: fuelPerLap.Source,
             FuelPerLapMinimumLiters: fuelPerLap.Minimum,
@@ -60,10 +64,10 @@ internal static class FuelStrategyCalculator
             RacePaceSource: racePace.Source,
             RaceLapsRemaining: raceLapsRemaining,
             RaceLapEstimateSource: raceLapEstimate.Source,
-            OverallLeaderGapLaps: CalculateGapLaps(OverallLeaderProgress(sample), BestCarProgress(sample)),
-            ClassLeaderGapLaps: CalculateGapLaps(ClassLeaderProgress(sample), BestCarProgress(sample)),
-            TeamOverallPosition: sample?.TeamPosition,
-            TeamClassPosition: sample?.TeamClassPosition,
+            OverallLeaderGapLaps: raceProgress.StrategyOverallLeaderGapLaps,
+            ClassLeaderGapLaps: raceProgress.StrategyClassLeaderGapLaps,
+            TeamOverallPosition: raceProgress.StrategyOverallPosition,
+            TeamClassPosition: raceProgress.StrategyClassPosition,
             PlannedRaceLaps: stintPlan.PlannedRaceLaps,
             FuelToFinishLiters: fuelToFinish,
             AdditionalFuelNeededLiters: additionalFuelNeeded,
@@ -93,12 +97,12 @@ internal static class FuelStrategyCalculator
     }
 
     private static FuelPerLapSelection SelectFuelPerLap(
-        LiveTelemetrySnapshot live,
+        FuelStrategyInputs inputs,
         HistoricalSessionAggregate? aggregate,
         string? aggregateSource)
     {
         var historicalRange = aggregate?.FuelPerLapLiters;
-        if (ValidPositive(live.Fuel.FuelPerLapLiters) is { } liveFuelPerLap)
+        if (ValidPositive(inputs.FuelPit.Fuel.FuelPerLapLiters) is { } liveFuelPerLap)
         {
             return new FuelPerLapSelection(
                 liveFuelPerLap,
@@ -167,16 +171,19 @@ internal static class FuelStrategyCalculator
             Source: source);
     }
 
-    private static MetricSelection SelectLapTime(LiveTelemetrySnapshot live, HistoricalSessionAggregate? aggregate)
+    private static MetricSelection SelectLapTime(FuelStrategyInputs inputs, HistoricalSessionAggregate? aggregate)
     {
-        if (ValidLapTime(live.Fuel.LapTimeSeconds) is { } fuelLapTime)
+        var fuel = inputs.FuelPit.Fuel;
+        if (ValidLapTime(fuel.LapTimeSeconds) is { } fuelLapTime)
         {
-            return new MetricSelection(fuelLapTime, live.Fuel.LapTimeSource);
+            return new MetricSelection(fuelLapTime, fuel.LapTimeSource);
         }
 
-        if (ValidLapTime(live.LatestSample?.TeamLastLapTimeSeconds) is { } teamLapTime)
+        var strategyLapTime = ValidLapTime(inputs.RaceProgress.StrategyLapTimeSeconds);
+        if (strategyLapTime is { } liveStrategyLapTime
+            && IsLiveStrategyLapTimeSource(inputs.RaceProgress.StrategyLapTimeSource))
         {
-            return new MetricSelection(teamLapTime, "team last lap");
+            return new MetricSelection(liveStrategyLapTime, inputs.RaceProgress.StrategyLapTimeSource);
         }
 
         if (ValidLapTime(aggregate?.MedianLapSeconds.Mean) is { } historicalMedian)
@@ -189,7 +196,7 @@ internal static class FuelStrategyCalculator
             return new MetricSelection(historicalAverage, "history average");
         }
 
-        if (ValidLapTime(live.Context.Car.DriverCarEstLapTimeSeconds) is { } driverEstimate)
+        if (ValidLapTime(inputs.Context.Car.DriverCarEstLapTimeSeconds) is { } driverEstimate)
         {
             return new MetricSelection(driverEstimate, "driver estimate");
         }
@@ -199,95 +206,54 @@ internal static class FuelStrategyCalculator
             return new MetricSelection(aggregateEstimate, "history estimate");
         }
 
+        if (strategyLapTime is { } fallbackStrategyLapTime)
+        {
+            return new MetricSelection(fallbackStrategyLapTime, inputs.RaceProgress.StrategyLapTimeSource);
+        }
+
         return new MetricSelection(null, "unavailable");
     }
 
-    private static MetricSelection SelectRacePace(HistoricalTelemetrySample? sample, MetricSelection teamLapTime)
+    private static MetricSelection SelectRacePace(FuelStrategyInputs inputs, MetricSelection strategyLapTime)
     {
-        if (ValidLapTime(sample?.LeaderLastLapTimeSeconds) is { } leaderLastLapTime)
+        var raceProgress = inputs.RaceProgress;
+        if (ValidLapTime(raceProgress.RacePaceSeconds) is { } liveRacePace
+            && IsLeaderRacePaceSource(raceProgress.RacePaceSource))
         {
-            return new MetricSelection(leaderLastLapTime, "overall leader last lap");
+            return new MetricSelection(liveRacePace, raceProgress.RacePaceSource);
         }
 
-        if (ValidLapTime(sample?.ClassLeaderLastLapTimeSeconds) is { } classLeaderLastLapTime)
+        if (strategyLapTime.Value is not null)
         {
-            return new MetricSelection(classLeaderLastLapTime, "class leader last lap");
+            return new MetricSelection(strategyLapTime.Value, strategyLapTime.Source);
         }
 
-        if (ValidLapTime(sample?.LeaderBestLapTimeSeconds) is { } leaderBestLapTime)
+        if (ValidLapTime(raceProgress.RacePaceSeconds) is { } fallbackRacePace)
         {
-            return new MetricSelection(leaderBestLapTime, "overall leader best lap");
+            return new MetricSelection(fallbackRacePace, raceProgress.RacePaceSource);
         }
 
-        if (ValidLapTime(sample?.ClassLeaderBestLapTimeSeconds) is { } classLeaderBestLapTime)
-        {
-            return new MetricSelection(classLeaderBestLapTime, "class leader best lap");
-        }
-
-        return teamLapTime.Value is not null
-            ? new MetricSelection(teamLapTime.Value, teamLapTime.Source)
-            : new MetricSelection(null, "unavailable");
+        return new MetricSelection(null, "unavailable");
     }
 
-    private static RaceLapEstimate EstimateRaceLapsRemaining(
-        HistoricalSessionContext context,
-        HistoricalTelemetrySample? sample,
-        double? lapTimeSeconds,
-        MetricSelection racePace)
+    private static RaceLapEstimate SelectRaceLapEstimate(FuelStrategyInputs inputs, MetricSelection racePace)
     {
-        if (sample?.SessionState is { } sessionState && sessionState >= 5)
+        var estimate = LiveRaceProgressProjector.EstimateLapsRemaining(
+            inputs.Context,
+            inputs.Session,
+            inputs.RaceProgress.StrategyCarProgressLaps,
+            inputs.RaceProgress.OverallLeaderProgressLaps,
+            inputs.RaceProgress.ClassLeaderProgressLaps,
+            racePace.Value,
+            racePace.Source);
+        if (estimate.LapsRemaining is not null)
         {
-            return new RaceLapEstimate(0d, "session ended");
+            return new RaceLapEstimate(estimate.LapsRemaining, estimate.Source);
         }
 
-        if (ValidLapCount(sample?.SessionLapsRemainEx) is { } liveLapsRemaining)
-        {
-            return new RaceLapEstimate(liveLapsRemaining, "session laps remain");
-        }
-
-        if (ValidLapCount(sample?.SessionLapsTotal) is { } liveLapTotal)
-        {
-            var progress = BestCarProgress(sample);
-            return new RaceLapEstimate(
-                progress is not null
-                    ? Math.Max(0d, liveLapTotal - progress.Value)
-                    : liveLapTotal,
-                "session lap total");
-        }
-
-        if (ValidPositive(sample?.SessionTimeRemain) is { } timeRemaining
-            && racePace.Value is { } racePaceSeconds
-            && racePaceSeconds > 0d)
-        {
-            var leaderProgress = OverallLeaderProgress(sample) ?? ClassLeaderProgress(sample);
-            if (leaderProgress is not null)
-            {
-                var finishLap = Math.Ceiling(leaderProgress.Value + timeRemaining / racePaceSeconds);
-                var carProgress = BestCarProgress(sample) ?? leaderProgress.Value;
-                return new RaceLapEstimate(
-                    Math.Max(0d, finishLap - carProgress),
-                    $"timed race by {racePace.Source}");
-            }
-
-            // Timed races normally require the leader to finish the lap after time expires.
-            return new RaceLapEstimate(
-                Math.Ceiling(timeRemaining / racePaceSeconds + 1d),
-                $"timed race by {racePace.Source}");
-        }
-
-        var scheduledLapCount = ParseLapCount(context.Session.SessionLaps);
-        if (scheduledLapCount is not null)
-        {
-            return new RaceLapEstimate(scheduledLapCount, "scheduled laps");
-        }
-
-        var scheduledSeconds = ParseSeconds(context.Session.SessionTime);
-        if (scheduledSeconds is not null && lapTimeSeconds is { } scheduledLapSeconds && scheduledLapSeconds > 0d)
-        {
-            return new RaceLapEstimate(Math.Ceiling(scheduledSeconds.Value / scheduledLapSeconds), "scheduled time");
-        }
-
-        return new RaceLapEstimate(null, "unavailable");
+        return new RaceLapEstimate(
+            inputs.RaceProgress.RaceLapsRemaining,
+            inputs.RaceProgress.RaceLapsRemainingSource);
     }
 
     private static StintPlan BuildStintPlan(
@@ -511,6 +477,16 @@ internal static class FuelStrategyCalculator
         return string.Equals(aggregateSource, "baseline", StringComparison.OrdinalIgnoreCase)
             ? $"baseline {metric}"
             : $"user {metric}";
+    }
+
+    private static bool IsLiveStrategyLapTimeSource(string source)
+    {
+        return source.Contains("last lap", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsLeaderRacePaceSource(string source)
+    {
+        return source.Contains("leader", StringComparison.OrdinalIgnoreCase);
     }
 
     private static int? CalculatePlannedStintCount(int plannedRaceLaps, double? currentStintLaps, double? fullTankStintLaps)
@@ -832,17 +808,17 @@ internal static class FuelStrategyCalculator
     }
 
     private static int EstimateCompletedStintCount(
-        LiveTelemetrySnapshot live,
+        FuelStrategyInputs inputs,
         double? maxFuelLiters,
         double? fuelPerLapLiters,
         int? preferredLongTargetLaps)
     {
-        if (live.CompletedStintCount > 0)
+        if (inputs.CompletedStintCount > 0)
         {
-            return live.CompletedStintCount;
+            return inputs.CompletedStintCount;
         }
 
-        var progress = BestCarProgress(live.LatestSample);
+        var progress = inputs.RaceProgress.StrategyCarProgressLaps;
         if (progress is null || progress.Value <= 0d || fuelPerLapLiters is null || fuelPerLapLiters.Value <= 0d)
         {
             return 0;
@@ -876,94 +852,6 @@ internal static class FuelStrategyCalculator
         }
 
         return new StintTargetSelection(targetLaps, saving, savingPercent);
-    }
-
-    private static double? BestCarProgress(HistoricalTelemetrySample? sample)
-    {
-        if (sample is null)
-        {
-            return null;
-        }
-
-        if (sample.TeamLapCompleted is { } teamLapCompleted
-            && teamLapCompleted >= 0
-            && sample.TeamLapDistPct is { } teamLapDistPct
-            && teamLapDistPct >= 0d)
-        {
-            return teamLapCompleted + Math.Clamp(teamLapDistPct, 0d, 1d);
-        }
-
-        if (sample.LapCompleted >= 0 && sample.LapDistPct >= 0d)
-        {
-            return sample.LapCompleted + Math.Clamp(sample.LapDistPct, 0d, 1d);
-        }
-
-        if (sample.RaceLaps is { } raceLaps && raceLaps >= 0)
-        {
-            return raceLaps;
-        }
-
-        return null;
-    }
-
-    private static double? OverallLeaderProgress(HistoricalTelemetrySample? sample)
-    {
-        return Progress(sample?.LeaderLapCompleted, sample?.LeaderLapDistPct);
-    }
-
-    private static double? ClassLeaderProgress(HistoricalTelemetrySample? sample)
-    {
-        return Progress(sample?.ClassLeaderLapCompleted, sample?.ClassLeaderLapDistPct);
-    }
-
-    private static double? Progress(int? lapCompleted, double? lapDistPct)
-    {
-        return lapCompleted is { } completed
-            && completed >= 0
-            && lapDistPct is { } distance
-            && distance >= 0d
-            ? completed + Math.Clamp(distance, 0d, 1d)
-            : null;
-    }
-
-    private static double? CalculateGapLaps(double? leaderProgress, double? teamProgress)
-    {
-        return leaderProgress is not null && teamProgress is not null
-            ? Math.Max(0d, leaderProgress.Value - teamProgress.Value)
-            : null;
-    }
-
-    private static double? ParseLapCount(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)
-            || value.Contains("unlimited", StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
-
-        return int.TryParse(value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var laps)
-            ? ValidLapCount(laps)
-            : null;
-    }
-
-    private static double? ParseSeconds(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return null;
-        }
-
-        var normalized = value.Replace("sec", string.Empty, StringComparison.OrdinalIgnoreCase).Trim();
-        return double.TryParse(normalized, NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds)
-            ? ValidPositive(seconds)
-            : null;
-    }
-
-    private static double? ValidLapCount(int? laps)
-    {
-        return laps is { } lapCount && lapCount > 0 && lapCount < UnlimitedLapsSentinel
-            ? lapCount
-            : null;
     }
 
     private static double? ValidLapTime(double? seconds)
@@ -1079,6 +967,50 @@ internal sealed record FuelStrategySnapshot(
     double? FuelFillRateLitersPerSecond,
     double? TireChangeServiceSeconds,
     IReadOnlyList<FuelStintEstimate> Stints);
+
+internal sealed record FuelStrategyInputs(
+    HistoricalSessionContext Context,
+    LiveSessionModel Session,
+    LiveRaceProgressModel RaceProgress,
+    LiveFuelPitModel FuelPit,
+    int CompletedStintCount)
+{
+    public static FuelStrategyInputs From(LiveTelemetrySnapshot live)
+    {
+        var models = live.Models;
+        if ((!models.RaceProgress.HasData || !models.FuelPit.HasData) && live.LatestSample is { } sample)
+        {
+            var fuel = live.Fuel.HasValidFuel
+                ? live.Fuel
+                : LiveFuelSnapshot.From(live.Context, sample);
+            models = LiveRaceModelBuilder.From(
+                live.Context,
+                sample,
+                fuel,
+                live.Proximity,
+                live.LeaderGap,
+                models.TrackMap);
+        }
+
+        var fuelPit = models.FuelPit;
+        if (!fuelPit.HasData && live.Fuel.HasValidFuel)
+        {
+            fuelPit = fuelPit with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                Fuel = live.Fuel
+            };
+        }
+
+        return new FuelStrategyInputs(
+            Context: live.Context,
+            Session: models.Session,
+            RaceProgress: models.RaceProgress,
+            FuelPit: fuelPit,
+            CompletedStintCount: live.CompletedStintCount);
+    }
+}
 
 internal sealed record FuelStintEstimate(
     int Number,

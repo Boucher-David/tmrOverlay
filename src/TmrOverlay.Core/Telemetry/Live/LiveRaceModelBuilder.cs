@@ -1,3 +1,4 @@
+using System.Globalization;
 using TmrOverlay.Core.History;
 
 namespace TmrOverlay.Core.Telemetry.Live;
@@ -12,15 +13,23 @@ internal static class LiveRaceModelBuilder
         LiveLeaderGapSnapshot leaderGap,
         LiveTrackMapModel? trackMap = null)
     {
+        var session = BuildSession(context, sample);
         var drivers = BuildDriverDirectory(context, sample);
         var timing = BuildTiming(context, sample, leaderGap, drivers);
+        var scoring = BuildScoring(context, sample, drivers);
+        var spatial = BuildSpatial(context, sample, proximity);
+        var coverage = BuildCoverage(context, scoring, timing, spatial, proximity);
+        var raceProgress = BuildRaceProgress(context, sample, session);
 
         return new LiveRaceModels(
-            Session: BuildSession(context, sample),
+            Session: session,
             DriverDirectory: drivers,
+            Coverage: coverage,
+            Scoring: scoring,
             Timing: timing,
+            RaceProgress: raceProgress,
             Relative: BuildRelative(sample, proximity, timing),
-            Spatial: BuildSpatial(context, sample, proximity),
+            Spatial: spatial,
             TrackMap: trackMap ?? BuildTrackMap(context),
             Weather: BuildWeather(context, sample),
             FuelPit: BuildFuelPit(sample, fuel),
@@ -100,6 +109,162 @@ internal static class LiveRaceModelBuilder
             MissingSignals: missing);
     }
 
+    private static LiveRaceProgressModel BuildRaceProgress(
+        HistoricalSessionContext context,
+        HistoricalTelemetrySample sample,
+        LiveSessionModel session)
+    {
+        var missing = new List<string>();
+        var playerProgress = Progress(sample.LapCompleted, sample.LapDistPct);
+        double? raceLapsProgress = sample.RaceLaps is { } raceLaps && raceLaps >= 0
+            ? raceLaps
+            : null;
+        var strategyProgress = Progress(sample.TeamLapCompleted, sample.TeamLapDistPct)
+            ?? playerProgress
+            ?? raceLapsProgress;
+        var referenceProgress = Progress(FocusLapCompleted(sample), FocusLapDistPct(sample))
+            ?? strategyProgress;
+        var overallLeaderProgress = Progress(sample.LeaderLapCompleted, sample.LeaderLapDistPct);
+        var classLeaderProgress = Progress(FocusClassLeaderLapCompleted(sample), FocusClassLeaderLapDistPct(sample));
+        var strategyLapTime = SelectStrategyLapTime(context, sample);
+        var racePace = SelectRacePace(sample, strategyLapTime);
+        var raceLapEstimate = LiveRaceProgressProjector.EstimateLapsRemaining(
+            context,
+            session,
+            strategyProgress,
+            overallLeaderProgress,
+            classLeaderProgress,
+            racePace.Value,
+            racePace.Source);
+
+        if (strategyProgress is null)
+        {
+            missing.Add("strategy-progress");
+        }
+
+        if (overallLeaderProgress is null)
+        {
+            missing.Add("overall-leader-progress");
+        }
+
+        if (classLeaderProgress is null)
+        {
+            missing.Add("class-leader-progress");
+        }
+
+        if (racePace.Value is null)
+        {
+            missing.Add("race-pace");
+        }
+
+        if (raceLapEstimate.LapsRemaining is null)
+        {
+            missing.Add("race-laps-remaining");
+        }
+
+        var strategyOverallGap = LiveRaceProgressProjector.CalculateGapLaps(overallLeaderProgress, strategyProgress);
+        var strategyClassGap = LiveRaceProgressProjector.CalculateGapLaps(classLeaderProgress, strategyProgress);
+        var referenceOverallGap = LiveRaceProgressProjector.CalculateGapLaps(overallLeaderProgress, referenceProgress);
+        var referenceClassGap = LiveRaceProgressProjector.CalculateGapLaps(classLeaderProgress, referenceProgress);
+        var hasData = strategyProgress is not null
+            || referenceProgress is not null
+            || overallLeaderProgress is not null
+            || classLeaderProgress is not null
+            || strategyLapTime.Value is not null
+            || racePace.Value is not null
+            || raceLapEstimate.LapsRemaining is not null
+            || sample.TeamPosition is not null
+            || sample.TeamClassPosition is not null
+            || FocusPosition(sample) is not null
+            || FocusClassPosition(sample) is not null;
+
+        return new LiveRaceProgressModel(
+            HasData: hasData,
+            Quality: raceLapEstimate.LapsRemaining is not null && strategyProgress is not null
+                ? LiveModelQuality.Reliable
+                : hasData
+                    ? LiveModelQuality.Partial
+                    : LiveModelQuality.Unavailable,
+            StrategyCarProgressLaps: strategyProgress,
+            ReferenceCarProgressLaps: referenceProgress,
+            OverallLeaderProgressLaps: overallLeaderProgress,
+            ClassLeaderProgressLaps: classLeaderProgress,
+            StrategyOverallLeaderGapLaps: strategyOverallGap,
+            StrategyClassLeaderGapLaps: strategyClassGap,
+            ReferenceOverallLeaderGapLaps: referenceOverallGap,
+            ReferenceClassLeaderGapLaps: referenceClassGap,
+            StrategyOverallPosition: sample.TeamPosition,
+            StrategyClassPosition: sample.TeamClassPosition,
+            ReferenceOverallPosition: FocusPosition(sample),
+            ReferenceClassPosition: FocusClassPosition(sample),
+            StrategyLapTimeSeconds: strategyLapTime.Value,
+            StrategyLapTimeSource: strategyLapTime.Source,
+            RacePaceSeconds: racePace.Value,
+            RacePaceSource: racePace.Source,
+            RaceLapsRemaining: raceLapEstimate.LapsRemaining,
+            RaceLapsRemainingSource: raceLapEstimate.Source,
+            MissingSignals: missing);
+    }
+
+    private static RaceProgressMetric SelectStrategyLapTime(
+        HistoricalSessionContext context,
+        HistoricalTelemetrySample sample)
+    {
+        if (LiveRaceProgressProjector.ValidLapTime(sample.TeamLastLapTimeSeconds) is { } teamLastLap)
+        {
+            return new RaceProgressMetric(teamLastLap, "team last lap");
+        }
+
+        if (LiveRaceProgressProjector.ValidLapTime(sample.LapLastLapTimeSeconds) is { } playerLastLap)
+        {
+            return new RaceProgressMetric(playerLastLap, "player last lap");
+        }
+
+        if (LiveRaceProgressProjector.ValidLapTime(context.Car.DriverCarEstLapTimeSeconds) is { } driverEstimate)
+        {
+            return new RaceProgressMetric(driverEstimate, "driver estimate");
+        }
+
+        if (LiveRaceProgressProjector.ValidLapTime(context.Car.CarClassEstLapTimeSeconds) is { } classEstimate)
+        {
+            return new RaceProgressMetric(classEstimate, "class estimate");
+        }
+
+        return new RaceProgressMetric(null, "unavailable");
+    }
+
+    private static RaceProgressMetric SelectRacePace(
+        HistoricalTelemetrySample sample,
+        RaceProgressMetric strategyLapTime)
+    {
+        if (LiveRaceProgressProjector.ValidLapTime(sample.LeaderLastLapTimeSeconds) is { } leaderLastLap)
+        {
+            return new RaceProgressMetric(leaderLastLap, "overall leader last lap");
+        }
+
+        if (LiveRaceProgressProjector.ValidLapTime(FocusClassLeaderLastLapTimeSeconds(sample)) is { } classLeaderLastLap)
+        {
+            return new RaceProgressMetric(classLeaderLastLap, "class leader last lap");
+        }
+
+        if (LiveRaceProgressProjector.ValidLapTime(sample.LeaderBestLapTimeSeconds) is { } leaderBestLap)
+        {
+            return new RaceProgressMetric(leaderBestLap, "overall leader best lap");
+        }
+
+        if (LiveRaceProgressProjector.ValidLapTime(FocusClassLeaderBestLapTimeSeconds(sample)) is { } classLeaderBestLap)
+        {
+            return new RaceProgressMetric(classLeaderBestLap, "class leader best lap");
+        }
+
+        if (strategyLapTime.Value is not null)
+        {
+            return strategyLapTime;
+        }
+
+        return new RaceProgressMetric(null, "unavailable");
+    }
+
     private static LiveDriverDirectoryModel BuildDriverDirectory(
         HistoricalSessionContext context,
         HistoricalTelemetrySample sample)
@@ -125,6 +290,159 @@ internal static class LiveRaceModelBuilder
             PlayerDriver: playerCarIdx is { } playerIdx ? drivers.FirstOrDefault(driver => driver.CarIdx == playerIdx) : null,
             FocusDriver: focusCarIdx is { } focusIdx ? drivers.FirstOrDefault(driver => driver.CarIdx == focusIdx) : null,
             Drivers: drivers);
+    }
+
+    private static LiveCoverageModel BuildCoverage(
+        HistoricalSessionContext context,
+        LiveScoringModel scoring,
+        LiveTimingModel timing,
+        LiveSpatialModel spatial,
+        LiveProximitySnapshot proximity)
+    {
+        var timingRows = timing.OverallRows
+            .GroupBy(row => row.CarIdx)
+            .Select(group => group.First())
+            .ToArray();
+        var resultCarIdxs = scoring.Rows
+            .Select(row => row.CarIdx)
+            .ToHashSet();
+        var scoredTimingRows = resultCarIdxs.Count > 0
+            ? timingRows.Where(row => resultCarIdxs.Contains(row.CarIdx)).ToArray()
+            : timingRows;
+
+        return new LiveCoverageModel(
+            RosterCount: context.Drivers.Count(IsRaceRosterDriver),
+            ResultRowCount: scoring.Rows.Count,
+            LiveScoringRowCount: scoredTimingRows.Count(row => row.OverallPosition is not null || row.ClassPosition is not null),
+            LiveTimingRowCount: scoredTimingRows.Count(row => row.HasTiming),
+            LiveSpatialRowCount: scoredTimingRows.Count(row => row.HasSpatialProgress),
+            LiveProximityRowCount: proximity.NearbyCars.Count);
+    }
+
+    private static bool IsRaceRosterDriver(HistoricalSessionDriver driver)
+    {
+        return driver.CarIdx is >= 0
+            && driver.IsSpectator != true
+            && driver.UserId != -1;
+    }
+
+    private static LiveScoringModel BuildScoring(
+        HistoricalSessionContext context,
+        HistoricalTelemetrySample sample,
+        LiveDriverDirectoryModel driverDirectory)
+    {
+        var results = context.ResultPositions
+            .Where(result => result.CarIdx is >= 0)
+            .GroupBy(result => result.CarIdx!.Value)
+            .Select(group => group.First())
+            .ToArray();
+        if (results.Length == 0)
+        {
+            return LiveScoringModel.Empty with
+            {
+                ReferenceCarIdx = FocusCarIdx(sample),
+                ReferenceCarClass = ReferenceCarClass(sample)
+            };
+        }
+
+        var zeroBasedOverall = results.Any(result => result.Position == 0);
+        var zeroBasedClass = results.Any(result => result.ClassPosition == 0);
+        var referenceCarIdx = FocusCarIdx(sample);
+        var referenceClass = ReferenceCarClass(sample);
+        var driversByCarIdx = driverDirectory.Drivers.ToDictionary(driver => driver.CarIdx);
+        var rows = results
+            .Select(result => ToScoringRow(
+                result,
+                driversByCarIdx,
+                referenceCarIdx,
+                referenceClass,
+                sample,
+                zeroBasedOverall,
+                zeroBasedClass))
+            .OrderBy(row => row.OverallPosition ?? int.MaxValue)
+            .ThenBy(row => row.ClassPosition ?? int.MaxValue)
+            .ThenBy(row => row.CarIdx)
+            .ToArray();
+        var classGroups = rows
+            .GroupBy(row => row.CarClass)
+            .Select(group => ToScoringClassGroup(group, referenceClass))
+            .OrderByDescending(group => group.IsReferenceClass)
+            .ThenBy(group => group.Rows.Min(row => row.OverallPosition ?? int.MaxValue))
+            .ThenBy(group => group.CarClass ?? int.MaxValue)
+            .ToArray();
+
+        return new LiveScoringModel(
+            HasData: rows.Length > 0,
+            Quality: LiveModelQuality.Reliable,
+            ReferenceCarIdx: referenceCarIdx,
+            ReferenceCarClass: referenceClass,
+            ClassGroups: classGroups,
+            Rows: rows);
+    }
+
+    private static LiveScoringRow ToScoringRow(
+        HistoricalSessionResultPosition result,
+        IReadOnlyDictionary<int, LiveDriverIdentity> driversByCarIdx,
+        int? referenceCarIdx,
+        int? referenceClass,
+        HistoricalTelemetrySample sample,
+        bool zeroBasedOverall,
+        bool zeroBasedClass)
+    {
+        var carIdx = result.CarIdx!.Value;
+        driversByCarIdx.TryGetValue(carIdx, out var driver);
+        var carClass = driver?.CarClassId;
+        return new LiveScoringRow(
+            CarIdx: carIdx,
+            OverallPositionRaw: result.Position,
+            ClassPositionRaw: result.ClassPosition,
+            OverallPosition: NormalizeResultPosition(result.Position, zeroBasedOverall),
+            ClassPosition: NormalizeResultPosition(result.ClassPosition, zeroBasedClass),
+            CarClass: carClass,
+            DriverName: driver?.DriverName,
+            TeamName: driver?.TeamName,
+            CarNumber: driver?.CarNumber,
+            CarClassName: driver?.CarClassName,
+            CarClassColorHex: driver?.CarClassColorHex,
+            IsPlayer: sample.PlayerCarIdx == carIdx,
+            IsFocus: referenceCarIdx == carIdx,
+            IsReferenceClass: referenceClass is not null && carClass == referenceClass,
+            Lap: result.Lap,
+            LapsComplete: result.LapsComplete,
+            LastLapTimeSeconds: ValidPositive(result.LastTimeSeconds),
+            BestLapTimeSeconds: ValidPositive(result.FastestTimeSeconds),
+            ReasonOut: result.ReasonOut);
+    }
+
+    private static LiveScoringClassGroup ToScoringClassGroup(
+        IGrouping<int?, LiveScoringRow> group,
+        int? referenceClass)
+    {
+        var rows = group
+            .OrderBy(row => row.ClassPosition ?? int.MaxValue)
+            .ThenBy(row => row.OverallPosition ?? int.MaxValue)
+            .ThenBy(row => row.CarIdx)
+            .ToArray();
+        var className = FirstNonEmpty(rows.Select(row => row.CarClassName))
+            ?? (group.Key is { } carClass ? $"Class {carClass}" : "Class");
+
+        return new LiveScoringClassGroup(
+            CarClass: group.Key,
+            ClassName: className,
+            CarClassColorHex: FirstNonEmpty(rows.Select(row => row.CarClassColorHex)),
+            IsReferenceClass: referenceClass is not null && group.Key == referenceClass,
+            RowCount: rows.Length,
+            Rows: rows);
+    }
+
+    private static int? NormalizeResultPosition(int? rawPosition, bool zeroBased)
+    {
+        if (rawPosition is null || rawPosition < 0)
+        {
+            return null;
+        }
+
+        return zeroBased ? rawPosition.Value + 1 : rawPosition.Value;
     }
 
     private static LiveTimingModel BuildTiming(
@@ -342,6 +660,37 @@ internal static class LiveRaceModelBuilder
                 OnPitRoad: car.OnPitRoad ?? timingRow?.OnPitRoad));
         }
 
+        foreach (var car in sample.NearbyCars ?? [])
+        {
+            if (!IsPitRoadLike(car.TrackSurface, car.OnPitRoad)
+                || !timingByCarIdx.TryGetValue(car.CarIdx, out var timingRow)
+                || RelativeLapsFromLapDistance(car.LapDistPct, FocusLapDistPct(sample)) is not { } relativeLaps)
+            {
+                continue;
+            }
+
+            var inferredRelativeSeconds = InferRelativeSecondsFromLapDistance(relativeLaps, sample);
+            rows.Add(new LiveRelativeRow(
+                CarIdx: car.CarIdx,
+                Quality: inferredRelativeSeconds is not null ? LiveModelQuality.Inferred : LiveModelQuality.Partial,
+                Source: "proximity",
+                IsAhead: relativeLaps > 0d,
+                IsBehind: relativeLaps < 0d,
+                IsSameClass: referenceClass is not null && (car.CarClass ?? timingRow.CarClass) == referenceClass,
+                TimingEvidence: inferredRelativeSeconds is not null
+                    ? LiveSignalEvidence.Inferred("CarIdxLapDistPct+lap-time")
+                    : LiveSignalEvidence.Partial("proximity-relative-seconds", "relative_seconds_missing"),
+                PlacementEvidence: LiveSignalEvidence.Inferred("CarIdxLapDistPct"),
+                DriverName: timingRow.DriverName,
+                OverallPosition: car.Position ?? timingRow.OverallPosition,
+                ClassPosition: car.ClassPosition ?? timingRow.ClassPosition,
+                CarClass: car.CarClass ?? timingRow.CarClass,
+                RelativeSeconds: inferredRelativeSeconds,
+                RelativeLaps: relativeLaps,
+                RelativeMeters: null,
+                OnPitRoad: true));
+        }
+
         if (rows.Count == 0)
         {
             rows.AddRange(timing.OverallRows
@@ -383,6 +732,27 @@ internal static class LiveRaceModelBuilder
             Rows: orderedRows);
     }
 
+    private static double? RelativeLapsFromLapDistance(double carLapDistPct, double? referenceLapDistPct)
+    {
+        if (ValidLapDistPct(carLapDistPct) is not { } carPct
+            || ValidLapDistPct(referenceLapDistPct) is not { } referencePct)
+        {
+            return null;
+        }
+
+        var relativeLaps = carPct - referencePct;
+        if (relativeLaps > 0.5d)
+        {
+            relativeLaps -= 1d;
+        }
+        else if (relativeLaps < -0.5d)
+        {
+            relativeLaps += 1d;
+        }
+
+        return relativeLaps;
+    }
+
     private static double? InferRelativeSecondsFromLapDistance(double relativeLaps, HistoricalTelemetrySample sample)
     {
         if (!IsFinite(relativeLaps) || Math.Abs(relativeLaps) <= 0.00001d)
@@ -401,7 +771,11 @@ internal static class LiveRaceModelBuilder
         LiveProximitySnapshot proximity)
     {
         var trackLengthMeters = ValidPositive(context.Track.TrackLengthKm) is { } km ? km * 1000d : (double?)null;
+        var localRadarAvailable = LiveLocalRadarContext.IsAvailable(sample);
+        var referenceCarIdx = localRadarAvailable ? LiveLocalRadarContext.ReferenceCarIdx(sample) : null;
+        var referenceLapDistPct = localRadarAvailable ? LiveLocalRadarContext.LapDistPct(sample) : null;
         var cars = proximity.NearbyCars
+            .Where(car => car.RelativeMeters is not null)
             .Select(car => new LiveSpatialCar(
                 CarIdx: car.CarIdx,
                 Quality: SpatialCarQuality(car),
@@ -420,13 +794,13 @@ internal static class LiveRaceModelBuilder
             .ToArray();
 
         return new LiveSpatialModel(
-            HasData: proximity.HasData || proximity.HasCarLeft || proximity.HasCarRight || cars.Length > 0 || FocusLapDistPct(sample) is not null,
+            HasData: proximity.HasData || proximity.HasCarLeft || proximity.HasCarRight || cars.Length > 0 || referenceLapDistPct is not null,
             Quality: cars.Length > 0
                 ? cars.Max(car => car.Quality)
-                : proximity.HasCarLeft || proximity.HasCarRight || FocusLapDistPct(sample) is not null
+                : proximity.HasCarLeft || proximity.HasCarRight || referenceLapDistPct is not null
                     ? LiveModelQuality.Partial
                     : LiveModelQuality.Unavailable,
-            ReferenceCarIdx: FocusCarIdx(sample),
+            ReferenceCarIdx: referenceCarIdx,
             ReferenceCarClass: proximity.ReferenceCarClass,
             CarLeftRight: proximity.CarLeftRight,
             SideStatus: proximity.SideStatus,
@@ -434,7 +808,7 @@ internal static class LiveRaceModelBuilder
             HasCarRight: proximity.HasCarRight,
             SideOverlapWindowSeconds: proximity.SideOverlapWindowSeconds,
             TrackLengthMeters: trackLengthMeters,
-            ReferenceLapDistPct: FocusLapDistPct(sample),
+            ReferenceLapDistPct: referenceLapDistPct,
             Cars: cars,
             NearestAhead: cars
                 .Where(car => car.RelativeLaps > 0d)
@@ -449,10 +823,27 @@ internal static class LiveRaceModelBuilder
     private static LiveWeatherModel BuildWeather(HistoricalSessionContext context, HistoricalTelemetrySample sample)
     {
         var trackWetness = sample.TrackWetness >= 0 ? sample.TrackWetness : (int?)null;
+        var livePrecipitationPercent = ValidPercent(sample.PrecipitationPercent);
+        var windVelocityMetersPerSecond = ValidNonNegative(sample.WindVelocityMetersPerSecond);
+        var windDirectionRadians = ValidFinite(sample.WindDirectionRadians);
+        var relativeHumidityPercent = ValidPercent(sample.RelativeHumidityPercent);
+        var fogLevelPercent = ValidPercent(sample.FogLevelPercent);
+        var airPressurePa = ValidNonNegative(sample.AirPressurePa);
+        var solarAltitudeRadians = ValidFinite(sample.SolarAltitudeRadians);
+        var solarAzimuthRadians = ValidFinite(sample.SolarAzimuthRadians);
         var hasLiveWeather = IsFinite(sample.AirTempC)
             || IsFinite(sample.TrackTempCrewC)
             || trackWetness is not null
-            || sample.WeatherDeclaredWet;
+            || sample.WeatherDeclaredWet
+            || sample.Skies is not null
+            || livePrecipitationPercent is not null
+            || windVelocityMetersPerSecond is not null
+            || windDirectionRadians is not null
+            || relativeHumidityPercent is not null
+            || fogLevelPercent is not null
+            || airPressurePa is not null
+            || solarAltitudeRadians is not null
+            || solarAzimuthRadians is not null;
         var hasSessionWeather = !string.IsNullOrWhiteSpace(context.Conditions.TrackWeatherType)
             || !string.IsNullOrWhiteSpace(context.Conditions.TrackSkies)
             || context.Conditions.TrackPrecipitationPercent is not null
@@ -472,8 +863,16 @@ internal static class LiveRaceModelBuilder
             WeatherDeclaredWet: sample.WeatherDeclaredWet,
             DeclaredWetSurfaceMismatch: DetermineDeclaredWetSurfaceMismatch(sample.WeatherDeclaredWet, trackWetness),
             WeatherType: context.Conditions.TrackWeatherType,
-            SkiesLabel: FormatSkiesLabel(context.Conditions.TrackSkies),
-            PrecipitationPercent: context.Conditions.TrackPrecipitationPercent,
+            SkiesLabel: sample.Skies is { } skies ? FormatSkiesLabel(skies) : FormatSkiesLabel(context.Conditions.TrackSkies),
+            Skies: sample.Skies,
+            PrecipitationPercent: livePrecipitationPercent ?? context.Conditions.TrackPrecipitationPercent,
+            WindVelocityMetersPerSecond: windVelocityMetersPerSecond,
+            WindDirectionRadians: windDirectionRadians,
+            RelativeHumidityPercent: relativeHumidityPercent,
+            FogLevelPercent: fogLevelPercent,
+            AirPressurePa: airPressurePa,
+            SolarAltitudeRadians: solarAltitudeRadians,
+            SolarAzimuthRadians: solarAzimuthRadians,
             RubberState: context.Conditions.SessionTrackRubberState);
     }
 
@@ -606,6 +1005,7 @@ internal static class LiveRaceModelBuilder
             Brake: brake,
             Clutch: clutch,
             SteeringWheelAngle: steering,
+            BrakeAbsActive: sample.BrakeAbsActive,
             EngineWarnings: sample.EngineWarnings,
             Voltage: voltage,
             WaterTempC: waterTemp,
@@ -748,7 +1148,8 @@ internal static class LiveRaceModelBuilder
             lastLapTimeSeconds,
             bestLapTimeSeconds);
         var hasSpatialProgress = progressLaps is not null;
-        var canUseForRadarPlacement = hasSpatialProgress && !IsPitRoadLike(trackSurface, onPitRoad);
+        var hasTrackLength = ValidPositive(context.Track.TrackLengthKm) is not null;
+        var canUseForRadarPlacement = hasSpatialProgress && hasTrackLength && !IsPitRoadLike(trackSurface, onPitRoad);
 
         return new LiveTimingRow(
             CarIdx: carIdx,
@@ -771,7 +1172,7 @@ internal static class LiveRaceModelBuilder
                 ? new LiveSignalEvidence(source, quality, IsUsable: true, MissingReason: null)
                 : LiveSignalEvidence.Unavailable(
                     source,
-                    hasSpatialProgress ? "pit_or_off_track_surface" : "lap_progress_missing"),
+                    RadarPlacementMissingReason(hasSpatialProgress, hasTrackLength, trackSurface, onPitRoad)),
             GapEvidence: LiveSignalEvidence.Unavailable("class-gap", "gap_not_calculated_for_row"),
             DriverName: driver?.DriverName,
             TeamName: driver?.TeamName,
@@ -981,6 +1382,27 @@ internal static class LiveRaceModelBuilder
             || ValidNonNegative(estimatedTimeSeconds) is not null
             || ValidPositive(lastLapTimeSeconds) is not null
             || ValidPositive(bestLapTimeSeconds) is not null;
+    }
+
+    private static string RadarPlacementMissingReason(
+        bool hasSpatialProgress,
+        bool hasTrackLength,
+        int? trackSurface,
+        bool? onPitRoad)
+    {
+        if (!hasSpatialProgress)
+        {
+            return "lap_progress_missing";
+        }
+
+        if (!hasTrackLength)
+        {
+            return "track_length_missing";
+        }
+
+        return IsPitRoadLike(trackSurface, onPitRoad)
+            ? "pit_or_off_track_surface"
+            : "radar_placement_unavailable";
     }
 
     private static double? RelativeLapTimeSeconds(HistoricalTelemetrySample sample)
@@ -1281,6 +1703,16 @@ internal static class LiveRaceModelBuilder
         return value is { } number && IsFinite(number) && number >= 0d ? number : null;
     }
 
+    private static double? ValidFinite(double? value)
+    {
+        return value is { } number && IsFinite(number) ? number : null;
+    }
+
+    private static double? ValidPercent(double? value)
+    {
+        return value is { } number && IsFinite(number) && number >= 0d ? Math.Min(number, 100d) : null;
+    }
+
     private static double? ValidUnitInterval(double? value)
     {
         return value is { } number && IsFinite(number) && number >= 0d && number <= 1d ? number : null;
@@ -1387,6 +1819,20 @@ internal static class LiveRaceModelBuilder
     {
         return string.IsNullOrWhiteSpace(trackSkies) ? null : trackSkies.Trim();
     }
+
+    private static string FormatSkiesLabel(int skies)
+    {
+        return skies switch
+        {
+            0 => "clear",
+            1 => "partly cloudy",
+            2 => "mostly cloudy",
+            3 => "overcast",
+            _ => $"skies {skies.ToString(CultureInfo.InvariantCulture)}"
+        };
+    }
+
+    private sealed record RaceProgressMetric(double? Value, string Source);
 
     private sealed record TrackMapSectorSlice(
         int SectorNum,

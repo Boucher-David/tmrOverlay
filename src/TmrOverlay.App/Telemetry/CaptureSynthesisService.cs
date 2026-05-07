@@ -34,6 +34,7 @@ internal static class CaptureSynthesisService
     private static readonly string[] WeatherTerms =
     [
         "weather",
+        "forecast",
         "rain",
         "precip",
         "wet",

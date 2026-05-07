@@ -284,6 +284,20 @@ internal static class BrowserOverlayPageRenderer
       background: rgba(98, 199, 255, 0.14);
     }
 
+    tr.pit td {
+      color: #8fa1ad;
+      background: rgba(255, 255, 255, 0.045);
+    }
+
+    tr.class-header td {
+      color: #e7edf2;
+      background: rgba(255, 255, 255, 0.07);
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+
     .muted {
       color: #8fa1ad;
     }
@@ -511,26 +525,34 @@ internal static class BrowserOverlayPageRenderer
 
     const driverName = (row) => row?.driverName || row?.teamName || `Car ${row?.carIdx ?? '--'}`;
     const carNumber = (row) => row?.carNumber ? `#${row.carNumber}` : `#${row?.carIdx ?? '--'}`;
-    const isWaiting = (live) => !live?.isConnected || !live?.isCollecting;
-    const isLiveTelemetryAvailable = (live) => {
-      if (!live?.isConnected || !live?.isCollecting || !live?.lastUpdatedAtUtc) return false;
+    const telemetryAvailability = (live) => {
+      if (!live?.isConnected) {
+        return { isAvailable: false, isFresh: false, reason: 'disconnected', status: 'iRacing disconnected' };
+      }
+      if (!live?.isCollecting) {
+        return { isAvailable: false, isFresh: false, reason: 'waiting-for-telemetry', status: 'waiting for telemetry' };
+      }
+      if (!live?.lastUpdatedAtUtc) {
+        return { isAvailable: false, isFresh: false, reason: 'stale-telemetry', status: 'waiting for fresh telemetry' };
+      }
       const lastUpdated = Date.parse(live.lastUpdatedAtUtc);
-      return Number.isFinite(lastUpdated) && Date.now() - lastUpdated <= 1500;
+      const ageMilliseconds = Date.now() - lastUpdated;
+      if (!Number.isFinite(lastUpdated) || Math.abs(ageMilliseconds) > 1500) {
+        return { isAvailable: false, isFresh: false, reason: 'stale-telemetry', status: 'waiting for fresh telemetry' };
+      }
+      return { isAvailable: true, isFresh: true, reason: 'available', status: 'live' };
     };
     const quality = (model) => model?.quality ?? 'unavailable';
 
     function updateTelemetryFade(live) {
       if (!page.fadeWhenTelemetryUnavailable || !overlayEl) return;
-      overlayEl.style.opacity = isLiveTelemetryAvailable(live) ? '1' : '0';
+      overlayEl.style.opacity = telemetryAvailability(live).isAvailable ? '1' : '0';
     }
 
     function setStatus(live, detail) {
-      if (!live?.isConnected) {
-        statusEl.textContent = 'iRacing disconnected';
-        return;
-      }
-      if (!live?.isCollecting) {
-        statusEl.textContent = 'waiting for telemetry';
+      const availability = telemetryAvailability(live);
+      if (!availability.isAvailable) {
+        statusEl.textContent = availability.status;
         return;
       }
       const sequence = live.sequence ?? 0;
@@ -546,7 +568,12 @@ internal static class BrowserOverlayPageRenderer
       const headerHtml = headers.map((header) => `<th>${escapeHtml(header.label)}</th>`).join('');
       const rowHtml = rows.map((row) => {
         const cells = headers.map((header) => `<td>${header.value(row)}</td>`).join('');
-        return `<tr class="${row.isFocus || row.isReferenceCar ? 'focus' : ''}">${cells}</tr>`;
+        const classes = [
+          row.isFocus || row.isReferenceCar ? 'focus' : '',
+          row.onPitRoad && !(row.isFocus || row.isReferenceCar) ? 'pit' : '',
+          row.rowKind === 'header' || row.isClassHeader ? 'class-header' : ''
+        ].filter(Boolean).join(' ');
+        return `<tr class="${classes}">${cells}</tr>`;
       }).join('');
       return `<table><thead><tr>${headerHtml}</tr></thead><tbody>${rowHtml}</tbody></table>`;
     }
@@ -576,7 +603,7 @@ internal static class BrowserOverlayPageRenderer
         return;
       }
 
-      if (page.requiresTelemetry && isWaiting(live) && !page.renderWhenTelemetryUnavailable) {
+      if (page.requiresTelemetry && !telemetryAvailability(live).isAvailable && !page.renderWhenTelemetryUnavailable) {
         contentEl.innerHTML = '<div class="empty">Waiting for iRacing telemetry.</div>';
         setStatus(live);
         return;

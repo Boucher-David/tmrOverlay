@@ -57,7 +57,7 @@ internal static class TrackMapBrowserSource
         ? spatial.referenceLapDistPct
         : Number.isFinite(race.lapDistPct)
           ? race.lapDistPct
-          : 0;
+          : null;
       const markers = smoothTrackMapMarkers(trackMapMarkers(live, focusPct));
       const sectors = live?.models?.trackMap?.sectors || [];
       const svg = trackMapSvg(trackMap, markers, sectors, trackMapSettings);
@@ -278,19 +278,35 @@ internal static class TrackMapBrowserSource
 
     function trackMapMarkers(live, fallbackFocusPct) {
       const markers = new Map();
+      const scoring = live?.models?.scoring || {};
+      const scoringByCarIdx = new Map((scoring.rows || []).map((row) => [row.carIdx, row]));
+      const referenceCarIdx = scoring.referenceCarIdx
+        ?? live?.models?.timing?.focusCarIdx
+        ?? live?.models?.timing?.playerCarIdx
+        ?? live?.models?.spatial?.referenceCarIdx
+        ?? live?.latestSample?.focusCarIdx
+        ?? live?.latestSample?.playerCarIdx
+        ?? null;
       const rows = [
         ...(live?.models?.timing?.overallRows || []),
         ...(live?.models?.timing?.classRows || [])
       ];
       for (const row of rows) {
+        if (row.hasSpatialProgress === false) continue;
         if (!Number.isFinite(row.lapDistPct) || row.lapDistPct < 0) continue;
-        const isFocus = Boolean(row.isFocus || row.isPlayer);
+        const scoringRow = scoringByCarIdx.get(row.carIdx);
+        const isFocus = Boolean(
+          row.isFocus
+          || row.isPlayer
+          || row.carIdx === referenceCarIdx
+          || scoringRow?.isFocus
+          || scoringRow?.isPlayer);
         const marker = {
           carIdx: row.carIdx,
           lapDistPct: normalizeProgress(row.lapDistPct),
           isFocus,
-          color: isFocus ? '#62c7ff' : markerColor(row.carClassColorHex),
-          positionLabel: isFocus ? positionLabel(row) : null
+          color: isFocus ? '#62c7ff' : markerColor(scoringRow?.carClassColorHex || row.carClassColorHex),
+          positionLabel: isFocus ? positionLabel(scoringRow) || positionLabel(row) : null
         };
         const existing = markers.get(row.carIdx);
         if (!existing || marker.isFocus || !existing.isFocus) {
@@ -298,19 +314,14 @@ internal static class TrackMapBrowserSource
         }
       }
 
-      const focusCarIdx = live?.models?.timing?.focusCarIdx
-        ?? live?.models?.timing?.playerCarIdx
-        ?? live?.models?.spatial?.referenceCarIdx
-        ?? live?.latestSample?.focusCarIdx
-        ?? live?.latestSample?.playerCarIdx
-        ?? -1;
+      const focusCarIdx = referenceCarIdx ?? -1;
       if (Number.isFinite(fallbackFocusPct) && fallbackFocusPct >= 0) {
         markers.set(focusCarIdx, {
           carIdx: focusCarIdx,
           lapDistPct: normalizeProgress(fallbackFocusPct),
           isFocus: true,
           color: '#62c7ff',
-          positionLabel: focusPositionLabel(live)
+          positionLabel: focusPositionLabel(live, scoringByCarIdx, focusCarIdx)
         });
       }
 
@@ -364,8 +375,10 @@ internal static class TrackMapBrowserSource
       return Number.isFinite(position) && position > 0 ? `P${position}` : null;
     }
 
-    function focusPositionLabel(live) {
+    function focusPositionLabel(live, scoringByCarIdx, focusCarIdx) {
       const timing = live?.models?.timing || {};
+      const scoringRow = scoringByCarIdx?.get(focusCarIdx);
+      if (scoringRow) return positionLabel(scoringRow);
       return positionLabel(timing.focusRow) || positionLabel(timing.playerRow) || samplePositionLabel(live?.latestSample);
     }
 

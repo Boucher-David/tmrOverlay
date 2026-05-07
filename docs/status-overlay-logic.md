@@ -5,6 +5,7 @@ This file explains how the status overlay decides what to show.
 Implementation file:
 
 - `src/TmrOverlay.App/Overlays/Status/StatusOverlayForm.cs`
+- `src/TmrOverlay.App/Diagnostics/AppDiagnosticsStatusModel.cs`
 
 ## Purpose
 
@@ -17,7 +18,7 @@ The overlay refreshes every 250 ms.
 Each refresh:
 
 1. Reads a `TelemetryCaptureStatusSnapshot` from `TelemetryCaptureState`.
-2. Converts that snapshot into a `CaptureHealth` object.
+2. Converts that snapshot into an `AppDiagnosticsStatusModel`.
 3. Applies colors and labels from that health object only when values changed.
 4. Shows or hides detail rows based on overlay settings.
 5. Invalidates the overlay only when visible state changed.
@@ -39,6 +40,8 @@ The capture row is controlled by `StatusCaptureDetails`.
 The health/message row is controlled by `StatusHealthDetails`.
 
 ## Health Inputs
+
+The shared diagnostics status model is also used by the Support tab so the app status, session state, current issue text, and Status overlay health row do not drift.
 
 The health calculation uses:
 
@@ -66,13 +69,13 @@ The first matching rule wins.
    - Message: trimmed error text.
 
 2. If not connected:
-   - Level: warning.
+   - Level: neutral, unless an app warning exists.
    - Status: `Waiting for iRacing`.
    - Detail: `collector idle`.
    - Message says the sim is not connected.
 
 3. If connected but not collecting:
-   - Level: warning.
+   - Level: info, unless an app warning exists.
    - Status: `Connected, waiting for telemetry`.
    - Detail says it is waiting for the first telemetry frame.
 
@@ -117,8 +120,8 @@ The status overlay applies state colors from `OverlayTheme`:
 
 - Error: error background and indicator.
 - Warning: warning background and indicator.
-- Capturing with ok health: success background and indicator.
-- Connected but not collecting: warning background and indicator.
+- Healthy live collection: success background and indicator.
+- Connected but not collecting: info background and neutral indicator.
 - Not connected: neutral background and indicator.
 
 ## Raw Capture Text

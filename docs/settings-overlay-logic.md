@@ -66,19 +66,21 @@ Managed overlay tabs are generated from `OverlayManager.ManagedOverlayDefinition
 
 The tab list keeps General first, puts common race timing overlays early, keeps driver telemetry and race-state overlays after that, and leaves Support last. Future platform surfaces such as Overlay Bridge, publishing/update status, post-race analysis, and overlay builder should not be added as ordinary driving-overlay tabs without a product pass.
 
-Flags exposes flag-category enable controls and custom border size controls instead of session filters, scale, opacity, or custom timing. The flag overlay ignores background flag bits such as serviceable/start-hidden as standalone display triggers and paints a category only while current telemetry reports a matching user-facing flag category. The full-screen border form is click-through and hides when no enabled flag category is active, so it cannot block the settings window or other native overlays underneath it.
+Flags exposes flag-category enable controls and custom overlay size controls instead of session filters, scale, opacity, or custom timing. The flag overlay ignores background flag bits such as serviceable/start-hidden as standalone display triggers and does not paint plain steady-state green running by itself. Multiple active display categories can be shown together, so white/black/meatball can persist while transient yellow/debris/blue states come and go. The visible renderer is icon-only; exact black-flag instruction text is deferred until a reliable telemetry source exists.
 
-Most driving overlays expose opacity next to scale and keep the existing overlay opacity as their default. The transparent full-screen-style flag border and the radar do not expose opacity because their readability comes from semantic color/shape rather than a normal panel background.
+Most driving overlays expose opacity next to scale and keep the existing overlay opacity as their default. The transparent flag renderer and the radar do not expose opacity because their readability comes from semantic color/shape rather than a normal panel background.
 
 Gap To Leader is race-only, so its settings tab omits the redundant `Display in sessions` filter group.
 
 Each user-facing overlay tab shows a selectable localhost browser-source URL plus a copy button when a route exists. These routes are independent of native overlay visibility; a hidden native overlay can still be used as a localhost browser source when `LocalhostOverlays` is enabled in configuration, and localhost-only surfaces such as Garage Cover do not expose a native `Visible` checkbox. Overlay modules own browser-source route descriptors and page scripts; localhost owns the HTTP transport, route catalog, and generic HTML shell.
 
+Standings exposes normal overlay visibility, scale, opacity, session filters, its localhost browser-source URL, and the `Other-class rows` setting. The native overlay and browser source both use that setting when they group scoring rows by class.
+
 Track Map exposes normal overlay visibility, scale, map-fill opacity, and session filters plus map-source status. Its tab explains that bundled app maps are used automatically when the current track identity matches, while local IBT-derived map generation is on by default to fill or improve layouts after sessions. Schema-v2 generated maps carry sector boundaries used by the live model-v2 green/purple sector highlights; the map-fill opacity setting still does not dim the white outline, markers, or sector status. The `Build local maps from IBT telemetry` checkbox controls future automatic post-session generation and whether user-generated maps are eligible at runtime; when disabled, runtime lookup uses bundled app maps before falling back to the circle placeholder. The settings tab no longer exposes one-off `.ibt` conversion controls; use `tools/TmrOverlay.TrackMapGenerator` for bundled-asset generation and QA.
 
 Stream Chat is exposed as both a native overlay and a localhost browser-source route. The settings tab saves one active source: not configured, Streamlabs Chat Box URL, or Twitch channel. The saved values are reused on load so enabling the native overlay or opening the browser-source route reconnects automatically. The native overlay supports public Twitch channel chat; Streamlabs embeds the configured widget URL in `/overlays/stream-chat`. Both chat surfaces replace the first placeholder row with either a connected message or a connection error. The inactive provider is ignored even if its field has a saved value. Provider auth, moderation controls, write/chat-command support, and richer rate-limit handling are separate follow-up work. Streamlabs widget URLs are treated as private local settings and redacted from diagnostics bundles.
 
-Garage Cover is localhost-only. Its settings tab exposes the OBS/browser-source URL plus image import/clear, but not native visibility, session filters, opacity, scale, or desktop frame controls. The imported image is copied into app-owned settings storage before being served to the browser source; when no user image is available, the browser source uses the black TMR fallback. The browser source appears only while fresh telemetry reports the iRacing Garage screen as visible.
+Garage Cover is localhost-only. Its settings tab exposes the OBS/browser-source URL, image import/clear, a static cover preview, a short test-cover action, and the current Garage/setup-screen detection state, but not native visibility, session filters, opacity, scale, or desktop frame controls. The imported image is copied into app-owned settings storage before being served to the browser source; when no user image is available or the image cannot load, the browser source uses the black TMR fallback. With fresh telemetry it appears only while iRacing reports the Garage screen as visible; when telemetry is unavailable or stale, it fails closed to the cover/fallback rather than flashing transparent.
 
 The selected overlay tab is reported back to `OverlayManager`.
 
@@ -95,7 +97,7 @@ For every managed driving overlay, `OverlayManager` ensures:
 
 The gap-to-leader overlay is normalized to race-only visibility whenever managed overlay settings are ensured.
 
-The flags overlay is normalized to the primary monitor bounds when old saved settings still contain the previous small table dimensions or the old 1920x1080 default. Ultrawide monitors use full monitor height with a centered 4:3 border so the default is not an impractically wide banner. User-entered custom border width/height are preserved once edited.
+The flags overlay is normalized back to the compact procedural-flag default when old saved settings still contain the previous primary-screen border dimensions. User-entered custom overlay width/height are clamped to the compact renderer bounds and preserved once edited.
 
 Saved Garage Cover frame values from earlier tester builds are no longer used for a desktop overlay. Browser-source dimensions are controlled in OBS or the host browser.
 
@@ -160,6 +162,7 @@ The settings window stores normalized size but is recentered on open, so saved c
 The Support tab:
 
 - Shows visible app version/build metadata at the top of the tab, followed by teammate-oriented diagnostic capture and diagnostics bundle actions.
+- Uses the shared `AppDiagnosticsStatusModel` for app status, live/session state, and current issue text so Support and the Status overlay explain collector health from the same priority order.
 - Treats first-run/no-iRacing waiting as an expected idle state instead of an active issue.
 - Keeps diagnostic telemetry at the top of the handoff flow and explains when teammates should enable it.
 - Makes bundle actions primary: create diagnostics bundle, copy latest bundle path, and open the diagnostics folder.

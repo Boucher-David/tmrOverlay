@@ -1,3 +1,5 @@
+using System.Drawing;
+
 namespace TmrOverlay.App.Overlays.GarageCover;
 
 internal static class GarageCoverImageStore
@@ -64,15 +66,79 @@ internal static class GarageCoverImageStore
 
     public static GarageCoverImageInfo? GetSupportedImageInfo(string? path)
     {
-        if (string.IsNullOrWhiteSpace(path)
-            || !AllowedExtensions.Contains(Path.GetExtension(path))
-            || !File.Exists(path))
+        var status = InspectImage(path);
+        return status.IsUsable
+            ? new GarageCoverImageInfo(status.LastWriteTimeUtc!.Value, status.Length!.Value)
+            : null;
+    }
+
+    public static GarageCoverImageStatus InspectImage(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return new GarageCoverImageStatus(
+                HasConfiguredPath: false,
+                IsUsable: false,
+                Status: "not_configured",
+                FileName: null,
+                Extension: null,
+                Length: null,
+                LastWriteTimeUtc: null);
+        }
+
+        var extension = Path.GetExtension(path);
+        if (!AllowedExtensions.Contains(extension))
+        {
+            return new GarageCoverImageStatus(
+                HasConfiguredPath: true,
+                IsUsable: false,
+                Status: "unsupported_extension",
+                FileName: Path.GetFileName(path),
+                Extension: extension,
+                Length: null,
+                LastWriteTimeUtc: null);
+        }
+
+        if (!File.Exists(path))
+        {
+            return new GarageCoverImageStatus(
+                HasConfiguredPath: true,
+                IsUsable: false,
+                Status: "file_missing",
+                FileName: Path.GetFileName(path),
+                Extension: extension,
+                Length: null,
+                LastWriteTimeUtc: null);
+        }
+
+        var info = new FileInfo(path);
+        return new GarageCoverImageStatus(
+            HasConfiguredPath: true,
+            IsUsable: true,
+            Status: "ready",
+            FileName: info.Name,
+            Extension: info.Extension,
+            Length: info.Length,
+            LastWriteTimeUtc: info.LastWriteTimeUtc);
+    }
+
+    public static Image? TryLoadPreviewImage(string? path)
+    {
+        if (GetSupportedImageInfo(path) is null)
         {
             return null;
         }
 
-        var info = new FileInfo(path);
-        return new GarageCoverImageInfo(info.LastWriteTimeUtc, info.Length);
+        try
+        {
+            using var stream = File.OpenRead(path!);
+            using var image = Image.FromStream(stream);
+            return new Bitmap(image);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static string ImageDirectory(string settingsRoot)
@@ -82,3 +148,12 @@ internal static class GarageCoverImageStore
 }
 
 internal sealed record GarageCoverImageInfo(DateTimeOffset LastWriteTimeUtc, long Length);
+
+internal sealed record GarageCoverImageStatus(
+    bool HasConfiguredPath,
+    bool IsUsable,
+    string Status,
+    string? FileName,
+    string? Extension,
+    long? Length,
+    DateTimeOffset? LastWriteTimeUtc);
