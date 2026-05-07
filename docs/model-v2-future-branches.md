@@ -137,6 +137,24 @@ Likely scope:
 - Extend performance diagnostics to distinguish visible refreshes, hidden skipped refreshes, fade-only work, and settings-driven lifecycle transitions.
 - Validate with screenshot parity, overlay performance counters, and teammate long-session usage before using the pattern for heavier analysis or broadcast overlays.
 
+Detailed performance backlog:
+
+1. Overlay lifecycle: pause native overlay timers and model reads when an overlay is hidden, session-filtered out, or fully faded; resume without stale first-frame behavior when visible again.
+2. Shared timer scheduler: replace scattered independent WinForms timers with shared cadence buckets, such as 50 ms, 100 ms, 250 ms, 500 ms, and 1000 ms subscriptions.
+3. Sequence-aware refresh skipping: skip row rebuilds, label updates, layout, and paints when the underlying normalized snapshot sequence has not changed, with explicit exceptions for visible animation or local-driver safety views.
+4. Paint and GDI allocation cleanup: cache stable `Pen`, `Brush`, `Font`, and layout resources per form/theme/scale, with clear disposal when theme or scale changes.
+5. Track Map rendering split: cache static map geometry/background separately from live cars, sectors, labels, and focus highlights so high-frequency updates do not redraw the full map.
+6. Input graph optimization: use fixed-size/ring sample buffers, avoid full repaints when driver input is unchanged, and keep ABS/TC active-state coloring tied to proven firing signals.
+7. Radar draw optimization: keep visible radar accuracy as the priority while skipping all hidden work and caching static rings, labels, brushes, and geometry helpers.
+8. Localhost/browser-source efficiency: keep localhost routes available, but reduce route work when no clients are connected and allow browser-source polling cadences to match each overlay's freshness needs.
+9. Disk write batching: queue or batch low-priority app events, local logs, diagnostics, and performance snapshots so telemetry/UI paths do not block on frequent append writes.
+10. Settings save/apply debouncing: avoid saving and reapplying scale, opacity, numeric, and text settings on every intermediate control change when idle/commit behavior is enough.
+11. Diagnostics cost control: keep support bundles useful while avoiding repeated JSON/directory scans from hidden settings tabs or high-frequency overlay loops.
+12. Store/history read caching: add invalidation-based caches for repeated `TrackMapStore`, session history, and analysis reads instead of rescanning disk-backed data.
+13. Shared font/theme cache: centralize `OverlayTheme` font/resource creation by family, size, style, theme, and scale so paint/layout paths do not recreate stable objects.
+14. Layout churn reduction: use set-if-changed helpers and suspend/resume layout patterns across overlay forms, not only the settings panel, and avoid rebuilding controls when value updates are enough.
+15. Performance harness: create a repeatable long-run profile for all overlays hidden, all overlays visible, static telemetry, replay/active telemetry, and browser clients connected/disconnected; capture UI-thread time, paint counts, timer counts, disk writes, memory, and GDI handle pressure.
+
 ### v1.1 - Analysis Evidence Loop And Capture Replay
 
 Goal: make real race evidence easier to replay through overlays without manually driving the app.
