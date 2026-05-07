@@ -23,6 +23,7 @@ using TmrOverlay.App.Overlays.StreamChat;
 using TmrOverlay.App.Overlays.Styling;
 using TmrOverlay.App.Overlays.TrackMap;
 using TmrOverlay.App.Performance;
+using TmrOverlay.App.Settings;
 using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
 using TmrOverlay.App.TrackMaps;
@@ -281,6 +282,13 @@ internal static class Program
         var performanceState = new AppPerformanceState();
         var localhostOptions = new LocalhostOverlayOptions();
         var localhostState = new LocalhostOverlayState(localhostOptions);
+        var settingsStore = new AppSettingsStore(storage);
+        var liveTelemetry = new SequenceTelemetrySource(_ => LiveTelemetrySnapshot.Empty with
+        {
+            IsConnected = true,
+            IsCollecting = true,
+            LastUpdatedAtUtc = DateTimeOffset.UtcNow
+        });
         var diagnostics = new DiagnosticsBundleService(
             storage,
             new LiveModelParityOptions(),
@@ -288,6 +296,8 @@ internal static class Program
             captureState,
             localhostState,
             new TrackMapStore(storage),
+            settingsStore,
+            liveTelemetry,
             performanceState,
             new AppPerformanceSnapshotRecorder(storage),
             NullLogger<DiagnosticsBundleService>.Instance);
@@ -305,6 +315,7 @@ internal static class Program
             storage,
             localhostOptions,
             localhostState,
+            liveTelemetry,
             diagnostics,
             new AppEventRecorder(storage),
             settings.GetOrAddOverlay(
