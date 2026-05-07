@@ -126,7 +126,15 @@ internal sealed class StandingsForm : PersistentOverlayForm
         {
             Interval = RefreshIntervalMilliseconds
         };
-        _refreshTimer.Tick += (_, _) => RefreshOverlay();
+        _refreshTimer.Tick += (_, _) =>
+        {
+            _performanceState.RecordOverlayTimerTick(
+                StandingsOverlayDefinition.Definition.Id,
+                RefreshIntervalMilliseconds,
+                Visible,
+                !Visible || Opacity <= 0.001d);
+            RefreshOverlay();
+        };
         _refreshTimer.Start();
 
         RefreshOverlay();

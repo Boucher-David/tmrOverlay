@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using TmrOverlay.App.Localhost;
 using TmrOverlay.App.Performance;
 using TmrOverlay.App.Storage;
 using Xunit;
@@ -17,6 +18,7 @@ public sealed class AppPerformanceHostedServiceTests
             using var service = new AppPerformanceHostedService(
                 new AppPerformanceState(),
                 recorder,
+                new LocalhostOverlayState(new LocalhostOverlayOptions()),
                 NullLogger<AppPerformanceHostedService>.Instance);
 
             await service.StartAsync(CancellationToken.None);

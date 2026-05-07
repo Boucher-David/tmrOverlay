@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-05-06
+Last updated: 2026-05-07
 
 ## Project Goal
 
@@ -185,7 +185,7 @@ Last updated: 2026-05-06
 
 - `src/TmrOverlay.App/Performance/AppPerformanceState.cs`
   - stores lightweight in-memory performance counters and rolling timing summaries
-  - tracks telemetry callback throughput, normalized live sink time, edge-case recorder time, history accumulation time, continuous iRacing network/system values, capture writer write time, capture queue depth, overlay refresh timings, overlay update-decision rates, dropped/written raw frames, process memory, and GC counts
+  - tracks telemetry callback throughput, normalized live sink time, edge-case recorder time, history accumulation time, continuous iRacing network/system values, capture writer write time, capture queue depth, overlay refresh timings, overlay update-decision rates, overlay timer cadence/active counts, lifecycle visibility/session/fade states, skipped unchanged-sequence updates, explicit paint samples, localhost idle/request activity, dropped/written raw frames, process memory, GDI/USER handle pressure, and GC counts
   - intentionally stores aggregate/recent-window metrics rather than every telemetry frame
   - `AppPerformanceHostedService` writes periodic JSONL snapshots under the logs performance folder regardless of raw-capture state, with the first startup write delayed so launch does not immediately touch performance-log storage
 
@@ -545,8 +545,8 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 - The current machine does not have `dotnet`, so Windows build/test verification still needs to happen on a .NET-equipped machine.
 - The local mac Swift package builds, but `swift test` currently requires an XCTest-capable Swift/Xcode toolchain.
 - No general-purpose replay/decoder tool exists yet for `telemetry.bin`; targeted analysis scripts exist under `tools/analysis/`.
-- v0.9 portable tester publishing is tag-driven, but broad production distribution still needs a signing decision and installer/update channel. Passive update discovery should prefer Velopack-compatible release metadata, with a manifest/GitHub Release fallback only while portable zip releases remain the active channel.
-- The PR workflow runs restore/build/test, tracked screenshot validation, Windows screenshot expectation checks, Windows screenshot artifact generation/validation, and a self-contained publish dry run with package audit. The release workflow audits the publish folder for accidental repo/dev-folder leaks, emits a package manifest, and keeps user data under the app-data root instead of the install folder.
+- v0.16 makes Velopack the installer/update channel using public GitHub Releases as the feed. Installed builds check with Velopack `GithubSource` without embedding a token; portable/dev runs skip update checks because they do not have a Velopack install identity. Signing remains pending before broader production distribution.
+- The PR workflow runs restore/build/test, tracked screenshot validation, Windows screenshot expectation checks, Windows screenshot artifact generation/validation, a self-contained publish dry run with package audit, and a Velopack pack dry run. The release workflow audits the publish folder for accidental repo/dev-folder leaks, emits a package manifest, packs Velopack installer/update assets, keeps the portable zip fallback, and keeps user data under the app-data root instead of the install folder.
 - Because the app-data root persists across portable installs, durable settings/history schema changes must include version bumps plus migrations or compatible readers. Incompatible/future history is skipped and left on disk instead of being fed to overlays.
 - Overlay modules now live under `src/TmrOverlay.App/Overlays/`; settings, standings, fuel-calculator, relative, track-map, stream-chat, flags, session/weather, pit-service snapshot, input/car-state, car-radar, and gap-to-leader native overlays are wired. Garage Cover is wired as a localhost-only browser-source privacy surface, and app status lives in Support/diagnostics rather than a standalone user overlay. Browser-source scripts for localhost routes live with their overlay modules. Remaining future product surfaces should be added deliberately rather than as placeholder overlay tabs.
 - Pure models and calculations have started moving into `src/TmrOverlay.Core/`; Windows remains the production app/runtime, while the ignored mac harness remains the mock-telemetry development surface.
@@ -555,11 +555,11 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 
 ## Recommended Next Steps
 
-1. Use v0.15 for a focused settings layout/V1 UI polish pass now that shared chrome, scale, and support/status ownership are in place.
-2. Implement the update-check service/UI in the follow-up release-channel branch: once-per-startup plus manual checks from Velopack-compatible metadata where possible, with update warnings shown as a passive yellow banner above the settings tabs.
-3. Validate portable upgrade behavior against existing `%LOCALAPPDATA%\TmrOverlay` settings/history/diagnostics data on Windows before broad teammate handoff.
-4. Decide signing before broad distribution. Private teammate zip builds can remain unsigned, but production sharing should sign the executable or package.
-5. Decide the installer/update channel after the portable baseline: Velopack for installer plus update feed, or MSIX/App Installer if package identity/signing constraints are acceptable.
+1. Validate at least one installed Velopack update from public GitHub Releases before adding active download/apply/restart controls.
+2. Validate portable and Velopack upgrade behavior against existing `%LOCALAPPDATA%\TmrOverlay` settings/history/diagnostics data on Windows before broad teammate handoff.
+3. Decide signing before broad distribution. Private teammate builds can remain unsigned, but production sharing should sign the executable or package.
+4. Decide whether the portable zip remains a normal release asset long term or becomes support fallback only.
+5. Keep update prompts passive and off-simulator until teammate installer testing proves the release channel reliable.
 6. Treat overlay lifecycle/timer efficiency as an important V1.x foundation: hidden, session-filtered, or fully faded native overlays should pause high-frequency refresh timers through a shared lifecycle contract, then resume cleanly when visible. The future performance backlog should also cover shared cadence timers, sequence-aware refresh skips, paint/GDI/font/theme caching, Track Map static-raster caching, Input/Radar hot-path cleanup, localhost no-client reduction, disk write batching, settings-save debouncing, diagnostics/store/history caching, layout churn reduction, and a repeatable performance harness.
 7. Identify remaining v1/legacy overlay slices and choose the next safe model-v2 migration target without pulling fuel/gap analysis products into the simple-overlay path prematurely.
 8. Keep collecting radar diagnostics for suppressed non-local focus, local progress-missing, side-without-placement, and multiclass cases before expanding beyond local in-car radar.
@@ -584,6 +584,7 @@ Treat the docs as schema/reference material, not as a ready-made real-world data
 - `src/TmrOverlay.App/Performance/AppPerformanceState.cs`
 - `src/TmrOverlay.App/Telemetry/TelemetryCaptureHostedService.cs`
 - `src/TmrOverlay.App/Telemetry/TelemetryCaptureSession.cs`
+- future V1.x Timing Tower overlay files once that race-only compact timing surface is pulled forward
 - `telemetry.md`
 - `skills/tmr-overlay-context/references/fuel-overlay-context.md`
 - `skills/tmr-overlay-context/references/overlay-research.md`

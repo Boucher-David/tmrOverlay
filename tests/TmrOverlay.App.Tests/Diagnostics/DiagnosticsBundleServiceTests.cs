@@ -8,6 +8,7 @@ using TmrOverlay.App.Performance;
 using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
 using TmrOverlay.App.TrackMaps;
+using TmrOverlay.App.Updates;
 using TmrOverlay.Core.Telemetry.Live;
 using Xunit;
 
@@ -119,6 +120,10 @@ public sealed class DiagnosticsBundleServiceTests
             performanceRecorder.Record(performance.Snapshot());
             var trackMapStore = new TrackMapStore(storage);
             var settingsStore = new AppSettingsStore(storage);
+            var releaseUpdates = new ReleaseUpdateService(
+                new ReleaseUpdateOptions { Enabled = false },
+                new AppEventRecorder(storage),
+                NullLogger<ReleaseUpdateService>.Instance);
             var liveTelemetry = new TestLiveTelemetrySource(LiveTelemetrySnapshot.Empty with
             {
                 IsConnected = true,
@@ -145,6 +150,7 @@ public sealed class DiagnosticsBundleServiceTests
                 liveTelemetry,
                 performance,
                 performanceRecorder,
+                releaseUpdates,
                 NullLogger<DiagnosticsBundleService>.Instance);
 
             var bundlePath = service.CreateBundle();
@@ -155,6 +161,7 @@ public sealed class DiagnosticsBundleServiceTests
             Assert.Contains("metadata/storage.json", entryNames);
             Assert.Contains("metadata/telemetry-state.json", entryNames);
             Assert.Contains("metadata/localhost-overlays.json", entryNames);
+            Assert.Contains("metadata/release-updates.json", entryNames);
             Assert.Contains("metadata/track-maps.json", entryNames);
             Assert.Contains("metadata/garage-cover.json", entryNames);
             Assert.Contains("metadata/performance.json", entryNames);

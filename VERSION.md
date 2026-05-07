@@ -9,94 +9,63 @@ TmrOverlay uses SemVer-style annotated Git tags for product milestones:
 
 ## Current Branch Target
 
-### v0.14.0 - UI Polish And V1 Candidate Prep
+### v0.16.0 - Velopack Release Channel
 
 Planned branch name:
 
 ```text
-v0.14-ui-polish-v1-candidate-prep
+v0.16-velopack-release-channel
 ```
 
 Planned scope:
 
-- Make the core overlay/settings surface easier to review, maintain, and hand to a designer.
-- Promote shared overlay chrome primitives for headers, status, source footers, tables, borders, and state tones.
-- Move normal overlay dimensions to app-owned scale-derived sizing instead of independent width/height controls.
-- Keep app-health/status diagnostics in Support instead of a standalone product overlay.
-- Tighten startup, localhost/browser-source, performance, and diagnostics behavior before V1 candidate testing.
-- Refresh screenshot parity expectations, docs, context, and branch-readiness metadata.
+- Make Velopack the canonical installer/update channel for public GitHub Releases.
+- Keep the portable zip artifact as a transitional fallback while teammate installs move to the Velopack setup executable.
+- Add passive startup and manual update checks through Velopack without embedding a GitHub token in the client.
+- Surface update state in the tray menu, settings banner, Support tab, diagnostics bundle, and release docs.
+- Add diagnostic prep for the V1.x overlay lifecycle/timer-efficiency branch before changing overlay behavior.
+- Record the Timing Tower as a V1.x follow-up feature separate from full Standings.
+- Keep update prompts passive and never modal over an active simulator session.
 
 Technical implementation checklist:
 
-1. Bump shared .NET product/version metadata to `0.14.0`.
-2. Add shared WinForms overlay chrome helpers and session-scoped Header/Footer settings for common overlays.
-3. Move scale-capable overlays to definition-size plus scale-derived dimensions, including Flags, Stream Chat, and Garage Cover.
-4. Keep Track Map and Radar square-scaled, and keep Garage Cover browser/preview image fitting crop-to-cover.
-5. Remove the floating Collector Status overlay from the managed product overlay set while preserving Support-tab and diagnostics status models.
-6. Reduce startup and idle localhost overhead with deferred/background startup work, snapshot response caching, slower browser polling where appropriate, and better localhost activity diagnostics.
-7. Refresh deterministic screenshot expectations/artifacts so retired status-overlay images are no longer a V1 parity target.
-8. Update docs/context/version metadata and run branch validation available from macOS, with Windows build/test/publish left to Windows CI.
-
-Implemented baseline in this branch:
-
-- Bumped shared .NET product/version metadata to `0.14.0`.
-- Added shared overlay chrome helpers and state models for title/status/source layout, common table cells, row sizing, borders, state colors, and header/footer slot fitting.
-- Added session-scoped Header `Status` and Footer `Source` settings under horizontal General/Header/Footer sub-tabs for Standings, Relative, Fuel Calculator, Input / Car State, and Gap To Leader.
-- Moved normal scale-capable overlays to scale-derived width/height normalization, including Flags, Stream Chat, Garage Cover, Track Map, and Radar.
-- Kept Garage Cover localhost-only while adding scale control and crop-to-cover preview behavior so imported images always fill the cover area.
-- Removed the floating Collector Status overlay and its Windows/mac screenshot parity targets; app-health status remains in the Support tab and diagnostics bundles.
-- Tightened startup/performance work by moving startup history/retention maintenance off the blocking path and delaying the first performance log write.
-- Reduced localhost/browser-source overhead with cached serialized snapshot responses, localhost recent-request diagnostics, and slower Track Map browser polling.
-- Updated Windows screenshot expectations, tracked screenshot validation, docs, and repo context for the V1 candidate product shape.
-- Added focused unit coverage for localhost response caching, performance startup behavior, shared chrome settings, and chrome slot fitting.
+1. Bump shared .NET product/version metadata to `0.16.0`.
+2. Add Velopack package integration and run `VelopackApp` at process startup with automatic apply disabled.
+3. Add a release update service backed by public GitHub Releases through Velopack `GithubSource`.
+4. Check once on startup after a short delay and allow manual tray/settings checks.
+5. Show update available/failure states as passive settings UI and Support diagnostics instead of modal prompts.
+6. Extend diagnostics bundles with update state.
+7. Update CI to pack Velopack installer/update assets and attach them to tag releases alongside the portable zip fallback.
+8. Add passive performance diagnostics for overlay timer cadence, lifecycle visibility, unchanged-sequence skips, paint samples, localhost activity, and process handle pressure.
+9. Update release/update docs and run branch validation available from macOS, with Windows build/test/publish/Velopack validation left to Windows CI.
 
 Likely squash title:
 
 ```text
-[v0.14.0] Polish overlays and prepare the V1 candidate
+[v0.16.0] Add Velopack release channel
 ```
 
 Likely squash body:
 
 ```text
-- Bumped shared .NET product/version metadata to 0.14.0.
-- Added shared overlay chrome primitives for title/status/source layout, table cells, row sizing, borders, state colors, and header/footer slot fitting.
-- Added session-scoped Header `Status` and Footer `Source` settings under horizontal General/Header/Footer sub-tabs for Standings, Relative, Fuel Calculator, Input / Car State, and Gap To Leader.
-- Moved scale-capable overlays to app-owned definition-size plus scale-derived dimensions, including Flags, Stream Chat, Garage Cover, Track Map, and Radar.
-- Kept Garage Cover localhost-only while adding scale control and crop-to-cover preview/rendering behavior so imported images fill the cover area reliably.
-- Removed the floating Collector Status overlay from the product overlay set and screenshot parity targets; app-health status remains in Support and diagnostics.
-- Moved startup history/retention maintenance off the blocking path and delayed the first performance log write.
-- Reduced localhost/browser-source overhead with cached serialized snapshot responses, recent-request diagnostics, and slower Track Map browser polling.
-- Updated docs, repo context, tracked screenshot validation, and Windows screenshot expectations for the V1 candidate product shape.
-- Added focused unit coverage for localhost response caching, startup performance behavior, shared chrome settings, and chrome slot fitting.
-- Validation: git diff --check, conflict-marker sweep, C# compile-shape scanner, tracked screenshot validation, Windows screenshot expectation validation, and mac harness build. Windows restore/build/test/screenshot/publish validation remains CI-owned from this Mac because `dotnet` is not installed locally; `swift test` is blocked by missing XCTest in the local toolchain.
+- Bumped shared .NET product/version metadata to 0.16.0.
+- Added Velopack startup integration with automatic apply disabled.
+- Added a GitHub Releases-backed update service for installed Velopack builds, with startup/manual checks and portable/dev-run skip behavior.
+- Added tray menu update status/actions, passive settings banner states, Support-tab update diagnostics, and diagnostics bundle metadata.
+- Added passive performance diagnostics for V1.x overlay lifecycle/timer work: timer cadence/active counts, visible versus pause-eligible samples, lifecycle state transitions, unchanged-sequence skips, explicit paint samples, localhost activity, and GDI/USER handle pressure.
+- Updated Windows CI to dry-run Velopack packaging on PRs and attach Velopack installer/update assets to tag releases alongside the portable zip fallback.
+- Updated release/update docs, public README language, repo context, and V1.x roadmap notes, including Timing Tower as a future compact race tower separate from Standings.
+- Validation: git diff --check, merge-marker scan, C# compile-shape scanner, mac screenshot regeneration plus tracked screenshot validation, Windows screenshot expectation validation, release tutorial screenshot regeneration/validation, and workflow YAML parse. Windows restore/build/test/screenshot/publish/Velopack validation remains CI-owned from this Mac because `dotnet` is not installed locally.
 ```
 
 ## Next Planned Milestone
 
-### v0.15.0 - Settings Layout And V1 UI Polish
-
-Planned branch name:
-
-```text
-v0.15-settings-layout-v1-polish
-```
+### V1.x - Performance Foundation And Post-Candidate Hardening
 
 Likely scope:
 
-- Rework the Settings app layout as a focused product pass instead of expanding the v0.14 branch after branch-complete validation.
-- Keep the v0.14 shared General/Header/Footer overlay settings behavior, then make the surrounding settings surface clearer, easier to scan, and easier to extend.
-- Improve grouping for overlay controls, support/status controls, localhost/browser-source details, and shared app preferences without exposing development-only surfaces as normal overlay tabs.
-- Preserve app-owned scale controls and header/footer slot-fitting assumptions while improving how crowded overlay option sets are presented.
-- Regenerate tracked mac screenshots and rely on Windows CI for WinForms screenshot parity, build, test, publish, and package validation.
-
-### v0.16.0 - Release Channel And V1 Candidate Escape Hatch
-
-Likely scope:
-
-- Keep installer/update-channel work, likely Velopack, as the next larger 0.x milestone unless teammate testing forces a different release-blocking fix first.
-- Reserve this milestone for signed/installer distribution, update-check reliability, portable-upgrade hardening, durable AppData compatibility issues, or final V1 candidate stabilization.
-- Keep deep fuel/strategy/engineer/advanced-track-map/streaming/builder work out of the V1.0 release candidate unless it remains hidden development tooling.
+- Use the V1.x roadmap for overlay lifecycle/timer efficiency, rendering/cache performance, capture replay, and heavier analysis products.
+- Keep hard release-blocking fixes in 0.x only if teammate testing finds installer/update, AppData compatibility, or V1 candidate regressions.
 
 ## Merged Mainline Milestones
 

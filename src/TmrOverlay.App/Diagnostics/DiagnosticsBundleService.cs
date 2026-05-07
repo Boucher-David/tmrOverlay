@@ -10,6 +10,7 @@ using TmrOverlay.App.Settings;
 using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
 using TmrOverlay.App.TrackMaps;
+using TmrOverlay.App.Updates;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Telemetry.Live;
 
@@ -42,6 +43,7 @@ internal sealed class DiagnosticsBundleService
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly AppPerformanceState _performanceState;
     private readonly AppPerformanceSnapshotRecorder _performanceRecorder;
+    private readonly ReleaseUpdateService _releaseUpdates;
     private readonly ILogger<DiagnosticsBundleService> _logger;
     private readonly object _sync = new();
     private string? _lastBundlePath;
@@ -62,6 +64,7 @@ internal sealed class DiagnosticsBundleService
         ILiveTelemetrySource liveTelemetrySource,
         AppPerformanceState performanceState,
         AppPerformanceSnapshotRecorder performanceRecorder,
+        ReleaseUpdateService releaseUpdates,
         ILogger<DiagnosticsBundleService> logger)
     {
         _storageOptions = storageOptions;
@@ -74,6 +77,7 @@ internal sealed class DiagnosticsBundleService
         _liveTelemetrySource = liveTelemetrySource;
         _performanceState = performanceState;
         _performanceRecorder = performanceRecorder;
+        _releaseUpdates = releaseUpdates;
         _logger = logger;
     }
 
@@ -118,6 +122,7 @@ internal sealed class DiagnosticsBundleService
                 AddTextEntry(archive, "metadata/storage.json", JsonSerializer.Serialize(_storageOptions, JsonOptions));
                 AddTextEntry(archive, "metadata/telemetry-state.json", JsonSerializer.Serialize(_captureState.Snapshot(), JsonOptions));
                 AddTextEntry(archive, "metadata/localhost-overlays.json", JsonSerializer.Serialize(_localhostOverlayState.Snapshot(), JsonOptions));
+                AddTextEntry(archive, "metadata/release-updates.json", JsonSerializer.Serialize(_releaseUpdates.Snapshot(), JsonOptions));
                 AddTextEntry(archive, "metadata/track-maps.json", JsonSerializer.Serialize(_trackMapStore.DiagnosticsSnapshot(), JsonOptions));
                 AddTextEntry(archive, "metadata/garage-cover.json", JsonSerializer.Serialize(GarageCoverDiagnostics(), JsonOptions));
                 metadataSucceeded = true;

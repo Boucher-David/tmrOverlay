@@ -6,8 +6,10 @@ using TmrOverlay.App.Brand;
 using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.Overlays;
+using TmrOverlay.App.Performance;
 using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
+using TmrOverlay.App.Updates;
 
 namespace TmrOverlay.App.Shell;
 
@@ -17,13 +19,19 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
     private readonly AppStorageOptions _storageOptions;
     private readonly DiagnosticsBundleService _diagnosticsBundleService;
     private readonly AppEventRecorder _events;
+    private readonly ReleaseUpdateService _releaseUpdates;
+    private readonly AppPerformanceState _performanceState;
     private readonly ILogger<NotifyIconApplicationContext> _logger;
+    private readonly SynchronizationContext? _uiContext;
     private readonly TelemetryCaptureOptions _options;
     private readonly TelemetryCaptureState _state;
     private readonly OverlayManager _overlayManager;
     private readonly NotifyIcon _notifyIcon;
     private readonly ToolStripMenuItem _statusItem;
     private readonly ToolStripMenuItem _captureItem;
+    private readonly ToolStripMenuItem _updateStatusItem;
+    private readonly ToolStripMenuItem _checkUpdatesItem;
+    private readonly ToolStripMenuItem _openUpdatePageItem;
     private readonly ToolStripMenuItem _rootItem;
     private readonly System.Windows.Forms.Timer _refreshTimer;
     private bool _exiting;
@@ -33,6 +41,8 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
         AppStorageOptions storageOptions,
         DiagnosticsBundleService diagnosticsBundleService,
         AppEventRecorder events,
+        ReleaseUpdateService releaseUpdates,
+        AppPerformanceState performanceState,
         ILogger<NotifyIconApplicationContext> logger,
         TelemetryCaptureOptions options,
         TelemetryCaptureState state,
@@ -42,7 +52,10 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
         _storageOptions = storageOptions;
         _diagnosticsBundleService = diagnosticsBundleService;
         _events = events;
+        _releaseUpdates = releaseUpdates;
+        _performanceState = performanceState;
         _logger = logger;
+        _uiContext = SynchronizationContext.Current;
         _options = options;
         _state = state;
         _overlayManager = overlayManager;
@@ -54,6 +67,16 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
         };
 
         _captureItem = new ToolStripMenuItem("Open Latest Capture", null, (_, _) => OpenCapture())
+        {
+            Enabled = false
+        };
+
+        _updateStatusItem = new ToolStripMenuItem("Updates not checked")
+        {
+            Enabled = false
+        };
+        _checkUpdatesItem = new ToolStripMenuItem("Check for Updates", null, async (_, _) => await CheckForUpdatesFromTrayAsync().ConfigureAwait(true));
+        _openUpdatePageItem = new ToolStripMenuItem("Open Releases", null, (_, _) => OpenUpdatePage())
         {
             Enabled = false
         };
@@ -77,6 +100,11 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
             _rootItem,
             logsItem,
             settingsItem,
+            new ToolStripSeparator(),
+            _updateStatusItem,
+            _checkUpdatesItem,
+            _openUpdatePageItem,
+            new ToolStripSeparator(),
             diagnosticsItem,
             new ToolStripSeparator(),
             exitItem
@@ -90,13 +118,18 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
             Visible = true
         };
         _notifyIcon.DoubleClick += (_, _) => OpenCapture();
+        _releaseUpdates.StateChanged += ReleaseUpdatesStateChanged;
         _overlayManager.ShowStartupOverlays();
 
         _refreshTimer = new System.Windows.Forms.Timer
         {
             Interval = 1000
         };
-        _refreshTimer.Tick += (_, _) => RefreshMenu();
+        _refreshTimer.Tick += (_, _) =>
+        {
+            _performanceState.RecordOverlayTimerTick("tray-menu", 1000, visible: true, pauseEligible: false);
+            RefreshMenu();
+        };
         _refreshTimer.Start();
 
         RefreshMenu();
@@ -108,6 +141,7 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
         {
             _refreshTimer.Stop();
             _refreshTimer.Dispose();
+            _releaseUpdates.StateChanged -= ReleaseUpdatesStateChanged;
             _overlayManager.ApplicationExitRequested -= OnOverlayManagerApplicationExitRequested;
             _overlayManager.Dispose();
             _notifyIcon.Visible = false;
@@ -120,6 +154,7 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
     private void RefreshMenu()
     {
         var snapshot = _state.Snapshot();
+        RefreshUpdateMenu();
         _rootItem.Text = snapshot.RawCaptureEnabled ? "Open Capture Root" : "Open Raw Capture Root";
 
         if (!string.IsNullOrWhiteSpace(snapshot.LastError))
@@ -167,6 +202,69 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
 
         _captureItem.Enabled = !string.IsNullOrWhiteSpace(snapshot.LastCaptureDirectory);
         _captureItem.Text = snapshot.RawCaptureEnabled ? "Open Latest Capture" : "Open Latest Raw Capture";
+    }
+
+    private void ReleaseUpdatesStateChanged(object? sender, EventArgs e)
+    {
+        if (_uiContext is not null)
+        {
+            _uiContext.Post(_ => RefreshUpdateMenu(), null);
+        }
+    }
+
+    private void RefreshUpdateMenu()
+    {
+        var snapshot = _releaseUpdates.Snapshot();
+        _updateStatusItem.Text = snapshot.Status switch
+        {
+            ReleaseUpdateStatus.Available => string.IsNullOrWhiteSpace(snapshot.LatestVersion)
+                ? "Update available"
+                : $"Update available: v{snapshot.LatestVersion}",
+            ReleaseUpdateStatus.PendingRestart => "Update pending restart",
+            ReleaseUpdateStatus.UpToDate => "Up to date",
+            ReleaseUpdateStatus.Checking => "Checking for updates...",
+            ReleaseUpdateStatus.NotInstalled => "Updates require installer build",
+            ReleaseUpdateStatus.Disabled => "Updates disabled",
+            ReleaseUpdateStatus.Failed => "Update check failed",
+            _ => "Updates not checked"
+        };
+        _checkUpdatesItem.Enabled = snapshot.Enabled && snapshot.IsInstalled && !snapshot.CheckInProgress;
+        _openUpdatePageItem.Enabled = !string.IsNullOrWhiteSpace(snapshot.ReleasePageUrl);
+    }
+
+    private async Task CheckForUpdatesFromTrayAsync()
+    {
+        try
+        {
+            await _releaseUpdates.CheckForUpdatesAsync(ReleaseUpdateCheckSource.Manual).ConfigureAwait(true);
+            RefreshUpdateMenu();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Manual update check failed from tray menu.");
+        }
+    }
+
+    private void OpenUpdatePage()
+    {
+        var snapshot = _releaseUpdates.Snapshot();
+        if (string.IsNullOrWhiteSpace(snapshot.ReleasePageUrl))
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = snapshot.ReleasePageUrl,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Failed to open release page {ReleasePageUrl}.", snapshot.ReleasePageUrl);
+        }
     }
 
     private void OpenCapture()

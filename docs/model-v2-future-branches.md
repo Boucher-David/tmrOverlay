@@ -111,14 +111,15 @@ Likely scope:
 
 ### v0.16.0 - Release Channel And V1 Candidate Escape Hatch
 
-Goal: reserve the next larger 0.x milestone for Velopack/release-channel work or any hard release risk that remains after v0.15.
+Goal: make Velopack the canonical installer/update channel using public GitHub Releases as the feed, while preserving the portable zip as a transitional fallback.
 
-Likely triggers:
+Likely scope:
 
-- Private tester zip distribution is not sufficient and signed artifacts or installer/update channel work must happen before V1.0.
-- Windows packaging, release workflow, or update-check behavior proves unreliable under teammate use.
-- A durable AppData migration or compatibility issue needs a dedicated hardening branch.
-- Core overlay performance, layout, or telemetry completeness regressions need focused stabilization.
+- Add Velopack startup integration and CI `vpk pack` validation.
+- Publish Velopack setup/full/delta/feed assets to public GitHub Releases on release tags.
+- Add passive startup/manual update checks for installed Velopack builds without embedding a GitHub token in the client.
+- Show update available/failure state in the tray menu, settings banner, Support tab, and diagnostics bundle.
+- Keep active download/apply/restart controls deferred until at least one installed teammate update is validated.
 - Keep deep fuel/strategy/engineer/advanced-track-map/streaming/builder work out of the V1.0 release candidate unless it is hidden development tooling.
 
 ## Suggested V1.X Roadmap
@@ -128,6 +129,8 @@ V1.x is where heavy analysis overlays and broader platform features should matur
 ### Important V1.x Foundation - Overlay Lifecycle And Timer Efficiency
 
 Goal: make overlay refresh work proportional to what is actually visible or actively needed, without weakening telemetry freshness for overlays that are on screen.
+
+v0.16 adds the diagnostic prep needed to measure this before changing behavior. Performance JSONL snapshots now record overlay timer ticks and active timer counts by cadence, visible versus pause-eligible timer samples, lifecycle visibility/session/fade states, lifecycle transitions, unchanged-sequence skips, explicit paint samples, localhost idle/request activity, and process GDI/USER handle pressure.
 
 Likely scope:
 
@@ -154,6 +157,19 @@ Detailed performance backlog:
 13. Shared font/theme cache: centralize `OverlayTheme` font/resource creation by family, size, style, theme, and scale so paint/layout paths do not recreate stable objects.
 14. Layout churn reduction: use set-if-changed helpers and suspend/resume layout patterns across overlay forms, not only the settings panel, and avoid rebuilding controls when value updates are enough.
 15. Performance harness: create a repeatable long-run profile for all overlays hidden, all overlays visible, static telemetry, replay/active telemetry, and browser clients connected/disconnected; capture UI-thread time, paint counts, timer counts, disk writes, memory, and GDI handle pressure.
+
+### V1.x Feature Addition - Timing Tower Overlay
+
+Goal: add a compact race timing tower separate from the full Standings overlay.
+
+Likely scope:
+
+- Build a simplified vertical race tower for quick position scanning rather than a full standings table with every timing column.
+- Reuse the normalized timing/scoring model where possible, but keep the overlay UX independent from Standings so it can optimize for broadcast-style density, row stability, and compact class/pit/lap indicators.
+- Treat it as primarily race-facing unless testing proves value in practice or qualifying.
+- Start with scoring-snapshot ordering and completed-lap position movement, matching the v0.13 decision to avoid live/proximity compression when iRacing is not transmitting the full field.
+- Keep the first version conservative: position, class/overall marker, driver or car label, gap/interval summary, pit/lap-state hints, local-car emphasis, and optional class filtering.
+- Use screenshot/replay validation against large multiclass fields before adding animation, streamer-specific styling, or richer broadcast controls.
 
 ### v1.1 - Analysis Evidence Loop And Capture Replay
 

@@ -171,6 +171,7 @@ The Support tab:
 - Keeps diagnostic telemetry at the top of the handoff flow and explains when teammates should enable it.
 - Makes bundle actions primary: create diagnostics bundle, copy latest bundle path, and open the diagnostics folder.
 - Shows compact current state only after the primary teammate actions: app status, live/session state, and current warning/error.
+- Shows release update status/actions in the Support tab: installed/portable state, current/latest version, last checked time, and last error.
 - Keeps local storage shortcuts together for logs, diagnostics, captures, and history without exposing advanced collection internals as normal teammate controls.
 - Reports the latest automatic end-of-session diagnostics bundle.
 
@@ -178,6 +179,6 @@ The Support tab:
 
 - Keep settings as a normal desktop UI.
 - Keep driving overlays focused and simulator-friendly.
-- When update checking is implemented, show update warnings as a yellow banner above the tabs and below the main app title area instead of burying them inside the Support tab content.
+- Show release update available, pending restart, and update-check failure states as a passive yellow banner above the tabs and below the main app title area. Do not show modal prompts over the simulator.
 - If an overlay has preview behavior, document which settings tab triggers it.
 - If new overlay visibility rules are added, update this file and the overlay-specific logic doc.

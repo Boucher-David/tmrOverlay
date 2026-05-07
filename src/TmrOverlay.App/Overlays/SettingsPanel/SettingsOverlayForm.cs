@@ -14,6 +14,7 @@ using TmrOverlay.App.Overlays.Styling;
 using TmrOverlay.App.Performance;
 using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
+using TmrOverlay.App.Updates;
 using TmrOverlay.Core.AppInfo;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
@@ -54,6 +55,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private readonly LiveOverlayDiagnosticsOptions _liveOverlayDiagnosticsOptions;
     private readonly PostRaceAnalysisOptions _postRaceAnalysisOptions;
     private readonly AppPerformanceState _performanceState;
+    private readonly ReleaseUpdateService _releaseUpdates;
     private readonly AppStorageOptions _storageOptions;
     private readonly LocalhostOverlayOptions _localhostOverlayOptions;
     private readonly LocalhostOverlayState _localhostOverlayState;
@@ -69,6 +71,10 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private readonly Label _titleLabel;
     private readonly Label _subtitleLabel;
     private readonly Button _closeButton;
+    private readonly Panel _updateBannerPanel;
+    private readonly Label _updateBannerLabel;
+    private readonly Button _updateBannerCheckButton;
+    private readonly Button _updateBannerOpenButton;
     private readonly TabControl _tabs;
     private readonly System.Windows.Forms.Timer _refreshTimer;
     private CheckBox? _rawCaptureCheckBox;
@@ -84,6 +90,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private Label? _advancedDiagnosticsLabel;
     private Label? _latestDiagnosticsBundleLabel;
     private Label? _supportStatusLabel;
+    private Label? _releaseUpdateStatusLabel;
     private TextBox? _garageCoverImagePathBox;
     private Label? _garageCoverStateLabel;
     private Panel? _garageCoverPreviewPanel;
@@ -102,6 +109,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         LiveOverlayDiagnosticsOptions liveOverlayDiagnosticsOptions,
         PostRaceAnalysisOptions postRaceAnalysisOptions,
         AppPerformanceState performanceState,
+        ReleaseUpdateService releaseUpdates,
         AppStorageOptions storageOptions,
         LocalhostOverlayOptions localhostOverlayOptions,
         LocalhostOverlayState localhostOverlayState,
@@ -127,6 +135,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _liveOverlayDiagnosticsOptions = liveOverlayDiagnosticsOptions;
         _postRaceAnalysisOptions = postRaceAnalysisOptions;
         _performanceState = performanceState;
+        _releaseUpdates = releaseUpdates;
         _storageOptions = storageOptions;
         _localhostOverlayOptions = localhostOverlayOptions;
         _localhostOverlayState = localhostOverlayState;
@@ -205,6 +214,32 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _closeButton.Cursor = Cursors.Hand;
         _closeButton.Click += (_, _) => RequestApplicationExit();
 
+        _updateBannerPanel = new Panel
+        {
+            BackColor = OverlayTheme.Colors.WarningBackground,
+            Location = new Point(OverlayTheme.Layout.SettingsTabInset, OverlayTheme.Layout.SettingsTitleBarHeight + 8),
+            Size = new Size(ClientSize.Width - 24, 32),
+            Visible = false
+        };
+
+        _updateBannerLabel = new Label
+        {
+            AutoSize = false,
+            ForeColor = OverlayTheme.Colors.WarningText,
+            Font = OverlayTheme.Font(OverlayTheme.DefaultFontFamily, 8.8f, FontStyle.Bold),
+            Location = new Point(12, 6),
+            Size = new Size(ClientSize.Width - 280, 20),
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+
+        _updateBannerOpenButton = CreateBannerButton("Open", ClientSize.Width - 184);
+        _updateBannerOpenButton.Click += (_, _) => OpenReleaseUpdatePage();
+        _updateBannerCheckButton = CreateBannerButton("Check", ClientSize.Width - 104);
+        _updateBannerCheckButton.Click += async (_, _) => await CheckForUpdatesFromSettingsAsync().ConfigureAwait(true);
+        _updateBannerPanel.Controls.Add(_updateBannerLabel);
+        _updateBannerPanel.Controls.Add(_updateBannerOpenButton);
+        _updateBannerPanel.Controls.Add(_updateBannerCheckButton);
+
         _tabs = new TabControl
         {
             Alignment = TabAlignment.Left,
@@ -224,9 +259,11 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _titleBar.Controls.Add(_subtitleLabel);
         _titleBar.Controls.Add(_closeButton);
         Controls.Add(_titleBar);
+        Controls.Add(_updateBannerPanel);
         Controls.Add(_tabs);
 
         RegisterDragSurfaces(_titleBar, _brandLogo, _titleLabel, _subtitleLabel);
+        _releaseUpdates.StateChanged += ReleaseUpdatesStateChanged;
 
         BuildTabs();
         ReportSelectedOverlayTab();
@@ -236,10 +273,19 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         {
             Interval = 500
         };
-        _refreshTimer.Tick += (_, _) => RefreshSettingsOverlayState();
+        _refreshTimer.Tick += (_, _) =>
+        {
+            _performanceState.RecordOverlayTimerTick(
+                SettingsOverlayDefinition.Definition.Id,
+                500,
+                Visible,
+                pauseEligible: false);
+            RefreshSettingsOverlayState();
+        };
         _refreshTimer.Start();
         SyncRawCaptureCheckBox();
         SyncErrorLoggingTab();
+        SyncReleaseUpdateUi();
         _loading = false;
     }
 
@@ -249,7 +295,12 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         {
             _refreshTimer.Stop();
             _refreshTimer.Dispose();
+            _releaseUpdates.StateChanged -= ReleaseUpdatesStateChanged;
             _tabs.Dispose();
+            _updateBannerCheckButton.Dispose();
+            _updateBannerOpenButton.Dispose();
+            _updateBannerLabel.Dispose();
+            _updateBannerPanel.Dispose();
             _closeButton.Dispose();
             _subtitleLabel.Dispose();
             _titleLabel.Dispose();
@@ -264,7 +315,13 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
-        if (_titleBar is null || _brandLogo is null || _titleLabel is null || _subtitleLabel is null || _closeButton is null || _tabs is null)
+        if (_titleBar is null
+            || _brandLogo is null
+            || _titleLabel is null
+            || _subtitleLabel is null
+            || _closeButton is null
+            || _updateBannerPanel is null
+            || _tabs is null)
         {
             return;
         }
@@ -274,8 +331,46 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _titleLabel.Size = new Size(Math.Max(120, ClientSize.Width - 132), 19);
         _subtitleLabel.Size = new Size(Math.Max(120, ClientSize.Width - 132), 16);
         _closeButton.Location = new Point(ClientSize.Width - 36, 8);
-        _tabs.Location = new Point(OverlayTheme.Layout.SettingsTabInset, OverlayTheme.Layout.SettingsTabTop);
-        _tabs.Size = new Size(Math.Max(360, ClientSize.Width - 24), Math.Max(320, ClientSize.Height - 66));
+        LayoutUpdateBanner();
+        LayoutSettingsTabs();
+    }
+
+    private Button CreateBannerButton(string text, int left)
+    {
+        var button = new Button
+        {
+            BackColor = OverlayTheme.Colors.ButtonBackground,
+            FlatStyle = FlatStyle.Flat,
+            Font = OverlayTheme.Font(OverlayTheme.DefaultFontFamily, 8.2f, FontStyle.Bold),
+            ForeColor = OverlayTheme.Colors.TextPrimary,
+            Location = new Point(left, 4),
+            Size = new Size(70, 24),
+            Text = text,
+            UseVisualStyleBackColor = false
+        };
+        button.FlatAppearance.BorderColor = OverlayTheme.Colors.WarningIndicator;
+        button.FlatAppearance.BorderSize = 1;
+        button.Cursor = Cursors.Hand;
+        return button;
+    }
+
+    private void LayoutUpdateBanner()
+    {
+        var width = Math.Max(360, ClientSize.Width - 24);
+        _updateBannerPanel.Location = new Point(OverlayTheme.Layout.SettingsTabInset, OverlayTheme.Layout.SettingsTitleBarHeight + 8);
+        _updateBannerPanel.Size = new Size(width, 32);
+        _updateBannerCheckButton.Location = new Point(Math.Max(210, width - 82), 4);
+        _updateBannerOpenButton.Location = new Point(Math.Max(132, width - 160), 4);
+        _updateBannerLabel.Size = new Size(Math.Max(80, width - 184), 20);
+    }
+
+    private void LayoutSettingsTabs()
+    {
+        var tabTop = _updateBannerPanel.Visible
+            ? OverlayTheme.Layout.SettingsTitleBarHeight + 48
+            : OverlayTheme.Layout.SettingsTabTop;
+        _tabs.Location = new Point(OverlayTheme.Layout.SettingsTabInset, tabTop);
+        _tabs.Size = new Size(Math.Max(360, ClientSize.Width - 24), Math.Max(320, ClientSize.Height - tabTop - 12));
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)
@@ -403,6 +498,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         var succeeded = false;
         try
         {
+            SyncReleaseUpdateUi();
+
             var captureStarted = Stopwatch.GetTimestamp();
             var captureSucceeded = false;
             try
@@ -454,6 +551,91 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
                 AppPerformanceMetricIds.OverlaySettingsRefresh,
                 started,
                 succeeded);
+        }
+    }
+
+    private void ReleaseUpdatesStateChanged(object? sender, EventArgs e)
+    {
+        if (IsDisposed || !IsHandleCreated)
+        {
+            return;
+        }
+
+        try
+        {
+            BeginInvoke((Action)SyncReleaseUpdateUi);
+        }
+        catch (InvalidOperationException)
+        {
+        }
+    }
+
+    private void SyncReleaseUpdateUi()
+    {
+        var snapshot = _releaseUpdates.Snapshot();
+        var showBanner = snapshot.Status is ReleaseUpdateStatus.Available
+            or ReleaseUpdateStatus.PendingRestart
+            or ReleaseUpdateStatus.Failed;
+
+        if (_updateBannerPanel.Visible != showBanner)
+        {
+            _updateBannerPanel.Visible = showBanner;
+            LayoutSettingsTabs();
+        }
+
+        _updateBannerPanel.BackColor = snapshot.Status == ReleaseUpdateStatus.Failed
+            ? OverlayTheme.Colors.WarningStrongBackground
+            : OverlayTheme.Colors.WarningBackground;
+        _updateBannerLabel.ForeColor = snapshot.Status == ReleaseUpdateStatus.Failed
+            ? OverlayTheme.Colors.WarningText
+            : OverlayTheme.Colors.TextPrimary;
+        SetLabelText(_updateBannerLabel, ReleaseUpdateBannerText(snapshot));
+        SetEnabledIfChanged(_updateBannerCheckButton, snapshot.Enabled && snapshot.IsInstalled && !snapshot.CheckInProgress);
+        SetEnabledIfChanged(_updateBannerOpenButton, !string.IsNullOrWhiteSpace(snapshot.ReleasePageUrl));
+
+        if (_releaseUpdateStatusLabel is not null)
+        {
+            SetLabelText(_releaseUpdateStatusLabel, ReleaseUpdateSupportText(snapshot));
+            SetLabelColor(_releaseUpdateStatusLabel, ColorForReleaseUpdateStatus(snapshot.Status));
+        }
+    }
+
+    private async Task CheckForUpdatesFromSettingsAsync()
+    {
+        SetSupportStatus("Checking for updates...", isError: false);
+        try
+        {
+            var snapshot = await _releaseUpdates.CheckForUpdatesAsync(ReleaseUpdateCheckSource.Manual).ConfigureAwait(true);
+            SyncReleaseUpdateUi();
+            SetSupportStatus(ReleaseUpdateCheckResultText(snapshot), snapshot.Status == ReleaseUpdateStatus.Failed);
+        }
+        catch (Exception exception)
+        {
+            SetSupportStatus($"Update check failed: {exception.Message}", isError: true);
+        }
+    }
+
+    private void OpenReleaseUpdatePage()
+    {
+        var snapshot = _releaseUpdates.Snapshot();
+        if (string.IsNullOrWhiteSpace(snapshot.ReleasePageUrl))
+        {
+            SetSupportStatus("No update page available.", isError: true);
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = snapshot.ReleasePageUrl,
+                UseShellExecute = true
+            });
+            SetSupportStatus("Opened release page.", isError: false);
+        }
+        catch (Exception exception)
+        {
+            SetSupportStatus($"Open failed: {exception.Message}", isError: true);
         }
     }
 
@@ -580,6 +762,23 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         page.Controls.Add(_advancedDiagnosticsLabel);
     }
 
+    private void AddReleaseUpdateControls(TabPage page, int top)
+    {
+        var title = CreateSectionLabel("Updates", 560, top, 330);
+        var note = CreateMutedLabel("Installed builds check public GitHub Releases without embedding a token.", 564, top + 30, 330);
+        _releaseUpdateStatusLabel = CreateMultiLineValueLabel(ReleaseUpdateSupportText(_releaseUpdates.Snapshot()), 564, top + 62, 330, 76);
+        var checkButton = CreateActionButton("Check Updates", 564, top + 150, 126);
+        checkButton.Click += async (_, _) => await CheckForUpdatesFromSettingsAsync().ConfigureAwait(true);
+        var openButton = CreateActionButton("Open Releases", 700, top + 150, 126);
+        openButton.Click += (_, _) => OpenReleaseUpdatePage();
+
+        page.Controls.Add(title);
+        page.Controls.Add(note);
+        page.Controls.Add(_releaseUpdateStatusLabel);
+        page.Controls.Add(checkButton);
+        page.Controls.Add(openButton);
+    }
+
     private void AddSupportStorageControls(TabPage page, int x, int top, int width)
     {
         var title = CreateSectionLabel("Support folders", x, top, width);
@@ -605,6 +804,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private TabPage CreateSupportTab()
     {
         var page = CreateTabPage("Support");
+        page.AutoScroll = true;
         const int x = 18;
         const int width = 900;
         var title = CreateSectionLabel("Support", x, 18, width);
@@ -624,6 +824,9 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         openDiagnosticsButton.Click += (_, _) => OpenSupportDirectory(_storageOptions.DiagnosticsRoot, "diagnostics");
         _latestDiagnosticsBundleLabel = CreateMutedLabel(string.Empty, x + 4, 336, width);
         _supportStatusLabel = CreateMutedLabel(string.Empty, x + 4, 362, width);
+
+        AddReleaseUpdateControls(page, 122);
+        AddAdvancedDiagnosticsControls(page, 318);
 
         var stateTitle = CreateSectionLabel("Current state", x, 394, width);
         var statusLabel = CreateLabel("App status", x + 4, 430, 100);
@@ -1479,6 +1682,73 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private static void SetLabelColor(Label label, Color color)
     {
         SetForeColorIfChanged(label, color);
+    }
+
+    private static string ReleaseUpdateBannerText(ReleaseUpdateSnapshot snapshot)
+    {
+        return snapshot.Status switch
+        {
+            ReleaseUpdateStatus.Available => string.IsNullOrWhiteSpace(snapshot.LatestVersion)
+                ? "Update available from GitHub Releases."
+                : $"Update available: v{snapshot.LatestVersion}.",
+            ReleaseUpdateStatus.PendingRestart => string.IsNullOrWhiteSpace(snapshot.LatestVersion)
+                ? "Downloaded update is ready to apply after restart."
+                : $"Update v{snapshot.LatestVersion} is ready to apply after restart.",
+            ReleaseUpdateStatus.Failed => string.IsNullOrWhiteSpace(snapshot.LastError)
+                ? "Update check failed."
+                : $"Update check failed: {snapshot.LastError}",
+            _ => string.Empty
+        };
+    }
+
+    private static string ReleaseUpdateSupportText(ReleaseUpdateSnapshot snapshot)
+    {
+        var checkedText = snapshot.LastCheckedAtUtc is { } checkedAt
+            ? $"last checked {checkedAt.ToLocalTime():g}"
+            : "not checked yet";
+        return snapshot.Status switch
+        {
+            ReleaseUpdateStatus.Disabled => "Disabled.",
+            ReleaseUpdateStatus.NotInstalled => "Unavailable in this portable/dev run. Install with Velopack to enable update checks.",
+            ReleaseUpdateStatus.Idle => $"Ready; {checkedText}.",
+            ReleaseUpdateStatus.Checking => "Checking GitHub Releases...",
+            ReleaseUpdateStatus.UpToDate => $"Up to date at v{snapshot.CurrentVersion}; {checkedText}.",
+            ReleaseUpdateStatus.Available => $"Available: v{snapshot.LatestVersion}; current v{snapshot.CurrentVersion}; {checkedText}.",
+            ReleaseUpdateStatus.PendingRestart => $"Downloaded update v{snapshot.LatestVersion} is pending restart.",
+            ReleaseUpdateStatus.Failed => string.IsNullOrWhiteSpace(snapshot.LastError)
+                ? "Check failed."
+                : $"Check failed: {snapshot.LastError}",
+            _ => "Unknown update state."
+        };
+    }
+
+    private static string ReleaseUpdateCheckResultText(ReleaseUpdateSnapshot snapshot)
+    {
+        return snapshot.Status switch
+        {
+            ReleaseUpdateStatus.Available => string.IsNullOrWhiteSpace(snapshot.LatestVersion)
+                ? "Update available."
+                : $"Update available: v{snapshot.LatestVersion}.",
+            ReleaseUpdateStatus.UpToDate => "No update available.",
+            ReleaseUpdateStatus.NotInstalled => "Install with Velopack to enable update checks.",
+            ReleaseUpdateStatus.Disabled => "Update checks are disabled.",
+            ReleaseUpdateStatus.Failed => string.IsNullOrWhiteSpace(snapshot.LastError)
+                ? "Update check failed."
+                : $"Update check failed: {snapshot.LastError}",
+            _ => ReleaseUpdateSupportText(snapshot)
+        };
+    }
+
+    private static Color ColorForReleaseUpdateStatus(ReleaseUpdateStatus status)
+    {
+        return status switch
+        {
+            ReleaseUpdateStatus.Available or ReleaseUpdateStatus.PendingRestart => OverlayTheme.Colors.WarningText,
+            ReleaseUpdateStatus.UpToDate => OverlayTheme.Colors.SuccessText,
+            ReleaseUpdateStatus.Failed => OverlayTheme.Colors.ErrorText,
+            ReleaseUpdateStatus.Checking => OverlayTheme.Colors.InfoText,
+            _ => OverlayTheme.Colors.TextMuted
+        };
     }
 
     private string AdvancedDiagnosticsText()

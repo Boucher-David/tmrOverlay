@@ -58,7 +58,15 @@ internal sealed class StreamChatForm : PersistentOverlayForm
         {
             Interval = SettingsRefreshIntervalMilliseconds
         };
-        _settingsTimer.Tick += (_, _) => RefreshChatSettings();
+        _settingsTimer.Tick += (_, _) =>
+        {
+            _performanceState.RecordOverlayTimerTick(
+                StreamChatOverlayDefinition.Definition.Id,
+                SettingsRefreshIntervalMilliseconds,
+                Visible,
+                !Visible || Opacity <= 0.001d);
+            RefreshChatSettings();
+        };
         _settingsTimer.Start();
 
         RefreshChatSettings(force: true);

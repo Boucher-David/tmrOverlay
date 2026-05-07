@@ -357,6 +357,7 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
                 elapsed,
                 requestException);
             _performanceState.RecordOperation(AppPerformanceMetricIds.LocalhostRequest, elapsed, requestException is null && statusCode < 500);
+            _performanceState.RecordLocalhostRequest(route, statusCode, elapsed, requestException is null && statusCode < 500);
         }
     }
 

@@ -1,13 +1,19 @@
-# Windows Tester Releases
+# Windows Releases
 
-TmrOverlay publishes portable Windows tester builds from GitHub Actions. A release tag such as `v0.11.0` produces a GitHub Release with:
+TmrOverlay publishes Windows tester builds from GitHub Actions. Starting with the Velopack release-channel branch, a release tag such as `v0.16.0` produces a public GitHub Release with Velopack installer/update assets plus the existing portable zip fallback.
 
-- `TmrOverlay-v0.11.0-win-x64.zip`
-- `TmrOverlay-v0.11.0-win-x64.zip.sha256`
-- `TmrOverlay-v0.11.0-win-x64-manifest.txt`
+Expected release assets include:
+
+- a Velopack setup executable
+- a Velopack full `.nupkg` package
+- `releases.win-x64.json`
+- delta `.nupkg` packages when prior Velopack releases exist
+- `TmrOverlay-v0.16.0-win-x64.zip`
+- `TmrOverlay-v0.16.0-win-x64.zip.sha256`
+- `TmrOverlay-v0.16.0-win-x64-manifest.txt`
 - generated GitHub release notes
 
-The zip is self-contained for Windows x64. Testers do not need to install the .NET runtime.
+The Velopack installer and the portable zip are self-contained for Windows x64. Testers do not need to install the .NET runtime.
 
 ## One-Page Teammate Guide
 
@@ -33,8 +39,8 @@ python3 tools/validate_overlay_screenshots.py --profile release-tutorial --root 
    ```
 
 3. GitHub Actions runs `.github/workflows/windows-dotnet.yml`.
-4. The PR/main validation job restores, builds, tests, validates tracked screenshots, checks Windows screenshot expectations, generates/validates Windows-rendered overlay screenshots as workflow artifacts, and runs a self-contained publish dry run with the same package audit used by release packaging.
-5. The tag workflow publishes `src/TmrOverlay.App` for `win-x64`, audits the publish folder, writes a package manifest, zips the publish folder, generates a SHA-256 checksum, uploads workflow artifacts, and creates or updates the GitHub Release assets.
+4. The PR/main validation job restores, builds, tests, validates tracked screenshots, checks Windows screenshot expectations, generates/validates Windows-rendered overlay screenshots as workflow artifacts, runs a self-contained publish dry run with the same package audit used by release packaging, and dry-runs `vpk pack`.
+5. The tag workflow publishes `src/TmrOverlay.App` for `win-x64`, audits the publish folder, writes a package manifest, zips the publish folder, generates a SHA-256 checksum, packs Velopack installer/update assets, uploads workflow artifacts, and creates or updates the GitHub Release assets.
 
 Manual workflow dispatch can still produce package artifacts for a branch test run, but it does not create a GitHub Release unless the run is for a `vMAJOR.MINOR.PATCH` tag.
 
@@ -51,31 +57,34 @@ The expected package shape is intentionally small:
 
 The executable icon is embedded from `src/TmrOverlay.App/Assets/TmrOverlay.ico`. The release manifest asset lists the exact published files and sizes for each build, so package review can happen without downloading and unzipping the app.
 
+Velopack package assets are generated from that audited publish folder. The package id is `TechMatesRacing.TmrOverlay`, the title is `Tech Mates Racing Overlay`, and the current channel is `win-x64`.
+
 ## Tester Download
 
 1. Open the repository's GitHub Releases page.
 2. Open the latest `vMAJOR.MINOR.PATCH` release.
-3. Download the `TmrOverlay-<version>-win-x64.zip` asset.
-4. Download the matching `.sha256` asset when you want to verify the file.
-5. Unzip the package into a normal user-writable folder, for example:
+3. Prefer the Velopack setup executable for normal teammate installs.
+4. Run the setup executable and launch TmrOverlay from the installed shortcut.
+5. Use the portable zip only as a fallback or support artifact. For the zip fallback, download `TmrOverlay-<version>-win-x64.zip` and the matching `.sha256` asset when you want to verify the file.
+6. Unzip the portable package into a normal user-writable folder, for example:
 
    ```text
    %LOCALAPPDATA%\Programs\TmrOverlay
    ```
 
-6. Run `TmrOverlay.App.exe`.
+7. Run `TmrOverlay.App.exe`.
 
-The app stores settings, history, logs, diagnostics bundles, and captures under `%LOCALAPPDATA%\TmrOverlay` by default. Replacing the portable application folder does not delete that user data.
+The app stores settings, history, logs, diagnostics bundles, and captures under `%LOCALAPPDATA%\TmrOverlay` by default. Replacing the portable application folder or updating an installed Velopack build does not delete that user data.
 
 ## User Data And Compatibility
 
-Portable installs are replaceable application folders. User data is separate from the zip by default:
+Installed and portable builds keep user data separate from application binaries by default:
 
 ```text
 %LOCALAPPDATA%\TmrOverlay
 ```
 
-That app-data root contains settings, user history, logs, events, diagnostics, runtime state, and optional captures. A new install path should still find the same app-data root unless the user explicitly overrides storage through configuration or `TMR_` environment variables.
+That app-data root contains settings, user history, logs, events, diagnostics, runtime state, and optional captures. A new install path or a Velopack-updated app folder should still find the same app-data root unless the user explicitly overrides storage through configuration or `TMR_` environment variables.
 
 Settings are versioned in `settings/settings.json` and loaded through `AppSettingsMigrator`, which normalizes older settings and writes them back at the current settings version. Session history has explicit summary, collection-model, aggregate, and analysis version constants. On startup, `HistoryMaintenanceService` scans user history in the background, backs up and normalizes compatible legacy summaries, skips incompatible/future/corrupt summaries into a maintenance manifest, and rebuilds aggregates. History-backed overlays reject incompatible aggregate versions while maintenance is still running.
 
@@ -96,6 +105,8 @@ The command should print `True`.
 
 ## Upgrade And Rollback
 
+Velopack-installed builds should update through the public GitHub Release feed. The first Velopack pass checks passively and opens the release page; active download/apply controls are deferred until teammate installer testing proves the channel reliable.
+
 To upgrade a portable release:
 
 1. Exit TmrOverlay from the settings window or tray menu.
@@ -107,7 +118,7 @@ To roll back, close the app and run the previous unzipped folder again. User set
 
 ## Signing And SmartScreen
 
-The v0.9 portable tester builds are expected to be unsigned unless signing is added before the milestone closes. Windows SmartScreen or antivirus tools may warn on first launch because the executable is new and unsigned. Broader distribution should not rely on unsigned builds; choose executable/package signing before publishing beyond private testers.
+Current tester builds may remain unsigned until signing is added. Windows SmartScreen or antivirus tools may warn on first launch because the executable or setup package is new and unsigned. Broader distribution should not rely on unsigned builds; choose executable/package signing before publishing beyond private testers.
 
 ## Diagnostics For Feedback
 
@@ -119,3 +130,5 @@ For teammate feedback, ask testers to include:
 - notes about whether iRacing was live, replaying, or not running
 
 Diagnostics bundles include app version/runtime metadata and local logs, but they intentionally exclude raw `telemetry.bin` and source `.ibt` payloads.
+
+Diagnostics bundles also include release update state: whether the app is installed through Velopack, whether the current run is portable, the update source, current/latest versions, last checked time, and last failure if any.

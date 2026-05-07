@@ -26,6 +26,7 @@ using TmrOverlay.App.Settings;
 using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
 using TmrOverlay.App.TrackMaps;
+using TmrOverlay.App.Updates;
 using TmrOverlay.Core.AppInfo;
 using TmrOverlay.Core.History;
 using TmrOverlay.Core.Overlays;
@@ -277,6 +278,10 @@ internal static class Program
         var localhostOptions = new LocalhostOverlayOptions();
         var localhostState = new LocalhostOverlayState(localhostOptions);
         var settingsStore = new AppSettingsStore(storage);
+        var releaseUpdates = new ReleaseUpdateService(
+            new ReleaseUpdateOptions { Enabled = false },
+            new AppEventRecorder(storage),
+            NullLogger<ReleaseUpdateService>.Instance);
         var liveTelemetry = new SequenceTelemetrySource(_ => LiveTelemetrySnapshot.Empty with
         {
             IsConnected = true,
@@ -294,6 +299,7 @@ internal static class Program
             liveTelemetry,
             performanceState,
             new AppPerformanceSnapshotRecorder(storage),
+            releaseUpdates,
             NullLogger<DiagnosticsBundleService>.Instance);
         var settings = CreateApplicationSettings();
 
@@ -306,6 +312,7 @@ internal static class Program
             new LiveOverlayDiagnosticsOptions(),
             new PostRaceAnalysisOptions(),
             performanceState,
+            releaseUpdates,
             storage,
             localhostOptions,
             localhostState,

@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Velopack;
 using TmrOverlay.Core.AppInfo;
 using TmrOverlay.App.Analysis;
 using TmrOverlay.App.Diagnostics;
@@ -20,6 +21,7 @@ using TmrOverlay.App.Settings;
 using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
 using TmrOverlay.App.TrackMaps;
+using TmrOverlay.App.Updates;
 using TmrOverlay.Core.Telemetry.Live;
 
 namespace TmrOverlay.App;
@@ -29,6 +31,10 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
+        VelopackApp.Build()
+            .SetAutoApplyOnStartup(false)
+            .Run();
+
         Application.SetHighDpiMode(HighDpiMode.SystemAware);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
@@ -104,6 +110,7 @@ internal static class Program
                 services.AddSingleton(RetentionOptions.FromConfiguration(context.Configuration));
                 services.AddSingleton(replayOptions);
                 services.AddSingleton(LocalhostOverlayOptions.FromConfiguration(context.Configuration));
+                services.AddSingleton(ReleaseUpdateOptions.FromConfiguration(context.Configuration));
                 services.AddSingleton<LocalhostOverlayState>();
                 services.AddSingleton<AppEventRecorder>();
                 services.AddSingleton<AppSettingsStore>();
@@ -121,6 +128,7 @@ internal static class Program
                 services.AddSingleton<LiveOverlayDiagnosticsRecorder>();
                 services.AddSingleton<AppPerformanceState>();
                 services.AddSingleton<AppPerformanceSnapshotRecorder>();
+                services.AddSingleton<ReleaseUpdateService>();
                 services.AddSingleton<LiveTelemetryStore>();
                 services.AddSingleton<ILiveTelemetrySource>(services => services.GetRequiredService<LiveTelemetryStore>());
                 services.AddSingleton<ILiveTelemetrySink>(services => services.GetRequiredService<LiveTelemetryStore>());
@@ -131,6 +139,7 @@ internal static class Program
                 services.AddHostedService<AppPerformanceHostedService>();
                 services.AddHostedService<RetentionHostedService>();
                 services.AddHostedService<LocalhostOverlayHostedService>();
+                services.AddHostedService(services => services.GetRequiredService<ReleaseUpdateService>());
                 services.AddTelemetryProvider(replayOptions);
             });
     }

@@ -29,6 +29,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
     private const double MinimumTrendDomainLaps = 1.5d;
     private const double TrendRightPaddingSeconds = 20d;
     private const double TrendRightPaddingLaps = 0.15d;
+    private const int RefreshIntervalMilliseconds = 500;
 
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly ILogger<GapToLeaderForm> _logger;
@@ -94,9 +95,17 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
 
         _refreshTimer = new System.Windows.Forms.Timer
         {
-            Interval = 500
+            Interval = RefreshIntervalMilliseconds
         };
-        _refreshTimer.Tick += (_, _) => RefreshOverlay();
+        _refreshTimer.Tick += (_, _) =>
+        {
+            _performanceState.RecordOverlayTimerTick(
+                GapToLeaderOverlayDefinition.Definition.Id,
+                RefreshIntervalMilliseconds,
+                Visible,
+                !Visible || Opacity <= 0.001d);
+            RefreshOverlay();
+        };
         _refreshTimer.Start();
 
         RefreshOverlay();
