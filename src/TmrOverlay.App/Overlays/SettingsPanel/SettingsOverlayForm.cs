@@ -6,7 +6,6 @@ using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.Localhost;
 using TmrOverlay.App.Overlays.Abstractions;
-using TmrOverlay.App.Overlays.BrowserSources;
 using TmrOverlay.App.Overlays.Flags;
 using TmrOverlay.App.Overlays.GarageCover;
 using TmrOverlay.App.Overlays.StreamChat;
@@ -19,6 +18,7 @@ using TmrOverlay.Core.AppInfo;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 using TmrOverlay.Core.Telemetry.Live;
+using static TmrOverlay.App.Overlays.SettingsPanel.SettingsUi;
 
 namespace TmrOverlay.App.Overlays.SettingsPanel;
 
@@ -84,7 +84,10 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private Label? _advancedDiagnosticsLabel;
     private Label? _latestDiagnosticsBundleLabel;
     private Label? _supportStatusLabel;
+    private TextBox? _garageCoverImagePathBox;
     private Label? _garageCoverStateLabel;
+    private Panel? _garageCoverPreviewPanel;
+    private Label? _garageCoverPreviewCaptionLabel;
     private DateTimeOffset _nextSupportStatusRefreshAtUtc;
     private DateTimeOffset _nextSupportHeavyRefreshAtUtc;
     private DateTimeOffset _nextLatestDiagnosticsScanAtUtc;
@@ -214,7 +217,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             TabIndex = 0
         };
         _tabs.DrawItem += DrawSettingsTab;
-        _tabs.SelectedIndexChanged += (_, _) => ReportSelectedOverlayTab();
+        _tabs.SelectedIndexChanged += (_, _) => SelectedSettingsTabChanged();
 
         _titleBar.Controls.Add(_brandLogo);
         _titleBar.Controls.Add(_titleLabel);
@@ -227,6 +230,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
         BuildTabs();
         ReportSelectedOverlayTab();
+        RefreshSelectedSettingsTab(force: true);
         ApplyFontFamily(OverlayTheme.DefaultFontFamily);
         _refreshTimer = new System.Windows.Forms.Timer
         {
@@ -307,17 +311,24 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
     private void BuildTabs()
     {
+        _garageCoverImagePathBox = null;
         _garageCoverStateLabel = null;
-        _tabs.TabPages.Clear();
-        _tabs.TabPages.Add(CreateGeneralTab());
+        _garageCoverPreviewPanel = null;
+        _garageCoverPreviewCaptionLabel = null;
 
-        foreach (var overlay in OrderedSettingsOverlays())
+        SuspendLayoutWhile(_tabs, () =>
         {
-            _tabs.TabPages.Add(CreateOverlayTab(overlay));
-        }
+            _tabs.TabPages.Clear();
+            _tabs.TabPages.Add(CreateGeneralTab());
 
-        _tabs.TabPages.Add(CreateSupportTab());
-        _tabs.SelectedIndex = 0;
+            foreach (var overlay in OrderedSettingsOverlays())
+            {
+                _tabs.TabPages.Add(CreateOverlayTab(overlay));
+            }
+
+            _tabs.TabPages.Add(CreateSupportTab());
+            _tabs.SelectedIndex = 0;
+        });
     }
 
     private IEnumerable<OverlayDefinition> OrderedSettingsOverlays()
@@ -349,14 +360,27 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _selectedOverlayChanged(_tabs.SelectedTab?.Tag as string);
     }
 
+    private void SelectedSettingsTabChanged()
+    {
+        ReportSelectedOverlayTab();
+        RefreshSelectedSettingsTab(force: true);
+    }
+
     private void SelectOverlayTab(string overlayId)
     {
         foreach (TabPage page in _tabs.TabPages)
         {
             if (string.Equals(page.Tag as string, overlayId, StringComparison.OrdinalIgnoreCase))
             {
-                _tabs.SelectedTab = page;
-                ReportSelectedOverlayTab();
+                if (ReferenceEquals(_tabs.SelectedTab, page))
+                {
+                    SelectedSettingsTabChanged();
+                }
+                else
+                {
+                    _tabs.SelectedTab = page;
+                }
+
                 return;
             }
         }
@@ -383,8 +407,16 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             var captureSucceeded = false;
             try
             {
-                SyncRawCaptureCheckBox();
-                SyncGarageCoverStateLabel();
+                if (IsSupportTabSelected())
+                {
+                    SyncRawCaptureCheckBox();
+                }
+
+                if (IsGarageCoverTabSelected())
+                {
+                    SyncGarageCoverStateLabel();
+                }
+
                 captureSucceeded = true;
             }
             finally
@@ -399,7 +431,11 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             var diagnosticsSucceeded = false;
             try
             {
-                SyncErrorLoggingTab();
+                if (IsSupportTabSelected())
+                {
+                    SyncErrorLoggingTab();
+                }
+
                 diagnosticsSucceeded = true;
             }
             finally
@@ -419,6 +455,39 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
                 started,
                 succeeded);
         }
+    }
+
+    private void RefreshSelectedSettingsTab(bool force)
+    {
+        if (force && IsSupportTabSelected())
+        {
+            _nextSupportStatusRefreshAtUtc = DateTimeOffset.MinValue;
+            _nextSupportHeavyRefreshAtUtc = DateTimeOffset.MinValue;
+        }
+
+        if (IsSupportTabSelected())
+        {
+            SyncRawCaptureCheckBox();
+            SyncErrorLoggingTab();
+        }
+
+        if (IsGarageCoverTabSelected())
+        {
+            SyncGarageCoverStateLabel();
+        }
+    }
+
+    private bool IsSupportTabSelected()
+    {
+        return string.Equals(_tabs.SelectedTab?.Text, "Support", StringComparison.Ordinal);
+    }
+
+    private bool IsGarageCoverTabSelected()
+    {
+        return string.Equals(
+            _tabs.SelectedTab?.Tag as string,
+            GarageCoverOverlayDefinition.Definition.Id,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     private void DrawSettingsTab(object? sender, DrawItemEventArgs e)
@@ -626,9 +695,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
                 22,
                 54,
                 720));
-            var garageOptionsTop = 112;
-            AddScaleOption(page, definition, settings, ref garageOptionsTop);
-            AddLocalhostOptions(page, definition, 112);
+            SettingsOverlayTabSections.AddScaleOption(page, definition, settings, 112, SaveAndApply);
+            SettingsOverlayTabSections.AddLocalhostOptions(page, definition, _localhostOverlayOptions, 112, CopyTextToClipboard);
             AddGarageCoverOptions(page, settings, 212);
             return page;
         }
@@ -658,7 +726,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         chromeTabs.TabPages.Add(generalPage);
 
         var headerPage = CreateTabPage("Header");
-        AddChromeSettingsPage(
+        SettingsOverlayTabSections.AddChromeSettingsPage(
             headerPage,
             settings,
             "Header",
@@ -666,11 +734,12 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             OverlayOptionKeys.ChromeHeaderStatusTest,
             OverlayOptionKeys.ChromeHeaderStatusPractice,
             OverlayOptionKeys.ChromeHeaderStatusQualifying,
-            OverlayOptionKeys.ChromeHeaderStatusRace);
+            OverlayOptionKeys.ChromeHeaderStatusRace,
+            SaveAndApply);
         chromeTabs.TabPages.Add(headerPage);
 
         var footerPage = CreateTabPage("Footer");
-        AddChromeSettingsPage(
+        SettingsOverlayTabSections.AddChromeSettingsPage(
             footerPage,
             settings,
             "Footer",
@@ -678,7 +747,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             OverlayOptionKeys.ChromeFooterSourceTest,
             OverlayOptionKeys.ChromeFooterSourcePractice,
             OverlayOptionKeys.ChromeFooterSourceQualifying,
-            OverlayOptionKeys.ChromeFooterSourceRace);
+            OverlayOptionKeys.ChromeFooterSourceRace,
+            SaveAndApply);
         chromeTabs.TabPages.Add(footerPage);
 
         return chromeTabs;
@@ -691,208 +761,14 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         int controlTop,
         int localhostTop)
     {
-        var enabledCheckBox = CreateCheckBox("Visible", settings.Enabled, 22, controlTop, 220);
-        enabledCheckBox.CheckedChanged += (_, _) =>
-        {
-            settings.Enabled = enabledCheckBox.Checked;
-            SaveAndApply();
-        };
-        page.Controls.Add(enabledCheckBox);
-
-        var optionsTop = controlTop + 46;
-        AddScaleOption(page, definition, settings, ref optionsTop);
-        AddOpacityOption(page, definition, settings, ref optionsTop);
-        AddSessionFilterOptions(page, definition, settings, ref optionsTop);
-
-        AddLocalhostOptions(page, definition, localhostTop);
+        var optionsTop = SettingsOverlayTabSections.AddOverlayBasics(page, definition, settings, controlTop, SaveAndApply);
+        SettingsOverlayTabSections.AddLocalhostOptions(page, definition, _localhostOverlayOptions, localhostTop, CopyTextToClipboard);
         AddOverlaySpecificOptions(page, definition, settings, optionsTop);
-    }
-
-    private void AddScaleOption(TabPage page, OverlayDefinition definition, OverlaySettings settings, ref int optionsTop)
-    {
-        if (!definition.ShowScaleControl)
-        {
-            return;
-        }
-
-        var scaleLabel = CreateLabel("Scale", 22, optionsTop + 4, 160);
-        var scaleInput = new NumericUpDown
-        {
-            DecimalPlaces = 0,
-            Increment = 5,
-            Location = new Point(180, optionsTop),
-            Maximum = 200,
-            Minimum = 60,
-            Size = new Size(90, 28),
-            TabStop = true,
-            TextAlign = HorizontalAlignment.Right,
-            Value = (decimal)Math.Round(Math.Clamp(settings.Scale, 0.6d, 2d) * 100d)
-        };
-        var percentLabel = CreateLabel("%", 278, optionsTop + 4, 40);
-        scaleInput.ValueChanged += (_, _) =>
-        {
-            settings.Scale = Math.Clamp((double)scaleInput.Value / 100d, 0.6d, 2d);
-            settings.Width = ScaleDimension(definition.DefaultWidth, settings.Scale);
-            settings.Height = ScaleDimension(definition.DefaultHeight, settings.Scale);
-            SaveAndApply();
-        };
-
-        page.Controls.Add(scaleLabel);
-        page.Controls.Add(scaleInput);
-        page.Controls.Add(percentLabel);
-        optionsTop += 50;
-    }
-
-    private void AddOpacityOption(TabPage page, OverlayDefinition definition, OverlaySettings settings, ref int optionsTop)
-    {
-        if (!definition.ShowOpacityControl)
-        {
-            return;
-        }
-
-        var opacityLabel = CreateLabel(
-            string.Equals(definition.Id, TrackMapOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase)
-                ? "Map fill"
-                : "Opacity",
-            22,
-            optionsTop + 4,
-            160);
-        var opacityInput = new NumericUpDown
-        {
-            DecimalPlaces = 0,
-            Increment = 5,
-            Location = new Point(180, optionsTop),
-            Maximum = 100,
-            Minimum = 20,
-            Size = new Size(90, 28),
-            TabStop = true,
-            TextAlign = HorizontalAlignment.Right,
-            Value = (decimal)Math.Round(Math.Clamp(settings.Opacity, 0.2d, 1d) * 100d)
-        };
-        var percentLabel = CreateLabel("%", 278, optionsTop + 4, 40);
-        opacityInput.ValueChanged += (_, _) =>
-        {
-            settings.Opacity = Math.Clamp((double)opacityInput.Value / 100d, 0.2d, 1d);
-            SaveAndApply();
-        };
-
-        page.Controls.Add(opacityLabel);
-        page.Controls.Add(opacityInput);
-        page.Controls.Add(percentLabel);
-        optionsTop += 50;
-    }
-
-    private void AddSessionFilterOptions(TabPage page, OverlayDefinition definition, OverlaySettings settings, ref int optionsTop)
-    {
-        if (!definition.ShowSessionFilters)
-        {
-            return;
-        }
-
-        var sessionBox = new GroupBox
-        {
-            ForeColor = OverlayTheme.Colors.TextControl,
-            Location = new Point(22, optionsTop),
-            Size = new Size(360, 154),
-            Text = "Display in sessions"
-        };
-
-        var testCheckBox = CreateCheckBox("Test", settings.ShowInTest, 16, 28, 150);
-        var practiceCheckBox = CreateCheckBox("Practice", settings.ShowInPractice, 180, 28, 150);
-        var qualifyingCheckBox = CreateCheckBox("Qualifying", settings.ShowInQualifying, 16, 72, 150);
-        var raceCheckBox = CreateCheckBox("Race", settings.ShowInRace, 180, 72, 150);
-
-        testCheckBox.CheckedChanged += (_, _) =>
-        {
-            settings.ShowInTest = testCheckBox.Checked;
-            SaveAndApply();
-        };
-        practiceCheckBox.CheckedChanged += (_, _) =>
-        {
-            settings.ShowInPractice = practiceCheckBox.Checked;
-            SaveAndApply();
-        };
-        qualifyingCheckBox.CheckedChanged += (_, _) =>
-        {
-            settings.ShowInQualifying = qualifyingCheckBox.Checked;
-            SaveAndApply();
-        };
-        raceCheckBox.CheckedChanged += (_, _) =>
-        {
-            settings.ShowInRace = raceCheckBox.Checked;
-            SaveAndApply();
-        };
-
-        sessionBox.Controls.Add(testCheckBox);
-        sessionBox.Controls.Add(practiceCheckBox);
-        sessionBox.Controls.Add(qualifyingCheckBox);
-        sessionBox.Controls.Add(raceCheckBox);
-        page.Controls.Add(sessionBox);
-        optionsTop += 176;
-    }
-
-    private void AddChromeSettingsPage(
-        TabPage page,
-        OverlaySettings settings,
-        string title,
-        string itemLabel,
-        string testKey,
-        string practiceKey,
-        string qualifyingKey,
-        string raceKey)
-    {
-        page.Controls.Add(CreateSectionLabel(title, 18, 18, 500));
-        page.Controls.Add(CreateLabel("Item", 22, 62, 120));
-        page.Controls.Add(CreateLabel("Test", 196, 62, 90));
-        page.Controls.Add(CreateLabel("Practice", 296, 62, 110));
-        page.Controls.Add(CreateLabel("Qualifying", 416, 62, 120));
-        page.Controls.Add(CreateLabel("Race", 548, 62, 90));
-
-        page.Controls.Add(CreateLabel(itemLabel, 22, 104, 150));
-        AddChromeSessionCheckBox(page, settings, testKey, 196, 100);
-        AddChromeSessionCheckBox(page, settings, practiceKey, 296, 100);
-        AddChromeSessionCheckBox(page, settings, qualifyingKey, 416, 100);
-        AddChromeSessionCheckBox(page, settings, raceKey, 548, 100);
-    }
-
-    private void AddChromeSessionCheckBox(TabPage page, OverlaySettings settings, string optionKey, int x, int y)
-    {
-        var checkBox = CreateCheckBox(
-            string.Empty,
-            settings.GetBooleanOption(optionKey, defaultValue: true),
-            x,
-            y,
-            32);
-        checkBox.CheckedChanged += (_, _) =>
-        {
-            settings.SetBooleanOption(optionKey, checkBox.Checked);
-            SaveAndApply();
-        };
-        page.Controls.Add(checkBox);
     }
 
     private static bool SupportsSharedChromeSettings(string overlayId)
     {
         return overlayId is "standings" or "relative" or "fuel-calculator" or "input-state" or "gap-to-leader";
-    }
-
-    private void AddLocalhostOptions(TabPage page, OverlayDefinition definition, int top)
-    {
-        const int x = 560;
-        page.Controls.Add(CreateSectionLabel("Localhost browser source", x, top, 500));
-        if (BrowserOverlayPageRenderer.TryGetRouteForOverlayId(definition.Id, out var route))
-        {
-            var url = $"{_localhostOverlayOptions.Prefix.TrimEnd('/')}{route}";
-            page.Controls.Add(CreateLabel("URL", x + 4, top + 42, 120));
-            page.Controls.Add(CreateSelectableValueBox(url, x + 92, top + 36, 300, 30));
-            var copyButton = CreateActionButton("Copy", x + 402, top + 36, 76);
-            copyButton.Click += (_, _) => CopyTextToClipboard(url);
-            page.Controls.Add(copyButton);
-            page.Controls.Add(CreateMutedLabel("This browser-source route does not require the native overlay to be visible. Disable LocalhostOverlays in configuration if the local server is not needed.", x + 4, top + 76, 500));
-            return;
-        }
-
-        page.Controls.Add(CreateMutedLabel("No localhost route is available for this overlay yet.", x + 4, top + 42, 560));
     }
 
     private void AddOverlaySpecificOptions(TabPage page, OverlayDefinition definition, OverlaySettings settings, int top)
@@ -915,7 +791,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             return;
         }
 
-        AddDescriptorOptions(page, definition.SettingsOptions, settings, top);
+        SettingsOverlayTabSections.AddDescriptorOptions(page, definition.SettingsOptions, settings, top, SaveAndApply);
     }
 
     private void AddGarageCoverOptions(TabPage page, OverlaySettings settings, int top)
@@ -924,12 +800,13 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         var imagePath = settings.GetStringOption(OverlayOptionKeys.GarageCoverImagePath);
         var imageStatus = GarageCoverImageStore.InspectImage(imagePath);
         page.Controls.Add(CreateLabel("Image", 22, top + 42, 90));
-        page.Controls.Add(CreateSelectableValueBox(
+        _garageCoverImagePathBox = CreateSelectableValueBox(
             imageStatus.IsUsable ? imagePath : GarageCoverImageStatusText(imageStatus),
             116,
             top + 36,
             500,
-            30));
+            30);
+        page.Controls.Add(_garageCoverImagePathBox);
 
         var importButton = CreateActionButton("Import Image", 116, top + 78, 130);
         importButton.Click += (_, _) => ImportGarageCoverImage(settings);
@@ -943,8 +820,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
                 settings.SetStringOption(OverlayOptionKeys.GarageCoverImagePath, null);
                 GarageCoverImageStore.ClearImportedImages(_storageOptions.SettingsRoot);
                 SaveAndApply();
-                BuildTabs();
-                SelectOverlayTab(GarageCoverOverlayDefinition.Definition.Id);
+                RefreshGarageCoverImageState(settings);
             }
             catch (Exception exception)
             {
@@ -974,12 +850,14 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             600));
 
         page.Controls.Add(CreateSectionLabel("Preview", 650, top, 220));
-        page.Controls.Add(CreateGarageCoverPreviewPanel(imagePath, 650, top + 36, 220, 124));
-        page.Controls.Add(CreateMutedLabel(
+        _garageCoverPreviewPanel = CreateGarageCoverPreviewPanel(imagePath, 650, top + 36, 220, 124);
+        page.Controls.Add(_garageCoverPreviewPanel);
+        _garageCoverPreviewCaptionLabel = CreateMutedLabel(
             imageStatus.IsUsable ? "Selected cover image" : "Fallback cover",
             650,
             top + 168,
-            220));
+            220);
+        page.Controls.Add(_garageCoverPreviewCaptionLabel);
     }
 
     private void ShowGarageCoverPreview(OverlaySettings settings)
@@ -991,8 +869,27 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         });
         SaveAndApply();
         SetSupportStatus("Garage Cover test is visible in OBS for 10 seconds.", isError: false);
-        BuildTabs();
-        SelectOverlayTab(GarageCoverOverlayDefinition.Definition.Id);
+        SyncGarageCoverStateLabel();
+    }
+
+    private void RefreshGarageCoverImageState(OverlaySettings settings)
+    {
+        var imagePath = settings.GetStringOption(OverlayOptionKeys.GarageCoverImagePath);
+        var imageStatus = GarageCoverImageStore.InspectImage(imagePath);
+        SetTextIfChanged(
+            _garageCoverImagePathBox,
+            imageStatus.IsUsable ? imagePath ?? string.Empty : GarageCoverImageStatusText(imageStatus));
+        SetTextIfChanged(
+            _garageCoverPreviewCaptionLabel,
+            imageStatus.IsUsable ? "Selected cover image" : "Fallback cover");
+
+        if (_garageCoverPreviewPanel is not null)
+        {
+            _garageCoverPreviewPanel.Tag = imagePath;
+            _garageCoverPreviewPanel.Invalidate();
+        }
+
+        SyncGarageCoverStateLabel();
     }
 
     private void SyncGarageCoverStateLabel()
@@ -1044,9 +941,10 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             BackColor = Color.Black,
             BorderStyle = BorderStyle.FixedSingle,
             Location = new Point(x, y),
-            Size = new Size(width, height)
+            Size = new Size(width, height),
+            Tag = imagePath
         };
-        panel.Paint += (_, e) => DrawGarageCoverPreview(e.Graphics, panel.ClientRectangle, imagePath);
+        panel.Paint += (_, e) => DrawGarageCoverPreview(e.Graphics, panel.ClientRectangle, panel.Tag as string);
         return panel;
     }
 
@@ -1102,8 +1000,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
                 ["extension"] = Path.GetExtension(importedPath)
             });
             SaveAndApply();
-            BuildTabs();
-            SelectOverlayTab(GarageCoverOverlayDefinition.Definition.Id);
+            RefreshGarageCoverImageState(settings);
         }
         catch (Exception exception)
         {
@@ -1298,54 +1195,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         page.Controls.Add(checkBox);
     }
 
-    private void AddDescriptorOptions(
-        TabPage page,
-        IReadOnlyList<OverlaySettingsOptionDescriptor> options,
-        OverlaySettings settings,
-        int top)
-    {
-        for (var index = 0; index < options.Count; index++)
-        {
-            var option = options[index];
-            var x = option.Kind == OverlaySettingsOptionKind.Boolean && index % 2 == 1 ? 260 : 22;
-            var y = top + (option.Kind == OverlaySettingsOptionKind.Boolean ? index / 2 : index) * 40;
-
-            if (option.Kind == OverlaySettingsOptionKind.Boolean)
-            {
-                var checkBox = CreateCheckBox(
-                    option.Label,
-                    settings.GetBooleanOption(option.Key, option.BooleanDefault),
-                    x,
-                    y,
-                    220);
-                checkBox.CheckedChanged += (_, _) =>
-                {
-                    settings.SetBooleanOption(option.Key, checkBox.Checked);
-                    SaveAndApply();
-                };
-                page.Controls.Add(checkBox);
-                continue;
-            }
-
-            if (option.Kind == OverlaySettingsOptionKind.Integer)
-            {
-                page.Controls.Add(CreateLabel(option.Label, 22, y + 4, 120));
-                var input = CreateIntegerInput(
-                    settings.GetIntegerOption(option.Key, option.IntegerDefault, option.Minimum, option.Maximum),
-                    option.Minimum,
-                    option.Maximum,
-                    150,
-                    y);
-                input.ValueChanged += (_, _) =>
-                {
-                    settings.SetIntegerOption(option.Key, (int)input.Value, option.Minimum, option.Maximum);
-                    SaveAndApply();
-                };
-                page.Controls.Add(input);
-            }
-        }
-    }
-
     private void SaveAndApply()
     {
         if (_loading)
@@ -1355,186 +1204,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
         _saveSettings();
         _applyOverlaySettings();
-    }
-
-    private static TabPage CreateTabPage(string text)
-    {
-        return new TabPage(text)
-        {
-            BackColor = OverlayTheme.Colors.PageBackground,
-            ForeColor = OverlayTheme.Colors.TextSecondary
-        };
-    }
-
-    private static Label CreateSectionLabel(string text, int x, int y, int width)
-    {
-        return new Label
-        {
-            AutoSize = false,
-            ForeColor = OverlayTheme.Colors.TextPrimary,
-            Font = OverlayTheme.Font(OverlayTheme.DefaultFontFamily, 11f, FontStyle.Bold),
-            Location = new Point(x, y),
-            Size = new Size(width, 26),
-            Text = text
-        };
-    }
-
-    private static Label CreateLabel(string text, int x, int y, int width)
-    {
-        return new Label
-        {
-            AutoSize = false,
-            ForeColor = OverlayTheme.Colors.TextSecondary,
-            Font = OverlayTheme.Font(OverlayTheme.DefaultFontFamily, 9.25f),
-            Location = new Point(x, y),
-            Size = new Size(width, 24),
-            Text = text,
-            TextAlign = ContentAlignment.MiddleLeft
-        };
-    }
-
-    private static Label CreateMutedLabel(string text, int x, int y, int width)
-    {
-        return new Label
-        {
-            AutoSize = false,
-            ForeColor = OverlayTheme.Colors.TextMuted,
-            Font = OverlayTheme.Font(OverlayTheme.DefaultFontFamily, 8.5f),
-            Location = new Point(x, y),
-            Size = new Size(width, 24),
-            Text = text,
-            TextAlign = ContentAlignment.MiddleLeft
-        };
-    }
-
-    private static Label CreateMultiLineValueLabel(string text, int x, int y, int width, int height)
-    {
-        return new Label
-        {
-            AutoSize = false,
-            BackColor = OverlayTheme.Colors.PanelBackground,
-            BorderStyle = BorderStyle.FixedSingle,
-            ForeColor = OverlayTheme.Colors.TextSecondary,
-            Font = OverlayTheme.Font(OverlayTheme.DefaultFontFamily, 8.75f),
-            Location = new Point(x, y),
-            Padding = new Padding(8),
-            Size = new Size(width, height),
-            Text = text,
-            TextAlign = ContentAlignment.TopLeft
-        };
-    }
-
-    private static Label CreateWarningLabel(string text, int x, int y, int width, int height)
-    {
-        return new Label
-        {
-            AutoSize = false,
-            BackColor = Color.FromArgb(42, 35, 18),
-            BorderStyle = BorderStyle.FixedSingle,
-            ForeColor = OverlayTheme.Colors.WarningIndicator,
-            Font = OverlayTheme.Font(OverlayTheme.DefaultFontFamily, 8.75f, FontStyle.Bold),
-            Location = new Point(x, y),
-            Padding = new Padding(10, 8, 10, 6),
-            Size = new Size(width, height),
-            Text = text,
-            TextAlign = ContentAlignment.MiddleLeft
-        };
-    }
-
-    private static Label CreateValueLabel(string text, int x, int y, int width, int height)
-    {
-        return new Label
-        {
-            AutoSize = false,
-            BackColor = OverlayTheme.Colors.PanelBackground,
-            BorderStyle = BorderStyle.FixedSingle,
-            ForeColor = OverlayTheme.Colors.TextSecondary,
-            Font = OverlayTheme.Font(OverlayTheme.DefaultFontFamily, 9f, FontStyle.Bold),
-            Location = new Point(x, y),
-            Padding = new Padding(8, 5, 8, 4),
-            Size = new Size(width, height),
-            Text = text,
-            TextAlign = ContentAlignment.MiddleLeft
-        };
-    }
-
-    private static TextBox CreateSelectableValueBox(string text, int x, int y, int width, int height)
-    {
-        return new TextBox
-        {
-            BackColor = OverlayTheme.Colors.PanelBackground,
-            BorderStyle = BorderStyle.FixedSingle,
-            Font = OverlayTheme.Font(OverlayTheme.DefaultFontFamily, 9f, FontStyle.Bold),
-            ForeColor = OverlayTheme.Colors.TextSecondary,
-            Location = new Point(x, y),
-            ReadOnly = true,
-            Size = new Size(width, height),
-            TabStop = true,
-            Text = text
-        };
-    }
-
-    private static TextBox CreateEditableTextBox(string text, int x, int y, int width, int height)
-    {
-        return new TextBox
-        {
-            BackColor = OverlayTheme.Colors.PanelBackground,
-            BorderStyle = BorderStyle.FixedSingle,
-            Font = OverlayTheme.Font(OverlayTheme.DefaultFontFamily, 9f),
-            ForeColor = OverlayTheme.Colors.TextControl,
-            Location = new Point(x, y),
-            Size = new Size(width, height),
-            TabStop = true,
-            Text = text
-        };
-    }
-
-    private static Button CreateActionButton(string text, int x, int y, int width)
-    {
-        var button = new Button
-        {
-            BackColor = OverlayTheme.Colors.ButtonBackground,
-            FlatStyle = FlatStyle.Flat,
-            ForeColor = OverlayTheme.Colors.TextControl,
-            Location = new Point(x, y),
-            Size = new Size(width, 28),
-            TabStop = true,
-            Text = text,
-            UseVisualStyleBackColor = false
-        };
-        button.FlatAppearance.BorderColor = OverlayTheme.Colors.TabBorder;
-        return button;
-    }
-
-    private static CheckBox CreateCheckBox(string text, bool isChecked, int x, int y, int width)
-    {
-        return new CheckBox
-        {
-            AutoSize = false,
-            Checked = isChecked,
-            ForeColor = OverlayTheme.Colors.TextControl,
-            Location = new Point(x, y),
-            Size = new Size(width, 28),
-            TabStop = true,
-            Text = text,
-            UseVisualStyleBackColor = true
-        };
-    }
-
-    private static NumericUpDown CreateIntegerInput(int value, int minimum, int maximum, int x, int y)
-    {
-        return new NumericUpDown
-        {
-            DecimalPlaces = 0,
-            Increment = 1,
-            Location = new Point(x, y),
-            Maximum = maximum,
-            Minimum = minimum,
-            Size = new Size(78, 28),
-            TabStop = true,
-            TextAlign = HorizontalAlignment.Right,
-            Value = Math.Clamp(value, minimum, maximum)
-        };
     }
 
     private void RawCaptureCheckBoxChanged()
@@ -1570,11 +1239,11 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _syncingRawCaptureCheckBox = true;
         try
         {
-            _rawCaptureCheckBox.Checked = snapshot.RawCaptureEnabled || snapshot.RawCaptureActive;
-            _rawCaptureCheckBox.Enabled = !snapshot.RawCaptureActive;
-            _rawCaptureCheckBox.Text = snapshot.RawCaptureActive
+            SetCheckedIfChanged(_rawCaptureCheckBox, snapshot.RawCaptureEnabled || snapshot.RawCaptureActive);
+            SetEnabledIfChanged(_rawCaptureCheckBox, !snapshot.RawCaptureActive);
+            SetTextIfChanged(_rawCaptureCheckBox, snapshot.RawCaptureActive
                 ? "Diagnostic telemetry capture active"
-                : "Capture diagnostic telemetry";
+                : "Capture diagnostic telemetry");
         }
         finally
         {
@@ -1804,18 +1473,12 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
     private static void SetLabelText(Label label, string text)
     {
-        if (!string.Equals(label.Text, text, StringComparison.Ordinal))
-        {
-            label.Text = text;
-        }
+        SetTextIfChanged(label, text);
     }
 
     private static void SetLabelColor(Label label, Color color)
     {
-        if (label.ForeColor != color)
-        {
-            label.ForeColor = color;
-        }
+        SetForeColorIfChanged(label, color);
     }
 
     private string AdvancedDiagnosticsText()
@@ -1867,11 +1530,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             SupportStatusLevel.Info => OverlayTheme.Colors.InfoText,
             _ => OverlayTheme.Colors.TextSecondary
         };
-    }
-
-    private static int ScaleDimension(int defaultDimension, double scale)
-    {
-        return Math.Max(80, (int)Math.Round(defaultDimension * Math.Clamp(scale, 0.6d, 2d)));
     }
 
     private void ApplyFontFamily(string? fontFamily)
