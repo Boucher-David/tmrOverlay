@@ -34,9 +34,15 @@ Current releases focus on:
 Pre-release Windows builds are published from GitHub Actions on version tags.
 
 1. Open the latest GitHub Release.
-2. Prefer the Velopack setup executable for normal installs.
+2. Prefer the Velopack setup executable for normal installs and upgrades.
 3. Use the portable `TmrOverlay-<version>-win-x64.zip` only as a fallback or support artifact.
 4. Start TmrOverlay and open the settings window from the tray icon.
+
+## Upgrade
+
+Velopack-installed builds check GitHub Releases passively on startup and from the tray or Support tab. The current app does not auto-download or auto-restart; when an update is available, open the release page, close TmrOverlay, run the latest setup executable, and launch from the installed shortcut.
+
+Portable zip users should close TmrOverlay, unzip the newer package into a fresh folder or replace the old app files while the app is closed, then run `TMROverlay.exe`. Settings, history, logs, diagnostics, and captures stay under `%LOCALAPPDATA%\TmrOverlay`, so switching from the portable zip to the setup installer should keep existing user data.
 
 Current builds may be unsigned, so Windows SmartScreen can warn on first launch. See [docs/windows-release.md](docs/windows-release.md) for package contents, checksum verification, install, upgrade, rollback, signing expectations, and diagnostics handoff.
 

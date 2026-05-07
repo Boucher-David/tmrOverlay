@@ -63,8 +63,8 @@ Velopack package assets are generated from that audited publish folder. The pack
 
 1. Open the repository's GitHub Releases page.
 2. Open the latest `vMAJOR.MINOR.PATCH` release.
-3. Prefer the Velopack setup executable for normal teammate installs.
-4. Run the setup executable and launch TmrOverlay from the installed shortcut.
+3. Prefer the Velopack setup executable for normal teammate installs and upgrades.
+4. Run the setup executable and launch TmrOverlay from the installed shortcut. The installed app executable is `TMROverlay.exe`, but teammates should normally use the shortcut created by setup.
 5. Use the portable zip only as a fallback or support artifact. For the zip fallback, download `TmrOverlay-<version>-win-x64.zip` and the matching `.sha256` asset when you want to verify the file.
 6. Unzip the portable package into a normal user-writable folder, for example:
 
@@ -105,7 +105,23 @@ The command should print `True`.
 
 ## Upgrade And Rollback
 
-Velopack-installed builds should update through the public GitHub Release feed. The first Velopack pass checks passively and opens the release page; active download/apply controls are deferred until teammate installer testing proves the channel reliable.
+Velopack-installed builds check the public GitHub Release feed. The first Velopack pass is intentionally passive: the app can report that an update exists and open the release page, but active download/apply/restart controls are deferred until teammate installer testing proves the channel reliable.
+
+To upgrade a Velopack-installed build:
+
+1. Open TmrOverlay from the tray and use `Check for Updates`, or open the latest GitHub Release directly.
+2. If a newer release is available, close TmrOverlay from the settings window or tray menu.
+3. Download and run the latest Velopack setup executable from the newer release.
+4. Launch TmrOverlay from the installed shortcut.
+
+To move from a portable zip to the Velopack installer:
+
+1. Close the portable copy of TmrOverlay.
+2. Run the latest Velopack setup executable.
+3. Launch TmrOverlay from the installed shortcut.
+4. Keep the old portable folder until the installed app opens correctly, then remove it when no longer needed.
+
+Installed and portable builds both use `%LOCALAPPDATA%\TmrOverlay` by default, so settings, history, logs, diagnostics, runtime state, and captures should carry forward unless the user explicitly overrides storage through configuration or `TMR_` environment variables.
 
 To upgrade a portable release:
 
@@ -114,7 +130,7 @@ To upgrade a portable release:
 3. Unzip the new release into a fresh folder, or replace the old application files while the app is closed.
 4. Start `TMROverlay.exe`.
 
-To roll back, close the app and run the previous unzipped folder again. User settings/history remain in `%LOCALAPPDATA%\TmrOverlay`; if a future release changes a durable schema, the branch must document migration and compatibility before release.
+To roll back a portable release, close the app and run the previous unzipped folder again. To roll back an installed release during tester validation, close TmrOverlay, keep a diagnostics bundle from the problem build, then reinstall the older release setup executable or use that older release's portable zip fallback. User settings/history remain in `%LOCALAPPDATA%\TmrOverlay`; if a future release changes a durable schema, the branch must document migration and compatibility before release.
 
 ## Signing And SmartScreen
 
