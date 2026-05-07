@@ -25,6 +25,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
     private const double FadeInSeconds = 0.25d;
     private const double FadeOutSeconds = 0.85d;
     private const double MinimumVisibleAlpha = 0.02d;
+    private const int RefreshIntervalMilliseconds = 100;
     private const int MaxWideRowRadarCars = 18;
     private const float MulticlassWarningArcStartDegrees = 62.5f;
     private const float MulticlassWarningArcSweepDegrees = 55f;
@@ -85,9 +86,17 @@ internal sealed class CarRadarForm : PersistentOverlayForm
 
         _refreshTimer = new System.Windows.Forms.Timer
         {
-            Interval = 100
+            Interval = RefreshIntervalMilliseconds
         };
-        _refreshTimer.Tick += (_, _) => RefreshOverlay();
+        _refreshTimer.Tick += (_, _) =>
+        {
+            _performanceState.RecordOverlayTimerTick(
+                CarRadarOverlayDefinition.Definition.Id,
+                RefreshIntervalMilliseconds,
+                Visible,
+                !Visible || Opacity <= 0.001d);
+            RefreshOverlay();
+        };
         _refreshTimer.Start();
 
         RefreshOverlay();

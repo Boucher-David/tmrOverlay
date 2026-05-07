@@ -118,7 +118,15 @@ internal sealed class RelativeForm : PersistentOverlayForm
         {
             Interval = RefreshIntervalMilliseconds
         };
-        _refreshTimer.Tick += (_, _) => RefreshOverlay();
+        _refreshTimer.Tick += (_, _) =>
+        {
+            _performanceState.RecordOverlayTimerTick(
+                RelativeOverlayDefinition.Definition.Id,
+                RefreshIntervalMilliseconds,
+                Visible,
+                !Visible || Opacity <= 0.001d);
+            RefreshOverlay();
+        };
         _refreshTimer.Start();
 
         RefreshOverlay();

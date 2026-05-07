@@ -28,6 +28,7 @@ using TmrOverlay.App.Localhost;
 using TmrOverlay.App.Performance;
 using TmrOverlay.App.Analysis;
 using TmrOverlay.App.TrackMaps;
+using TmrOverlay.App.Updates;
 
 namespace TmrOverlay.App.Overlays;
 
@@ -42,6 +43,7 @@ internal sealed class OverlayManager : IDisposable
     private readonly LiveOverlayDiagnosticsOptions _liveOverlayDiagnosticsOptions;
     private readonly PostRaceAnalysisOptions _postRaceAnalysisOptions;
     private readonly AppPerformanceState _performanceState;
+    private readonly ReleaseUpdateService _releaseUpdates;
     private readonly LocalhostOverlayOptions _localhostOverlayOptions;
     private readonly LocalhostOverlayState _localhostOverlayState;
     private readonly TrackMapStore _trackMapStore;
@@ -79,6 +81,7 @@ internal sealed class OverlayManager : IDisposable
         LiveOverlayDiagnosticsOptions liveOverlayDiagnosticsOptions,
         PostRaceAnalysisOptions postRaceAnalysisOptions,
         AppPerformanceState performanceState,
+        ReleaseUpdateService releaseUpdates,
         LocalhostOverlayOptions localhostOverlayOptions,
         LocalhostOverlayState localhostOverlayState,
         TrackMapStore trackMapStore,
@@ -102,6 +105,7 @@ internal sealed class OverlayManager : IDisposable
         _liveOverlayDiagnosticsOptions = liveOverlayDiagnosticsOptions;
         _postRaceAnalysisOptions = postRaceAnalysisOptions;
         _performanceState = performanceState;
+        _releaseUpdates = releaseUpdates;
         _localhostOverlayOptions = localhostOverlayOptions;
         _localhostOverlayState = localhostOverlayState;
         _trackMapStore = trackMapStore;
@@ -120,7 +124,11 @@ internal sealed class OverlayManager : IDisposable
         {
             Interval = 1000
         };
-        _sessionVisibilityTimer.Tick += (_, _) => ApplyOverlaySettings();
+        _sessionVisibilityTimer.Tick += (_, _) =>
+        {
+            _performanceState.RecordOverlayTimerTick("overlay-manager", 1000, visible: true, pauseEligible: false);
+            ApplyOverlaySettings();
+        };
     }
 
     public void ShowStartupOverlays()
@@ -164,6 +172,7 @@ internal sealed class OverlayManager : IDisposable
                 _liveOverlayDiagnosticsOptions,
                 _postRaceAnalysisOptions,
                 _performanceState,
+                _releaseUpdates,
                 _storageOptions,
                 _localhostOverlayOptions,
                 _localhostOverlayState,
@@ -492,11 +501,19 @@ internal sealed class OverlayManager : IDisposable
                 defaultEnabled: false);
             var settingsPreview = _radarSettingsPreviewVisible
                 && string.Equals(registration.Definition.Id, CarRadarOverlayDefinition.Definition.Id, StringComparison.Ordinal);
-            var shouldShow = settingsPreview || (settings.Enabled && IsAllowedForSession(registration.Definition, settings, currentSession));
+            var sessionAllowed = IsAllowedForSession(registration.Definition, settings, currentSession);
+            var shouldShow = settingsPreview || (settings.Enabled && sessionAllowed);
+            var overlayLiveTelemetryAvailable = liveTelemetryAvailable || settingsPreview;
 
             if (string.Equals(registration.Definition.Id, FlagsOverlayDefinition.Definition.Id, StringComparison.Ordinal))
             {
-                ApplyFlagsRegistration(registration, settings, shouldShow, liveTelemetryAvailable);
+                ApplyFlagsRegistration(
+                    registration,
+                    settings,
+                    managedEnabled: shouldShow,
+                    sessionAllowed,
+                    settingsPreview,
+                    liveTelemetryAvailable: overlayLiveTelemetryAvailable);
                 continue;
             }
 
@@ -508,6 +525,13 @@ internal sealed class OverlayManager : IDisposable
                     hiddenForm.Hide();
                 }
 
+                RecordOverlayLifecycleState(
+                    registration.Definition,
+                    settings,
+                    sessionAllowed,
+                    settingsPreview,
+                    desiredVisible: false,
+                    liveTelemetryAvailable: overlayLiveTelemetryAvailable);
                 continue;
             }
 
@@ -521,12 +545,20 @@ internal sealed class OverlayManager : IDisposable
             ApplyLiveTelemetryFade(
                 registration.Definition,
                 form,
-                liveTelemetryAvailable || settingsPreview,
+                overlayLiveTelemetryAvailable,
                 immediate: !wasVisible);
             if (!form.Visible)
             {
                 form.Show();
             }
+
+            RecordOverlayLifecycleState(
+                registration.Definition,
+                settings,
+                sessionAllowed,
+                settingsPreview,
+                desiredVisible: true,
+                liveTelemetryAvailable: overlayLiveTelemetryAvailable);
         }
 
         ApplyEmergencyOverlayZOrder();
@@ -774,6 +806,38 @@ internal sealed class OverlayManager : IDisposable
             persistent.LiveTelemetryFadeAlpha);
     }
 
+    private void RecordOverlayLifecycleState(
+        OverlayDefinition definition,
+        OverlaySettings settings,
+        bool sessionAllowed,
+        bool settingsPreview,
+        bool desiredVisible,
+        bool liveTelemetryAvailable)
+    {
+        var hasForm = _forms.TryGetValue(definition.Id, out var form) && !form.IsDisposed;
+        var actualVisible = hasForm && form!.Visible;
+        var fadeAlpha = form is PersistentOverlayForm persistent
+            ? persistent.LiveTelemetryFadeAlpha
+            : 1d;
+        var fadedUnavailable = definition.FadeWhenLiveTelemetryUnavailable
+            && !liveTelemetryAvailable
+            && fadeAlpha <= 0.01d;
+        var pauseEligible = hasForm && (!desiredVisible || !actualVisible || fadedUnavailable);
+        _performanceState.RecordOverlayLifecycleState(
+            definition.Id,
+            DateTimeOffset.UtcNow,
+            settings.Enabled,
+            sessionAllowed,
+            settingsPreview,
+            desiredVisible,
+            actualVisible,
+            hasForm,
+            liveTelemetryAvailable,
+            fadeAlpha,
+            definition.FadeWhenLiveTelemetryUnavailable,
+            pauseEligible);
+    }
+
     private static int ScaleDimension(int defaultDimension, double scale)
     {
         return Math.Max(80, (int)Math.Round(defaultDimension * Math.Clamp(scale, 0.6d, 2d)));
@@ -881,6 +945,8 @@ internal sealed class OverlayManager : IDisposable
         OverlayRegistration registration,
         OverlaySettings settings,
         bool managedEnabled,
+        bool sessionAllowed,
+        bool settingsPreview,
         bool liveTelemetryAvailable)
     {
         if (!managedEnabled)
@@ -895,6 +961,13 @@ internal sealed class OverlayManager : IDisposable
                 hiddenForm.Hide();
             }
 
+            RecordOverlayLifecycleState(
+                registration.Definition,
+                settings,
+                sessionAllowed,
+                settingsPreview,
+                desiredVisible: false,
+                liveTelemetryAvailable: liveTelemetryAvailable);
             return;
         }
 
@@ -914,6 +987,14 @@ internal sealed class OverlayManager : IDisposable
             visibleFlags.TopMost = !_settingsOverlayActive && settings.AlwaysOnTop;
             visibleFlags.SetManagedEnabled(true);
         }
+
+        RecordOverlayLifecycleState(
+            registration.Definition,
+            settings,
+            sessionAllowed,
+            settingsPreview,
+            desiredVisible: true,
+            liveTelemetryAvailable: liveTelemetryAvailable);
     }
 
     private void ApplyEmergencyOverlayZOrder()

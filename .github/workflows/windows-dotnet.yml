@@ -111,6 +111,39 @@ jobs:
             -Version "${{ steps.publish_dry_run.outputs.version }}" `
             -InformationalVersion "${{ steps.publish_dry_run.outputs.informational_version }}"
 
+      - name: Install Velopack CLI
+        shell: pwsh
+        run: dotnet tool install --global vpk --version 0.0.1298
+
+      - name: Velopack pack dry run
+        shell: pwsh
+        run: |
+          $vpk = Join-Path $env:USERPROFILE ".dotnet\tools\vpk.exe"
+          $velopackPath = ".\artifacts\pr-velopack-check"
+          New-Item -ItemType Directory -Force -Path $velopackPath | Out-Null
+
+          & $vpk pack `
+            --packId "TechMatesRacing.TmrOverlay" `
+            --packVersion "${{ steps.publish_dry_run.outputs.version }}" `
+            --packDir "${{ steps.publish_dry_run.outputs.publish_path }}" `
+            --mainExe "TMROverlay.exe" `
+            --packTitle "Tech Mates Racing Overlay" `
+            --packAuthors "Tech Mates Racing" `
+            --outputDir $velopackPath `
+            --channel "win-x64" `
+            --icon ".\src\TmrOverlay.App\Assets\TmrOverlay.ico"
+          if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+          }
+
+          $setup = Get-ChildItem $velopackPath -Filter "*Setup*.exe" | Select-Object -First 1
+          $fullPackage = Get-ChildItem $velopackPath -Filter "*${{ steps.publish_dry_run.outputs.version }}*-full.nupkg" | Select-Object -First 1
+          $releaseIndex = Join-Path $velopackPath "releases.win-x64.json"
+          if ($null -eq $setup -or $null -eq $fullPackage -or !(Test-Path $releaseIndex)) {
+              Get-ChildItem $velopackPath | Format-Table Name, Length
+              throw "Velopack dry run output is missing the setup executable, full package, or releases.win-x64.json."
+          }
+
   windows_release_package:
     name: Windows release package
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
@@ -206,6 +239,61 @@ jobs:
           $fileName = Split-Path -Path $packagePath -Leaf
           "$hash  $fileName" | Set-Content -Path $checksumPath -Encoding ascii
 
+      - name: Install Velopack CLI
+        shell: pwsh
+        run: dotnet tool install --global vpk --version 0.0.1298
+
+      - name: Build Velopack release
+        shell: pwsh
+        run: |
+          $vpk = Join-Path $env:USERPROFILE ".dotnet\tools\vpk.exe"
+          $publishPath = ".\artifacts\${{ steps.release_metadata.outputs.package_name }}"
+          $velopackPath = ".\artifacts\velopack"
+          New-Item -ItemType Directory -Force -Path $velopackPath | Out-Null
+
+          & $vpk download github `
+            --repoUrl "https://github.com/${{ github.repository }}" `
+            --token "${{ github.token }}" `
+            --outputDir $velopackPath `
+            --channel "win-x64"
+          if ($LASTEXITCODE -ne 0) {
+              Write-Warning "No previous Velopack release was downloaded; continuing without a delta base."
+          }
+
+          & $vpk pack `
+            --packId "TechMatesRacing.TmrOverlay" `
+            --packVersion "${{ steps.release_metadata.outputs.version }}" `
+            --packDir $publishPath `
+            --mainExe "TMROverlay.exe" `
+            --packTitle "Tech Mates Racing Overlay" `
+            --packAuthors "Tech Mates Racing" `
+            --outputDir $velopackPath `
+            --channel "win-x64" `
+            --icon ".\src\TmrOverlay.App\Assets\TmrOverlay.ico"
+          if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+          }
+
+          $setup = Get-ChildItem $velopackPath -Filter "*Setup*.exe" | Select-Object -First 1
+          $fullPackage = Get-ChildItem $velopackPath -Filter "*${{ steps.release_metadata.outputs.version }}*-full.nupkg" | Select-Object -First 1
+          $releaseIndex = Join-Path $velopackPath "releases.win-x64.json"
+          if ($null -eq $setup -or $null -eq $fullPackage -or !(Test-Path $releaseIndex)) {
+              Get-ChildItem $velopackPath | Format-Table Name, Length
+              throw "Velopack output is missing the setup executable, full package, or releases.win-x64.json."
+          }
+
+          $uploadPath = ".\artifacts\velopack-upload"
+          New-Item -ItemType Directory -Force -Path $uploadPath | Out-Null
+          Copy-Item $setup.FullName -Destination $uploadPath -Force
+          Copy-Item $releaseIndex -Destination $uploadPath -Force
+          Get-ChildItem $velopackPath -Filter "*${{ steps.release_metadata.outputs.version }}*.nupkg" |
+            Copy-Item -Destination $uploadPath -Force
+          $uploadPackage = Get-ChildItem $uploadPath -Filter "*${{ steps.release_metadata.outputs.version }}*.nupkg" | Select-Object -First 1
+          if ($null -eq $uploadPackage) {
+              Get-ChildItem $uploadPath | Format-Table Name, Length
+              throw "Velopack upload output is missing the current-version package."
+          }
+
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
@@ -214,6 +302,7 @@ jobs:
             artifacts/${{ steps.release_metadata.outputs.package_name }}.zip
             artifacts/${{ steps.release_metadata.outputs.package_name }}.zip.sha256
             artifacts/${{ steps.release_metadata.outputs.package_name }}-manifest.txt
+            artifacts/velopack-upload/*
 
       - name: Create GitHub release
         if: steps.release_metadata.outputs.is_release_tag == 'true'
@@ -224,3 +313,4 @@ jobs:
             artifacts/${{ steps.release_metadata.outputs.package_name }}.zip
             artifacts/${{ steps.release_metadata.outputs.package_name }}.zip.sha256
             artifacts/${{ steps.release_metadata.outputs.package_name }}-manifest.txt
+            artifacts/velopack-upload/*

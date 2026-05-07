@@ -45,7 +45,7 @@ internal static class BuildFreshnessChecker
         }
 
         var appDirectory = new DirectoryInfo(appBaseDirectory);
-        foreach (var fileName in new[] { "TmrOverlay.App.exe", "TmrOverlay.App.dll" })
+        foreach (var fileName in new[] { "TMROverlay.exe", "TMROverlay.dll", "TmrOverlay.App.exe", "TmrOverlay.App.dll" })
         {
             var candidate = Path.Combine(appDirectory.FullName, fileName);
             if (File.Exists(candidate))

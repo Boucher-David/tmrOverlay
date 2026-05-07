@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using TmrOverlay.App.Telemetry;
 
 namespace TmrOverlay.App.Performance;
@@ -13,6 +14,8 @@ internal sealed class AppPerformanceState
     private readonly Dictionary<string, RollingValueMetric> _iracingSystemMetrics = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, RollingValueMetric> _overlayUpdateMetrics = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTimeOffset> _lastOverlayRefreshAtUtc = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, OverlayLifecycleDiagnosticState> _lastOverlayLifecycleStates = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, OverlayTimerDiagnosticState> _lastOverlayTimerTicks = new(StringComparer.OrdinalIgnoreCase);
     private long _telemetryFrameCount;
     private DateTimeOffset? _firstTelemetryFrameAtUtc;
     private DateTimeOffset? _lastTelemetryFrameAtUtc;
@@ -43,6 +46,7 @@ internal sealed class AppPerformanceState
             return;
         }
 
+        var recordedAtUtc = DateTimeOffset.UtcNow;
         lock (_sync)
         {
             if (!_metrics.TryGetValue(metricId, out var metric))
@@ -51,7 +55,8 @@ internal sealed class AppPerformanceState
                 _metrics[metricId] = metric;
             }
 
-            metric.Record(elapsed, succeeded, DateTimeOffset.UtcNow);
+            metric.Record(elapsed, succeeded, recordedAtUtc);
+            RecordOverlayPaintSample(metricId, succeeded, recordedAtUtc);
         }
     }
 
@@ -121,8 +126,13 @@ internal sealed class AppPerformanceState
             if (previousSequence is not null)
             {
                 var sequenceDelta = Math.Max(0, currentSequence - previousSequence.Value);
+                var sequenceUnchanged = currentSequence == previousSequence.Value;
                 RecordOverlayUpdateValue($"{prefix}.sequence_delta", sequenceDelta, timestampUtc);
                 RecordOverlayUpdateValue($"{prefix}.input_changed", sequenceDelta > 0 ? 1d : 0d, timestampUtc);
+                RecordOverlayUpdateValue(
+                    $"{prefix}.skipped_unchanged_sequence",
+                    !applied && sequenceUnchanged ? 1d : 0d,
+                    timestampUtc);
             }
 
             if (latestInputAtUtc is { } inputAtUtc)
@@ -134,6 +144,145 @@ internal sealed class AppPerformanceState
             }
 
             RecordOverlayUpdateValue($"{prefix}.applied", applied ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.skipped", applied ? 0d : 1d, timestampUtc);
+        }
+    }
+
+    public void RecordOverlayTimerTick(
+        string overlayId,
+        int intervalMilliseconds,
+        bool visible,
+        bool pauseEligible)
+    {
+        if (string.IsNullOrWhiteSpace(overlayId))
+        {
+            return;
+        }
+
+        var timestampUtc = DateTimeOffset.UtcNow;
+        var safeInterval = Math.Max(0, intervalMilliseconds);
+        lock (_sync)
+        {
+            var prefix = $"overlay.{NormalizeMetricSegment(overlayId)}.timer";
+            _lastOverlayTimerTicks[overlayId] = new OverlayTimerDiagnosticState(
+                safeInterval,
+                visible,
+                pauseEligible,
+                timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.tick", 1d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.interval_ms", safeInterval, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.visible", visible ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.pause_eligible", pauseEligible ? 1d : 0d, timestampUtc);
+
+            var cadencePrefix = $"overlay.timer.cadence.{safeInterval}ms";
+            RecordOverlayUpdateValue($"{cadencePrefix}.tick", 1d, timestampUtc);
+            RecordOverlayUpdateValue($"{cadencePrefix}.visible", visible ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{cadencePrefix}.pause_eligible", pauseEligible ? 1d : 0d, timestampUtc);
+        }
+    }
+
+    public void RecordOverlayLifecycleState(
+        string overlayId,
+        DateTimeOffset timestampUtc,
+        bool enabled,
+        bool sessionAllowed,
+        bool settingsPreview,
+        bool desiredVisible,
+        bool actualVisible,
+        bool hasForm,
+        bool liveTelemetryAvailable,
+        double fadeAlpha,
+        bool fadesWhenLiveTelemetryUnavailable,
+        bool pauseEligible)
+    {
+        if (string.IsNullOrWhiteSpace(overlayId))
+        {
+            return;
+        }
+
+        lock (_sync)
+        {
+            var normalizedOverlayId = NormalizeMetricSegment(overlayId);
+            var prefix = $"overlay.{normalizedOverlayId}.lifecycle";
+            var clampedFadeAlpha = Math.Clamp(fadeAlpha, 0d, 1d);
+            var fadedUnavailable = fadesWhenLiveTelemetryUnavailable
+                && !liveTelemetryAvailable
+                && clampedFadeAlpha <= 0.01d;
+            var current = new OverlayLifecycleDiagnosticState(
+                enabled,
+                sessionAllowed,
+                settingsPreview,
+                desiredVisible,
+                actualVisible,
+                hasForm,
+                liveTelemetryAvailable,
+                fadedUnavailable,
+                pauseEligible);
+            _lastOverlayLifecycleStates.TryGetValue(overlayId, out var previous);
+
+            RecordOverlayUpdateValue($"{prefix}.enabled", enabled ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.session_allowed", sessionAllowed ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.settings_preview", settingsPreview ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.desired_visible", desiredVisible ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.actual_visible", actualVisible ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.has_form", hasForm ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.live_available", liveTelemetryAvailable ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.fade_alpha", clampedFadeAlpha, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.faded_unavailable", fadedUnavailable ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.hidden_by_settings", !settingsPreview && !enabled ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.hidden_by_session", !settingsPreview && enabled && !sessionAllowed ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.hidden_or_faded", !actualVisible || fadedUnavailable ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.pause_eligible", pauseEligible ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.transition", previous is not null && !previous.Equals(current) ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue(
+                $"{prefix}.visibility_transition",
+                previous is not null && previous.ActualVisible != actualVisible ? 1d : 0d,
+                timestampUtc);
+            RecordOverlayUpdateValue(
+                $"{prefix}.pause_eligible_transition",
+                previous is not null && previous.PauseEligible != pauseEligible ? 1d : 0d,
+                timestampUtc);
+
+            _lastOverlayLifecycleStates[overlayId] = current;
+        }
+    }
+
+    public void RecordLocalhostActivity(
+        DateTimeOffset timestampUtc,
+        bool enabled,
+        bool listening,
+        long totalRequests,
+        long failedRequests,
+        bool hasRecentRequests,
+        double? lastRequestAgeSeconds)
+    {
+        lock (_sync)
+        {
+            RecordOverlayUpdateValue("localhost.enabled", enabled ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue("localhost.listening", listening ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue("localhost.total_requests", Math.Max(0, totalRequests), timestampUtc);
+            RecordOverlayUpdateValue("localhost.failed_requests", Math.Max(0, failedRequests), timestampUtc);
+            RecordOverlayUpdateValue("localhost.has_recent_requests", hasRecentRequests ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue("localhost.idle_no_recent_requests", enabled && listening && !hasRecentRequests ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue("localhost.last_request_age_seconds", lastRequestAgeSeconds, timestampUtc);
+        }
+    }
+
+    public void RecordLocalhostRequest(
+        string route,
+        int statusCode,
+        TimeSpan elapsed,
+        bool succeeded)
+    {
+        var timestampUtc = DateTimeOffset.UtcNow;
+        var routeSegment = NormalizeMetricSegment(string.IsNullOrWhiteSpace(route) ? "unknown" : route);
+        lock (_sync)
+        {
+            var prefix = $"localhost.request.route.{routeSegment}";
+            RecordOverlayUpdateValue($"{prefix}.tick", 1d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.success", succeeded ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.status_code", statusCode, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.duration_ms", Math.Max(0d, elapsed.TotalMilliseconds), timestampUtc);
         }
     }
 
@@ -187,6 +336,8 @@ internal sealed class AppPerformanceState
     {
         lock (_sync)
         {
+            var timestampUtc = DateTimeOffset.UtcNow;
+            RecordOverlayTimerSummary(timestampUtc);
             var metrics = _metrics
                 .Values
                 .Select(metric => metric.Snapshot())
@@ -194,7 +345,7 @@ internal sealed class AppPerformanceState
                 .ToArray();
 
             return new AppPerformanceSnapshot(
-                TimestampUtc: DateTimeOffset.UtcNow,
+                TimestampUtc: timestampUtc,
                 StartedAtUtc: _startedAtUtc,
                 TelemetryFrameCount: _telemetryFrameCount,
                 TelemetryFramesPerSecond: CalculateTelemetryFramesPerSecond(),
@@ -266,6 +417,55 @@ internal sealed class AppPerformanceState
         }
 
         metric.Record(value.Value, timestampUtc);
+    }
+
+    private void RecordOverlayTimerSummary(DateTimeOffset timestampUtc)
+    {
+        var activeTimers = _lastOverlayTimerTicks
+            .Values
+            .Where(timer => IsTimerActive(timer, timestampUtc))
+            .ToArray();
+        RecordOverlayUpdateValue("overlay.timer.active_count", activeTimers.Length, timestampUtc);
+        RecordOverlayUpdateValue("overlay.timer.visible_active_count", activeTimers.Count(timer => timer.Visible), timestampUtc);
+        RecordOverlayUpdateValue("overlay.timer.pause_eligible_active_count", activeTimers.Count(timer => timer.PauseEligible), timestampUtc);
+
+        foreach (var group in activeTimers.GroupBy(timer => timer.IntervalMilliseconds).OrderBy(group => group.Key))
+        {
+            var prefix = $"overlay.timer.cadence.{group.Key}ms";
+            RecordOverlayUpdateValue($"{prefix}.active_count", group.Count(), timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.visible_active_count", group.Count(timer => timer.Visible), timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.pause_eligible_active_count", group.Count(timer => timer.PauseEligible), timestampUtc);
+        }
+    }
+
+    private static bool IsTimerActive(OverlayTimerDiagnosticState timer, DateTimeOffset timestampUtc)
+    {
+        var activeWindow = TimeSpan.FromMilliseconds(Math.Max(timer.IntervalMilliseconds * 3, 1500));
+        return timestampUtc - timer.LastTickAtUtc <= activeWindow;
+    }
+
+    private void RecordOverlayPaintSample(string metricId, bool succeeded, DateTimeOffset timestampUtc)
+    {
+        const string overlayPrefix = "overlay.";
+        const string paintSuffix = ".paint";
+        if (!metricId.StartsWith(overlayPrefix, StringComparison.OrdinalIgnoreCase)
+            || !metricId.EndsWith(paintSuffix, StringComparison.OrdinalIgnoreCase)
+            || metricId.Length <= overlayPrefix.Length + paintSuffix.Length)
+        {
+            return;
+        }
+
+        var overlayId = metricId.Substring(
+            overlayPrefix.Length,
+            metricId.Length - overlayPrefix.Length - paintSuffix.Length);
+        if (string.IsNullOrWhiteSpace(overlayId))
+        {
+            return;
+        }
+
+        var prefix = $"overlay.{NormalizeMetricSegment(overlayId)}.paint";
+        RecordOverlayUpdateValue($"{prefix}.sample", 1d, timestampUtc);
+        RecordOverlayUpdateValue($"{prefix}.success", succeeded ? 1d : 0d, timestampUtc);
     }
 
     private static string NormalizeMetricSegment(string value)
@@ -400,6 +600,23 @@ internal sealed class AppPerformanceState
             return Math.Round(value, 6);
         }
     }
+
+    private sealed record OverlayLifecycleDiagnosticState(
+        bool Enabled,
+        bool SessionAllowed,
+        bool SettingsPreview,
+        bool DesiredVisible,
+        bool ActualVisible,
+        bool HasForm,
+        bool LiveTelemetryAvailable,
+        bool FadedUnavailable,
+        bool PauseEligible);
+
+    private sealed record OverlayTimerDiagnosticState(
+        int IntervalMilliseconds,
+        bool Visible,
+        bool PauseEligible,
+        DateTimeOffset LastTickAtUtc);
 }
 
 internal static class AppPerformanceMetricIds
@@ -583,10 +800,15 @@ internal sealed record ProcessPerformanceSnapshot(
     long WorkingSetBytes,
     long PrivateMemoryBytes,
     long ManagedHeapBytes,
+    int? GdiObjectCount,
+    int? UserObjectCount,
     int Gen0Collections,
     int Gen1Collections,
     int Gen2Collections)
 {
+    private const int GrGdiObjects = 0;
+    private const int GrUserObjects = 1;
+
     public static ProcessPerformanceSnapshot Capture()
     {
         using var process = Process.GetCurrentProcess();
@@ -594,8 +816,30 @@ internal sealed record ProcessPerformanceSnapshot(
             WorkingSetBytes: process.WorkingSet64,
             PrivateMemoryBytes: process.PrivateMemorySize64,
             ManagedHeapBytes: GC.GetTotalMemory(forceFullCollection: false),
+            GdiObjectCount: TryGetGuiResourceCount(process, GrGdiObjects),
+            UserObjectCount: TryGetGuiResourceCount(process, GrUserObjects),
             Gen0Collections: GC.CollectionCount(0),
             Gen1Collections: GC.CollectionCount(1),
             Gen2Collections: GC.CollectionCount(2));
     }
+
+    private static int? TryGetGuiResourceCount(Process process, int flag)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return null;
+        }
+
+        try
+        {
+            return GetGuiResources(process.Handle, flag);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    [DllImport("user32.dll")]
+    private static extern int GetGuiResources(IntPtr hProcess, int uiFlags);
 }

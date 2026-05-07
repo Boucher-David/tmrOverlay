@@ -35,7 +35,7 @@ $forbiddenTopLevelDirectories = @(
     "tools"
 )
 $requiredFiles = @(
-    "TmrOverlay.App.exe",
+    "TMROverlay.exe",
     "appsettings.json",
     "Assets\TMRLogo.png"
 )

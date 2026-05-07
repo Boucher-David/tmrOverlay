@@ -176,8 +176,8 @@ private func renderTutorial(_ c: Canvas) {
             subtitle: "Use the latest GitHub Release.",
             bullets: [
                 "Open the latest vX.Y.Z release.",
-                "Download TmrOverlay-vX.Y.Z-win-x64.zip.",
-                "Optional: download the matching .sha256."
+                "Download the Velopack Setup .exe.",
+                "Use the zip only as a fallback."
             ],
             accent: Theme.accent,
             renderPreview: drawReleasePreview
@@ -185,26 +185,26 @@ private func renderTutorial(_ c: Canvas) {
         StepCard(
             number: "2",
             title: "Install",
-            subtitle: "Extract the zip before running.",
+            subtitle: "Setup is the normal path.",
             bullets: [
-                "Unzip to a user-writable folder.",
-                "Suggested: %LOCALAPPDATA%\\Programs\\TmrOverlay.",
-                "Run TmrOverlay.App.exe."
+                "Run Setup and use the shortcut.",
+                "SmartScreen: More info > Run anyway.",
+                "Portable fallback runs TMROverlay.exe."
             ],
             accent: Theme.success,
-            renderPreview: drawFolderPreview
+            renderPreview: drawInstallPreview
         ),
         StepCard(
             number: "3",
-            title: "First launch",
-            subtitle: "Private tester builds are unsigned.",
+            title: "Upgrade",
+            subtitle: "Checks are passive for now.",
             bullets: [
-                "Windows may show a SmartScreen warning.",
-                "Use More info > Run anyway.",
-                "Overlays update after iRacing connects."
+                "Check from tray or Support tab.",
+                "Close TmrOverlay before upgrading.",
+                "Run the newer Setup from Releases."
             ],
             accent: Theme.warning,
-            renderPreview: drawSmartScreenPreview
+            renderPreview: drawUpgradePreview
         )
     ]
 
@@ -279,8 +279,8 @@ private func drawReleasePreview(_ c: Canvas, _ rect: CGRect) {
     c.fill(CGRect(x: rect.minX, y: rect.maxY - 28, width: rect.width, height: 28), Theme.panelRaised, radius: 7)
     c.text("GitHub Release", CGRect(x: rect.minX + 12, y: rect.maxY - 21, width: rect.width - 24, height: 16), size: 11, weight: .bold)
     let rows = [
-        ("TmrOverlay-vX.Y.Z-win-x64.zip", Theme.accent),
-        ("TmrOverlay-vX.Y.Z-win-x64.zip.sha256", Theme.muted),
+        ("Velopack Setup.exe", Theme.accent),
+        ("TmrOverlay-vX.Y.Z-win-x64.zip", Theme.muted),
         ("release notes", Theme.muted)
     ]
     for (index, row) in rows.enumerated() {
@@ -290,36 +290,36 @@ private func drawReleasePreview(_ c: Canvas, _ rect: CGRect) {
     }
 }
 
-private func drawFolderPreview(_ c: Canvas, _ rect: CGRect) {
+private func drawInstallPreview(_ c: Canvas, _ rect: CGRect) {
     c.fill(rect, Theme.panelAlt, radius: 7)
     c.stroke(rect, Theme.border, width: 1, radius: 7)
-    c.text("Extracted folder", CGRect(x: rect.minX + 12, y: rect.maxY - 25, width: rect.width - 24, height: 18), size: 11, weight: .bold)
+    c.text("Installed app", CGRect(x: rect.minX + 12, y: rect.maxY - 25, width: rect.width - 24, height: 18), size: 11, weight: .bold)
     let lines = [
-        "%LOCALAPPDATA%",
-        "  Programs",
-        "    TmrOverlay",
-        "      TmrOverlay.App.exe",
-        "      appsettings.json",
-        "      Assets"
+        "Start menu shortcut",
+        "  Tech Mates Racing Overlay",
+        "Installed executable",
+        "  TMROverlay.exe",
+        "Portable fallback",
+        "  unzip and run TMROverlay.exe"
     ]
     for (index, line) in lines.enumerated() {
-        let color = line.contains(".exe") ? Theme.success : Theme.secondary
+        let color = line.contains(".exe") || line.contains("shortcut") ? Theme.success : Theme.secondary
         c.text(line, CGRect(x: rect.minX + 16, y: rect.maxY - 52 - CGFloat(index) * 17, width: rect.width - 32, height: 14), size: 9.5, color: color)
     }
 }
 
-private func drawSmartScreenPreview(_ c: Canvas, _ rect: CGRect) {
+private func drawUpgradePreview(_ c: Canvas, _ rect: CGRect) {
     c.fill(rect, Theme.warningBackground, radius: 7)
     c.stroke(rect, Theme.warning, width: 1, radius: 7)
-    c.text("Windows protected your PC", CGRect(x: rect.minX + 12, y: rect.maxY - 30, width: rect.width - 24, height: 18), size: 11, weight: .bold, color: Theme.warning)
+    c.text("Update available", CGRect(x: rect.minX + 12, y: rect.maxY - 30, width: rect.width - 24, height: 18), size: 11, weight: .bold, color: Theme.warning)
     c.multiline(
-        "Unsigned tester builds can trigger this warning.",
+        "Current builds open Releases instead of applying updates inside the app.",
         CGRect(x: rect.minX + 12, y: rect.maxY - 72, width: rect.width - 24, height: 34),
         size: 10.5,
         color: Theme.secondary
     )
-    c.button("More info", CGRect(x: rect.minX + 12, y: rect.minY + 18, width: 76, height: 24), color: Theme.panelAlt)
-    c.button("Run anyway", CGRect(x: rect.minX + 96, y: rect.minY + 18, width: 82, height: 24), color: Theme.panelAlt, textColor: Theme.warning)
+    c.button("Check Updates", CGRect(x: rect.minX + 12, y: rect.minY + 18, width: 98, height: 24), color: Theme.panelAlt)
+    c.button("Open Releases", CGRect(x: rect.minX + 120, y: rect.minY + 18, width: 102, height: 24), color: Theme.panelAlt, textColor: Theme.warning)
 }
 
 private func drawAppPreview(_ c: Canvas, rect: CGRect) {
@@ -424,7 +424,7 @@ private func drawFooter(_ c: Canvas) {
     c.stroke(footer, Theme.border, width: 1, radius: 8)
     c.text("Support-safe reminders", CGRect(x: footer.minX + 24, y: footer.maxY - 34, width: 260, height: 20), size: 15, weight: .bold)
     c.pill("User data: %LOCALAPPDATA%\\TmrOverlay", CGRect(x: footer.minX + 310, y: footer.maxY - 45, width: 340, height: 30), color: Theme.infoBackground, textColor: Theme.info)
-    c.pill("Upgrade: replace the extracted app folder", CGRect(x: footer.minX + 674, y: footer.maxY - 45, width: 356, height: 30), color: Theme.successBackground, textColor: Theme.success)
+    c.pill("Upgrade: close app, run latest Setup", CGRect(x: footer.minX + 674, y: footer.maxY - 45, width: 356, height: 30), color: Theme.successBackground, textColor: Theme.success)
     c.pill("Exit: settings X or tray menu", CGRect(x: footer.minX + 1054, y: footer.maxY - 45, width: 276, height: 30), color: Theme.warningBackground, textColor: Theme.warning)
     c.text("Attach the diagnostics bundle when reporting telemetry, overlay, or startup problems.", CGRect(x: footer.minX + 24, y: footer.minY + 16, width: footer.width - 48, height: 18), size: 12, color: Theme.muted)
 }

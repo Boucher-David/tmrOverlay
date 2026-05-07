@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using TmrOverlay.App.Localhost;
 
 namespace TmrOverlay.App.Performance;
 
@@ -10,16 +11,19 @@ internal sealed class AppPerformanceHostedService : IHostedService, IDisposable
 
     private readonly AppPerformanceState _performanceState;
     private readonly AppPerformanceSnapshotRecorder _recorder;
+    private readonly LocalhostOverlayState _localhostOverlayState;
     private readonly ILogger<AppPerformanceHostedService> _logger;
     private System.Threading.Timer? _timer;
 
     public AppPerformanceHostedService(
         AppPerformanceState performanceState,
         AppPerformanceSnapshotRecorder recorder,
+        LocalhostOverlayState localhostOverlayState,
         ILogger<AppPerformanceHostedService> logger)
     {
         _performanceState = performanceState;
         _recorder = recorder;
+        _localhostOverlayState = localhostOverlayState;
         _logger = logger;
     }
 
@@ -48,6 +52,15 @@ internal sealed class AppPerformanceHostedService : IHostedService, IDisposable
 
     private void RecordSnapshot()
     {
+        var localhost = _localhostOverlayState.Snapshot();
+        _performanceState.RecordLocalhostActivity(
+            DateTimeOffset.UtcNow,
+            localhost.Enabled,
+            string.Equals(localhost.Status, "listening", StringComparison.OrdinalIgnoreCase),
+            localhost.TotalRequests,
+            localhost.FailedRequests,
+            localhost.HasRecentRequests,
+            localhost.LastRequestAgeSeconds);
         _recorder.Record(_performanceState.Snapshot());
     }
 }

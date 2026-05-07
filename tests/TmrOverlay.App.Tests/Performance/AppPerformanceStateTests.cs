@@ -71,4 +71,70 @@ public sealed class AppPerformanceStateTests
         Assert.Equal(1, writerMetric.Count);
         Assert.Equal(4d, writerMetric.AverageMilliseconds);
     }
+
+    [Fact]
+    public void OverlayRefreshDecision_TracksUnchangedSequenceSkips()
+    {
+        var state = new AppPerformanceState();
+        var timestamp = DateTimeOffset.Parse("2026-05-07T12:00:00Z");
+
+        state.RecordOverlayRefreshDecision(
+            "standings",
+            timestamp,
+            previousSequence: 7,
+            currentSequence: 7,
+            latestInputAtUtc: timestamp.AddMilliseconds(-50),
+            applied: false);
+
+        var snapshot = state.Snapshot();
+        var skipped = Assert.Single(snapshot.OverlayUpdates.Where(metric => metric.Id == "overlay.standings.update.skipped"));
+        var unchanged = Assert.Single(snapshot.OverlayUpdates.Where(metric => metric.Id == "overlay.standings.update.skipped_unchanged_sequence"));
+
+        Assert.Equal(1d, skipped.Last);
+        Assert.Equal(1d, unchanged.Last);
+    }
+
+    [Fact]
+    public void OverlayDiagnostics_TrackTimerLifecyclePaintAndLocalhostSignals()
+    {
+        var state = new AppPerformanceState();
+        var timestamp = DateTimeOffset.Parse("2026-05-07T12:00:00Z");
+
+        state.RecordOverlayTimerTick("track-map", 50, visible: false, pauseEligible: true);
+        state.RecordOverlayLifecycleState(
+            "track-map",
+            timestamp,
+            enabled: true,
+            sessionAllowed: false,
+            settingsPreview: false,
+            desiredVisible: false,
+            actualVisible: false,
+            hasForm: true,
+            liveTelemetryAvailable: true,
+            fadeAlpha: 1d,
+            fadesWhenLiveTelemetryUnavailable: true,
+            pauseEligible: true);
+        state.RecordOperation(AppPerformanceMetricIds.OverlayTrackMapPaint, TimeSpan.FromMilliseconds(2));
+        state.RecordLocalhostActivity(
+            timestamp,
+            enabled: true,
+            listening: true,
+            totalRequests: 0,
+            failedRequests: 0,
+            hasRecentRequests: false,
+            lastRequestAgeSeconds: null);
+        state.RecordLocalhostRequest("snapshot", 200, TimeSpan.FromMilliseconds(3), succeeded: true);
+
+        var snapshot = state.Snapshot();
+
+        Assert.Contains(snapshot.OverlayUpdates, metric => metric.Id == "overlay.track_map.timer.tick" && metric.Count == 1);
+        Assert.Contains(snapshot.OverlayUpdates, metric => metric.Id == "overlay.timer.cadence.50ms.tick" && metric.Count == 1);
+        Assert.Contains(snapshot.OverlayUpdates, metric => metric.Id == "overlay.timer.active_count" && metric.Last == 1d);
+        Assert.Contains(snapshot.OverlayUpdates, metric => metric.Id == "overlay.timer.cadence.50ms.active_count" && metric.Last == 1d);
+        Assert.Contains(snapshot.OverlayUpdates, metric => metric.Id == "overlay.track_map.lifecycle.hidden_by_session" && metric.Last == 1d);
+        Assert.Contains(snapshot.OverlayUpdates, metric => metric.Id == "overlay.track_map.lifecycle.pause_eligible" && metric.Last == 1d);
+        Assert.Contains(snapshot.OverlayUpdates, metric => metric.Id == "overlay.track_map.paint.sample" && metric.Count == 1);
+        Assert.Contains(snapshot.OverlayUpdates, metric => metric.Id == "localhost.idle_no_recent_requests" && metric.Last == 1d);
+        Assert.Contains(snapshot.OverlayUpdates, metric => metric.Id == "localhost.request.route.snapshot.tick" && metric.Count == 1);
+    }
 }
