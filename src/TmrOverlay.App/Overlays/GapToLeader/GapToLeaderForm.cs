@@ -1436,7 +1436,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
             return WeatherCondition.Unknown;
         }
 
-        if (weather.WeatherDeclaredWet)
+        if (weather.WeatherDeclaredWet == true)
         {
             return WeatherCondition.DeclaredWet;
         }

@@ -65,15 +65,15 @@ internal static class GarageCoverBrowserSettings
         {
             return availability.Reason switch
             {
-                OverlayAvailabilityReason.Disconnected => new GarageCoverDetectionSnapshot("iracing_disconnected", "iRacing disconnected", isFresh: false),
-                OverlayAvailabilityReason.StaleTelemetry => new GarageCoverDetectionSnapshot("telemetry_stale", "telemetry stale", isFresh: false),
-                _ => new GarageCoverDetectionSnapshot("waiting_for_telemetry", availability.StatusText, isFresh: false)
+                OverlayAvailabilityReason.Disconnected => new GarageCoverDetectionSnapshot("iracing_disconnected", "iRacing disconnected", IsFresh: false),
+                OverlayAvailabilityReason.StaleTelemetry => new GarageCoverDetectionSnapshot("telemetry_stale", "telemetry stale", IsFresh: false),
+                _ => new GarageCoverDetectionSnapshot("waiting_for_telemetry", availability.StatusText, IsFresh: false)
             };
         }
 
         return snapshot.Models.RaceEvents.IsGarageVisible
-            ? new GarageCoverDetectionSnapshot("garage_visible", "garage visible", isFresh: true)
-            : new GarageCoverDetectionSnapshot("garage_hidden", "garage hidden", isFresh: true);
+            ? new GarageCoverDetectionSnapshot("garage_visible", "garage visible", IsFresh: true)
+            : new GarageCoverDetectionSnapshot("garage_hidden", "garage hidden", IsFresh: true);
     }
 
     public static void SetPreviewUntil(OverlaySettings settings, DateTimeOffset untilUtc)

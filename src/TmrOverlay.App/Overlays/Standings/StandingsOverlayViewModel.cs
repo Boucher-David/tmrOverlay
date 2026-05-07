@@ -50,8 +50,8 @@ internal sealed record StandingsOverlayViewModel(
             }
 
             var shownCars = scoringRows.Count(row => !row.IsClassHeader);
-            var reference = scoringRows.FirstOrDefault(row => row.IsReference);
-            var status = reference?.ClassPosition is { Length: > 1 } classPosition
+            var scoringReference = scoringRows.FirstOrDefault(row => row.IsReference);
+            var status = scoringReference?.ClassPosition is { Length: > 1 } classPosition
                 ? $"{classPosition} - {shownCars}/{scoring.Rows.Count} rows"
                 : $"{shownCars}/{scoring.Rows.Count} rows";
             return new StandingsOverlayViewModel(
@@ -80,8 +80,8 @@ internal sealed record StandingsOverlayViewModel(
             return Waiting("waiting for timing rows");
         }
 
-        var reference = candidateRows.FirstOrDefault(row => row.IsReference);
-        var status = reference?.ClassPosition is { Length: > 1 } classPosition
+        var timingReference = candidateRows.FirstOrDefault(row => row.IsReference);
+        var status = timingReference?.ClassPosition is { Length: > 1 } classPosition
             ? $"{classPosition} - {candidateRows.Length} rows"
             : $"{candidateRows.Length} rows";
         return new StandingsOverlayViewModel(
