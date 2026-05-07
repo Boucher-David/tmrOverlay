@@ -9,6 +9,6 @@ internal static class GarageCoverOverlayDefinition
         DisplayName: "Garage Cover",
         DefaultWidth: 1280,
         DefaultHeight: 720,
-        ShowScaleControl: false,
+        ShowScaleControl: true,
         ShowOpacityControl: false);
 }

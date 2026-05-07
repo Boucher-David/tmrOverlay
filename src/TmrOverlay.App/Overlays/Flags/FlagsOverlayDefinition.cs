@@ -18,7 +18,7 @@ internal static class FlagsOverlayDefinition
         DefaultWidth: 360,
         DefaultHeight: 170,
         ShowSessionFilters: false,
-        ShowScaleControl: false,
+        ShowScaleControl: true,
         ShowOpacityControl: false,
         FadeWhenLiveTelemetryUnavailable: true);
 

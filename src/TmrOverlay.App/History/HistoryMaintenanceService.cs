@@ -9,7 +9,7 @@ using TmrOverlay.Core.History;
 
 namespace TmrOverlay.App.History;
 
-internal sealed class HistoryMaintenanceService : IHostedService
+internal sealed class HistoryMaintenanceService : IHostedService, IDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -22,6 +22,8 @@ internal sealed class HistoryMaintenanceService : IHostedService
     private readonly SessionHistoryOptions _options;
     private readonly AppEventRecorder _events;
     private readonly ILogger<HistoryMaintenanceService> _logger;
+    private readonly CancellationTokenSource _maintenanceCancellation = new();
+    private Task _maintenanceTask = Task.CompletedTask;
 
     public HistoryMaintenanceService(
         SessionHistoryOptions options,
@@ -35,13 +37,39 @@ internal sealed class HistoryMaintenanceService : IHostedService
 
     public string ManifestPath => Path.Combine(_options.ResolvedUserHistoryRoot, ".maintenance", "manifest.json");
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    public Task StartAsync(CancellationToken cancellationToken)
     {
         if (!_options.Enabled)
         {
-            return;
+            return Task.CompletedTask;
         }
 
+        _maintenanceTask = Task.Run(
+            () => RunStartupMaintenanceAsync(_maintenanceCancellation.Token),
+            CancellationToken.None);
+        return Task.CompletedTask;
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        _maintenanceCancellation.Cancel();
+        try
+        {
+            await _maintenanceTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested || _maintenanceCancellation.IsCancellationRequested)
+        {
+        }
+    }
+
+    public void Dispose()
+    {
+        _maintenanceCancellation.Cancel();
+        _maintenanceCancellation.Dispose();
+    }
+
+    private async Task RunStartupMaintenanceAsync(CancellationToken cancellationToken)
+    {
         try
         {
             await RunAsync(cancellationToken).ConfigureAwait(false);
@@ -57,11 +85,6 @@ internal sealed class HistoryMaintenanceService : IHostedService
                 ["error"] = exception.Message
             });
         }
-    }
-
-    public Task StopAsync(CancellationToken cancellationToken)
-    {
-        return Task.CompletedTask;
     }
 
     public async Task<HistoryMaintenanceManifest?> RunAsync(CancellationToken cancellationToken)

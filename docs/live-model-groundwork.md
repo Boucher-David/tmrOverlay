@@ -25,7 +25,7 @@ Older data collected on Windows remains readable because the new models are deri
 
 Overlay availability is now a shared Core contract through `OverlayAvailabilityEvaluator`: disconnected, waiting-for-telemetry, stale, fresh/live, and session-kind classification are derived once from the promoted live snapshot. Native overlays, browser sources, Garage Cover detection, and the overlay manager consume that shared language instead of each feature inventing its own freshness window.
 
-Status / Diagnostics V2 is the app-health companion to the live overlay model. `AppDiagnosticsStatusModel` converts `TelemetryCaptureStatusSnapshot` into common status, detail, capture, health, Support-tab status, session-state, and current-issue text. The Status overlay and Support tab now consume that model so first-run waiting, stale build warnings, raw-capture writer errors, dropped frames, and healthy live analysis follow one priority order.
+Status / Diagnostics V2 is the app-health companion to the live overlay model. `AppDiagnosticsStatusModel` converts `TelemetryCaptureStatusSnapshot` into common status, detail, capture, health, Support-tab status, session-state, and current-issue text. The Support tab and diagnostics bundles consume that model so first-run waiting, stale build warnings, raw-capture writer errors, dropped frames, and healthy live analysis follow one priority order without promoting app health as a standalone user overlay.
 
 ## Model Families
 

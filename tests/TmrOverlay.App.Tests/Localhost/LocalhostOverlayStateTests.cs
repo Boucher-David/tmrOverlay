@@ -34,6 +34,8 @@ public sealed class LocalhostOverlayStateTests
         Assert.Equal(1L, snapshot.StatusCodeCounts["404"]);
         Assert.Equal("/missing", snapshot.LastRequestPath);
         Assert.Equal(404, snapshot.LastRequestStatusCode);
+        Assert.True(snapshot.HasRecentRequests);
+        Assert.NotNull(snapshot.LastRequestAgeSeconds);
     }
 
     [Fact]
@@ -46,5 +48,7 @@ public sealed class LocalhostOverlayStateTests
         Assert.False(snapshot.Enabled);
         Assert.Equal("disabled", snapshot.Status);
         Assert.Equal(0L, snapshot.TotalRequests);
+        Assert.False(snapshot.HasRecentRequests);
+        Assert.Null(snapshot.LastRequestAgeSeconds);
     }
 }

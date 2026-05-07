@@ -14,7 +14,6 @@ from typing import Optional
 
 EXPECTED_PNGS = {
     "design-v2/design-v2-states.png": (5350, 4020),
-    "status/status-states.png": (3600, 2800),
     "fuel-calculator/fuel-calculator-states.png": (3600, 2800),
     "relative/relative-states.png": (3600, 2800),
     "track-map/track-map-sector-states.png": (5350, 2800),
@@ -34,10 +33,6 @@ EXPECTED_STATE_PNGS = [
     "design-v2/states/stint-laptime-log.png",
     "design-v2/states/flag-display.png",
     "design-v2/states/analysis-exception.png",
-    "status/states/waiting.png",
-    "status/states/live-analysis.png",
-    "status/states/raw-capture.png",
-    "status/states/error.png",
     "fuel-calculator/states/waiting.png",
     "fuel-calculator/states/opening-stint.png",
     "fuel-calculator/states/mid-race.png",
@@ -69,7 +64,6 @@ EXPECTED_STATE_PNGS = [
 ]
 
 WINDOWS_EXPECTED_PNGS = {
-    "states/status-live-analysis.png": (520, 150),
     "states/fuel-calculator-live.png": (600, 320),
     "states/relative-live.png": (520, 360),
     "states/standings-live.png": (620, 340),
@@ -83,7 +77,6 @@ WINDOWS_EXPECTED_PNGS = {
 }
 
 WINDOWS_EXPECTED_SIZE_SOURCES = {
-    "states/status-live-analysis.png": "src/TmrOverlay.App/Overlays/Status/StatusOverlayDefinition.cs",
     "states/fuel-calculator-live.png": "src/TmrOverlay.App/Overlays/FuelCalculator/FuelCalculatorOverlayDefinition.cs",
     "states/relative-live.png": "src/TmrOverlay.App/Overlays/Relative/RelativeOverlayDefinition.cs",
     "states/standings-live.png": "src/TmrOverlay.App/Overlays/Standings/StandingsOverlayDefinition.cs",

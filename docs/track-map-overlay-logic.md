@@ -58,7 +58,7 @@ The localhost browser-source route for Track Map is:
 http://localhost:8765/overlays/track-map
 ```
 
-The route is listed in the Track Map settings tab and does not depend on the native overlay being visible. The browser version uses the same map-only shape: transparent page, generated map or circle fallback, full-opacity track outline, map-fill opacity from settings, model-v2 sector highlights, focused/player `P<N>` text inside the dot, smoothed live dots, and the same wrap-aware marker progress smoothing as the native overlay. It fetches live telemetry from `/api/snapshot` and map geometry/settings separately from `/api/track-map` so large map documents are not sent on every live update.
+The route is listed in the Track Map settings tab and does not depend on the native overlay being visible. The browser version uses the same map-only shape: transparent page, generated map or circle fallback, full-opacity track outline, map-fill opacity from settings, model-v2 sector highlights, focused/player `P<N>` text inside the dot, smoothed live dots, and the same wrap-aware marker progress smoothing as the native overlay. It fetches live telemetry from `/api/snapshot` on a 100 ms interval and map geometry/settings separately from `/api/track-map` so large map documents are not sent on every live update.
 
 ## Bundled Map Assets
 

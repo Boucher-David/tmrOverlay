@@ -1,47 +1,41 @@
-# Status Overlay Logic
+# Status / Diagnostics Logic
 
-This file explains how the status overlay decides what to show.
+This file explains how the app status diagnostics decide what to show.
 
 Implementation file:
 
-- `src/TmrOverlay.App/Overlays/Status/StatusOverlayForm.cs`
 - `src/TmrOverlay.App/Diagnostics/AppDiagnosticsStatusModel.cs`
+- `src/TmrOverlay.App/Overlays/SettingsPanel/SettingsOverlayForm.cs`
 
 ## Purpose
 
-The status overlay is a compact health panel for the app, telemetry connection, live analysis, optional raw capture, and local diagnostics. It does not make race-strategy decisions. It translates `TelemetryCaptureState` into a small set of user-visible health states.
+The status diagnostics model is the shared health surface for the app, telemetry connection, live analysis, optional raw capture, and local diagnostics. It does not make race-strategy decisions. It translates `TelemetryCaptureState` into a small set of user-visible health states for the Support tab and diagnostics bundle metadata.
+
+The former floating Collector Status overlay is not a normal V1 user overlay. The supported product surface is the Settings Support tab, while the underlying status model remains available to diagnostics and future support-only tooling.
 
 ## Refresh Loop
 
-The overlay refreshes every 250 ms.
-
-Each refresh:
+The Settings Support tab periodically:
 
 1. Reads a `TelemetryCaptureStatusSnapshot` from `TelemetryCaptureState`.
 2. Converts that snapshot into an `AppDiagnosticsStatusModel`.
-3. Applies colors and labels from that health object only when values changed.
-4. Shows or hides detail rows based on overlay settings.
-5. Invalidates the overlay only when visible state changed.
-6. Records performance metrics for snapshot read, health derivation, UI apply, paint, total refresh, input age, input-change rate, and whether the tick actually changed UI state.
+3. Applies app status, session state, current issue, support status, and storage/diagnostic labels from that health object.
+4. Records performance and diagnostics state through the shared app-performance and diagnostics bundle paths.
 
-## Visible Rows
+## Visible Fields
 
-The overlay contains:
+The Support tab contains:
 
-- Indicator dot.
-- Title: `TmrOverlay`.
-- Status row.
-- Detail row.
-- Capture row.
-- Health/message row.
-
-The capture row is controlled by `StatusCaptureDetails`.
-
-The health/message row is controlled by `StatusHealthDetails`.
+- App status.
+- Session state.
+- Current issue.
+- Support bundle status.
+- Diagnostic capture guidance.
+- Storage shortcuts.
 
 ## Health Inputs
 
-The shared diagnostics status model is also used by the Support tab so the app status, session state, current issue text, and Status overlay health row do not drift.
+The shared diagnostics status model is used by the Support tab so app status, session state, current issue text, and diagnostics bundle summaries do not drift.
 
 The health calculation uses:
 
@@ -116,13 +110,13 @@ The first matching rule wins.
 
 ## Colors
 
-The status overlay applies state colors from `OverlayTheme`:
+The Support tab applies state colors from `OverlayTheme`:
 
-- Error: error background and indicator.
-- Warning: warning background and indicator.
-- Healthy live collection: success background and indicator.
-- Connected but not collecting: info background and neutral indicator.
-- Not connected: neutral background and indicator.
+- Error: error text/background.
+- Warning: warning text/background.
+- Healthy live collection: success text/background.
+- Connected but not collecting: info text/background.
+- Not connected: neutral text/background.
 
 ## Raw Capture Text
 
@@ -138,7 +132,7 @@ When raw capture is disabled:
 
 ## Design Notes
 
-- This overlay should stay diagnostic, not strategic.
+- This surface should stay diagnostic, not strategic.
 - It should warn for stale live frames even when raw capture is disabled.
 - Raw-capture disk warnings should only appear when raw capture is enabled.
 - Empty states should not show local machine history or cached session details as live data.

@@ -9,7 +9,7 @@ namespace TmrOverlay.App.Tests.Retention;
 public sealed class RetentionHostedServiceTests
 {
     [Fact]
-    public async Task StartAsync_RemovesOldCapturesAndDiagnostics()
+    public async Task RunAsync_RemovesOldCapturesAndDiagnostics()
     {
         var root = Path.Combine(Path.GetTempPath(), "tmr-overlay-retention-test", Guid.NewGuid().ToString("N"));
         try
@@ -80,7 +80,7 @@ public sealed class RetentionHostedServiceTests
                 new LiveOverlayDiagnosticsOptions(),
                 NullLogger<RetentionHostedService>.Instance);
 
-            await service.StartAsync(CancellationToken.None);
+            await service.RunAsync(CancellationToken.None);
 
             Assert.True(Directory.Exists(keepCapture.FullName));
             Assert.False(Directory.Exists(deleteCapture.FullName));
@@ -101,6 +101,56 @@ public sealed class RetentionHostedServiceTests
             {
                 Directory.Delete(root, recursive: true);
             }
+        }
+    }
+
+    [Fact]
+    public async Task StartAsync_SchedulesRetentionCleanupInBackground()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "tmr-overlay-retention-test", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var storage = CreateStorage(root);
+            Directory.CreateDirectory(storage.DiagnosticsRoot);
+            var deleteBundle = Path.Combine(storage.DiagnosticsRoot, "delete.zip");
+            File.WriteAllText(deleteBundle, "delete");
+            File.SetLastWriteTimeUtc(deleteBundle, DateTime.UtcNow.AddDays(-10));
+            var service = new RetentionHostedService(
+                storage,
+                new RetentionOptions
+                {
+                    Enabled = true,
+                    DiagnosticsRetentionDays = 1,
+                    MaxDiagnosticsBundles = 10
+                },
+                new LiveModelParityOptions(),
+                new LiveOverlayDiagnosticsOptions(),
+                NullLogger<RetentionHostedService>.Instance);
+
+            await service.StartAsync(CancellationToken.None);
+            await WaitUntilAsync(() => !File.Exists(deleteBundle));
+            await service.StopAsync(CancellationToken.None);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> predicate)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(2);
+        while (!predicate())
+        {
+            if (DateTimeOffset.UtcNow >= deadline)
+            {
+                Assert.True(predicate());
+            }
+
+            await Task.Delay(25);
         }
     }
 

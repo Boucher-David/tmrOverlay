@@ -25,10 +25,10 @@ internal sealed class AppPerformanceHostedService : IHostedService, IDisposable
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        RecordSnapshot();
         _timer = new System.Threading.Timer(_ => RecordSnapshot(), null, InitialDelay, SnapshotInterval);
         _logger.LogInformation(
-            "Performance diagnostics started. Interval: {SnapshotIntervalSeconds}s. Logs: {PerformanceLogsRoot}.",
+            "Performance diagnostics started. First snapshot delay: {InitialDelaySeconds}s. Interval: {SnapshotIntervalSeconds}s. Logs: {PerformanceLogsRoot}.",
+            InitialDelay.TotalSeconds,
             SnapshotInterval.TotalSeconds,
             _recorder.PerformanceLogsRoot);
         return Task.CompletedTask;

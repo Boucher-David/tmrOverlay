@@ -27,15 +27,25 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly ILogger _logger;
     private readonly AppPerformanceState _performanceState;
+    private readonly OverlaySettings _settings;
     private readonly string _fontFamily;
     private readonly string _unitSystem;
     private readonly System.Windows.Forms.Timer _refreshTimer;
     private readonly List<InputTracePoint> _trace = [];
     private LiveInputTelemetryModel _latestInputs = LiveInputTelemetryModel.Empty;
-    private string _status = "waiting";
+    private OverlayChromeState _chromeState = new(
+        "Inputs",
+        "waiting",
+        OverlayChromeTone.Waiting,
+        Source: null,
+        FooterMode: OverlayChromeFooterMode.Never);
     private long? _lastRefreshSequence;
     private string? _lastLoggedError;
     private DateTimeOffset? _lastLoggedErrorAtUtc;
+
+    private int FooterReserveHeight => OverlayChrome.ShouldShowFooterSource(_chromeState, ClientSize.Width)
+        ? OverlayTheme.Layout.OverlayFooterTopOffset
+        : 0;
 
     public InputStateOverlayForm(
         ILiveTelemetrySource liveTelemetrySource,
@@ -54,6 +64,7 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
         _liveTelemetrySource = liveTelemetrySource;
         _logger = logger;
         _performanceState = performanceState;
+        _settings = settings;
         _fontFamily = fontFamily;
         _unitSystem = unitSystem;
         BackColor = OverlayTheme.Colors.WindowBackground;
@@ -87,8 +98,7 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
         {
             base.OnPaint(e);
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using var borderPen = new Pen(OverlayTheme.Colors.WindowBorder);
-            e.Graphics.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
+            OverlayChrome.DrawWindowBorder(e.Graphics, ClientSize);
 
             DrawHeader(e.Graphics);
             if (UseCompactLayout())
@@ -106,6 +116,7 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
                 DrawCarState(e.Graphics);
             }
 
+            DrawFooter(e.Graphics);
             succeeded = true;
         }
         catch (Exception exception)
@@ -148,20 +159,24 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
             var availability = OverlayAvailabilityEvaluator.FromSnapshot(snapshot, now);
             if (!availability.IsAvailable)
             {
-                ResetInputState(availability.StatusText);
+                ResetInputState(snapshot, availability.StatusText);
             }
             else if (!IsPlayerInCar(snapshot))
             {
-                ResetInputState("waiting for player in car");
+                ResetInputState(snapshot, "waiting for player in car");
             }
             else if (!snapshot.Models.Inputs.HasData)
             {
-                ResetInputState("waiting for inputs");
+                ResetInputState(snapshot, "waiting for inputs");
             }
             else
             {
                 _latestInputs = snapshot.Models.Inputs;
-                _status = FormatStatus(_latestInputs);
+                _chromeState = ChromeStateFor(
+                    snapshot,
+                    FormatStatus(_latestInputs),
+                    OverlayChromeTone.Normal,
+                    "source: local car telemetry");
                 AddTracePoint(_latestInputs);
             }
 
@@ -178,7 +193,11 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
         }
         catch (Exception exception)
         {
-            _status = "input error";
+            _chromeState = OverlayChromeState.Error(
+                "Inputs",
+                "input error",
+                source: null,
+                footerMode: OverlayChromeFooterMode.Never);
             ReportOverlayError(exception, "refresh");
             Invalidate();
         }
@@ -204,26 +223,48 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
         }
     }
 
-    private void ResetInputState(string status)
+    private void ResetInputState(LiveTelemetrySnapshot snapshot, string status)
     {
         _latestInputs = LiveInputTelemetryModel.Empty;
         _trace.Clear();
-        _status = status;
+        _chromeState = ChromeStateFor(
+            snapshot,
+            status,
+            OverlayChromeTone.Waiting,
+            "source: waiting");
     }
 
     private void DrawHeader(Graphics graphics)
     {
-        using var titleFont = OverlayTheme.Font(_fontFamily, 11f, FontStyle.Bold);
-        using var statusFont = OverlayTheme.Font(_fontFamily, 9f);
-        using var titleBrush = new SolidBrush(OverlayTheme.Colors.TextPrimary);
-        using var statusBrush = new SolidBrush(OverlayTheme.Colors.TextSubtle);
-        graphics.DrawString("Inputs", titleFont, titleBrush, 14, 10);
-        DrawRightAligned(graphics, _status, statusFont, statusBrush, new RectangleF(130, 11, Width - 144, 20));
+        OverlayChrome.DrawHeader(graphics, _fontFamily, _chromeState, ClientSize.Width, titleWidth: 116);
+    }
+
+    private void DrawFooter(Graphics graphics)
+    {
+        OverlayChrome.DrawFooter(graphics, _fontFamily, _chromeState, ClientSize.Width, ClientSize.Height, minimumWidth: 180);
+    }
+
+    private OverlayChromeState ChromeStateFor(
+        LiveTelemetrySnapshot snapshot,
+        string status,
+        OverlayChromeTone tone,
+        string source)
+    {
+        var showStatus = OverlayChromeSettings.ShowHeaderStatus(_settings, snapshot);
+        var footerMode = OverlayChromeSettings.ShowFooterSource(_settings, snapshot)
+            ? OverlayChromeFooterMode.Always
+            : OverlayChromeFooterMode.Never;
+        return new OverlayChromeState(
+            "Inputs",
+            showStatus ? status : string.Empty,
+            tone,
+            source,
+            footerMode);
     }
 
     private void DrawPedalTraces(Graphics graphics)
     {
-        var graph = new Rectangle(14, 44, Math.Max(180, Width - 190), Math.Max(118, Height - 72));
+        var graph = new Rectangle(14, 44, Math.Max(180, Width - 190), Math.Max(118, Height - 72 - FooterReserveHeight));
         DrawPedalTraceGraph(graphics, graph);
     }
 
@@ -233,7 +274,7 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
             14,
             44,
             Math.Max(260, ClientSize.Width - 28),
-            Math.Max(80, ClientSize.Height - 118));
+            Math.Max(80, ClientSize.Height - 118 - FooterReserveHeight));
         DrawPedalTraceGraph(graphics, graph);
 
         var readoutTop = graph.Bottom + 8;
@@ -241,7 +282,7 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
             14,
             readoutTop,
             Math.Max(260, ClientSize.Width - 28),
-            Math.Max(36, ClientSize.Height - readoutTop - 12));
+            Math.Max(36, ClientSize.Height - readoutTop - 12 - FooterReserveHeight));
         DrawCompactReadouts(graphics, readoutRect);
     }
 
@@ -279,7 +320,7 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
             14,
             42,
             Math.Max(160, ClientSize.Width - 28),
-            Math.Max(120, ClientSize.Height - 54));
+            Math.Max(120, ClientSize.Height - 54 - FooterReserveHeight));
         using var background = new SolidBrush(OverlayTheme.Colors.PanelBackground);
         using var border = new Pen(OverlayTheme.Colors.WindowBorder);
         graphics.FillRectangle(background, content);
@@ -580,16 +621,6 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
     private bool UseWideTraceLayout()
     {
         return ClientSize.Height < FullLayoutHeightThreshold;
-    }
-
-    private static void DrawRightAligned(Graphics graphics, string text, Font font, Brush brush, RectangleF rect)
-    {
-        using var format = new StringFormat
-        {
-            Alignment = StringAlignment.Far,
-            LineAlignment = StringAlignment.Near
-        };
-        graphics.DrawString(text, font, brush, rect, format);
     }
 
     private static string FormatStatus(LiveInputTelemetryModel inputs)

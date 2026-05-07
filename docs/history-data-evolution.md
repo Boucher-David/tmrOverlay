@@ -148,7 +148,7 @@ Skipped files should remain on disk and be excluded from current aggregates. The
 The current implementation is intentionally narrow:
 
 - new session summaries include `collectionModelVersion`
-- `HistoryMaintenanceService` runs at startup when session history is enabled
+- `HistoryMaintenanceService` runs in the background at startup when session history is enabled
 - legacy summaries missing version metadata are normalized and backed up
 - `aggregate.json` is rebuilt from all compatible summaries in each car/track/session folder
 - corrupt, unsupported, or future-version summaries are skipped and recorded in the maintenance manifest

@@ -97,9 +97,21 @@ Likely scope:
 - Verify AppData compatibility for settings, history, logs, diagnostics, runtime state, and optional captures.
 - Tighten performance, startup behavior, and settings-window responsiveness for the core overlay set.
 
-### v0.15.0 - Optional V1.0 Release-Candidate Escape Hatch
+### v0.15.0 - Settings Layout And V1 UI Polish
 
-Goal: reserve one more 0.x milestone only if a hard release risk remains after v0.14.
+Goal: make the settings app layout V1-ready as its own product pass instead of widening the v0.14 release-candidate cleanup branch.
+
+Likely scope:
+
+- Keep the v0.14 shared General/Header/Footer overlay settings behavior and make the surrounding settings surface clearer, easier to scan, and easier to extend.
+- Revisit the left-tab structure, overlay option grouping, support/status grouping, browser-source details, and shared preferences without exposing development-only surfaces as ordinary overlay tabs.
+- Preserve app-owned scale controls and header/footer slot-fitting assumptions while improving how crowded overlay option sets are presented.
+- Keep the Support tab as the product home for app-health, version/build, diagnostic capture, diagnostics bundles, and support folders.
+- Refresh tracked mac screenshots and compare Windows CI artifacts before calling the branch done.
+
+### v0.16.0 - Release Channel And V1 Candidate Escape Hatch
+
+Goal: reserve the next larger 0.x milestone for Velopack/release-channel work or any hard release risk that remains after v0.15.
 
 Likely triggers:
 
@@ -276,7 +288,7 @@ That replay provider should be a development tool only. It should read existing 
 
 The mac harness remains the fast local design surface, but Windows is the production/iRacing runtime. v0.10 adds a Windows-only screenshot generator that renders the real WinForms forms with deterministic telemetry fixtures and uploads the resulting contact sheet plus per-state PNGs as GitHub Actions artifacts.
 
-Use this as a parity gate, not as a replacement for the tracked `mocks/` screenshots. The tracked mac screenshots document the intended review states; the Windows artifacts prove the production forms still render, size, and arrange those states under the WinForms runtime. The first parity set should cover settings tabs plus the current production overlays: status, standings, fuel calculator, relative, track map, flags, session/weather, pit service, inputs, radar, and gap to leader, with Garage Cover validated through its localhost browser route.
+Use this as a parity gate, not as a replacement for the tracked `mocks/` screenshots. The tracked mac screenshots document the intended review states; the Windows artifacts prove the production forms still render, size, and arrange those states under the WinForms runtime. The parity set should cover settings tabs plus the current production overlays: standings, fuel calculator, relative, track map, flags, session/weather, pit service, inputs, radar, and gap to leader, with app status validated through Support and Garage Cover validated through its localhost browser route.
 
 Keep the fixtures isolated from local history, app data, raw captures, and real machine paths. If a Windows screenshot state needs live telemetry, build it from normalized `LiveTelemetrySnapshot` data with explicit fixture values. If a future overlay needs replay evidence, add that through a separate capture-replay branch rather than letting the screenshot generator read private capture directories.
 

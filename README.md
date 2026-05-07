@@ -6,7 +6,6 @@
 
 - Starts as a WinForms tray application with a fixed-size settings window as the app control surface.
 - Uses a local single-instance mutex so a second launch exits instead of attaching another telemetry collector to the same iRacing session.
-- Includes an internal collector status overlay for development/support, hidden by default for normal users.
 - Shows a branded centered settings window with flat left-side tabs for managing overlay visibility, scale, opacity where useful, session filters, units, support/log access, diagnostic capture, and overlay-specific display options.
 - Treats the settings window as the main UI: clicking its `X` exits the application instead of hiding it to the tray.
 - Keeps the settings window on the normal desktop layer with a taskbar/Alt+Tab entry, while driving overlays can stay above the sim.
@@ -143,7 +142,7 @@ The ignored macOS harness is for local overlay and boilerplate iteration on this
 
 It writes mock session history to `~/Library/Application Support/TmrOverlayMac/history/user` by default and mirrors the Windows storage layout for captures, user history, logs, events, settings, diagnostics, runtime state, and retention cleanup. Set `TMR_MAC_USE_REPOSITORY_LOCAL_STORAGE=true` if you intentionally want mac harness data under the ignored `local-mac/TmrOverlayMac/` folder.
 
-The mac harness mirrors the current Windows overlay review set for local v0.13 iteration: status, standings, fuel calculator, relative, track map, garage cover browser-route states, flags, session/weather, pit-service, input/car-state, radar, gap-to-leader, and Support-tab version/status states. Its mock live race uses the tracked four-hour Nürburgring baseline shape at 4x speed so long-run relative, standings, gap, fuel, and simple telemetry behavior can be inspected quickly. Treat Windows overlay code as production-facing and real-data-driven; the ignored mac harness can use looser mock offsets, named drivers, synthetic weather windows, and exaggerated events for visual iteration.
+The mac harness mirrors the current Windows overlay review set for local iteration: standings, fuel calculator, relative, track map, garage cover browser-route states, flags, session/weather, pit-service, input/car-state, radar, gap-to-leader, and Support-tab version/status states. Its mock live race uses the tracked four-hour Nürburgring baseline shape at 4x speed so long-run relative, standings, gap, fuel, and simple telemetry behavior can be inspected quickly. Treat Windows overlay code as production-facing and real-data-driven; the ignored mac harness can use looser mock offsets, named drivers, synthetic weather windows, and exaggerated events for visual iteration.
 
 Raw mock capture is disabled by default. Enable it only when you want to exercise the raw capture writer and disk-health UI:
 
@@ -268,7 +267,7 @@ $env:TMR_SessionHistory__UseBaselineHistory = "true"
 
 Path settings may be absolute or relative. Relative path settings resolve under the selected app data root.
 
-User-facing overlay preferences are stored in the local settings file under the app settings root. The branded fixed-size settings window can update each current user-facing overlay's visibility, scale when applicable, test/practice/qualifying/race session filters, metric/imperial units, and overlay-specific display options. It appears on the normal desktop layer so it can sit behind the sim when the user switches away. The General tab owns shared app preferences. The Support tab is last and presents teammate handoff tasks first: app version/build, diagnostic telemetry capture guidance, diagnostics bundle actions, compact current state, and storage shortcuts. Settings files are versioned and normalized on load so older local files receive safe defaults as customization expands.
+User-facing overlay preferences are stored in the local settings file under the app settings root. The branded fixed-size settings window can update each current user-facing overlay's visibility, scale when applicable, test/practice/qualifying/race session filters, metric/imperial units, and overlay-specific display options. Scale-capable overlays derive their width and height from the overlay definition plus the saved scale percentage, so layout chrome stays controlled by the app rather than independent custom dimensions. Shared-chrome overlays can also expose horizontal General/Header/Footer sub-tabs; the first shared header/footer controls let users show the status header item and source footer item per session. It appears on the normal desktop layer so it can sit behind the sim when the user switches away. The General tab owns shared app preferences. The Support tab is last and presents teammate handoff tasks first: app version/build, diagnostic telemetry capture guidance, diagnostics bundle actions, compact current state, and storage shortcuts. App-health status is kept in Support and diagnostics rather than a standalone user overlay. Settings files are versioned and normalized on load so older local files receive safe defaults as customization expands.
 
 ### Overlay Theme Overrides
 
@@ -395,7 +394,8 @@ When overlay behavior changes, update the matching English logic note under [doc
 
 ## Next Steps
 
+- Make the focused v0.15 settings layout/V1 UI polish pass now that shared chrome, scale, and support/status ownership are in place.
 - Add a replay tool that can decode `telemetry.bin` with `telemetry-schema.json`.
 - Harden the radar and gap overlays against longer multi-class traffic captures.
 - Expand the post-race strategy review/export flow described in [docs/post-race-strategy-analysis.md](/Users/davidboucher/Code/tmrOverlay/docs/post-race-strategy-analysis.md) and [docs/post-race-analysis-logic.md](/Users/davidboucher/Code/tmrOverlay/docs/post-race-analysis-logic.md).
-- Start with update notification before self-update; see [docs/update-strategy.md](/Users/davidboucher/Code/tmrOverlay/docs/update-strategy.md).
+- Start with update notification before self-update in the follow-up release-channel branch; see [docs/update-strategy.md](/Users/davidboucher/Code/tmrOverlay/docs/update-strategy.md).

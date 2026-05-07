@@ -9,74 +9,135 @@ TmrOverlay uses SemVer-style annotated Git tags for product milestones:
 
 ## Current Branch Target
 
-### v0.13.0 - Core Overlay Readiness
+### v0.14.0 - UI Polish And V1 Candidate Prep
 
 Planned branch name:
 
 ```text
-v0.13-core-overlay-readiness
+v0.14-ui-polish-v1-candidate-prep
 ```
 
 Planned scope:
 
-- Promote core overlays to model-v2 consumers where the data contracts are now stable.
-- Treat live row coverage, scoring snapshots, and rendered-car limits as first-class assumptions instead of silently compressing missing competitors.
-- Keep local in-car radar scoped to player-in-car proximity and side-warning telemetry.
-- Harden flags, session/weather, pit service, inputs, garage cover, fuel, gap, standings, relative, and track map behavior around real telemetry evidence.
-- Add diagnostic-first probes for future penalty detail, TC/dual-clutch, forecast, relative-lap pending, and spotter/teammate pit-change questions.
-- Add shared overlay availability/freshness and app diagnostics status models.
-- Keep remaining V2 candidates, such as driver role/focus, race events/penalties, pit strategy, track asset quality, and post-race summaries, as V1.N follow-up foundations.
+- Make the core overlay/settings surface easier to review, maintain, and hand to a designer.
+- Promote shared overlay chrome primitives for headers, status, source footers, tables, borders, and state tones.
+- Move normal overlay dimensions to app-owned scale-derived sizing instead of independent width/height controls.
+- Keep app-health/status diagnostics in Support instead of a standalone product overlay.
+- Tighten startup, localhost/browser-source, performance, and diagnostics behavior before V1 candidate testing.
+- Refresh screenshot parity expectations, docs, context, and branch-readiness metadata.
 
 Technical implementation checklist:
 
-1. Bump shared .NET product/version metadata to `0.13.0`.
-2. Move standings to scoring-snapshot ordering with timing enrichment and class-group/browser settings.
-3. Keep Track Map plotted from real spatial progress while using scoring rows only for marker identity/color enrichment.
-4. Promote Relative, local in-car Radar, Flags, Session / Weather, Pit Service, Input / Car State, Fuel, and Gap To Leader to stable model-v2 inputs where appropriate.
-5. Keep Garage Cover localhost-only, image-backed, previewable, and fail-closed when telemetry is unavailable or stale.
-6. Add shared race-progress and overlay-availability/status-diagnostics models with focused unit coverage.
-7. Keep uncertain telemetry semantics diagnostic-first and document V1.N model follow-ups.
-8. Refresh docs/context/version metadata and run branch validation available from macOS, with Windows build/test/publish left to Windows CI.
+1. Bump shared .NET product/version metadata to `0.14.0`.
+2. Add shared WinForms overlay chrome helpers and session-scoped Header/Footer settings for common overlays.
+3. Move scale-capable overlays to definition-size plus scale-derived dimensions, including Flags, Stream Chat, and Garage Cover.
+4. Keep Track Map and Radar square-scaled, and keep Garage Cover browser/preview image fitting crop-to-cover.
+5. Remove the floating Collector Status overlay from the managed product overlay set while preserving Support-tab and diagnostics status models.
+6. Reduce startup and idle localhost overhead with deferred/background startup work, snapshot response caching, slower browser polling where appropriate, and better localhost activity diagnostics.
+7. Refresh deterministic screenshot expectations/artifacts so retired status-overlay images are no longer a V1 parity target.
+8. Update docs/context/version metadata and run branch validation available from macOS, with Windows build/test/publish left to Windows CI.
 
 Implemented baseline in this branch:
 
-- Bumped shared .NET product/version metadata to `0.13.0`.
-- Added shared model-v2 race progress, overlay availability/freshness, and app diagnostics status contracts.
-- Promoted core overlays to normalized model-v2 consumers across standings, relative, local radar, flags, session/weather, pit service, inputs, fuel, gap, and track map behavior.
-- Reworked Standings around scoring snapshots, class grouping, configurable other-class rows, pit labels, and browser-source settings.
-- Kept Track Map from compressing missing competitors by plotting only cars with usable spatial progress while enriching labels/colors from scoring rows.
-- Scoped Radar to accurate local player-in-car telemetry, keeping timing-only and non-local focus cases diagnostic/future.
-- Reworked Flags into multi-flag procedural display with steady green suppressed and penalty detail kept diagnostic-first.
-- Added Garage Cover image import/preview/fail-closed localhost behavior plus diagnostics.
-- Split Fuel strategy inputs around shared fuel/pit and race-progress models while preserving history fallback.
-- Moved Gap To Leader to race-only model-v2 timing/race-progress inputs with legacy fallback.
-- Extended diagnostics and docs for forecast-like channels, spotter/teammate pit changes, TC/dual-clutch evidence, relative lap relationships, and future model branches.
-- Added focused unit coverage for new settings, browser-source, diagnostics, race-progress, gap, availability, and model-v2 consumer behavior.
+- Bumped shared .NET product/version metadata to `0.14.0`.
+- Added shared overlay chrome helpers and state models for title/status/source layout, common table cells, row sizing, borders, state colors, and header/footer slot fitting.
+- Added session-scoped Header `Status` and Footer `Source` settings under horizontal General/Header/Footer sub-tabs for Standings, Relative, Fuel Calculator, Input / Car State, and Gap To Leader.
+- Moved normal scale-capable overlays to scale-derived width/height normalization, including Flags, Stream Chat, Garage Cover, Track Map, and Radar.
+- Kept Garage Cover localhost-only while adding scale control and crop-to-cover preview behavior so imported images always fill the cover area.
+- Removed the floating Collector Status overlay and its Windows/mac screenshot parity targets; app-health status remains in the Support tab and diagnostics bundles.
+- Tightened startup/performance work by moving startup history/retention maintenance off the blocking path and delaying the first performance log write.
+- Reduced localhost/browser-source overhead with cached serialized snapshot responses, localhost recent-request diagnostics, and slower Track Map browser polling.
+- Updated Windows screenshot expectations, tracked screenshot validation, docs, and repo context for the V1 candidate product shape.
+- Added focused unit coverage for localhost response caching, performance startup behavior, shared chrome settings, and chrome slot fitting.
 
 Likely squash title:
 
 ```text
-[v0.13.0] Harden core overlays on model-v2 telemetry
+[v0.14.0] Polish overlays and prepare the V1 candidate
 ```
 
 Likely squash body:
 
 ```text
+- Bumped shared .NET product/version metadata to 0.14.0.
+- Added shared overlay chrome primitives for title/status/source layout, table cells, row sizing, borders, state colors, and header/footer slot fitting.
+- Added session-scoped Header `Status` and Footer `Source` settings under horizontal General/Header/Footer sub-tabs for Standings, Relative, Fuel Calculator, Input / Car State, and Gap To Leader.
+- Moved scale-capable overlays to app-owned definition-size plus scale-derived dimensions, including Flags, Stream Chat, Garage Cover, Track Map, and Radar.
+- Kept Garage Cover localhost-only while adding scale control and crop-to-cover preview/rendering behavior so imported images fill the cover area reliably.
+- Removed the floating Collector Status overlay from the product overlay set and screenshot parity targets; app-health status remains in Support and diagnostics.
+- Moved startup history/retention maintenance off the blocking path and delayed the first performance log write.
+- Reduced localhost/browser-source overhead with cached serialized snapshot responses, recent-request diagnostics, and slower Track Map browser polling.
+- Updated docs, repo context, tracked screenshot validation, and Windows screenshot expectations for the V1 candidate product shape.
+- Added focused unit coverage for localhost response caching, startup performance behavior, shared chrome settings, and chrome slot fitting.
+- Validation: git diff --check, conflict-marker sweep, C# compile-shape scanner, tracked screenshot validation, Windows screenshot expectation validation, and mac harness build. Windows restore/build/test/screenshot/publish validation remains CI-owned from this Mac because `dotnet` is not installed locally; `swift test` is blocked by missing XCTest in the local toolchain.
+```
+
+## Next Planned Milestone
+
+### v0.15.0 - Settings Layout And V1 UI Polish
+
+Planned branch name:
+
+```text
+v0.15-settings-layout-v1-polish
+```
+
+Likely scope:
+
+- Rework the Settings app layout as a focused product pass instead of expanding the v0.14 branch after branch-complete validation.
+- Keep the v0.14 shared General/Header/Footer overlay settings behavior, then make the surrounding settings surface clearer, easier to scan, and easier to extend.
+- Improve grouping for overlay controls, support/status controls, localhost/browser-source details, and shared app preferences without exposing development-only surfaces as normal overlay tabs.
+- Preserve app-owned scale controls and header/footer slot-fitting assumptions while improving how crowded overlay option sets are presented.
+- Regenerate tracked mac screenshots and rely on Windows CI for WinForms screenshot parity, build, test, publish, and package validation.
+
+### v0.16.0 - Release Channel And V1 Candidate Escape Hatch
+
+Likely scope:
+
+- Keep installer/update-channel work, likely Velopack, as the next larger 0.x milestone unless teammate testing forces a different release-blocking fix first.
+- Reserve this milestone for signed/installer distribution, update-check reliability, portable-upgrade hardening, durable AppData compatibility issues, or final V1 candidate stabilization.
+- Keep deep fuel/strategy/engineer/advanced-track-map/streaming/builder work out of the V1.0 release candidate unless it remains hidden development tooling.
+
+## Merged Mainline Milestones
+
+### v0.13.0 - Core Overlay Readiness
+
+Commit: `f9b7026`
+
+Squash title:
+
+```text
+[v0.13.0] Harden core overlays on model-v2 telemetry
+```
+
+Summary:
+
 - Bumped shared .NET product/version metadata to 0.13.0.
 - Added shared model-v2 race-progress, overlay availability/freshness, and app diagnostics status contracts.
 - Promoted core overlays to normalized model-v2 consumers across Standings, Relative, local Radar, Flags, Session / Weather, Pit Service, Input / Car State, Fuel, Gap To Leader, and Track Map.
 - Reworked Standings around scoring-snapshot ordering, class grouping, configurable other-class rows, pit labels, and localhost browser-source settings.
 - Kept Track Map marker placement honest under partial live coverage by plotting only cars with usable spatial progress and using scoring rows only for identity/color enrichment.
 - Scoped Radar to accurate local player-in-car proximity and side-warning telemetry while leaving non-local focus and timing-only placement as future evidence-aware work.
-- Reworked Flags into a multi-flag procedural display, suppressed steady green running, and kept exact penalty instruction text diagnostic-first.
 - Added Garage Cover image import, preview, localhost fail-closed behavior, and diagnostics.
-- Split Fuel strategy inputs around shared fuel/pit and race-progress models while preserving history fallback.
-- Moved Gap To Leader to race-only model-v2 timing/race-progress inputs with legacy leader-gap fallback.
 - Extended compact diagnostics and docs for forecast-like weather, spotter/teammate pit changes, TC/dual-clutch evidence, relative lap-relationship probes, and future V1.N model foundations.
-- Validation: git diff --check, conflict-marker sweep, C# compile-shape scanner, tracked screenshot validation, and Windows screenshot expectation validation. Windows restore/build/test/screenshot/publish validation remains CI-owned from this Mac because `dotnet` is not installed locally.
+
+### v0.12.0 - Teammate Beta Hardening
+
+Commit: `267c841`
+
+Squash title:
+
+```text
+[v0.12.0] Harden teammate beta install and support flow
 ```
 
-## Merged Mainline Milestones
+Summary:
+
+- Bumped shared .NET product/version metadata to 0.12.0.
+- Added Support-tab version/build metadata and clearer teammate support actions.
+- Hardened waiting/support states for beta handoff.
+- Updated validation docs and Windows screenshot expectation checks.
+- Kept release/update flow focused on portable teammate beta distribution.
 
 ### v0.11.0 - Standings, Track Maps, Localhost, And Live Overlay Polish
 

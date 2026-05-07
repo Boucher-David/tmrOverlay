@@ -109,6 +109,55 @@ public sealed class HistoryMaintenanceServiceTests
         }
     }
 
+    [Fact]
+    public async Task StartAsync_SchedulesHistoryMaintenanceInBackground()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "tmr-history-maintenance-test", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var storage = CreateStorage(root);
+            var options = CreateOptions(storage);
+            var corruptPath = Path.Combine(
+                options.ResolvedUserHistoryRoot,
+                "cars",
+                "car-test",
+                "tracks",
+                "track-test",
+                "sessions",
+                "race",
+                "summaries",
+                "corrupt.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(corruptPath)!);
+            File.WriteAllText(corruptPath, "{");
+            var service = CreateService(options, storage);
+
+            await service.StartAsync(CancellationToken.None);
+            await WaitUntilAsync(() => File.Exists(service.ManifestPath));
+            await service.StopAsync(CancellationToken.None);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> predicate)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(2);
+        while (!predicate())
+        {
+            if (DateTimeOffset.UtcNow >= deadline)
+            {
+                Assert.True(predicate());
+            }
+
+            await Task.Delay(25);
+        }
+    }
+
     private static HistoryMaintenanceService CreateService(
         SessionHistoryOptions options,
         AppStorageOptions storage)

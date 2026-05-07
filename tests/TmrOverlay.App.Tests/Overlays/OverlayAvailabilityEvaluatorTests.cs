@@ -95,4 +95,34 @@ public sealed class OverlayAvailabilityEvaluatorTests
         Assert.False(OverlayAvailabilityEvaluator.IsAllowedForSession(settings, OverlaySessionKind.Practice));
         Assert.True(OverlayAvailabilityEvaluator.IsAllowedForSession(settings, OverlaySessionKind.Race));
     }
+
+    [Fact]
+    public void OverlayChromeSettings_HonorsSessionScopedHeaderAndFooterItems()
+    {
+        var settings = new OverlaySettings { Id = "relative" };
+        settings.SetBooleanOption(OverlayOptionKeys.ChromeHeaderStatusPractice, false);
+        settings.SetBooleanOption(OverlayOptionKeys.ChromeFooterSourceRace, false);
+        var practice = SnapshotForSession("Practice");
+        var race = SnapshotForSession("Race");
+
+        Assert.False(OverlayChromeSettings.ShowHeaderStatus(settings, practice));
+        Assert.True(OverlayChromeSettings.ShowFooterSource(settings, practice));
+        Assert.True(OverlayChromeSettings.ShowHeaderStatus(settings, race));
+        Assert.False(OverlayChromeSettings.ShowFooterSource(settings, race));
+    }
+
+    private static LiveTelemetrySnapshot SnapshotForSession(string sessionType)
+    {
+        return LiveTelemetrySnapshot.Empty with
+        {
+            Models = LiveRaceModels.Empty with
+            {
+                Session = LiveSessionModel.Empty with
+                {
+                    HasData = true,
+                    SessionType = sessionType
+                }
+            }
+        };
+    }
 }

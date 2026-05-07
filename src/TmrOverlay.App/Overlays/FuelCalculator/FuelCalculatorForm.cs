@@ -71,35 +71,17 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
             : "Metric";
 
         BackColor = OverlayTheme.Colors.WindowBackground;
-        Padding = new Padding(12);
+        Padding = new Padding(OverlayTheme.Layout.OverlayChromePadding);
 
-        _titleLabel = new Label
-        {
-            AutoSize = false,
-            ForeColor = OverlayTheme.Colors.TextPrimary,
-            Font = OverlayTheme.Font(_fontFamily, 11f, FontStyle.Bold),
-            Location = new Point(14, 10),
-            Size = new Size(150, 24),
-            Text = "Fuel Calculator"
-        };
-
-        _statusLabel = new Label
-        {
-            AutoSize = false,
-            ForeColor = OverlayTheme.Colors.SuccessText,
-            Font = OverlayTheme.Font(_fontFamily, 9f),
-            TextAlign = ContentAlignment.MiddleRight,
-            Location = new Point(164, 11),
-            Size = new Size(ClientSize.Width - 178, 22),
-            Text = "waiting"
-        };
+        _titleLabel = OverlayChrome.CreateTitleLabel(_fontFamily, "Fuel Calculator", width: 150);
+        _statusLabel = OverlayChrome.CreateStatusLabel(_fontFamily, titleWidth: 150, clientWidth: ClientSize.Width, minimumWidth: 120);
 
         _table = new OverlayTableLayoutPanel
         {
             ColumnCount = 3,
-            Location = new Point(14, 42),
+            Location = OverlayChrome.TableLocation(),
             RowCount = StintRowCount + 1,
-            Size = new Size(ClientSize.Width - 28, ClientSize.Height - 76)
+            Size = OverlayChrome.TableSize(ClientSize.Width, ClientSize.Height, minimumWidth: 250, minimumHeight: NormalMinimumTableHeight)
         };
         _table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 24f));
         _table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 48f));
@@ -129,16 +111,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
             _table.Controls.Add(tireLabel, 2, index + 1);
         }
 
-        _sourceLabel = new Label
-        {
-            AutoSize = false,
-            ForeColor = OverlayTheme.Colors.TextMuted,
-            Font = OverlayTheme.Font(_fontFamily, 8.5f),
-            Location = new Point(14, ClientSize.Height - 28),
-            Size = new Size(ClientSize.Width - 28, 18),
-            Text = "source: waiting",
-            TextAlign = ContentAlignment.MiddleLeft
-        };
+        _sourceLabel = OverlayChrome.CreateSourceLabel(_fontFamily, ClientSize.Width, ClientSize.Height, minimumWidth: 250);
 
         Controls.Add(_titleLabel);
         Controls.Add(_statusLabel);
@@ -171,14 +144,12 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
             return;
         }
 
-        _statusLabel.Location = new Point(164, 11);
-        _statusLabel.Size = new Size(Math.Max(120, ClientSize.Width - 178), 22);
-        _table.Location = new Point(14, 42);
-        _table.Size = new Size(
-            Math.Max(250, ClientSize.Width - 28),
-            Math.Max(NormalMinimumTableHeight, ClientSize.Height - 76));
-        _sourceLabel.Location = new Point(14, ClientSize.Height - 28);
-        _sourceLabel.Size = new Size(Math.Max(250, ClientSize.Width - 28), 18);
+        _statusLabel.Location = OverlayChrome.StatusLocation(titleWidth: 150);
+        _statusLabel.Size = OverlayChrome.StatusSize(ClientSize.Width, titleWidth: 150, minimumWidth: 120);
+        _table.Location = OverlayChrome.TableLocation();
+        _table.Size = OverlayChrome.TableSize(ClientSize.Width, ClientSize.Height, minimumWidth: 250, minimumHeight: NormalMinimumTableHeight);
+        _sourceLabel.Location = OverlayChrome.SourceLocation(ClientSize.Height);
+        _sourceLabel.Size = OverlayChrome.SourceSize(ClientSize.Width, minimumWidth: 250);
     }
 
     protected override void Dispose(bool disposing)
@@ -203,8 +174,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
         try
         {
             base.OnPaint(e);
-            using var borderPen = new Pen(OverlayTheme.Colors.WindowBorder);
-            e.Graphics.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
+            OverlayChrome.DrawWindowBorder(e.Graphics, ClientSize);
             succeeded = true;
         }
         finally
@@ -310,11 +280,8 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
             var applySucceeded = false;
             try
             {
-                uiChanged |= ApplyStatusColor(strategy);
-                uiChanged |= SetTextIfChanged(_statusLabel, viewModel.Status);
-                uiChanged |= SetTextIfChanged(_overviewValueLabel, viewModel.Overview);
-                uiChanged |= SetTextIfChanged(_sourceLabel, viewModel.Source);
-                uiChanged |= SetVisibleIfChanged(_sourceLabel, showSource);
+                uiChanged |= OverlayChrome.ApplyChromeState(this, _titleLabel, _statusLabel, _sourceLabel, ChromeStateFor(viewModel, strategy, live, _settings, showSource), titleWidth: 150);
+                uiChanged |= OverlayChrome.SetTextIfChanged(_overviewValueLabel, viewModel.Overview);
                 uiChanged |= ApplyAdviceColumnVisibility(showAdvice);
                 applySucceeded = true;
             }
@@ -337,15 +304,15 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
                     if (index < rows.Count)
                     {
                         var row = rows[index];
-                        rowsChanged |= SetTextIfChanged(_stintNumberLabels[index], row.Label);
-                        rowsChanged |= SetTextIfChanged(_stintLengthLabels[index], row.Value);
-                        rowsChanged |= SetTextIfChanged(_stintTireLabels[index], row.Advice);
+                        rowsChanged |= OverlayChrome.SetTextIfChanged(_stintNumberLabels[index], row.Label);
+                        rowsChanged |= OverlayChrome.SetTextIfChanged(_stintLengthLabels[index], row.Value);
+                        rowsChanged |= OverlayChrome.SetTextIfChanged(_stintTireLabels[index], row.Advice);
                         continue;
                     }
 
-                    rowsChanged |= SetTextIfChanged(_stintNumberLabels[index], $"Stint {index + 1}");
-                    rowsChanged |= SetTextIfChanged(_stintLengthLabels[index], string.Empty);
-                    rowsChanged |= SetTextIfChanged(_stintTireLabels[index], string.Empty);
+                    rowsChanged |= OverlayChrome.SetTextIfChanged(_stintNumberLabels[index], $"Stint {index + 1}");
+                    rowsChanged |= OverlayChrome.SetTextIfChanged(_stintLengthLabels[index], string.Empty);
+                    rowsChanged |= OverlayChrome.SetTextIfChanged(_stintTireLabels[index], string.Empty);
                 }
 
                 var layoutChanged = UpdateVisibleRows(rows.Count, showAdvice);
@@ -418,31 +385,15 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
             return false;
         }
 
-        var changed = false;
         var visibleRows = visibleStintRows + 1;
-        for (var row = 0; row < _table.RowStyles.Count; row++)
-        {
-            var sizeType = row < visibleRows ? SizeType.Percent : SizeType.Absolute;
-            var height = row < visibleRows ? 100f / visibleRows : 0f;
-            if (_table.RowStyles[row].SizeType != sizeType)
-            {
-                _table.RowStyles[row].SizeType = sizeType;
-                changed = true;
-            }
-
-            if (Math.Abs(_table.RowStyles[row].Height - height) > 0.001f)
-            {
-                _table.RowStyles[row].Height = height;
-                changed = true;
-            }
-        }
+        var changed = OverlayChrome.SetPercentRows(_table, visibleRows);
 
         for (var index = 0; index < StintRowCount; index++)
         {
             var visible = index < visibleStintRows;
-            changed |= SetVisibleIfChanged(_stintNumberLabels[index], visible);
-            changed |= SetVisibleIfChanged(_stintLengthLabels[index], visible);
-            changed |= SetVisibleIfChanged(_stintTireLabels[index], visible && showAdvice);
+            changed |= OverlayChrome.SetVisibleIfChanged(_stintNumberLabels[index], visible);
+            changed |= OverlayChrome.SetVisibleIfChanged(_stintLengthLabels[index], visible);
+            changed |= OverlayChrome.SetVisibleIfChanged(_stintTireLabels[index], visible && showAdvice);
         }
 
         _lastVisibleStintRows = visibleStintRows;
@@ -464,87 +415,52 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
         return true;
     }
 
-    private bool ApplyStatusColor(FuelStrategySnapshot strategy)
+    private static Label CreateCellLabel(string fontFamily, string text, bool alignRight = false, bool bold = false)
+    {
+        return OverlayChrome.CreateTableCellLabel(
+            fontFamily,
+            text,
+            alignRight,
+            bold,
+            padding: new Padding(8, 0, 8, 0),
+            textSize: 9f,
+            boldTextSize: 9.5f);
+    }
+
+    private static OverlayChromeState ChromeStateFor(
+        FuelCalculatorViewModel viewModel,
+        FuelStrategySnapshot strategy,
+        LiveTelemetrySnapshot live,
+        OverlaySettings settings,
+        bool showSource)
+    {
+        var showStatus = OverlayChromeSettings.ShowHeaderStatus(settings, live);
+        var footerMode = showSource && OverlayChromeSettings.ShowFooterSource(settings, live)
+            ? OverlayChromeFooterMode.Always
+            : OverlayChromeFooterMode.Never;
+        return new OverlayChromeState(
+            "Fuel Calculator",
+            showStatus ? viewModel.Status : string.Empty,
+            ChromeTone(strategy),
+            viewModel.Source,
+            footerMode);
+    }
+
+    private static OverlayChromeTone ChromeTone(FuelStrategySnapshot strategy)
     {
         if (!strategy.HasData || strategy.FuelPerLapLiters is null)
         {
-            var changed = SetBackColorIfChanged(this, OverlayTheme.Colors.WindowBackground);
-            changed |= SetForeColorIfChanged(_statusLabel, OverlayTheme.Colors.TextSubtle);
-            return changed;
+            return OverlayChromeTone.Waiting;
         }
 
         if (strategy.RhythmComparison is { IsRealistic: true, AdditionalStopCount: > 0 }
             || strategy.RequiredFuelSavingPercent is > 0d and <= 0.05d
             || strategy.StopOptimization is { IsRealistic: true, RequiredSavingLitersPerLap: > 0d })
         {
-            var changed = SetBackColorIfChanged(this, OverlayTheme.Colors.WarningStrongBackground);
-            changed |= SetForeColorIfChanged(_statusLabel, OverlayTheme.Colors.WarningText);
-            return changed;
+            return OverlayChromeTone.Warning;
         }
 
-        var successChanged = SetBackColorIfChanged(this, OverlayTheme.Colors.SuccessBackground);
-        successChanged |= SetForeColorIfChanged(_statusLabel, OverlayTheme.Colors.SuccessText);
-        return successChanged;
-    }
-
-    private static bool SetTextIfChanged(Label label, string? value)
-    {
-        var text = value ?? string.Empty;
-        if (string.Equals(label.Text, text, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        label.Text = text;
-        return true;
-    }
-
-    private static bool SetVisibleIfChanged(Control control, bool visible)
-    {
-        if (control.Visible == visible)
-        {
-            return false;
-        }
-
-        control.Visible = visible;
-        return true;
-    }
-
-    private static bool SetBackColorIfChanged(Control control, Color color)
-    {
-        if (control.BackColor == color)
-        {
-            return false;
-        }
-
-        control.BackColor = color;
-        return true;
-    }
-
-    private static bool SetForeColorIfChanged(Control control, Color color)
-    {
-        if (control.ForeColor == color)
-        {
-            return false;
-        }
-
-        control.ForeColor = color;
-        return true;
-    }
-
-    private static Label CreateCellLabel(string fontFamily, string text, bool alignRight = false, bool bold = false)
-    {
-        return new Label
-        {
-            AutoSize = false,
-            BackColor = Color.Transparent,
-            Dock = DockStyle.Fill,
-            Font = OverlayTheme.Font(fontFamily, bold ? 9.5f : 9f, bold ? FontStyle.Bold : FontStyle.Regular),
-            ForeColor = bold ? OverlayTheme.Colors.TextPrimary : OverlayTheme.Colors.TextSecondary,
-            Padding = new Padding(8, 0, 8, 0),
-            Text = text,
-            TextAlign = alignRight ? ContentAlignment.MiddleRight : ContentAlignment.MiddleLeft
-        };
+        return OverlayChromeTone.Success;
     }
 
 }

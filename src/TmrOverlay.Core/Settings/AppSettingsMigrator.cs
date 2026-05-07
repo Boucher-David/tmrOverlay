@@ -5,7 +5,7 @@ namespace TmrOverlay.Core.Settings;
 
 internal static class AppSettingsMigrator
 {
-    public const int CurrentVersion = 5;
+    public const int CurrentVersion = 6;
 
     private static readonly string[] ObsoleteOptionKeys =
     [
@@ -59,6 +59,14 @@ internal static class AppSettingsMigrator
             EnsureOption(overlay, OverlayOptionKeys.StatusHealthDetails, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.FuelAdvice, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.FuelSource, defaultValue: true);
+            EnsureOption(overlay, OverlayOptionKeys.ChromeHeaderStatusTest, defaultValue: true);
+            EnsureOption(overlay, OverlayOptionKeys.ChromeHeaderStatusPractice, defaultValue: true);
+            EnsureOption(overlay, OverlayOptionKeys.ChromeHeaderStatusQualifying, defaultValue: true);
+            EnsureOption(overlay, OverlayOptionKeys.ChromeHeaderStatusRace, defaultValue: true);
+            EnsureOption(overlay, OverlayOptionKeys.ChromeFooterSourceTest, defaultValue: true);
+            EnsureOption(overlay, OverlayOptionKeys.ChromeFooterSourcePractice, defaultValue: true);
+            EnsureOption(overlay, OverlayOptionKeys.ChromeFooterSourceQualifying, defaultValue: true);
+            EnsureOption(overlay, OverlayOptionKeys.ChromeFooterSourceRace, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.StandingsOtherClassRows, defaultValue: 2, minimum: 0, maximum: 6);
             EnsureOption(overlay, OverlayOptionKeys.RelativeCarsAhead, defaultValue: 5, minimum: 0, maximum: 8);
