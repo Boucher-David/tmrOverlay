@@ -189,7 +189,7 @@ private func renderTutorial(_ c: Canvas) {
             bullets: [
                 "Unzip to a user-writable folder.",
                 "Suggested: %LOCALAPPDATA%\\Programs\\TmrOverlay.",
-                "Run TmrOverlay.App.exe."
+                "Run TMROverlay.exe."
             ],
             accent: Theme.success,
             renderPreview: drawFolderPreview
@@ -298,7 +298,7 @@ private func drawFolderPreview(_ c: Canvas, _ rect: CGRect) {
         "%LOCALAPPDATA%",
         "  Programs",
         "    TmrOverlay",
-        "      TmrOverlay.App.exe",
+        "      TMROverlay.exe",
         "      appsettings.json",
         "      Assets"
     ]

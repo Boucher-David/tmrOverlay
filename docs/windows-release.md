@@ -50,7 +50,7 @@ The portable zip should contain the runtime app only. The release workflow fails
 
 The expected package shape is intentionally small:
 
-- `TmrOverlay.App.exe`
+- `TMROverlay.exe`
 - `appsettings.json`
 - `Assets/TMRLogo.png`
 - optional `Assets/TrackMaps/*.json` bundled derived track maps
@@ -72,7 +72,7 @@ Velopack package assets are generated from that audited publish folder. The pack
    %LOCALAPPDATA%\Programs\TmrOverlay
    ```
 
-7. Run `TmrOverlay.App.exe`.
+7. Run `TMROverlay.exe`.
 
 The app stores settings, history, logs, diagnostics bundles, and captures under `%LOCALAPPDATA%\TmrOverlay` by default. Replacing the portable application folder or updating an installed Velopack build does not delete that user data.
 
@@ -112,7 +112,7 @@ To upgrade a portable release:
 1. Exit TmrOverlay from the settings window or tray menu.
 2. Keep or rename the old unzipped application folder.
 3. Unzip the new release into a fresh folder, or replace the old application files while the app is closed.
-4. Start `TmrOverlay.App.exe`.
+4. Start `TMROverlay.exe`.
 
 To roll back, close the app and run the previous unzipped folder again. User settings/history remain in `%LOCALAPPDATA%\TmrOverlay`; if a future release changes a durable schema, the branch must document migration and compatibility before release.
 

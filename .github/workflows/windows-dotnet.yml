@@ -126,7 +126,7 @@ jobs:
             --packId "TechMatesRacing.TmrOverlay" `
             --packVersion "${{ steps.publish_dry_run.outputs.version }}" `
             --packDir "${{ steps.publish_dry_run.outputs.publish_path }}" `
-            --mainExe "TmrOverlay.App.exe" `
+            --mainExe "TMROverlay.exe" `
             --packTitle "Tech Mates Racing Overlay" `
             --packAuthors "Tech Mates Racing" `
             --outputDir $velopackPath `
@@ -264,7 +264,7 @@ jobs:
             --packId "TechMatesRacing.TmrOverlay" `
             --packVersion "${{ steps.release_metadata.outputs.version }}" `
             --packDir $publishPath `
-            --mainExe "TmrOverlay.App.exe" `
+            --mainExe "TMROverlay.exe" `
             --packTitle "Tech Mates Racing Overlay" `
             --packAuthors "Tech Mates Racing" `
             --outputDir $velopackPath `

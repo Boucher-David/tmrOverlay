@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text.Json.Nodes;
+using TmrOverlay.App.Events;
 using TmrOverlay.App.Localhost;
 using Microsoft.Extensions.Logging.Abstractions;
 using TmrOverlay.App.Diagnostics;

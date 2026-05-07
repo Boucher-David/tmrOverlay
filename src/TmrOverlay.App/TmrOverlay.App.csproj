@@ -6,7 +6,7 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyName>TmrOverlay.App</AssemblyName>
+    <AssemblyName>TMROverlay</AssemblyName>
     <RootNamespace>TmrOverlay.App</RootNamespace>
     <ApplicationIcon>Assets\TmrOverlay.ico</ApplicationIcon>
   </PropertyGroup>
