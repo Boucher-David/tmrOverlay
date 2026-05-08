@@ -18,19 +18,41 @@ internal sealed record RelativeBrowserSettings(
     {
         var relative = settings.Overlays.FirstOrDefault(
             overlay => string.Equals(overlay.Id, RelativeOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase));
+        var carsEachSide = CarsEachSide(relative);
         return new RelativeBrowserSettings(
-            CarsAhead: relative?.GetIntegerOption(
-                OverlayOptionKeys.RelativeCarsAhead,
-                defaultValue: Default.CarsAhead,
-                minimum: 0,
-                maximum: 8) ?? Default.CarsAhead,
-            CarsBehind: relative?.GetIntegerOption(
-                OverlayOptionKeys.RelativeCarsBehind,
-                defaultValue: Default.CarsBehind,
-                minimum: 0,
-                maximum: 8) ?? Default.CarsBehind,
+            CarsAhead: carsEachSide,
+            CarsBehind: carsEachSide,
             Columns: OverlayContentColumnSettings.BrowserColumnsFor(
                 relative,
                 OverlayContentColumnSettings.Relative));
+    }
+
+    private static int CarsEachSide(OverlaySettings? relative)
+    {
+        if (relative is null)
+        {
+            return Default.CarsAhead;
+        }
+
+        if (relative.Options.ContainsKey(OverlayOptionKeys.RelativeCarsEachSide))
+        {
+            return relative.GetIntegerOption(
+                OverlayOptionKeys.RelativeCarsEachSide,
+                defaultValue: Default.CarsAhead,
+                minimum: 0,
+                maximum: 8);
+        }
+
+        return Math.Max(
+            relative.GetIntegerOption(
+                OverlayOptionKeys.RelativeCarsAhead,
+                defaultValue: Default.CarsAhead,
+                minimum: 0,
+                maximum: 8),
+            relative.GetIntegerOption(
+                OverlayOptionKeys.RelativeCarsBehind,
+                defaultValue: Default.CarsBehind,
+                minimum: 0,
+                maximum: 8));
     }
 }

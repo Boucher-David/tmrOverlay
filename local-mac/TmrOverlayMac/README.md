@@ -126,6 +126,18 @@ Render only the design-v2 contact sheet with:
 TMR_MAC_SCREENSHOT_ONLY_DESIGN_V2=true swift run TmrOverlayMacScreenshots
 ```
 
+Render only the Design V2 component review artifacts with:
+
+```bash
+TMR_MAC_SCREENSHOT_ONLY_DESIGN_V2_COMPONENTS=true swift run TmrOverlayMacScreenshots
+```
+
+Open the live mac-harness Design V2 component overlay with:
+
+```bash
+TMR_MAC_DESIGN_V2_COMPONENTS_DEMO=outrun ./run.sh
+```
+
 ## Tests
 
 The mac harness is split into a testable `TmrOverlayMacCore` target plus a tiny executable target. Run tests with:

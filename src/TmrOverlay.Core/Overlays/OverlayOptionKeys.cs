@@ -23,6 +23,7 @@ internal static class OverlayOptionKeys
     public const string StandingsColumnGapWidth = "standings.column.gap-width";
     public const string StandingsColumnIntervalWidth = "standings.column.interval-width";
     public const string StandingsColumnPitWidth = "standings.column.pit-width";
+    public const string RelativeCarsEachSide = "relative.cars-each-side";
     public const string RelativeCarsAhead = "relative.cars-ahead";
     public const string RelativeCarsBehind = "relative.cars-behind";
     public const string InputShowThrottle = "input-state.current.throttle";
@@ -35,6 +36,7 @@ internal static class OverlayOptionKeys
     public const string GapCarsBehind = "gap.cars-behind";
     public const string GapRaceOnlyDefaultApplied = "gap.race-only-default-applied";
     public const string TrackMapBuildFromTelemetry = "track-map.build-from-telemetry";
+    public const string TrackMapSectorBoundariesEnabled = "track-map.sector-boundaries.enabled";
     public const string StreamChatProvider = "stream-chat.provider";
     public const string StreamChatStreamlabsUrl = "stream-chat.streamlabs-url";
     public const string StreamChatTwitchChannel = "stream-chat.twitch-channel";

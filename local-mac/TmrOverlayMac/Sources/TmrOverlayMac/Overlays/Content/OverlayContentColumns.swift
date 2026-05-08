@@ -68,7 +68,6 @@ enum OverlayContentColumns {
     static let dataGap = "gap"
     static let dataInterval = "interval"
     static let dataPit = "pit"
-    static let dataDirection = "direction"
     static let dataRelativePosition = "relative-position"
     static let standingsClassPositionColumnId = "standings.class-position"
     static let standingsCarNumberColumnId = "standings.car-number"
@@ -76,7 +75,6 @@ enum OverlayContentColumns {
     static let standingsGapColumnId = "standings.gap"
     static let standingsIntervalColumnId = "standings.interval"
     static let standingsPitColumnId = "standings.pit"
-    static let relativeDirectionColumnId = "relative.direction"
     static let relativePositionColumnId = "relative.position"
     static let relativeDriverColumnId = "relative.driver"
     static let relativeGapColumnId = "relative.gap"
@@ -122,11 +120,10 @@ enum OverlayContentColumns {
     static let relative = OverlayContentDefinition(
         overlayId: RelativeOverlayDefinition.definition.id,
         columns: [
-            OverlayContentColumnDefinition(id: relativeDirectionColumnId, label: "Dir", dataKey: dataDirection, defaultEnabled: false, defaultOrder: 1, defaultWidth: 74, minimumWidth: 54, maximumWidth: 120),
-            OverlayContentColumnDefinition(id: relativePositionColumnId, label: "Pos", dataKey: dataRelativePosition, defaultEnabled: true, defaultOrder: 2, defaultWidth: 58, minimumWidth: 44, maximumWidth: 100),
-            OverlayContentColumnDefinition(id: relativeDriverColumnId, label: "Driver", dataKey: dataDriver, defaultEnabled: true, defaultOrder: 3, defaultWidth: 300, minimumWidth: 180, maximumWidth: 520, alignment: .left),
-            OverlayContentColumnDefinition(id: relativeGapColumnId, label: "Gap", dataKey: dataGap, defaultEnabled: true, defaultOrder: 4, defaultWidth: 92, minimumWidth: 64, maximumWidth: 160),
-            OverlayContentColumnDefinition(id: relativePitColumnId, label: "Pit", dataKey: dataPit, defaultEnabled: false, defaultOrder: 5, defaultWidth: 46, minimumWidth: 34, maximumWidth: 90)
+            OverlayContentColumnDefinition(id: relativePositionColumnId, label: "Pos", dataKey: dataRelativePosition, defaultEnabled: true, defaultOrder: 1, defaultWidth: 58, minimumWidth: 44, maximumWidth: 100),
+            OverlayContentColumnDefinition(id: relativeDriverColumnId, label: "Driver", dataKey: dataDriver, defaultEnabled: true, defaultOrder: 2, defaultWidth: 300, minimumWidth: 180, maximumWidth: 520, alignment: .left),
+            OverlayContentColumnDefinition(id: relativeGapColumnId, label: "Gap", dataKey: dataGap, defaultEnabled: true, defaultOrder: 3, defaultWidth: 92, minimumWidth: 64, maximumWidth: 160),
+            OverlayContentColumnDefinition(id: relativePitColumnId, label: "Pit", dataKey: dataPit, defaultEnabled: false, defaultOrder: 4, defaultWidth: 46, minimumWidth: 34, maximumWidth: 90)
         ],
         browserWidthPadding: 42,
         browserMinimumHeight: 360,

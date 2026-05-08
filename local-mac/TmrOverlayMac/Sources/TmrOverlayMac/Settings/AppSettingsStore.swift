@@ -312,8 +312,9 @@ enum AppSettingsMigrator {
         normalized.width = max(0, normalized.width)
         normalized.height = max(0, normalized.height)
         normalized.opacity = clampFinite(normalized.opacity, minimum: 0.2, maximum: 1.0, fallback: 0.88)
-        normalized.relativeCarsAhead = min(max(normalized.relativeCarsAhead, 0), 8)
-        normalized.relativeCarsBehind = min(max(normalized.relativeCarsBehind, 0), 8)
+        let relativeCarsEachSide = min(max(max(normalized.relativeCarsAhead, normalized.relativeCarsBehind), 0), 8)
+        normalized.relativeCarsAhead = relativeCarsEachSide
+        normalized.relativeCarsBehind = relativeCarsEachSide
         normalized.classGapCarsAhead = min(max(normalized.classGapCarsAhead, 0), 12)
         normalized.classGapCarsBehind = min(max(normalized.classGapCarsBehind, 0), 12)
         normalized.streamChatProvider = normalizedStreamChatProvider(normalized.streamChatProvider)

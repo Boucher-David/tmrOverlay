@@ -9,10 +9,6 @@ enum DesignV2EvidenceKind {
     case stale
     case unavailable
     case error
-
-    var color: NSColor {
-        DesignV2Theme.color(for: self)
-    }
 }
 
 struct DesignV2Badge {

@@ -4,12 +4,14 @@ final class TrackMapView: NSView {
     private static let trackInteriorColor = NSColor(red: 0.035, green: 0.055, blue: 0.071, alpha: 1.0)
     private static let trackHaloColor = NSColor.white.withAlphaComponent(0.32)
     private static let trackLineColor = NSColor(red: 0.87, green: 0.93, blue: 0.96, alpha: 1.0)
+    private static let sectorBoundaryColor = NSColor(red: 0.38, green: 0.78, blue: 1.0, alpha: 0.92)
     private static let personalBestSectorColor = NSColor(red: 0.18, green: 0.94, blue: 0.43, alpha: 1.0)
     private static let bestLapSectorColor = NSColor(red: 0.71, green: 0.36, blue: 1.0, alpha: 1.0)
     private static let focusMarkerColor = NSColor(red: 0.38, green: 0.78, blue: 1.0, alpha: 1.0)
     private static let defaultMarkerColor = NSColor(red: 0.93, green: 0.96, blue: 0.98, alpha: 0.96)
     private static let markerBorderColor = NSColor(red: 0.03, green: 0.055, blue: 0.07, alpha: 0.90)
     private static let trackInteriorMaximumAlpha: CGFloat = 0.59
+    private static let sectorBoundaryTickLength: CGFloat = 17
     private static let markerSmoothingSeconds = 0.14
 
     private var snapshot: LiveTelemetrySnapshot = .empty
@@ -18,6 +20,11 @@ final class TrackMapView: NSView {
 
     var fontFamily = OverlayTheme.defaultFontFamily
     var internalOpacity: Double = 0.88 {
+        didSet {
+            needsDisplay = true
+        }
+    }
+    var showSectorBoundaries = true {
         didSet {
             needsDisplay = true
         }
@@ -77,6 +84,9 @@ final class TrackMapView: NSView {
         line.stroke()
 
         drawSectorHighlights(in: rect)
+        if showSectorBoundaries {
+            drawSectorBoundaries(in: rect)
+        }
     }
 
     private func drawSectorHighlights(in rect: NSRect) {
@@ -123,6 +133,46 @@ final class TrackMapView: NSView {
         highlight == LiveTrackSectorHighlights.bestLap
             ? Self.bestLapSectorColor
             : Self.personalBestSectorColor
+    }
+
+    private func drawSectorBoundaries(in rect: NSRect) {
+        guard snapshot.models.trackMap.sectors.count >= 2 else {
+            return
+        }
+
+        Self.sectorBoundaryColor.setStroke()
+        for progress in sectorBoundaryProgresses() {
+            let point = point(on: rect, progress: progress)
+            let center = NSPoint(x: rect.midX, y: rect.midY)
+            let dx = point.x - center.x
+            let dy = point.y - center.y
+            let length = max(0.001, sqrt(dx * dx + dy * dy))
+            let unitX = dx / length
+            let unitY = dy / length
+            let half = Self.sectorBoundaryTickLength / 2
+            let path = NSBezierPath()
+            path.lineWidth = 2.2
+            path.lineCapStyle = .round
+            path.move(to: NSPoint(x: point.x - unitX * half, y: point.y - unitY * half))
+            path.line(to: NSPoint(x: point.x + unitX * half, y: point.y + unitY * half))
+            path.stroke()
+        }
+    }
+
+    private func sectorBoundaryProgresses() -> [Double] {
+        var seen: Set<Int> = []
+        var progresses: [Double] = []
+        for sector in snapshot.models.trackMap.sectors {
+            let progress = normalize(sector.startPct)
+            let key = Int((progress * 100_000).rounded())
+            guard !seen.contains(key) else {
+                continue
+            }
+
+            seen.insert(key)
+            progresses.append(progress)
+        }
+        return progresses
     }
 
     private func drawMarkers(in rect: NSRect) {

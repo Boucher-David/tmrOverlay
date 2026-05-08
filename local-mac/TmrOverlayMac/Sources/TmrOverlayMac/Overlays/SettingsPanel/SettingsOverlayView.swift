@@ -704,12 +704,14 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
             ))
             return true
         case "relative":
-            content.addSubview(label("Cars ahead", frame: NSRect(x: 22, y: top, width: 110, height: 24)))
-            let ahead = countPopup(value: overlay.relativeCarsAhead, frame: NSRect(x: 136, y: top - 2, width: 76, height: 28), identifier: "\(definition.id)|relativeAhead", maximum: 8)
-            content.addSubview(ahead)
-            content.addSubview(label("Cars behind", frame: NSRect(x: 238, y: top, width: 110, height: 24)))
-            let behind = countPopup(value: overlay.relativeCarsBehind, frame: NSRect(x: 356, y: top - 2, width: 76, height: 28), identifier: "\(definition.id)|relativeBehind", maximum: 8)
-            content.addSubview(behind)
+            content.addSubview(label("Cars each side", frame: NSRect(x: 22, y: top, width: 130, height: 24)))
+            let eachSide = max(overlay.relativeCarsAhead, overlay.relativeCarsBehind)
+            content.addSubview(countPopup(
+                value: eachSide,
+                frame: NSRect(x: 158, y: top - 2, width: 76, height: 28),
+                identifier: "\(definition.id)|relativeEachSide",
+                maximum: 8
+            ))
             return true
         case "track-map":
             content.addSubview(label("Map sources", frame: NSRect(x: 18, y: top, width: 520, height: 24), bold: true))
@@ -718,12 +720,18 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
             content.addSubview(label("Generation", frame: NSRect(x: 22, y: top - 84, width: 120, height: 24)))
             content.addSubview(valueLabel("Automatic after sessions; complete maps are skipped", frame: NSRect(x: 150, y: top - 88, width: 390, height: 28)))
             content.addSubview(checkbox(
+                title: "Show sector boundaries",
+                state: optionBool(overlay, key: "track-map.sector-boundaries.enabled", defaultValue: true),
+                frame: NSRect(x: 22, y: top - 128, width: 230, height: 24),
+                identifier: "\(definition.id)|track-map.sector-boundaries.enabled"
+            ))
+            content.addSubview(checkbox(
                 title: "Build local maps from IBT telemetry",
                 state: overlay.trackMapBuildFromTelemetry,
-                frame: NSRect(x: 22, y: top - 128, width: 310, height: 24),
+                frame: NSRect(x: 22, y: top - 164, width: 310, height: 24),
                 identifier: "\(definition.id)|trackMapBuildFromTelemetry"
             ))
-            content.addSubview(label("Derived geometry stays local. Bundled maps still work when this is off.", frame: NSRect(x: 22, y: top - 164, width: 520, height: 24)))
+            content.addSubview(label("Derived geometry stays local. Bundled maps still work when this is off.", frame: NSRect(x: 22, y: top - 200, width: 520, height: 24)))
             content.addSubview(label("Bundled coverage", frame: NSRect(x: 560, y: 278, width: 520, height: 24), bold: true))
             content.addSubview(label("Reviewed app maps load automatically for matching tracks.", frame: NSRect(x: 564, y: 236, width: 430, height: 24)))
             return true
@@ -1025,10 +1033,10 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         }
 
         switch String(parts[1]) {
-        case "relativeAhead":
-            overlay.relativeCarsAhead = Int(sender.integerValue)
-        case "relativeBehind":
-            overlay.relativeCarsBehind = Int(sender.integerValue)
+        case "relativeEachSide":
+            let value = min(max(Int(sender.integerValue), 0), 8)
+            overlay.relativeCarsAhead = value
+            overlay.relativeCarsBehind = value
         case "gapAhead":
             overlay.classGapCarsAhead = Int(sender.integerValue)
         case "gapBehind":
@@ -1050,10 +1058,10 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         }
 
         switch String(parts[1]) {
-        case "relativeAhead":
-            overlay.relativeCarsAhead = min(max(selectedValue, 0), 8)
-        case "relativeBehind":
-            overlay.relativeCarsBehind = min(max(selectedValue, 0), 8)
+        case "relativeEachSide":
+            let value = min(max(selectedValue, 0), 8)
+            overlay.relativeCarsAhead = value
+            overlay.relativeCarsBehind = value
         case "gapAhead":
             overlay.classGapCarsAhead = min(max(selectedValue, 0), 12)
         case "gapBehind":

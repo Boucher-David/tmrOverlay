@@ -39,6 +39,7 @@ Start here when continuing work in this repo.
 - The mac harness under `local-mac/TmrOverlayMac/` is tracked source now. Keep source/config/tests in sync with shared overlay/settings behavior where practical, while generated `.build`, local app data, captures, logs, and screenshots stay ignored.
 - If you change the raw capture format, update `docs/capture-format.md` and `README.md` in the same pass.
 - Prefer shared Core models/read services, descriptor-driven overlay options, and `OverlayTheme` tokens over one-off UI contracts.
+- Design mocks should combine new visual treatment with current production content contracts by default. Keep the displayed fields, ordering, data source semantics, settings-driven content options, and native/browser parity aligned with the current product unless the mock is explicitly proposing a content change.
 - Product overlays should read normalized live state through `ILiveTelemetrySource`; telemetry providers should write through `ILiveTelemetrySink`.
 - Mirror shared app/overlay/boilerplate changes in both the Windows app and tracked mac harness unless the work is explicitly Windows/iRacing-specific.
 - In the Windows app, fully qualify timer types: use `System.Threading.Timer` for hosted/background services and `System.Windows.Forms.Timer` for UI refresh loops. WinForms implicit globals import both namespaces, so bare `Timer` is ambiguous on Windows.

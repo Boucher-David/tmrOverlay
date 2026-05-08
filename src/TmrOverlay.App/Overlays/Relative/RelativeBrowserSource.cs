@@ -76,8 +76,6 @@ internal static class RelativeBrowserSource
 
     function relativeColumnValue(row, dataKey) {
       switch (dataKey) {
-        case 'direction':
-          return row.isAhead ? 'Ahead' : row.isBehind ? 'Behind' : 'Near';
         case 'relative-position':
           return row.positionLabel || '--';
         case 'driver':
@@ -121,15 +119,12 @@ internal static class RelativeBrowserSource
 
     function normalizeRelativeDataKey(value, columnId) {
       const normalized = String(value || '').toLowerCase();
-      if (['direction', 'relative-position', 'driver', 'gap', 'pit'].includes(normalized)) {
+      if (['relative-position', 'driver', 'gap', 'pit'].includes(normalized)) {
         return normalized;
       }
 
       const legacyId = String(columnId || '').toLowerCase();
       switch (legacyId) {
-        case 'direction':
-        case 'relative.direction':
-          return 'direction';
         case 'position':
         case 'relative.position':
           return 'relative-position';
@@ -224,7 +219,7 @@ internal static class RelativeBrowserSource
     }
 
     function relativeGap(row, direction) {
-      const sign = direction === 'ahead' ? '-' : '+';
+      const sign = direction === 'ahead' ? '+' : '-';
       if (Number.isFinite(row.relativeSeconds)) return `${sign}${Math.abs(row.relativeSeconds).toFixed(3)}`;
       if (Number.isFinite(row.relativeMeters)) return `${sign}${Math.abs(row.relativeMeters).toFixed(0)}m`;
       if (Number.isFinite(row.relativeLaps)) return `${sign}${Math.abs(row.relativeLaps).toFixed(3)}L`;
@@ -240,9 +235,9 @@ internal static class RelativeBrowserSource
 
     function positionLabel(row, fallbackRow) {
       const classPosition = row?.classPosition ?? fallbackRow?.classPosition;
-      if (Number.isFinite(classPosition) && classPosition > 0) return `C${classPosition}`;
+      if (Number.isFinite(classPosition) && classPosition > 0) return `${classPosition}`;
       const overallPosition = row?.overallPosition ?? fallbackRow?.overallPosition;
-      return Number.isFinite(overallPosition) && overallPosition > 0 ? `P${overallPosition}` : null;
+      return Number.isFinite(overallPosition) && overallPosition > 0 ? `${overallPosition}` : null;
     }
 
     function timingRows(live) {

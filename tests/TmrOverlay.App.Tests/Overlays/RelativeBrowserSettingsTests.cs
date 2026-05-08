@@ -8,7 +8,33 @@ namespace TmrOverlay.App.Tests.Overlays;
 public sealed class RelativeBrowserSettingsTests
 {
     [Fact]
-    public void From_UsesConfiguredAheadAndBehindCounts()
+    public void From_UsesConfiguredCarsEachSideForBothDirections()
+    {
+        var settings = new ApplicationSettings();
+        var relative = settings.GetOrAddOverlay("relative", 520, 360);
+        relative.SetIntegerOption(OverlayOptionKeys.RelativeCarsEachSide, 3, 0, 8);
+
+        var browserSettings = RelativeBrowserSettings.From(settings);
+
+        Assert.Equal(3, browserSettings.CarsAhead);
+        Assert.Equal(3, browserSettings.CarsBehind);
+    }
+
+    [Fact]
+    public void From_ClampsConfiguredCarsEachSide()
+    {
+        var settings = new ApplicationSettings();
+        var relative = settings.GetOrAddOverlay("relative", 520, 360);
+        relative.Options[OverlayOptionKeys.RelativeCarsEachSide] = "99";
+
+        var browserSettings = RelativeBrowserSettings.From(settings);
+
+        Assert.Equal(8, browserSettings.CarsAhead);
+        Assert.Equal(8, browserSettings.CarsBehind);
+    }
+
+    [Fact]
+    public void From_MigratesLegacySplitCountsToLargestSide()
     {
         var settings = new ApplicationSettings();
         var relative = settings.GetOrAddOverlay("relative", 520, 360);
@@ -17,22 +43,8 @@ public sealed class RelativeBrowserSettingsTests
 
         var browserSettings = RelativeBrowserSettings.From(settings);
 
-        Assert.Equal(3, browserSettings.CarsAhead);
+        Assert.Equal(7, browserSettings.CarsAhead);
         Assert.Equal(7, browserSettings.CarsBehind);
-    }
-
-    [Fact]
-    public void From_ClampsConfiguredCounts()
-    {
-        var settings = new ApplicationSettings();
-        var relative = settings.GetOrAddOverlay("relative", 520, 360);
-        relative.Options[OverlayOptionKeys.RelativeCarsAhead] = "99";
-        relative.Options[OverlayOptionKeys.RelativeCarsBehind] = "-2";
-
-        var browserSettings = RelativeBrowserSettings.From(settings);
-
-        Assert.Equal(8, browserSettings.CarsAhead);
-        Assert.Equal(0, browserSettings.CarsBehind);
     }
 
     [Fact]

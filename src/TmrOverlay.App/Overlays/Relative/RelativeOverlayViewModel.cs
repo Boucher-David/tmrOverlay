@@ -174,12 +174,12 @@ internal sealed record RelativeOverlayViewModel(
     {
         if (classPosition is > 0)
         {
-            return $"C{classPosition.Value.ToString(CultureInfo.InvariantCulture)}";
+            return classPosition.Value.ToString(CultureInfo.InvariantCulture);
         }
 
         if (overallPosition is > 0)
         {
-            return $"P{overallPosition.Value.ToString(CultureInfo.InvariantCulture)}";
+            return overallPosition.Value.ToString(CultureInfo.InvariantCulture);
         }
 
         return "--";
@@ -214,7 +214,7 @@ internal sealed record RelativeOverlayViewModel(
 
     private static string FormatRelativeGap(LiveRelativeRow row, RelativeRowDirection direction)
     {
-        var sign = direction == RelativeRowDirection.Ahead ? "-" : "+";
+        var sign = direction == RelativeRowDirection.Ahead ? "+" : "-";
         if (row.RelativeSeconds is { } seconds && IsFinite(seconds))
         {
             return $"{sign}{Math.Abs(seconds).ToString("0.000", CultureInfo.InvariantCulture)}";

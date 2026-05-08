@@ -1339,11 +1339,23 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         page.Controls.Add(CreateValueLabel("Best available bundled or local map; circle fallback when none match", 150, top + 36, 560, 30));
         page.Controls.Add(CreateLabel("Generation", 22, top + 84, 120));
         page.Controls.Add(CreateValueLabel("Automatic after sessions; complete layouts are skipped", 150, top + 78, 520, 30));
+        var sectorBoundaryCheckBox = CreateCheckBox(
+            "Show sector boundaries",
+            settings.GetBooleanOption(OverlayOptionKeys.TrackMapSectorBoundariesEnabled, defaultValue: true),
+            22,
+            top + 122,
+            240);
+        sectorBoundaryCheckBox.CheckedChanged += (_, _) =>
+        {
+            settings.SetBooleanOption(OverlayOptionKeys.TrackMapSectorBoundariesEnabled, sectorBoundaryCheckBox.Checked);
+            SaveAndApply();
+        };
+        page.Controls.Add(sectorBoundaryCheckBox);
         var buildCheckBox = CreateCheckBox(
             "Build local maps from IBT telemetry",
             settings.GetBooleanOption(OverlayOptionKeys.TrackMapBuildFromTelemetry, defaultValue: true),
             22,
-            top + 122,
+            top + 158,
             320);
         buildCheckBox.CheckedChanged += (_, _) =>
         {
@@ -1351,7 +1363,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             SaveAndApply();
         };
         page.Controls.Add(buildCheckBox);
-        page.Controls.Add(CreateMutedLabel("Derived geometry stays on this PC and source IBT files are not copied into TMR storage. Turning this off still uses bundled app maps.", 22, top + 158, 680));
+        page.Controls.Add(CreateMutedLabel("Derived geometry stays on this PC and source IBT files are not copied into TMR storage. Turning this off still uses bundled app maps.", 22, top + 194, 680));
 
         const int coverageX = 560;
         const int coverageTop = 206;

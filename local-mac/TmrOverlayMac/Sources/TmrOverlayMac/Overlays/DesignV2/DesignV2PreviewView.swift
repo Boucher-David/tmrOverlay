@@ -2,6 +2,7 @@ import AppKit
 
 final class DesignV2PreviewView: NSView {
     private let scenario: DesignV2PreviewScenario
+    private let theme: DesignV2Theme
     private let fontFamily: String
 
     override var isFlipped: Bool {
@@ -10,10 +11,12 @@ final class DesignV2PreviewView: NSView {
 
     init(
         scenario: DesignV2PreviewScenario,
-        frame: NSRect = NSRect(origin: .zero, size: DesignV2Theme.Layout.previewSize),
+        theme: DesignV2Theme = .current,
+        frame: NSRect = NSRect(origin: .zero, size: DesignV2Theme.current.layout.previewSize),
         fontFamily: String = OverlayTheme.defaultFontFamily
     ) {
         self.scenario = scenario
+        self.theme = theme
         self.fontFamily = fontFamily
         super.init(frame: frame)
         wantsLayer = false
@@ -29,9 +32,9 @@ final class DesignV2PreviewView: NSView {
         let outer = bounds.insetBy(dx: 1, dy: 1)
         drawRounded(
             outer,
-            radius: DesignV2Theme.Layout.cornerRadius,
-            fill: DesignV2Theme.Colors.surface,
-            stroke: DesignV2Theme.Colors.border,
+            radius: theme.layout.cornerRadius,
+            fill: theme.colors.surface,
+            stroke: theme.colors.border,
             lineWidth: 1
         )
         drawAccent(in: outer)
@@ -68,7 +71,7 @@ final class DesignV2PreviewView: NSView {
     }
 
     private func drawAccent(in rect: NSRect) {
-        guard let primary = scenario.badges.first?.evidence.color else {
+        guard let primary = scenario.badges.first.map({ theme.color(for: $0.evidence) }) else {
             return
         }
 
@@ -81,13 +84,13 @@ final class DesignV2PreviewView: NSView {
             scenario.title,
             in: NSRect(x: rect.minX + 18, y: rect.minY + 16, width: 280, height: 24),
             font: font(size: 18, weight: .semibold),
-            color: DesignV2Theme.Colors.textPrimary
+            color: theme.colors.textPrimary
         )
         drawText(
             scenario.subtitle,
             in: NSRect(x: rect.minX + 18, y: rect.minY + 42, width: 410, height: 20),
             font: font(size: 11),
-            color: DesignV2Theme.Colors.textMuted
+            color: theme.colors.textMuted
         )
 
         var nextX = rect.maxX - 18
@@ -104,7 +107,7 @@ final class DesignV2PreviewView: NSView {
             "Primary Readout",
             in: NSRect(x: rect.minX, y: rect.minY, width: rect.width, height: 18),
             font: font(size: 10, weight: .semibold),
-            color: DesignV2Theme.Colors.textMuted
+            color: theme.colors.textMuted
         )
 
         var rowY = rect.minY + 26
@@ -117,13 +120,13 @@ final class DesignV2PreviewView: NSView {
     private func drawMetric(_ metric: DesignV2Metric, in rect: NSRect) {
         drawRounded(
             rect,
-            radius: DesignV2Theme.Layout.panelRadius,
-            fill: DesignV2Theme.Colors.surfaceRaised,
-            stroke: DesignV2Theme.Colors.borderMuted,
+            radius: theme.layout.panelRadius,
+            fill: theme.colors.surfaceRaised,
+            stroke: theme.colors.borderMuted,
             lineWidth: 1
         )
 
-        let color = metric.evidence.color
+        let color = theme.color(for: metric.evidence)
         drawRounded(
             NSRect(x: rect.minX, y: rect.minY + 8, width: 3, height: rect.height - 16),
             radius: 1.5,
@@ -136,20 +139,20 @@ final class DesignV2PreviewView: NSView {
             metric.title.uppercased(),
             in: NSRect(x: rect.minX + 14, y: rect.minY + 9, width: 96, height: 16),
             font: font(size: 9, weight: .semibold),
-            color: DesignV2Theme.Colors.textMuted
+            color: theme.colors.textMuted
         )
         drawText(
             metric.value,
             in: NSRect(x: rect.maxX - 116, y: rect.minY + 8, width: 102, height: 20),
             font: font(size: 16, weight: .semibold),
-            color: DesignV2Theme.Colors.textPrimary,
+            color: theme.colors.textPrimary,
             alignment: .right
         )
         drawText(
             metric.detail,
             in: NSRect(x: rect.minX + 14, y: rect.minY + 30, width: rect.width - 28, height: 16),
             font: font(size: 10),
-            color: DesignV2Theme.Colors.textSecondary
+            color: theme.colors.textSecondary
         )
     }
 
@@ -164,13 +167,13 @@ final class DesignV2PreviewView: NSView {
             title,
             in: NSRect(x: rect.minX + 14, y: rect.minY + 12, width: 170, height: 18),
             font: font(size: 12, weight: .semibold),
-            color: DesignV2Theme.Colors.textPrimary
+            color: theme.colors.textPrimary
         )
         drawText(
             tag,
             in: NSRect(x: rect.maxX - 138, y: rect.minY + 13, width: 124, height: 16),
             font: font(size: 10),
-            color: DesignV2Theme.Colors.textMuted,
+            color: theme.colors.textMuted,
             alignment: .right
         )
 
@@ -178,8 +181,8 @@ final class DesignV2PreviewView: NSView {
         drawRounded(
             tableRect,
             radius: 5,
-            fill: DesignV2Theme.Colors.surfaceInset,
-            stroke: DesignV2Theme.Colors.borderMuted,
+            fill: theme.colors.surfaceInset,
+            stroke: theme.colors.borderMuted,
             lineWidth: 1
         )
 
@@ -199,12 +202,12 @@ final class DesignV2PreviewView: NSView {
                 column,
                 in: cellRect,
                 font: font(size: 8.5, weight: .semibold),
-                color: DesignV2Theme.Colors.textMuted,
+                color: theme.colors.textMuted,
                 alignment: index >= max(0, columnCount - 3) ? .right : .left
             )
         }
 
-        DesignV2Theme.Colors.gridLine.setStroke()
+        theme.colors.gridLine.setStroke()
         let headerLine = NSBezierPath()
         headerLine.move(to: NSPoint(x: tableRect.minX + 1, y: tableRect.minY + headerHeight))
         headerLine.line(to: NSPoint(x: tableRect.maxX - 1, y: tableRect.minY + headerHeight))
@@ -215,15 +218,8 @@ final class DesignV2PreviewView: NSView {
             let rowY = tableRect.minY + headerHeight + CGFloat(rowIndex) * rowHeight
             let rowRect = NSRect(x: tableRect.minX + 1, y: rowY, width: tableRect.width - 2, height: rowHeight)
             if rowIndex == table.highlightedRowIndex {
-                DesignV2Theme.Colors.measured.withAlphaComponent(0.13).setFill()
+                theme.colors.measured.withAlphaComponent(0.13).setFill()
                 rowRect.fill()
-                drawRounded(
-                    NSRect(x: rowRect.minX + 1, y: rowRect.minY + 6, width: 3, height: rowRect.height - 12),
-                    radius: 1.5,
-                    fill: DesignV2Theme.Colors.measured,
-                    stroke: nil,
-                    lineWidth: 0
-                )
             }
 
             for index in 0..<columnCount {
@@ -238,11 +234,37 @@ final class DesignV2PreviewView: NSView {
                     value,
                     in: cellRect,
                     font: font(size: index == 3 ? 10 : 9.5, weight: rowIndex == table.highlightedRowIndex ? .semibold : .regular),
-                    color: rowIndex == table.highlightedRowIndex ? DesignV2Theme.Colors.textPrimary : DesignV2Theme.Colors.textSecondary,
+                    color: telemetryTableTextColor(
+                        value: value,
+                        columnIndex: index,
+                        columnCount: columnCount,
+                        rowIndex: rowIndex,
+                        highlightedRowIndex: table.highlightedRowIndex
+                    ),
                     alignment: index >= max(0, columnCount - 3) ? .right : .left
                 )
             }
         }
+    }
+
+    private func telemetryTableTextColor(
+        value: String,
+        columnIndex: Int,
+        columnCount: Int,
+        rowIndex: Int,
+        highlightedRowIndex: Int?
+    ) -> NSColor {
+        if scenario.mode == .relativeTable && columnIndex == columnCount - 1 {
+            if value.hasPrefix("-") {
+                return theme.colors.measured
+            }
+
+            if value.hasPrefix("+") {
+                return theme.colors.live
+            }
+        }
+
+        return rowIndex == highlightedRowIndex ? theme.colors.textPrimary : theme.colors.textSecondary
     }
 
     private func drawBlindspotSignal(in rect: NSRect) {
@@ -251,13 +273,13 @@ final class DesignV2PreviewView: NSView {
             "Side Occupancy",
             in: NSRect(x: rect.minX + 14, y: rect.minY + 12, width: 160, height: 18),
             font: font(size: 12, weight: .semibold),
-            color: DesignV2Theme.Colors.textPrimary
+            color: theme.colors.textPrimary
         )
         drawText(
             "CarLeftRight",
             in: NSRect(x: rect.maxX - 138, y: rect.minY + 13, width: 124, height: 16),
             font: font(size: 10),
-            color: DesignV2Theme.Colors.textMuted,
+            color: theme.colors.textMuted,
             alignment: .right
         )
 
@@ -265,8 +287,8 @@ final class DesignV2PreviewView: NSView {
         drawRounded(
             laneRect,
             radius: 7,
-            fill: DesignV2Theme.Colors.surfaceInset,
-            stroke: DesignV2Theme.Colors.borderMuted,
+            fill: theme.colors.surfaceInset,
+            stroke: theme.colors.borderMuted,
             lineWidth: 1
         )
 
@@ -274,15 +296,15 @@ final class DesignV2PreviewView: NSView {
         drawRounded(
             centerCar,
             radius: 6,
-            fill: DesignV2Theme.Colors.measured.withAlphaComponent(0.24),
-            stroke: DesignV2Theme.Colors.measured,
+            fill: theme.colors.measured.withAlphaComponent(0.24),
+            stroke: theme.colors.measured,
             lineWidth: 1
         )
         drawText(
             "YOU",
             in: NSRect(x: centerCar.minX, y: centerCar.midY - 8, width: centerCar.width, height: 16),
             font: font(size: 10, weight: .semibold),
-            color: DesignV2Theme.Colors.textPrimary,
+            color: theme.colors.textPrimary,
             alignment: .center
         )
 
@@ -290,14 +312,14 @@ final class DesignV2PreviewView: NSView {
             title: "LEFT",
             value: "CLEAR",
             active: false,
-            color: DesignV2Theme.Colors.live,
+            color: theme.colors.live,
             in: NSRect(x: laneRect.minX + 16, y: laneRect.minY + 24, width: 120, height: 70)
         )
         drawBlindspotSide(
             title: "RIGHT",
             value: "OVERLAP",
             active: true,
-            color: DesignV2Theme.Colors.partial,
+            color: theme.colors.partial,
             in: NSRect(x: laneRect.maxX - 136, y: laneRect.minY + 24, width: 120, height: 70)
         )
 
@@ -305,15 +327,15 @@ final class DesignV2PreviewView: NSView {
         drawRounded(
             summaryRect,
             radius: 5,
-            fill: DesignV2Theme.Colors.surfaceInset,
-            stroke: DesignV2Theme.Colors.borderMuted,
+            fill: theme.colors.surfaceInset,
+            stroke: theme.colors.borderMuted,
             lineWidth: 1
         )
         drawText(
             "Direct local signal. Hide when the user is spectating, replaying, in garage, or not the focused car.",
             in: summaryRect.insetBy(dx: 12, dy: 13),
             font: font(size: 10),
-            color: DesignV2Theme.Colors.textSecondary
+            color: theme.colors.textSecondary
         )
     }
 
@@ -329,14 +351,14 @@ final class DesignV2PreviewView: NSView {
             title,
             in: NSRect(x: rect.minX + 10, y: rect.minY + 10, width: rect.width - 20, height: 14),
             font: font(size: 9, weight: .semibold),
-            color: DesignV2Theme.Colors.textMuted,
+            color: theme.colors.textMuted,
             alignment: .center
         )
         drawText(
             value,
             in: NSRect(x: rect.minX + 8, y: rect.minY + 30, width: rect.width - 16, height: 24),
             font: font(size: active ? 16 : 14, weight: .bold),
-            color: active ? color : DesignV2Theme.Colors.textSecondary,
+            color: active ? color : theme.colors.textSecondary,
             alignment: .center
         )
     }
@@ -347,13 +369,13 @@ final class DesignV2PreviewView: NSView {
             "Current Lap Delta",
             in: NSRect(x: rect.minX + 14, y: rect.minY + 12, width: 170, height: 18),
             font: font(size: 12, weight: .semibold),
-            color: DesignV2Theme.Colors.textPrimary
+            color: theme.colors.textPrimary
         )
         drawText(
             scenario.graph?.unitLabel ?? "s vs target",
             in: NSRect(x: rect.maxX - 138, y: rect.minY + 13, width: 124, height: 16),
             font: font(size: 10),
-            color: DesignV2Theme.Colors.textMuted,
+            color: theme.colors.textMuted,
             alignment: .right
         )
 
@@ -361,28 +383,28 @@ final class DesignV2PreviewView: NSView {
             scenario.graph?.valueLabel ?? scenario.metrics.first?.value ?? "--",
             in: NSRect(x: rect.minX + 22, y: rect.minY + 52, width: 180, height: 58),
             font: font(size: 44, weight: .bold),
-            color: DesignV2Theme.Colors.partial
+            color: theme.colors.partial
         )
         drawText(
             "target 8:19.50",
             in: NSRect(x: rect.minX + 26, y: rect.minY + 108, width: 150, height: 16),
             font: font(size: 10),
-            color: DesignV2Theme.Colors.textMuted
+            color: theme.colors.textMuted
         )
 
         let plot = NSRect(x: rect.minX + 24, y: rect.minY + 146, width: rect.width - 48, height: 72)
         drawLineGraph(
             scenario.graph,
             in: plot,
-            lineColor: DesignV2Theme.Colors.partial,
-            referenceColor: DesignV2Theme.Colors.measured
+            lineColor: theme.colors.partial,
+            referenceColor: theme.colors.measured
         )
 
         drawText(
             "simple once the model exposes a current-lap delta or stable local baseline",
             in: NSRect(x: rect.minX + 24, y: plot.maxY + 14, width: rect.width - 48, height: 16),
             font: font(size: 10),
-            color: DesignV2Theme.Colors.textSecondary
+            color: theme.colors.textSecondary
         )
     }
 
@@ -392,13 +414,13 @@ final class DesignV2PreviewView: NSView {
             scenario.graph?.title ?? "Stint Laps",
             in: NSRect(x: rect.minX + 14, y: rect.minY + 12, width: 180, height: 18),
             font: font(size: 12, weight: .semibold),
-            color: DesignV2Theme.Colors.textPrimary
+            color: theme.colors.textPrimary
         )
         drawText(
             scenario.graph?.valueLabel ?? "--",
             in: NSRect(x: rect.maxX - 138, y: rect.minY + 10, width: 124, height: 22),
             font: font(size: 16, weight: .semibold),
-            color: DesignV2Theme.Colors.textPrimary,
+            color: theme.colors.textPrimary,
             alignment: .right
         )
 
@@ -406,23 +428,23 @@ final class DesignV2PreviewView: NSView {
         drawLineGraph(
             scenario.graph,
             in: plot,
-            lineColor: DesignV2Theme.Colors.measured,
-            referenceColor: DesignV2Theme.Colors.history
+            lineColor: theme.colors.measured,
+            referenceColor: theme.colors.history
         )
 
         let summaryRect = NSRect(x: rect.minX + 14, y: plot.maxY + 16, width: rect.width - 28, height: 38)
         drawRounded(
             summaryRect,
             radius: 5,
-            fill: DesignV2Theme.Colors.surfaceRaised,
-            stroke: DesignV2Theme.Colors.borderMuted,
+            fill: theme.colors.surfaceRaised,
+            stroke: theme.colors.borderMuted,
             lineWidth: 1
         )
         drawText(
             "Measured completed laps only. Reset at stint boundaries; no fuel or strategy advice here.",
             in: summaryRect.insetBy(dx: 12, dy: 11),
             font: font(size: 10),
-            color: DesignV2Theme.Colors.textSecondary
+            color: theme.colors.textSecondary
         )
     }
 
@@ -435,14 +457,14 @@ final class DesignV2PreviewView: NSView {
         drawRounded(
             rect,
             radius: 5,
-            fill: DesignV2Theme.Colors.surfaceInset,
-            stroke: DesignV2Theme.Colors.borderMuted,
+            fill: theme.colors.surfaceInset,
+            stroke: theme.colors.borderMuted,
             lineWidth: 1
         )
 
         for index in 1...3 {
             let y = rect.minY + CGFloat(index) * rect.height / 4
-            DesignV2Theme.Colors.gridLine.setStroke()
+            theme.colors.gridLine.setStroke()
             let path = NSBezierPath()
             path.move(to: NSPoint(x: rect.minX + 1, y: y))
             path.line(to: NSPoint(x: rect.maxX - 1, y: y))
@@ -481,14 +503,14 @@ final class DesignV2PreviewView: NSView {
         drawRounded(
             flagRect,
             radius: 6,
-            fill: DesignV2Theme.Colors.live.withAlphaComponent(0.15),
-            stroke: DesignV2Theme.Colors.live.withAlphaComponent(0.74),
+            fill: theme.colors.live.withAlphaComponent(0.15),
+            stroke: theme.colors.live.withAlphaComponent(0.74),
             lineWidth: 1
         )
         drawRounded(
             NSRect(x: flagRect.minX, y: flagRect.minY, width: 5, height: flagRect.height),
             radius: 2.5,
-            fill: DesignV2Theme.Colors.live,
+            fill: theme.colors.live,
             stroke: nil,
             lineWidth: 0
         )
@@ -496,13 +518,13 @@ final class DesignV2PreviewView: NSView {
             "GREEN FLAG",
             in: NSRect(x: flagRect.minX + 18, y: flagRect.minY + 14, width: flagRect.width - 36, height: 28),
             font: font(size: 24, weight: .bold),
-            color: DesignV2Theme.Colors.textPrimary
+            color: theme.colors.textPrimary
         )
         drawText(
             "Race running. No active race-control message.",
             in: NSRect(x: flagRect.minX + 20, y: flagRect.minY + 46, width: flagRect.width - 40, height: 16),
             font: font(size: 11),
-            color: DesignV2Theme.Colors.textSecondary
+            color: theme.colors.textSecondary
         )
 
         var rowY = flagRect.maxY + 18
@@ -518,13 +540,13 @@ final class DesignV2PreviewView: NSView {
             title,
             in: NSRect(x: rect.minX + 14, y: rect.minY + 12, width: 160, height: 18),
             font: font(size: 12, weight: .semibold),
-            color: DesignV2Theme.Colors.textPrimary
+            color: theme.colors.textPrimary
         )
         drawText(
             "source / quality / usability",
             in: NSRect(x: rect.maxX - 188, y: rect.minY + 13, width: 174, height: 16),
             font: font(size: 10),
-            color: DesignV2Theme.Colors.textMuted,
+            color: theme.colors.textMuted,
             alignment: .right
         )
 
@@ -558,21 +580,21 @@ final class DesignV2PreviewView: NSView {
             "Leader Context vs Local Battle",
             in: NSRect(x: rect.minX + 14, y: rect.minY + 12, width: 230, height: 18),
             font: font(size: 12, weight: .semibold),
-            color: DesignV2Theme.Colors.textPrimary
+            color: theme.colors.textPrimary
         )
 
         let plot = NSRect(x: rect.minX + 18, y: rect.minY + 48, width: rect.width - 36, height: 138)
         drawRounded(
             plot,
             radius: 5,
-            fill: DesignV2Theme.Colors.surfaceInset,
-            stroke: DesignV2Theme.Colors.borderMuted,
+            fill: theme.colors.surfaceInset,
+            stroke: theme.colors.borderMuted,
             lineWidth: 1
         )
 
         for index in 1...3 {
             let y = plot.minY + CGFloat(index) * plot.height / 4
-            DesignV2Theme.Colors.gridLine.setStroke()
+            theme.colors.gridLine.setStroke()
             let path = NSBezierPath()
             path.move(to: NSPoint(x: plot.minX + 1, y: y))
             path.line(to: NSPoint(x: plot.maxX - 1, y: y))
@@ -581,7 +603,7 @@ final class DesignV2PreviewView: NSView {
         }
 
         let wetBand = NSRect(x: plot.minX + plot.width * 0.54, y: plot.minY + 1, width: plot.width * 0.22, height: plot.height - 2)
-        DesignV2Theme.Colors.measured.withAlphaComponent(0.11).setFill()
+        theme.colors.measured.withAlphaComponent(0.11).setFill()
         wetBand.fill()
 
         drawLine(
@@ -596,7 +618,7 @@ final class DesignV2PreviewView: NSView {
                 NSPoint(x: 1.00, y: 0.58)
             ],
             in: plot,
-            color: DesignV2Theme.Colors.measured,
+            color: theme.colors.measured,
             width: 2.4
         )
         drawLine(
@@ -609,7 +631,7 @@ final class DesignV2PreviewView: NSView {
                 NSPoint(x: 1.00, y: 0.68)
             ],
             in: plot,
-            color: DesignV2Theme.Colors.history,
+            color: theme.colors.history,
             width: 2
         )
 
@@ -617,13 +639,13 @@ final class DesignV2PreviewView: NSView {
             "+4L leader context",
             in: NSRect(x: plot.minX + 10, y: plot.minY + 9, width: 150, height: 16),
             font: font(size: 10, weight: .semibold),
-            color: DesignV2Theme.Colors.history
+            color: theme.colors.history
         )
         drawText(
             "local class fight stays readable",
             in: NSRect(x: plot.maxX - 182, y: plot.maxY - 24, width: 170, height: 16),
             font: font(size: 10),
-            color: DesignV2Theme.Colors.textSecondary,
+            color: theme.colors.textSecondary,
             alignment: .right
         )
 
@@ -631,15 +653,15 @@ final class DesignV2PreviewView: NSView {
         drawRounded(
             summaryRect,
             radius: 5,
-            fill: DesignV2Theme.Colors.surfaceRaised,
-            stroke: DesignV2Theme.Colors.borderMuted,
+            fill: theme.colors.surfaceRaised,
+            stroke: theme.colors.borderMuted,
             lineWidth: 1
         )
         drawText(
             "Scale policy: leader gap is context; local deltas own the Y-axis.",
             in: summaryRect.insetBy(dx: 12, dy: 11),
             font: font(size: 10),
-            color: DesignV2Theme.Colors.textSecondary
+            color: theme.colors.textSecondary
         )
     }
 
@@ -649,29 +671,29 @@ final class DesignV2PreviewView: NSView {
         drawRounded(
             iconRect,
             radius: 24,
-            fill: DesignV2Theme.Colors.unavailable.withAlphaComponent(0.16),
-            stroke: DesignV2Theme.Colors.unavailable.withAlphaComponent(0.68),
+            fill: theme.colors.unavailable.withAlphaComponent(0.16),
+            stroke: theme.colors.unavailable.withAlphaComponent(0.68),
             lineWidth: 1
         )
         drawText(
             "!",
             in: NSRect(x: iconRect.minX, y: iconRect.minY + 10, width: iconRect.width, height: 28),
             font: font(size: 24, weight: .semibold),
-            color: DesignV2Theme.Colors.unavailable,
+            color: theme.colors.unavailable,
             alignment: .center
         )
         drawText(
             "No Focus-Safe Placement",
             in: NSRect(x: rect.minX + 24, y: rect.minY + 112, width: rect.width - 48, height: 22),
             font: font(size: 15, weight: .semibold),
-            color: DesignV2Theme.Colors.textPrimary,
+            color: theme.colors.textPrimary,
             alignment: .center
         )
         drawText(
             "Timing rows can still feed relative or standings views. Radar side occupancy remains hidden until the focused car is the local player.",
             in: NSRect(x: rect.minX + 36, y: rect.minY + 142, width: rect.width - 72, height: 44),
             font: font(size: 11),
-            color: DesignV2Theme.Colors.textSecondary,
+            color: theme.colors.textSecondary,
             alignment: .center,
             lineBreakMode: .byWordWrapping
         )
@@ -692,14 +714,14 @@ final class DesignV2PreviewView: NSView {
         drawRounded(
             rect,
             radius: 5,
-            fill: DesignV2Theme.Colors.surfaceInset,
-            stroke: DesignV2Theme.Colors.borderMuted,
+            fill: theme.colors.surfaceInset,
+            stroke: theme.colors.borderMuted,
             lineWidth: 1
         )
         drawRounded(
             NSRect(x: rect.minX, y: rect.minY + 7, width: 3, height: rect.height - 14),
             radius: 1.5,
-            fill: row.evidence.color,
+            fill: theme.color(for: row.evidence),
             stroke: nil,
             lineWidth: 0
         )
@@ -708,19 +730,19 @@ final class DesignV2PreviewView: NSView {
             row.label,
             in: NSRect(x: rect.minX + 13, y: rect.minY + 8, width: 106, height: 16),
             font: font(size: 10, weight: .semibold),
-            color: DesignV2Theme.Colors.textSecondary
+            color: theme.colors.textSecondary
         )
         drawText(
             row.value,
             in: NSRect(x: rect.minX + 124, y: rect.minY + 8, width: 120, height: 16),
             font: font(size: 11, weight: .semibold),
-            color: row.evidence.color
+            color: theme.color(for: row.evidence)
         )
         drawText(
             row.detail,
             in: NSRect(x: rect.minX + 13, y: rect.minY + 27, width: rect.width - 26, height: 15),
             font: font(size: 9.5),
-            color: DesignV2Theme.Colors.textMuted
+            color: theme.colors.textMuted
         )
     }
 
@@ -728,8 +750,8 @@ final class DesignV2PreviewView: NSView {
         drawRounded(
             rect,
             radius: 6,
-            fill: DesignV2Theme.Colors.surfaceInset,
-            stroke: DesignV2Theme.Colors.borderMuted,
+            fill: theme.colors.surfaceInset,
+            stroke: theme.colors.borderMuted,
             lineWidth: 1
         )
 
@@ -740,7 +762,7 @@ final class DesignV2PreviewView: NSView {
             scenario.footer,
             in: NSRect(x: rect.minX + width + 20, y: rect.minY + 11, width: rect.width - width - 30, height: 16),
             font: font(size: 10),
-            color: DesignV2Theme.Colors.textSecondary
+            color: theme.colors.textSecondary
         )
     }
 
@@ -756,15 +778,15 @@ final class DesignV2PreviewView: NSView {
     private func drawPanel(_ rect: NSRect) {
         drawRounded(
             rect,
-            radius: DesignV2Theme.Layout.panelRadius,
-            fill: DesignV2Theme.Colors.surfaceRaised,
-            stroke: DesignV2Theme.Colors.borderMuted,
+            radius: theme.layout.panelRadius,
+            fill: theme.colors.surfaceRaised,
+            stroke: theme.colors.borderMuted,
             lineWidth: 1
         )
     }
 
     private func drawBadge(_ badge: DesignV2Badge, in rect: NSRect) {
-        let color = badge.evidence.color
+        let color = theme.color(for: badge.evidence)
         drawRounded(
             rect,
             radius: rect.height / 2,
@@ -778,7 +800,7 @@ final class DesignV2PreviewView: NSView {
             badge.title.uppercased(),
             in: NSRect(x: rect.minX + 18, y: rect.minY + 5, width: rect.width - 24, height: rect.height - 8),
             font: font(size: 9, weight: .semibold),
-            color: DesignV2Theme.Colors.textPrimary
+            color: theme.colors.textPrimary
         )
     }
 
@@ -789,20 +811,11 @@ final class DesignV2PreviewView: NSView {
     }
 
     private func drawLine(points: [NSPoint], in rect: NSRect, color: NSColor, width: CGFloat) {
-        guard let first = points.first else {
-            return
-        }
-
-        let path = NSBezierPath()
-        path.move(to: mapped(first, in: rect))
-        for point in points.dropFirst() {
-            path.line(to: mapped(point, in: rect))
-        }
-        color.setStroke()
-        path.lineWidth = width
-        path.lineCapStyle = .round
-        path.lineJoinStyle = .round
-        path.stroke()
+        DesignV2Drawing.polyline(
+            points: points.map { mapped($0, in: rect) },
+            color: color,
+            width: width
+        )
     }
 
     private func mapped(_ point: NSPoint, in rect: NSRect) -> NSPoint {
@@ -819,16 +832,7 @@ final class DesignV2PreviewView: NSView {
         stroke: NSColor?,
         lineWidth: CGFloat
     ) {
-        let path = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
-        if let fill {
-            fill.setFill()
-            path.fill()
-        }
-        if let stroke, lineWidth > 0 {
-            stroke.setStroke()
-            path.lineWidth = lineWidth
-            path.stroke()
-        }
+        DesignV2Drawing.rounded(rect, radius: radius, fill: fill, stroke: stroke, lineWidth: lineWidth)
     }
 
     private func drawText(
@@ -839,21 +843,17 @@ final class DesignV2PreviewView: NSView {
         alignment: NSTextAlignment = .left,
         lineBreakMode: NSLineBreakMode = .byTruncatingTail
     ) {
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.alignment = alignment
-        paragraph.lineBreakMode = lineBreakMode
-
-        NSString(string: text).draw(
+        DesignV2Drawing.text(
+            text,
             in: rect,
-            withAttributes: [
-                .font: font,
-                .foregroundColor: color,
-                .paragraphStyle: paragraph
-            ]
+            font: font,
+            color: color,
+            alignment: alignment,
+            lineBreakMode: lineBreakMode
         )
     }
 
     private func font(size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
-        OverlayTheme.font(family: fontFamily, size: size, weight: weight)
+        DesignV2Drawing.font(family: fontFamily, size: size, weight: weight)
     }
 }

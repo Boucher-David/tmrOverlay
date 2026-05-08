@@ -36,17 +36,36 @@ internal sealed class RelativeForm : PersistentOverlayForm
     private string? _lastLoggedError;
     private DateTimeOffset? _lastLoggedErrorAtUtc;
 
-    private int CarsAhead => _settings.GetIntegerOption(
-        OverlayOptionKeys.RelativeCarsAhead,
-        defaultValue: 5,
-        minimum: 0,
-        maximum: 8);
+    private int CarsAhead => CarsEachSide;
 
-    private int CarsBehind => _settings.GetIntegerOption(
-        OverlayOptionKeys.RelativeCarsBehind,
-        defaultValue: 5,
-        minimum: 0,
-        maximum: 8);
+    private int CarsBehind => CarsEachSide;
+
+    private int CarsEachSide
+    {
+        get
+        {
+            if (_settings.Options.ContainsKey(OverlayOptionKeys.RelativeCarsEachSide))
+            {
+                return _settings.GetIntegerOption(
+                    OverlayOptionKeys.RelativeCarsEachSide,
+                    defaultValue: 5,
+                    minimum: 0,
+                    maximum: 8);
+            }
+
+            return Math.Max(
+                _settings.GetIntegerOption(
+                    OverlayOptionKeys.RelativeCarsAhead,
+                    defaultValue: 5,
+                    minimum: 0,
+                    maximum: 8),
+                _settings.GetIntegerOption(
+                    OverlayOptionKeys.RelativeCarsBehind,
+                    defaultValue: 5,
+                    minimum: 0,
+                    maximum: 8));
+        }
+    }
 
     public RelativeForm(
         ILiveTelemetrySource liveTelemetrySource,
@@ -574,7 +593,6 @@ internal sealed class RelativeForm : PersistentOverlayForm
     {
         return column.DataKey switch
         {
-            OverlayContentColumnSettings.DataDirection => row.IsAhead ? "Ahead" : row.IsBehind ? "Behind" : "Near",
             OverlayContentColumnSettings.DataRelativePosition => row.Position,
             OverlayContentColumnSettings.DataDriver => row.Driver,
             OverlayContentColumnSettings.DataGap => row.Gap,

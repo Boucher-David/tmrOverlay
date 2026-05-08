@@ -3,9 +3,13 @@
 Generated mac-harness proving-ground screenshots for design-v2 overlay primitives.
 
 - `design-v2-states.png` is the contact sheet for telemetry-first overlay states.
+- `design-v2-components-outrun.png` is the contact sheet for component-level outrun theme review.
+- `components/outrun/` contains individual component review cards rendered from the same mac-harness overlay view used by the live component demo.
 - `states/standings-telemetry.png` shows a simple timing-board window into iRacing standings telemetry.
 - `states/relative-telemetry.png` shows a focus-centered relative table.
 - `states/flag-display.png` shows a minimal race-control/flag state.
 - `states/analysis-exception.png` shows where source/evidence labels still belong: derived analysis products such as fuel, radar, gap, and strategy.
 
 This folder is not a production overlay mock. It is the mac-only proving ground for shared visual language before the Windows overlays adopt the same semantics. The default design direction is direct telemetry first, including local in-car radar. Confidence/source chrome should be quiet unless a value is stale, unavailable, modeled, or derived.
+
+Design V2 review should pair new visual language with current production content contracts. For example, Relative visual mocks should still respect the current Relative content manager defaults and optional fields instead of adding visual-only columns. Only diverge from current production content when the mock is explicitly reviewing a proposed content change.

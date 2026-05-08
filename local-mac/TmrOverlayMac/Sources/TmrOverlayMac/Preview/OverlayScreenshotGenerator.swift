@@ -14,6 +14,18 @@ public enum OverlayScreenshotGenerator {
             return
         }
 
+        if ProcessInfo.processInfo.environment["TMR_MAC_SCREENSHOT_ONLY_DESIGN_V2_COMPONENTS"] == "true" {
+            let designV2Root = outputRoot.appendingPathComponent("design-v2", isDirectory: true)
+            try FileManager.default.createDirectory(at: designV2Root, withIntermediateDirectories: true)
+            try MainActor.assumeIsolated {
+                try renderDesignV2ComponentGallery(
+                    outputURL: designV2Root.appendingPathComponent("design-v2-components-outrun.png"),
+                    theme: .outrun
+                )
+            }
+            return
+        }
+
         if ProcessInfo.processInfo.environment["TMR_MAC_SCREENSHOT_ONLY_GAP"] == "true" {
             let gapToLeaderRoot = outputRoot.appendingPathComponent("gap-to-leader", isDirectory: true)
             try FileManager.default.createDirectory(at: gapToLeaderRoot, withIntermediateDirectories: true)
@@ -43,6 +55,10 @@ public enum OverlayScreenshotGenerator {
         try MainActor.assumeIsolated {
             try renderDesignV2States(
                 outputURL: designV2Root.appendingPathComponent("design-v2-states.png")
+            )
+            try renderDesignV2ComponentGallery(
+                outputURL: designV2Root.appendingPathComponent("design-v2-components-outrun.png"),
+                theme: .outrun
             )
             try renderFuelCalculatorStates(
                 outputURL: fuelRoot.appendingPathComponent("fuel-calculator-states.png")
@@ -120,6 +136,32 @@ public enum OverlayScreenshotGenerator {
             states: sheet.states,
             imageMaxSize: NSSize(width: 740, height: 430),
             outputRoot: outputURL.deletingLastPathComponent()
+        )
+    }
+
+    @MainActor
+    private static func renderDesignV2ComponentGallery(outputURL: URL, theme: DesignV2Theme) throws {
+        let states = try DesignV2ComponentKind.allCases.enumerated().map { index, component in
+            ContactSheetState(
+                title: "\(index + 1). \(component.title)",
+                note: component.note,
+                fileName: component.fileName,
+                image: try renderImage(DesignV2ComponentGalleryView(theme: theme, component: component))
+            )
+        }
+
+        let sheet = ContactSheetView(
+            title: "Design V2 Components - \(theme.displayName)",
+            subtitle: "Real mac-harness overlay component previews rendered from the shared Design V2 token set.",
+            states: states,
+            imageMaxSize: NSSize(width: 450, height: 270)
+        )
+        try render(sheet, to: outputURL)
+        try renderStateCards(
+            states: sheet.states,
+            imageMaxSize: NSSize(width: 450, height: 270),
+            outputRoot: outputURL.deletingLastPathComponent(),
+            folderName: "components/\(theme.id)"
         )
     }
 
@@ -593,8 +635,13 @@ public enum OverlayScreenshotGenerator {
     }
 
     @MainActor
-    private static func renderStateCards(states: [ContactSheetState], imageMaxSize: NSSize, outputRoot: URL) throws {
-        let stateRoot = outputRoot.appendingPathComponent("states", isDirectory: true)
+    private static func renderStateCards(
+        states: [ContactSheetState],
+        imageMaxSize: NSSize,
+        outputRoot: URL,
+        folderName: String = "states"
+    ) throws {
+        let stateRoot = outputRoot.appendingPathComponent(folderName, isDirectory: true)
         try FileManager.default.createDirectory(at: stateRoot, withIntermediateDirectories: true)
         for state in states {
             let view = StateCardView(state: state, imageMaxSize: imageMaxSize)

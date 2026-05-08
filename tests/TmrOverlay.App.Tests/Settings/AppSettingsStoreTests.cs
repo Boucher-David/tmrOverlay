@@ -97,6 +97,7 @@ public sealed class AppSettingsStoreTests
             Assert.Equal(1d, overlay.Opacity);
             Assert.Equal(0, overlay.GetIntegerOption(OverlayOptionKeys.GapCarsAhead, 5, 0, 12));
             Assert.Equal(12, overlay.GetIntegerOption(OverlayOptionKeys.GapCarsBehind, 5, 0, 12));
+            Assert.Equal(5, overlay.GetIntegerOption(OverlayOptionKeys.RelativeCarsEachSide, 5, 0, 8));
             Assert.Equal(5, overlay.GetIntegerOption(OverlayOptionKeys.RelativeCarsAhead, 5, 0, 8));
             Assert.Equal(5, overlay.GetIntegerOption(OverlayOptionKeys.RelativeCarsBehind, 5, 0, 8));
             Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.StandingsClassSeparatorsEnabled, defaultValue: false));
@@ -106,6 +107,7 @@ public sealed class AppSettingsStoreTests
             Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.ChromeFooterSourcePractice, defaultValue: false));
             Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true));
             Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.TrackMapBuildFromTelemetry, defaultValue: true));
+            Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.TrackMapSectorBoundariesEnabled, defaultValue: true));
             Assert.False(overlay.Options.ContainsKey("flags.green-seconds"));
             Assert.False(overlay.Options.ContainsKey("flags.blue-seconds"));
 

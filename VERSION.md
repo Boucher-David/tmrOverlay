@@ -9,59 +9,48 @@ TmrOverlay uses SemVer-style annotated Git tags for product milestones:
 
 ## Current Branch Target
 
-### v0.16.1 - Overlay Feedback Hardening
+### v0.16.2 - Design V2 Theme Foundation
 
 Planned branch name:
 
 ```text
-v0.16.1-feedback
+v0.16.2-design-v2-theme-foundation
 ```
 
 Planned scope:
 
-- Harden the v0.16 overlay set from teammate feedback before the V1.x pass.
-- Make Standings, Relative, and future table overlays use a shared content-column architecture with per-overlay keys, visible/editable pixel widths, stable disabled ordering, and matching native/browser defaults.
-- Give OBS users recommended browser-source dimensions next to localhost URLs.
-- Improve multiclass Standings with scoring-first start/grid rows, iRacing class-colored separators, configurable other-class rows, and browser/native parity.
-- Rework long-race Gap To Leader scaling around a four-hour visible window, same-lap reference selection, leader/reference transitions, and clearer axis labels.
-- Add shared race projection data for timed-race lap estimates, fuel/strategy planning, session/flags display, and class separator context.
-- Clean up Input / Car State so the line graph is primary, current-value widgets are right-side content toggles, and browser/native rendering matches.
-- Harden Flags/settings interaction by coalescing settings save/apply work, suppressing the transparent Flags overlay while Settings is active, and adding diagnostics for UI timer stalls, overlay input interception, settings churn, and flags rendering.
-- Add the mac harness to source control and CI so mock-telemetry UI parity can be reviewed before Windows validation.
+- Build the Design V2 theme foundation before V1.x so future visual changes, overlay additions, and component iterations can share a tokenized architecture instead of one-off styling.
+- Preserve the current overlay/settings appearance as the default Design V2 token set while adding an outrun review token set for bolder visual exploration.
+- Make the mac harness capable of opening live Design V2 component-review overlays, not just generating static screenshots.
+- Generate component-level outrun review artifacts from the same mac-harness overlay views used for live review.
+- Keep Design V2 development surfaces out of normal production overlay settings until specific components are promoted into the Windows/runtime product.
+- Use stable semantic tokens for surfaces, text, borders, evidence colors, graph chrome, buttons, tabs, table rows, localhost blocks, and settings content blocks so Windows can later map the same roles.
 
 Technical implementation checklist:
 
-1. Bump shared .NET product/version metadata to `0.16.1`.
-2. Add table content-column settings shared by Standings and Relative while keeping overlay-owned column ids/options.
-3. Update Standings native/browser rendering for content columns, class separators, scoring fallback/start rows, class color handling, and recommended OBS sizing.
-4. Update Relative and Input / Car State content settings so native and browser outputs share the same default visible content.
-5. Move settings overlay sub-sections to left-side General/Content/Header/Footer tabs, with Inputs omitting Header/Footer.
-6. Add rolling race projection data to Core and consume it from Fuel, Session / Weather, Flags, Standings separators, and browser-source settings.
-7. Harden Gap To Leader long-race reference/scale behavior using the 4-hour and 24-hour local telemetry demos.
-8. Coalesce settings save/apply work, suppress Flags while Settings is active, and capture UI freeze diagnostics in support bundles.
-9. Bring the mac harness into git, build it in CI, and mirror shared app/overlay behavior where the mock harness owns a review surface.
-10. Update docs/context/version metadata and run branch validation available from macOS, with Windows restore/build/test/screenshot validation left to Windows CI or a Windows machine.
+1. Bump shared .NET product/version metadata to `0.16.2`.
+2. Refactor mac Design V2 tokens into named current/outrun theme instances while keeping current visuals as the default.
+3. Add live mac-harness Design V2 component overlay entry points through the tray menu and env/CLI launch flags.
+4. Render component-level screenshots from the same component overlay views used by the live mac harness.
+5. Expand screenshot validation expectations for Design V2 component artifacts.
+6. Decide which component primitives should be promoted into shared Windows/mac overlay code first.
+7. Defer full docs/version/release validation until the branch stopping point, using targeted build/screenshot checks while iterating.
 
 Likely squash title:
 
 ```text
-[v0.16.1] Harden overlay layout, race projection, and diagnostics
+[v0.16.2] Add Design V2 theme and component review foundations
 ```
 
 Likely squash body:
 
 ```text
-- Bumped shared .NET product/version metadata to 0.16.1.
-- Added shared content-column architecture for Standings, Relative, and Inputs with overlay-owned keys, visible/editable pixel widths, stable disabled ordering, matching native/browser defaults, and recommended OBS browser-source dimensions.
-- Reworked Standings native/browser behavior around scoring-first start rows, configurable columns, class-colored separators, configurable other-class row blocks, projection-backed class lap estimates, class color caching, and a wider default layout.
-- Hardened Gap To Leader for long races with a four-hour visible window, same-lap reference selection, leader/reference transitions, clearer axis labels, and local 4-hour/24-hour telemetry demo coverage.
-- Added shared live race projection data for timed-race lap estimates and reused it in Fuel, Session / Weather, Flags, Standings separators, browser-source metadata, and future strategy/fuel calculations.
-- Updated Input / Car State native/browser rendering so the line graph is primary and current speed/gear/pedal/steering widgets are toggleable right-side content.
-- Reworked Settings overlay tabs into left-side General/Content/Header/Footer sections, with Inputs suppressing unused header/footer tabs and settings save/apply work coalesced to avoid recursive UI churn.
-- Added flags/settings freeze hardening and diagnostics: Flags hides while Settings is active, UI timer lateness is captured, overlay window/input-intercept state is recorded, settings save/apply queue metrics are tracked, and diagnostics bundles include `metadata/ui-freeze-watch.json`.
-- Added the mac harness to source control, aligned relevant mock behavior, regenerated screenshot artifacts, and expanded CI to build/test the mac harness alongside Windows validation.
-- Aligned the local Windows launcher, release-package expectations, and Velopack package id around the shipped `TMROverlay.exe` executable name; the package id intentionally changes from the first tester `TechMatesRacing.TmrOverlay` identity to `TMROverlay` before V1.
-- Validation: git diff --check, merge-marker scan, C# compile-shape scanner, mac build, mac test with the Xcode `DEVELOPER_DIR` toolchain, mac screenshot regeneration plus tracked screenshot validation, release tutorial regeneration/validation, and Windows screenshot expectation validation. Windows restore/build/test/screenshot validation remains Windows-owned from this Mac because `dotnet` is not installed locally.
+- Bumped shared .NET product/version metadata to 0.16.2.
+- Refactored the mac Design V2 proving-ground theme from static color access into named current/outrun token sets while preserving current visuals by default.
+- Added a real mac-harness Design V2 component-review overlay that can be opened live from the tray menu or env/CLI flags.
+- Added component-level outrun review screenshots generated from the same overlay views used by the live mac harness.
+- Expanded screenshot validation for the Design V2 component contact sheet and individual component artifacts.
+- Kept Design V2 review surfaces development-only until specific primitives are promoted into production Windows/mac overlays.
 ```
 
 ## Next Planned Milestone
@@ -74,6 +63,27 @@ Likely scope:
 - Keep hard release-blocking fixes in 0.x only if teammate testing finds installer/update, AppData compatibility, or V1 candidate regressions.
 
 ## Merged Mainline Milestones
+
+### v0.16.1 - Overlay Feedback Hardening
+
+Commit: `d39188e`
+
+Squash title:
+
+```text
+[v0.16.1] Harden overlay layout, race projection, and diagnostics
+```
+
+Summary:
+
+- Bumped shared .NET product/version metadata to 0.16.1.
+- Added shared content-column architecture for Standings, Relative, and Inputs with overlay-owned keys, visible/editable pixel widths, stable disabled ordering, matching native/browser defaults, and recommended OBS browser-source dimensions.
+- Reworked Standings native/browser behavior around scoring-first start rows, configurable columns, class-colored separators, configurable other-class row blocks, projection-backed class lap estimates, class color caching, and a wider default layout.
+- Hardened Gap To Leader for long races with a four-hour visible window, same-lap reference selection, leader/reference transitions, clearer axis labels, and local 4-hour/24-hour telemetry demo coverage.
+- Added shared live race projection data for timed-race lap estimates and reused it in Fuel, Session / Weather, Flags, Standings separators, browser-source metadata, and future strategy/fuel calculations.
+- Updated Input / Car State native/browser rendering so the line graph is primary and current speed/gear/pedal/steering widgets are toggleable right-side content.
+- Reworked Settings overlay tabs into left-side General/Content/Header/Footer sections, with Inputs suppressing unused header/footer tabs and settings save/apply work coalesced to avoid recursive UI churn.
+- Added flags/settings freeze hardening and diagnostics, brought the mac harness into source control and CI, and aligned release packaging around the `TMROverlay` package id and `TMROverlay.exe` executable name.
 
 ### v0.13.0 - Core Overlay Readiness
 
