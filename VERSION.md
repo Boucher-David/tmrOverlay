@@ -9,48 +9,40 @@ TmrOverlay uses SemVer-style annotated Git tags for product milestones:
 
 ## Current Branch Target
 
-### v0.18.0 - Windows MSI Install And Active Updates
+### v0.18.1 - Restore Windows Settings Clickability
 
 Planned branch name:
 
 ```text
-v0.18.0-installable-windows-app
+v0.18.1-settings-click-fix
 ```
 
 Planned scope:
 
-- Make the Windows release feel like a normal installable application by publishing one MSI installer path instead of sending teammates through a desktop-focused one-click setup choice.
-- Keep Velopack as the installer/update channel while using the MSI for the user-facing install flow.
-- Add explicit in-app update actions so installed builds can check, download/install, and restart to apply updates from the tray menu and Support tab.
-- Expand update diagnostics so support bundles capture update progress, pending restart/apply state, action availability, and failure details.
+- Ship a patch release on top of `v0.18.0` for teammate feedback that the app loads but mouse clicks do not work.
+- Keep the settings window active and clickable when enabled product overlays are restored during startup.
+- Preserve the v0.18.0 MSI/Velopack install and update product shape while producing a higher patch version for upgrade testing.
 
 Technical implementation checklist:
 
-1. Bump shared .NET product/version metadata to `0.18.0`.
-2. Update the Velopack SDK/CLI pin together so Windows CI can generate MSI assets.
-3. Generate branded MSI banner/logo artwork from tracked brand assets.
-4. Publish the MSI, Velopack update feed, packages, and portable zip fallback from release tags while keeping Setup.exe out of the release-facing assets.
-5. Add user-initiated update download/install and restart-to-apply controls to the tray menu and settings Support surface.
-6. Keep startup update checks passive and avoid automatic app restarts.
-7. Include update action/progress/apply metadata in diagnostics bundles.
-8. Update Windows release/update docs and the teammate install guide.
+1. Bump shared .NET product/version metadata to `0.18.1`.
+2. Prevent product overlay forms from stealing activation when they are shown while Settings is open.
+3. Reassert Settings z-order/activation after overlay settings are applied during startup.
+4. Validate local static checks, then use Windows CI or a Windows machine for the full .NET build/test and v0.18.0-to-v0.18.1 upgrade check.
 
 Likely squash title:
 
 ```text
-[v0.18.0] Add MSI install flow and active Velopack updates
+[v0.18.1] Restore Windows settings clickability
 ```
 
 Likely squash body:
 
 ```text
-- Bumped shared .NET product/version metadata to 0.18.0.
-- Updated Velopack SDK/CLI packaging to generate the MSI installer and update feed from the same release build.
-- Added tracked MSI banner/logo artwork generated from the TMR brand asset.
-- Published one user-facing Windows installer option, the MSI, while keeping Velopack update packages/feed and the portable zip fallback.
-- Added user-initiated update download/install and restart-to-apply actions in the tray menu and Support settings surface.
-- Expanded release update state and diagnostics metadata for progress, pending restart/apply state, action availability, and failures.
-- Updated Windows release/update docs and regenerated the teammate installer guide.
+- Bumped shared .NET product/version metadata to 0.18.1.
+- Kept product overlay windows from taking activation when they are shown while the Settings app is already active.
+- Reasserted the Settings window after overlay settings are applied so restored startup overlays cannot sit above it and intercept clicks.
+- Preserved the v0.18.0 MSI/Velopack install and update behavior for patch upgrade testing.
 ```
 
 ## Next Planned Milestone
@@ -63,6 +55,26 @@ Likely scope:
 - Keep hard release-blocking fixes in 0.x only if teammate testing finds installer/update, AppData compatibility, or V1 candidate regressions.
 
 ## Merged Mainline Milestones
+
+### v0.18.0 - Windows MSI Install And Active Updates
+
+Commit: `88357bd`
+
+Squash title:
+
+```text
+[v0.18.0] Add MSI install flow and active Velopack updates
+```
+
+Summary:
+
+- Bumped shared .NET product/version metadata to 0.18.0.
+- Updated Velopack SDK/CLI packaging to generate the MSI installer and update feed from the same release build.
+- Added tracked MSI banner/logo artwork generated from the TMR brand asset.
+- Published one user-facing Windows installer option, the MSI, while keeping Velopack update packages/feed and the portable zip fallback.
+- Added user-initiated update download/install and restart-to-apply actions in the tray menu and Support settings surface.
+- Expanded release update state and diagnostics metadata for progress, pending restart/apply state, action availability, and failures.
+- Updated Windows release/update docs and regenerated the teammate installer guide.
 
 ### v0.17.0 - Design V2 Theme Foundation
 
