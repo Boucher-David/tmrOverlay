@@ -1221,7 +1221,7 @@ internal sealed class DesignV2SettingsSurface : Control
         }
     }
 
-    private void DrawCheckBox(Graphics graphics, Rectangle rect, bool isChecked)
+    private static void DrawCheckBox(Graphics graphics, Rectangle rect, bool isChecked)
     {
         FillRounded(graphics, rect, 5, isChecked ? Rgb(6, 46, 55) : PanelRaised);
         StrokeRounded(graphics, rect, 5, isChecked ? Cyan : Border, 1f);
