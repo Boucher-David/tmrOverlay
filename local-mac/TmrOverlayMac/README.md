@@ -1,8 +1,8 @@
 # TmrOverlayMac
 
-Local-only macOS development port for the Windows `TmrOverlay.App`.
+Tracked macOS development harness for the Windows `TmrOverlay.App`.
 
-This folder is intentionally ignored by git. It exists so the overlay shell can be developed on macOS without changing the Windows collector-first product.
+This folder is tracked source so mock-telemetry UI parity, screenshot generation, and local review demos can evolve with the Windows app. Generated `.build` output, local app data, captures, logs, and screenshots stay ignored.
 
 ## Run
 
@@ -16,7 +16,7 @@ From the repo root, use the ignored convenience wrapper:
 ./run.sh
 ```
 
-The app creates a macOS menu-bar item, shows the v0.8 review overlay set plus the centered settings panel, and writes compact mock session history under app-owned local storage:
+The app creates a macOS menu-bar item, shows the current review overlay set plus the centered settings panel, and writes compact mock session history under app-owned local storage:
 
 ```text
 ~/Library/Application Support/TmrOverlayMac/history/user
@@ -120,6 +120,8 @@ mocks/design-v2
 
 Those previews are separate from the production Relative overlay screenshots under `mocks/relative/`. They exercise future telemetry-first standings, relative, local in-car radar direction, flag display, table primitives, and narrow analysis-exception states before shared primitives are promoted back into Windows. Source/evidence chrome should stay quiet for normal telemetry and appear when data is stale, unavailable, modeled, or derived.
 
+The component-review path uses the same views for live review and generated artifacts. The current theme preserves the existing low-noise visual direction, while the outrun theme is a bolder review palette for token stress testing.
+
 Render only the design-v2 contact sheet with:
 
 ```bash
@@ -137,6 +139,8 @@ Open the live mac-harness Design V2 component overlay with:
 ```bash
 TMR_MAC_DESIGN_V2_COMPONENTS_DEMO=outrun ./run.sh
 ```
+
+Use `TMR_MAC_DESIGN_V2_COMPONENTS_DEMO=current ./run.sh` to review the same component primitives against the current/default token set.
 
 ## Tests
 

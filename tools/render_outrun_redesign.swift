@@ -600,7 +600,7 @@ private func drawOverlaySettings(_ c: Canvas, spec: OverlaySpec) {
         c.pill(spec.id == "gap-to-leader" ? "Race only" : "Always", 454, 446, 88, 24, fill: NSColor(red255: 34, green: 18, blue: 52), textColor: Theme.amber)
     }
 
-    drawPanelHeader(c, x: 726, y: 272, width: 414, height: 226, title: "Outrun Preview")
+    drawPanelHeader(c, x: 726, y: 272, width: 414, height: 226, title: spec.id == "relative" ? "Relative Preview" : "Outrun Preview")
     let previewImage = renderOverlayScreenshot(spec)
     c.fill(750, 324, 366, 132, NSColor(red255: 3, green: 8, blue: 18), radius: 10)
     c.stroke(750, 324, 366, 132, Theme.cyan.withAlphaComponent(0.65), lineWidth: 1, radius: 10)
@@ -612,7 +612,6 @@ private func drawOverlaySettings(_ c: Canvas, spec: OverlaySpec) {
     c.stroke(306, 518, 834, 70, Theme.borderDim, lineWidth: 1, radius: 12)
     c.text(spec.route == nil ? "Runtime Surface" : "Browser Source", 328, 532, 130, 18, size: 14, weight: .heavy)
     if let route = spec.route {
-        c.text("Route", 328, 558, 80, 18, size: 12, color: Theme.muted)
         c.fill(462, 542, 470, 30, NSColor(red255: 4, green: 9, blue: 20), radius: 8)
         c.stroke(462, 542, 470, 30, Theme.borderDim, lineWidth: 1, radius: 8)
         c.text("http://localhost:5011\(route)", 478, 550, 430, 18, size: 12, color: NSColor(red255: 159, green: 220, blue: 255), mono: true)

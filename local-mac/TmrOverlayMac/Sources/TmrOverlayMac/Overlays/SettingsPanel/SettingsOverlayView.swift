@@ -1,6 +1,7 @@
 import AppKit
 
 final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate {
+    private static let designV2Theme = DesignV2Theme.outrun
     private static let preferredOverlayTabOrder = [
         "standings",
         "relative",
@@ -35,6 +36,8 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
     private let sidebarView = NSView()
     private let tabView = NSTabView()
     private var tabButtons: [String: NSButton] = [:]
+    private var designV2SurfaceViews: [String: NSView] = [:]
+    private var designV2OverlaySurfaces: [String: DesignV2OverlaySettingsFullView] = [:]
     private weak var rawCaptureCheckbox: NSButton?
     private weak var appVersionValueLabel: NSTextField?
     private weak var appStatusValueLabel: NSTextField?
@@ -61,7 +64,7 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         self.selectedOverlayChanged = selectedOverlayChanged
         super.init(frame: NSRect(origin: .zero, size: SettingsOverlayDefinition.definition.defaultSize))
         wantsLayer = true
-        layer?.backgroundColor = OverlayTheme.Colors.settingsBackground.cgColor
+        layer?.backgroundColor = Self.designV2Theme.colors.surface.cgColor
         build()
     }
 
@@ -71,6 +74,11 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
 
     func applySettings(_ updatedSettings: ApplicationSettings) {
         settings = updatedSettings
+        for (overlayId, surface) in designV2OverlaySurfaces {
+            if let overlay = settings.overlays.first(where: { $0.id == overlayId }) {
+                surface.applyOverlay(overlay)
+            }
+        }
     }
 
     func updateCaptureStatus(_ snapshot: TelemetryCaptureStatusSnapshot) {
@@ -95,25 +103,28 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         subtitleLabel.frame = NSRect(x: 72, y: 7, width: max(160, titleBar.bounds.width - 132), height: 14)
         sidebarView.frame = NSRect(x: 12, y: 12, width: 174, height: max(320, bounds.height - 66))
         tabView.frame = NSRect(x: 198, y: 12, width: max(360, bounds.width - 210), height: max(320, bounds.height - 66))
+        for surface in designV2SurfaceViews.values {
+            surface.frame = bounds
+        }
         layoutSideTabButtons()
     }
 
     private func build() {
         titleBar.wantsLayer = true
-        titleBar.layer?.backgroundColor = OverlayTheme.Colors.titleBarBackground.cgColor
+        titleBar.layer?.backgroundColor = Self.designV2Theme.colors.titleBar.cgColor
         brandLogoView.image = TmrBrandAssets.loadLogoImage()
         brandLogoView.imageScaling = .scaleProportionallyUpOrDown
         titleBar.addSubview(brandLogoView)
         titleLabel.textColor = .white
         titleLabel.font = overlayFont(ofSize: 15, weight: .semibold)
         titleBar.addSubview(titleLabel)
-        subtitleLabel.textColor = OverlayTheme.Colors.textMuted
+        subtitleLabel.textColor = Self.designV2Theme.colors.textMuted
         subtitleLabel.font = overlayFont(ofSize: 10)
         titleBar.addSubview(subtitleLabel)
         addSubview(titleBar)
 
         sidebarView.wantsLayer = true
-        sidebarView.layer?.backgroundColor = NSColor(red: 0.078, green: 0.098, blue: 0.114, alpha: 1).cgColor
+        sidebarView.layer?.backgroundColor = Self.designV2Theme.colors.surfaceInset.cgColor
         addSubview(sidebarView)
 
         tabView.frame = NSRect(x: 198, y: 12, width: bounds.width - 210, height: bounds.height - 66)
@@ -126,9 +137,40 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
             addTab(overlayTab(definition))
         }
         addTab(errorLoggingTab())
+        addDesignV2OverlaySurfaces()
         tabView.selectTabViewItem(at: 0)
         updateSideTabSelection()
         selectedOverlayChanged(tabView.selectedTabViewItem?.identifier as? String)
+    }
+
+    private func addDesignV2OverlaySurfaces() {
+        for definition in orderedSettingsDefinitions() where DesignV2SettingsOverlaySpecs.usesFullSurface(definition.id) {
+            let overlay = settings.overlay(
+                id: definition.id,
+                defaultSize: definition.defaultSize,
+                defaultEnabled: false
+            )
+            let surface = DesignV2OverlaySettingsFullView(
+                frame: bounds,
+                definition: definition,
+                overlay: overlay,
+                fontFamily: OverlayTheme.defaultFontFamily,
+                onOverlayChanged: { [weak self] updatedOverlay in
+                    guard let self else {
+                        return
+                    }
+                    self.settings.updateOverlay(updatedOverlay)
+                    self.onSettingsChanged(self.settings)
+                },
+                onSelectTab: { [weak self] identifier in
+                    self?.selectTab(identifier: identifier)
+                }
+            )
+            surface.isHidden = true
+            addSubview(surface)
+            designV2SurfaceViews[definition.id] = surface
+            designV2OverlaySurfaces[definition.id] = surface
+        }
     }
 
     func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
@@ -149,7 +191,8 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         button.font = overlayFont(ofSize: 12, weight: .semibold)
         button.contentTintColor = NSColor(red: 0.84, green: 0.87, blue: 0.90, alpha: 1)
         button.wantsLayer = true
-        button.layer?.cornerRadius = 4
+        button.layer?.cornerRadius = 5
+        button.layer?.borderWidth = 1
         sidebarView.addSubview(button)
         tabButtons[identifier] = button
         layoutSideTabButtons()
@@ -181,14 +224,30 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
 
     private func updateSideTabSelection() {
         let selectedIdentifier = tabView.selectedTabViewItem?.identifier as? String
+        let selectedDesignV2Surface = selectedIdentifier.flatMap { designV2SurfaceViews[$0] }
+        let designV2Selected = selectedDesignV2Surface != nil
+        titleBar.isHidden = designV2Selected
+        sidebarView.isHidden = designV2Selected
+        tabView.isHidden = designV2Selected
+        for surface in designV2SurfaceViews.values {
+            surface.isHidden = true
+        }
+        if let selectedDesignV2Surface {
+            selectedDesignV2Surface.isHidden = false
+            addSubview(selectedDesignV2Surface, positioned: .above, relativeTo: nil)
+        }
+
         for (identifier, button) in tabButtons {
             let selected = identifier == selectedIdentifier
             button.layer?.backgroundColor = selected
-                ? NSColor(red: 0.12, green: 0.16, blue: 0.19, alpha: 1).cgColor
-                : NSColor.clear.cgColor
+                ? Self.designV2Theme.colors.accentPrimary.withAlphaComponent(0.18).cgColor
+                : Self.designV2Theme.colors.surface.cgColor
+            button.layer?.borderColor = selected
+                ? Self.designV2Theme.colors.accentPrimary.withAlphaComponent(0.72).cgColor
+                : Self.designV2Theme.colors.borderMuted.cgColor
             button.contentTintColor = selected
-                ? NSColor.white
-                : NSColor(red: 0.70, green: 0.76, blue: 0.79, alpha: 1)
+                ? Self.designV2Theme.colors.textPrimary
+                : Self.designV2Theme.colors.textSecondary
         }
     }
 
@@ -304,12 +363,23 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         )
         settings.updateOverlay(overlay)
 
+        if DesignV2SettingsOverlaySpecs.usesFullSurface(definition.id) {
+            return designV2OverlayTab(definition: definition)
+        }
+
         let item = NSTabViewItem(identifier: definition.id)
         item.label = definition.displayName
         let content = tabContentView()
         content.addSubview(label(definition.displayName, frame: NSRect(x: 18, y: 500, width: 520, height: 24), bold: true))
         content.addSubview(overlayRegionTabs(definition: definition, overlay: overlay))
         item.view = content
+        return item
+    }
+
+    private func designV2OverlayTab(definition: OverlayDefinition) -> NSTabViewItem {
+        let item = NSTabViewItem(identifier: definition.id)
+        item.label = definition.displayName
+        item.view = NSView(frame: NSRect(x: 0, y: 0, width: 1100, height: 614))
         return item
     }
 

@@ -12,4 +12,6 @@ Generated mac-harness proving-ground screenshots for design-v2 overlay primitive
 
 This folder is not a production overlay mock. It is the mac-only proving ground for shared visual language before the Windows overlays adopt the same semantics. The default design direction is direct telemetry first, including local in-car radar. Confidence/source chrome should be quiet unless a value is stale, unavailable, modeled, or derived.
 
+Component review artifacts are generated from the same mac-harness views used by the live Design V2 component overlay. The current theme preserves the default product direction; the outrun theme stress-tests the same semantic roles with a bolder review palette.
+
 Design V2 review should pair new visual language with current production content contracts. For example, Relative visual mocks should still respect the current Relative content manager defaults and optional fields instead of adding visual-only columns. Only diverge from current production content when the mock is explicitly reviewing a proposed content change.

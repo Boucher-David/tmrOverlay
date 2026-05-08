@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-05-07
+Last updated: 2026-05-08
 
 ## Project Goal
 
@@ -80,7 +80,8 @@ Last updated: 2026-05-07
   - reserve model-v2 source, quality, usability, freshness, and missing-reason chrome for stale, unavailable, modeled, or derived values, especially analysis products like fuel strategy, non-local radar focus/multiclass interpretation, and gap graphs
   - use competitor overlay analysis as the product-shape check: small purpose-built overlays, dense information, low-noise dark styling, and semantic color instead of one monolithic dashboard
   - the tracked mac harness now owns a generated `mocks/design-v2/` proving ground for telemetry-first standings, relative, local in-car radar, flag display, table semantics, and narrower analysis-exception states while model-v2 race evidence is still being collected
-  - future style groundwork should add semantic theme tokens and reusable WinForms primitives for headers, status badges, source footers, metric rows, table cells, graph panels, shared borders, severity colors, class colors, text fitting, and empty/error/waiting states
+  - Design V2 now has named mac-harness token sets for the current/default appearance and an outrun review palette, plus live and generated component-review surfaces for overlay shells, buttons, controls, status pills, table rows, graph chrome, localhost blocks, sidebar tabs, section panels, and settings content blocks
+  - future style groundwork should promote reviewed semantic theme tokens and reusable primitives into Windows/mac overlay code for headers, status badges, source footers, metric rows, table cells, graph panels, shared borders, severity colors, class colors, text fitting, and empty/error/waiting states
   - migrate this additively one overlay at a time with screenshot validation, keeping overlay-specific domain layout local
 
 - `src/TmrOverlay.App/Overlays/FuelCalculator/`
@@ -310,7 +311,8 @@ Last updated: 2026-05-07
   - the mac mock race mirrors the Windows radar/gap feature behavior with synthetic all-class timing rows, multiclass approach traffic, weather bands, and driver handoff events, while Windows remains real telemetry only
   - the mac harness should mirror the current Windows overlay review set: standings, fuel calculator, relative, track map, stream chat settings/route controls, garage cover browser-route states, flags, session/weather, pit-service, input/car-state, radar, and gap-to-leader, with app status kept in Support rather than a floating overlay
   - the mac harness mirrors the settings window schema and basic tabbed UI for visibility, scale/opacity when applicable, session filters, units, support capture, and a mock Support/performance snapshot tab; mac diagnostics bundles include matching telemetry-state/performance metadata stubs and recent mock performance JSONL logs
-  - `swift run TmrOverlayMacScreenshots` renders tracked overlay review artifacts under `mocks/`: focused live-state screenshots, multi-state contact sheets, and smaller per-state PNG cards for status, fuel calculator, relative, track-map sector highlights, settings, car radar, gap-to-leader, and design-v2 candidate states; the settings screenshots include the current standings and track-map tabs
+  - `swift run TmrOverlayMacScreenshots` renders tracked overlay review artifacts under `mocks/`: focused live-state screenshots, multi-state contact sheets, and smaller per-state PNG cards for status, fuel calculator, relative, track-map sector highlights, settings, car radar, gap-to-leader, and design-v2 candidate/component states; the settings screenshots include the current standings and track-map tabs
+  - Design V2 component review overlays can be opened live from the menu bar or with `TMR_MAC_DESIGN_V2_COMPONENTS_DEMO=current|outrun ./run.sh`, and the generated component artifacts under `mocks/design-v2/components/` come from the same mac-harness views
   - screenshot waiting/unavailable fixtures should be isolated from local user history and cached live telemetry; for example, the fuel waiting preview uses an empty temporary history root so it cannot accidentally show stale stint rows from this machine
 
 ### Tests

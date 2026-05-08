@@ -328,6 +328,9 @@ public enum OverlayScreenshotGenerator {
         let standingsView = settingsView(settings: settings, capture: capture, selectedTab: StandingsOverlayDefinition.definition.id)
         let relativeView = settingsView(settings: settings, capture: capture, selectedTab: RelativeOverlayDefinition.definition.id)
         let gapView = settingsView(settings: settings, capture: capture, selectedTab: GapToLeaderOverlayDefinition.definition.id)
+        let fuelView = settingsView(settings: settings, capture: capture, selectedTab: FuelCalculatorOverlayDefinition.definition.id)
+        let sessionWeatherView = settingsView(settings: settings, capture: capture, selectedTab: SessionWeatherOverlayDefinition.definition.id)
+        let pitServiceView = settingsView(settings: settings, capture: capture, selectedTab: PitServiceOverlayDefinition.definition.id)
         let trackMapView = settingsView(settings: settings, capture: capture, selectedTab: TrackMapOverlayDefinition.definition.id)
         let streamChatView = settingsView(settings: settings, capture: capture, selectedTab: StreamChatOverlayDefinition.definition.id)
         let garageCoverView = settingsView(settings: settings, capture: capture, selectedTab: GarageCoverOverlayDefinition.definition.id)
@@ -338,12 +341,15 @@ public enum OverlayScreenshotGenerator {
             states: [
                 ContactSheetState(title: "1. General", note: "Shared units.", fileName: "general.png", image: try renderImage(generalView)),
                 ContactSheetState(title: "2. Support", note: "App status, issue, bundle actions, diagnostic capture, storage, and app activity.", fileName: "support.png", image: try renderImage(supportView)),
-                ContactSheetState(title: "3. Standings tab", note: "Localhost URL/OBS size plus baseline content column manager.", fileName: "standings-overlay.png", image: try renderImage(standingsView)),
-                ContactSheetState(title: "4. Relative tab", note: "Relative uses the same content column baseline as standings.", fileName: "overlay-tab.png", image: try renderImage(relativeView)),
+                ContactSheetState(title: "3. Standings tab", note: "V2 content rows use session-state boxes without per-row sizing controls.", fileName: "standings-overlay.png", image: try renderImage(standingsView)),
+                ContactSheetState(title: "4. Relative tab", note: "Relative uses the shared V2 content-row session matrix.", fileName: "overlay-tab.png", image: try renderImage(relativeView)),
                 ContactSheetState(title: "5. Race-only tab", note: "Gap To Leader is fixed to race sessions, so redundant session filters are hidden.", fileName: "race-only-overlay.png", image: try renderImage(gapView)),
-                ContactSheetState(title: "6. Track Map tab", note: "Bundled coverage, local browser route, map fill, and optional telemetry map generation.", fileName: "track-map-overlay.png", image: try renderImage(trackMapView)),
-                ContactSheetState(title: "7. Stream Chat tab", note: "Native Twitch overlay plus browser-source Streamlabs/Twitch setup.", fileName: "stream-chat-overlay.png", image: try renderImage(streamChatView)),
-                ContactSheetState(title: "8. Garage Cover tab", note: "Localhost-only privacy cover image import.", fileName: "garage-cover-overlay.png", image: try renderImage(garageCoverView))
+                ContactSheetState(title: "6. Fuel Calculator tab", note: "Shared V2 shell with fuel advice/source content switches.", fileName: "fuel-calculator-overlay.png", image: try renderImage(fuelView)),
+                ContactSheetState(title: "7. Session / Weather tab", note: "Shared V2 shell with the current production content contract.", fileName: "session-weather-overlay.png", image: try renderImage(sessionWeatherView)),
+                ContactSheetState(title: "8. Pit Service tab", note: "Shared V2 shell with the current production content contract.", fileName: "pit-service-overlay.png", image: try renderImage(pitServiceView)),
+                ContactSheetState(title: "9. Track Map tab", note: "Bundled coverage, local browser route, map fill, and optional telemetry map generation.", fileName: "track-map-overlay.png", image: try renderImage(trackMapView)),
+                ContactSheetState(title: "10. Stream Chat tab", note: "Native Twitch overlay plus browser-source Streamlabs/Twitch setup.", fileName: "stream-chat-overlay.png", image: try renderImage(streamChatView)),
+                ContactSheetState(title: "11. Garage Cover tab", note: "Localhost-only privacy cover image import.", fileName: "garage-cover-overlay.png", image: try renderImage(garageCoverView))
             ],
             imageMaxSize: NSSize(width: 650, height: 650)
         )

@@ -51,6 +51,7 @@ Likely squash body:
 - Added component-level outrun review screenshots generated from the same overlay views used by the live mac harness.
 - Expanded screenshot validation for the Design V2 component contact sheet and individual component artifacts.
 - Kept Design V2 review surfaces development-only until specific primitives are promoted into production Windows/mac overlays.
+- Updated docs/context for the tracked mac harness and Design V2 component-review promotion path.
 ```
 
 ## Next Planned Milestone
