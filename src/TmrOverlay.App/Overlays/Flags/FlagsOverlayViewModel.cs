@@ -33,6 +33,7 @@ internal static class FlagsOverlayViewModel
     private const int StartReadyFlag = 0x20000000;
     private const int StartSetFlag = 0x40000000;
     private const int StartGoFlag = unchecked((int)0x80000000);
+    private const int MaxDisplayLapCount = 1000;
 
     private static readonly FlagLabel[] FlagLabels =
     [
@@ -107,6 +108,8 @@ internal static class FlagsOverlayViewModel
         }
 
         var flags = session.SessionFlags;
+        var progress = snapshot.Models.RaceProgress;
+        var projection = snapshot.Models.RaceProjection;
         var activeFlags = FormatFlags(flags);
         var sessionState = FormatSessionState(session.SessionState);
         var tone = ToneFor(flags, session.SessionState);
@@ -119,7 +122,7 @@ internal static class FlagsOverlayViewModel
             new SimpleTelemetryRowViewModel("Flags", activeFlags, tone),
             new SimpleTelemetryRowViewModel("Raw", FormatRawFlags(flags)),
             new SimpleTelemetryRowViewModel("Time left", SimpleTelemetryOverlayViewModel.FormatDuration(session.SessionTimeRemainSeconds, compact: true)),
-            new SimpleTelemetryRowViewModel("Laps left", FormatLaps(session.SessionLapsRemain, session.RaceLaps))
+            new SimpleTelemetryRowViewModel("Laps left", FormatLaps(session, progress, projection))
         };
 
         return new SimpleTelemetryOverlayViewModel(
@@ -167,16 +170,36 @@ internal static class FlagsOverlayViewModel
             : "--";
     }
 
-    private static string FormatLaps(int? lapsRemain, int? raceLaps)
+    private static string FormatLaps(
+        LiveSessionModel session,
+        LiveRaceProgressModel progress,
+        LiveRaceProjectionModel projection)
     {
-        if (lapsRemain is null && raceLaps is null)
+        var remain = FormatLapCount(session.SessionLapsRemain)
+            ?? FormatEstimatedLapCount(projection.EstimatedTeamLapsRemaining)
+            ?? FormatEstimatedLapCount(progress.RaceLapsRemaining);
+        var total = FormatLapCount(session.RaceLaps)
+            ?? FormatLapCount(session.SessionLapsTotal);
+        if (remain is null && total is null)
         {
             return "--";
         }
 
-        var remain = lapsRemain is { } left && left >= 0 ? left.ToString(CultureInfo.InvariantCulture) : "--";
-        var total = raceLaps is { } laps && laps > 0 ? laps.ToString(CultureInfo.InvariantCulture) : "--";
-        return $"{remain} / {total}";
+        return $"{remain ?? "--"} / {total ?? "--"}";
+    }
+
+    private static string? FormatEstimatedLapCount(double? laps)
+    {
+        return laps is { } value && SimpleTelemetryOverlayViewModel.IsFinite(value) && value >= 0d && value <= MaxDisplayLapCount
+            ? $"{value.ToString("0.#", CultureInfo.InvariantCulture)} est"
+            : null;
+    }
+
+    private static string? FormatLapCount(int? laps)
+    {
+        return laps is { } value && value is > 0 and <= MaxDisplayLapCount
+            ? value.ToString(CultureInfo.InvariantCulture)
+            : null;
     }
 
     private static string? PrimaryFlagLabel(int flags)

@@ -1,8 +1,8 @@
 using System.Diagnostics;
 using System.Drawing;
-using System.Globalization;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Overlays.Abstractions;
+using TmrOverlay.App.Overlays.Content;
 using TmrOverlay.App.Overlays.Styling;
 using TmrOverlay.App.Performance;
 using TmrOverlay.Core.Overlays;
@@ -17,6 +17,7 @@ internal sealed class RelativeForm : PersistentOverlayForm
     private const int NormalMinimumTableHeight = 180;
     private const int CompactRowHeight = 26;
     private const int RefreshIntervalMilliseconds = 250;
+    private static readonly int MaximumColumns = OverlayContentColumnSettings.Relative.Columns.Count;
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly ILogger<RelativeForm> _logger;
     private readonly AppPerformanceState _performanceState;
@@ -26,13 +27,11 @@ internal sealed class RelativeForm : PersistentOverlayForm
     private readonly Label _statusLabel;
     private readonly OverlayTableLayoutPanel _table;
     private readonly Label _sourceLabel;
-    private readonly ClassPositionLabel[] _positionLabels = new ClassPositionLabel[MaximumRows];
-    private readonly Label[] _driverLabels = new Label[MaximumRows];
-    private readonly Label[] _gapLabels = new Label[MaximumRows];
-    private readonly Label[] _detailLabels = new Label[MaximumRows];
+    private readonly Label[,] _rowLabels = new Label[MaximumRows, MaximumColumns];
     private readonly System.Windows.Forms.Timer _refreshTimer;
     private long? _lastRefreshSequence;
     private int _lastVisibleRows = -1;
+    private string? _lastSettingsSignature;
     private string? _overlayError;
     private string? _lastLoggedError;
     private DateTimeOffset? _lastLoggedErrorAtUtc;
@@ -76,29 +75,28 @@ internal sealed class RelativeForm : PersistentOverlayForm
 
         _table = new OverlayTableLayoutPanel
         {
-            ColumnCount = 4,
+            ColumnCount = MaximumColumns,
             Location = OverlayChrome.TableLocation(),
             RowCount = MaximumRows,
-            Size = OverlayChrome.TableSize(ClientSize.Width, ClientSize.Height, minimumWidth: 250, minimumHeight: NormalMinimumTableHeight)
+            Size = OverlayChrome.TableSize(ClientSize.Width, ClientSize.Height, minimumWidth: TableMinimumWidth(), minimumHeight: NormalMinimumTableHeight)
         };
-        _table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 13f));
-        _table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 52f));
-        _table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 18f));
-        _table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 17f));
+        var initialColumns = DisplayColumns();
+        for (var column = 0; column < MaximumColumns; column++)
+        {
+            _table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, column < initialColumns.Count ? initialColumns[column].Width : 0));
+        }
+
         for (var row = 0; row < MaximumRows; row++)
         {
             _table.RowStyles.Add(new RowStyle(SizeType.Percent, 100f / MaximumRows));
-            _positionLabels[row] = CreatePositionCellLabel(_fontFamily, "--");
-            _driverLabels[row] = OverlayChrome.CreateTableCellLabel(_fontFamily, string.Empty);
-            _gapLabels[row] = OverlayChrome.CreateTableCellLabel(_fontFamily, "--", alignRight: true, monospace: true);
-            _detailLabels[row] = OverlayChrome.CreateTableCellLabel(_fontFamily, string.Empty, alignRight: true);
-            _table.Controls.Add(_positionLabels[row], 0, row);
-            _table.Controls.Add(_driverLabels[row], 1, row);
-            _table.Controls.Add(_gapLabels[row], 2, row);
-            _table.Controls.Add(_detailLabels[row], 3, row);
+            for (var column = 0; column < MaximumColumns; column++)
+            {
+                _rowLabels[row, column] = CreateContentCellLabel(_fontFamily);
+                _table.Controls.Add(_rowLabels[row, column], column, row);
+            }
         }
 
-        _sourceLabel = OverlayChrome.CreateSourceLabel(_fontFamily, ClientSize.Width, ClientSize.Height, minimumWidth: 250);
+        _sourceLabel = OverlayChrome.CreateSourceLabel(_fontFamily, ClientSize.Width, ClientSize.Height, minimumWidth: TableMinimumWidth());
 
         Controls.Add(_titleLabel);
         Controls.Add(_statusLabel);
@@ -106,13 +104,7 @@ internal sealed class RelativeForm : PersistentOverlayForm
         Controls.Add(_sourceLabel);
 
         RegisterDragSurfaces(_titleLabel, _statusLabel, _table, _sourceLabel);
-        RegisterDragSurfaces(
-            _positionLabels
-                .Cast<Label>()
-                .Concat(_driverLabels)
-                .Concat(_gapLabels)
-                .Concat(_detailLabels)
-                .ToArray());
+        RegisterDragSurfaces(RowLabels());
 
         _refreshTimer = new System.Windows.Forms.Timer
         {
@@ -143,9 +135,9 @@ internal sealed class RelativeForm : PersistentOverlayForm
         _statusLabel.Location = OverlayChrome.StatusLocation(titleWidth: 150);
         _statusLabel.Size = OverlayChrome.StatusSize(ClientSize.Width, titleWidth: 150, minimumWidth: 120);
         _table.Location = OverlayChrome.TableLocation();
-        _table.Size = OverlayChrome.TableSize(ClientSize.Width, ClientSize.Height, minimumWidth: 250, minimumHeight: NormalMinimumTableHeight);
+        _table.Size = OverlayChrome.TableSize(ClientSize.Width, ClientSize.Height, minimumWidth: TableMinimumWidth(), minimumHeight: NormalMinimumTableHeight);
         _sourceLabel.Location = OverlayChrome.SourceLocation(ClientSize.Height);
-        _sourceLabel.Size = OverlayChrome.SourceSize(ClientSize.Width, minimumWidth: 250);
+        _sourceLabel.Size = OverlayChrome.SourceSize(ClientSize.Width, minimumWidth: TableMinimumWidth());
     }
 
     protected override void Dispose(bool disposing)
@@ -212,6 +204,21 @@ internal sealed class RelativeForm : PersistentOverlayForm
             var carsBehind = CarsBehind;
             var now = DateTimeOffset.UtcNow;
             var previousSequence = _lastRefreshSequence;
+            var settingsSignature = SettingsSignature();
+            if (previousSequence == snapshot.Sequence
+                && _overlayError is null
+                && string.Equals(_lastSettingsSignature, settingsSignature, StringComparison.Ordinal))
+            {
+                _performanceState.RecordOverlayRefreshDecision(
+                    RelativeOverlayDefinition.Definition.Id,
+                    now,
+                    previousSequence,
+                    snapshot.Sequence,
+                    snapshot.LastUpdatedAtUtc,
+                    applied: false);
+                succeeded = true;
+                return;
+            }
 
             RelativeOverlayViewModel viewModel;
             var viewModelStarted = Stopwatch.GetTimestamp();
@@ -248,6 +255,7 @@ internal sealed class RelativeForm : PersistentOverlayForm
             }
 
             _lastRefreshSequence = snapshot.Sequence;
+            _lastSettingsSignature = settingsSignature;
             _performanceState.RecordOverlayRefreshDecision(
                 RelativeOverlayDefinition.Definition.Id,
                 now,
@@ -285,8 +293,10 @@ internal sealed class RelativeForm : PersistentOverlayForm
         {
             var rows = BuildStableRows(viewModel);
             var visibleRows = rows.Count;
+            var columns = DisplayColumns();
 
             var changed = false;
+            changed |= ApplyColumns(columns);
             var layoutChanged = UpdateVisibleRows(visibleRows);
             layoutChanged |= UpdateTableHeight(visibleRows);
             if (layoutChanged)
@@ -300,14 +310,14 @@ internal sealed class RelativeForm : PersistentOverlayForm
                 {
                     if (index < rows.Count && rows[index] is { } row)
                     {
-                        changed |= ApplyRow(index, row, visible: true);
+                        changed |= ApplyRow(index, row, columns, visible: true);
                         continue;
                     }
 
                     var placeholder = viewModel.Rows.Count == 0 && index == 0
                         ? viewModel.Status
                         : string.Empty;
-                    changed |= ApplyBlankRow(index, placeholder, visible: index < visibleRows);
+                    changed |= ApplyBlankRow(index, placeholder, columns, visible: index < visibleRows);
                 }
             }
             finally
@@ -374,18 +384,9 @@ internal sealed class RelativeForm : PersistentOverlayForm
         return stableRows;
     }
 
-    private bool ApplyRow(int index, RelativeOverlayRowViewModel row, bool visible)
+    private bool ApplyRow(int index, RelativeOverlayRowViewModel row, IReadOnlyList<OverlayContentColumnState> columns, bool visible)
     {
         var changed = false;
-        changed |= OverlayChrome.SetVisibleIfChanged(_positionLabels[index], visible);
-        changed |= OverlayChrome.SetVisibleIfChanged(_driverLabels[index], visible);
-        changed |= OverlayChrome.SetVisibleIfChanged(_gapLabels[index], visible);
-        changed |= OverlayChrome.SetVisibleIfChanged(_detailLabels[index], visible);
-        changed |= OverlayChrome.SetTextIfChanged(_positionLabels[index], row.Position);
-        changed |= OverlayChrome.SetTextIfChanged(_driverLabels[index], row.Driver);
-        changed |= OverlayChrome.SetTextIfChanged(_gapLabels[index], row.Gap);
-        changed |= OverlayChrome.SetTextIfChanged(_detailLabels[index], row.Detail);
-
         var backColor = row.IsReference
             ? OverlayTheme.Colors.InfoBackground
             : row.IsPit
@@ -407,36 +408,33 @@ internal sealed class RelativeForm : PersistentOverlayForm
                     : row.IsAhead
                         ? OverlayTheme.Colors.InfoText
                         : OverlayTheme.Colors.SuccessText;
-        var classColor = TryParseColor(row.ClassColorHex);
-        changed |= _positionLabels[index].SetClassColor(row.IsPit
-            ? MutedClassColor(classColor)
-            : classColor);
-        var detailColor = row.IsPit
-            ? OverlayTheme.Colors.TextSubtle
-            : classColor ?? (row.IsSameClass ? OverlayTheme.Colors.TextSubtle : OverlayTheme.Colors.InfoText);
 
-        changed |= ApplyCellColors(index, backColor, textColor, gapColor, detailColor);
+        for (var column = 0; column < MaximumColumns; column++)
+        {
+            var columnState = column < columns.Count ? columns[column] : null;
+            var label = _rowLabels[index, column];
+            changed |= OverlayChrome.SetVisibleIfChanged(label, visible && columnState is not null);
+            changed |= OverlayChrome.SetTextIfChanged(label, columnState is null ? string.Empty : ValueForColumn(row, columnState));
+            changed |= OverlayChrome.SetBackColorIfChanged(label, backColor);
+            changed |= OverlayChrome.SetForeColorIfChanged(label, TextColorForColumn(columnState, textColor, gapColor));
+        }
+
         return changed;
     }
 
-    private bool ApplyBlankRow(int index, string placeholder, bool visible)
+    private bool ApplyBlankRow(int index, string placeholder, IReadOnlyList<OverlayContentColumnState> columns, bool visible)
     {
         var changed = false;
-        changed |= OverlayChrome.SetVisibleIfChanged(_positionLabels[index], visible);
-        changed |= OverlayChrome.SetVisibleIfChanged(_driverLabels[index], visible);
-        changed |= OverlayChrome.SetVisibleIfChanged(_gapLabels[index], visible);
-        changed |= OverlayChrome.SetVisibleIfChanged(_detailLabels[index], visible);
-        changed |= OverlayChrome.SetTextIfChanged(_positionLabels[index], string.Empty);
-        changed |= OverlayChrome.SetTextIfChanged(_driverLabels[index], placeholder);
-        changed |= OverlayChrome.SetTextIfChanged(_gapLabels[index], string.Empty);
-        changed |= OverlayChrome.SetTextIfChanged(_detailLabels[index], string.Empty);
-        changed |= _positionLabels[index].SetClassColor(null);
-        changed |= ApplyCellColors(
-            index,
-            OverlayTheme.Colors.PanelBackground,
-            OverlayTheme.Colors.TextMuted,
-            OverlayTheme.Colors.TextMuted,
-            OverlayTheme.Colors.TextMuted);
+        for (var column = 0; column < MaximumColumns; column++)
+        {
+            var columnState = column < columns.Count ? columns[column] : null;
+            var label = _rowLabels[index, column];
+            changed |= OverlayChrome.SetVisibleIfChanged(label, visible && columnState is not null);
+            changed |= OverlayChrome.SetTextIfChanged(label, column == 0 ? placeholder : string.Empty);
+            changed |= OverlayChrome.SetBackColorIfChanged(label, OverlayTheme.Colors.PanelBackground);
+            changed |= OverlayChrome.SetForeColorIfChanged(label, OverlayTheme.Colors.TextMuted);
+        }
+
         return changed;
     }
 
@@ -466,17 +464,35 @@ internal sealed class RelativeForm : PersistentOverlayForm
         return true;
     }
 
-    private bool ApplyCellColors(int index, Color backColor, Color textColor, Color gapColor, Color detailColor)
+    private bool ApplyColumns(IReadOnlyList<OverlayContentColumnState> columns)
     {
         var changed = false;
-        changed |= OverlayChrome.SetBackColorIfChanged(_positionLabels[index], backColor);
-        changed |= OverlayChrome.SetBackColorIfChanged(_driverLabels[index], backColor);
-        changed |= OverlayChrome.SetBackColorIfChanged(_gapLabels[index], backColor);
-        changed |= OverlayChrome.SetBackColorIfChanged(_detailLabels[index], backColor);
-        changed |= OverlayChrome.SetForeColorIfChanged(_positionLabels[index], textColor);
-        changed |= OverlayChrome.SetForeColorIfChanged(_driverLabels[index], textColor);
-        changed |= OverlayChrome.SetForeColorIfChanged(_gapLabels[index], gapColor);
-        changed |= OverlayChrome.SetForeColorIfChanged(_detailLabels[index], detailColor);
+        for (var column = 0; column < MaximumColumns && column < _table.ColumnStyles.Count; column++)
+        {
+            var columnState = column < columns.Count ? columns[column] : null;
+            var style = _table.ColumnStyles[column];
+            if (style.SizeType != SizeType.Absolute)
+            {
+                style.SizeType = SizeType.Absolute;
+                changed = true;
+            }
+
+            var width = columnState?.Width ?? 0;
+            if (Math.Abs(style.Width - width) > 0.001f)
+            {
+                style.Width = width;
+                changed = true;
+            }
+
+            if (columnState is not null)
+            {
+                for (var row = 0; row < MaximumRows; row++)
+                {
+                    changed |= ApplyColumnAlignment(_rowLabels[row, column], columnState);
+                }
+            }
+        }
+
         return changed;
     }
 
@@ -517,45 +533,94 @@ internal sealed class RelativeForm : PersistentOverlayForm
             footerMode);
     }
 
-    private static ClassPositionLabel CreatePositionCellLabel(string fontFamily, string text)
+    private Label[] RowLabels()
     {
-        return new ClassPositionLabel
+        var labels = new Label[MaximumRows * MaximumColumns];
+        var labelIndex = 0;
+        for (var row = 0; row < MaximumRows; row++)
+        {
+            for (var column = 0; column < MaximumColumns; column++)
+            {
+                labels[labelIndex++] = _rowLabels[row, column];
+            }
+        }
+
+        return labels;
+    }
+
+    private IReadOnlyList<OverlayContentColumnState> DisplayColumns()
+    {
+        return OverlayContentColumnSettings.VisibleColumnsFor(
+            _settings,
+            OverlayContentColumnSettings.Relative);
+    }
+
+    private int TableMinimumWidth()
+    {
+        return Math.Max(80, DisplayColumns().Sum(column => column.Width));
+    }
+
+    private string SettingsSignature()
+    {
+        return string.Join(
+            "|",
+            OverlayContentColumnSettings.ColumnsFor(_settings, OverlayContentColumnSettings.Relative)
+                .Select(column => $"{column.Id}:{column.DataKey}:{column.Enabled}:{column.Order}:{column.Width}:{column.Alignment}")
+                .Prepend(CarsBehind.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                .Prepend(CarsAhead.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+    }
+
+    private static string ValueForColumn(RelativeOverlayRowViewModel row, OverlayContentColumnState column)
+    {
+        return column.DataKey switch
+        {
+            OverlayContentColumnSettings.DataDirection => row.IsAhead ? "Ahead" : row.IsBehind ? "Behind" : "Near",
+            OverlayContentColumnSettings.DataRelativePosition => row.Position,
+            OverlayContentColumnSettings.DataDriver => row.Driver,
+            OverlayContentColumnSettings.DataGap => row.Gap,
+            OverlayContentColumnSettings.DataPit => row.IsPit ? "IN" : string.Empty,
+            _ => string.Empty
+        };
+    }
+
+    private static Color TextColorForColumn(OverlayContentColumnState? column, Color textColor, Color gapColor)
+    {
+        return string.Equals(column?.DataKey, OverlayContentColumnSettings.DataGap, StringComparison.Ordinal)
+            ? gapColor
+            : textColor;
+    }
+
+    private static bool ApplyColumnAlignment(Label label, OverlayContentColumnState column)
+    {
+        var alignment = column.Alignment switch
+        {
+            OverlayContentColumnAlignment.Left => ContentAlignment.MiddleLeft,
+            OverlayContentColumnAlignment.Center => ContentAlignment.MiddleCenter,
+            _ => ContentAlignment.MiddleRight
+        };
+        if (label.TextAlign == alignment)
+        {
+            return false;
+        }
+
+        label.TextAlign = alignment;
+        return true;
+    }
+
+    private static Label CreateContentCellLabel(string fontFamily)
+    {
+        return new Label
         {
             AutoSize = false,
             BackColor = OverlayTheme.Colors.PanelBackground,
             Dock = DockStyle.Fill,
-            Font = OverlayTheme.Font(fontFamily, 9.2f, FontStyle.Bold),
+            Font = OverlayTheme.Font(fontFamily, 9.0f, FontStyle.Bold),
             ForeColor = OverlayTheme.Colors.TextPrimary,
             Margin = Padding.Empty,
-            Padding = new Padding(28, 0, 4, 0),
-            Text = text,
-            TextAlign = ContentAlignment.MiddleLeft
+            Padding = new Padding(6, 0, 4, 0),
+            Text = string.Empty,
+            TextAlign = ContentAlignment.MiddleRight
         };
-    }
-
-    private static Color? TryParseColor(string? hex)
-    {
-        if (string.IsNullOrWhiteSpace(hex))
-        {
-            return null;
-        }
-
-        var value = hex.Trim().TrimStart('#');
-        return value.Length == 6
-            && int.TryParse(value, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var rgb)
-            ? Color.FromArgb((rgb >> 16) & 0xff, (rgb >> 8) & 0xff, rgb & 0xff)
-            : null;
-    }
-
-    private static Color? MutedClassColor(Color? color)
-    {
-        if (color is not { } value)
-        {
-            return null;
-        }
-
-        var background = OverlayTheme.Colors.PanelBackground;
-        return Blend(value, background, panelWeight: 1, accentWeight: 2);
     }
 
     private static Color PitRowBackground
@@ -568,56 +633,6 @@ internal sealed class RelativeForm : PersistentOverlayForm
                 Math.Min(255, panel.R + 10),
                 Math.Min(255, panel.G + 10),
                 Math.Min(255, panel.B + 10));
-        }
-    }
-
-    private static Color Blend(Color panel, Color accent, int panelWeight, int accentWeight)
-    {
-        var total = Math.Max(1, panelWeight + accentWeight);
-        return Color.FromArgb(
-            (panel.R * panelWeight + accent.R * accentWeight) / total,
-            (panel.G * panelWeight + accent.G * accentWeight) / total,
-            (panel.B * panelWeight + accent.B * accentWeight) / total);
-    }
-
-    private sealed class ClassPositionLabel : Label
-    {
-        private Color? _classColor;
-
-        public bool SetClassColor(Color? color)
-        {
-            if (ColorEquals(_classColor, color))
-            {
-                return false;
-            }
-
-            _classColor = color;
-            Invalidate();
-            return true;
-        }
-
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            base.OnPaint(e);
-            if (_classColor is not { } color || Width <= 18 || Height <= 6)
-            {
-                return;
-            }
-
-            using var brush = new SolidBrush(color);
-            var barHeight = Math.Max(10, Height - 10);
-            var y = Math.Max(4, (Height - barHeight) / 2);
-            e.Graphics.FillRectangle(brush, 8, y, 3, barHeight);
-        }
-
-        private static bool ColorEquals(Color? left, Color? right)
-        {
-            if (left.HasValue != right.HasValue)
-            {
-                return false;
-            }
-
-            return !left.HasValue || left.Value.ToArgb() == right.GetValueOrDefault().ToArgb();
         }
     }
 }

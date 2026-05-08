@@ -9,53 +9,59 @@ TmrOverlay uses SemVer-style annotated Git tags for product milestones:
 
 ## Current Branch Target
 
-### v0.16.0 - Velopack Release Channel
+### v0.16.1 - Overlay Feedback Hardening
 
 Planned branch name:
 
 ```text
-v0.16-velopack-release-channel
+v0.16.1-feedback
 ```
 
 Planned scope:
 
-- Make Velopack the canonical installer/update channel for public GitHub Releases.
-- Keep the portable zip artifact as a transitional fallback while teammate installs move to the Velopack setup executable.
-- Add passive startup and manual update checks through Velopack without embedding a GitHub token in the client.
-- Surface update state in the tray menu, settings banner, Support tab, diagnostics bundle, and release docs.
-- Add diagnostic prep for the V1.x overlay lifecycle/timer-efficiency branch before changing overlay behavior.
-- Record the Timing Tower as a V1.x follow-up feature separate from full Standings.
-- Keep update prompts passive and never modal over an active simulator session.
+- Harden the v0.16 overlay set from teammate feedback before the V1.x pass.
+- Make Standings, Relative, and future table overlays use a shared content-column architecture with per-overlay keys, visible/editable pixel widths, stable disabled ordering, and matching native/browser defaults.
+- Give OBS users recommended browser-source dimensions next to localhost URLs.
+- Improve multiclass Standings with scoring-first start/grid rows, iRacing class-colored separators, configurable other-class rows, and browser/native parity.
+- Rework long-race Gap To Leader scaling around a four-hour visible window, same-lap reference selection, leader/reference transitions, and clearer axis labels.
+- Add shared race projection data for timed-race lap estimates, fuel/strategy planning, session/flags display, and class separator context.
+- Clean up Input / Car State so the line graph is primary, current-value widgets are right-side content toggles, and browser/native rendering matches.
+- Harden Flags/settings interaction by coalescing settings save/apply work, suppressing the transparent Flags overlay while Settings is active, and adding diagnostics for UI timer stalls, overlay input interception, settings churn, and flags rendering.
+- Add the mac harness to source control and CI so mock-telemetry UI parity can be reviewed before Windows validation.
 
 Technical implementation checklist:
 
-1. Bump shared .NET product/version metadata to `0.16.0`.
-2. Add Velopack package integration and run `VelopackApp` at process startup with automatic apply disabled.
-3. Add a release update service backed by public GitHub Releases through Velopack `GithubSource`.
-4. Check once on startup after a short delay and allow manual tray/settings checks.
-5. Show update available/failure states as passive settings UI and Support diagnostics instead of modal prompts.
-6. Extend diagnostics bundles with update state.
-7. Update CI to pack Velopack installer/update assets and attach them to tag releases alongside the portable zip fallback.
-8. Add passive performance diagnostics for overlay timer cadence, lifecycle visibility, unchanged-sequence skips, paint samples, localhost activity, and process handle pressure.
-9. Update release/update docs and run branch validation available from macOS, with Windows build/test/publish/Velopack validation left to Windows CI.
+1. Bump shared .NET product/version metadata to `0.16.1`.
+2. Add table content-column settings shared by Standings and Relative while keeping overlay-owned column ids/options.
+3. Update Standings native/browser rendering for content columns, class separators, scoring fallback/start rows, class color handling, and recommended OBS sizing.
+4. Update Relative and Input / Car State content settings so native and browser outputs share the same default visible content.
+5. Move settings overlay sub-sections to left-side General/Content/Header/Footer tabs, with Inputs omitting Header/Footer.
+6. Add rolling race projection data to Core and consume it from Fuel, Session / Weather, Flags, Standings separators, and browser-source settings.
+7. Harden Gap To Leader long-race reference/scale behavior using the 4-hour and 24-hour local telemetry demos.
+8. Coalesce settings save/apply work, suppress Flags while Settings is active, and capture UI freeze diagnostics in support bundles.
+9. Bring the mac harness into git, build it in CI, and mirror shared app/overlay behavior where the mock harness owns a review surface.
+10. Update docs/context/version metadata and run branch validation available from macOS, with Windows restore/build/test/screenshot validation left to Windows CI or a Windows machine.
 
 Likely squash title:
 
 ```text
-[v0.16.0] Add Velopack release channel
+[v0.16.1] Harden overlay layout, race projection, and diagnostics
 ```
 
 Likely squash body:
 
 ```text
-- Bumped shared .NET product/version metadata to 0.16.0.
-- Added Velopack startup integration with automatic apply disabled.
-- Added a GitHub Releases-backed update service for installed Velopack builds, with startup/manual checks and portable/dev-run skip behavior.
-- Added tray menu update status/actions, passive settings banner states, Support-tab update diagnostics, and diagnostics bundle metadata.
-- Added passive performance diagnostics for V1.x overlay lifecycle/timer work: timer cadence/active counts, visible versus pause-eligible samples, lifecycle state transitions, unchanged-sequence skips, explicit paint samples, localhost activity, and GDI/USER handle pressure.
-- Updated Windows CI to dry-run Velopack packaging on PRs and attach Velopack installer/update assets to tag releases alongside the portable zip fallback.
-- Updated release/update docs, public README language, repo context, and V1.x roadmap notes, including Timing Tower as a future compact race tower separate from Standings.
-- Validation: git diff --check, merge-marker scan, C# compile-shape scanner, mac screenshot regeneration plus tracked screenshot validation, Windows screenshot expectation validation, release tutorial screenshot regeneration/validation, and workflow YAML parse. Windows restore/build/test/screenshot/publish/Velopack validation remains CI-owned from this Mac because `dotnet` is not installed locally.
+- Bumped shared .NET product/version metadata to 0.16.1.
+- Added shared content-column architecture for Standings, Relative, and Inputs with overlay-owned keys, visible/editable pixel widths, stable disabled ordering, matching native/browser defaults, and recommended OBS browser-source dimensions.
+- Reworked Standings native/browser behavior around scoring-first start rows, configurable columns, class-colored separators, configurable other-class row blocks, projection-backed class lap estimates, class color caching, and a wider default layout.
+- Hardened Gap To Leader for long races with a four-hour visible window, same-lap reference selection, leader/reference transitions, clearer axis labels, and local 4-hour/24-hour telemetry demo coverage.
+- Added shared live race projection data for timed-race lap estimates and reused it in Fuel, Session / Weather, Flags, Standings separators, browser-source metadata, and future strategy/fuel calculations.
+- Updated Input / Car State native/browser rendering so the line graph is primary and current speed/gear/pedal/steering widgets are toggleable right-side content.
+- Reworked Settings overlay tabs into left-side General/Content/Header/Footer sections, with Inputs suppressing unused header/footer tabs and settings save/apply work coalesced to avoid recursive UI churn.
+- Added flags/settings freeze hardening and diagnostics: Flags hides while Settings is active, UI timer lateness is captured, overlay window/input-intercept state is recorded, settings save/apply queue metrics are tracked, and diagnostics bundles include `metadata/ui-freeze-watch.json`.
+- Added the mac harness to source control, aligned relevant mock behavior, regenerated screenshot artifacts, and expanded CI to build/test the mac harness alongside Windows validation.
+- Aligned the local Windows launcher, release-package expectations, and Velopack package id around the shipped `TMROverlay.exe` executable name; the package id intentionally changes from the first tester `TechMatesRacing.TmrOverlay` identity to `TMROverlay` before V1.
+- Validation: git diff --check, merge-marker scan, C# compile-shape scanner, mac build, mac test with the Xcode `DEVELOPER_DIR` toolchain, mac screenshot regeneration plus tracked screenshot validation, release tutorial regeneration/validation, and Windows screenshot expectation validation. Windows restore/build/test/screenshot validation remains Windows-owned from this Mac because `dotnet` is not installed locally.
 ```
 
 ## Next Planned Milestone

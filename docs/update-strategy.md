@@ -6,7 +6,7 @@ Last updated: 2026-05-07
 
 The v0.16 release-channel branch makes Velopack the canonical Windows installer/update path while keeping the portable zip as a transitional fallback. The PR/main workflow restores, builds, tests, validates tracked screenshots, checks Windows screenshot expectations, runs a publish dry run with package audit, and dry-runs `vpk pack`. A `vMAJOR.MINOR.PATCH` tag publishes the app as a self-contained `win-x64` package, audits the publish folder, zips it, writes a package manifest and SHA-256 checksum, packs Velopack installer/update assets, uploads workflow artifacts, and attaches both the portable zip artifacts and Velopack assets to the public GitHub Release.
 
-The public GitHub Release is the Velopack feed. Installed builds use Velopack `GithubSource` against `https://github.com/Boucher-David/TMROverlay` with no embedded token. Portable/dev runs skip update checks because they do not have a Velopack install identity.
+The public GitHub Release is the Velopack feed. Installed builds use Velopack `GithubSource` against `https://github.com/Boucher-David/TMROverlay` with no embedded token. The active pre-1.0 package id is `TMROverlay`; it intentionally replaces the first tester id, `TechMatesRacing.TmrOverlay`, so generated setup assets and installed identity use the shorter app name. Portable/dev runs skip update checks because they do not have a Velopack install identity.
 
 Still pending after the first Velopack pass:
 

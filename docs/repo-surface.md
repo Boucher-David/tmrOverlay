@@ -28,7 +28,7 @@ Release packaging should include only published runtime output from `src/TmrOver
 - `mocks/` contains screenshot and visual-review artifacts. These are validation/design artifacts, not publish output.
 - `skills/` contains agent workflow context and validation instructions.
 - `tools/` contains local analysis and rendering tools, including the Windows WinForms screenshot generator used by CI for parity artifacts.
-- `local-mac/` is ignored local harness code for macOS review and screenshot iteration.
+- `local-mac/TmrOverlayMac/` is tracked local harness source for macOS review, mock telemetry, and screenshot iteration. Generated `.build`, app data, logs, captures, and local screenshots stay ignored.
 
 These are useful inside the repo but should not appear in a Windows tester package.
 

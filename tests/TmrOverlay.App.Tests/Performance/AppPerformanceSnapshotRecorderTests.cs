@@ -43,6 +43,20 @@ public sealed class AppPerformanceSnapshotRecorderTests
                 timestamp,
                 liveTelemetryAvailable: false,
                 fadeAlpha: 0.25d);
+            state.RecordOverlayWindowState(
+                "flags",
+                timestamp,
+                actualVisible: true,
+                topMost: false,
+                alwaysOnTopSetting: true,
+                inputTransparent: true,
+                noActivate: true,
+                settingsOverlayActive: true,
+                x: 10,
+                y: 20,
+                width: 300,
+                height: 120,
+                opacity: 0.9d);
             var recorder = new AppPerformanceSnapshotRecorder(storage);
 
             recorder.Record(state.Snapshot());
@@ -59,6 +73,9 @@ public sealed class AppPerformanceSnapshotRecorderTests
             Assert.Contains("\"id\":\"overlay.fuel_calculator.update.applied\"", content);
             Assert.Contains("\"id\":\"overlay.fuel_calculator.update.live_available\"", content);
             Assert.Contains("\"id\":\"overlay.fuel_calculator.update.fade_alpha\"", content);
+            Assert.Contains("\"overlayWindows\"", content);
+            Assert.Contains("\"overlayId\":\"flags\"", content);
+            Assert.Contains("\"id\":\"overlay.flags.window.input_transparent\"", content);
         }
         finally
         {

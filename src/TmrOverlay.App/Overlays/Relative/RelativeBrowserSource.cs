@@ -12,7 +12,17 @@ internal static class RelativeBrowserSource
         script: Script);
 
     private const string Script = """
-    let relativeSettings = { carsAhead: 5, carsBehind: 5 };
+    const defaultRelativeColumns = [
+      { id: 'relative.position', label: 'Pos', dataKey: 'relative-position', width: 58, alignment: 'right' },
+      { id: 'relative.driver', label: 'Driver', dataKey: 'driver', width: 300, alignment: 'left' },
+      { id: 'relative.gap', label: 'Gap', dataKey: 'gap', width: 92, alignment: 'right' }
+    ];
+    const defaultRelativeSettings = {
+      carsAhead: 5,
+      carsBehind: 5,
+      columns: defaultRelativeColumns
+    };
+    let relativeSettings = defaultRelativeSettings;
     let nextRelativeSettingsFetchAt = 0;
 
     TmrBrowserOverlay.register({
@@ -22,13 +32,7 @@ internal static class RelativeBrowserSource
       render(live) {
         const relative = live?.models?.relative;
         const rows = relativeRows(live, relativeSettings);
-        contentEl.innerHTML = rowsTable([
-          { label: 'Dir', value: (row) => row.isAhead ? 'Ahead' : row.isBehind ? 'Behind' : 'Near' },
-          { label: 'Pos', value: (row) => row.positionLabel || '--' },
-          { label: 'Driver', value: (row) => escapeHtml(relativeDriver(row)) },
-          { label: 'Gap', value: (row) => row.gapLabel || '--' },
-          { label: 'Pit', value: (row) => row.onPitRoad ? 'IN' : '' }
-        ], rows);
+        contentEl.innerHTML = rowsTable(relativeColumnHeaders(), rows);
         setStatus(live, relative?.hasData ? relativeStatus(live, rows) : 'waiting for relative');
       }
     });
@@ -43,9 +47,103 @@ internal static class RelativeBrowserSource
         const response = await fetch('/api/relative', { cache: 'no-store' });
         if (!response.ok) return;
         const payload = await response.json();
-        relativeSettings = payload.relativeSettings || relativeSettings;
+        relativeSettings = normalizeRelativeSettings(payload.relativeSettings || relativeSettings);
       } catch {
-        relativeSettings = { carsAhead: 5, carsBehind: 5 };
+        relativeSettings = defaultRelativeSettings;
+      }
+    }
+
+    function normalizeRelativeSettings(settings) {
+      const columns = Array.isArray(settings?.columns) && settings.columns.length
+        ? settings.columns
+        : defaultRelativeColumns;
+      return {
+        carsAhead: settings?.carsAhead ?? defaultRelativeSettings.carsAhead,
+        carsBehind: settings?.carsBehind ?? defaultRelativeSettings.carsBehind,
+        columns
+      };
+    }
+
+    function relativeColumnHeaders() {
+      return normalizeColumns(relativeSettings.columns, defaultRelativeColumns)
+        .map((column) => ({
+          label: column.label,
+          width: column.width,
+          align: column.alignment,
+          value: (row) => relativeColumnValue(row, column.dataKey)
+        }));
+    }
+
+    function relativeColumnValue(row, dataKey) {
+      switch (dataKey) {
+        case 'direction':
+          return row.isAhead ? 'Ahead' : row.isBehind ? 'Behind' : 'Near';
+        case 'relative-position':
+          return row.positionLabel || '--';
+        case 'driver':
+          return escapeHtml(relativeDriver(row));
+        case 'gap':
+          return row.gapLabel || '--';
+        case 'pit':
+          return row.onPitRoad ? 'IN' : '';
+        default:
+          return '';
+      }
+    }
+
+    function normalizeColumns(columns, fallbackColumns) {
+      const normalized = (Array.isArray(columns) ? columns : [])
+        .map((column) => ({
+          id: String(column?.id || ''),
+          label: String(column?.label || ''),
+          dataKey: normalizeRelativeDataKey(column?.dataKey, column?.id),
+          width: clamp(Number(column?.width), 34, 520),
+          alignment: normalizeColumnAlignment(column?.alignment ?? column?.align, column?.id, fallbackColumns)
+        }))
+        .filter((column) => column.id && column.label && column.dataKey);
+      return normalized.length ? normalized : fallbackColumns;
+    }
+
+    function normalizeColumnAlignment(value, columnId, fallbackColumns) {
+      const normalized = String(value || '').toLowerCase();
+      const id = String(columnId || '');
+      if (['left', 'right', 'center'].includes(normalized)) {
+        return normalized;
+      }
+
+      const fallback = (fallbackColumns || []).find((column) => column.id === id);
+      if (fallback) {
+        return normalizeColumnAlignment(fallback.alignment ?? fallback.align, null, []);
+      }
+
+      return id === 'driver' || id.endsWith('.driver') ? 'left' : 'right';
+    }
+
+    function normalizeRelativeDataKey(value, columnId) {
+      const normalized = String(value || '').toLowerCase();
+      if (['direction', 'relative-position', 'driver', 'gap', 'pit'].includes(normalized)) {
+        return normalized;
+      }
+
+      const legacyId = String(columnId || '').toLowerCase();
+      switch (legacyId) {
+        case 'direction':
+        case 'relative.direction':
+          return 'direction';
+        case 'position':
+        case 'relative.position':
+          return 'relative-position';
+        case 'driver':
+        case 'relative.driver':
+          return 'driver';
+        case 'gap':
+        case 'relative.gap':
+          return 'gap';
+        case 'pit':
+        case 'relative.pit':
+          return 'pit';
+        default:
+          return '';
       }
     }
 

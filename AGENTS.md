@@ -6,7 +6,7 @@ Start here when continuing work in this repo.
 
 - Windows tray application in `src/TmrOverlay.App/`
 - Platform-neutral settings, history, live telemetry, fuel, overlay metadata, and post-race analysis models in `src/TmrOverlay.Core/`
-- Ignored local macOS harness in `local-mac/TmrOverlayMac/`
+- Tracked local macOS harness in `local-mac/TmrOverlayMac/` for mock-telemetry UI parity and review demos
 - Startup surface: fixed-size settings app window; driving/support overlays are opt-in from settings and default hidden
 - Settings panel owns overlay visibility, scale/custom size, session filters where relevant, shared font/units, and support capture/diagnostics controls; future product surfaces such as Overlay Bridge and post-race analysis should not be exposed as ordinary overlay tabs without a product pass
 - iRacing ingestion through `irsdkSharp`
@@ -35,14 +35,16 @@ Start here when continuing work in this repo.
 ## Guardrails
 
 - Preserve the collector-first architecture unless there is a strong reason to change it.
-- Keep Windows as the production/iRacing runtime and the ignored mac harness as the mock-telemetry development surface.
+- Keep Windows as the production/iRacing runtime and the tracked mac harness as the mock-telemetry development surface.
+- The mac harness under `local-mac/TmrOverlayMac/` is tracked source now. Keep source/config/tests in sync with shared overlay/settings behavior where practical, while generated `.build`, local app data, captures, logs, and screenshots stay ignored.
 - If you change the raw capture format, update `docs/capture-format.md` and `README.md` in the same pass.
 - Prefer shared Core models/read services, descriptor-driven overlay options, and `OverlayTheme` tokens over one-off UI contracts.
 - Product overlays should read normalized live state through `ILiveTelemetrySource`; telemetry providers should write through `ILiveTelemetrySink`.
-- Mirror shared app/overlay/boilerplate changes in both the Windows app and ignored mac harness unless the work is explicitly Windows/iRacing-specific.
+- Mirror shared app/overlay/boilerplate changes in both the Windows app and tracked mac harness unless the work is explicitly Windows/iRacing-specific.
 - In the Windows app, fully qualify timer types: use `System.Threading.Timer` for hosted/background services and `System.Windows.Forms.Timer` for UI refresh loops. WinForms implicit globals import both namespaces, so bare `Timer` is ambiguous on Windows.
 - Waiting/unavailable/error preview states must use deterministic isolated fixtures. Do not let local user history, cached telemetry, or machine-specific paths make an empty state look populated unless the scenario explicitly tests history fallback or support-path display.
 - For wider app changes, carry validation discipline into tests and fixtures: assert both data that should appear and data that must stay hidden, cover failure/degraded paths, and keep performance/diagnostics/update flows fixture-driven where possible.
+- During exploratory or iterative implementation, do not run the full docs/tests/validation sweep after every prompt. Use targeted checks only when they directly de-risk the current edit, and defer broader docs, fixtures, screenshots, and validation until the user-approved stopping point or branch-complete pass.
 - If a durable user-data schema changes, treat backwards compatibility as part of the same validation sweep: update version constants, migrations or compatible readers, docs, and the schema-compatibility test before final validation.
 - When implementation behavior, calculations, defaults, source labels, fixture data, or validation semantics change, update the affected build test assertions and test fixtures in the same pass. Treat stale passing or failing assertions as stale references, not as a separate cleanup task.
 - Before declaring a branch complete, run the branch-complete release hygiene in `skills/tmr-overlay-validation/SKILL.md`: patch stale docs/context references, regenerate and validate screenshot artifacts for overlay/settings UI changes, inspect branch commits, sanitize the first commit or planned squash text, update `VERSION.md`, align `Directory.Build.props` version metadata for milestone branches, and create annotated tags only after the release commit is on `main` or explicitly designated as the release point.

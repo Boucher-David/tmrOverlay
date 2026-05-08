@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.Overlays.BrowserSources;
 using TmrOverlay.App.Overlays.GarageCover;
+using TmrOverlay.App.Overlays.InputState;
 using TmrOverlay.App.Overlays.Relative;
 using TmrOverlay.App.Overlays.Standings;
 using TmrOverlay.App.Overlays.StreamChat;
@@ -272,6 +273,16 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
                     statusCode = (int)HttpStatusCode.OK;
                     break;
 
+                case "/api/input-state":
+                    route = "input_state_settings";
+                    await WriteJsonAsync(context.Response, HttpStatusCode.OK, new
+                    {
+                        generatedAtUtc = DateTimeOffset.UtcNow,
+                        inputStateSettings = ReadInputStateSettings()
+                    }, cancellationToken).ConfigureAwait(false);
+                    statusCode = (int)HttpStatusCode.OK;
+                    break;
+
                 case "/api/garage-cover":
                     route = "garage_cover_settings";
                     await WriteJsonAsync(context.Response, HttpStatusCode.OK, new
@@ -397,6 +408,19 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
         {
             _logger.LogWarning(exception, "Failed to read relative settings for localhost browser source.");
             return RelativeBrowserSettings.Default;
+        }
+    }
+
+    private InputStateBrowserSettings ReadInputStateSettings()
+    {
+        try
+        {
+            return InputStateBrowserSettings.From(_settingsStore.Load());
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Failed to read input-state settings for localhost browser source.");
+            return InputStateBrowserSettings.Default;
         }
     }
 

@@ -38,6 +38,16 @@
 # Convenience launcher for the ignored macOS harness.
 /run.sh
 
-# Local-only macOS development port.
-# This is intentionally not part of the Windows collector product.
-local-mac/
+# macOS development harness. Track source/config/tests so UI parity changes are visible,
+# but keep generated builds, local app data, captures, and temporary launchers out of git.
+local-mac/**/.build/
+local-mac/**/.swiftpm/
+/local-mac/*/captures/
+/local-mac/*/diagnostics/
+/local-mac/*/history/
+/local-mac/*/logs/
+/local-mac/*/settings/
+/local-mac/*/artifacts/
+/local-mac/*/runtime-state.json
+local-mac/**/*.app/
+local-mac/**/*.log

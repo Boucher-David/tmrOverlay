@@ -126,6 +126,48 @@ public sealed class LiveTelemetryStoreTests
     }
 
     [Fact]
+    public void RecordFrame_PublishesRollingRaceProjectionAfterCleanLeaderWindow()
+    {
+        var store = new LiveTelemetryStore();
+        var startedAtUtc = DateTimeOffset.Parse("2026-05-07T12:00:00Z");
+        var leaderFrames = new[]
+        {
+            (SessionTime: 0d, LapCompleted: 0, LapDistPct: 0.90d, LastLap: (double?)null),
+            (SessionTime: 5d, LapCompleted: 1, LapDistPct: 0.02d, LastLap: (double?)91d),
+            (SessionTime: 90d, LapCompleted: 1, LapDistPct: 0.90d, LastLap: (double?)91d),
+            (SessionTime: 96d, LapCompleted: 2, LapDistPct: 0.02d, LastLap: (double?)92d),
+            (SessionTime: 181d, LapCompleted: 2, LapDistPct: 0.90d, LastLap: (double?)92d),
+            (SessionTime: 188d, LapCompleted: 3, LapDistPct: 0.02d, LastLap: (double?)93d)
+        };
+
+        foreach (var frame in leaderFrames)
+        {
+            store.RecordFrame(CreateSample(
+                capturedAtUtc: startedAtUtc.AddSeconds(frame.SessionTime),
+                sessionTime: frame.SessionTime,
+                sessionState: 4,
+                playerCarIdx: 10,
+                teamLapCompleted: 2,
+                teamLapDistPct: 0.50d,
+                leaderCarIdx: 11,
+                leaderLapCompleted: frame.LapCompleted,
+                leaderLapDistPct: frame.LapDistPct,
+                leaderLastLapTimeSeconds: frame.LastLap,
+                sessionTimeRemain: 360d));
+        }
+
+        var models = store.Snapshot().Models;
+        var projection = models.RaceProjection;
+
+        Assert.True(projection.HasData);
+        Assert.Equal(92d, projection.OverallLeaderPaceSeconds!.Value, precision: 3);
+        Assert.Contains("rolling overall leader pace", projection.OverallLeaderPaceSource);
+        Assert.Equal(4.5d, projection.EstimatedTeamLapsRemaining!.Value, precision: 3);
+        Assert.Equal(projection.OverallLeaderPaceSeconds, models.RaceProgress.RacePaceSeconds);
+        Assert.Equal(projection.EstimatedTeamLapsRemaining, models.RaceProgress.RaceLapsRemaining);
+    }
+
+    [Fact]
     public void RecordFrame_ClearsFullLapTrackMapHighlightWhenNextFirstSectorCompletes()
     {
         var store = new LiveTelemetryStore();
@@ -992,9 +1034,13 @@ DriverInfo:
         int? classLeaderCarIdx = null,
         double? classLeaderLapDistPct = null,
         double? classLeaderF2TimeSeconds = null,
+        double? classLeaderLastLapTimeSeconds = null,
+        int? leaderCarIdx = null,
         int? leaderLapCompleted = null,
         double? leaderLapDistPct = null,
+        double? leaderLastLapTimeSeconds = null,
         double? sessionTimeRemain = null,
+        int? sessionState = null,
         IReadOnlyList<HistoricalCarProximity>? focusClassCars = null,
         IReadOnlyList<HistoricalCarProximity>? nearbyCars = null,
         int? carLeftRight = null,
@@ -1027,6 +1073,7 @@ DriverInfo:
             WeatherDeclaredWet: false,
             PlayerTireCompound: 0,
             SessionTimeRemain: sessionTimeRemain,
+            SessionState: sessionState,
             IsGarageVisible: isGarageVisible,
             PlayerCarIdx: playerCarIdx,
             FocusCarIdx: focusCarIdx,
@@ -1047,8 +1094,11 @@ DriverInfo:
             FocusClassLeaderLapCompleted: classLeaderLapDistPct is null ? null : 2,
             FocusClassLeaderLapDistPct: classLeaderLapDistPct,
             FocusClassLeaderF2TimeSeconds: classLeaderF2TimeSeconds,
+            FocusClassLeaderLastLapTimeSeconds: classLeaderLastLapTimeSeconds,
+            LeaderCarIdx: leaderCarIdx,
             LeaderLapCompleted: leaderLapCompleted,
             LeaderLapDistPct: leaderLapDistPct,
+            LeaderLastLapTimeSeconds: leaderLastLapTimeSeconds,
             FocusClassCars: focusClassCars,
             NearbyCars: nearbyCars,
             LapDeltaToSessionBestLapSeconds: lapDeltaToSessionBestLapSeconds,

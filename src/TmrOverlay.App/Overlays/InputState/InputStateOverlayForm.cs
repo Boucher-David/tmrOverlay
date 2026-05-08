@@ -19,7 +19,10 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
     private const int MaximumTracePoints = 180;
     private const int CompactLayoutWidthThreshold = 320;
     private const int CompactLayoutHeightThreshold = 180;
+    private const int SideReadoutWidthThreshold = 460;
     private const int FullLayoutHeightThreshold = 270;
+    private const int MinimumGraphWidthWithRail = 230;
+    private const int RailGap = 10;
     private static readonly Color ThrottleTraceColor = Color.FromArgb(48, 214, 109);
     private static readonly Color BrakeTraceColor = Color.FromArgb(236, 112, 99);
     private static readonly Color AbsActiveTraceColor = Color.FromArgb(255, 209, 102);
@@ -43,9 +46,7 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
     private string? _lastLoggedError;
     private DateTimeOffset? _lastLoggedErrorAtUtc;
 
-    private int FooterReserveHeight => OverlayChrome.ShouldShowFooterSource(_chromeState, ClientSize.Width)
-        ? OverlayTheme.Layout.OverlayFooterTopOffset
-        : 0;
+    private int FooterReserveHeight => 0;
 
     public InputStateOverlayForm(
         ILiveTelemetrySource liveTelemetrySource,
@@ -108,23 +109,7 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             OverlayChrome.DrawWindowBorder(e.Graphics, ClientSize);
 
-            DrawHeader(e.Graphics);
-            if (UseCompactLayout())
-            {
-                DrawCompactState(e.Graphics);
-            }
-            else if (UseWideTraceLayout())
-            {
-                DrawWideTraceState(e.Graphics);
-            }
-            else
-            {
-                DrawPedalTraces(e.Graphics);
-                DrawWheel(e.Graphics);
-                DrawCarState(e.Graphics);
-            }
-
-            DrawFooter(e.Graphics);
+            DrawInputLayout(e.Graphics);
             succeeded = true;
         }
         catch (Exception exception)
@@ -258,22 +243,54 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
         OverlayChromeTone tone,
         string source)
     {
-        var showStatus = OverlayChromeSettings.ShowHeaderStatus(_settings, snapshot);
-        var footerMode = OverlayChromeSettings.ShowFooterSource(_settings, snapshot)
-            ? OverlayChromeFooterMode.Always
-            : OverlayChromeFooterMode.Never;
         return new OverlayChromeState(
             "Inputs",
-            showStatus ? status : string.Empty,
+            status,
             tone,
             source,
-            footerMode);
+            OverlayChromeFooterMode.Never);
     }
 
-    private void DrawPedalTraces(Graphics graphics)
+    private void DrawInputLayout(Graphics graphics)
     {
-        var graph = new Rectangle(14, 44, Math.Max(180, Width - 190), Math.Max(118, Height - 72 - FooterReserveHeight));
+        var content = new Rectangle(
+            14,
+            14,
+            Math.Max(120, ClientSize.Width - 28),
+            Math.Max(96, ClientSize.Height - 28));
+        var railEnabled = InputRailEnabled();
+        var railWidth = railEnabled
+            ? Math.Clamp((int)Math.Round(content.Width * 0.30d), 126, 162)
+            : 0;
+        var graphWidth = railEnabled
+            ? content.Width - railWidth - RailGap
+            : content.Width;
+        if (railEnabled && graphWidth < MinimumGraphWidthWithRail)
+        {
+            railEnabled = false;
+            railWidth = 0;
+            graphWidth = content.Width;
+        }
+
+        var graph = new Rectangle(
+            content.Left,
+            content.Top,
+            Math.Max(120, graphWidth),
+            content.Height);
         DrawPedalTraceGraph(graphics, graph);
+
+        if (!railEnabled)
+        {
+            return;
+        }
+
+        DrawInputRail(
+            graphics,
+            new Rectangle(
+                graph.Right + RailGap,
+                content.Top,
+                railWidth,
+                content.Height));
     }
 
     private void DrawWideTraceState(Graphics graphics)
@@ -320,6 +337,200 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
 
         using var font = OverlayTheme.Font(_fontFamily, 8.6f, FontStyle.Bold);
         DrawLegend(graphics, graph, font);
+        if (_trace.Count < 2 && !string.IsNullOrWhiteSpace(_chromeState.Status))
+        {
+            using var emptyFont = OverlayTheme.Font(_fontFamily, 9.4f, FontStyle.Bold);
+            using var emptyBrush = new SolidBrush(OverlayTheme.Colors.TextMuted);
+            DrawText(
+                graphics,
+                _chromeState.Status,
+                emptyFont,
+                emptyBrush,
+                graph,
+                ContentAlignment.MiddleCenter);
+        }
+    }
+
+    private void DrawInputRail(Graphics graphics, Rectangle rail)
+    {
+        using var background = new SolidBrush(OverlayTheme.Colors.PanelBackground);
+        using var border = new Pen(OverlayTheme.Colors.WindowBorder);
+        graphics.FillRectangle(background, rail);
+        graphics.DrawRectangle(border, rail);
+
+        var inner = Rectangle.Inflate(rail, -8, -8);
+        if (inner.Width <= 0 || inner.Height <= 0)
+        {
+            return;
+        }
+
+        var numericItems = NumericRailItems();
+        var bottom = inner.Bottom;
+        if (numericItems.Count > 0)
+        {
+            var numericHeight = Math.Min(42, Math.Max(32, inner.Height / 4));
+            var numeric = new Rectangle(inner.Left, bottom - numericHeight, inner.Width, numericHeight);
+            DrawNumericRail(graphics, numeric, numericItems);
+            bottom = numeric.Top - 8;
+        }
+
+        if (CurrentValueEnabled(OverlayOptionKeys.InputShowSteering) && bottom - inner.Top >= 54)
+        {
+            var wheelHeight = Math.Min(62, Math.Max(48, (bottom - inner.Top) / 3));
+            var wheel = new Rectangle(inner.Left, bottom - wheelHeight, inner.Width, wheelHeight);
+            DrawSteeringRail(graphics, wheel);
+            bottom = wheel.Top - 8;
+        }
+
+        var pedals = PedalRailItems();
+        if (pedals.Count == 0 || bottom <= inner.Top + 34)
+        {
+            return;
+        }
+
+        DrawPedalRail(graphics, new Rectangle(inner.Left, inner.Top, inner.Width, bottom - inner.Top), pedals);
+    }
+
+    private IReadOnlyList<(string Label, double? Value, Color Color)> PedalRailItems()
+    {
+        var items = new List<(string Label, double? Value, Color Color)>();
+        if (CurrentValueEnabled(OverlayOptionKeys.InputShowThrottle))
+        {
+            items.Add(("T", Clamp01(_latestInputs.Throttle), ThrottleTraceColor));
+        }
+
+        if (CurrentValueEnabled(OverlayOptionKeys.InputShowBrake))
+        {
+            var brakeAbsActive = _latestInputs.BrakeAbsActive == true;
+            items.Add((brakeAbsActive ? "ABS" : "B", Clamp01(_latestInputs.Brake), brakeAbsActive ? AbsActiveTraceColor : BrakeTraceColor));
+        }
+
+        if (CurrentValueEnabled(OverlayOptionKeys.InputShowClutch))
+        {
+            items.Add(("C", Clamp01(_latestInputs.Clutch), ClutchTraceColor));
+        }
+
+        return items;
+    }
+
+    private IReadOnlyList<(string Label, string Value)> NumericRailItems()
+    {
+        var items = new List<(string Label, string Value)>();
+        if (CurrentValueEnabled(OverlayOptionKeys.InputShowGear))
+        {
+            items.Add(("Gear", FormatGear(_latestInputs.Gear)));
+        }
+
+        if (CurrentValueEnabled(OverlayOptionKeys.InputShowSpeed))
+        {
+            items.Add(("Speed", SimpleTelemetryOverlayViewModel.FormatSpeed(_latestInputs.SpeedMetersPerSecond, _unitSystem)));
+        }
+
+        return items;
+    }
+
+    private void DrawPedalRail(
+        Graphics graphics,
+        Rectangle bounds,
+        IReadOnlyList<(string Label, double? Value, Color Color)> pedals)
+    {
+        using var labelFont = OverlayTheme.Font(_fontFamily, 7.8f, FontStyle.Bold);
+        using var valueFont = new Font(FontFamily.GenericMonospace, 7.8f);
+        var columnWidth = Math.Max(1, bounds.Width / pedals.Count);
+        for (var index = 0; index < pedals.Count; index++)
+        {
+            var left = bounds.Left + index * columnWidth;
+            var width = index == pedals.Count - 1
+                ? bounds.Right - left
+                : columnWidth;
+            DrawVerticalInputBar(
+                graphics,
+                new Rectangle(left, bounds.Top, Math.Max(1, width), bounds.Height),
+                pedals[index].Label,
+                pedals[index].Value,
+                pedals[index].Color,
+                labelFont,
+                valueFont);
+        }
+    }
+
+    private static void DrawVerticalInputBar(
+        Graphics graphics,
+        Rectangle bounds,
+        string label,
+        double? value,
+        Color color,
+        Font labelFont,
+        Font valueFont)
+    {
+        using var labelBrush = new SolidBrush(OverlayTheme.Colors.TextSubtle);
+        using var valueBrush = new SolidBrush(OverlayTheme.Colors.TextPrimary);
+        using var trackBrush = new SolidBrush(Color.FromArgb(42, 255, 255, 255));
+        using var fillBrush = new SolidBrush(color);
+        DrawText(graphics, label, labelFont, labelBrush, new RectangleF(bounds.Left, bounds.Top, bounds.Width, 15), ContentAlignment.MiddleCenter);
+
+        var track = new Rectangle(
+            bounds.Left + Math.Max(2, bounds.Width / 2 - 7),
+            bounds.Top + 18,
+            Math.Min(14, Math.Max(6, bounds.Width - 8)),
+            Math.Max(18, bounds.Height - 38));
+        graphics.FillRectangle(trackBrush, track);
+        var normalized = Math.Clamp(value ?? 0d, 0d, 1d);
+        if (normalized > 0d)
+        {
+            var fillHeight = (int)Math.Round(track.Height * normalized);
+            graphics.FillRectangle(fillBrush, track.Left, track.Bottom - fillHeight, track.Width, fillHeight);
+        }
+
+        DrawText(
+            graphics,
+            FormatPercent(value),
+            valueFont,
+            valueBrush,
+            new RectangleF(bounds.Left, bounds.Bottom - 17, bounds.Width, 17),
+            ContentAlignment.MiddleCenter);
+    }
+
+    private void DrawSteeringRail(Graphics graphics, Rectangle bounds)
+    {
+        using var labelFont = OverlayTheme.Font(_fontFamily, 7.6f, FontStyle.Bold);
+        using var valueFont = new Font(FontFamily.GenericMonospace, 7.6f);
+        using var labelBrush = new SolidBrush(OverlayTheme.Colors.TextSubtle);
+        using var valueBrush = new SolidBrush(OverlayTheme.Colors.TextPrimary);
+        DrawText(graphics, "Wheel", labelFont, labelBrush, new RectangleF(bounds.Left, bounds.Top, bounds.Width, 14), ContentAlignment.MiddleLeft);
+        DrawText(graphics, FormatSteering(_latestInputs.SteeringWheelAngle), valueFont, valueBrush, new RectangleF(bounds.Left, bounds.Top, bounds.Width, 14), ContentAlignment.MiddleRight);
+
+        var size = Math.Min(bounds.Width, bounds.Height - 18);
+        if (size < 24)
+        {
+            return;
+        }
+
+        var wheelRect = new Rectangle(
+            bounds.Left + (bounds.Width - size) / 2,
+            bounds.Top + 18,
+            size,
+            size);
+        DrawWheel(graphics, wheelRect);
+    }
+
+    private void DrawNumericRail(Graphics graphics, Rectangle bounds, IReadOnlyList<(string Label, string Value)> items)
+    {
+        using var labelFont = OverlayTheme.Font(_fontFamily, 7.2f, FontStyle.Bold);
+        using var valueFont = new Font(FontFamily.GenericMonospace, items.Count == 1 ? 10.4f : 8.8f, FontStyle.Bold);
+        using var labelBrush = new SolidBrush(OverlayTheme.Colors.TextSubtle);
+        using var valueBrush = new SolidBrush(OverlayTheme.Colors.TextPrimary);
+        var cellWidth = Math.Max(1, bounds.Width / items.Count);
+        for (var index = 0; index < items.Count; index++)
+        {
+            var left = bounds.Left + index * cellWidth;
+            var width = index == items.Count - 1
+                ? bounds.Right - left
+                : cellWidth;
+            var cell = new RectangleF(left, bounds.Top, width, bounds.Height);
+            DrawText(graphics, items[index].Label, labelFont, labelBrush, new RectangleF(cell.Left, cell.Top, cell.Width, 14), ContentAlignment.MiddleCenter);
+            DrawText(graphics, items[index].Value, valueFont, valueBrush, new RectangleF(cell.Left, cell.Top + 13, cell.Width, cell.Height - 13), ContentAlignment.MiddleCenter);
+        }
     }
 
     private void DrawCompactState(Graphics graphics)
@@ -580,6 +791,11 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
     private void DrawWheel(Graphics graphics)
     {
         var wheelRect = new Rectangle(Math.Max(Width - 150, 280), 56, 108, 108);
+        DrawWheel(graphics, wheelRect);
+    }
+
+    private void DrawWheel(Graphics graphics, Rectangle wheelRect)
+    {
         var center = new PointF(wheelRect.Left + wheelRect.Width / 2f, wheelRect.Top + wheelRect.Height / 2f);
         using var rimPen = new Pen(OverlayTheme.Colors.TextSecondary, 4f);
         graphics.DrawEllipse(rimPen, wheelRect);
@@ -628,7 +844,23 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
 
     private bool UseWideTraceLayout()
     {
-        return ClientSize.Height < FullLayoutHeightThreshold;
+        return ClientSize.Height < FullLayoutHeightThreshold
+            && ClientSize.Width < SideReadoutWidthThreshold;
+    }
+
+    private bool InputRailEnabled()
+    {
+        return CurrentValueEnabled(OverlayOptionKeys.InputShowThrottle)
+            || CurrentValueEnabled(OverlayOptionKeys.InputShowBrake)
+            || CurrentValueEnabled(OverlayOptionKeys.InputShowClutch)
+            || CurrentValueEnabled(OverlayOptionKeys.InputShowSteering)
+            || CurrentValueEnabled(OverlayOptionKeys.InputShowGear)
+            || CurrentValueEnabled(OverlayOptionKeys.InputShowSpeed);
+    }
+
+    private bool CurrentValueEnabled(string optionKey)
+    {
+        return _settings.GetBooleanOption(optionKey, defaultValue: true);
     }
 
     private static string FormatStatus(LiveInputTelemetryModel inputs)

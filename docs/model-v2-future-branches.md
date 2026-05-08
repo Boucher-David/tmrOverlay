@@ -103,7 +103,7 @@ Goal: make the settings app layout V1-ready as its own product pass instead of w
 
 Likely scope:
 
-- Keep the v0.14 shared General/Header/Footer overlay settings behavior and make the surrounding settings surface clearer, easier to scan, and easier to extend.
+- Keep the shared per-overlay General/Content/Header/Footer settings behavior and make the surrounding settings surface clearer, easier to scan, and easier to extend.
 - Revisit the left-tab structure, overlay option grouping, support/status grouping, browser-source details, and shared preferences without exposing development-only surfaces as ordinary overlay tabs.
 - Preserve app-owned scale controls and header/footer slot-fitting assumptions while improving how crowded overlay option sets are presented.
 - Keep the Support tab as the product home for app-health, version/build, diagnostic capture, diagnostics bundles, and support folders.
@@ -375,7 +375,7 @@ The alignment is:
 
 A separate UI/style branch should add shared semantic theme tokens and reusable WinForms primitives for headers, quiet status badges, metric rows, timing tables, relative tables, flag strips, compact weather widgets, optional header/footer context slots, validation/admin source footers, graph panels, borders, class/severity colors, text fitting, and empty/error/waiting states. Those primitives should be able to consume model-v2 source/evidence state directly, but the normal rendering path should not make confidence the center of the UI.
 
-Use the ignored mac harness as the design-v2 proving ground while model-v2 evidence is still being collected. The mac preview path can render deterministic design-v2 states under `mocks/design-v2/` for standings, relative, flag display, and the narrower analysis-exception state. Promote only the primitives and semantics that survive screenshot review back into Windows.
+Use the tracked mac harness as the design-v2 proving ground while model-v2 evidence is still being collected. The mac preview path can render deterministic design-v2 states under `mocks/design-v2/` for standings, relative, flag display, and the narrower analysis-exception state. Promote only the primitives and semantics that survive screenshot review back into Windows.
 
 Migrate style one overlay at a time with screenshot validation.
 

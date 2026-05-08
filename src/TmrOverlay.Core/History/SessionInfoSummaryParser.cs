@@ -85,6 +85,10 @@ internal static class SessionInfoSummaryParser
             ResultPositions = (selectedSession?.ResultPositions ?? [])
                 .Select(ToResultPosition)
                 .Where(position => position.CarIdx is not null)
+                .ToArray(),
+            StartingGridPositions = parsed.QualifyResults
+                .Select(ToResultPosition)
+                .Where(position => position.CarIdx is not null)
                 .ToArray()
         };
     }
@@ -95,12 +99,14 @@ internal static class SessionInfoSummaryParser
         var section = string.Empty;
         ParsedSession? currentSession = null;
         Dictionary<string, string>? currentResultPosition = null;
+        Dictionary<string, string>? currentQualifyResult = null;
         Dictionary<string, string>? currentDriver = null;
         Dictionary<string, string>? currentSector = null;
         var inSessions = false;
         var inDrivers = false;
         var inSectors = false;
         var inResultPositions = false;
+        var inQualifyResults = false;
 
         foreach (var rawLine in yaml.Split('\n'))
         {
@@ -116,6 +122,7 @@ internal static class SessionInfoSummaryParser
             if (indent == 0 && trimmed.EndsWith(':') && !trimmed.StartsWith('-'))
             {
                 FinishCurrentResultPosition();
+                FinishCurrentQualifyResult();
                 FinishCurrentSession();
                 FinishCurrentDriver();
                 FinishCurrentSector();
@@ -124,6 +131,7 @@ internal static class SessionInfoSummaryParser
                 inDrivers = false;
                 inSectors = false;
                 inResultPositions = false;
+                inQualifyResults = false;
                 continue;
             }
 
@@ -265,10 +273,39 @@ internal static class SessionInfoSummaryParser
                         }
                     }
                     break;
+
+                case "QualifyResultsInfo":
+                    if (indent == 1 && trimmed == "Results:")
+                    {
+                        inQualifyResults = true;
+                        break;
+                    }
+
+                    if (inQualifyResults)
+                    {
+                        if (trimmed.StartsWith("- ", StringComparison.Ordinal))
+                        {
+                            FinishCurrentQualifyResult();
+                            currentQualifyResult = [];
+                            if (TryReadKeyValue(trimmed, out var qualifyListKey, out var qualifyListValue))
+                            {
+                                currentQualifyResult[qualifyListKey] = qualifyListValue;
+                            }
+                            break;
+                        }
+
+                        if (currentQualifyResult is not null
+                            && TryReadKeyValue(trimmed, out var qualifyKey, out var qualifyValue))
+                        {
+                            currentQualifyResult[qualifyKey] = qualifyValue;
+                        }
+                    }
+                    break;
             }
         }
 
         FinishCurrentResultPosition();
+        FinishCurrentQualifyResult();
         FinishCurrentSession();
         FinishCurrentDriver();
         FinishCurrentSector();
@@ -289,6 +326,15 @@ internal static class SessionInfoSummaryParser
             {
                 currentSession.ResultPositions.Add(currentResultPosition);
                 currentResultPosition = null;
+            }
+        }
+
+        void FinishCurrentQualifyResult()
+        {
+            if (currentQualifyResult is not null)
+            {
+                parsed.QualifyResults.Add(currentQualifyResult);
+                currentQualifyResult = null;
             }
         }
 
@@ -523,6 +569,8 @@ internal static class SessionInfoSummaryParser
         public List<Dictionary<string, string>> Drivers { get; } = [];
 
         public List<Dictionary<string, string>> Sectors { get; } = [];
+
+        public List<Dictionary<string, string>> QualifyResults { get; } = [];
     }
 
     private sealed class ParsedSession

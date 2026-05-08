@@ -6,6 +6,7 @@ using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.Localhost;
 using TmrOverlay.App.Overlays.Abstractions;
+using TmrOverlay.App.Overlays.Content;
 using TmrOverlay.App.Overlays.Flags;
 using TmrOverlay.App.Overlays.GarageCover;
 using TmrOverlay.App.Overlays.StreamChat;
@@ -27,6 +28,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 {
     private const int SideTabThickness = 38;
     private const int SideTabLength = 174;
+    private const int SaveApplyCoalesceMilliseconds = 75;
     private static readonly TimeSpan SupportStatusRefreshInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan SupportHeavyRefreshInterval = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan LatestDiagnosticsScanInterval = TimeSpan.FromSeconds(5);
@@ -77,6 +79,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private readonly Button _updateBannerOpenButton;
     private readonly TabControl _tabs;
     private readonly System.Windows.Forms.Timer _refreshTimer;
+    private readonly System.Windows.Forms.Timer _saveApplyTimer;
     private CheckBox? _rawCaptureCheckBox;
     private string? _lastDisplayedDiagnosticsBundlePath;
     private DateTimeOffset? _lastDisplayedDiagnosticsBundleErrorAtUtc;
@@ -98,7 +101,9 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private DateTimeOffset _nextSupportStatusRefreshAtUtc;
     private DateTimeOffset _nextSupportHeavyRefreshAtUtc;
     private DateTimeOffset _nextLatestDiagnosticsScanAtUtc;
+    private DateTimeOffset? _firstPendingSaveApplyAtUtc;
     private string? _cachedLatestDiagnosticsBundlePath;
+    private int _pendingSaveApplyRequestCount;
 
     public SettingsOverlayForm(
         ApplicationSettings applicationSettings,
@@ -283,6 +288,11 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             RefreshSettingsOverlayState();
         };
         _refreshTimer.Start();
+        _saveApplyTimer = new System.Windows.Forms.Timer
+        {
+            Interval = SaveApplyCoalesceMilliseconds
+        };
+        _saveApplyTimer.Tick += (_, _) => FlushPendingSaveAndApply();
         SyncRawCaptureCheckBox();
         SyncErrorLoggingTab();
         SyncReleaseUpdateUi();
@@ -293,6 +303,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     {
         if (disposing)
         {
+            _saveApplyTimer.Stop();
+            _saveApplyTimer.Dispose();
             _refreshTimer.Stop();
             _refreshTimer.Dispose();
             _releaseUpdates.StateChanged -= ReleaseUpdatesStateChanged;
@@ -375,6 +387,11 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
+        if (_pendingSaveApplyRequestCount > 0)
+        {
+            FlushPendingSaveAndApply();
+        }
+
         var shouldRequestApplicationExit = e.CloseReason == CloseReason.UserClosing && !_applicationExitRequested;
         if (shouldRequestApplicationExit)
         {
@@ -703,6 +720,37 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
     }
 
+    private void DrawOverlayRegionTab(object? sender, DrawItemEventArgs e)
+    {
+        if (sender is not TabControl tabControl || e.Index < 0 || e.Index >= tabControl.TabPages.Count)
+        {
+            return;
+        }
+
+        var selected = e.Index == tabControl.SelectedIndex;
+        var bounds = e.Bounds;
+        using var backgroundBrush = new SolidBrush(selected
+            ? OverlayTheme.Colors.TabSelectedBackground
+            : OverlayTheme.Colors.TabBackground);
+        using var borderPen = new Pen(OverlayTheme.Colors.TabBorder);
+        e.Graphics.FillRectangle(backgroundBrush, bounds);
+        e.Graphics.DrawRectangle(borderPen, bounds.X, bounds.Y, bounds.Width - 1, bounds.Height - 1);
+        if (selected)
+        {
+            using var accentBrush = new SolidBrush(OverlayTheme.Colors.InfoText);
+            e.Graphics.FillRectangle(accentBrush, bounds.Left, bounds.Top + 4, 3, Math.Max(0, bounds.Height - 8));
+        }
+
+        var textBounds = Rectangle.Inflate(bounds, -10, 0);
+        TextRenderer.DrawText(
+            e.Graphics,
+            tabControl.TabPages[e.Index].Text,
+            tabControl.Font,
+            textBounds,
+            OverlayTheme.Colors.TextPrimary,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+    }
+
     private TabPage CreateGeneralTab()
     {
         var page = CreateTabPage("General");
@@ -873,88 +921,142 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         var page = CreateTabPage(definition.DisplayName);
         page.Tag = definition.Id;
         var title = CreateSectionLabel(definition.DisplayName, 18, 18, 500);
-        var isStreamChat = string.Equals(definition.Id, StreamChatOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase);
-        var isGarageCover = string.Equals(definition.Id, GarageCoverOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase);
-        var controlTop = 58;
-
-        if (isStreamChat)
-        {
-            page.Controls.Add(title);
-            page.Controls.Add(CreateMutedLabel(
-                "Browser-source surface for stream chat. Streamlabs uses your Chat Box widget URL; Twitch reads public chat by channel name.",
-                22,
-                54,
-                680));
-            AddOverlayGeneralOptions(page, definition, settings, controlTop: 112, localhostTop: 112);
-            AddStreamChatOptions(page, settings, 212);
-            return page;
-        }
-
-        if (isGarageCover)
-        {
-            page.Controls.Add(title);
-            page.Controls.Add(CreateMutedLabel(
-                "Localhost-only privacy cover for OBS. It appears in the browser source while iRacing reports the Garage screen as visible.",
-                22,
-                54,
-                720));
-            SettingsOverlayTabSections.AddScaleOption(page, definition, settings, 112, SaveAndApply);
-            SettingsOverlayTabSections.AddLocalhostOptions(page, definition, _localhostOverlayOptions, 112, CopyTextToClipboard);
-            AddGarageCoverOptions(page, settings, 212);
-            return page;
-        }
-
         page.Controls.Add(title);
-        if (SupportsSharedChromeSettings(definition.Id))
-        {
-            page.Controls.Add(CreateSharedChromeOverlayTabs(definition, settings));
-            return page;
-        }
-
-        AddOverlayGeneralOptions(page, definition, settings, controlTop, localhostTop: 58);
+        page.Controls.Add(CreateOverlayRegionTabs(definition, settings));
         return page;
     }
 
-    private TabControl CreateSharedChromeOverlayTabs(OverlayDefinition definition, OverlaySettings settings)
+    private TabControl CreateOverlayRegionTabs(OverlayDefinition definition, OverlaySettings settings)
     {
-        var chromeTabs = new TabControl
+        var regionTabs = new TabControl
         {
+            Alignment = TabAlignment.Left,
+            DrawMode = TabDrawMode.OwnerDrawFixed,
+            ItemSize = new Size(34, 124),
             Location = new Point(18, 54),
             Size = new Size(1080, 548),
+            SizeMode = TabSizeMode.Fixed,
             TabIndex = 0
         };
+        regionTabs.DrawItem += DrawOverlayRegionTab;
 
-        var generalPage = CreateTabPage("General");
-        AddOverlayGeneralOptions(generalPage, definition, settings, controlTop: 18, localhostTop: 18);
-        chromeTabs.TabPages.Add(generalPage);
+        regionTabs.TabPages.Add(CreateOverlayGeneralPage(definition, settings));
+        regionTabs.TabPages.Add(CreateOverlayContentPage(definition, settings));
+        if (!SuppressHeaderFooterTabs(definition.Id))
+        {
+            regionTabs.TabPages.Add(CreateOverlayHeaderPage(definition, settings));
+            regionTabs.TabPages.Add(CreateOverlayFooterPage(definition, settings));
+        }
 
-        var headerPage = CreateTabPage("Header");
-        SettingsOverlayTabSections.AddChromeSettingsPage(
-            headerPage,
+        return regionTabs;
+    }
+
+    private TabPage CreateOverlayGeneralPage(OverlayDefinition definition, OverlaySettings settings)
+    {
+        var page = CreateTabPage("General");
+        if (string.Equals(definition.Id, GarageCoverOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            var nextTop = SettingsOverlayTabSections.AddScaleOption(page, definition, settings, 18, SaveAndApply);
+            SettingsOverlayTabSections.AddLocalhostOptions(page, definition, settings, _localhostOverlayOptions, nextTop + 12, CopyTextToClipboard);
+            return page;
+        }
+
+        AddOverlayGeneralOptions(
+            page,
+            definition,
             settings,
-            "Header",
-            "Status",
-            OverlayOptionKeys.ChromeHeaderStatusTest,
-            OverlayOptionKeys.ChromeHeaderStatusPractice,
-            OverlayOptionKeys.ChromeHeaderStatusQualifying,
-            OverlayOptionKeys.ChromeHeaderStatusRace,
-            SaveAndApply);
-        chromeTabs.TabPages.Add(headerPage);
+            controlTop: 18,
+            includeSpecificOptions: false);
+        return page;
+    }
 
-        var footerPage = CreateTabPage("Footer");
-        SettingsOverlayTabSections.AddChromeSettingsPage(
-            footerPage,
-            settings,
-            "Footer",
-            "Source",
-            OverlayOptionKeys.ChromeFooterSourceTest,
-            OverlayOptionKeys.ChromeFooterSourcePractice,
-            OverlayOptionKeys.ChromeFooterSourceQualifying,
-            OverlayOptionKeys.ChromeFooterSourceRace,
-            SaveAndApply);
-        chromeTabs.TabPages.Add(footerPage);
+    private TabPage CreateOverlayContentPage(OverlayDefinition definition, OverlaySettings settings)
+    {
+        var page = CreateTabPage("Content");
+        var nextTop = 18;
+        var hasContent = false;
 
-        return chromeTabs;
+        if (string.Equals(definition.Id, StreamChatOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            AddStreamChatOptions(page, settings, nextTop);
+            hasContent = true;
+        }
+        else if (string.Equals(definition.Id, GarageCoverOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            AddGarageCoverOptions(page, settings, nextTop);
+            hasContent = true;
+        }
+        else if (OverlayContentColumnSettings.TryGetContentDefinition(definition.Id, out var contentDefinition))
+        {
+            nextTop = SettingsOverlayTabSections.AddContentColumnSettingsPage(
+                page,
+                settings,
+                contentDefinition,
+                nextTop,
+                SaveAndApply);
+            hasContent = true;
+        }
+
+        var optionTop = hasContent ? nextTop + 12 : nextTop;
+        var specificOptionsAlreadyAdded = string.Equals(definition.Id, GarageCoverOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase);
+        if (!specificOptionsAlreadyAdded && AddOverlaySpecificOptions(page, definition, settings, optionTop))
+        {
+            hasContent = true;
+        }
+
+        if (!hasContent)
+        {
+            page.Controls.Add(CreateSectionLabel("Content", 18, 18, 500));
+            page.Controls.Add(CreateMutedLabel("No content controls yet.", 22, 54, 420));
+        }
+
+        return page;
+    }
+
+    private TabPage CreateOverlayHeaderPage(OverlayDefinition definition, OverlaySettings settings)
+    {
+        var page = CreateTabPage("Header");
+        if (SupportsSharedChromeSettings(definition.Id))
+        {
+            SettingsOverlayTabSections.AddChromeSettingsPage(
+                page,
+                settings,
+                "Header",
+                "Status",
+                OverlayOptionKeys.ChromeHeaderStatusTest,
+                OverlayOptionKeys.ChromeHeaderStatusPractice,
+                OverlayOptionKeys.ChromeHeaderStatusQualifying,
+                OverlayOptionKeys.ChromeHeaderStatusRace,
+                SaveAndApply);
+            return page;
+        }
+
+        page.Controls.Add(CreateSectionLabel("Header", 18, 18, 500));
+        page.Controls.Add(CreateMutedLabel("No header controls yet.", 22, 54, 420));
+        return page;
+    }
+
+    private TabPage CreateOverlayFooterPage(OverlayDefinition definition, OverlaySettings settings)
+    {
+        var page = CreateTabPage("Footer");
+        if (SupportsSharedChromeSettings(definition.Id))
+        {
+            SettingsOverlayTabSections.AddChromeSettingsPage(
+                page,
+                settings,
+                "Footer",
+                "Source",
+                OverlayOptionKeys.ChromeFooterSourceTest,
+                OverlayOptionKeys.ChromeFooterSourcePractice,
+                OverlayOptionKeys.ChromeFooterSourceQualifying,
+                OverlayOptionKeys.ChromeFooterSourceRace,
+                SaveAndApply);
+            return page;
+        }
+
+        page.Controls.Add(CreateSectionLabel("Footer", 18, 18, 500));
+        page.Controls.Add(CreateMutedLabel("No footer controls yet.", 22, 54, 420));
+        return page;
     }
 
     private void AddOverlayGeneralOptions(
@@ -962,39 +1064,53 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         OverlayDefinition definition,
         OverlaySettings settings,
         int controlTop,
-        int localhostTop)
+        bool includeSpecificOptions = true)
     {
         var optionsTop = SettingsOverlayTabSections.AddOverlayBasics(page, definition, settings, controlTop, SaveAndApply);
-        SettingsOverlayTabSections.AddLocalhostOptions(page, definition, _localhostOverlayOptions, localhostTop, CopyTextToClipboard);
-        AddOverlaySpecificOptions(page, definition, settings, optionsTop);
+        SettingsOverlayTabSections.AddLocalhostOptions(page, definition, settings, _localhostOverlayOptions, optionsTop + 12, CopyTextToClipboard);
+        if (includeSpecificOptions)
+        {
+            AddOverlaySpecificOptions(page, definition, settings, optionsTop);
+        }
     }
 
     private static bool SupportsSharedChromeSettings(string overlayId)
     {
-        return overlayId is "standings" or "relative" or "fuel-calculator" or "input-state" or "gap-to-leader";
+        return overlayId is "standings" or "relative" or "fuel-calculator" or "gap-to-leader";
     }
 
-    private void AddOverlaySpecificOptions(TabPage page, OverlayDefinition definition, OverlaySettings settings, int top)
+    private static bool SuppressHeaderFooterTabs(string overlayId)
+    {
+        return overlayId is "input-state";
+    }
+
+    private bool AddOverlaySpecificOptions(TabPage page, OverlayDefinition definition, OverlaySettings settings, int top)
     {
         if (string.Equals(definition.Id, FlagsOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
             AddFlagsOptions(page, settings, top);
-            return;
+            return true;
         }
 
         if (string.Equals(definition.Id, TrackMapOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
             AddTrackMapOptions(page, settings, top);
-            return;
+            return true;
         }
 
         if (string.Equals(definition.Id, GarageCoverOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
             AddGarageCoverOptions(page, settings, top);
-            return;
+            return true;
+        }
+
+        if (definition.SettingsOptions.Count == 0)
+        {
+            return false;
         }
 
         SettingsOverlayTabSections.AddDescriptorOptions(page, definition.SettingsOptions, settings, top, SaveAndApply);
+        return true;
     }
 
     private void AddGarageCoverOptions(TabPage page, OverlaySettings settings, int top)
@@ -1405,8 +1521,100 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             return;
         }
 
-        _saveSettings();
-        _applyOverlaySettings();
+        var alreadyPending = _saveApplyTimer.Enabled;
+        _pendingSaveApplyRequestCount++;
+        _firstPendingSaveApplyAtUtc ??= DateTimeOffset.UtcNow;
+        _performanceState.RecordSettingsSaveApplyQueued(_pendingSaveApplyRequestCount, alreadyPending);
+        if (!alreadyPending)
+        {
+            _saveApplyTimer.Start();
+        }
+    }
+
+    private void FlushPendingSaveAndApply()
+    {
+        _saveApplyTimer.Stop();
+        if (_loading || _pendingSaveApplyRequestCount <= 0)
+        {
+            return;
+        }
+
+        var started = Stopwatch.GetTimestamp();
+        var succeeded = false;
+        var requestCount = _pendingSaveApplyRequestCount;
+        var firstPendingAtUtc = _firstPendingSaveApplyAtUtc ?? DateTimeOffset.UtcNow;
+        _pendingSaveApplyRequestCount = 0;
+        _firstPendingSaveApplyAtUtc = null;
+        try
+        {
+            var saveStarted = Stopwatch.GetTimestamp();
+            var saveSucceeded = false;
+            try
+            {
+                _saveSettings();
+                saveSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlaySettingsSave,
+                    saveStarted,
+                    saveSucceeded);
+            }
+
+            var applyStarted = Stopwatch.GetTimestamp();
+            var applySucceeded = false;
+            try
+            {
+                _applyOverlaySettings();
+                applySucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlaySettingsApply,
+                    applyStarted,
+                    applySucceeded);
+            }
+
+            var browserSizeStarted = Stopwatch.GetTimestamp();
+            var browserSizeSucceeded = false;
+            try
+            {
+                SettingsOverlayTabSections.RefreshBrowserSizeReadouts(this);
+                browserSizeSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlaySettingsRefreshBrowserSizes,
+                    browserSizeStarted,
+                    browserSizeSucceeded);
+            }
+
+            succeeded = true;
+        }
+        catch (Exception exception)
+        {
+            _events.Record("settings_save_apply_failed", new Dictionary<string, string?>
+            {
+                ["type"] = exception.GetType().Name,
+                ["message"] = exception.Message,
+                ["coalescedRequestCount"] = requestCount.ToString()
+            });
+            SetSupportStatus($"Settings update failed: {exception.Message}", isError: true);
+        }
+        finally
+        {
+            _performanceState.RecordSettingsSaveApplyFlushed(
+                requestCount,
+                DateTimeOffset.UtcNow - firstPendingAtUtc,
+                succeeded);
+            _performanceState.RecordOperation(
+                AppPerformanceMetricIds.OverlaySettingsSaveAndApply,
+                started,
+                succeeded);
+        }
     }
 
     private void RawCaptureCheckBoxChanged()

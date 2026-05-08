@@ -7,6 +7,7 @@ namespace TmrOverlay.App.Overlays.SessionWeather;
 internal static class SessionWeatherOverlayViewModel
 {
     private static readonly TimeSpan ChangeHighlightDuration = TimeSpan.FromSeconds(45);
+    private const int MaxDisplayLapCount = 1000;
 
     public static Func<LiveTelemetrySnapshot, DateTimeOffset, string, SimpleTelemetryOverlayViewModel> CreateBuilder()
     {
@@ -36,6 +37,8 @@ internal static class SessionWeatherOverlayViewModel
 
         var session = snapshot.Models.Session;
         var weather = snapshot.Models.Weather;
+        var raceProgress = snapshot.Models.RaceProgress;
+        var raceProjection = snapshot.Models.RaceProjection;
         if (!session.HasData && !weather.HasData)
         {
             changeTracker?.Reset();
@@ -63,7 +66,7 @@ internal static class SessionWeatherOverlayViewModel
         {
             new SimpleTelemetryRowViewModel("Session", FormatSession(session)),
             new SimpleTelemetryRowViewModel("Clock", FormatClock(session)),
-            new SimpleTelemetryRowViewModel("Laps", FormatLaps(session)),
+            new SimpleTelemetryRowViewModel("Laps", FormatLaps(session, raceProgress, raceProjection)),
             new SimpleTelemetryRowViewModel("Track", FormatTrack(session)),
             new SimpleTelemetryRowViewModel("Temps", temps, tempsChanged ? SimpleTelemetryTone.Info : SimpleTelemetryTone.Normal),
             new SimpleTelemetryRowViewModel("Surface", surface, StrongestTone(baseTone, surfaceChanged ? SimpleTelemetryTone.Info : SimpleTelemetryTone.Normal)),
@@ -116,17 +119,61 @@ internal static class SessionWeatherOverlayViewModel
         return $"{elapsed} elapsed | {remain} left";
     }
 
-    private static string FormatLaps(LiveSessionModel session)
+    private static string FormatLaps(
+        LiveSessionModel session,
+        LiveRaceProgressModel raceProgress,
+        LiveRaceProjectionModel raceProjection)
     {
-        var remain = session.SessionLapsRemain is { } left && left >= 0
-            ? left.ToString(CultureInfo.InvariantCulture)
-            : "--";
-        var total = session.SessionLapsTotal is { } totalLaps && totalLaps > 0
-            ? totalLaps.ToString(CultureInfo.InvariantCulture)
-            : session.RaceLaps is { } raceLaps && raceLaps > 0
-                ? raceLaps.ToString(CultureInfo.InvariantCulture)
-                : "--";
-        return remain == "--" && total == "--" ? "--" : $"{remain} left | {total} total";
+        var remain = FormatLapCount(session.SessionLapsRemain)
+            ?? FormatEstimatedLapCount(raceProjection.EstimatedTeamLapsRemaining)
+            ?? FormatEstimatedLapCount(raceProgress.RaceLapsRemaining);
+        var total = FormatLapCount(session.SessionLapsTotal)
+            ?? FormatEstimatedTotalLaps(raceProjection)
+            ?? FormatEstimatedTotalLaps(raceProgress)
+            ?? FormatLapCount(session.RaceLaps);
+        return remain is null && total is null ? "--" : $"{remain ?? "--"} left | {total ?? "--"} total";
+    }
+
+    private static string? FormatEstimatedLapCount(double? laps)
+    {
+        return laps is { } value && SimpleTelemetryOverlayViewModel.IsFinite(value) && value >= 0d && value <= MaxDisplayLapCount
+            ? $"{value.ToString("0.#", CultureInfo.InvariantCulture)} est"
+            : null;
+    }
+
+    private static string? FormatEstimatedTotalLaps(LiveRaceProgressModel raceProgress)
+    {
+        if (raceProgress.RaceLapsRemaining is not { } remaining
+            || !SimpleTelemetryOverlayViewModel.IsFinite(remaining)
+            || remaining < 0d
+            || remaining > MaxDisplayLapCount)
+        {
+            return null;
+        }
+
+        var progress = raceProgress.OverallLeaderProgressLaps
+            ?? raceProgress.ClassLeaderProgressLaps
+            ?? raceProgress.StrategyCarProgressLaps;
+        return progress is { } value && SimpleTelemetryOverlayViewModel.IsFinite(value) && value >= 0d
+            ? $"{Math.Ceiling(value + remaining).ToString(CultureInfo.InvariantCulture)} est"
+            : null;
+    }
+
+    private static string? FormatEstimatedTotalLaps(LiveRaceProjectionModel raceProjection)
+    {
+        return raceProjection.EstimatedFinishLap is { } value
+            && SimpleTelemetryOverlayViewModel.IsFinite(value)
+            && value >= 0d
+            && value <= MaxDisplayLapCount
+                ? $"{Math.Ceiling(value).ToString(CultureInfo.InvariantCulture)} est"
+                : null;
+    }
+
+    private static string? FormatLapCount(int? laps)
+    {
+        return laps is { } value && value is > 0 and <= MaxDisplayLapCount
+            ? value.ToString(CultureInfo.InvariantCulture)
+            : null;
     }
 
     private static string FormatTrack(LiveSessionModel session)

@@ -49,6 +49,7 @@ internal sealed record LiveRaceModels(
     LiveScoringModel Scoring,
     LiveTimingModel Timing,
     LiveRaceProgressModel RaceProgress,
+    LiveRaceProjectionModel RaceProjection,
     LiveRelativeModel Relative,
     LiveSpatialModel Spatial,
     LiveTrackMapModel TrackMap,
@@ -64,6 +65,7 @@ internal sealed record LiveRaceModels(
         Scoring: LiveScoringModel.Empty,
         Timing: LiveTimingModel.Empty,
         RaceProgress: LiveRaceProgressModel.Empty,
+        RaceProjection: LiveRaceProjectionModel.Empty,
         Relative: LiveRelativeModel.Empty,
         Spatial: LiveSpatialModel.Empty,
         TrackMap: LiveTrackMapModel.Empty,
@@ -329,6 +331,52 @@ internal sealed record LiveRaceProgressModel(
         RaceLapsRemainingSource: "unavailable",
         MissingSignals: []);
 }
+
+internal sealed record LiveRaceProjectionModel(
+    bool HasData,
+    LiveModelQuality Quality,
+    double? OverallLeaderPaceSeconds,
+    string OverallLeaderPaceSource,
+    double OverallLeaderPaceConfidence,
+    double? ReferenceClassPaceSeconds,
+    string ReferenceClassPaceSource,
+    double ReferenceClassPaceConfidence,
+    double? TeamPaceSeconds,
+    string TeamPaceSource,
+    double TeamPaceConfidence,
+    double? EstimatedFinishLap,
+    double? EstimatedTeamLapsRemaining,
+    string EstimatedTeamLapsRemainingSource,
+    IReadOnlyList<LiveClassRaceProjection> ClassProjections,
+    IReadOnlyList<string> MissingSignals)
+{
+    public static LiveRaceProjectionModel Empty { get; } = new(
+        HasData: false,
+        Quality: LiveModelQuality.Unavailable,
+        OverallLeaderPaceSeconds: null,
+        OverallLeaderPaceSource: "unavailable",
+        OverallLeaderPaceConfidence: 0d,
+        ReferenceClassPaceSeconds: null,
+        ReferenceClassPaceSource: "unavailable",
+        ReferenceClassPaceConfidence: 0d,
+        TeamPaceSeconds: null,
+        TeamPaceSource: "unavailable",
+        TeamPaceConfidence: 0d,
+        EstimatedFinishLap: null,
+        EstimatedTeamLapsRemaining: null,
+        EstimatedTeamLapsRemainingSource: "unavailable",
+        ClassProjections: [],
+        MissingSignals: []);
+}
+
+internal sealed record LiveClassRaceProjection(
+    int? CarClass,
+    string ClassName,
+    double? PaceSeconds,
+    string PaceSource,
+    double PaceConfidence,
+    double? EstimatedLapsRemaining,
+    string EstimatedLapsRemainingSource);
 
 internal sealed record LiveRelativeModel(
     bool HasData,

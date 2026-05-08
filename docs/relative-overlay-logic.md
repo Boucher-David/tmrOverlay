@@ -53,12 +53,14 @@ Pit-road cars are allowed to stay in Relative when they come from live nearby-ca
 
 Rows show:
 
-- Class position first, then overall position, otherwise `--`. The first cell includes a small class-color bar so class color does not require a separate table column.
+- Position from the configured content column, usually class position first and overall position as fallback.
 - `#<car number> <driver>` when a car number is known.
 - `0.000` for the reference gap.
 - `-<value>` for cars ahead and `+<value>` for cars behind, regardless of whether the source row came from proximity or timing fallback.
 - Seconds first, then meters, then lap fraction.
-- Class detail, with `PIT` appended for pit-road rows.
+- Optional direction and pit columns when enabled in Content settings.
+
+Relative uses the shared content-column manager. Columns have Relative-owned option keys, remain in one ordered list even when disabled, expose pixel widths, and drive both native/browser rendering plus the OBS size recommendation. The default content keeps the table compact: position, driver, and gap are visible; direction and pit are available but disabled by default.
 
 Normal rows are quiet. Reference rows are visually emphasized; pit rows remain visible but are de-emphasized with muted text/background so the driver can see they are being passed in pit lane rather than treated as an on-track threat. Fully degraded rows are muted.
 
@@ -93,7 +95,7 @@ Unexpected refresh/render failures are logged through the overlay logger and sur
 - Default id: `relative`.
 - Default size: `520x360`.
 - Default position: `(24, 530)`, below the fuel calculator.
-- Settings expose cars ahead and cars behind.
+- Settings expose cars ahead, cars behind, and Content-tab column controls.
 - Theme font, visibility, scale, opacity, session filters, and persistence follow the same managed-overlay behavior as the other product overlays.
 
-The localhost browser-source route also reads `/api/relative` so it can honor the same cars-ahead and cars-behind settings as the native overlay.
+The localhost browser-source route also reads `/api/relative` so it can honor the same cars-ahead, cars-behind, and content-column settings as the native overlay.

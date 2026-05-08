@@ -99,6 +99,7 @@ public sealed class AppSettingsStoreTests
             Assert.Equal(12, overlay.GetIntegerOption(OverlayOptionKeys.GapCarsBehind, 5, 0, 12));
             Assert.Equal(5, overlay.GetIntegerOption(OverlayOptionKeys.RelativeCarsAhead, 5, 0, 8));
             Assert.Equal(5, overlay.GetIntegerOption(OverlayOptionKeys.RelativeCarsBehind, 5, 0, 8));
+            Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.StandingsClassSeparatorsEnabled, defaultValue: false));
             Assert.Equal(2, overlay.GetIntegerOption(OverlayOptionKeys.StandingsOtherClassRows, 2, 0, 6));
             Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.FuelAdvice, defaultValue: true));
             Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.ChromeHeaderStatusPractice, defaultValue: false));
@@ -112,6 +113,59 @@ public sealed class AppSettingsStoreTests
             Assert.Contains($"\"settingsVersion\": {AppSettingsMigrator.CurrentVersion}", saved);
             Assert.DoesNotContain("flags.green-seconds", saved);
             Assert.DoesNotContain("flags.blue-seconds", saved);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void Load_CompactsLegacyFullScreenFlagsOverlay()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "tmr-overlay-settings-test", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var storage = CreateStorage(root);
+            Directory.CreateDirectory(storage.SettingsRoot);
+            var settingsPath = Path.Combine(storage.SettingsRoot, "settings.json");
+            File.WriteAllText(
+                settingsPath,
+                """
+                {
+                  "settingsVersion": 6,
+                  "overlays": [
+                    {
+                      "id": "flags",
+                      "enabled": true,
+                      "scale": 1.7,
+                      "x": 0,
+                      "y": 0,
+                      "width": 1920,
+                      "height": 1440,
+                      "screenId": "primary-screen-default"
+                    }
+                  ]
+                }
+                """);
+
+            var settings = new AppSettingsStore(storage).Load();
+            var overlay = Assert.Single(settings.Overlays);
+            Assert.Equal("flags", overlay.Id);
+            Assert.True(overlay.Enabled);
+            Assert.Equal(1d, overlay.Scale);
+            Assert.Equal(360, overlay.Width);
+            Assert.Equal(170, overlay.Height);
+            Assert.Equal("primary-screen-default", overlay.ScreenId);
+
+            var saved = File.ReadAllText(settingsPath);
+            Assert.Contains("\"width\": 360", saved);
+            Assert.Contains("\"height\": 170", saved);
+            Assert.DoesNotContain("\"width\": 1920", saved);
+            Assert.DoesNotContain("\"height\": 1440", saved);
         }
         finally
         {

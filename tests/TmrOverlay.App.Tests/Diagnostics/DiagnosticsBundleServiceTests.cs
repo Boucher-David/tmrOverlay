@@ -166,6 +166,7 @@ public sealed class DiagnosticsBundleServiceTests
             Assert.Contains("metadata/track-maps.json", entryNames);
             Assert.Contains("metadata/garage-cover.json", entryNames);
             Assert.Contains("metadata/performance.json", entryNames);
+            Assert.Contains("metadata/ui-freeze-watch.json", entryNames);
             Assert.Contains("runtime/runtime-state.json", entryNames);
             Assert.Contains("settings/settings.json", entryNames);
             Assert.Contains("logs/tmroverlay-20260426.log", entryNames);

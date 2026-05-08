@@ -12,7 +12,21 @@ internal static class StandingsBrowserSource
         script: Script);
 
     private const string Script = """
-    let standingsSettings = { maximumRows: 14, otherClassRowsPerClass: 2 };
+    const defaultStandingsColumns = [
+      { id: 'standings.class-position', label: 'CLS', dataKey: 'class-position', width: 54, alignment: 'right' },
+      { id: 'standings.car-number', label: 'CAR', dataKey: 'car-number', width: 66, alignment: 'right' },
+      { id: 'standings.driver', label: 'Driver', dataKey: 'driver', width: 300, alignment: 'left' },
+      { id: 'standings.gap', label: 'GAP', dataKey: 'gap', width: 92, alignment: 'right' },
+      { id: 'standings.interval', label: 'INT', dataKey: 'interval', width: 92, alignment: 'right' },
+      { id: 'standings.pit', label: 'PIT', dataKey: 'pit', width: 46, alignment: 'right' }
+    ];
+    const defaultStandingsSettings = {
+      maximumRows: 14,
+      classSeparatorsEnabled: true,
+      otherClassRowsPerClass: 2,
+      columns: defaultStandingsColumns
+    };
+    let standingsSettings = defaultStandingsSettings;
     let nextStandingsSettingsFetchAt = 0;
 
     TmrBrowserOverlay.register({
@@ -30,21 +44,15 @@ internal static class StandingsBrowserSource
           ?? timing?.playerCarIdx
           ?? null;
         const maximumRows = clamp(Number(standingsSettings.maximumRows), 1, 20);
+        const classSeparatorsEnabled = standingsSettings.classSeparatorsEnabled !== false;
         const otherClassRows = clamp(Number(standingsSettings.otherClassRowsPerClass), 0, 6);
         const rows = scoring?.hasData
-          ? scoringRows(scoring, timing, referenceCarIdx, maximumRows, otherClassRows)
+          ? scoringRows(live, scoring, timing, referenceCarIdx, maximumRows, otherClassRows, classSeparatorsEnabled)
           : (timing?.classRows?.length ? timing.classRows : timing?.overallRows || [])
             .filter((row) => hasStandingDriverIdentity(row, referenceCarIdx))
             .slice(0, maximumRows)
             .map((row) => ({ ...row, rowKind: 'car' }));
-        contentEl.innerHTML = rowsTable([
-          { label: 'Pos', value: (row) => row.rowKind === 'header' ? '' : `<span class="pill">P${row.classPosition ?? row.overallPosition ?? '--'}</span>` },
-          { label: 'Car', value: (row) => row.rowKind === 'header' ? '' : escapeHtml(carNumber(row)) },
-          { label: 'Driver', value: (row) => escapeHtml(driverName(row)) },
-          { label: 'Leader', value: (row) => row.rowKind === 'header' ? escapeHtml(`${row.rowCount || 0} cars`) : leaderGap(row) },
-          { label: 'Focus', value: (row) => row.rowKind === 'header' ? '' : formatSeconds(row.deltaSecondsToFocus) },
-          { label: 'Pit', value: (row) => row.rowKind === 'header' ? '' : row.onPitRoad ? 'IN' : '' }
-        ], rows);
+        contentEl.innerHTML = rowsTable(standingsColumnHeaders(), rows);
         setStatus(live, scoring?.hasData
           ? `scoring | ${coverage.liveScoringRowCount || 0}/${coverage.resultRowCount || 0} live`
           : timing?.hasData ? `live | ${quality(timing)}` : 'waiting for standings');
@@ -61,13 +69,113 @@ internal static class StandingsBrowserSource
         const response = await fetch('/api/standings', { cache: 'no-store' });
         if (!response.ok) return;
         const payload = await response.json();
-        standingsSettings = payload.standingsSettings || standingsSettings;
+        standingsSettings = normalizeStandingsSettings(payload.standingsSettings || standingsSettings);
       } catch {
-        standingsSettings = { maximumRows: 14, otherClassRowsPerClass: 2 };
+        standingsSettings = defaultStandingsSettings;
       }
     }
 
-    function scoringRows(scoring, timing, referenceCarIdx, maximumRows, otherClassRows) {
+    function normalizeStandingsSettings(settings) {
+      const columns = Array.isArray(settings?.columns) && settings.columns.length
+        ? settings.columns
+        : defaultStandingsColumns;
+      return {
+        maximumRows: settings?.maximumRows ?? defaultStandingsSettings.maximumRows,
+        classSeparatorsEnabled: settings?.classSeparatorsEnabled ?? defaultStandingsSettings.classSeparatorsEnabled,
+        otherClassRowsPerClass: settings?.otherClassRowsPerClass ?? defaultStandingsSettings.otherClassRowsPerClass,
+        columns
+      };
+    }
+
+    function standingsColumnHeaders() {
+      return normalizeColumns(standingsSettings.columns, defaultStandingsColumns)
+        .map((column) => ({
+          label: column.label,
+          width: column.width,
+          align: column.alignment,
+          value: (row) => standingsColumnValue(row, column.dataKey)
+        }));
+    }
+
+    function standingsColumnValue(row, dataKey) {
+      switch (dataKey) {
+        case 'class-position':
+          return row.rowKind === 'header' ? '' : `<span class="pill">${row.classPosition ? `C${row.classPosition}` : '--'}</span>`;
+        case 'car-number':
+          return row.rowKind === 'header' ? '' : escapeHtml(carNumber(row));
+        case 'driver':
+          return escapeHtml(driverName(row));
+        case 'gap':
+          return row.rowKind === 'header' ? escapeHtml(`${row.rowCount || 0} cars`) : leaderGap(row);
+        case 'interval':
+          return row.rowKind === 'header' ? escapeHtml(row.estimatedLapsLabel || '') : formatSeconds(row.deltaSecondsToFocus);
+        case 'pit':
+          return row.rowKind === 'header' ? '' : row.onPitRoad ? 'IN' : '';
+        default:
+          return '';
+      }
+    }
+
+    function normalizeColumns(columns, fallbackColumns) {
+      const normalized = (Array.isArray(columns) ? columns : [])
+        .map((column) => ({
+          id: String(column?.id || ''),
+          label: String(column?.label || ''),
+          dataKey: normalizeStandingsDataKey(column?.dataKey, column?.id),
+          width: clamp(Number(column?.width), 34, 520),
+          alignment: normalizeColumnAlignment(column?.alignment ?? column?.align, column?.id, fallbackColumns)
+        }))
+        .filter((column) => column.id && column.label && column.dataKey);
+      return normalized.length ? normalized : fallbackColumns;
+    }
+
+    function normalizeColumnAlignment(value, columnId, fallbackColumns) {
+      const normalized = String(value || '').toLowerCase();
+      const id = String(columnId || '');
+      if (['left', 'right', 'center'].includes(normalized)) {
+        return normalized;
+      }
+
+      const fallback = (fallbackColumns || []).find((column) => column.id === id);
+      if (fallback) {
+        return normalizeColumnAlignment(fallback.alignment ?? fallback.align, null, []);
+      }
+
+      return id === 'driver' || id.endsWith('.driver') ? 'left' : 'right';
+    }
+
+    function normalizeStandingsDataKey(value, columnId) {
+      const normalized = String(value || '').toLowerCase();
+      if (['class-position', 'car-number', 'driver', 'gap', 'interval', 'pit'].includes(normalized)) {
+        return normalized;
+      }
+
+      const legacyId = String(columnId || '').toLowerCase();
+      switch (legacyId) {
+        case 'class':
+        case 'standings.class-position':
+          return 'class-position';
+        case 'car':
+        case 'standings.car-number':
+          return 'car-number';
+        case 'driver':
+        case 'standings.driver':
+          return 'driver';
+        case 'gap':
+        case 'standings.gap':
+          return 'gap';
+        case 'interval':
+        case 'standings.interval':
+          return 'interval';
+        case 'pit':
+        case 'standings.pit':
+          return 'pit';
+        default:
+          return '';
+      }
+    }
+
+    function scoringRows(live, scoring, timing, referenceCarIdx, maximumRows, otherClassRows, classSeparatorsEnabled) {
       const timingByCarIdx = new Map([
         ...(timing?.overallRows || []),
         ...(timing?.classRows || [])
@@ -80,16 +188,17 @@ internal static class StandingsBrowserSource
         || groupFirstPosition(left) - groupFirstPosition(right)
         || (left.carClass ?? 999999) - (right.carClass ?? 999999));
       const primary = groups.find((group) => group.isReferenceClass) || groups[0];
-      const otherGroups = groups.filter((group) => group !== primary && otherClassRows > 0);
-      const includeHeaders = groups.length > 1;
+      const otherGroups = groups.filter((group) => classSeparatorsEnabled && group !== primary && otherClassRows > 0);
+      const includeHeaders = classSeparatorsEnabled && groups.length > 1;
       const reservedOtherRows = otherGroups.length * (includeHeaders ? 1 + otherClassRows : otherClassRows);
       const minimumPrimaryRows = Math.min(maximumRows, includeHeaders ? 2 : 1);
       const primaryLimit = clamp(maximumRows - reservedOtherRows, minimumPrimaryRows, maximumRows);
       const rows = [];
-      appendScoringGroup(rows, primary, timingByCarIdx, referenceCarIdx, maximumRows, primaryLimit, includeHeaders);
+      appendScoringGroup(live, rows, primary, timingByCarIdx, referenceCarIdx, maximumRows, primaryLimit, includeHeaders);
       for (const group of otherGroups) {
         if (rows.length >= maximumRows) break;
         appendScoringGroup(
+          live,
           rows,
           group,
           timingByCarIdx,
@@ -101,13 +210,15 @@ internal static class StandingsBrowserSource
       return rows;
     }
 
-    function appendScoringGroup(rows, group, timingByCarIdx, referenceCarIdx, maximumRows, groupLimit, includeHeader) {
+    function appendScoringGroup(live, rows, group, timingByCarIdx, referenceCarIdx, maximumRows, groupLimit, includeHeader) {
       if (groupLimit <= 0 || rows.length >= maximumRows) return;
       if (includeHeader) {
         rows.push({
           rowKind: 'header',
           driverName: group.className || 'Class',
-          rowCount: group.rowCount || 0
+          rowCount: group.rowCount || 0,
+          estimatedLapsLabel: classEstimatedLaps(group, live),
+          carClassColorHex: group.carClassColorHex
         });
         groupLimit -= 1;
       }
@@ -142,6 +253,37 @@ internal static class StandingsBrowserSource
     function leaderGap(row) {
       if (row?.isClassLeader || row?.classPosition === 1) return 'Leader';
       return formatSeconds(row?.gapSecondsToClassLeader);
+    }
+
+    function classEstimatedLaps(group, live) {
+      const projection = (live?.models?.raceProjection?.classProjections || [])
+        .find((candidate) => candidate.carClass === group?.carClass);
+      if (Number.isFinite(projection?.estimatedLapsRemaining)
+        && projection.estimatedLapsRemaining >= 0
+        && projection.estimatedLapsRemaining < 1000) {
+        const laps = projection.estimatedLapsRemaining;
+        return `~${Number(laps).toFixed(laps % 1 === 0 ? 0 : 1)} laps`;
+      }
+
+      const pace = (group?.rows || [])
+        .map((row) => row.lastLapTimeSeconds ?? row.bestLapTimeSeconds)
+        .find(isUsableLapTime)
+        ?? live?.models?.raceProgress?.racePaceSeconds;
+      const remaining = live?.models?.session?.sessionTimeRemainSeconds;
+      if (Number.isFinite(remaining) && remaining > 0 && isUsableLapTime(pace)) {
+        return `~${Math.ceil(remaining / pace + 1)} laps`;
+      }
+
+      const laps = live?.models?.raceProgress?.raceLapsRemaining;
+      if (Number.isFinite(laps) && laps >= 0 && laps < 1000) {
+        return `~${Number(laps).toFixed(laps % 1 === 0 ? 0 : 1)} laps`;
+      }
+
+      return '';
+    }
+
+    function isUsableLapTime(seconds) {
+      return Number.isFinite(seconds) && seconds > 20 && seconds < 1800;
     }
 
     function groupFirstPosition(group) {

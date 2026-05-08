@@ -17,6 +17,8 @@ Session / Weather and Pit Service use the shared `SimpleTelemetryOverlayForm` sh
 
 The settings tab lets the user choose which flag categories can display and uses the shared scale control for overlay size. There are no per-flag display timers: each flag paints while the current telemetry state maps to an enabled user-facing flag category and clears when that telemetry state clears or changes to a disabled category. Multiple meaningful categories can render at once, so persistent states such as white, meatball, and black can stay up while transient yellow/debris/blue states appear or disappear around them.
 
+The transparent native flags window is click-through/no-activate and is also hidden while the Settings window is active. Diagnostics bundles include UI-freeze-watch metrics that make Windows validation distinguish a real UI-thread stall from an overlay window/input-capture problem.
+
 Background SDK bits such as `serviceable` and `start hidden` are decoded for diagnostics but do not trigger the overlay by themselves. User-facing categories are:
 
 - green-held/start-ready/start-set/start-go; plain steady-state green running does not show by itself
@@ -90,6 +92,6 @@ It displays:
 - water temperature
 - oil temperature plus oil/fuel pressure
 
-The default native input overlay uses the older rolling pedal-trace graph again, but with a wider, shorter default footprint and smoothed trace curves. At normal default size it shows a wide throttle/brake/clutch trace with a dense readout strip for speed, gear, RPM, steering, water temperature, and oil pressure. When ABS is firing, the brake trace segment and compact brake bar switch to the ABS highlight color. Very small scale-derived sizes still fall back to current pedal bars plus compact readouts, while taller scale-derived sizes can show the full trace, steering wheel, and car-state readouts.
+The default native and browser input overlays are graph-first. The line graph remains the primary surface, while current-value widgets live in a right-side content rail. Pedals are shown as vertical percentage bars, steering remains a wheel visualization, and gear/speed are numeric. Throttle, brake, clutch, steering, gear, and speed are independent Content-tab options that can be turned on or off. Input / Car State does not expose Header/Footer settings in this branch.
 
 Engine warning bits use a warning tone. Otherwise this overlay stays neutral and acts as a compact local-driver input surface. TC firing is deliberately not shown yet: current captures expose TC toggle/adjustment-style fields, but not a proven traction-control intervention signal equivalent to `BrakeABSactive`. Current captures also expose `Clutch` and `ClutchRaw`, while future clutch-like schema fields such as dual-clutch channels are watched diagnostically before being promoted into the production overlay.

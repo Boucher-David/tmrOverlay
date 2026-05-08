@@ -28,6 +28,7 @@ internal static class LiveRaceModelBuilder
             Scoring: scoring,
             Timing: timing,
             RaceProgress: raceProgress,
+            RaceProjection: LiveRaceProjectionModel.Empty,
             Relative: BuildRelative(sample, proximity, timing),
             Spatial: spatial,
             TrackMap: trackMap ?? BuildTrackMap(context),
@@ -162,10 +163,11 @@ internal static class LiveRaceModelBuilder
             missing.Add("race-laps-remaining");
         }
 
-        var strategyOverallGap = LiveRaceProgressProjector.CalculateGapLaps(overallLeaderProgress, strategyProgress);
-        var strategyClassGap = LiveRaceProgressProjector.CalculateGapLaps(classLeaderProgress, strategyProgress);
-        var referenceOverallGap = LiveRaceProgressProjector.CalculateGapLaps(overallLeaderProgress, referenceProgress);
-        var referenceClassGap = LiveRaceProgressProjector.CalculateGapLaps(classLeaderProgress, referenceProgress);
+        var allowLiveRaceGaps = AllowsLiveRaceGaps(sample);
+        var strategyOverallGap = allowLiveRaceGaps ? LiveRaceProgressProjector.CalculateGapLaps(overallLeaderProgress, strategyProgress) : null;
+        var strategyClassGap = allowLiveRaceGaps ? LiveRaceProgressProjector.CalculateGapLaps(classLeaderProgress, strategyProgress) : null;
+        var referenceOverallGap = allowLiveRaceGaps ? LiveRaceProgressProjector.CalculateGapLaps(overallLeaderProgress, referenceProgress) : null;
+        var referenceClassGap = allowLiveRaceGaps ? LiveRaceProgressProjector.CalculateGapLaps(classLeaderProgress, referenceProgress) : null;
         var hasData = strategyProgress is not null
             || referenceProgress is not null
             || overallLeaderProgress is not null
@@ -331,11 +333,7 @@ internal static class LiveRaceModelBuilder
         HistoricalTelemetrySample sample,
         LiveDriverDirectoryModel driverDirectory)
     {
-        var results = context.ResultPositions
-            .Where(result => result.CarIdx is >= 0)
-            .GroupBy(result => result.CarIdx!.Value)
-            .Select(group => group.First())
-            .ToArray();
+        var results = SelectScoringResults(context, sample);
         if (results.Length == 0)
         {
             return LiveScoringModel.Empty with
@@ -378,6 +376,69 @@ internal static class LiveRaceModelBuilder
             ReferenceCarClass: referenceClass,
             ClassGroups: classGroups,
             Rows: rows);
+    }
+
+    private static HistoricalSessionResultPosition[] SelectScoringResults(
+        HistoricalSessionContext context,
+        HistoricalTelemetrySample sample)
+    {
+        var sessionResults = NormalizeResultSet(context.ResultPositions);
+        var startingGrid = NormalizeResultSet(context.StartingGridPositions);
+        if (ShouldUseStartingGrid(context, sample, startingGrid))
+        {
+            return startingGrid;
+        }
+
+        return sessionResults.Length > 0
+            ? sessionResults
+            : startingGrid;
+    }
+
+    private static HistoricalSessionResultPosition[] NormalizeResultSet(
+        IReadOnlyList<HistoricalSessionResultPosition> results)
+    {
+        return results
+            .Where(result => result.CarIdx is >= 0)
+            .GroupBy(result => result.CarIdx!.Value)
+            .Select(group => group.First())
+            .ToArray();
+    }
+
+    private static bool ShouldUseStartingGrid(
+        HistoricalSessionContext context,
+        HistoricalTelemetrySample sample,
+        IReadOnlyList<HistoricalSessionResultPosition> startingGrid)
+    {
+        if (startingGrid.Count == 0 || !IsRaceSession(context))
+        {
+            return false;
+        }
+
+        if (sample.SessionState is { } sessionState)
+        {
+            return sessionState < 4;
+        }
+
+        return sample.LapCompleted <= 0
+            && sample.LapDistPct >= 0d
+            && sample.LapDistPct < 0.08d;
+    }
+
+    private static bool IsRaceSession(HistoricalSessionContext context)
+    {
+        return ContainsRace(context.Session.SessionType)
+            || ContainsRace(context.Session.SessionName)
+            || ContainsRace(context.Session.EventType);
+    }
+
+    private static bool ContainsRace(string? value)
+    {
+        return value?.IndexOf("race", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static bool AllowsLiveRaceGaps(HistoricalTelemetrySample sample)
+    {
+        return sample.SessionState is null or >= 4;
     }
 
     private static LiveScoringRow ToScoringRow(
@@ -455,24 +516,25 @@ internal static class LiveRaceModelBuilder
         var focusCarIdx = FocusCarIdx(sample);
         var playerCarIdx = sample.PlayerCarIdx;
         var classLeaderCarIdx = leaderGap.ClassLeaderCarIdx ?? FocusClassLeaderCarIdx(sample);
+        var allowLiveRaceGaps = AllowsLiveRaceGaps(sample);
         var overallGapEvidence = BuildLeaderGapEvidence(
             source: "overall-gap",
             position: FocusPosition(sample),
             leaderCarIdx: sample.LeaderCarIdx,
             referenceCarIdx: focusCarIdx,
-            referenceF2TimeSeconds: FocusF2TimeSeconds(sample),
-            leaderF2TimeSeconds: sample.LeaderF2TimeSeconds,
-            referenceProgress: Progress(FocusLapCompleted(sample), FocusLapDistPct(sample)),
-            leaderProgress: Progress(sample.LeaderLapCompleted, sample.LeaderLapDistPct));
+            referenceF2TimeSeconds: allowLiveRaceGaps ? FocusF2TimeSeconds(sample) : null,
+            leaderF2TimeSeconds: allowLiveRaceGaps ? sample.LeaderF2TimeSeconds : null,
+            referenceProgress: allowLiveRaceGaps ? Progress(FocusLapCompleted(sample), FocusLapDistPct(sample)) : null,
+            leaderProgress: allowLiveRaceGaps ? Progress(sample.LeaderLapCompleted, sample.LeaderLapDistPct) : null);
         var classGapEvidence = BuildLeaderGapEvidence(
             source: "class-gap",
             position: FocusClassPosition(sample),
             leaderCarIdx: classLeaderCarIdx,
             referenceCarIdx: focusCarIdx,
-            referenceF2TimeSeconds: FocusF2TimeSeconds(sample),
-            leaderF2TimeSeconds: FocusClassLeaderF2TimeSeconds(sample),
-            referenceProgress: Progress(FocusLapCompleted(sample), FocusLapDistPct(sample)),
-            leaderProgress: Progress(FocusClassLeaderLapCompleted(sample), FocusClassLeaderLapDistPct(sample)));
+            referenceF2TimeSeconds: allowLiveRaceGaps ? FocusF2TimeSeconds(sample) : null,
+            leaderF2TimeSeconds: allowLiveRaceGaps ? FocusClassLeaderF2TimeSeconds(sample) : null,
+            referenceProgress: allowLiveRaceGaps ? Progress(FocusLapCompleted(sample), FocusLapDistPct(sample)) : null,
+            leaderProgress: allowLiveRaceGaps ? Progress(FocusClassLeaderLapCompleted(sample), FocusClassLeaderLapDistPct(sample)) : null);
 
         AddKnownRow(
             rows,

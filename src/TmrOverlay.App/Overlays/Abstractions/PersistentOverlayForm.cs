@@ -186,7 +186,6 @@ internal abstract class PersistentOverlayForm : Form
         _settings.Width = persistedSize.Width;
         _settings.Height = persistedSize.Height;
         _settings.Opacity = _baseOpacity;
-        _settings.AlwaysOnTop = TopMost;
         _saveSettings();
     }
 

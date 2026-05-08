@@ -27,7 +27,7 @@ Run this section when a branch is being declared complete, prepared for merge, o
 
 Make branch-readiness artifacts current before writing the final squash text:
 
-- Run a stale-reference sweep across docs, mocks, tests, the ignored mac harness, repo skills, and release notes for old behavior names, settings tabs, option labels, source labels, screenshot assumptions, and API call patterns that no longer match the branch implementation.
+- Run a stale-reference sweep across docs, mocks, tests, the tracked mac harness, repo skills, and release notes for old behavior names, settings tabs, option labels, source labels, screenshot assumptions, and API call patterns that no longer match the branch implementation.
 - Patch affected behavior docs as part of this branch-complete pass. Overlay behavior changes should update `docs/overlay-logic.md` and the matching overlay-specific logic note. App/settings/platform changes should update README/current-state docs when the product shape changed. Product direction, validation assumptions, analysis assumptions, live-model contract notes, and future-branch notes should land here unless the change is a durable raw-capture/schema change that requires same-pass docs.
 - If changing Windows build/release commands, make `README.md`, release-command docs, CI docs, and any in-app command references agree during this branch-complete pass.
 - If changing Windows publishing/package contents, verify PR validation runs a publish dry run with the same package audit, the release workflow audits the publish folder for accidental repo/dev-folder leaks, emits a package manifest, and documents which user data stays outside the install folder.
@@ -137,7 +137,13 @@ swift build
 swift test
 ```
 
-The current local Command Line Tools setup may build but fail to run XCTest; report that limitation if it applies.
+If the active developer directory is Command Line Tools and `swift test` fails with `no such module 'XCTest'`, use the full Xcode toolchain instead of treating that as a validation blocker:
+
+```bash
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test
+```
+
+If that rerun is blocked by local sandboxing or permissions, request approval to run it outside the sandbox and report the exact result.
 
 For overlay behavior changes, also run a live mac-harness smoke test when a GUI session is available. Use an isolated app-data root so the check does not disturb normal local settings/history:
 
@@ -160,4 +166,4 @@ This live smoke test is the best check that one instance of each current overlay
 - If changing shared live models or normalized snapshot contracts, keep existing overlay-specific members additive/stable, add focused builder tests, and do not change durable history/raw-capture schemas unless explicitly required.
 - If changing raw capture format, verify `docs/capture-format.md`, `telemetry.md`, and `README.md` were updated in the same pass.
 - If changing IBT capture or analysis behavior, verify `docs/ibt-analysis.md` when present, `docs/capture-format.md`, `telemetry.md`, and `README.md` stay aligned. IBT analysis must remain a compact sidecar: no source `.ibt` copy by default, bounded candidate scanning, file-size and stability checks, timeout/sample limits, and skipped/failed status files instead of failures in compact history, post-race analysis, or capture synthesis.
-- If changing shared contracts, reusable overlay behavior, or app boilerplate, inspect whether both the Windows app and ignored mac harness need matching changes.
+- If changing shared contracts, reusable overlay behavior, or app boilerplate, inspect whether both the Windows app and tracked mac harness need matching changes.

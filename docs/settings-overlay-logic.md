@@ -16,7 +16,6 @@ Treat settings as the app control plane rather than a v1 or model-v2 overlay con
 
 Driving overlays are managed windows that can sit above the simulator. Current driving overlays:
 
-- Status.
 - Standings.
 - Fuel Calculator.
 - Relative.
@@ -70,15 +69,17 @@ Flags exposes flag-category enable controls plus the shared scale control instea
 
 Most driving overlays expose opacity next to scale and keep the existing overlay opacity as their default. The transparent flag renderer and the radar do not expose opacity because their readability comes from semantic color/shape rather than a normal panel background.
 
-Normal scale-capable overlays are size-controlled by their definition plus `Scale %`. Width and height remain in saved settings for compatibility and runtime placement persistence, but `OverlayManager` normalizes them back to `DefaultWidth/DefaultHeight * Scale` instead of treating them as independent user-facing layout inputs. Track Map and Radar stay square because their definitions are square; Flags, Stream Chat, and Garage Cover also use scale-owned dimensions instead of direct width/height controls.
+Normal scale-capable overlays are size-controlled by their definition plus `Scale %`. Width and height remain in saved settings for compatibility and runtime placement persistence, but `OverlayManager` normalizes them back to `DefaultWidth/DefaultHeight * Scale` instead of treating them as independent user-facing layout inputs. Track Map and Radar stay square because their definitions are square; Flags, Stream Chat, and Garage Cover also use scale-owned dimensions instead of direct width/height controls. Table overlays can expand beyond their scaled default width when visible content columns need more room, so first-time/app-decided sizing is not squashed by an old user-selected scale.
 
 Gap To Leader is race-only, so its settings tab omits the redundant `Display in sessions` filter group.
 
-Shared-chrome-capable overlays use horizontal tabs inside their overlay settings tab. The initial set is Standings, Relative, Fuel Calculator, Input / Car State, and Gap To Leader. `General` contains the existing overlay controls. `Header` currently exposes the shared `Status` item with Test/Practice/Qualifying/Race toggles. `Footer` currently exposes the shared `Source` item with the same session toggles. These keyed options are stored per overlay through `OverlaySettings.Options`, default on, and are intentionally narrow so future header/footer items can expand the same settings pattern without changing the general overlay controls.
+Overlay settings tabs contain left-side region tabs. `General` contains visibility, scale, opacity, session filters, and localhost browser-source details. `Content` owns overlay-specific display/content controls. Shared-chrome-capable overlays then expose `Header` and `Footer` sections for session-scoped chrome items such as status and source labels. Input / Car State suppresses Header/Footer because it is graph/content-only in this branch. These keyed options are stored per overlay through `OverlaySettings.Options`, default on where appropriate, and are intentionally narrow so future header/footer items can expand the same settings pattern without changing general overlay controls.
 
-Each user-facing overlay tab shows a selectable localhost browser-source URL plus a copy button when a route exists. These routes are independent of native overlay visibility; a hidden native overlay can still be used as a localhost browser source when `LocalhostOverlays` is enabled in configuration, and localhost-only surfaces such as Garage Cover do not expose a native `Visible` checkbox. Overlay modules own browser-source route descriptors and page scripts; localhost owns the HTTP transport, route catalog, and generic HTML shell.
+Each user-facing overlay tab shows a selectable localhost browser-source URL plus a copy button when a route exists. It also shows a recommended OBS browser-source size as plain `WxH` text derived from the overlay's current content columns or default size. These routes are independent of native overlay visibility; a hidden native overlay can still be used as a localhost browser source when `LocalhostOverlays` is enabled in configuration, and localhost-only surfaces such as Garage Cover do not expose a native `Visible` checkbox. Overlay modules own browser-source route descriptors and page scripts; localhost owns the HTTP transport, route catalog, and generic HTML shell.
 
-Standings exposes normal overlay visibility, scale, opacity, session filters, its localhost browser-source URL, and the `Other-class rows` setting. The native overlay and browser source both use that setting when they group scoring rows by class.
+Standings and Relative use a shared content-column manager. The content definition has reusable data keys, but each overlay owns its own option keys so changing Standings columns does not imply Relative changes. Columns remain in one ordered list even when disabled, are dimmed when hidden, expose pixel widths, and can be reordered. Native and browser rendering use the same default content and the recommended OBS width grows from visible column widths.
+
+Standings exposes normal overlay visibility, scale, opacity, session filters, its localhost browser-source URL, the timing columns, and a separate class-separator content block. The class separator block can be disabled and controls how many other-class cars are shown. The native overlay and localhost browser source both use those settings when they group scoring rows by class.
 
 Track Map exposes normal overlay visibility, scale, map-fill opacity, and session filters plus map-source status. Its tab explains that bundled app maps are used automatically when the current track identity matches, while local IBT-derived map generation is on by default to fill or improve layouts after sessions. Schema-v2 generated maps carry sector boundaries used by the live model-v2 green/purple sector highlights; the map-fill opacity setting still does not dim the white outline, markers, or sector status. The `Build local maps from IBT telemetry` checkbox controls future automatic post-session generation and whether user-generated maps are eligible at runtime; when disabled, runtime lookup uses bundled app maps before falling back to the circle placeholder. The settings tab no longer exposes one-off `.ibt` conversion controls; use `tools/TmrOverlay.TrackMapGenerator` for bundled-asset generation and QA.
 
@@ -161,6 +162,8 @@ Driving overlays persist their placement and size through their `OverlaySettings
 
 The settings window stores normalized size but is recentered on open, so saved coordinates do not control startup placement.
 
+Settings option changes are queued briefly and coalesced before save/apply. This keeps checkbox bursts and content-column edits from recursively saving settings, rebuilding overlay visibility, and refreshing browser-size readouts inside the original control event. Closing the settings window flushes any pending save/apply work before exit.
+
 ## Diagnostics In Settings
 
 The Support tab:
@@ -174,6 +177,10 @@ The Support tab:
 - Shows release update status/actions in the Support tab: installed/portable state, current/latest version, last checked time, and last error.
 - Keeps local storage shortcuts together for logs, diagnostics, captures, and history without exposing advanced collection internals as normal teammate controls.
 - Reports the latest automatic end-of-session diagnostics bundle.
+
+Diagnostics bundles include performance and UI-freeze-watch metadata for settings and flags validation. The freeze-watch summary pulls settings save/apply timings, UI timer lateness, flags refresh/render timings, overlay window bounds/topmost/click-through state, and possible settings-window input interception risk from the rolling performance snapshot.
+
+While the settings window is active, the transparent Flags overlay suppresses its own window even if live flags are present. This is a defensive input policy for the feedback case where an always-on-top transparent flag window appeared to make Settings unclickable.
 
 ## Design Notes
 

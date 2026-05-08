@@ -1,16 +1,16 @@
 # Windows Releases
 
-TmrOverlay publishes Windows tester builds from GitHub Actions. Starting with the Velopack release-channel branch, a release tag such as `v0.16.0` produces a public GitHub Release with Velopack installer/update assets plus the existing portable zip fallback.
+TmrOverlay publishes Windows tester builds from GitHub Actions. Starting with the Velopack release-channel branch, a release tag such as `v0.16.1` produces a public GitHub Release with Velopack installer/update assets plus the existing portable zip fallback.
 
 Expected release assets include:
 
-- a Velopack setup executable
+- `TMROverlay-win-x64-Setup.exe`
 - a Velopack full `.nupkg` package
 - `releases.win-x64.json`
 - delta `.nupkg` packages when prior Velopack releases exist
-- `TmrOverlay-v0.16.0-win-x64.zip`
-- `TmrOverlay-v0.16.0-win-x64.zip.sha256`
-- `TmrOverlay-v0.16.0-win-x64-manifest.txt`
+- `TmrOverlay-v<version>-win-x64.zip`
+- `TmrOverlay-v<version>-win-x64.zip.sha256`
+- `TmrOverlay-v<version>-win-x64-manifest.txt`
 - generated GitHub release notes
 
 The Velopack installer and the portable zip are self-contained for Windows x64. Testers do not need to install the .NET runtime.
@@ -57,7 +57,7 @@ The expected package shape is intentionally small:
 
 The executable icon is embedded from `src/TmrOverlay.App/Assets/TmrOverlay.ico`. The release manifest asset lists the exact published files and sizes for each build, so package review can happen without downloading and unzipping the app.
 
-Velopack package assets are generated from that audited publish folder. The package id is `TechMatesRacing.TmrOverlay`, the title is `Tech Mates Racing Overlay`, and the current channel is `win-x64`.
+Velopack package assets are generated from that audited publish folder. The package id is `TMROverlay`, the title is `Tech Mates Racing Overlay`, and the current channel is `win-x64`. The package id intentionally changed from the early `TechMatesRacing.TmrOverlay` tester identity while the app is still pre-1.0 so setup asset names and installed package identity match the shorter executable name.
 
 ## Tester Download
 
@@ -113,6 +113,8 @@ To upgrade a Velopack-installed build:
 2. If a newer release is available, close TmrOverlay from the settings window or tray menu.
 3. Download and run the latest Velopack setup executable from the newer release.
 4. Launch TmrOverlay from the installed shortcut.
+
+Because the pre-1.0 package id moved from `TechMatesRacing.TmrOverlay` to `TMROverlay`, installed builds that used the older package id should be treated as a fresh installer transition: close the old app, run the new setup, confirm `%LOCALAPPDATA%\TmrOverlay` settings/history are still present, and uninstall the old tester package if Windows shows both entries.
 
 To move from a portable zip to the Velopack installer:
 
