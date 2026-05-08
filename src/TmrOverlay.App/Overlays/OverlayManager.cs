@@ -515,6 +515,11 @@ internal sealed class OverlayManager : IDisposable
     {
         var started = System.Diagnostics.Stopwatch.GetTimestamp();
         var succeeded = false;
+        Form? activeSettingsForm = null;
+        var keepSettingsActive = _settingsOverlayActive
+            && _forms.TryGetValue(SettingsOverlayDefinition.Definition.Id, out activeSettingsForm)
+            && activeSettingsForm.Visible
+            && !activeSettingsForm.IsDisposed;
         try
         {
             RecreateManagedFormsIfFontChanged();
@@ -592,6 +597,13 @@ internal sealed class OverlayManager : IDisposable
                     settingsPreview,
                     desiredVisible: true,
                     liveTelemetryAvailable: overlayLiveTelemetryAvailable);
+            }
+
+            if (keepSettingsActive && activeSettingsForm is not null && !activeSettingsForm.IsDisposed)
+            {
+                _settingsOverlayActive = true;
+                activeSettingsForm.BringToFront();
+                activeSettingsForm.Activate();
             }
 
             ApplyEmergencyOverlayZOrder();

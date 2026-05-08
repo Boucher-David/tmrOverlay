@@ -104,6 +104,8 @@ internal abstract class PersistentOverlayForm : Form
 
     protected virtual bool UseToolWindowStyle => true;
 
+    protected override bool ShowWithoutActivation => UseToolWindowStyle;
+
     protected void RegisterDragSurfaces(params Control[] controls)
     {
         foreach (var control in controls)
