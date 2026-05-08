@@ -35,7 +35,7 @@ Current modules:
 - `CarRadar/` - transparent circular local-player in-car proximity radar from `LiveTelemetrySnapshot.Models.Spatial`, using fresh local player/team progress, `CarLeftRight`, and physically placed `CarIdx*` progress arrays, hidden for missing player, explicit non-player focus, garage, and pit contexts, with car rectangles placed only from physical lap-distance meters, side occupancy anchored by local `CarLeftRight`, likely side-warning cars attached to the side slot only from physical distance instead of duplicated in the center lane, neutral-white car rectangles fading in between radar entry and the yellow-warning threshold, and proximity color moving through yellow toward saturated alert red only inside the close bumper-gap warning buffer around the local car
 - `GapToLeader/` - four-hour in-class gap trend graph from `CamCarIdx`, `CarIdxF2Time`, standings, and `CarIdx*` progress, with a bounded in-memory trace, adaptive Y-axis scaling, left-side axis labels, lap reference lines, weather bands, driver/leader-change markers, and endpoint position labels for the focused car context
 
-Windows overlay code is production-facing and should stay real-data-driven. Use the ignored mac harness for looser development scenes such as fixed race offsets, named mock drivers, synthetic weather windows, and exaggerated graph events.
+Windows overlay code is production-facing and should stay real-data-driven. Use the tracked mac harness for looser development scenes such as fixed race offsets, named mock drivers, synthetic weather windows, and exaggerated graph events.
 
 Expected future modules:
 

@@ -5,7 +5,7 @@ namespace TmrOverlay.Core.Settings;
 
 internal static class AppSettingsMigrator
 {
-    public const int CurrentVersion = 7;
+    public const int CurrentVersion = 8;
     private const string FlagsOverlayId = "flags";
     private const string FlagsPrimaryScreenDefaultId = "primary-screen-default";
     private const int FlagsDefaultWidth = 360;
@@ -82,8 +82,7 @@ internal static class AppSettingsMigrator
             EnsureOption(overlay, OverlayOptionKeys.StandingsColumnGapWidth, defaultValue: 92, minimum: 64, maximum: 160);
             EnsureOption(overlay, OverlayOptionKeys.StandingsColumnIntervalWidth, defaultValue: 92, minimum: 64, maximum: 160);
             EnsureOption(overlay, OverlayOptionKeys.StandingsColumnPitWidth, defaultValue: 46, minimum: 34, maximum: 90);
-            EnsureOption(overlay, OverlayOptionKeys.RelativeCarsAhead, defaultValue: 5, minimum: 0, maximum: 8);
-            EnsureOption(overlay, OverlayOptionKeys.RelativeCarsBehind, defaultValue: 5, minimum: 0, maximum: 8);
+            NormalizeRelativeCarsEachSide(overlay);
             EnsureOption(overlay, OverlayOptionKeys.InputShowThrottle, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.InputShowBrake, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.InputShowClutch, defaultValue: true);
@@ -93,6 +92,7 @@ internal static class AppSettingsMigrator
             EnsureOption(overlay, OverlayOptionKeys.GapCarsAhead, defaultValue: 5, minimum: 0, maximum: 12);
             EnsureOption(overlay, OverlayOptionKeys.GapCarsBehind, defaultValue: 5, minimum: 0, maximum: 12);
             EnsureOption(overlay, OverlayOptionKeys.TrackMapBuildFromTelemetry, defaultValue: true);
+            EnsureOption(overlay, OverlayOptionKeys.TrackMapSectorBoundariesEnabled, defaultValue: true);
 
             overlay.Scale = ClampFinite(overlay.Scale, 0.6d, 2d, 1d);
             overlay.Width = Math.Max(0, overlay.Width);
@@ -126,6 +126,19 @@ internal static class AppSettingsMigrator
         overlay.Width = FlagsDefaultWidth;
         overlay.Height = FlagsDefaultHeight;
         overlay.ScreenId ??= FlagsPrimaryScreenDefaultId;
+    }
+
+    private static void NormalizeRelativeCarsEachSide(OverlaySettings overlay)
+    {
+        var carsEachSide = overlay.Options.ContainsKey(OverlayOptionKeys.RelativeCarsEachSide)
+            ? overlay.GetIntegerOption(OverlayOptionKeys.RelativeCarsEachSide, defaultValue: 5, minimum: 0, maximum: 8)
+            : Math.Max(
+                overlay.GetIntegerOption(OverlayOptionKeys.RelativeCarsAhead, defaultValue: 5, minimum: 0, maximum: 8),
+                overlay.GetIntegerOption(OverlayOptionKeys.RelativeCarsBehind, defaultValue: 5, minimum: 0, maximum: 8));
+        overlay.SetIntegerOption(OverlayOptionKeys.RelativeCarsEachSide, carsEachSide, 0, 8);
+        // Keep the old split keys normalized for pre-v0.16.2 browser/native readers.
+        overlay.SetIntegerOption(OverlayOptionKeys.RelativeCarsAhead, carsEachSide, 0, 8);
+        overlay.SetIntegerOption(OverlayOptionKeys.RelativeCarsBehind, carsEachSide, 0, 8);
     }
 
     private static void MigrateLegacyOverlayOptions(OverlaySettings overlay)

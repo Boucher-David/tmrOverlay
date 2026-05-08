@@ -12,14 +12,8 @@ internal static class RelativeOverlayDefinition
         Options:
         [
             OverlaySettingsOptionDescriptor.Integer(
-                OverlayOptionKeys.RelativeCarsAhead,
-                "Cars ahead",
-                0,
-                8,
-                defaultValue: 5),
-            OverlaySettingsOptionDescriptor.Integer(
-                OverlayOptionKeys.RelativeCarsBehind,
-                "Cars behind",
+                OverlayOptionKeys.RelativeCarsEachSide,
+                "Cars each side",
                 0,
                 8,
                 defaultValue: 5)

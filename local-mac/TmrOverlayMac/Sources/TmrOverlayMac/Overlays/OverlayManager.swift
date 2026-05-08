@@ -762,6 +762,7 @@ final class OverlayManager {
     private var inputStateOverlayView: SimpleTelemetryOverlayView?
     private var carRadarView: CarRadarView?
     private var gapToLeaderView: GapToLeaderView?
+    private var relativeDesignV2View: RelativeDesignV2OverlayView?
     private var settingsOverlayView: SettingsOverlayView?
     private var radarSettingsPreviewVisible = false
     private var radarCaptureDemoScenarios: [RadarCaptureScenario] = []
@@ -776,6 +777,20 @@ final class OverlayManager {
     private var trackMapSectorDemoActive = false
     private var trackMapSectorDemoViews: [String: TrackMapView] = [:]
     private var trackMapSectorDemoPlaybacks: [String: TrackMapSectorDemoPlayback] = [:]
+    private var designV2ComponentDemoActive = false
+    private var designV2ComponentDemoOverlayIds = Set<String>()
+    private var designV2OverlaySuiteActive = false
+    private var designV2OverlaySuiteViews: [DesignV2OverlayMockKind: DesignV2OverlaySuiteView] = [:]
+    private var designV2OverlaySuiteOverlayIds = Set<String>()
+    private let relativeDesignV2DemoDefinition = OverlayDefinition(
+        id: "relative-design-v2",
+        displayName: "Relative V2",
+        defaultSize: RelativeOverlayDefinition.definition.defaultSize,
+        showSessionFilters: false,
+        showScaleControl: false,
+        showOpacityControl: false,
+        fadeWhenLiveTelemetryUnavailable: true
+    )
     private var lastOverlayErrors: [String: String] = [:]
     private var lastOverlayErrorDates: [String: Date] = [:]
 
@@ -894,6 +909,18 @@ final class OverlayManager {
             self?.relativeOverlayView?.showOverlayError(message)
         }) { [weak self] in
             self?.relativeOverlayView?.update(with: liveSnapshot)
+        }
+        updateOverlay("relative v2", showError: { [weak self] message in
+            self?.relativeDesignV2View?.showOverlayError(message)
+        }) { [weak self] in
+            self?.relativeDesignV2View?.update(with: liveSnapshot)
+        }
+        for (kind, view) in designV2OverlaySuiteViews {
+            updateOverlay("\(kind.title) v2", showError: { message in
+                view.showOverlayError(message)
+            }) {
+                view.update(with: liveSnapshot)
+            }
         }
         updateOverlay("standings", showError: { [weak self] message in
             self?.standingsOverlayView?.showOverlayError(message)
@@ -1209,6 +1236,203 @@ final class OverlayManager {
         updateTrackMapSectorDemoWindows(capturedAtUtc: Date())
     }
 
+    func showDesignV2ComponentDemo(theme: DesignV2Theme) {
+        designV2ComponentDemoActive = true
+        closeDesignV2ComponentDemoWindows()
+        hideManagedOverlayWindowsForDemo()
+
+        let definition = DesignV2ComponentOverlayDefinition.definition(theme: theme)
+        let view = DesignV2ComponentGalleryView(theme: theme)
+        let overlaySettings = OverlaySettings(
+            id: definition.id,
+            x: 24,
+            y: 24,
+            width: definition.defaultSize.width,
+            height: definition.defaultSize.height,
+            opacity: 1.0
+        )
+        let window = makeOverlayWindow(
+            contentView: view,
+            definition: definition,
+            settings: overlaySettings
+        )
+        window.title = "\(definition.displayName) - \(theme.displayName)"
+        overlayWindows[definition.id] = window
+        designV2ComponentDemoOverlayIds.insert(definition.id)
+        appliedScales[definition.id] = overlaySettings.scale
+        window.orderFrontRegardless()
+    }
+
+    func showDesignV2OverlaySuiteDemo(theme: DesignV2Theme) {
+        designV2OverlaySuiteActive = true
+        closeDesignV2OverlaySuiteWindows()
+        hideManagedOverlayWindowsForDemo()
+
+        for (index, kind) in designV2OverlaySuiteKinds().enumerated() {
+            showDesignV2OverlaySuiteWindow(kind: kind, index: index, theme: theme)
+        }
+        applyDisplaySettingsToOpenOverlays()
+    }
+
+    private func designV2OverlaySuiteKinds() -> [DesignV2OverlayMockKind] {
+        guard let rawValue = Self.environmentString("TMR_MAC_DESIGN_V2_OVERLAYS") else {
+            return DesignV2OverlayMockKind.allCases
+        }
+
+        let requested = rawValue
+            .split { $0 == "," || $0 == " " || $0 == ";" || $0 == ":" }
+            .compactMap { DesignV2OverlayMockKind(reviewAlias: String($0)) }
+        return requested.isEmpty ? DesignV2OverlayMockKind.allCases : requested
+    }
+
+    func showRelativeDesignV2ShellDemo(theme: DesignV2Theme) {
+        var relativeSettings = settings.overlay(
+            id: RelativeOverlayDefinition.definition.id,
+            defaultSize: RelativeOverlayDefinition.definition.defaultSize,
+            defaultOrigin: NSPoint(x: 24, y: 530),
+            defaultEnabled: true
+        )
+        relativeSettings.enabled = true
+        relativeSettings.alwaysOnTop = true
+        relativeSettings.showInTest = true
+        relativeSettings.showInPractice = true
+        relativeSettings.showInQualifying = true
+        relativeSettings.showInRace = true
+        relativeSettings.scale = min(max(relativeSettings.scale, 0.6), 2.0)
+        relativeSettings.width = RelativeOverlayDefinition.definition.defaultSize.width * relativeSettings.scale
+        relativeSettings.height = RelativeOverlayDefinition.definition.defaultSize.height * relativeSettings.scale
+        settings.updateOverlay(relativeSettings)
+        settingsStore.save(settings)
+        refreshOverlayVisibility()
+        applyDisplaySettingsToOpenOverlays()
+        showRelativeDesignV2DemoWindow(settings: relativeSettings, theme: theme)
+    }
+
+    private func showRelativeDesignV2DemoWindow(settings relativeSettings: OverlaySettings, theme: DesignV2Theme) {
+        if let window = overlayWindows[relativeDesignV2DemoDefinition.id] {
+            relativeDesignV2View?.theme = theme
+            resizeRelativeDesignV2Demo(settings: relativeSettings)
+            window.orderFrontRegardless()
+            return
+        }
+
+        let size = RelativeDesignV2OverlayView.demoSize(
+            settings: relativeSettings,
+            sessionKey: liveTelemetryStore.snapshot().combo.sessionKey
+        )
+        let overlaySettings = OverlaySettings(
+            id: relativeDesignV2DemoDefinition.id,
+            x: relativeSettings.x + relativeSettings.width + 24,
+            y: relativeSettings.y,
+            width: size.width,
+            height: size.height,
+            opacity: relativeSettings.opacity,
+            alwaysOnTop: relativeSettings.alwaysOnTop
+        )
+        let view = RelativeDesignV2OverlayView(frame: NSRect(origin: .zero, size: size))
+        view.theme = theme
+        let carsEachSide = relativeCarsEachSide(relativeSettings)
+        view.carsAhead = carsEachSide
+        view.carsBehind = carsEachSide
+        view.contentSettings = relativeSettings
+        view.fontFamily = OverlayTheme.defaultFontFamily
+        let window = makeOverlayWindow(
+            contentView: view,
+            definition: relativeDesignV2DemoDefinition,
+            settings: overlaySettings
+        )
+        window.title = relativeDesignV2DemoDefinition.displayName
+        overlayWindows[relativeDesignV2DemoDefinition.id] = window
+        relativeDesignV2View = view
+        appliedScales[relativeDesignV2DemoDefinition.id] = relativeSettings.scale
+        applyRelativeDesignV2Opacity(settings: relativeSettings)
+        window.orderFrontRegardless()
+    }
+
+    private func showDesignV2OverlaySuiteWindow(kind: DesignV2OverlayMockKind, index: Int, theme: DesignV2Theme) {
+        let sourceDefinition = kind.sourceDefinition
+        let sourceSettings = settings.overlay(
+            id: sourceDefinition.id,
+            defaultSize: sourceDefinition.defaultSize,
+            defaultOrigin: defaultOrigin(definition: sourceDefinition),
+            defaultEnabled: false
+        )
+        let size = designV2SuiteSize(kind: kind, sourceSettings: sourceSettings)
+        let definition = designV2SuiteDefinition(kind: kind, size: size)
+        let origin = designV2SuiteOrigin(index: index, size: size)
+        let overlaySettings = OverlaySettings(
+            id: definition.id,
+            x: origin.x,
+            y: origin.y,
+            width: size.width,
+            height: size.height,
+            opacity: sourceDefinition.showOpacityControl ? sourceSettings.opacity : 1.0,
+            alwaysOnTop: sourceSettings.alwaysOnTop
+        )
+        let view = DesignV2OverlaySuiteView(
+            kind: kind,
+            historyQueryService: historyQueryService
+        )
+        view.theme = theme
+        view.sourceSettings = sourceSettings
+        view.fontFamily = settings.general.fontFamily
+        view.unitSystem = settings.general.unitSystem
+        let window = makeOverlayWindow(
+            contentView: view,
+            definition: definition,
+            settings: overlaySettings
+        )
+        window.title = definition.displayName
+        overlayWindows[definition.id] = window
+        designV2OverlaySuiteViews[kind] = view
+        designV2OverlaySuiteOverlayIds.insert(definition.id)
+        appliedScales[definition.id] = sourceSettings.scale
+        applyDesignV2OverlaySuiteOpacity(kind: kind, settings: sourceSettings)
+        window.orderFrontRegardless()
+    }
+
+    private func designV2SuiteDefinition(kind: DesignV2OverlayMockKind, size: NSSize) -> OverlayDefinition {
+        OverlayDefinition(
+            id: kind.demoId,
+            displayName: "\(kind.title) V2",
+            defaultSize: size,
+            showSessionFilters: false,
+            showScaleControl: false,
+            showOpacityControl: false,
+            fadeWhenLiveTelemetryUnavailable: kind.sourceDefinition.fadeWhenLiveTelemetryUnavailable
+        )
+    }
+
+    private func designV2SuiteSize(kind: DesignV2OverlayMockKind, sourceSettings: OverlaySettings) -> NSSize {
+        let scale = min(max(sourceSettings.scale, 0.6), 2.0)
+        return NSSize(
+            width: kind.defaultSize.width * scale,
+            height: kind.defaultSize.height * scale
+        )
+    }
+
+    private func designV2SuiteOrigin(index: Int, size: NSSize) -> NSPoint {
+        let columns = 2
+        let gap: CGFloat = 22
+        let column = index % columns
+        let row = index / columns
+        let x = CGFloat(24) + CGFloat(column) * (660 + gap)
+        let y = CGFloat(620) - CGFloat(row) * (max(size.height, 310) + gap)
+        return NSPoint(x: x, y: max(24, y))
+    }
+
+    func closeDesignV2ComponentDemo() {
+        designV2ComponentDemoActive = false
+        closeDesignV2ComponentDemoWindows()
+        refreshOverlayVisibility()
+    }
+
+    func closeDesignV2OverlaySuiteDemo() {
+        designV2OverlaySuiteActive = false
+        closeDesignV2OverlaySuiteWindows()
+        refreshOverlayVisibility()
+    }
+
     func closeAll() {
         for (overlayId, window) in overlayWindows {
             saveOverlayFrame(window.frame, overlayId: overlayId, window: window)
@@ -1222,6 +1446,7 @@ final class OverlayManager {
         liveTelemetryFadeTargets.removeAll()
         fuelCalculatorView = nil
         relativeOverlayView = nil
+        relativeDesignV2View = nil
         standingsOverlayView = nil
         trackMapView = nil
         flagsOverlayView = nil
@@ -1242,6 +1467,11 @@ final class OverlayManager {
         trackMapSectorDemoViews.removeAll()
         trackMapSectorDemoPlaybacks.removeAll()
         trackMapSectorDemoActive = false
+        designV2ComponentDemoOverlayIds.removeAll()
+        designV2ComponentDemoActive = false
+        designV2OverlaySuiteViews.removeAll()
+        designV2OverlaySuiteOverlayIds.removeAll()
+        designV2OverlaySuiteActive = false
     }
 
     private var managedOverlayDefinitions: [OverlayDefinition] {
@@ -1281,7 +1511,7 @@ final class OverlayManager {
     }
 
     private func refreshOverlayVisibility(liveSnapshot: LiveTelemetrySnapshot? = nil) {
-        guard !gapToLeaderDemoActive && !trackMapSectorDemoActive else {
+        guard !gapToLeaderDemoActive && !trackMapSectorDemoActive && !designV2ComponentDemoActive && !designV2OverlaySuiteActive else {
             hideManagedOverlayWindowsForDemo()
             return
         }
@@ -1313,19 +1543,38 @@ final class OverlayManager {
         fuelCalculatorView?.unitSystem = settings.general.unitSystem
 
         if let relativeSettings = settings.overlays.first(where: { $0.id == RelativeOverlayDefinition.definition.id }) {
-            relativeOverlayView?.carsAhead = relativeSettings.relativeCarsAhead
-            relativeOverlayView?.carsBehind = relativeSettings.relativeCarsBehind
+            let carsEachSide = relativeCarsEachSide(relativeSettings)
+            relativeOverlayView?.carsAhead = carsEachSide
+            relativeOverlayView?.carsBehind = carsEachSide
             relativeOverlayView?.contentSettings = relativeSettings
+            relativeDesignV2View?.carsAhead = carsEachSide
+            relativeDesignV2View?.carsBehind = carsEachSide
+            relativeDesignV2View?.contentSettings = relativeSettings
+            resizeRelativeDesignV2Demo(settings: relativeSettings)
         }
         relativeOverlayView?.fontFamily = fontFamily
+        relativeDesignV2View?.fontFamily = fontFamily
 
         if let standingsSettings = settings.overlays.first(where: { $0.id == StandingsOverlayDefinition.definition.id }) {
             standingsOverlayView?.contentSettings = standingsSettings
         }
         standingsOverlayView?.fontFamily = fontFamily
+        applyDesignV2OverlaySuiteSettings(fontFamily: fontFamily)
         trackMapView?.fontFamily = fontFamily
         if let trackMapSettings = settings.overlays.first(where: { $0.id == TrackMapOverlayDefinition.definition.id }) {
             trackMapView?.internalOpacity = min(max(trackMapSettings.opacity, 0.2), 1.0)
+            trackMapView?.showSectorBoundaries = optionBool(
+                trackMapSettings,
+                key: "track-map.sector-boundaries.enabled",
+                defaultValue: true
+            )
+            for view in trackMapSectorDemoViews.values {
+                view.showSectorBoundaries = optionBool(
+                    trackMapSettings,
+                    key: "track-map.sector-boundaries.enabled",
+                    defaultValue: true
+                )
+            }
         }
 
         configureSimpleTelemetryView(flagsOverlayView, id: FlagsOverlayDefinition.definition.id, fontFamily: fontFamily)
@@ -1847,6 +2096,108 @@ final class OverlayManager {
         return size
     }
 
+    private func resizeRelativeDesignV2Demo(settings relativeSettings: OverlaySettings) {
+        guard let window = overlayWindows[relativeDesignV2DemoDefinition.id],
+              let view = relativeDesignV2View else {
+            return
+        }
+
+        let size = RelativeDesignV2OverlayView.demoSize(
+            settings: relativeSettings,
+            sessionKey: liveTelemetryStore.snapshot().combo.sessionKey
+        )
+        applyRelativeDesignV2Opacity(settings: relativeSettings)
+        guard abs(window.frame.width - size.width) > 0.5
+            || abs(window.frame.height - size.height) > 0.5 else {
+            return
+        }
+
+        var frame = window.frame
+        let maxY = frame.maxY
+        frame.size = size
+        frame.origin.y = maxY - size.height
+        window.setFrame(frame, display: true)
+        view.frame = NSRect(origin: .zero, size: size)
+        appliedScales[relativeDesignV2DemoDefinition.id] = relativeSettings.scale
+    }
+
+    private func relativeCarsEachSide(_ overlaySettings: OverlaySettings) -> Int {
+        min(max(max(overlaySettings.relativeCarsAhead, overlaySettings.relativeCarsBehind), 0), 8)
+    }
+
+    private func applyRelativeDesignV2Opacity(settings relativeSettings: OverlaySettings) {
+        guard let window = overlayWindows[relativeDesignV2DemoDefinition.id] else {
+            return
+        }
+
+        setBaseOverlayOpacity(
+            definition: relativeDesignV2DemoDefinition,
+            window: window,
+            opacity: min(max(relativeSettings.opacity, 0.2), 1.0)
+        )
+    }
+
+    private func applyDesignV2OverlaySuiteSettings(fontFamily: String) {
+        guard !designV2OverlaySuiteViews.isEmpty else {
+            return
+        }
+
+        for (kind, view) in designV2OverlaySuiteViews {
+            let sourceDefinition = kind.sourceDefinition
+            let sourceSettings = settings.overlay(
+                id: sourceDefinition.id,
+                defaultSize: sourceDefinition.defaultSize,
+                defaultOrigin: defaultOrigin(definition: sourceDefinition),
+                defaultEnabled: false
+            )
+            view.sourceSettings = sourceSettings
+            view.fontFamily = fontFamily
+            view.unitSystem = settings.general.unitSystem
+            resizeDesignV2OverlaySuiteWindow(kind: kind, sourceSettings: sourceSettings)
+            applyDesignV2OverlaySuiteOpacity(kind: kind, settings: sourceSettings)
+        }
+    }
+
+    private func resizeDesignV2OverlaySuiteWindow(kind: DesignV2OverlayMockKind, sourceSettings: OverlaySettings) {
+        let definition = designV2SuiteDefinition(
+            kind: kind,
+            size: designV2SuiteSize(kind: kind, sourceSettings: sourceSettings)
+        )
+        guard let window = overlayWindows[definition.id],
+              let view = designV2OverlaySuiteViews[kind] else {
+            return
+        }
+
+        let size = designV2SuiteSize(kind: kind, sourceSettings: sourceSettings)
+        guard abs(window.frame.width - size.width) > 0.5
+            || abs(window.frame.height - size.height) > 0.5 else {
+            return
+        }
+
+        var frame = window.frame
+        let maxY = frame.maxY
+        frame.size = size
+        frame.origin.y = maxY - size.height
+        window.setFrame(frame, display: true)
+        view.frame = NSRect(origin: .zero, size: size)
+        appliedScales[definition.id] = sourceSettings.scale
+    }
+
+    private func applyDesignV2OverlaySuiteOpacity(kind: DesignV2OverlayMockKind, settings sourceSettings: OverlaySettings) {
+        let definition = designV2SuiteDefinition(
+            kind: kind,
+            size: designV2SuiteSize(kind: kind, sourceSettings: sourceSettings)
+        )
+        guard let window = overlayWindows[definition.id] else {
+            return
+        }
+
+        let opacity = kind.sourceDefinition.showOpacityControl
+            ? min(max(sourceSettings.opacity, 0.2), 1.0)
+            : 1.0
+        setBaseOverlayOpacity(definition: definition, window: window, opacity: opacity)
+    }
+
     private func applyOpacityIfNeeded(definition: OverlayDefinition, settings overlaySettings: OverlaySettings, window: OverlayWindow) {
         guard definition.showOpacityControl else {
             setBaseOverlayOpacity(definition: definition, window: window, opacity: baseOpacity(definition: definition, settings: overlaySettings))
@@ -2099,6 +2450,29 @@ final class OverlayManager {
 
         trackMapSectorDemoViews.removeAll()
         trackMapSectorDemoPlaybacks.removeAll()
+    }
+
+    private func closeDesignV2ComponentDemoWindows() {
+        for overlayId in designV2ComponentDemoOverlayIds {
+            overlayWindows[overlayId]?.close()
+            overlayWindows.removeValue(forKey: overlayId)
+            appliedScales.removeValue(forKey: overlayId)
+            baseOverlayOpacities.removeValue(forKey: overlayId)
+        }
+
+        designV2ComponentDemoOverlayIds.removeAll()
+    }
+
+    private func closeDesignV2OverlaySuiteWindows() {
+        for overlayId in designV2OverlaySuiteOverlayIds {
+            overlayWindows[overlayId]?.close()
+            overlayWindows.removeValue(forKey: overlayId)
+            appliedScales.removeValue(forKey: overlayId)
+            baseOverlayOpacities.removeValue(forKey: overlayId)
+        }
+
+        designV2OverlaySuiteViews.removeAll()
+        designV2OverlaySuiteOverlayIds.removeAll()
     }
 
     private func hideManagedOverlayWindowsForDemo() {

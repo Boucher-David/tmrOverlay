@@ -31,26 +31,27 @@ extension DesignV2PreviewScenario {
 
     static let relativeTelemetry = DesignV2PreviewScenario(
         title: "Relative",
-        subtitle: "Focus-centered rows for nearby cars, deltas, class, and pit state.",
+        subtitle: "Focus-centered rows using the current production content columns.",
         badges: [
-            DesignV2Badge(title: "Live timing", evidence: .live)
+            DesignV2Badge(title: "Live timing", evidence: .live),
+            DesignV2Badge(title: "Current content", evidence: .measured)
         ],
         metrics: [
-            DesignV2Metric(title: "Ahead", value: "+3.1s", detail: "same class", evidence: .live),
-            DesignV2Metric(title: "Behind", value: "-2.7s", detail: "car on pit entry", evidence: .live),
+            DesignV2Metric(title: "Ahead", value: "-1.4s", detail: "nearest lapping context", evidence: .measured),
+            DesignV2Metric(title: "Behind", value: "+2.7s", detail: "nearest car being lapped", evidence: .live),
             DesignV2Metric(title: "Focus", value: "Team", detail: "camera / player car", evidence: .measured)
         ],
         rows: [],
         footer: "Relative should be a direct timing surface first; focus-safe caveats only appear in degraded states.",
         mode: .relativeTable,
         table: DesignV2Table(
-            columns: ["", "CLS", "CAR", "DRIVER", "DELTA", "LAST", "PIT"],
+            columns: ["POS", "DRIVER", "GAP"],
             rows: [
-                ["+2", "GT3", "24", "A. Rowan", "+3.1", "8:18.4", ""],
-                ["+1", "GT3", "71", "M. Keller", "+1.4", "8:20.1", ""],
-                ["YOU", "GT3", "44", "TMR", "0.0", "8:19.7", ""],
-                ["-1", "GT3", "18", "L. Nordin", "-2.7", "8:21.0", "IN"],
-                ["-2", "GT4", "63", "S. Blake", "-5.8", "8:49.2", ""]
+                ["C5", "#24 A. Rowan", "-3.100"],
+                ["C6", "#71 M. Keller", "-1.400"],
+                ["C7", "#44 TMR", "0.000"],
+                ["C8", "#18 L. Nordin", "+2.700"],
+                ["C9", "#63 S. Blake", "+5.800"]
             ],
             highlightedRowIndex: 2
         )

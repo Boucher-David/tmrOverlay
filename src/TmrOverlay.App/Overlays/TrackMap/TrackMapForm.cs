@@ -20,6 +20,7 @@ internal sealed class TrackMapForm : PersistentOverlayForm
     private static readonly Color TrackInteriorColor = Color.FromArgb(9, 14, 18);
     private static readonly Color TrackHaloColor = Color.FromArgb(82, 255, 255, 255);
     private static readonly Color TrackLineColor = Color.FromArgb(255, 222, 238, 246);
+    private static readonly Color SectorBoundaryColor = Color.FromArgb(235, 98, 199, 255);
     private static readonly Color PersonalBestSectorColor = Color.FromArgb(255, 80, 214, 124);
     private static readonly Color BestLapSectorColor = Color.FromArgb(255, 182, 92, 255);
     private static readonly Color PitLineColor = Color.FromArgb(190, 98, 199, 255);
@@ -31,6 +32,8 @@ internal sealed class TrackMapForm : PersistentOverlayForm
     private const float MapPadding = 20f;
     private const float TrackHaloWidth = 11f;
     private const float TrackLineWidth = 4.4f;
+    private const float SectorBoundaryTickLength = 17f;
+    private const float SectorBoundaryTickWidth = 2.2f;
     private const float PitLineWidth = 2.2f;
     private const float MarkerRadius = 3.6f;
     private const float FocusMarkerRadius = 5.7f;
@@ -218,13 +221,16 @@ internal sealed class TrackMapForm : PersistentOverlayForm
         var markers = SmoothMarkers(BuildMarkers(_latestSnapshot));
         using var interiorBrush = TrackInteriorBrush();
         var sectors = _latestSnapshot.Models.TrackMap.Sectors;
+        var showSectorBoundaries = _settings.GetBooleanOption(
+            OverlayOptionKeys.TrackMapSectorBoundariesEnabled,
+            defaultValue: true);
         if (_trackMap?.RacingLine.Points is { Count: >= 3 })
         {
-            DrawGeneratedMap(graphics, drawBounds, _trackMap, markers, sectors, interiorBrush);
+            DrawGeneratedMap(graphics, drawBounds, _trackMap, markers, sectors, interiorBrush, showSectorBoundaries);
             return;
         }
 
-        DrawCircleFallback(graphics, drawBounds, markers, sectors, interiorBrush);
+        DrawCircleFallback(graphics, drawBounds, markers, sectors, interiorBrush, showSectorBoundaries);
     }
 
     private RectangleF DrawingBounds()
@@ -245,12 +251,13 @@ internal sealed class TrackMapForm : PersistentOverlayForm
         TrackMapDocument document,
         IReadOnlyList<TrackMapMarker> markers,
         IReadOnlyList<LiveTrackSectorSegment> sectors,
-        Brush interiorBrush)
+        Brush interiorBrush,
+        bool showSectorBoundaries)
     {
         var transform = TrackMapTransform.From(document, drawBounds);
         if (transform is null)
         {
-            DrawCircleFallback(graphics, drawBounds, markers, sectors, interiorBrush);
+            DrawCircleFallback(graphics, drawBounds, markers, sectors, interiorBrush, showSectorBoundaries);
             return;
         }
 
@@ -278,6 +285,10 @@ internal sealed class TrackMapForm : PersistentOverlayForm
             document.RacingLine,
             transform,
             sectors);
+        if (showSectorBoundaries)
+        {
+            DrawGeneratedSectorBoundaries(graphics, document.RacingLine, transform, sectors);
+        }
 
         if (document.PitLane is { Points.Count: >= 2 } pitLane)
         {
@@ -301,7 +312,8 @@ internal sealed class TrackMapForm : PersistentOverlayForm
         RectangleF drawBounds,
         IReadOnlyList<TrackMapMarker> markers,
         IReadOnlyList<LiveTrackSectorSegment> sectors,
-        Brush interiorBrush)
+        Brush interiorBrush,
+        bool showSectorBoundaries)
     {
         graphics.FillEllipse(interiorBrush, drawBounds);
         using (var haloPen = new Pen(TrackHaloColor, TrackHaloWidth)
@@ -320,6 +332,10 @@ internal sealed class TrackMapForm : PersistentOverlayForm
         }
 
         DrawCircleSectorHighlights(graphics, drawBounds, sectors);
+        if (showSectorBoundaries)
+        {
+            DrawCircleSectorBoundaries(graphics, drawBounds, sectors);
+        }
 
         DrawMarkers(
             graphics,
@@ -370,6 +386,26 @@ internal sealed class TrackMapForm : PersistentOverlayForm
                 LineJoin = LineJoin.Round
             };
             DrawGeometrySegment(graphics, geometry, transform, sector.StartPct, sector.EndPct, pen);
+        }
+    }
+
+    private static void DrawGeneratedSectorBoundaries(
+        Graphics graphics,
+        TrackMapGeometry geometry,
+        TrackMapTransform transform,
+        IReadOnlyList<LiveTrackSectorSegment> sectors)
+    {
+        using var pen = new Pen(SectorBoundaryColor, SectorBoundaryTickWidth)
+        {
+            StartCap = LineCap.Round,
+            EndCap = LineCap.Round
+        };
+        foreach (var progress in SectorBoundaryProgresses(sectors))
+        {
+            if (GeometryBoundaryTick(geometry, transform, progress) is { } tick)
+            {
+                graphics.DrawLine(pen, tick.Start, tick.End);
+            }
         }
     }
 
@@ -456,6 +492,75 @@ internal sealed class TrackMapForm : PersistentOverlayForm
                     sweep);
             }
         }
+    }
+
+    private static void DrawCircleSectorBoundaries(
+        Graphics graphics,
+        RectangleF drawBounds,
+        IReadOnlyList<LiveTrackSectorSegment> sectors)
+    {
+        var center = new PointF(drawBounds.Left + drawBounds.Width / 2f, drawBounds.Top + drawBounds.Height / 2f);
+        using var pen = new Pen(SectorBoundaryColor, SectorBoundaryTickWidth)
+        {
+            StartCap = LineCap.Round,
+            EndCap = LineCap.Round
+        };
+        foreach (var progress in SectorBoundaryProgresses(sectors))
+        {
+            var point = PointOnEllipse(drawBounds, progress);
+            var dx = point.X - center.X;
+            var dy = point.Y - center.Y;
+            var length = MathF.Max(0.001f, MathF.Sqrt(dx * dx + dy * dy));
+            var unitX = dx / length;
+            var unitY = dy / length;
+            var half = SectorBoundaryTickLength / 2f;
+            graphics.DrawLine(
+                pen,
+                new PointF(point.X - unitX * half, point.Y - unitY * half),
+                new PointF(point.X + unitX * half, point.Y + unitY * half));
+        }
+    }
+
+    private static IEnumerable<double> SectorBoundaryProgresses(IReadOnlyList<LiveTrackSectorSegment> sectors)
+    {
+        if (sectors.Count < 2)
+        {
+            yield break;
+        }
+
+        var seen = new HashSet<double>();
+        foreach (var sector in sectors)
+        {
+            var progress = Math.Round(NormalizeProgress(sector.StartPct), 5);
+            if (seen.Add(progress))
+            {
+                yield return progress;
+            }
+        }
+    }
+
+    private static SectorBoundaryTick? GeometryBoundaryTick(
+        TrackMapGeometry geometry,
+        TrackMapTransform transform,
+        double progress)
+    {
+        var center = PointOnGeometry(geometry, transform, progress);
+        var before = PointOnGeometry(geometry, transform, progress - 0.002d);
+        var after = PointOnGeometry(geometry, transform, progress + 0.002d);
+        if (center is null || before is null || after is null)
+        {
+            return null;
+        }
+
+        var dx = after.Value.X - before.Value.X;
+        var dy = after.Value.Y - before.Value.Y;
+        var length = MathF.Max(0.001f, MathF.Sqrt(dx * dx + dy * dy));
+        var normalX = -dy / length;
+        var normalY = dx / length;
+        var half = SectorBoundaryTickLength / 2f;
+        return new SectorBoundaryTick(
+            new PointF(center.Value.X - normalX * half, center.Value.Y - normalY * half),
+            new PointF(center.Value.X + normalX * half, center.Value.Y + normalY * half));
     }
 
     private static bool HasHighlight(LiveTrackSectorSegment sector)
@@ -901,6 +1006,8 @@ internal sealed class TrackMapForm : PersistentOverlayForm
         bool IsFocus,
         Color Color,
         string? PositionLabel);
+
+    private readonly record struct SectorBoundaryTick(PointF Start, PointF End);
 
     private readonly record struct SectorProgressRange(double StartPct, double EndPct);
 

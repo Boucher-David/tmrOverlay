@@ -88,7 +88,6 @@ internal static class OverlayContentColumnSettings
     public const string DataGap = "gap";
     public const string DataInterval = "interval";
     public const string DataPit = "pit";
-    public const string DataDirection = "direction";
     public const string DataRelativePosition = "relative-position";
     public const string StandingsClassPositionColumnId = "standings.class-position";
     public const string StandingsCarNumberColumnId = "standings.car-number";
@@ -96,7 +95,6 @@ internal static class OverlayContentColumnSettings
     public const string StandingsGapColumnId = "standings.gap";
     public const string StandingsIntervalColumnId = "standings.interval";
     public const string StandingsPitColumnId = "standings.pit";
-    public const string RelativeDirectionColumnId = "relative.direction";
     public const string RelativePositionColumnId = "relative.position";
     public const string RelativeDriverColumnId = "relative.driver";
     public const string RelativeGapColumnId = "relative.gap";
@@ -147,11 +145,10 @@ internal static class OverlayContentColumnSettings
         FallbackColumnId: RelativeDriverColumnId,
         Columns:
     [
-        new(RelativeDirectionColumnId, "Dir", DataDirection, false, 1, 74, 54, 120),
-        new(RelativePositionColumnId, "Pos", DataRelativePosition, true, 2, 58, 44, 100),
-        new(RelativeDriverColumnId, "Driver", DataDriver, true, 3, 300, 180, 520, Alignment: OverlayContentColumnAlignment.Left),
-        new(RelativeGapColumnId, "Gap", DataGap, true, 4, 92, 64, 160),
-        new(RelativePitColumnId, "Pit", DataPit, false, 5, 46, 34, 90)
+        new(RelativePositionColumnId, "Pos", DataRelativePosition, true, 1, 58, 44, 100),
+        new(RelativeDriverColumnId, "Driver", DataDriver, true, 2, 300, 180, 520, Alignment: OverlayContentColumnAlignment.Left),
+        new(RelativeGapColumnId, "Gap", DataGap, true, 3, 92, 64, 160),
+        new(RelativePitColumnId, "Pit", DataPit, false, 4, 46, 34, 90)
     ]);
 
     public static OverlayContentDefinition InputState { get; } = new(

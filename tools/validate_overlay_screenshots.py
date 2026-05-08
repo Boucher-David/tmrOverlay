@@ -14,10 +14,12 @@ from typing import Optional
 
 EXPECTED_PNGS = {
     "design-v2/design-v2-states.png": (5350, 4020),
+    "design-v2/design-v2-components-outrun.png": (5350, 5240),
     "fuel-calculator/fuel-calculator-states.png": (3600, 2800),
     "relative/relative-states.png": (3600, 2800),
     "track-map/track-map-sector-states.png": (5350, 2800),
-    "settings-overlay/settings-overlay-states.png": (5350, 4020),
+    "settings-overlay/settings-overlay-states.png": (5350, 6460),
+    "settings-overlay/settings-components.png": (5350, 4020),
     "car-radar/car-radar-states.png": (3600, 2800),
     "car-radar/car-radar-multiclass.png": (600, 600),
     "gap-to-leader/gap-to-leader-states.png": (3600, 2800),
@@ -33,6 +35,16 @@ EXPECTED_STATE_PNGS = [
     "design-v2/states/stint-laptime-log.png",
     "design-v2/states/flag-display.png",
     "design-v2/states/analysis-exception.png",
+    "design-v2/components/outrun/sidebar-tab.png",
+    "design-v2/components/outrun/buttons.png",
+    "design-v2/components/outrun/controls.png",
+    "design-v2/components/outrun/status-pills.png",
+    "design-v2/components/outrun/section-panel.png",
+    "design-v2/components/outrun/table-rows.png",
+    "design-v2/components/outrun/graph-chrome.png",
+    "design-v2/components/outrun/overlay-shell.png",
+    "design-v2/components/outrun/localhost-block.png",
+    "design-v2/components/outrun/settings-content-block.png",
     "fuel-calculator/states/waiting.png",
     "fuel-calculator/states/opening-stint.png",
     "fuel-calculator/states/mid-race.png",
@@ -50,8 +62,14 @@ EXPECTED_STATE_PNGS = [
     "settings-overlay/states/support.png",
     "settings-overlay/states/overlay-tab.png",
     "settings-overlay/states/race-only-overlay.png",
+    "settings-overlay/states/fuel-calculator-overlay.png",
+    "settings-overlay/states/session-weather-overlay.png",
+    "settings-overlay/states/pit-service-overlay.png",
     "settings-overlay/states/track-map-overlay.png",
     "settings-overlay/states/stream-chat-overlay.png",
+    "settings-overlay/states/input-state-overlay.png",
+    "settings-overlay/states/car-radar-overlay.png",
+    "settings-overlay/states/flags-overlay.png",
     "settings-overlay/states/garage-cover-overlay.png",
     "car-radar/states/clear-track.png",
     "car-radar/states/side-pressure.png",
@@ -62,6 +80,17 @@ EXPECTED_STATE_PNGS = [
     "gap-to-leader/states/pit-weather-handoff.png",
     "gap-to-leader/states/long-run-spread.png",
 ]
+
+EXPECTED_COMPONENT_PNGS = {
+    "settings-overlay/components/sidebar-tabs.png": (380, 1012),
+    "settings-overlay/components/region-tabs.png": (840, 104),
+    "settings-overlay/components/unit-choice.png": (784, 264),
+    "settings-overlay/components/overlay-controls.png": (784, 452),
+    "settings-overlay/components/content-matrix.png": (1380, 444),
+    "settings-overlay/components/chat-inputs.png": (1300, 408),
+    "settings-overlay/components/support-buttons.png": (1300, 348),
+    "settings-overlay/components/browser-source.png": (1300, 140),
+}
 
 WINDOWS_EXPECTED_PNGS = {
     "states/fuel-calculator-live.png": (600, 320),
@@ -98,9 +127,27 @@ WINDOWS_MINIMUM_PNGS = {
     # target is wider than the previous 1080x600 shell. Keep the height exact enough for layout review while
     # accepting the runner-observed width.
     "states/settings-general.png": (1000, 680),
+    "states/settings-standings.png": (1000, 680),
     "states/settings-relative.png": (1000, 680),
+    "states/settings-gap-to-leader.png": (1000, 680),
     "states/settings-track-map.png": (1000, 680),
+    "states/settings-stream-chat.png": (1000, 680),
+    "states/settings-garage-cover.png": (1000, 680),
+    "states/settings-fuel-calculator.png": (1000, 680),
+    "states/settings-inputs.png": (1000, 680),
+    "states/settings-car-radar.png": (1000, 680),
+    "states/settings-flags.png": (1000, 680),
+    "states/settings-session-weather.png": (1000, 680),
+    "states/settings-pit-service.png": (1000, 680),
     "states/settings-support.png": (1000, 680),
+    "components/settings/sidebar-tabs.png": (190, 506),
+    "components/settings/region-tabs.png": (420, 52),
+    "components/settings/unit-choice.png": (392, 132),
+    "components/settings/overlay-controls.png": (392, 226),
+    "components/settings/content-matrix.png": (690, 222),
+    "components/settings/chat-inputs.png": (650, 204),
+    "components/settings/support-buttons.png": (650, 174),
+    "components/settings/browser-source.png": (650, 70),
 }
 
 WINDOWS_MIN_UNIQUE_BYTES = {
@@ -166,6 +213,15 @@ def main() -> int:
             min_unique_bytes=args.min_unique_bytes,
             failures=failures,
             minimum_size=(300, 240),
+        )
+
+    for relative_path, expected_size in EXPECTED_COMPONENT_PNGS.items():
+        validate_png(
+            root=root,
+            relative_path=relative_path,
+            expected_size=expected_size,
+            min_unique_bytes=args.min_unique_bytes,
+            failures=failures,
         )
 
     return finish(failures)

@@ -14,6 +14,29 @@ public enum OverlayScreenshotGenerator {
             return
         }
 
+        if ProcessInfo.processInfo.environment["TMR_MAC_SCREENSHOT_ONLY_DESIGN_V2_COMPONENTS"] == "true" {
+            let designV2Root = outputRoot.appendingPathComponent("design-v2", isDirectory: true)
+            try FileManager.default.createDirectory(at: designV2Root, withIntermediateDirectories: true)
+            try MainActor.assumeIsolated {
+                try renderDesignV2ComponentGallery(
+                    outputURL: designV2Root.appendingPathComponent("design-v2-components-outrun.png"),
+                    theme: .outrun
+                )
+            }
+            return
+        }
+
+        if ProcessInfo.processInfo.environment["TMR_MAC_SCREENSHOT_ONLY_SETTINGS_COMPONENTS"] == "true" {
+            let settingsRoot = outputRoot.appendingPathComponent("settings-overlay", isDirectory: true)
+            try FileManager.default.createDirectory(at: settingsRoot, withIntermediateDirectories: true)
+            try MainActor.assumeIsolated {
+                try renderSettingsComponentCrops(
+                    outputURL: settingsRoot.appendingPathComponent("settings-components.png")
+                )
+            }
+            return
+        }
+
         if ProcessInfo.processInfo.environment["TMR_MAC_SCREENSHOT_ONLY_GAP"] == "true" {
             let gapToLeaderRoot = outputRoot.appendingPathComponent("gap-to-leader", isDirectory: true)
             try FileManager.default.createDirectory(at: gapToLeaderRoot, withIntermediateDirectories: true)
@@ -43,6 +66,10 @@ public enum OverlayScreenshotGenerator {
         try MainActor.assumeIsolated {
             try renderDesignV2States(
                 outputURL: designV2Root.appendingPathComponent("design-v2-states.png")
+            )
+            try renderDesignV2ComponentGallery(
+                outputURL: designV2Root.appendingPathComponent("design-v2-components-outrun.png"),
+                theme: .outrun
             )
             try renderFuelCalculatorStates(
                 outputURL: fuelRoot.appendingPathComponent("fuel-calculator-states.png")
@@ -120,6 +147,32 @@ public enum OverlayScreenshotGenerator {
             states: sheet.states,
             imageMaxSize: NSSize(width: 740, height: 430),
             outputRoot: outputURL.deletingLastPathComponent()
+        )
+    }
+
+    @MainActor
+    private static func renderDesignV2ComponentGallery(outputURL: URL, theme: DesignV2Theme) throws {
+        let states = try DesignV2ComponentKind.allCases.enumerated().map { index, component in
+            ContactSheetState(
+                title: "\(index + 1). \(component.title)",
+                note: component.note,
+                fileName: component.fileName,
+                image: try renderImage(DesignV2ComponentGalleryView(theme: theme, component: component))
+            )
+        }
+
+        let sheet = ContactSheetView(
+            title: "Design V2 Components - \(theme.displayName)",
+            subtitle: "Real mac-harness overlay component previews rendered from the shared Design V2 token set.",
+            states: states,
+            imageMaxSize: NSSize(width: 450, height: 270)
+        )
+        try render(sheet, to: outputURL)
+        try renderStateCards(
+            states: sheet.states,
+            imageMaxSize: NSSize(width: 450, height: 270),
+            outputRoot: outputURL.deletingLastPathComponent(),
+            folderName: "components/\(theme.id)"
         )
     }
 
@@ -251,6 +304,60 @@ public enum OverlayScreenshotGenerator {
 
     @MainActor
     private static func renderSettingsStates(outputURL: URL) throws {
+        let fixture = settingsScreenshotFixture()
+        let settings = fixture.settings
+        let capture = fixture.capture
+
+        let generalView = settingsView(settings: settings, capture: capture, selectedTab: "general")
+        let supportView = settingsView(settings: settings, capture: capture, selectedTab: "error-logging")
+        let standingsView = settingsView(settings: settings, capture: capture, selectedTab: StandingsOverlayDefinition.definition.id)
+        let relativeView = settingsView(settings: settings, capture: capture, selectedTab: RelativeOverlayDefinition.definition.id)
+        let gapView = settingsView(settings: settings, capture: capture, selectedTab: GapToLeaderOverlayDefinition.definition.id)
+        let fuelView = settingsView(settings: settings, capture: capture, selectedTab: FuelCalculatorOverlayDefinition.definition.id)
+        let sessionWeatherView = settingsView(settings: settings, capture: capture, selectedTab: SessionWeatherOverlayDefinition.definition.id)
+        let pitServiceView = settingsView(settings: settings, capture: capture, selectedTab: PitServiceOverlayDefinition.definition.id)
+        let trackMapView = settingsView(settings: settings, capture: capture, selectedTab: TrackMapOverlayDefinition.definition.id)
+        let streamChatView = settingsView(settings: settings, capture: capture, selectedTab: StreamChatOverlayDefinition.definition.id)
+        let inputStateView = settingsView(settings: settings, capture: capture, selectedTab: InputStateOverlayDefinition.definition.id)
+        let carRadarView = settingsView(settings: settings, capture: capture, selectedTab: CarRadarOverlayDefinition.definition.id)
+        let flagsView = settingsView(settings: settings, capture: capture, selectedTab: FlagsOverlayDefinition.definition.id)
+        let garageCoverView = settingsView(settings: settings, capture: capture, selectedTab: GarageCoverOverlayDefinition.definition.id)
+
+        let sheet = ContactSheetView(
+            title: "Settings Window States",
+            subtitle: "Generated mac-harness previews for the normal desktop settings window tabs.",
+            states: [
+                ContactSheetState(title: "1. General", note: "Shared units.", fileName: "general.png", image: try renderImage(generalView)),
+                ContactSheetState(title: "2. Support", note: "App status, issue, bundle actions, diagnostic capture, storage, and app activity.", fileName: "support.png", image: try renderImage(supportView)),
+                ContactSheetState(title: "3. Standings tab", note: "V2 content rows use session-state boxes without per-row sizing controls.", fileName: "standings-overlay.png", image: try renderImage(standingsView)),
+                ContactSheetState(title: "4. Relative tab", note: "Relative uses the shared V2 content-row session matrix.", fileName: "overlay-tab.png", image: try renderImage(relativeView)),
+                ContactSheetState(title: "5. Race-only tab", note: "Gap To Leader is fixed to race sessions, so redundant session filters are hidden.", fileName: "race-only-overlay.png", image: try renderImage(gapView)),
+                ContactSheetState(title: "6. Fuel Calculator tab", note: "Shared V2 shell with fuel advice/source content switches.", fileName: "fuel-calculator-overlay.png", image: try renderImage(fuelView)),
+                ContactSheetState(title: "7. Session / Weather tab", note: "Shared V2 shell with the current production content contract.", fileName: "session-weather-overlay.png", image: try renderImage(sessionWeatherView)),
+                ContactSheetState(title: "8. Pit Service tab", note: "Shared V2 shell with the current production content contract.", fileName: "pit-service-overlay.png", image: try renderImage(pitServiceView)),
+                ContactSheetState(title: "9. Track Map tab", note: "Bundled coverage, local browser route, map fill, and optional telemetry map generation.", fileName: "track-map-overlay.png", image: try renderImage(trackMapView)),
+                ContactSheetState(title: "10. Stream Chat tab", note: "Native Twitch overlay plus browser-source Streamlabs/Twitch setup.", fileName: "stream-chat-overlay.png", image: try renderImage(streamChatView)),
+                ContactSheetState(title: "11. Inputs tab", note: "Input rail content switches, without header/footer tabs.", fileName: "input-state-overlay.png", image: try renderImage(inputStateView)),
+                ContactSheetState(title: "12. Car Radar tab", note: "Radar warning content, without header/footer tabs.", fileName: "car-radar-overlay.png", image: try renderImage(carRadarView)),
+                ContactSheetState(title: "13. Flags tab", note: "Flag family switches and custom sizing.", fileName: "flags-overlay.png", image: try renderImage(flagsView)),
+                ContactSheetState(title: "14. Garage Cover tab", note: "Localhost-only privacy cover image import.", fileName: "garage-cover-overlay.png", image: try renderImage(garageCoverView))
+            ],
+            imageMaxSize: NSSize(width: 650, height: 650)
+        )
+        try render(sheet, to: outputURL)
+        try renderStateCards(
+            states: sheet.states,
+            imageMaxSize: NSSize(width: 650, height: 650),
+            outputRoot: outputURL.deletingLastPathComponent()
+        )
+        try renderSettingsComponentCrops(
+            settings: settings,
+            capture: capture,
+            outputURL: outputURL.deletingLastPathComponent().appendingPathComponent("settings-components.png")
+        )
+    }
+
+    private static func settingsScreenshotFixture() -> (settings: ApplicationSettings, capture: TelemetryCaptureStatusSnapshot) {
         var settings = ApplicationSettings()
         for definition in settingsOverlayDefinitions() {
             settings.updateOverlay(OverlaySettings(
@@ -281,36 +388,105 @@ public enum OverlayScreenshotGenerator {
             lastIssueAtUtc: Date()
         )
 
-        let generalView = settingsView(settings: settings, capture: capture, selectedTab: "general")
-        let supportView = settingsView(settings: settings, capture: capture, selectedTab: "error-logging")
-        let standingsView = settingsView(settings: settings, capture: capture, selectedTab: StandingsOverlayDefinition.definition.id)
-        let relativeView = settingsView(settings: settings, capture: capture, selectedTab: RelativeOverlayDefinition.definition.id)
-        let gapView = settingsView(settings: settings, capture: capture, selectedTab: GapToLeaderOverlayDefinition.definition.id)
-        let trackMapView = settingsView(settings: settings, capture: capture, selectedTab: TrackMapOverlayDefinition.definition.id)
-        let streamChatView = settingsView(settings: settings, capture: capture, selectedTab: StreamChatOverlayDefinition.definition.id)
-        let garageCoverView = settingsView(settings: settings, capture: capture, selectedTab: GarageCoverOverlayDefinition.definition.id)
+        return (settings, capture)
+    }
+
+    @MainActor
+    private static func renderSettingsComponentCrops(outputURL: URL) throws {
+        let fixture = settingsScreenshotFixture()
+        try renderSettingsComponentCrops(
+            settings: fixture.settings,
+            capture: fixture.capture,
+            outputURL: outputURL
+        )
+    }
+
+    @MainActor
+    private static func renderSettingsComponentCrops(
+        settings: ApplicationSettings,
+        capture: TelemetryCaptureStatusSnapshot,
+        outputURL: URL
+    ) throws {
+        let general = try renderImage(settingsView(settings: settings, capture: capture, selectedTab: "general"))
+        let support = try renderImage(settingsView(settings: settings, capture: capture, selectedTab: "error-logging"))
+        let relativeGeneral = try renderImage(settingsView(settings: settings, capture: capture, selectedTab: RelativeOverlayDefinition.definition.id))
+        let relativeContent = try renderImage(settingsView(
+            settings: settings,
+            capture: capture,
+            selectedTab: RelativeOverlayDefinition.definition.id,
+            selectedRegion: DesignV2SettingsRegion.content.rawValue
+        ))
+        let streamChatContent = try renderImage(settingsView(
+            settings: settings,
+            capture: capture,
+            selectedTab: StreamChatOverlayDefinition.definition.id,
+            selectedRegion: DesignV2SettingsRegion.content.rawValue
+        ))
+
+        let components = [
+            ContactSheetState(
+                title: "1. Sidebar Tabs",
+                note: "Actual V2 settings navigation tab states.",
+                fileName: "sidebar-tabs.png",
+                image: try cropImage(general, rect: NSRect(x: 64, y: 116, width: 190, height: 506))
+            ),
+            ContactSheetState(
+                title: "2. Region Tabs",
+                note: "General, Content, Header, and Footer segmented tabs.",
+                fileName: "region-tabs.png",
+                image: try cropImage(relativeGeneral, rect: NSRect(x: 300, y: 198, width: 420, height: 52))
+            ),
+            ContactSheetState(
+                title: "3. Unit Choice",
+                note: "Metric/Imperial segmented input inside a panel.",
+                fileName: "unit-choice.png",
+                image: try cropImage(general, rect: NSRect(x: 306, y: 214, width: 392, height: 132))
+            ),
+            ContactSheetState(
+                title: "4. Overlay Controls",
+                note: "Toggle, sliders, session checks, and panel spacing.",
+                fileName: "overlay-controls.png",
+                image: try cropImage(relativeGeneral, rect: NSRect(x: 306, y: 272, width: 392, height: 226))
+            ),
+            ContactSheetState(
+                title: "5. Content Matrix",
+                note: "Content rows with session-state checkbox columns.",
+                fileName: "content-matrix.png",
+                image: try cropImage(relativeContent, rect: NSRect(x: 306, y: 272, width: 690, height: 222))
+            ),
+            ContactSheetState(
+                title: "6. Chat Inputs",
+                note: "Choice control, text fields, save button, and labels.",
+                fileName: "chat-inputs.png",
+                image: try cropImage(streamChatContent, rect: NSRect(x: 306, y: 272, width: 650, height: 204))
+            ),
+            ContactSheetState(
+                title: "7. Support Buttons",
+                note: "Action button row density and update controls.",
+                fileName: "support-buttons.png",
+                image: try cropImage(support, rect: NSRect(x: 306, y: 410, width: 650, height: 174))
+            ),
+            ContactSheetState(
+                title: "8. Browser Source",
+                note: "Localhost block and copy action alignment.",
+                fileName: "browser-source.png",
+                image: try cropImage(relativeGeneral, rect: NSRect(x: 306, y: 518, width: 650, height: 70))
+            )
+        ]
 
         let sheet = ContactSheetView(
-            title: "Settings Window States",
-            subtitle: "Generated mac-harness previews for the normal desktop settings window tabs.",
-            states: [
-                ContactSheetState(title: "1. General", note: "Shared units.", fileName: "general.png", image: try renderImage(generalView)),
-                ContactSheetState(title: "2. Support", note: "App status, issue, bundle actions, diagnostic capture, storage, and app activity.", fileName: "support.png", image: try renderImage(supportView)),
-                ContactSheetState(title: "3. Standings tab", note: "Localhost URL/OBS size plus baseline content column manager.", fileName: "standings-overlay.png", image: try renderImage(standingsView)),
-                ContactSheetState(title: "4. Relative tab", note: "Relative uses the same content column baseline as standings.", fileName: "overlay-tab.png", image: try renderImage(relativeView)),
-                ContactSheetState(title: "5. Race-only tab", note: "Gap To Leader is fixed to race sessions, so redundant session filters are hidden.", fileName: "race-only-overlay.png", image: try renderImage(gapView)),
-                ContactSheetState(title: "6. Track Map tab", note: "Bundled coverage, local browser route, map fill, and optional telemetry map generation.", fileName: "track-map-overlay.png", image: try renderImage(trackMapView)),
-                ContactSheetState(title: "7. Stream Chat tab", note: "Native Twitch overlay plus browser-source Streamlabs/Twitch setup.", fileName: "stream-chat-overlay.png", image: try renderImage(streamChatView)),
-                ContactSheetState(title: "8. Garage Cover tab", note: "Localhost-only privacy cover image import.", fileName: "garage-cover-overlay.png", image: try renderImage(garageCoverView))
-            ],
-            imageMaxSize: NSSize(width: 650, height: 650)
+            title: "Settings V2 Components",
+            subtitle: "Cropped from the actual mac settings V2 surface for focused parity review.",
+            states: components,
+            imageMaxSize: NSSize(width: 690, height: 520)
         )
         try render(sheet, to: outputURL)
-        try renderStateCards(
-            states: sheet.states,
-            imageMaxSize: NSSize(width: 650, height: 650),
-            outputRoot: outputURL.deletingLastPathComponent()
-        )
+
+        let componentRoot = outputURL.deletingLastPathComponent().appendingPathComponent("components", isDirectory: true)
+        try FileManager.default.createDirectory(at: componentRoot, withIntermediateDirectories: true)
+        for component in components {
+            try writePNG(component.image, to: componentRoot.appendingPathComponent(component.fileName))
+        }
     }
 
     @MainActor
@@ -593,8 +769,13 @@ public enum OverlayScreenshotGenerator {
     }
 
     @MainActor
-    private static func renderStateCards(states: [ContactSheetState], imageMaxSize: NSSize, outputRoot: URL) throws {
-        let stateRoot = outputRoot.appendingPathComponent("states", isDirectory: true)
+    private static func renderStateCards(
+        states: [ContactSheetState],
+        imageMaxSize: NSSize,
+        outputRoot: URL,
+        folderName: String = "states"
+    ) throws {
+        let stateRoot = outputRoot.appendingPathComponent(folderName, isDirectory: true)
         try FileManager.default.createDirectory(at: stateRoot, withIntermediateDirectories: true)
         for state in states {
             let view = StateCardView(state: state, imageMaxSize: imageMaxSize)
@@ -624,6 +805,26 @@ public enum OverlayScreenshotGenerator {
         let image = NSImage(size: view.bounds.size)
         image.addRepresentation(bitmap)
         return image
+    }
+
+    private static func cropImage(_ image: NSImage, rect: NSRect) throws -> NSImage {
+        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            throw ScreenshotError.cropFailed("missing CGImage")
+        }
+
+        let scaleX = CGFloat(cgImage.width) / max(CGFloat(1), image.size.width)
+        let scaleY = CGFloat(cgImage.height) / max(CGFloat(1), image.size.height)
+        let cropRect = CGRect(
+            x: rect.minX * scaleX,
+            y: rect.minY * scaleY,
+            width: rect.width * scaleX,
+            height: rect.height * scaleY
+        ).integral
+        guard let cropped = cgImage.cropping(to: cropRect) else {
+            throw ScreenshotError.cropFailed("\(Int(rect.width))x\(Int(rect.height))")
+        }
+
+        return NSImage(cgImage: cropped, size: rect.size)
     }
 
     private static func mockFrame(
@@ -792,7 +993,8 @@ public enum OverlayScreenshotGenerator {
     private static func settingsView(
         settings: ApplicationSettings,
         capture: TelemetryCaptureStatusSnapshot,
-        selectedTab: String
+        selectedTab: String,
+        selectedRegion: String? = nil
     ) -> SettingsOverlayView {
         let view = SettingsOverlayView(
             settings: settings,
@@ -804,6 +1006,9 @@ public enum OverlayScreenshotGenerator {
         )
         view.frame = NSRect(origin: .zero, size: SettingsOverlayDefinition.definition.defaultSize)
         view.selectTab(identifier: selectedTab)
+        if let selectedRegion {
+            view.selectRegion(identifier: selectedRegion)
+        }
         view.updateCaptureStatus(capture)
         return view
     }
@@ -829,6 +1034,7 @@ public enum OverlayScreenshotGenerator {
     private enum ScreenshotError: Error {
         case bitmapCreationFailed(String)
         case pngEncodingFailed(String)
+        case cropFailed(String)
     }
 }
 

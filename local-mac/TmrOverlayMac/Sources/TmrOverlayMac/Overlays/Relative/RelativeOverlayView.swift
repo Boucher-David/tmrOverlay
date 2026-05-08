@@ -17,12 +17,16 @@ final class RelativeOverlayView: NSView {
     private var tableRect = NSRect.zero
     private var renderedRowCount = 1
     private var overlayError: String?
+    private var showHeaderStatus = true
+    private var showFooterSource = true
+    private var lastSessionKey: String?
     var contentSettings = OverlaySettings(
         id: RelativeOverlayDefinition.definition.id,
         width: RelativeOverlayDefinition.definition.defaultSize.width,
         height: RelativeOverlayDefinition.definition.defaultSize.height
     ) {
         didSet {
+            applyChromeSettings(sessionKey: lastSessionKey)
             needsLayout = true
             needsDisplay = true
         }
@@ -59,7 +63,8 @@ final class RelativeOverlayView: NSView {
         let height = bounds.height
         titleLabel.frame = NSRect(x: Layout.padding, y: height - 34, width: 150, height: 22)
         statusLabel.frame = NSRect(x: 164, y: height - 34, width: width - 178, height: 22)
-        let availableTableHeight = height - Layout.padding * 2 - Layout.titleHeight - Layout.footerHeight
+        let footerHeight = showFooterSource ? Layout.footerHeight : 0
+        let availableTableHeight = height - Layout.padding * 2 - Layout.titleHeight - footerHeight
         let compactTableHeight = min(availableTableHeight, max(Layout.compactRowHeight, CGFloat(renderedRowCount) * Layout.compactRowHeight))
         tableRect = NSRect(
             x: Layout.padding,
@@ -124,6 +129,8 @@ final class RelativeOverlayView: NSView {
     }
 
     func update(with snapshot: LiveTelemetrySnapshot, now: Date = Date()) {
+        lastSessionKey = snapshot.combo.sessionKey
+        applyChromeSettings(sessionKey: snapshot.combo.sessionKey)
         let rows = buildRows(snapshot: snapshot, now: now)
         if rows.isEmpty {
             clearRows(placeholder: statusLabel.stringValue)
@@ -138,6 +145,8 @@ final class RelativeOverlayView: NSView {
     }
 
     func showOverlayError(_ message: String) {
+        lastSessionKey = nil
+        applyChromeSettings(sessionKey: nil)
         overlayError = message
         statusLabel.stringValue = "relative error"
         sourceLabel.stringValue = trimError(message)
@@ -202,7 +211,7 @@ final class RelativeOverlayView: NSView {
     ) -> RelativeDisplayRow {
         let sameClass = referenceClass != nil && car.carClass == referenceClass
         return RelativeDisplayRow(
-            position: car.classPosition.map { "C\($0)" } ?? car.overallPosition.map { "P\($0)" } ?? "--",
+            position: car.classPosition.map { "\($0)" } ?? car.overallPosition.map { "\($0)" } ?? "--",
             driver: "Car \(car.carIdx)",
             gap: relativeGap(car: car, direction: direction),
             detail: classLabel(carClass: car.carClass, onPitRoad: car.onPitRoad),
@@ -269,8 +278,6 @@ final class RelativeOverlayView: NSView {
 
     private func value(for row: RelativeDisplayRow, column: OverlayContentColumnState) -> String {
         switch column.definition.dataKey {
-        case OverlayContentColumns.dataDirection:
-            return row.isAhead ? "Ahead" : row.isBehind ? "Behind" : "Near"
         case OverlayContentColumns.dataRelativePosition:
             return row.position
         case OverlayContentColumns.dataDriver:
@@ -323,6 +330,8 @@ final class RelativeOverlayView: NSView {
 
         [titleLabel, statusLabel, sourceLabel].forEach(addSubview)
         rowLabels.flatMap { $0 }.forEach(addSubview)
+        statusLabel.isHidden = !showHeaderStatus
+        sourceLabel.isHidden = !showFooterSource
         applyFonts()
     }
 
@@ -401,7 +410,7 @@ final class RelativeOverlayView: NSView {
     }
 
     private func relativeGap(car: LiveProximityCar, direction: RelativeDirection) -> String {
-        let sign = direction == .ahead ? "-" : "+"
+        let sign = direction == .ahead ? "+" : "-"
         if let seconds = car.relativeSeconds, seconds.isFinite {
             return String(format: "%@%.3f", sign, abs(seconds))
         }
@@ -427,11 +436,11 @@ final class RelativeOverlayView: NSView {
 
     private func referencePosition(_ frame: MockLiveTelemetryFrame?) -> String {
         if let classPosition = frame?.teamClassPosition {
-            return "C\(classPosition)"
+            return "\(classPosition)"
         }
 
         if let position = frame?.teamPosition {
-            return "P\(position)"
+            return "\(position)"
         }
 
         return "--"
@@ -467,6 +476,96 @@ final class RelativeOverlayView: NSView {
         }
 
         return onPitRoad == true ? "\(label) PIT" : label
+    }
+
+    private func applyChromeSettings(sessionKey: String?) {
+        let nextShowHeaderStatus = chromeOption(
+            sessionKey: sessionKey,
+            testKey: "chrome.header.status.test",
+            practiceKey: "chrome.header.status.practice",
+            qualifyingKey: "chrome.header.status.qualifying",
+            raceKey: "chrome.header.status.race"
+        )
+        let nextShowFooterSource = chromeOption(
+            sessionKey: sessionKey,
+            testKey: "chrome.footer.source.test",
+            practiceKey: "chrome.footer.source.practice",
+            qualifyingKey: "chrome.footer.source.qualifying",
+            raceKey: "chrome.footer.source.race"
+        )
+
+        guard nextShowHeaderStatus != showHeaderStatus || nextShowFooterSource != showFooterSource else {
+            return
+        }
+
+        showHeaderStatus = nextShowHeaderStatus
+        showFooterSource = nextShowFooterSource
+        statusLabel.isHidden = !showHeaderStatus
+        sourceLabel.isHidden = !showFooterSource
+        needsLayout = true
+        needsDisplay = true
+    }
+
+    private func chromeOption(
+        sessionKey: String?,
+        testKey: String,
+        practiceKey: String,
+        qualifyingKey: String,
+        raceKey: String
+    ) -> Bool {
+        guard let sessionKind = sessionKind(sessionKey) else {
+            return true
+        }
+
+        switch sessionKind {
+        case "test":
+            return boolOption(testKey, defaultValue: true)
+        case "practice":
+            return boolOption(practiceKey, defaultValue: true)
+        case "qualifying":
+            return boolOption(qualifyingKey, defaultValue: true)
+        case "race":
+            return boolOption(raceKey, defaultValue: true)
+        default:
+            return true
+        }
+    }
+
+    private func sessionKind(_ sessionKey: String?) -> String? {
+        guard let sessionKey else {
+            return nil
+        }
+
+        let normalized = sessionKey.lowercased()
+        if normalized.contains("test") {
+            return "test"
+        }
+        if normalized.contains("practice") {
+            return "practice"
+        }
+        if normalized.contains("qual") {
+            return "qualifying"
+        }
+        if normalized.contains("race") {
+            return "race"
+        }
+
+        return nil
+    }
+
+    private func boolOption(_ key: String, defaultValue: Bool) -> Bool {
+        guard let value = contentSettings.options[key]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() else {
+            return defaultValue
+        }
+
+        switch value {
+        case "true", "1", "yes", "on":
+            return true
+        case "false", "0", "no", "off":
+            return false
+        default:
+            return defaultValue
+        }
     }
 
     private func trimError(_ message: String) -> String {

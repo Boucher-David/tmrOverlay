@@ -237,7 +237,8 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
                             includeUserMaps: trackMapSettings.IncludeUserMaps),
                         trackMapSettings = new
                         {
-                            internalOpacity = trackMapSettings.InternalOpacity
+                            internalOpacity = trackMapSettings.InternalOpacity,
+                            showSectorBoundaries = trackMapSettings.ShowSectorBoundaries
                         }
                     }, cancellationToken).ConfigureAwait(false);
                     statusCode = (int)HttpStatusCode.OK;

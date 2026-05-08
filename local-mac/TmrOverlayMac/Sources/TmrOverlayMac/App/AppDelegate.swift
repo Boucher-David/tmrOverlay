@@ -46,6 +46,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             || arguments.contains("--raw-practice-gap-demo")
         let trackMapSectorDemoEnabled = ProcessInfo.processInfo.environment["TMR_MAC_TRACK_MAP_SECTOR_DEMO"]?.lowercased() == "true"
             || arguments.contains("--track-map-sector-demo")
+        let designV2ComponentDemoTheme = designV2ComponentTheme(arguments: arguments)
+        let relativeDesignV2ShellDemoEnabled = designV2RelativeShellEnabled(arguments: arguments)
+        let designV2OverlaySuiteDemoEnabled = designV2OverlaySuiteEnabled(arguments: arguments)
 
         let logger = LocalLogWriter(logsRoot: logsRoot)
         let events = AppEventRecorder(eventsRoot: eventsRoot)
@@ -114,7 +117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             openSettings: { [weak overlayManager] in
                 overlayManager?.openSettingsOverlay()
             },
-            demoActions: makeDemoActions(logger: logger)
+            demoActions: makeDemoActions(logger: logger, overlayManager: overlayManager)
         )
 
         self.captureService = service
@@ -127,7 +130,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.runtimeStateStore = runtime
 
         overlayManager.showStartupOverlays()
-        if trackMapSectorDemoEnabled {
+        if relativeDesignV2ShellDemoEnabled {
+            overlayManager.showRelativeDesignV2ShellDemo(theme: .outrun)
+            logger.info("Enabled Design V2 Relative shell demo.")
+        }
+        if designV2OverlaySuiteDemoEnabled {
+            overlayManager.showDesignV2OverlaySuiteDemo(theme: .outrun)
+            logger.info("Enabled Design V2 overlay suite demo.")
+        }
+        if let designV2ComponentDemoTheme {
+            startDesignV2ComponentDemo(
+                theme: designV2ComponentDemoTheme,
+                logger: logger
+            )
+        } else if trackMapSectorDemoEnabled {
             startTrackMapSectorDemo(
                 captureRoot: captureRoot,
                 logger: logger
@@ -212,7 +228,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         logger.warning(message)
     }
 
-    private func makeDemoActions(logger: LocalLogWriter) -> [(String, () -> Void)] {
+    private func makeDemoActions(logger: LocalLogWriter, overlayManager: OverlayManager) -> [(String, () -> Void)] {
         var actions: [(String, () -> Void)] = demoStates.enumerated().map { index, demoState in
             ("Demo: \(demoState.title)", { [weak self] in
                 self?.showDemoSnapshot(index: index, logger: logger)
@@ -220,6 +236,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         actions.append(("Demo: Clear", { [weak self] in
             self?.clearDemoSnapshot(logger: logger)
+        }))
+        actions.append(("Design V2 Components: Current", { [weak overlayManager] in
+            overlayManager?.showDesignV2ComponentDemo(theme: .current)
+        }))
+        actions.append(("Design V2 Components: Outrun", { [weak overlayManager] in
+            overlayManager?.showDesignV2ComponentDemo(theme: .outrun)
+        }))
+        actions.append(("Design V2 Components: Close", { [weak overlayManager] in
+            overlayManager?.closeDesignV2ComponentDemo()
         }))
         return actions
     }
@@ -257,6 +282,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let nextIndex = ((self.demoSnapshotIndex ?? -1) + 1) % self.demoStates.count
             self.showDemoSnapshot(index: nextIndex, logger: logger ?? LocalLogWriter(logsRoot: AppPaths.logsRoot()))
         }
+    }
+
+    private func startDesignV2ComponentDemo(theme: DesignV2Theme, logger: LocalLogWriter) {
+        logger.info("Starting Design V2 component demo for \(theme.id) theme.")
+        overlayManager?.showDesignV2ComponentDemo(theme: theme)
     }
 
     private func startRadarCaptureDemo(captureRoot: URL, logger: LocalLogWriter) {
@@ -397,6 +427,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ? explicitPath!
             : "/tmp/tmr-raw-practice-gap-frames.json"
         return URL(fileURLWithPath: path)
+    }
+
+    private func designV2ComponentTheme(arguments: [String]) -> DesignV2Theme? {
+        let envValue = ProcessInfo.processInfo.environment["TMR_MAC_DESIGN_V2_COMPONENTS_DEMO"]
+        let demoValue = argumentValue(named: "--design-v2-components-demo", arguments: arguments)
+        let themeValue = argumentValue(named: "--design-v2-theme", arguments: arguments)
+            ?? ProcessInfo.processInfo.environment["TMR_MAC_DESIGN_V2_THEME"]
+        let flagEnabled = arguments.contains("--design-v2-components-demo")
+            || demoValue != nil
+            || envValue != nil
+            || themeValue != nil
+
+        guard flagEnabled else {
+            return nil
+        }
+
+        let requested = (demoValue ?? themeValue ?? envValue ?? "outrun")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if ["false", "0", "no", "off"].contains(requested) {
+            return nil
+        }
+
+        switch requested {
+        case "current", "classic", "default":
+            return .current
+        default:
+            return .outrun
+        }
+    }
+
+    private func designV2RelativeShellEnabled(arguments: [String]) -> Bool {
+        if arguments.contains("--design-v2-relative-shell") {
+            return true
+        }
+
+        return ProcessInfo.processInfo.environment["TMR_MAC_DESIGN_V2_RELATIVE_SHELL"]?.lowercased() == "true"
+    }
+
+    private func designV2OverlaySuiteEnabled(arguments: [String]) -> Bool {
+        if arguments.contains("--design-v2-overlay-suite") {
+            return true
+        }
+
+        return ProcessInfo.processInfo.environment["TMR_MAC_DESIGN_V2_OVERLAY_SUITE"]?.lowercased() == "true"
     }
 
     private func argumentValue(named name: String, arguments: [String]) -> String? {

@@ -1,27 +1,7 @@
 import AppKit
 
 final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate {
-    private static let preferredOverlayTabOrder = [
-        "standings",
-        "relative",
-        "gap-to-leader",
-        "track-map",
-        "stream-chat",
-        "garage-cover",
-        "fuel-calculator",
-        "input-state",
-        "car-radar",
-        "flags",
-        "session-weather",
-        "pit-service"
-    ]
-
-    private static let streamChatProviders: [(label: String, value: String)] = [
-        ("Not configured", "none"),
-        ("Streamlabs Chat Box URL", "streamlabs"),
-        ("Twitch channel", "twitch")
-    ]
-
+    private static let designV2Theme = DesignV2Theme.outrun
     private var settings: ApplicationSettings
     private var captureSnapshot: TelemetryCaptureStatusSnapshot
     private let overlayDefinitions: [OverlayDefinition]
@@ -35,6 +15,9 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
     private let sidebarView = NSView()
     private let tabView = NSTabView()
     private var tabButtons: [String: NSButton] = [:]
+    private var designV2SurfaceViews: [String: NSView] = [:]
+    private var designV2ApplicationSurfaces: [String: DesignV2ApplicationSettingsFullView] = [:]
+    private var designV2OverlaySurfaces: [String: DesignV2OverlaySettingsFullView] = [:]
     private weak var rawCaptureCheckbox: NSButton?
     private weak var appVersionValueLabel: NSTextField?
     private weak var appStatusValueLabel: NSTextField?
@@ -61,7 +44,7 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         self.selectedOverlayChanged = selectedOverlayChanged
         super.init(frame: NSRect(origin: .zero, size: SettingsOverlayDefinition.definition.defaultSize))
         wantsLayer = true
-        layer?.backgroundColor = OverlayTheme.Colors.settingsBackground.cgColor
+        layer?.backgroundColor = Self.designV2Theme.colors.surface.cgColor
         build()
     }
 
@@ -71,10 +54,21 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
 
     func applySettings(_ updatedSettings: ApplicationSettings) {
         settings = updatedSettings
+        for surface in designV2ApplicationSurfaces.values {
+            surface.applySettings(settings)
+        }
+        for (overlayId, surface) in designV2OverlaySurfaces {
+            if let overlay = settings.overlays.first(where: { $0.id == overlayId }) {
+                surface.applyOverlay(overlay)
+            }
+        }
     }
 
     func updateCaptureStatus(_ snapshot: TelemetryCaptureStatusSnapshot) {
         captureSnapshot = snapshot
+        for surface in designV2ApplicationSurfaces.values {
+            surface.updateCaptureStatus(snapshot)
+        }
         syncRawCaptureCheckbox()
         syncSupportSnapshot()
     }
@@ -87,6 +81,15 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         tabView.selectTabViewItem(item)
     }
 
+    func selectRegion(identifier: String) {
+        guard let selectedIdentifier = tabView.selectedTabViewItem?.identifier as? String,
+              let surface = designV2OverlaySurfaces[selectedIdentifier] else {
+            return
+        }
+
+        surface.selectRegion(identifier: identifier)
+    }
+
     override func layout() {
         super.layout()
         titleBar.frame = NSRect(x: 0, y: bounds.height - 42, width: bounds.width, height: 42)
@@ -95,25 +98,28 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         subtitleLabel.frame = NSRect(x: 72, y: 7, width: max(160, titleBar.bounds.width - 132), height: 14)
         sidebarView.frame = NSRect(x: 12, y: 12, width: 174, height: max(320, bounds.height - 66))
         tabView.frame = NSRect(x: 198, y: 12, width: max(360, bounds.width - 210), height: max(320, bounds.height - 66))
+        for surface in designV2SurfaceViews.values {
+            surface.frame = bounds
+        }
         layoutSideTabButtons()
     }
 
     private func build() {
         titleBar.wantsLayer = true
-        titleBar.layer?.backgroundColor = OverlayTheme.Colors.titleBarBackground.cgColor
+        titleBar.layer?.backgroundColor = Self.designV2Theme.colors.titleBar.cgColor
         brandLogoView.image = TmrBrandAssets.loadLogoImage()
         brandLogoView.imageScaling = .scaleProportionallyUpOrDown
         titleBar.addSubview(brandLogoView)
         titleLabel.textColor = .white
         titleLabel.font = overlayFont(ofSize: 15, weight: .semibold)
         titleBar.addSubview(titleLabel)
-        subtitleLabel.textColor = OverlayTheme.Colors.textMuted
+        subtitleLabel.textColor = Self.designV2Theme.colors.textMuted
         subtitleLabel.font = overlayFont(ofSize: 10)
         titleBar.addSubview(subtitleLabel)
         addSubview(titleBar)
 
         sidebarView.wantsLayer = true
-        sidebarView.layer?.backgroundColor = NSColor(red: 0.078, green: 0.098, blue: 0.114, alpha: 1).cgColor
+        sidebarView.layer?.backgroundColor = Self.designV2Theme.colors.surfaceInset.cgColor
         addSubview(sidebarView)
 
         tabView.frame = NSRect(x: 198, y: 12, width: bounds.width - 210, height: bounds.height - 66)
@@ -126,9 +132,69 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
             addTab(overlayTab(definition))
         }
         addTab(errorLoggingTab())
+        addDesignV2ApplicationSurfaces()
+        addDesignV2OverlaySurfaces()
         tabView.selectTabViewItem(at: 0)
         updateSideTabSelection()
         selectedOverlayChanged(tabView.selectedTabViewItem?.identifier as? String)
+    }
+
+    private func addDesignV2OverlaySurfaces() {
+        for definition in orderedSettingsDefinitions() where DesignV2SettingsOverlaySpecs.usesFullSurface(definition.id) {
+            let overlay = settings.overlay(
+                id: definition.id,
+                defaultSize: definition.defaultSize,
+                defaultEnabled: false
+            )
+            let surface = DesignV2OverlaySettingsFullView(
+                frame: bounds,
+                definition: definition,
+                overlay: overlay,
+                fontFamily: OverlayTheme.defaultFontFamily,
+                onOverlayChanged: { [weak self] updatedOverlay in
+                    guard let self else {
+                        return
+                    }
+                    self.settings.updateOverlay(updatedOverlay)
+                    self.onSettingsChanged(self.settings)
+                },
+                onSelectTab: { [weak self] identifier in
+                    self?.selectTab(identifier: identifier)
+                }
+            )
+            surface.isHidden = true
+            addSubview(surface)
+            designV2SurfaceViews[definition.id] = surface
+            designV2OverlaySurfaces[definition.id] = surface
+        }
+    }
+
+    private func addDesignV2ApplicationSurfaces() {
+        for page in [DesignV2ApplicationSettingsFullView.Page.general, .support] {
+            let surface = DesignV2ApplicationSettingsFullView(
+                frame: bounds,
+                page: page,
+                settings: settings,
+                captureSnapshot: captureSnapshot,
+                onSettingsChanged: { [weak self] updatedSettings in
+                    guard let self else {
+                        return
+                    }
+                    self.settings = updatedSettings
+                    self.onSettingsChanged(updatedSettings)
+                },
+                rawCaptureChanged: { [weak self] enabled in
+                    self?.rawCaptureChanged(enabled) ?? false
+                },
+                onSelectTab: { [weak self] identifier in
+                    self?.selectTab(identifier: identifier)
+                }
+            )
+            surface.isHidden = true
+            addSubview(surface)
+            designV2SurfaceViews[page.rawValue] = surface
+            designV2ApplicationSurfaces[page.rawValue] = surface
+        }
     }
 
     func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
@@ -149,7 +215,8 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         button.font = overlayFont(ofSize: 12, weight: .semibold)
         button.contentTintColor = NSColor(red: 0.84, green: 0.87, blue: 0.90, alpha: 1)
         button.wantsLayer = true
-        button.layer?.cornerRadius = 4
+        button.layer?.cornerRadius = 5
+        button.layer?.borderWidth = 1
         sidebarView.addSubview(button)
         tabButtons[identifier] = button
         layoutSideTabButtons()
@@ -181,24 +248,41 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
 
     private func updateSideTabSelection() {
         let selectedIdentifier = tabView.selectedTabViewItem?.identifier as? String
+        let selectedDesignV2Surface = selectedIdentifier.flatMap { designV2SurfaceViews[$0] }
+        let designV2Selected = selectedDesignV2Surface != nil
+        titleBar.isHidden = designV2Selected
+        sidebarView.isHidden = designV2Selected
+        tabView.isHidden = designV2Selected
+        for surface in designV2SurfaceViews.values {
+            surface.isHidden = true
+        }
+        if let selectedDesignV2Surface {
+            selectedDesignV2Surface.isHidden = false
+            selectedDesignV2Surface.needsLayout = true
+            addSubview(selectedDesignV2Surface, positioned: .above, relativeTo: nil)
+        }
+
         for (identifier, button) in tabButtons {
             let selected = identifier == selectedIdentifier
             button.layer?.backgroundColor = selected
-                ? NSColor(red: 0.12, green: 0.16, blue: 0.19, alpha: 1).cgColor
-                : NSColor.clear.cgColor
+                ? Self.designV2Theme.colors.accentPrimary.withAlphaComponent(0.18).cgColor
+                : Self.designV2Theme.colors.surface.cgColor
+            button.layer?.borderColor = selected
+                ? Self.designV2Theme.colors.accentPrimary.withAlphaComponent(0.72).cgColor
+                : Self.designV2Theme.colors.borderMuted.cgColor
             button.contentTintColor = selected
-                ? NSColor.white
-                : NSColor(red: 0.70, green: 0.76, blue: 0.79, alpha: 1)
+                ? Self.designV2Theme.colors.textPrimary
+                : Self.designV2Theme.colors.textSecondary
         }
     }
 
     private func orderedSettingsDefinitions() -> [OverlayDefinition] {
         let userFacing = overlayDefinitions.filter { $0.id != "status" }
-        let preferred = Self.preferredOverlayTabOrder.compactMap { preferredId in
+        let preferred = DesignV2SettingsChrome.overlayTabOrder.compactMap { preferredId in
             userFacing.first { $0.id.caseInsensitiveCompare(preferredId) == .orderedSame }
         }
         let remaining = userFacing.filter { definition in
-            !Self.preferredOverlayTabOrder.contains { $0.caseInsensitiveCompare(definition.id) == .orderedSame }
+            !DesignV2SettingsChrome.overlayTabOrder.contains { $0.caseInsensitiveCompare(definition.id) == .orderedSame }
         }
         return preferred + remaining
     }
@@ -304,12 +388,23 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         )
         settings.updateOverlay(overlay)
 
+        if DesignV2SettingsOverlaySpecs.usesFullSurface(definition.id) {
+            return designV2OverlayTab(definition: definition)
+        }
+
         let item = NSTabViewItem(identifier: definition.id)
         item.label = definition.displayName
         let content = tabContentView()
         content.addSubview(label(definition.displayName, frame: NSRect(x: 18, y: 500, width: 520, height: 24), bold: true))
         content.addSubview(overlayRegionTabs(definition: definition, overlay: overlay))
         item.view = content
+        return item
+    }
+
+    private func designV2OverlayTab(definition: OverlayDefinition) -> NSTabViewItem {
+        let item = NSTabViewItem(identifier: definition.id)
+        item.label = definition.displayName
+        item.view = NSView(frame: NSRect(x: 0, y: 0, width: 1100, height: 614))
         return item
     }
 
@@ -704,12 +799,14 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
             ))
             return true
         case "relative":
-            content.addSubview(label("Cars ahead", frame: NSRect(x: 22, y: top, width: 110, height: 24)))
-            let ahead = countPopup(value: overlay.relativeCarsAhead, frame: NSRect(x: 136, y: top - 2, width: 76, height: 28), identifier: "\(definition.id)|relativeAhead", maximum: 8)
-            content.addSubview(ahead)
-            content.addSubview(label("Cars behind", frame: NSRect(x: 238, y: top, width: 110, height: 24)))
-            let behind = countPopup(value: overlay.relativeCarsBehind, frame: NSRect(x: 356, y: top - 2, width: 76, height: 28), identifier: "\(definition.id)|relativeBehind", maximum: 8)
-            content.addSubview(behind)
+            content.addSubview(label("Cars each side", frame: NSRect(x: 22, y: top, width: 130, height: 24)))
+            let eachSide = max(overlay.relativeCarsAhead, overlay.relativeCarsBehind)
+            content.addSubview(countPopup(
+                value: eachSide,
+                frame: NSRect(x: 158, y: top - 2, width: 76, height: 28),
+                identifier: "\(definition.id)|relativeEachSide",
+                maximum: 8
+            ))
             return true
         case "track-map":
             content.addSubview(label("Map sources", frame: NSRect(x: 18, y: top, width: 520, height: 24), bold: true))
@@ -718,12 +815,18 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
             content.addSubview(label("Generation", frame: NSRect(x: 22, y: top - 84, width: 120, height: 24)))
             content.addSubview(valueLabel("Automatic after sessions; complete maps are skipped", frame: NSRect(x: 150, y: top - 88, width: 390, height: 28)))
             content.addSubview(checkbox(
+                title: "Show sector boundaries",
+                state: optionBool(overlay, key: "track-map.sector-boundaries.enabled", defaultValue: true),
+                frame: NSRect(x: 22, y: top - 128, width: 230, height: 24),
+                identifier: "\(definition.id)|track-map.sector-boundaries.enabled"
+            ))
+            content.addSubview(checkbox(
                 title: "Build local maps from IBT telemetry",
                 state: overlay.trackMapBuildFromTelemetry,
-                frame: NSRect(x: 22, y: top - 128, width: 310, height: 24),
+                frame: NSRect(x: 22, y: top - 164, width: 310, height: 24),
                 identifier: "\(definition.id)|trackMapBuildFromTelemetry"
             ))
-            content.addSubview(label("Derived geometry stays local. Bundled maps still work when this is off.", frame: NSRect(x: 22, y: top - 164, width: 520, height: 24)))
+            content.addSubview(label("Derived geometry stays local. Bundled maps still work when this is off.", frame: NSRect(x: 22, y: top - 200, width: 520, height: 24)))
             content.addSubview(label("Bundled coverage", frame: NSRect(x: 560, y: 278, width: 520, height: 24), bold: true))
             content.addSubview(label("Reviewed app maps load automatically for matching tracks.", frame: NSRect(x: 564, y: 236, width: 430, height: 24)))
             return true
@@ -744,11 +847,11 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
     }
 
     private func addStreamChatOptions(to content: NSView, overlay: OverlaySettings, top: CGFloat) {
-        let provider = normalizedStreamChatProvider(overlay.streamChatProvider)
+        let provider = StreamChatProviderOptions.normalize(overlay.streamChatProvider)
         content.addSubview(label("Chat provider", frame: NSRect(x: 18, y: top, width: 520, height: 24), bold: true))
         content.addSubview(label("Mode", frame: NSRect(x: 22, y: top - 42, width: 120, height: 24)))
         let providerPopup = NSPopUpButton(frame: NSRect(x: 150, y: top - 46, width: 220, height: 28), pullsDown: false)
-        for item in Self.streamChatProviders {
+        for item in StreamChatProviderOptions.choices {
             providerPopup.addItem(withTitle: item.label)
             providerPopup.lastItem?.representedObject = item.value
         }
@@ -1025,10 +1128,10 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         }
 
         switch String(parts[1]) {
-        case "relativeAhead":
-            overlay.relativeCarsAhead = Int(sender.integerValue)
-        case "relativeBehind":
-            overlay.relativeCarsBehind = Int(sender.integerValue)
+        case "relativeEachSide":
+            let value = min(max(Int(sender.integerValue), 0), 8)
+            overlay.relativeCarsAhead = value
+            overlay.relativeCarsBehind = value
         case "gapAhead":
             overlay.classGapCarsAhead = Int(sender.integerValue)
         case "gapBehind":
@@ -1050,10 +1153,10 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         }
 
         switch String(parts[1]) {
-        case "relativeAhead":
-            overlay.relativeCarsAhead = min(max(selectedValue, 0), 8)
-        case "relativeBehind":
-            overlay.relativeCarsBehind = min(max(selectedValue, 0), 8)
+        case "relativeEachSide":
+            let value = min(max(selectedValue, 0), 8)
+            overlay.relativeCarsAhead = value
+            overlay.relativeCarsBehind = value
         case "gapAhead":
             overlay.classGapCarsAhead = min(max(selectedValue, 0), 12)
         case "gapBehind":
@@ -1112,18 +1215,14 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         }
 
         let panel = NSOpenPanel()
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-        panel.allowsMultipleSelection = false
-        panel.allowedFileTypes = ["png", "jpg", "jpeg", "bmp", "gif"]
-        panel.title = "Import garage cover image"
+        GarageCoverImageStore.configureImportPanel(panel)
 
         guard panel.runModal() == .OK, let sourceURL = panel.url else {
             return
         }
 
         do {
-            overlay.garageCoverImagePath = try copyGarageCoverImage(from: sourceURL).path
+            overlay.garageCoverImagePath = try GarageCoverImageStore.copyImage(from: sourceURL).path
             settings.updateOverlay(overlay)
             onSettingsChanged(settings)
             setSupportStatus("Imported garage cover image.")
@@ -1138,48 +1237,10 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         }
 
         overlay.garageCoverImagePath = ""
-        clearGarageCoverImportedImages()
+        GarageCoverImageStore.clearImportedImages()
         settings.updateOverlay(overlay)
         onSettingsChanged(settings)
         setSupportStatus("Cleared garage cover image.")
-    }
-
-    private func copyGarageCoverImage(from sourceURL: URL) throws -> URL {
-        let allowedExtensions: Set<String> = ["png", "jpg", "jpeg", "bmp", "gif"]
-        let fileExtension = sourceURL.pathExtension.lowercased()
-        guard allowedExtensions.contains(fileExtension) else {
-            throw NSError(domain: "TmrOverlayMac", code: 1, userInfo: [NSLocalizedDescriptionKey: "Garage cover images must be PNG, JPG, BMP, or GIF files."])
-        }
-
-        let directory = AppPaths.settingsRoot().appendingPathComponent("garage-cover", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let destination = directory.appendingPathComponent("cover.\(fileExtension)")
-        if sourceURL.standardizedFileURL.path == destination.standardizedFileURL.path {
-            return destination
-        }
-
-        let temporaryDestination = directory.appendingPathComponent("cover-import.\(fileExtension)")
-        try? FileManager.default.removeItem(at: temporaryDestination)
-        try FileManager.default.copyItem(at: sourceURL, to: temporaryDestination)
-        if let existing = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) {
-            for url in existing where url.deletingPathExtension().lastPathComponent == "cover" {
-                try? FileManager.default.removeItem(at: url)
-            }
-        }
-        try? FileManager.default.removeItem(at: destination)
-        try FileManager.default.moveItem(at: temporaryDestination, to: destination)
-        return destination
-    }
-
-    private func clearGarageCoverImportedImages() {
-        let directory = AppPaths.settingsRoot().appendingPathComponent("garage-cover", isDirectory: true)
-        guard let existing = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
-            return
-        }
-
-        for url in existing where url.deletingPathExtension().lastPathComponent == "cover" {
-            try? FileManager.default.removeItem(at: url)
-        }
     }
 
     @objc private func opacityChanged(_ sender: NSPopUpButton) {
@@ -1522,7 +1583,7 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
     }
 
     private func selectedStreamChatProvider(_ popup: NSPopUpButton) -> String {
-        normalizedStreamChatProvider(popup.selectedItem?.representedObject as? String ?? "none")
+        StreamChatProviderOptions.normalize(popup.selectedItem?.representedObject as? String ?? "none")
     }
 
     private func optionBool(_ overlay: OverlaySettings, key: String, defaultValue: Bool) -> Bool {
@@ -1557,7 +1618,7 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
     }
 
     private func syncStreamChatFields(in content: NSView, overlayId: String, provider: String) {
-        let normalized = normalizedStreamChatProvider(provider)
+        let normalized = StreamChatProviderOptions.normalize(provider)
         let streamlabsField: NSTextField? = findSubview(
             in: content,
             identifier: "\(overlayId)|streamChatStreamlabsUrl"
@@ -1568,11 +1629,6 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         )
         streamlabsField?.isEnabled = normalized == "streamlabs"
         twitchField?.isEnabled = normalized == "twitch"
-    }
-
-    private func normalizedStreamChatProvider(_ value: String) -> String {
-        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return normalized == "streamlabs" || normalized == "twitch" ? normalized : "none"
     }
 
     private func findSubview<T: NSView>(in view: NSView, identifier: String) -> T? {

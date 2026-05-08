@@ -13,8 +13,8 @@ permissions:
   contents: read
 
 jobs:
-  mac_harness_build_test:
-    name: macOS harness build/test
+  mac_harness_build:
+    name: macOS harness build
     runs-on: macos-latest
 
     steps:
@@ -35,12 +35,90 @@ jobs:
         working-directory: local-mac/TmrOverlayMac
         run: swift build
 
+  mac_harness_tests:
+    name: macOS harness tests
+    runs-on: macos-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode when available
+        run: |
+          if [ -d /Applications/Xcode.app/Contents/Developer ]; then
+            sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          fi
+          xcode-select -p
+
+      - name: Swift version
+        run: swift --version
+
       - name: Test mac harness
         working-directory: local-mac/TmrOverlayMac
         run: swift test
 
-  windows_build_test:
-    name: Windows build/test
+  windows_static_validation:
+    name: Windows static validation
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Validate screenshot artifacts
+        run: python tools/validate_overlay_screenshots.py
+
+      - name: Validate release tutorial image
+        run: python tools/validate_overlay_screenshots.py --profile release-tutorial --root docs/assets
+
+      - name: Check Windows screenshot expectations
+        run: python tools/validate_overlay_screenshots.py --profile windows-expectations
+
+  windows_build:
+    name: Windows build
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore tmrOverlay.sln
+
+      - name: Build
+        run: dotnet build tmrOverlay.sln --configuration Release --no-restore
+
+  windows_tests:
+    name: Windows tests
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore tmrOverlay.sln
+
+      - name: Test
+        run: dotnet test tmrOverlay.sln --configuration Release --no-restore
+
+  windows_screenshots:
+    name: Windows screenshots
     runs-on: windows-latest
 
     steps:
@@ -57,31 +135,12 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Restore
-        run: dotnet restore tmrOverlay.sln
-
-      - name: Build
-        run: dotnet build tmrOverlay.sln --configuration Release --no-restore
-
-      - name: Test
-        run: dotnet test tmrOverlay.sln --configuration Release --no-build
-
-      - name: Validate screenshot artifacts
-        run: python tools/validate_overlay_screenshots.py
-
-      - name: Validate release tutorial image
-        run: python tools/validate_overlay_screenshots.py --profile release-tutorial --root docs/assets
-
-      - name: Check Windows screenshot expectations
-        run: python tools/validate_overlay_screenshots.py --profile windows-expectations
-
       - name: Generate Windows overlay screenshots
         shell: pwsh
         run: |
           dotnet run `
             --project .\tools\TmrOverlay.WindowsScreenshots\TmrOverlay.WindowsScreenshots.csproj `
             --configuration Release `
-            --no-build `
             -- .\artifacts\windows-overlay-screenshots
 
       - name: Validate Windows overlay screenshots
@@ -95,6 +154,19 @@ jobs:
           path: artifacts/windows-overlay-screenshots
           if-no-files-found: ignore
           retention-days: 14
+
+  windows_publish_dry_run:
+    name: Windows publish dry run
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
 
       - name: Publish dry run
         id: publish_dry_run
@@ -173,7 +245,12 @@ jobs:
   windows_release_package:
     name: Windows release package
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    needs: windows_build_test
+    needs:
+      - windows_static_validation
+      - windows_build
+      - windows_tests
+      - windows_screenshots
+      - windows_publish_dry_run
     runs-on: windows-latest
     permissions:
       contents: write

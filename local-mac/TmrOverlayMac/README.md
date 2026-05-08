@@ -1,8 +1,8 @@
 # TmrOverlayMac
 
-Local-only macOS development port for the Windows `TmrOverlay.App`.
+Tracked macOS development harness for the Windows `TmrOverlay.App`.
 
-This folder is intentionally ignored by git. It exists so the overlay shell can be developed on macOS without changing the Windows collector-first product.
+This folder is tracked source so mock-telemetry UI parity, screenshot generation, and local review demos can evolve with the Windows app. Generated `.build` output, local app data, captures, logs, and screenshots stay ignored.
 
 ## Run
 
@@ -16,7 +16,7 @@ From the repo root, use the ignored convenience wrapper:
 ./run.sh
 ```
 
-The app creates a macOS menu-bar item, shows the v0.8 review overlay set plus the centered settings panel, and writes compact mock session history under app-owned local storage:
+The app creates a macOS menu-bar item, shows the current review overlay set plus the centered settings panel, and writes compact mock session history under app-owned local storage:
 
 ```text
 ~/Library/Application Support/TmrOverlayMac/history/user
@@ -110,6 +110,10 @@ Comparison windows show old timing rows, conservative de-overlap, and wide-row g
 
 The current mac harness can run four-hour mock overlays and capture-derived radar/gap demos with live diagnostics. It does not yet replay an arbitrary 24-hour raw capture through all overlay types. That should be added as a future development-only replay provider that decodes existing raw captures into normalized live snapshots at high playback speed, drives one overlay of each type, and saves screenshots plus `live-overlay-diagnostics.json`.
 
+## Main Mac Settings Design
+
+The mac settings window now treats Design V2 as the primary mac design for the converted application and overlay settings surfaces. The V2 shell is the default review surface for General, Support, Standings, Relative, Gap To Leader, Fuel Calculator, Session / Weather, Pit Service, Track Map, Stream Chat, Inputs, Car Radar, Flags, and Garage Cover. Legacy settings controls remain in source only as compatibility/fallback scaffolding for tabs or behaviors that have not been promoted to the V2 shell yet.
+
 ## Design V2 Proving Ground
 
 The mac screenshot target also renders a design-v2 proving ground under:
@@ -120,11 +124,33 @@ mocks/design-v2
 
 Those previews are separate from the production Relative overlay screenshots under `mocks/relative/`. They exercise future telemetry-first standings, relative, local in-car radar direction, flag display, table primitives, and narrow analysis-exception states before shared primitives are promoted back into Windows. Source/evidence chrome should stay quiet for normal telemetry and appear when data is stale, unavailable, modeled, or derived.
 
+The component-review path uses the same views for live review and generated artifacts. The current theme preserves the existing low-noise visual direction, while the outrun theme is a bolder review palette for token stress testing.
+
 Render only the design-v2 contact sheet with:
 
 ```bash
 TMR_MAC_SCREENSHOT_ONLY_DESIGN_V2=true swift run TmrOverlayMacScreenshots
 ```
+
+Render only the Design V2 component review artifacts with:
+
+```bash
+TMR_MAC_SCREENSHOT_ONLY_DESIGN_V2_COMPONENTS=true swift run TmrOverlayMacScreenshots
+```
+
+Render only the cropped Settings V2 component review artifacts with:
+
+```bash
+TMR_MAC_SCREENSHOT_ONLY_SETTINGS_COMPONENTS=true swift run TmrOverlayMacScreenshots
+```
+
+Open the live mac-harness Design V2 component overlay with:
+
+```bash
+TMR_MAC_DESIGN_V2_COMPONENTS_DEMO=outrun ./run.sh
+```
+
+Use `TMR_MAC_DESIGN_V2_COMPONENTS_DEMO=current ./run.sh` to review the same component primitives against the current/default token set.
 
 ## Tests
 

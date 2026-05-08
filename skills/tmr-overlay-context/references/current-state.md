@@ -1,6 +1,6 @@
 # Current State
 
-Last updated: 2026-05-07
+Last updated: 2026-05-08
 
 ## Project Goal
 
@@ -60,16 +60,16 @@ Last updated: 2026-05-07
   - new overlay features should log unexpected refresh/render failures and surface a compact visible error state, while normal telemetry gaps should degrade to waiting/unavailable
 
 - `src/TmrOverlay.App/Overlays/SettingsPanel/`
-  - wide 1240x680 settings window with a TMR logo plus `Tech Mates Racing Overlay` title bar and flat vertical left-side tabs so all current tabs fit without horizontal tab-strip scrolling
+  - wide 1240x680 settings window with a WinForms Design V2 shell, TMR logo, `Tech Mates Racing Overlay` title bar, outrun-style sidebar tabs, and card-style settings regions so the Windows main app can be compared directly against the mac V2 settings surface
   - the settings window is recentered whenever it opens and does not persist user-dragged placement between runs
   - opens on startup and can be reopened from the tray menu
   - acts as the main UI; clicking its `X` or otherwise closing it through the user close path exits the application instead of hiding the app to the tray
   - uses normal desktop z-order, taskbar, and Alt+Tab behavior instead of the product overlays' tool-window/always-on-top behavior
-  - tabs include General, user-facing overlay tabs ordered by common race workflow, and Support last
+  - sidebar tabs include General, user-facing overlay tabs ordered by common race workflow, and Support last
   - General exposes a metric/imperial unit selector; user-facing font selection stays hidden while cross-platform screenshot parity remains a theme-level concern
   - Support is task-oriented for teammate handoff: visible app version/build metadata, diagnostic telemetry capture first, diagnostics bundle actions, compact current state, and storage shortcuts without exposing advanced collection internals as normal teammate controls
   - first-run/no-iRacing waiting states are worded as expected idle states in Support instead of active failures
-  - per-overlay tabs expose visibility, scale, opacity, test/practice/qualifying/race session filters, descriptor-driven overlay-specific display options, content-column controls, and recommended OBS browser-source sizes when those controls make sense for that overlay
+  - per-overlay tabs expose visibility, scale, opacity, test/practice/qualifying/race session filters, descriptor-driven overlay-specific display options, V2 content-toggle matrices, shared header/footer controls, and recommended OBS browser-source sizes when those controls make sense for that overlay
   - opening the radar settings tab previews the radar overlay only when the overlay is enabled, so the tab no longer overrides the `Visible` checkbox
   - visibility, scale, opacity, unit, and display-option changes are coalesced briefly before save/apply so checkbox bursts do not recursively rebuild overlays; session filters are rechecked against live session type
 
@@ -79,8 +79,10 @@ Last updated: 2026-05-07
   - persistent source footers should be validation/admin chrome, not default end-user overlay furniture
   - reserve model-v2 source, quality, usability, freshness, and missing-reason chrome for stale, unavailable, modeled, or derived values, especially analysis products like fuel strategy, non-local radar focus/multiclass interpretation, and gap graphs
   - use competitor overlay analysis as the product-shape check: small purpose-built overlays, dense information, low-noise dark styling, and semantic color instead of one monolithic dashboard
+  - the mac settings window now treats Design V2 as the primary mac design for converted application and overlay settings surfaces; the Windows settings app uses an additive WinForms Design V2 surface over the same production settings contracts
   - the tracked mac harness now owns a generated `mocks/design-v2/` proving ground for telemetry-first standings, relative, local in-car radar, flag display, table semantics, and narrower analysis-exception states while model-v2 race evidence is still being collected
-  - future style groundwork should add semantic theme tokens and reusable WinForms primitives for headers, status badges, source footers, metric rows, table cells, graph panels, shared borders, severity colors, class colors, text fitting, and empty/error/waiting states
+  - Design V2 now has named mac-harness token sets for the current/default appearance and an outrun review palette, plus live and generated component-review surfaces for overlay shells, buttons, controls, status pills, table rows, graph chrome, localhost blocks, sidebar tabs, section panels, and settings content blocks
+  - future style groundwork should promote reviewed semantic theme tokens and reusable primitives into Windows/mac overlay code for headers, status badges, source footers, metric rows, table cells, graph panels, shared borders, severity colors, class colors, text fitting, and empty/error/waiting states
   - migrate this additively one overlay at a time with screenshot validation, keeping overlay-specific domain layout local
 
 - `src/TmrOverlay.App/Overlays/FuelCalculator/`
@@ -310,7 +312,8 @@ Last updated: 2026-05-07
   - the mac mock race mirrors the Windows radar/gap feature behavior with synthetic all-class timing rows, multiclass approach traffic, weather bands, and driver handoff events, while Windows remains real telemetry only
   - the mac harness should mirror the current Windows overlay review set: standings, fuel calculator, relative, track map, stream chat settings/route controls, garage cover browser-route states, flags, session/weather, pit-service, input/car-state, radar, and gap-to-leader, with app status kept in Support rather than a floating overlay
   - the mac harness mirrors the settings window schema and basic tabbed UI for visibility, scale/opacity when applicable, session filters, units, support capture, and a mock Support/performance snapshot tab; mac diagnostics bundles include matching telemetry-state/performance metadata stubs and recent mock performance JSONL logs
-  - `swift run TmrOverlayMacScreenshots` renders tracked overlay review artifacts under `mocks/`: focused live-state screenshots, multi-state contact sheets, and smaller per-state PNG cards for status, fuel calculator, relative, track-map sector highlights, settings, car radar, gap-to-leader, and design-v2 candidate states; the settings screenshots include the current standings and track-map tabs
+  - `swift run TmrOverlayMacScreenshots` renders tracked overlay review artifacts under `mocks/`: focused live-state screenshots, multi-state contact sheets, and smaller per-state PNG cards for status, fuel calculator, relative, track-map sector highlights, settings, car radar, gap-to-leader, and design-v2 candidate/component states; the settings screenshots include the converted mac V2 General, Support, Standings, Relative, Gap To Leader, Fuel Calculator, Session / Weather, Pit Service, Track Map, Stream Chat, Inputs, Car Radar, Flags, and Garage Cover tabs
+  - Design V2 component review overlays can be opened live from the menu bar or with `TMR_MAC_DESIGN_V2_COMPONENTS_DEMO=current|outrun ./run.sh`, and the generated component artifacts under `mocks/design-v2/components/` come from the same mac-harness views
   - screenshot waiting/unavailable fixtures should be isolated from local user history and cached live telemetry; for example, the fuel waiting preview uses an empty temporary history root so it cannot accidentally show stale stint rows from this machine
 
 ### Tests

@@ -16,7 +16,7 @@ internal static class TrackMapBrowserSource
 
     private const string Script = """
     let cachedTrackMap = null;
-    let cachedTrackMapSettings = { internalOpacity: 0.88 };
+    let cachedTrackMapSettings = { internalOpacity: 0.88, showSectorBoundaries: true };
     let nextTrackMapFetchAt = 0;
     const smoothedMarkerProgress = new Map();
     let lastMarkerSmoothingAt = 0;
@@ -82,6 +82,7 @@ internal static class TrackMapBrowserSource
             ? `<path d="${pathForGeometry(trackMap.pitLane, transform)}" fill="none" stroke="rgba(98,199,255,0.74)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path>`
             : '';
           const sectorPaths = sectorHighlightPaths(sectors, racingLine, transform);
+          const boundaryPaths = trackMapSectorBoundaryPaths(sectors, racingLine, transform, settings);
           const dots = markers.map((marker) => markerSvg(marker, pointOnGeometry(racingLine, transform, marker.lapDistPct))).join('');
           return `
             <svg viewBox="0 0 320 320" role="img" aria-label="Track map">
@@ -89,6 +90,7 @@ internal static class TrackMapBrowserSource
               <path d="${racingPath}" fill="none" stroke="rgba(255,255,255,0.32)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"></path>
               <path d="${racingPath}" fill="none" stroke="rgba(222,238,246,1)" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"></path>
               ${sectorPaths}
+              ${boundaryPaths}
               ${pitPath}
               ${dots}
             </svg>`;
@@ -96,6 +98,7 @@ internal static class TrackMapBrowserSource
       }
 
       const sectorPaths = circleSectorHighlightPaths(sectors);
+      const boundaryPaths = circleSectorBoundaryPaths(sectors, settings);
       const dots = markers.map((marker) => markerSvg(marker, pointOnCircle(marker.lapDistPct))).join('');
       return `
         <svg viewBox="0 0 320 320" role="img" aria-label="Track map">
@@ -103,6 +106,7 @@ internal static class TrackMapBrowserSource
           <circle cx="160" cy="160" r="138" fill="none" stroke="rgba(255,255,255,0.32)" stroke-width="11"></circle>
           <circle cx="160" cy="160" r="138" fill="none" stroke="rgba(222,238,246,1)" stroke-width="4.4"></circle>
           ${sectorPaths}
+          ${boundaryPaths}
           ${dots}
         </svg>`;
     }
@@ -215,6 +219,67 @@ internal static class TrackMapBrowserSource
 
     function sectorHighlightColor(highlight) {
       return highlight === 'best-lap' ? '#b65cff' : '#50d67c';
+    }
+
+    function trackMapSectorBoundaryPaths(sectors, geometry, transform, settings) {
+      if (!sectorBoundariesEnabled(settings)) return '';
+      return sectorBoundaryProgresses(sectors)
+        .map((progress) => geometryBoundaryTickPath(geometry, transform, progress))
+        .filter(Boolean)
+        .map((d) => `<path d="${d}" fill="none" stroke="rgba(98,199,255,0.92)" stroke-width="2.2" stroke-linecap="round"></path>`)
+        .join('');
+    }
+
+    function circleSectorBoundaryPaths(sectors, settings) {
+      if (!sectorBoundariesEnabled(settings)) return '';
+      return sectorBoundaryProgresses(sectors)
+        .map((progress) => circleBoundaryTickPath(progress))
+        .filter(Boolean)
+        .map((d) => `<path d="${d}" fill="none" stroke="rgba(98,199,255,0.92)" stroke-width="2.2" stroke-linecap="round"></path>`)
+        .join('');
+    }
+
+    function sectorBoundariesEnabled(settings) {
+      return settings?.showSectorBoundaries !== false;
+    }
+
+    function sectorBoundaryProgresses(sectors) {
+      if (!Array.isArray(sectors) || sectors.length < 2) return [];
+      const seen = new Set();
+      const progresses = [];
+      for (const sector of sectors) {
+        const progress = normalizeProgress(Number(sector?.startPct ?? 0));
+        const key = progress.toFixed(5);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        progresses.push(progress);
+      }
+      return progresses;
+    }
+
+    function geometryBoundaryTickPath(geometry, transform, progress) {
+      const center = pointOnGeometry(geometry, transform, progress);
+      const before = pointOnGeometry(geometry, transform, progress - 0.002);
+      const after = pointOnGeometry(geometry, transform, progress + 0.002);
+      if (!center || !before || !after) return '';
+      const dx = after.x - before.x;
+      const dy = after.y - before.y;
+      const length = Math.max(0.001, Math.hypot(dx, dy));
+      const normalX = -dy / length;
+      const normalY = dx / length;
+      const half = 8.5;
+      return `M${(center.x - normalX * half).toFixed(1)} ${(center.y - normalY * half).toFixed(1)} L${(center.x + normalX * half).toFixed(1)} ${(center.y + normalY * half).toFixed(1)}`;
+    }
+
+    function circleBoundaryTickPath(progress) {
+      const point = pointOnCircle(progress);
+      const dx = point.x - 160;
+      const dy = point.y - 160;
+      const length = Math.max(0.001, Math.hypot(dx, dy));
+      const unitX = dx / length;
+      const unitY = dy / length;
+      const half = 8.5;
+      return `M${(point.x - unitX * half).toFixed(1)} ${(point.y - unitY * half).toFixed(1)} L${(point.x + unitX * half).toFixed(1)} ${(point.y + unitY * half).toFixed(1)}`;
     }
 
     function pointOnGeometry(geometry, transform, progress) {
