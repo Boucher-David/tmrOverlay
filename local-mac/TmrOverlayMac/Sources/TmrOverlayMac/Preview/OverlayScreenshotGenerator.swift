@@ -333,6 +333,9 @@ public enum OverlayScreenshotGenerator {
         let pitServiceView = settingsView(settings: settings, capture: capture, selectedTab: PitServiceOverlayDefinition.definition.id)
         let trackMapView = settingsView(settings: settings, capture: capture, selectedTab: TrackMapOverlayDefinition.definition.id)
         let streamChatView = settingsView(settings: settings, capture: capture, selectedTab: StreamChatOverlayDefinition.definition.id)
+        let inputStateView = settingsView(settings: settings, capture: capture, selectedTab: InputStateOverlayDefinition.definition.id)
+        let carRadarView = settingsView(settings: settings, capture: capture, selectedTab: CarRadarOverlayDefinition.definition.id)
+        let flagsView = settingsView(settings: settings, capture: capture, selectedTab: FlagsOverlayDefinition.definition.id)
         let garageCoverView = settingsView(settings: settings, capture: capture, selectedTab: GarageCoverOverlayDefinition.definition.id)
 
         let sheet = ContactSheetView(
@@ -349,7 +352,10 @@ public enum OverlayScreenshotGenerator {
                 ContactSheetState(title: "8. Pit Service tab", note: "Shared V2 shell with the current production content contract.", fileName: "pit-service-overlay.png", image: try renderImage(pitServiceView)),
                 ContactSheetState(title: "9. Track Map tab", note: "Bundled coverage, local browser route, map fill, and optional telemetry map generation.", fileName: "track-map-overlay.png", image: try renderImage(trackMapView)),
                 ContactSheetState(title: "10. Stream Chat tab", note: "Native Twitch overlay plus browser-source Streamlabs/Twitch setup.", fileName: "stream-chat-overlay.png", image: try renderImage(streamChatView)),
-                ContactSheetState(title: "11. Garage Cover tab", note: "Localhost-only privacy cover image import.", fileName: "garage-cover-overlay.png", image: try renderImage(garageCoverView))
+                ContactSheetState(title: "11. Inputs tab", note: "Input rail content switches, without header/footer tabs.", fileName: "input-state-overlay.png", image: try renderImage(inputStateView)),
+                ContactSheetState(title: "12. Car Radar tab", note: "Radar warning content, without header/footer tabs.", fileName: "car-radar-overlay.png", image: try renderImage(carRadarView)),
+                ContactSheetState(title: "13. Flags tab", note: "Flag family switches and custom sizing.", fileName: "flags-overlay.png", image: try renderImage(flagsView)),
+                ContactSheetState(title: "14. Garage Cover tab", note: "Localhost-only privacy cover image import.", fileName: "garage-cover-overlay.png", image: try renderImage(garageCoverView))
             ],
             imageMaxSize: NSSize(width: 650, height: 650)
         )

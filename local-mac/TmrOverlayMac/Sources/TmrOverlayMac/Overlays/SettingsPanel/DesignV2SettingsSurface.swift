@@ -109,6 +109,12 @@ enum DesignV2SettingsChrome {
         DesignV2SettingsSidebarTab(id: "error-logging", label: "Support")
     ]
 
+    static var overlayTabOrder: [String] {
+        sidebarTabs
+            .map(\.id)
+            .filter { $0 != "general" && $0 != "error-logging" }
+    }
+
     static func sidebarButtonFrame(index: Int) -> NSRect {
         NSRect(x: 78, y: 164 + CGFloat(index) * 32, width: 162, height: 27)
     }
@@ -143,7 +149,12 @@ enum DesignV2SettingsOverlaySpecs {
         "fuel-calculator",
         "session-weather",
         "pit-service",
-        "track-map"
+        "track-map",
+        "stream-chat",
+        "garage-cover",
+        "input-state",
+        "car-radar",
+        "flags"
     ]
 
     static func usesFullSurface(_ overlayId: String) -> Bool {
@@ -152,6 +163,22 @@ enum DesignV2SettingsOverlaySpecs {
 
     static func supportsSharedChromeSettings(_ overlayId: String) -> Bool {
         ["standings", "relative", "fuel-calculator", "gap-to-leader"].contains(overlayId)
+    }
+
+    static func regions(for overlayId: String) -> [DesignV2SettingsRegion] {
+        if overlayId == "garage-cover" {
+            return [.general]
+        }
+
+        return supportsSharedChromeSettings(overlayId)
+            ? DesignV2SettingsRegion.allCases
+            : [.general, .content]
+    }
+
+    static func segments(for overlayId: String) -> [DesignV2SettingsSegment] {
+        regions(for: overlayId).map { region in
+            DesignV2SettingsSegment(id: region.rawValue, label: region.title, width: region.segmentWidth)
+        }
     }
 
     static func subtitle(for overlayId: String) -> String {
@@ -170,6 +197,16 @@ enum DesignV2SettingsOverlaySpecs {
             return "Pit request state, service plan, and release context."
         case "track-map":
             return "Live car location, sector context, and local map sources."
+        case "stream-chat":
+            return "Local browser-source chat setup for Streamlabs or Twitch."
+        case "garage-cover":
+            return "Local browser-source privacy cover for garage and setup scenes."
+        case "input-state":
+            return "Input rail visibility for pedal, steering, gear, and speed telemetry."
+        case "car-radar":
+            return "Local proximity radar and multiclass approach warning controls."
+        case "flags":
+            return "Compact session flag strip display and size controls."
         default:
             return "Overlay settings and browser-source controls."
         }
@@ -265,12 +302,16 @@ struct DesignV2SettingsRenderer {
     }
 
     func drawTitleBar() {
-        fillRounded(NSRect(x: 66, y: 54, width: 46, height: 24), radius: 5, color: DesignV2SettingsPalette.panelRaised)
-        strokeRounded(NSRect(x: 66, y: 54, width: 46, height: 24), radius: 5, color: DesignV2SettingsPalette.magenta, lineWidth: 1.2)
-        drawCentered("TMR", in: NSRect(x: 66, y: 53, width: 46, height: 24), size: 14, weight: .black, color: DesignV2SettingsPalette.text)
+        let logoRect = NSRect(x: 66, y: 50, width: 50, height: 30)
+        if let logo = TmrBrandAssets.loadLogoImage() {
+            drawAspectFit(logo, in: logoRect)
+        } else {
+            fillRounded(NSRect(x: 66, y: 54, width: 46, height: 24), radius: 5, color: DesignV2SettingsPalette.panelRaised)
+            strokeRounded(NSRect(x: 66, y: 54, width: 46, height: 24), radius: 5, color: DesignV2SettingsPalette.magenta, lineWidth: 1.2)
+            drawCentered("TMR", in: NSRect(x: 66, y: 53, width: 46, height: 24), size: 14, weight: .black, color: DesignV2SettingsPalette.text)
+        }
         drawText("Tech Mates Racing Overlay", in: NSRect(x: 128, y: 52, width: 480, height: 28), size: 24, weight: .heavy, color: DesignV2SettingsPalette.text)
         drawText("Settings control plane - outrun concept skin", in: NSRect(x: 129, y: 75, width: 480, height: 16), size: 12, color: DesignV2SettingsPalette.muted)
-        drawPill("LIVE", in: NSRect(x: 1052, y: 55, width: 68, height: 22), fill: NSColor(red255: 12, green: 55, blue: 70), textColor: DesignV2SettingsPalette.cyan)
         drawCentered("X", in: NSRect(x: 1132, y: 54, width: 30, height: 24), size: 13, weight: .black, color: NSColor(red255: 255, green: 200, blue: 239))
     }
 
@@ -426,11 +467,108 @@ struct DesignV2SettingsRenderer {
             width: size.width,
             height: size.height
         )
-        image.draw(in: target, from: .zero, operation: .sourceOver, fraction: 1)
+        image.draw(
+            in: target,
+            from: NSRect(origin: .zero, size: image.size),
+            operation: .sourceOver,
+            fraction: 1,
+            respectFlipped: true,
+            hints: nil
+        )
     }
 
     private func font(size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
         DesignV2Drawing.font(family: fontFamily, size: size, weight: weight)
+    }
+}
+
+final class DesignV2SettingsStepperControl: NSControl {
+    private var value: Int
+    private let minimum: Int
+    private let maximum: Int
+    private let valueLabel: (Int) -> String
+    private let controlFont: NSFont
+    private let onChange: (Int) -> Void
+
+    override var isFlipped: Bool { true }
+
+    init(
+        frame: NSRect,
+        value: Int,
+        minimum: Int,
+        maximum: Int,
+        valueLabel: @escaping (Int) -> String = { String($0) },
+        font: NSFont,
+        onChange: @escaping (Int) -> Void
+    ) {
+        self.value = min(max(value, minimum), maximum)
+        self.minimum = minimum
+        self.maximum = maximum
+        self.valueLabel = valueLabel
+        self.controlFont = font
+        self.onChange = onChange
+        super.init(frame: frame)
+        wantsLayer = false
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let rect = bounds.insetBy(dx: 0.5, dy: 0.5)
+        DesignV2Drawing.rounded(
+            rect,
+            radius: 10,
+            fill: NSColor(red255: 17, green: 30, blue: 60),
+            stroke: DesignV2SettingsPalette.borderDim,
+            lineWidth: 1
+        )
+
+        let buttonWidth: CGFloat = 34
+        let left = NSRect(x: rect.minX + 4, y: rect.minY + 4, width: buttonWidth, height: rect.height - 8)
+        let right = NSRect(x: rect.maxX - buttonWidth - 4, y: rect.minY + 4, width: buttonWidth, height: rect.height - 8)
+        drawButton(left, label: "-", enabled: value > minimum)
+        drawButton(right, label: "+", enabled: value < maximum)
+        DesignV2Drawing.text(
+            valueLabel(value),
+            in: NSRect(x: left.maxX + 8, y: rect.minY + 8, width: right.minX - left.maxX - 16, height: rect.height - 16),
+            font: controlFont,
+            color: DesignV2SettingsPalette.text,
+            alignment: .center
+        )
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        let nextValue: Int
+        if point.x < bounds.midX {
+            nextValue = max(minimum, value - 1)
+        } else {
+            nextValue = min(maximum, value + 1)
+        }
+        guard nextValue != value else {
+            return
+        }
+
+        value = nextValue
+        onChange(value)
+        needsDisplay = true
+    }
+
+    private func drawButton(_ rect: NSRect, label: String, enabled: Bool) {
+        DesignV2Drawing.rounded(
+            rect,
+            radius: 8,
+            fill: enabled ? NSColor(red255: 6, green: 46, blue: 55) : DesignV2SettingsPalette.panelRaised,
+            stroke: enabled ? DesignV2SettingsPalette.cyan : DesignV2SettingsPalette.border,
+            lineWidth: 1
+        )
+        DesignV2Drawing.text(
+            label,
+            in: NSRect(x: rect.minX, y: rect.minY + 4, width: rect.width, height: rect.height - 8),
+            font: controlFont,
+            color: enabled ? DesignV2SettingsPalette.green : DesignV2SettingsPalette.dim,
+            alignment: .center
+        )
     }
 }
 
@@ -467,6 +605,101 @@ final class DesignV2SettingsActionButtonControl: NSControl {
 
     override func mouseDown(with event: NSEvent) {
         onClick()
+    }
+}
+
+final class DesignV2SettingsChoiceControl: NSControl {
+    private let options: [String]
+    private var selectedIndex: Int
+    private let controlFont: NSFont
+    private let onChange: (String) -> Void
+
+    override var isFlipped: Bool { true }
+
+    init(
+        frame: NSRect,
+        options: [String],
+        selected: String,
+        font: NSFont,
+        onChange: @escaping (String) -> Void
+    ) {
+        self.options = options
+        self.selectedIndex = options.firstIndex(where: { $0.caseInsensitiveCompare(selected) == .orderedSame }) ?? 0
+        self.controlFont = font
+        self.onChange = onChange
+        super.init(frame: frame)
+        wantsLayer = false
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    func applySelected(_ selected: String) {
+        let nextIndex = options.firstIndex(where: { $0.caseInsensitiveCompare(selected) == .orderedSame }) ?? 0
+        guard nextIndex != selectedIndex else {
+            return
+        }
+
+        selectedIndex = nextIndex
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let rect = bounds.insetBy(dx: 0.5, dy: 0.5)
+        DesignV2Drawing.rounded(
+            rect,
+            radius: rect.height / 2,
+            fill: NSColor(red255: 17, green: 30, blue: 60),
+            stroke: DesignV2SettingsPalette.borderDim,
+            lineWidth: 1
+        )
+
+        guard !options.isEmpty else {
+            return
+        }
+
+        let segmentWidth = rect.width / CGFloat(options.count)
+        for (index, option) in options.enumerated() {
+            let segment = NSRect(
+                x: rect.minX + CGFloat(index) * segmentWidth,
+                y: rect.minY,
+                width: segmentWidth,
+                height: rect.height
+            )
+            let selected = index == selectedIndex
+            if selected {
+                DesignV2Drawing.rounded(
+                    segment.insetBy(dx: 3, dy: 3),
+                    radius: (rect.height - 6) / 2,
+                    fill: DesignV2SettingsPalette.magenta,
+                    stroke: nil,
+                    lineWidth: 0
+                )
+            }
+            DesignV2Drawing.text(
+                option,
+                in: NSRect(x: segment.minX, y: segment.minY + 7, width: segment.width, height: 16),
+                font: controlFont,
+                color: selected ? DesignV2SettingsPalette.text : DesignV2SettingsPalette.muted,
+                alignment: .center
+            )
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard !options.isEmpty else {
+            return
+        }
+
+        let point = convert(event.locationInWindow, from: nil)
+        let rawIndex = Int(floor(point.x / max(1, bounds.width / CGFloat(options.count))))
+        let index = min(max(rawIndex, 0), options.count - 1)
+        guard index != selectedIndex else {
+            return
+        }
+
+        selectedIndex = index
+        onChange(options[index])
+        needsDisplay = true
     }
 }
 

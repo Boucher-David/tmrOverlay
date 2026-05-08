@@ -1,6 +1,6 @@
 import AppKit
 
-final class DesignV2OverlaySettingsFullView: NSView {
+final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
     private struct ContentMatrixRow {
         var label: String
         var enabled: Bool
@@ -18,6 +18,12 @@ final class DesignV2OverlaySettingsFullView: NSView {
     private var selectedRegion = DesignV2SettingsRegion.general
     private var settingsRenderer: DesignV2SettingsRenderer {
         DesignV2SettingsRenderer(fontFamily: fontFamily)
+    }
+    private var availableRegions: [DesignV2SettingsRegion] {
+        DesignV2SettingsOverlaySpecs.regions(for: definition.id)
+    }
+    private var availableSegments: [DesignV2SettingsSegment] {
+        DesignV2SettingsOverlaySpecs.segments(for: definition.id)
     }
 
     override var isFlipped: Bool {
@@ -38,7 +44,8 @@ final class DesignV2OverlaySettingsFullView: NSView {
         self.onOverlayChanged = onOverlayChanged
         self.onSelectTab = onSelectTab
         super.init(frame: frame)
-        if let initialRegion = Self.initialRegionFromEnvironment() {
+        if let initialRegion = Self.initialRegionFromEnvironment(),
+           DesignV2SettingsOverlaySpecs.regions(for: definition.id).contains(initialRegion) {
             selectedRegion = initialRegion
         }
         wantsLayer = true
@@ -69,11 +76,15 @@ final class DesignV2OverlaySettingsFullView: NSView {
         for (index, tab) in DesignV2SettingsChrome.sidebarTabs.enumerated() {
             sidebarButtons[tab.id]?.frame = DesignV2SettingsChrome.sidebarButtonFrame(index: index)
         }
-        for (segment, rect) in DesignV2SettingsChrome.segmentFrames(for: DesignV2SettingsRegion.standardSegments) {
+        for button in regionButtons.values {
+            button.isHidden = true
+        }
+        for (segment, rect) in DesignV2SettingsChrome.segmentFrames(for: availableSegments) {
             guard let region = DesignV2SettingsRegion(rawValue: segment.id) else {
                 continue
             }
             regionButtons[region]?.frame = rect
+            regionButtons[region]?.isHidden = false
         }
     }
 
@@ -88,7 +99,7 @@ final class DesignV2OverlaySettingsFullView: NSView {
             title: definition.displayName,
             subtitle: DesignV2SettingsOverlaySpecs.subtitle(for: definition.id)
         )
-        settingsRenderer.drawSegments(DesignV2SettingsRegion.standardSegments, selectedId: selectedRegion.rawValue)
+        settingsRenderer.drawSegments(availableSegments, selectedId: selectedRegion.rawValue)
         drawSelectedRegion()
     }
 
@@ -127,6 +138,9 @@ final class DesignV2OverlaySettingsFullView: NSView {
     @objc private func regionClicked(_ sender: NSButton) {
         guard let rawValue = sender.identifier?.rawValue,
               let region = DesignV2SettingsRegion(rawValue: rawValue) else {
+            return
+        }
+        guard availableRegions.contains(region) else {
             return
         }
 
@@ -217,6 +231,25 @@ final class DesignV2OverlaySettingsFullView: NSView {
             }
         }
 
+        if definition.id == "garage-cover" {
+            addDynamic(DesignV2SettingsActionButtonControl(
+                frame: NSRect(x: 750, y: 428, width: 112, height: 30),
+                title: "Import",
+                font: font(size: 12, weight: .heavy),
+                onClick: { [weak self] in
+                    self?.importGarageCoverImage()
+                }
+            ))
+            addDynamic(DesignV2SettingsActionButtonControl(
+                frame: NSRect(x: 876, y: 428, width: 86, height: 30),
+                title: "Clear",
+                font: font(size: 12, weight: .heavy),
+                onClick: { [weak self] in
+                    self?.clearGarageCoverImage()
+                }
+            ))
+        }
+
         addDynamic(DesignV2SettingsActionButtonControl(
             frame: NSRect(x: 950, y: 542, width: 70, height: 30),
             title: "Copy",
@@ -230,16 +263,30 @@ final class DesignV2OverlaySettingsFullView: NSView {
     private func buildContentControls() {
         switch definition.id {
         case "relative":
-            addCountPopup(
-                frame: NSRect(x: 454, y: 568, width: 86, height: 28),
+            addColumnToggleControls(definition: OverlayContentColumns.relative, rect: NSRect(x: 306, y: 272, width: 834, height: 222))
+            addDynamic(DesignV2SettingsStepperControl(
+                frame: NSRect(x: 454, y: 562, width: 220, height: 38),
                 value: min(max(max(overlay.relativeCarsAhead, overlay.relativeCarsBehind), 0), 8),
+                minimum: 0,
                 maximum: 8,
-                action: #selector(relativeEachSideChanged(_:))
-            )
+                valueLabel: { "\($0) each side" },
+                font: font(size: 12, weight: .heavy),
+                onChange: { [weak self] value in
+                    self?.overlay.relativeCarsAhead = value
+                    self?.overlay.relativeCarsBehind = value
+                    self?.saveOverlay()
+                }
+            ))
         case "standings":
+            addColumnToggleControls(
+                definition: OverlayContentColumns.standings,
+                rect: NSRect(x: 306, y: 272, width: 834, height: 236),
+                rowHeight: 22,
+                rowGap: 3
+            )
             if let block = OverlayContentColumns.standings.blocks.first {
                 addDynamic(DesignV2SettingsCheckControl(
-                    frame: NSRect(x: 328, y: 590, width: 190, height: 20),
+                    frame: NSRect(x: 328, y: 582, width: 190, height: 20),
                     title: block.label,
                     isOn: OverlayContentColumns.blockEnabled(block, settings: overlay),
                     theme: theme,
@@ -250,67 +297,242 @@ final class DesignV2OverlaySettingsFullView: NSView {
                     }
                 ))
                 if let key = block.countOptionKey {
-                    addCountPopup(
-                        frame: NSRect(x: 660, y: 586, width: 76, height: 28),
+                    addDynamic(DesignV2SettingsStepperControl(
+                        frame: NSRect(x: 552, y: 572, width: 220, height: 38),
                         value: OverlayContentColumns.blockCount(block, settings: overlay),
+                        minimum: block.minimumCount,
                         maximum: block.maximumCount,
-                        action: #selector(standingsOtherClassRowsChanged(_:)),
-                        identifier: key
-                    )
+                        valueLabel: { "\($0) other-class rows" },
+                        font: font(size: 12, weight: .heavy),
+                        onChange: { [weak self] value in
+                            self?.overlay.options[key] = String(value)
+                            self?.saveOverlay()
+                        }
+                    ))
                 }
             }
         case "gap-to-leader":
-            addCountPopup(frame: NSRect(x: 454, y: 492, width: 86, height: 28), value: overlay.classGapCarsAhead, maximum: 12, action: #selector(gapCarsAheadChanged(_:)))
-            addCountPopup(frame: NSRect(x: 662, y: 492, width: 86, height: 28), value: overlay.classGapCarsBehind, maximum: 12, action: #selector(gapCarsBehindChanged(_:)))
+            addDynamic(DesignV2SettingsStepperControl(
+                frame: NSRect(x: 454, y: 484, width: 220, height: 38),
+                value: min(max(max(overlay.classGapCarsAhead, overlay.classGapCarsBehind), 0), 12),
+                minimum: 0,
+                maximum: 12,
+                valueLabel: { "\($0) each side" },
+                font: font(size: 12, weight: .heavy),
+                onChange: { [weak self] value in
+                    self?.overlay.classGapCarsAhead = value
+                    self?.overlay.classGapCarsBehind = value
+                    self?.saveOverlay()
+                }
+            ))
         case "fuel-calculator":
-            addDynamic(DesignV2SettingsCheckControl(
-                frame: NSRect(x: 454, y: 500, width: 170, height: 22),
-                title: "Advice column",
+            addMatrixCheckControl(
+                rowIndex: 0,
+                rect: NSRect(x: 306, y: 272, width: 834, height: 150),
                 isOn: overlay.showFuelAdvice,
-                theme: theme,
-                font: font(size: 12, weight: .semibold),
                 onChange: { [weak self] isOn in
                     self?.overlay.showFuelAdvice = isOn
                     self?.saveOverlay()
                 }
-            ))
-            addDynamic(DesignV2SettingsCheckControl(
-                frame: NSRect(x: 454, y: 532, width: 150, height: 22),
-                title: "Source row",
+            )
+            addMatrixCheckControl(
+                rowIndex: 1,
+                rect: NSRect(x: 306, y: 272, width: 834, height: 150),
                 isOn: overlay.showFuelSource,
-                theme: theme,
-                font: font(size: 12, weight: .semibold),
                 onChange: { [weak self] isOn in
                     self?.overlay.showFuelSource = isOn
                     self?.saveOverlay()
                 }
-            ))
+            )
         case "track-map":
-            addDynamic(DesignV2SettingsCheckControl(
-                frame: NSRect(x: 454, y: 558, width: 220, height: 22),
-                title: "Sector boundaries",
+            addMatrixCheckControl(
+                rowIndex: 1,
+                rect: NSRect(x: 306, y: 272, width: 834, height: 190),
                 isOn: optionBool(key: "track-map.sector-boundaries.enabled", defaultValue: true),
-                theme: theme,
-                font: font(size: 12, weight: .semibold),
                 onChange: { [weak self] isOn in
                     self?.overlay.options["track-map.sector-boundaries.enabled"] = isOn ? "true" : "false"
                     self?.saveOverlay()
                 }
-            ))
-            addDynamic(DesignV2SettingsCheckControl(
-                frame: NSRect(x: 454, y: 590, width: 280, height: 22),
-                title: "Build maps from IBT telemetry",
+            )
+            addMatrixCheckControl(
+                rowIndex: 2,
+                rect: NSRect(x: 306, y: 272, width: 834, height: 190),
                 isOn: overlay.trackMapBuildFromTelemetry,
-                theme: theme,
-                font: font(size: 12, weight: .semibold),
                 onChange: { [weak self] isOn in
                     self?.overlay.trackMapBuildFromTelemetry = isOn
                     self?.saveOverlay()
+                }
+            )
+        case "input-state":
+            addContentBlockToggleControls(
+                definition: OverlayContentColumns.inputState,
+                rect: NSRect(x: 306, y: 272, width: 834, height: 236),
+                rowHeight: 22,
+                rowGap: 3
+            )
+        case "car-radar":
+            addMatrixCheckControl(
+                rowIndex: 1,
+                rect: NSRect(x: 306, y: 272, width: 834, height: 150),
+                isOn: overlay.showRadarMulticlassWarning,
+                onChange: { [weak self] isOn in
+                    self?.overlay.showRadarMulticlassWarning = isOn
+                    self?.saveOverlay()
+                }
+            )
+        case "flags":
+            addFlagDisplayControls()
+        case "stream-chat":
+            addDynamic(DesignV2SettingsToggleControl(
+                frame: NSRect(x: 454, y: 330, width: 56, height: 28),
+                isOn: overlay.enabled,
+                theme: theme,
+                onChange: { [weak self] isOn in
+                    self?.overlay.enabled = isOn
+                    self?.saveOverlay()
+                }
+            ))
+            addStreamChatControls()
+            addDynamic(DesignV2SettingsActionButtonControl(
+                frame: NSRect(x: 950, y: 552, width: 70, height: 30),
+                title: "Copy",
+                font: font(size: 12, weight: .heavy),
+                onClick: { [weak self] in
+                    self?.copyLocalhostURL()
                 }
             ))
         default:
             break
         }
+    }
+
+    private func addFlagDisplayControls() {
+        let flags: [(WritableKeyPath<OverlaySettings, Bool>, Bool)] = [
+            (\.flagsShowGreen, overlay.flagsShowGreen),
+            (\.flagsShowBlue, overlay.flagsShowBlue),
+            (\.flagsShowYellow, overlay.flagsShowYellow),
+            (\.flagsShowCritical, overlay.flagsShowCritical),
+            (\.flagsShowFinish, overlay.flagsShowFinish)
+        ]
+        for (index, flag) in flags.enumerated() {
+            addMatrixCheckControl(
+                rowIndex: index,
+                rect: NSRect(x: 306, y: 272, width: 834, height: 240),
+                isOn: flag.1,
+                onChange: { [weak self] isOn in
+                    self?.overlay[keyPath: flag.0] = isOn
+                    self?.saveOverlay()
+                }
+            )
+        }
+
+        addDynamic(sizeField(
+            frame: NSRect(x: 374, y: 578, width: 64, height: 26),
+            value: Int(FlagsOverlayDefinition.resolveSize(overlay).width.rounded()),
+            identifier: "flagsWidth"
+        ))
+        addDynamic(sizeField(
+            frame: NSRect(x: 488, y: 578, width: 64, height: 26),
+            value: Int(FlagsOverlayDefinition.resolveSize(overlay).height.rounded()),
+            identifier: "flagsHeight"
+        ))
+    }
+
+    private func addStreamChatControls() {
+        addDynamic(DesignV2SettingsChoiceControl(
+            frame: NSRect(x: 454, y: 366, width: 258, height: 30),
+            options: StreamChatProviderOptions.compactLabels,
+            selected: StreamChatProviderOptions.compactLabel(for: overlay.streamChatProvider),
+            font: font(size: 11, weight: .heavy),
+            onChange: { [weak self] selected in
+                guard let self else {
+                    return
+                }
+                overlay.streamChatProvider = StreamChatProviderOptions.normalize(selected)
+                saveOverlay()
+                rebuildRegionControls()
+            }
+        ))
+        addDynamic(textField(
+            frame: NSRect(x: 454, y: 404, width: 420, height: 28),
+            value: overlay.streamChatStreamlabsUrl,
+            identifier: "streamChatStreamlabsUrl",
+            enabled: StreamChatProviderOptions.normalize(overlay.streamChatProvider) == "streamlabs"
+        ))
+        addDynamic(textField(
+            frame: NSRect(x: 454, y: 442, width: 210, height: 28),
+            value: overlay.streamChatTwitchChannel,
+            identifier: "streamChatTwitchChannel",
+            enabled: StreamChatProviderOptions.normalize(overlay.streamChatProvider) == "twitch"
+        ))
+        addDynamic(DesignV2SettingsActionButtonControl(
+            frame: NSRect(x: 682, y: 440, width: 92, height: 30),
+            title: "Save",
+            font: font(size: 12, weight: .heavy),
+            onClick: { [weak self] in
+                self?.saveStreamChatFields()
+            }
+        ))
+    }
+
+    private func addColumnToggleControls(
+        definition contentDefinition: OverlayContentDefinition,
+        rect: NSRect,
+        rowHeight: CGFloat = 24,
+        rowGap: CGFloat = 5
+    ) {
+        for (index, state) in OverlayContentColumns.columnStates(for: contentDefinition, settings: overlay).enumerated() {
+            addMatrixCheckControl(
+                rowIndex: index,
+                rect: rect,
+                rowHeight: rowHeight,
+                rowGap: rowGap,
+                isOn: state.enabled,
+                onChange: { [weak self] isOn in
+                    self?.overlay.options[state.definition.enabledKey(overlayId: contentDefinition.overlayId)] = isOn ? "true" : "false"
+                    self?.saveOverlay()
+                }
+            )
+        }
+    }
+
+    private func addContentBlockToggleControls(
+        definition contentDefinition: OverlayContentDefinition,
+        rect: NSRect,
+        rowHeight: CGFloat = 24,
+        rowGap: CGFloat = 5
+    ) {
+        for (index, block) in contentDefinition.blocks.enumerated() {
+            addMatrixCheckControl(
+                rowIndex: index,
+                rect: rect,
+                rowHeight: rowHeight,
+                rowGap: rowGap,
+                isOn: OverlayContentColumns.blockEnabled(block, settings: overlay),
+                onChange: { [weak self] isOn in
+                    self?.overlay.options[block.enabledOptionKey] = isOn ? "true" : "false"
+                    self?.saveOverlay()
+                }
+            )
+        }
+    }
+
+    private func addMatrixCheckControl(
+        rowIndex: Int,
+        rect: NSRect,
+        rowHeight: CGFloat = 24,
+        rowGap: CGFloat = 5,
+        isOn: Bool,
+        onChange: @escaping (Bool) -> Void
+    ) {
+        addDynamic(DesignV2SettingsCheckControl(
+            frame: matrixCheckFrame(rowIndex: rowIndex, rect: rect, rowHeight: rowHeight, rowGap: rowGap),
+            title: "",
+            isOn: isOn,
+            theme: theme,
+            font: font(size: 12, weight: .semibold),
+            onChange: onChange
+        ))
     }
 
     private func buildChromeControls(keys: [String]) {
@@ -334,23 +556,34 @@ final class DesignV2OverlaySettingsFullView: NSView {
         }
     }
 
-    private func addCountPopup(
-        frame: NSRect,
-        value: Int,
-        maximum: Int,
-        action: Selector,
-        identifier: String? = nil
-    ) {
-        let popup = NSPopUpButton(frame: frame, pullsDown: false)
-        popup.addItems(withTitles: (0...maximum).map(String.init))
-        popup.selectItem(withTitle: String(min(max(value, 0), maximum)))
-        if let identifier {
-            popup.identifier = NSUserInterfaceItemIdentifier(identifier)
-        }
-        popup.target = self
-        popup.action = action
-        popup.font = font(size: 12, weight: .semibold)
-        addDynamic(popup)
+    private func sizeField(frame: NSRect, value: Int, identifier: String) -> NSTextField {
+        let field = NSTextField(string: String(value))
+        field.frame = frame
+        field.identifier = NSUserInterfaceItemIdentifier(identifier)
+        field.delegate = self
+        field.target = self
+        field.action = #selector(sizeFieldChanged(_:))
+        field.alignment = .right
+        field.font = OverlayTheme.monospacedFont(size: 12, weight: .semibold)
+        field.textColor = DesignV2SettingsPalette.text
+        field.backgroundColor = NSColor(red255: 4, green: 9, blue: 20)
+        field.isBordered = true
+        return field
+    }
+
+    private func textField(frame: NSRect, value: String, identifier: String, enabled: Bool) -> NSTextField {
+        let field = NSTextField(string: value)
+        field.frame = frame
+        field.identifier = NSUserInterfaceItemIdentifier(identifier)
+        field.font = font(size: 12)
+        field.textColor = enabled ? DesignV2SettingsPalette.text : DesignV2SettingsPalette.dim
+        field.backgroundColor = NSColor(red255: 4, green: 9, blue: 20)
+        field.isBordered = true
+        field.isEnabled = enabled
+        field.maximumNumberOfLines = 1
+        field.lineBreakMode = .byTruncatingMiddle
+        field.cell?.lineBreakMode = .byTruncatingMiddle
+        return field
     }
 
     private func addDynamic(_ view: NSView) {
@@ -358,39 +591,79 @@ final class DesignV2OverlaySettingsFullView: NSView {
         addSubview(view)
     }
 
-    @objc private func relativeEachSideChanged(_ sender: NSPopUpButton) {
-        guard let value = selectedInt(sender) else {
+    @objc private func sizeFieldChanged(_ sender: NSTextField) {
+        applySizeField(sender)
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        guard let field = obj.object as? NSTextField else {
             return
         }
-        let clamped = min(max(value, 0), 8)
-        overlay.relativeCarsAhead = clamped
-        overlay.relativeCarsBehind = clamped
+
+        applySizeField(field)
+    }
+
+    private func applySizeField(_ field: NSTextField) {
+        guard definition.id == "flags",
+              let identifier = field.identifier?.rawValue,
+              let parsed = Int(field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            return
+        }
+
+        switch identifier {
+        case "flagsWidth":
+            overlay.width = Double(min(max(parsed, Int(FlagsOverlayDefinition.minimumWidth)), Int(FlagsOverlayDefinition.maximumWidth)))
+            field.stringValue = String(Int(overlay.width.rounded()))
+        case "flagsHeight":
+            overlay.height = Double(min(max(parsed, Int(FlagsOverlayDefinition.minimumHeight)), Int(FlagsOverlayDefinition.maximumHeight)))
+            field.stringValue = String(Int(overlay.height.rounded()))
+        default:
+            return
+        }
+        overlay.screenId = nil
         saveOverlay()
     }
 
-    @objc private func standingsOtherClassRowsChanged(_ sender: NSPopUpButton) {
-        guard let key = sender.identifier?.rawValue,
-              let value = selectedInt(sender) else {
+    private func saveStreamChatFields() {
+        guard definition.id == "stream-chat" else {
             return
         }
-        overlay.options[key] = String(min(max(value, 0), 6))
+
+        overlay.streamChatStreamlabsUrl = textFieldValue(identifier: "streamChatStreamlabsUrl")
+        overlay.streamChatTwitchChannel = textFieldValue(identifier: "streamChatTwitchChannel")
         saveOverlay()
     }
 
-    @objc private func gapCarsAheadChanged(_ sender: NSPopUpButton) {
-        guard let value = selectedInt(sender) else {
+    private func importGarageCoverImage() {
+        guard definition.id == "garage-cover" else {
             return
         }
-        overlay.classGapCarsAhead = min(max(value, 0), 12)
-        saveOverlay()
+
+        let panel = NSOpenPanel()
+        GarageCoverImageStore.configureImportPanel(panel)
+
+        guard panel.runModal() == .OK, let sourceURL = panel.url else {
+            return
+        }
+
+        do {
+            overlay.garageCoverImagePath = try GarageCoverImageStore.copyImage(from: sourceURL).path
+            saveOverlay()
+            rebuildRegionControls()
+        } catch {
+            NSSound.beep()
+        }
     }
 
-    @objc private func gapCarsBehindChanged(_ sender: NSPopUpButton) {
-        guard let value = selectedInt(sender) else {
+    private func clearGarageCoverImage() {
+        guard definition.id == "garage-cover" else {
             return
         }
-        overlay.classGapCarsBehind = min(max(value, 0), 12)
+
+        overlay.garageCoverImagePath = ""
+        GarageCoverImageStore.clearImportedImages()
         saveOverlay()
+        rebuildRegionControls()
     }
 
     @objc private func copyLocalhostURL() {
@@ -437,22 +710,30 @@ final class DesignV2OverlaySettingsFullView: NSView {
             drawText("Managed by overlay logic", in: NSRect(x: 454, y: 454, width: 180, height: 18), size: 12, color: DesignV2SettingsPalette.muted)
         }
 
-        drawPanel(NSRect(x: 726, y: 272, width: 414, height: 226), title: "\(definition.displayName) Preview")
-        let previewRect = NSRect(x: 750, y: 324, width: 366, height: 132)
+        let previewTitle = definition.id == "garage-cover" ? "Cover Image" : "\(definition.displayName) Preview"
+        drawPanel(NSRect(x: 726, y: 272, width: 414, height: 226), title: previewTitle)
+        let previewRect = definition.id == "garage-cover"
+            ? NSRect(x: 750, y: 324, width: 366, height: 96)
+            : NSRect(x: 750, y: 324, width: 366, height: 132)
         fillRounded(previewRect, radius: 10, color: NSColor(red255: 3, green: 8, blue: 18))
         strokeRounded(previewRect, radius: 10, color: DesignV2SettingsPalette.cyan.withAlphaComponent(0.65), lineWidth: 1)
-        if let image = previewImage {
-            drawAspectFit(image, in: NSRect(x: 762, y: 334, width: 342, height: 112))
+        if let image = definition.id == "garage-cover" ? garageCoverImage : previewImage {
+            drawAspectFit(image, in: previewRect.insetBy(dx: 12, dy: 10))
         }
-        drawText("Default size", in: NSRect(x: 750, y: 468, width: 100, height: 18), size: 12, color: DesignV2SettingsPalette.muted)
-        drawText(
-            "\(Int(definition.defaultSize.width)) x \(Int(definition.defaultSize.height))",
-            in: NSRect(x: 852, y: 468, width: 120, height: 18),
-            size: 12,
-            weight: .bold,
-            color: DesignV2SettingsPalette.secondary,
-            monospaced: true
-        )
+        if definition.id == "garage-cover" {
+            drawText("Image", in: NSRect(x: 750, y: 468, width: 60, height: 18), size: 12, color: DesignV2SettingsPalette.muted)
+            drawText(garageCoverImageLabel, in: NSRect(x: 814, y: 468, width: 292, height: 18), size: 12, weight: .bold, color: DesignV2SettingsPalette.secondary)
+        } else {
+            drawText("Default size", in: NSRect(x: 750, y: 468, width: 100, height: 18), size: 12, color: DesignV2SettingsPalette.muted)
+            drawText(
+                "\(Int(definition.defaultSize.width)) x \(Int(definition.defaultSize.height))",
+                in: NSRect(x: 852, y: 468, width: 120, height: 18),
+                size: 12,
+                weight: .bold,
+                color: DesignV2SettingsPalette.secondary,
+                monospaced: true
+            )
+        }
 
         drawBrowserSourcePanel(summary: browserSummary)
     }
@@ -469,6 +750,14 @@ final class DesignV2OverlaySettingsFullView: NSView {
             drawFuelContentRegion()
         case "track-map":
             drawTrackMapContentRegion()
+        case "stream-chat":
+            drawStreamChatContentRegion()
+        case "input-state":
+            drawInputStateContentRegion()
+        case "car-radar":
+            drawCarRadarContentRegion()
+        case "flags":
+            drawFlagsContentRegion()
         default:
             drawEmptyContentRegion()
         }
@@ -483,19 +772,19 @@ final class DesignV2OverlaySettingsFullView: NSView {
 
         drawPanel(NSRect(x: 306, y: 512, width: 834, height: 104), title: "Relative Rows")
         drawText("Cars each side", in: NSRect(x: 328, y: 574, width: 130, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
-        drawText("\(overlay.relativeCarsAhead + overlay.relativeCarsBehind + 1) visible rows", in: NSRect(x: 558, y: 574, width: 112, height: 18), size: 12, weight: .bold, color: DesignV2SettingsPalette.text, alignment: .right)
+        drawText("\(overlay.relativeCarsAhead + overlay.relativeCarsBehind + 1) visible rows", in: NSRect(x: 700, y: 574, width: 112, height: 18), size: 12, weight: .bold, color: DesignV2SettingsPalette.text, alignment: .right)
     }
 
     private func drawStandingsContentRegion() {
         drawContentMatrix(
             title: "Content Display",
             rows: standingsContentRows(),
-            rect: NSRect(x: 306, y: 272, width: 834, height: 258)
+            rect: NSRect(x: 306, y: 272, width: 834, height: 236),
+            rowHeight: 22,
+            rowGap: 3
         )
-        if let block = OverlayContentColumns.standings.blocks.first {
-            drawPanel(NSRect(x: 306, y: 536, width: 834, height: 88), title: "Content Details")
-            drawText(block.description, in: NSRect(x: 328, y: 566, width: 760, height: 18), size: 11, color: DesignV2SettingsPalette.muted)
-            drawText(block.countLabel ?? "Count", in: NSRect(x: 540, y: 592, width: 112, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
+        if !OverlayContentColumns.standings.blocks.isEmpty {
+            drawPanel(NSRect(x: 306, y: 520, width: 834, height: 102), title: "Class Separators")
         }
     }
 
@@ -506,8 +795,7 @@ final class DesignV2OverlaySettingsFullView: NSView {
             rect: NSRect(x: 306, y: 272, width: 834, height: 126)
         )
         drawPanel(NSRect(x: 306, y: 426, width: 834, height: 126), title: "Class Gap Window")
-        drawText("Cars ahead", in: NSRect(x: 328, y: 498, width: 110, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
-        drawText("Cars behind", in: NSRect(x: 536, y: 498, width: 110, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
+        drawText("Cars each side", in: NSRect(x: 328, y: 498, width: 130, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
         drawText("Keeps the focused class gap trend bounded around the team car.", in: NSRect(x: 328, y: 532, width: 560, height: 18), size: 12, color: DesignV2SettingsPalette.muted)
     }
 
@@ -520,9 +808,6 @@ final class DesignV2OverlaySettingsFullView: NSView {
             ],
             rect: NSRect(x: 306, y: 272, width: 834, height: 150)
         )
-        drawPanel(NSRect(x: 306, y: 438, width: 834, height: 170), title: "Fuel Rows")
-        drawText("Show", in: NSRect(x: 328, y: 506, width: 100, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
-        drawText("Advice adds stint/rhythm guidance where modeled data is available.", in: NSRect(x: 328, y: 584, width: 560, height: 18), size: 12, color: DesignV2SettingsPalette.muted)
     }
 
     private func drawTrackMapContentRegion() {
@@ -536,15 +821,63 @@ final class DesignV2OverlaySettingsFullView: NSView {
             rect: NSRect(x: 306, y: 272, width: 834, height: 190)
         )
 
-        drawPanel(NSRect(x: 306, y: 484, width: 392, height: 126), title: "Map Sources")
+        drawPanel(NSRect(x: 306, y: 484, width: 834, height: 110), title: "Map Sources")
         drawText("Source", in: NSRect(x: 328, y: 542, width: 90, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
-        drawText("Best bundled or local map; circle fallback", in: NSRect(x: 454, y: 542, width: 210, height: 18), size: 12, color: DesignV2SettingsPalette.text)
-        drawText("Display", in: NSRect(x: 328, y: 562, width: 110, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
-        drawText("Local maps", in: NSRect(x: 328, y: 594, width: 110, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
+        drawText("Best bundled or local map; circle fallback", in: NSRect(x: 454, y: 542, width: 320, height: 18), size: 12, color: DesignV2SettingsPalette.text)
+        drawText("Local maps", in: NSRect(x: 328, y: 574, width: 110, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
+        drawText("Reviewed app maps load automatically for matching tracks.", in: NSRect(x: 454, y: 574, width: 390, height: 18), size: 12, color: DesignV2SettingsPalette.secondary)
+    }
 
-        drawPanel(NSRect(x: 726, y: 484, width: 414, height: 126), title: "Bundled Coverage")
-        drawText("Reviewed app maps load automatically for matching tracks.", in: NSRect(x: 750, y: 542, width: 340, height: 18), size: 12, color: DesignV2SettingsPalette.secondary)
-        drawText("Circle fallback remains available when no reviewed/local geometry exists.", in: NSRect(x: 750, y: 582, width: 330, height: 18), size: 12, color: DesignV2SettingsPalette.muted)
+    private func drawStreamChatContentRegion() {
+        drawPanel(NSRect(x: 306, y: 272, width: 834, height: 204), title: "Chat Source")
+        drawText("Visible", in: NSRect(x: 328, y: 336, width: 90, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
+        drawText("Mode", in: NSRect(x: 328, y: 374, width: 90, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
+        drawText("Streamlabs URL", in: NSRect(x: 328, y: 412, width: 120, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
+        drawText("Twitch channel", in: NSRect(x: 328, y: 450, width: 120, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
+
+        drawPanel(NSRect(x: 306, y: 500, width: 834, height: 92), title: "Localhost")
+        fillRounded(NSRect(x: 462, y: 552, width: 470, height: 30), radius: 8, color: NSColor(red255: 4, green: 9, blue: 20))
+        strokeRounded(NSRect(x: 462, y: 552, width: 470, height: 30), radius: 8, color: DesignV2SettingsPalette.borderDim, lineWidth: 1)
+        drawText(localhostURLText(), in: NSRect(x: 478, y: 560, width: 430, height: 18), size: 12, color: NSColor(red255: 159, green: 220, blue: 255), monospaced: true)
+        drawText("OBS browser source", in: NSRect(x: 328, y: 560, width: 120, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
+    }
+
+    private func drawInputStateContentRegion() {
+        drawContentMatrix(
+            title: "Content Display",
+            rows: contentBlockRows(definition: OverlayContentColumns.inputState),
+            rect: NSRect(x: 306, y: 272, width: 834, height: 236),
+            rowHeight: 22,
+            rowGap: 3
+        )
+    }
+
+    private func drawCarRadarContentRegion() {
+        drawContentMatrix(
+            title: "Content Display",
+            rows: [
+                ContentMatrixRow(label: "Radar proximity", enabled: true),
+                ContentMatrixRow(label: "Multiclass warning", enabled: overlay.showRadarMulticlassWarning)
+            ],
+            rect: NSRect(x: 306, y: 272, width: 834, height: 150)
+        )
+    }
+
+    private func drawFlagsContentRegion() {
+        drawContentMatrix(
+            title: "Content Display",
+            rows: [
+                ContentMatrixRow(label: "Green", enabled: overlay.flagsShowGreen),
+                ContentMatrixRow(label: "Blue", enabled: overlay.flagsShowBlue),
+                ContentMatrixRow(label: "Yellow", enabled: overlay.flagsShowYellow),
+                ContentMatrixRow(label: "Red / black", enabled: overlay.flagsShowCritical),
+                ContentMatrixRow(label: "White / checkered", enabled: overlay.flagsShowFinish)
+            ],
+            rect: NSRect(x: 306, y: 272, width: 834, height: 240)
+        )
+        drawPanel(NSRect(x: 306, y: 528, width: 414, height: 90), title: "Size")
+        drawText("W", in: NSRect(x: 342, y: 586, width: 18, height: 18), size: 12, weight: .bold, color: DesignV2SettingsPalette.muted)
+        drawText("H", in: NSRect(x: 456, y: 586, width: 18, height: 18), size: 12, weight: .bold, color: DesignV2SettingsPalette.muted)
     }
 
     private func drawEmptyContentRegion() {
@@ -573,15 +906,19 @@ final class DesignV2OverlaySettingsFullView: NSView {
         drawText(itemLabel, in: NSRect(x: 346, y: 373, width: 110, height: 18), size: 13, weight: .semibold, color: DesignV2SettingsPalette.secondary)
     }
 
-    private func drawContentMatrix(title: String, rows: [ContentMatrixRow], rect: NSRect) {
+    private func drawContentMatrix(
+        title: String,
+        rows: [ContentMatrixRow],
+        rect: NSRect,
+        rowHeight: CGFloat = 24,
+        rowGap: CGFloat = 5
+    ) {
         drawPanel(rect, title: title)
         drawText("Item", in: NSRect(x: 328, y: rect.minY + 58, width: 110, height: 16), size: 10, weight: .bold, color: DesignV2SettingsPalette.muted)
         for (index, session) in ["Test", "Practice", "Qualifying", "Race"].enumerated() {
-            drawText(session, in: NSRect(x: 454 + CGFloat(index) * 116, y: rect.minY + 58, width: 104, height: 16), size: 10, weight: .bold, color: DesignV2SettingsPalette.muted)
+            drawText(session, in: NSRect(x: 548 + CGFloat(index) * 116, y: rect.minY + 58, width: 104, height: 16), size: 10, weight: .bold, color: DesignV2SettingsPalette.muted)
         }
 
-        let rowHeight: CGFloat = 24
-        let rowGap: CGFloat = 5
         let rowWidth: CGFloat = 768
         for (index, row) in rows.enumerated() {
             let rowY = rect.minY + 78 + CGFloat(index) * (rowHeight + rowGap)
@@ -591,31 +928,42 @@ final class DesignV2OverlaySettingsFullView: NSView {
 
             fillRounded(NSRect(x: 328, y: rowY, width: rowWidth, height: rowHeight), radius: 8, color: DesignV2SettingsPalette.panelRaised.withAlphaComponent(0.78))
             strokeRounded(NSRect(x: 328, y: rowY, width: rowWidth, height: rowHeight), radius: 8, color: DesignV2SettingsPalette.borderDim, lineWidth: 1)
-            drawText(row.label, in: NSRect(x: 346, y: rowY + 5, width: 110, height: 16), size: 12, weight: .semibold, color: row.enabled ? DesignV2SettingsPalette.secondary : DesignV2SettingsPalette.dim)
+            drawCheckBox(in: matrixCheckFrame(rowIndex: index, rect: rect, rowHeight: rowHeight, rowGap: rowGap), checked: row.enabled)
+            drawText(row.label, in: NSRect(x: 376, y: rowY + 5, width: 150, height: 16), size: 12, weight: .semibold, color: row.enabled ? DesignV2SettingsPalette.secondary : DesignV2SettingsPalette.dim)
 
             for (sessionIndex, enabled) in situationStates(rowEnabled: row.enabled).enumerated() {
                 drawSituationBox(
-                    in: NSRect(x: 462 + CGFloat(sessionIndex) * 116, y: rowY + 3, width: 22, height: 18),
+                    in: NSRect(x: 556 + CGFloat(sessionIndex) * 116, y: rowY + 3, width: 22, height: 18),
                     enabled: enabled
                 )
             }
         }
     }
 
+    private func matrixCheckFrame(rowIndex: Int, rect: NSRect, rowHeight: CGFloat = 24, rowGap: CGFloat = 5) -> NSRect {
+        let rowY = rect.minY + 78 + CGFloat(rowIndex) * (rowHeight + rowGap)
+        return NSRect(x: 344, y: rowY + max(2, (rowHeight - 19) / 2), width: 19, height: 19)
+    }
+
     private func drawSituationBox(in rect: NSRect, enabled: Bool) {
+        drawCheckBox(in: rect, checked: enabled)
+    }
+
+    private func drawCheckBox(in rect: NSRect, checked: Bool) {
         fillRounded(
             rect,
             radius: 5,
-            color: enabled ? NSColor(red255: 6, green: 46, blue: 55) : DesignV2SettingsPalette.panelRaised
+            color: checked ? NSColor(red255: 6, green: 46, blue: 55) : DesignV2SettingsPalette.panelRaised
         )
         strokeRounded(
             rect,
             radius: 5,
-            color: enabled ? DesignV2SettingsPalette.cyan : DesignV2SettingsPalette.border,
+            color: checked ? DesignV2SettingsPalette.cyan : DesignV2SettingsPalette.border,
             lineWidth: 1
         )
-        if enabled {
-            fillRounded(NSRect(x: rect.minX + 5, y: rect.minY + 7, width: rect.width - 10, height: 4), radius: 2, color: DesignV2SettingsPalette.green)
+        if checked {
+            DesignV2Drawing.line(from: NSPoint(x: rect.minX + 5, y: rect.minY + 10), to: NSPoint(x: rect.minX + 9, y: rect.minY + 15), color: DesignV2SettingsPalette.green, width: 2)
+            DesignV2Drawing.line(from: NSPoint(x: rect.minX + 9, y: rect.minY + 15), to: NSPoint(x: rect.minX + 16, y: rect.minY + 6), color: DesignV2SettingsPalette.green, width: 2)
         }
     }
 
@@ -643,6 +991,12 @@ final class DesignV2OverlaySettingsFullView: NSView {
     private func columnContentRows(definition contentDefinition: OverlayContentDefinition) -> [ContentMatrixRow] {
         OverlayContentColumns.columnStates(for: contentDefinition, settings: overlay).map {
             ContentMatrixRow(label: $0.definition.label, enabled: $0.enabled)
+        }
+    }
+
+    private func contentBlockRows(definition contentDefinition: OverlayContentDefinition) -> [ContentMatrixRow] {
+        contentDefinition.blocks.map {
+            ContentMatrixRow(label: $0.label, enabled: OverlayContentColumns.blockEnabled($0, settings: overlay))
         }
     }
 
@@ -700,6 +1054,23 @@ final class DesignV2OverlaySettingsFullView: NSView {
         DesignV2SettingsReferenceImages.load(relativePath: "mocks/application-redesign/overlays/\(definition.id).png")
     }
 
+    private var garageCoverImage: NSImage? {
+        if !overlay.garageCoverImagePath.isEmpty,
+           let image = NSImage(contentsOfFile: overlay.garageCoverImagePath) {
+            return image
+        }
+
+        return previewImage ?? TmrBrandAssets.loadLogoImage()
+    }
+
+    private var garageCoverImageLabel: String {
+        guard !overlay.garageCoverImagePath.isEmpty else {
+            return "No image imported"
+        }
+
+        return URL(fileURLWithPath: overlay.garageCoverImagePath).lastPathComponent
+    }
+
     private func optionBool(key: String, defaultValue: Bool) -> Bool {
         guard let configured = overlay.options[key]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() else {
             return defaultValue
@@ -719,11 +1090,10 @@ final class DesignV2OverlaySettingsFullView: NSView {
         return allowedValues.min(by: { abs($0 - percent) < abs($1 - percent) }) ?? 100
     }
 
-    private func selectedInt(_ sender: NSPopUpButton) -> Int? {
-        guard let selected = sender.selectedItem?.title else {
-            return nil
-        }
-        return Int(selected)
+    private func textFieldValue(identifier: String) -> String {
+        dynamicControls.compactMap { $0 as? NSTextField }.first {
+            $0.identifier?.rawValue == identifier
+        }?.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
     private func font(size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {

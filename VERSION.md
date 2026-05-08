@@ -19,12 +19,12 @@ v0.16.2-design-v2-theme-foundation
 
 Planned scope:
 
-- Build the Design V2 theme foundation before V1.x so future visual changes, overlay additions, and component iterations can share a tokenized architecture instead of one-off styling.
-- Preserve the current overlay/settings appearance as the default Design V2 token set while adding an outrun review token set for bolder visual exploration.
+- Build the Design V2 theme foundation before V1.x so future visual changes, overlay additions, settings surfaces, and component iterations can share a tokenized architecture instead of one-off styling.
+- Preserve the current production content contracts while giving the tracked mac harness a V2 settings shell for the main app window and the current overlay tabs.
 - Make the mac harness capable of opening live Design V2 component-review overlays, not just generating static screenshots.
-- Generate component-level outrun review artifacts from the same mac-harness overlay views used for live review.
-- Keep Design V2 development surfaces out of normal production overlay settings until specific components are promoted into the Windows/runtime product.
-- Use stable semantic tokens for surfaces, text, borders, evidence colors, graph chrome, buttons, tabs, table rows, localhost blocks, and settings content blocks so Windows can later map the same roles.
+- Generate component-level outrun review artifacts and full settings-window review artifacts from the same mac-harness views used for live review.
+- Keep Design V2 development surfaces out of the Windows production UI until the WinForms V2 layer is ported against the same settings contracts.
+- Use stable semantic tokens for surfaces, text, borders, evidence colors, graph chrome, buttons, tabs, table rows, localhost blocks, settings content blocks, and app/overlay chrome so Windows can map the same roles.
 
 Technical implementation checklist:
 
@@ -32,26 +32,29 @@ Technical implementation checklist:
 2. Refactor mac Design V2 tokens into named current/outrun theme instances while keeping current visuals as the default.
 3. Add live mac-harness Design V2 component overlay entry points through the tray menu and env/CLI launch flags.
 4. Render component-level screenshots from the same component overlay views used by the live mac harness.
-5. Expand screenshot validation expectations for Design V2 component artifacts.
-6. Decide which component primitives should be promoted into shared Windows/mac overlay code first.
-7. Defer full docs/version/release validation until the branch stopping point, using targeted build/screenshot checks while iterating.
+5. Add the mac V2 settings shell for General, Support, Standings, Relative, Gap To Leader, Fuel Calculator, Session / Weather, Pit Service, Track Map, Stream Chat, Inputs, Car Radar, Flags, and Garage Cover.
+6. Preserve current settings semantics for visibility, scale, opacity, session filters, shared header/footer options, content toggles, browser-source routes, Garage Cover image import, and Stream Chat source configuration.
+7. Refactor reusable mac settings helpers where V2 and legacy settings share behavior.
+8. Expand screenshot validation expectations for Design V2 component and settings-window artifacts.
+9. Defer the Windows production V2 port to the next branch, using this branch's mac settings shell and shared content descriptors as the parity reference.
 
 Likely squash title:
 
 ```text
-[v0.16.2] Add Design V2 theme and component review foundations
+[v0.16.2] Add Design V2 theme and mac settings surfaces
 ```
 
 Likely squash body:
 
 ```text
 - Bumped shared .NET product/version metadata to 0.16.2.
-- Refactored the mac Design V2 proving-ground theme from static color access into named current/outrun token sets while preserving current visuals by default.
-- Added a real mac-harness Design V2 component-review overlay that can be opened live from the tray menu or env/CLI flags.
-- Added component-level outrun review screenshots generated from the same overlay views used by the live mac harness.
-- Expanded screenshot validation for the Design V2 component contact sheet and individual component artifacts.
-- Kept Design V2 review surfaces development-only until specific primitives are promoted into production Windows/mac overlays.
-- Updated docs/context for the tracked mac harness and Design V2 component-review promotion path.
+- Refactored the mac Design V2 proving-ground theme into named current/outrun token sets while preserving current visuals by default.
+- Added live mac-harness Design V2 component-review overlays and component screenshots generated from the same views.
+- Added a mac V2 settings shell for the main app General/Support surfaces and the current overlay settings tabs, including Standings, Relative, Gap To Leader, Fuel Calculator, Session / Weather, Pit Service, Track Map, Stream Chat, Inputs, Car Radar, Flags, and Garage Cover.
+- Preserved current production settings contracts while applying V2 visuals: visibility, scale, opacity, sessions, shared header/footer toggles, content toggles, browser-source routes, Garage Cover image import, and Stream Chat source setup remain settings-backed.
+- Reused descriptor-driven content rows and shared mac helpers for Garage Cover image storage, Stream Chat provider normalization, sidebar ordering, steppers, toggles, segmented choices, and settings screenshot states.
+- Regenerated tracked Design V2 and settings-window screenshot artifacts and updated screenshot validation expectations.
+- Updated docs/context for the tracked mac harness, generated settings artifacts, and the Windows V2 parity handoff; the existing Windows settings UI remains the legacy WinForms surface until the explicit V2 port lands.
 ```
 
 ## Next Planned Milestone

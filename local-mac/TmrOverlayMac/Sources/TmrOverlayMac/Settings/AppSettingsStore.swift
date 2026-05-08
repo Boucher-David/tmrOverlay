@@ -317,7 +317,7 @@ enum AppSettingsMigrator {
         normalized.relativeCarsBehind = relativeCarsEachSide
         normalized.classGapCarsAhead = min(max(normalized.classGapCarsAhead, 0), 12)
         normalized.classGapCarsBehind = min(max(normalized.classGapCarsBehind, 0), 12)
-        normalized.streamChatProvider = normalizedStreamChatProvider(normalized.streamChatProvider)
+        normalized.streamChatProvider = StreamChatProviderOptions.normalize(normalized.streamChatProvider)
         normalized.streamChatStreamlabsUrl = normalized.streamChatStreamlabsUrl.trimmingCharacters(in: .whitespacesAndNewlines)
         normalized.streamChatTwitchChannel = normalized.streamChatTwitchChannel.trimmingCharacters(in: .whitespacesAndNewlines)
         normalizeFlagsOverlay(&normalized)
@@ -343,11 +343,6 @@ enum AppSettingsMigrator {
         if overlay.screenId == nil {
             overlay.screenId = flagsPrimaryScreenDefaultId
         }
-    }
-
-    private static func normalizedStreamChatProvider(_ value: String) -> String {
-        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return normalized == "streamlabs" || normalized == "twitch" ? normalized : "none"
     }
 
     private static func clampFinite(_ value: Double, minimum: Double, maximum: Double, fallback: Double) -> Double {

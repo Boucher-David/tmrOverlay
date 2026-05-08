@@ -2,27 +2,6 @@ import AppKit
 
 final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate {
     private static let designV2Theme = DesignV2Theme.outrun
-    private static let preferredOverlayTabOrder = [
-        "standings",
-        "relative",
-        "gap-to-leader",
-        "track-map",
-        "stream-chat",
-        "garage-cover",
-        "fuel-calculator",
-        "input-state",
-        "car-radar",
-        "flags",
-        "session-weather",
-        "pit-service"
-    ]
-
-    private static let streamChatProviders: [(label: String, value: String)] = [
-        ("Not configured", "none"),
-        ("Streamlabs Chat Box URL", "streamlabs"),
-        ("Twitch channel", "twitch")
-    ]
-
     private var settings: ApplicationSettings
     private var captureSnapshot: TelemetryCaptureStatusSnapshot
     private let overlayDefinitions: [OverlayDefinition]
@@ -37,6 +16,7 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
     private let tabView = NSTabView()
     private var tabButtons: [String: NSButton] = [:]
     private var designV2SurfaceViews: [String: NSView] = [:]
+    private var designV2ApplicationSurfaces: [String: DesignV2ApplicationSettingsFullView] = [:]
     private var designV2OverlaySurfaces: [String: DesignV2OverlaySettingsFullView] = [:]
     private weak var rawCaptureCheckbox: NSButton?
     private weak var appVersionValueLabel: NSTextField?
@@ -74,6 +54,9 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
 
     func applySettings(_ updatedSettings: ApplicationSettings) {
         settings = updatedSettings
+        for surface in designV2ApplicationSurfaces.values {
+            surface.applySettings(settings)
+        }
         for (overlayId, surface) in designV2OverlaySurfaces {
             if let overlay = settings.overlays.first(where: { $0.id == overlayId }) {
                 surface.applyOverlay(overlay)
@@ -83,6 +66,9 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
 
     func updateCaptureStatus(_ snapshot: TelemetryCaptureStatusSnapshot) {
         captureSnapshot = snapshot
+        for surface in designV2ApplicationSurfaces.values {
+            surface.updateCaptureStatus(snapshot)
+        }
         syncRawCaptureCheckbox()
         syncSupportSnapshot()
     }
@@ -137,6 +123,7 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
             addTab(overlayTab(definition))
         }
         addTab(errorLoggingTab())
+        addDesignV2ApplicationSurfaces()
         addDesignV2OverlaySurfaces()
         tabView.selectTabViewItem(at: 0)
         updateSideTabSelection()
@@ -170,6 +157,34 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
             addSubview(surface)
             designV2SurfaceViews[definition.id] = surface
             designV2OverlaySurfaces[definition.id] = surface
+        }
+    }
+
+    private func addDesignV2ApplicationSurfaces() {
+        for page in [DesignV2ApplicationSettingsFullView.Page.general, .support] {
+            let surface = DesignV2ApplicationSettingsFullView(
+                frame: bounds,
+                page: page,
+                settings: settings,
+                captureSnapshot: captureSnapshot,
+                onSettingsChanged: { [weak self] updatedSettings in
+                    guard let self else {
+                        return
+                    }
+                    self.settings = updatedSettings
+                    self.onSettingsChanged(updatedSettings)
+                },
+                rawCaptureChanged: { [weak self] enabled in
+                    self?.rawCaptureChanged(enabled) ?? false
+                },
+                onSelectTab: { [weak self] identifier in
+                    self?.selectTab(identifier: identifier)
+                }
+            )
+            surface.isHidden = true
+            addSubview(surface)
+            designV2SurfaceViews[page.rawValue] = surface
+            designV2ApplicationSurfaces[page.rawValue] = surface
         }
     }
 
@@ -234,6 +249,7 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         }
         if let selectedDesignV2Surface {
             selectedDesignV2Surface.isHidden = false
+            selectedDesignV2Surface.needsLayout = true
             addSubview(selectedDesignV2Surface, positioned: .above, relativeTo: nil)
         }
 
@@ -253,11 +269,11 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
 
     private func orderedSettingsDefinitions() -> [OverlayDefinition] {
         let userFacing = overlayDefinitions.filter { $0.id != "status" }
-        let preferred = Self.preferredOverlayTabOrder.compactMap { preferredId in
+        let preferred = DesignV2SettingsChrome.overlayTabOrder.compactMap { preferredId in
             userFacing.first { $0.id.caseInsensitiveCompare(preferredId) == .orderedSame }
         }
         let remaining = userFacing.filter { definition in
-            !Self.preferredOverlayTabOrder.contains { $0.caseInsensitiveCompare(definition.id) == .orderedSame }
+            !DesignV2SettingsChrome.overlayTabOrder.contains { $0.caseInsensitiveCompare(definition.id) == .orderedSame }
         }
         return preferred + remaining
     }
@@ -822,11 +838,11 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
     }
 
     private func addStreamChatOptions(to content: NSView, overlay: OverlaySettings, top: CGFloat) {
-        let provider = normalizedStreamChatProvider(overlay.streamChatProvider)
+        let provider = StreamChatProviderOptions.normalize(overlay.streamChatProvider)
         content.addSubview(label("Chat provider", frame: NSRect(x: 18, y: top, width: 520, height: 24), bold: true))
         content.addSubview(label("Mode", frame: NSRect(x: 22, y: top - 42, width: 120, height: 24)))
         let providerPopup = NSPopUpButton(frame: NSRect(x: 150, y: top - 46, width: 220, height: 28), pullsDown: false)
-        for item in Self.streamChatProviders {
+        for item in StreamChatProviderOptions.choices {
             providerPopup.addItem(withTitle: item.label)
             providerPopup.lastItem?.representedObject = item.value
         }
@@ -1190,18 +1206,14 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         }
 
         let panel = NSOpenPanel()
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-        panel.allowsMultipleSelection = false
-        panel.allowedFileTypes = ["png", "jpg", "jpeg", "bmp", "gif"]
-        panel.title = "Import garage cover image"
+        GarageCoverImageStore.configureImportPanel(panel)
 
         guard panel.runModal() == .OK, let sourceURL = panel.url else {
             return
         }
 
         do {
-            overlay.garageCoverImagePath = try copyGarageCoverImage(from: sourceURL).path
+            overlay.garageCoverImagePath = try GarageCoverImageStore.copyImage(from: sourceURL).path
             settings.updateOverlay(overlay)
             onSettingsChanged(settings)
             setSupportStatus("Imported garage cover image.")
@@ -1216,48 +1228,10 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         }
 
         overlay.garageCoverImagePath = ""
-        clearGarageCoverImportedImages()
+        GarageCoverImageStore.clearImportedImages()
         settings.updateOverlay(overlay)
         onSettingsChanged(settings)
         setSupportStatus("Cleared garage cover image.")
-    }
-
-    private func copyGarageCoverImage(from sourceURL: URL) throws -> URL {
-        let allowedExtensions: Set<String> = ["png", "jpg", "jpeg", "bmp", "gif"]
-        let fileExtension = sourceURL.pathExtension.lowercased()
-        guard allowedExtensions.contains(fileExtension) else {
-            throw NSError(domain: "TmrOverlayMac", code: 1, userInfo: [NSLocalizedDescriptionKey: "Garage cover images must be PNG, JPG, BMP, or GIF files."])
-        }
-
-        let directory = AppPaths.settingsRoot().appendingPathComponent("garage-cover", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let destination = directory.appendingPathComponent("cover.\(fileExtension)")
-        if sourceURL.standardizedFileURL.path == destination.standardizedFileURL.path {
-            return destination
-        }
-
-        let temporaryDestination = directory.appendingPathComponent("cover-import.\(fileExtension)")
-        try? FileManager.default.removeItem(at: temporaryDestination)
-        try FileManager.default.copyItem(at: sourceURL, to: temporaryDestination)
-        if let existing = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) {
-            for url in existing where url.deletingPathExtension().lastPathComponent == "cover" {
-                try? FileManager.default.removeItem(at: url)
-            }
-        }
-        try? FileManager.default.removeItem(at: destination)
-        try FileManager.default.moveItem(at: temporaryDestination, to: destination)
-        return destination
-    }
-
-    private func clearGarageCoverImportedImages() {
-        let directory = AppPaths.settingsRoot().appendingPathComponent("garage-cover", isDirectory: true)
-        guard let existing = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
-            return
-        }
-
-        for url in existing where url.deletingPathExtension().lastPathComponent == "cover" {
-            try? FileManager.default.removeItem(at: url)
-        }
     }
 
     @objc private func opacityChanged(_ sender: NSPopUpButton) {
@@ -1600,7 +1574,7 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
     }
 
     private func selectedStreamChatProvider(_ popup: NSPopUpButton) -> String {
-        normalizedStreamChatProvider(popup.selectedItem?.representedObject as? String ?? "none")
+        StreamChatProviderOptions.normalize(popup.selectedItem?.representedObject as? String ?? "none")
     }
 
     private func optionBool(_ overlay: OverlaySettings, key: String, defaultValue: Bool) -> Bool {
@@ -1635,7 +1609,7 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
     }
 
     private func syncStreamChatFields(in content: NSView, overlayId: String, provider: String) {
-        let normalized = normalizedStreamChatProvider(provider)
+        let normalized = StreamChatProviderOptions.normalize(provider)
         let streamlabsField: NSTextField? = findSubview(
             in: content,
             identifier: "\(overlayId)|streamChatStreamlabsUrl"
@@ -1646,11 +1620,6 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         )
         streamlabsField?.isEnabled = normalized == "streamlabs"
         twitchField?.isEnabled = normalized == "twitch"
-    }
-
-    private func normalizedStreamChatProvider(_ value: String) -> String {
-        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return normalized == "streamlabs" || normalized == "twitch" ? normalized : "none"
     }
 
     private func findSubview<T: NSView>(in view: NSView, identifier: String) -> T? {
