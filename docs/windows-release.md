@@ -148,6 +148,7 @@ For teammate feedback, ask testers to include:
 - the release tag they installed
 - the app version shown in diagnostics or support output
 - a diagnostics bundle from `%LOCALAPPDATA%\TmrOverlay\diagnostics`
+- if the Settings UI is frozen and a bundle cannot be created, the `%LOCALAPPDATA%\TmrOverlay\logs` folder plus the latest `%LOCALAPPDATA%\TmrOverlay\captures` folder from the diagnostic patch build
 - notes about whether iRacing was live, replaying, or not running
 
 Diagnostics bundles include app version/runtime metadata and local logs, but they intentionally exclude raw `telemetry.bin` and source `.ibt` payloads.
