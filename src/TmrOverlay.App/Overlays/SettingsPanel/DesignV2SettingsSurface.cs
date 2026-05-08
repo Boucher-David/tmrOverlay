@@ -214,6 +214,20 @@ internal sealed class DesignV2SettingsSurface : Control
         _callbacks.SelectedOverlayChanged(SelectedOverlayId);
     }
 
+    public void SelectRegion(string regionId)
+    {
+        if (!_overlayById.ContainsKey(_selectedTabId)
+            || !Enum.TryParse<SettingsRegion>(regionId, ignoreCase: true, out var region)
+            || !AvailableRegions(_selectedTabId).Contains(region))
+        {
+            return;
+        }
+
+        _selectedRegion = region;
+        RebuildDynamicControls();
+        Invalidate();
+    }
+
     protected override void Dispose(bool disposing)
     {
         if (disposing)
@@ -1718,16 +1732,43 @@ internal sealed class DesignV2SettingsSurface : Control
     {
         protected V2PaintedControl(Rectangle bounds)
         {
-            Location = bounds.Location;
-            Size = bounds.Size;
-            BackColor = Color.Transparent;
             SetStyle(
                 ControlStyles.AllPaintingInWmPaint
                 | ControlStyles.OptimizedDoubleBuffer
                 | ControlStyles.ResizeRedraw
-                | ControlStyles.SupportsTransparentBackColor
                 | ControlStyles.UserPaint,
                 true);
+            Location = bounds.Location;
+            Size = bounds.Size;
+            BackColor = Rgb(9, 18, 34);
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            if (Parent is null)
+            {
+                base.OnPaintBackground(e);
+                return;
+            }
+
+            var state = e.Graphics.Save();
+            try
+            {
+                e.Graphics.TranslateTransform(-Left, -Top);
+                var parentClip = new Rectangle(
+                    Left + e.ClipRectangle.Left,
+                    Top + e.ClipRectangle.Top,
+                    e.ClipRectangle.Width,
+                    e.ClipRectangle.Height);
+                e.Graphics.SetClip(parentClip);
+                using var parentArgs = new PaintEventArgs(e.Graphics, parentClip);
+                InvokePaintBackground(Parent, parentArgs);
+                InvokePaint(Parent, parentArgs);
+            }
+            finally
+            {
+                e.Graphics.Restore(state);
+            }
         }
 
         protected override void OnMouseEnter(EventArgs e)

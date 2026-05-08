@@ -138,6 +138,12 @@ Render only the Design V2 component review artifacts with:
 TMR_MAC_SCREENSHOT_ONLY_DESIGN_V2_COMPONENTS=true swift run TmrOverlayMacScreenshots
 ```
 
+Render only the cropped Settings V2 component review artifacts with:
+
+```bash
+TMR_MAC_SCREENSHOT_ONLY_SETTINGS_COMPONENTS=true swift run TmrOverlayMacScreenshots
+```
+
 Open the live mac-harness Design V2 component overlay with:
 
 ```bash

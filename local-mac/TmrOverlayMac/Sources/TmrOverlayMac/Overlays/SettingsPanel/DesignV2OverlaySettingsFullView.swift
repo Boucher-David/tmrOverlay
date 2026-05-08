@@ -71,6 +71,17 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
         needsDisplay = true
     }
 
+    func selectRegion(identifier: String) {
+        guard let region = DesignV2SettingsRegion(rawValue: identifier),
+              availableRegions.contains(region) else {
+            return
+        }
+
+        selectedRegion = region
+        rebuildRegionControls()
+        needsDisplay = true
+    }
+
     override func layout() {
         super.layout()
         for (index, tab) in DesignV2SettingsChrome.sidebarTabs.enumerated() {

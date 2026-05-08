@@ -26,6 +26,17 @@ public enum OverlayScreenshotGenerator {
             return
         }
 
+        if ProcessInfo.processInfo.environment["TMR_MAC_SCREENSHOT_ONLY_SETTINGS_COMPONENTS"] == "true" {
+            let settingsRoot = outputRoot.appendingPathComponent("settings-overlay", isDirectory: true)
+            try FileManager.default.createDirectory(at: settingsRoot, withIntermediateDirectories: true)
+            try MainActor.assumeIsolated {
+                try renderSettingsComponentCrops(
+                    outputURL: settingsRoot.appendingPathComponent("settings-components.png")
+                )
+            }
+            return
+        }
+
         if ProcessInfo.processInfo.environment["TMR_MAC_SCREENSHOT_ONLY_GAP"] == "true" {
             let gapToLeaderRoot = outputRoot.appendingPathComponent("gap-to-leader", isDirectory: true)
             try FileManager.default.createDirectory(at: gapToLeaderRoot, withIntermediateDirectories: true)
@@ -293,35 +304,9 @@ public enum OverlayScreenshotGenerator {
 
     @MainActor
     private static func renderSettingsStates(outputURL: URL) throws {
-        var settings = ApplicationSettings()
-        for definition in settingsOverlayDefinitions() {
-            settings.updateOverlay(OverlaySettings(
-                id: definition.id,
-                width: definition.defaultSize.width,
-                height: definition.defaultSize.height
-            ))
-        }
-
-        let capture = TelemetryCaptureStatusSnapshot(
-            isConnected: true,
-            isCapturing: true,
-            rawCaptureEnabled: false,
-            rawCaptureActive: false,
-            captureRoot: AppPaths.captureRoot(),
-            currentCaptureDirectory: nil,
-            lastCaptureDirectory: AppPaths.captureRoot().appendingPathComponent("capture-20260428-150000-000"),
-            frameCount: 14_420,
-            writtenFrameCount: 0,
-            droppedFrameCount: 0,
-            telemetryFileBytes: nil,
-            captureStartedAtUtc: Date(timeIntervalSince1970: 1_800_000_000),
-            lastFrameCapturedAtUtc: Date(),
-            lastDiskWriteAtUtc: nil,
-            appWarning: "Local build is older than source files.",
-            lastWarning: nil,
-            lastError: nil,
-            lastIssueAtUtc: Date()
-        )
+        let fixture = settingsScreenshotFixture()
+        let settings = fixture.settings
+        let capture = fixture.capture
 
         let generalView = settingsView(settings: settings, capture: capture, selectedTab: "general")
         let supportView = settingsView(settings: settings, capture: capture, selectedTab: "error-logging")
@@ -365,6 +350,143 @@ public enum OverlayScreenshotGenerator {
             imageMaxSize: NSSize(width: 650, height: 650),
             outputRoot: outputURL.deletingLastPathComponent()
         )
+        try renderSettingsComponentCrops(
+            settings: settings,
+            capture: capture,
+            outputURL: outputURL.deletingLastPathComponent().appendingPathComponent("settings-components.png")
+        )
+    }
+
+    private static func settingsScreenshotFixture() -> (settings: ApplicationSettings, capture: TelemetryCaptureStatusSnapshot) {
+        var settings = ApplicationSettings()
+        for definition in settingsOverlayDefinitions() {
+            settings.updateOverlay(OverlaySettings(
+                id: definition.id,
+                width: definition.defaultSize.width,
+                height: definition.defaultSize.height
+            ))
+        }
+
+        let capture = TelemetryCaptureStatusSnapshot(
+            isConnected: true,
+            isCapturing: true,
+            rawCaptureEnabled: false,
+            rawCaptureActive: false,
+            captureRoot: AppPaths.captureRoot(),
+            currentCaptureDirectory: nil,
+            lastCaptureDirectory: AppPaths.captureRoot().appendingPathComponent("capture-20260428-150000-000"),
+            frameCount: 14_420,
+            writtenFrameCount: 0,
+            droppedFrameCount: 0,
+            telemetryFileBytes: nil,
+            captureStartedAtUtc: Date(timeIntervalSince1970: 1_800_000_000),
+            lastFrameCapturedAtUtc: Date(),
+            lastDiskWriteAtUtc: nil,
+            appWarning: "Local build is older than source files.",
+            lastWarning: nil,
+            lastError: nil,
+            lastIssueAtUtc: Date()
+        )
+
+        return (settings, capture)
+    }
+
+    @MainActor
+    private static func renderSettingsComponentCrops(outputURL: URL) throws {
+        let fixture = settingsScreenshotFixture()
+        try renderSettingsComponentCrops(
+            settings: fixture.settings,
+            capture: fixture.capture,
+            outputURL: outputURL
+        )
+    }
+
+    @MainActor
+    private static func renderSettingsComponentCrops(
+        settings: ApplicationSettings,
+        capture: TelemetryCaptureStatusSnapshot,
+        outputURL: URL
+    ) throws {
+        let general = try renderImage(settingsView(settings: settings, capture: capture, selectedTab: "general"))
+        let support = try renderImage(settingsView(settings: settings, capture: capture, selectedTab: "error-logging"))
+        let relativeGeneral = try renderImage(settingsView(settings: settings, capture: capture, selectedTab: RelativeOverlayDefinition.definition.id))
+        let relativeContent = try renderImage(settingsView(
+            settings: settings,
+            capture: capture,
+            selectedTab: RelativeOverlayDefinition.definition.id,
+            selectedRegion: DesignV2SettingsRegion.content.rawValue
+        ))
+        let streamChatContent = try renderImage(settingsView(
+            settings: settings,
+            capture: capture,
+            selectedTab: StreamChatOverlayDefinition.definition.id,
+            selectedRegion: DesignV2SettingsRegion.content.rawValue
+        ))
+
+        let components = [
+            ContactSheetState(
+                title: "1. Sidebar Tabs",
+                note: "Actual V2 settings navigation tab states.",
+                fileName: "sidebar-tabs.png",
+                image: try cropImage(general, rect: NSRect(x: 64, y: 116, width: 190, height: 506))
+            ),
+            ContactSheetState(
+                title: "2. Region Tabs",
+                note: "General, Content, Header, and Footer segmented tabs.",
+                fileName: "region-tabs.png",
+                image: try cropImage(relativeGeneral, rect: NSRect(x: 300, y: 198, width: 420, height: 52))
+            ),
+            ContactSheetState(
+                title: "3. Unit Choice",
+                note: "Metric/Imperial segmented input inside a panel.",
+                fileName: "unit-choice.png",
+                image: try cropImage(general, rect: NSRect(x: 306, y: 214, width: 392, height: 132))
+            ),
+            ContactSheetState(
+                title: "4. Overlay Controls",
+                note: "Toggle, sliders, session checks, and panel spacing.",
+                fileName: "overlay-controls.png",
+                image: try cropImage(relativeGeneral, rect: NSRect(x: 306, y: 272, width: 392, height: 226))
+            ),
+            ContactSheetState(
+                title: "5. Content Matrix",
+                note: "Content rows with session-state checkbox columns.",
+                fileName: "content-matrix.png",
+                image: try cropImage(relativeContent, rect: NSRect(x: 306, y: 272, width: 690, height: 222))
+            ),
+            ContactSheetState(
+                title: "6. Chat Inputs",
+                note: "Choice control, text fields, save button, and labels.",
+                fileName: "chat-inputs.png",
+                image: try cropImage(streamChatContent, rect: NSRect(x: 306, y: 272, width: 650, height: 204))
+            ),
+            ContactSheetState(
+                title: "7. Support Buttons",
+                note: "Action button row density and update controls.",
+                fileName: "support-buttons.png",
+                image: try cropImage(support, rect: NSRect(x: 306, y: 410, width: 650, height: 174))
+            ),
+            ContactSheetState(
+                title: "8. Browser Source",
+                note: "Localhost block and copy action alignment.",
+                fileName: "browser-source.png",
+                image: try cropImage(relativeGeneral, rect: NSRect(x: 306, y: 518, width: 650, height: 70))
+            )
+        ]
+
+        let sheet = ContactSheetView(
+            title: "Settings V2 Components",
+            subtitle: "Cropped from the actual mac settings V2 surface for focused parity review.",
+            states: components,
+            imageMaxSize: NSSize(width: 690, height: 520)
+        )
+        try render(sheet, to: outputURL)
+
+        let componentRoot = outputURL.deletingLastPathComponent().appendingPathComponent("components", isDirectory: true)
+        try FileManager.default.createDirectory(at: componentRoot, withIntermediateDirectories: true)
+        for component in components {
+            try writePNG(component.image, to: componentRoot.appendingPathComponent(component.fileName))
+        }
     }
 
     @MainActor
@@ -685,6 +807,26 @@ public enum OverlayScreenshotGenerator {
         return image
     }
 
+    private static func cropImage(_ image: NSImage, rect: NSRect) throws -> NSImage {
+        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            throw ScreenshotError.cropFailed("missing CGImage")
+        }
+
+        let scaleX = CGFloat(cgImage.width) / max(CGFloat(1), image.size.width)
+        let scaleY = CGFloat(cgImage.height) / max(CGFloat(1), image.size.height)
+        let cropRect = CGRect(
+            x: rect.minX * scaleX,
+            y: rect.minY * scaleY,
+            width: rect.width * scaleX,
+            height: rect.height * scaleY
+        ).integral
+        guard let cropped = cgImage.cropping(to: cropRect) else {
+            throw ScreenshotError.cropFailed("\(Int(rect.width))x\(Int(rect.height))")
+        }
+
+        return NSImage(cgImage: cropped, size: rect.size)
+    }
+
     private static func mockFrame(
         capturedAtUtc: Date = Date(timeIntervalSince1970: 1_800_000_200),
         sessionTime: TimeInterval
@@ -851,7 +993,8 @@ public enum OverlayScreenshotGenerator {
     private static func settingsView(
         settings: ApplicationSettings,
         capture: TelemetryCaptureStatusSnapshot,
-        selectedTab: String
+        selectedTab: String,
+        selectedRegion: String? = nil
     ) -> SettingsOverlayView {
         let view = SettingsOverlayView(
             settings: settings,
@@ -863,6 +1006,9 @@ public enum OverlayScreenshotGenerator {
         )
         view.frame = NSRect(origin: .zero, size: SettingsOverlayDefinition.definition.defaultSize)
         view.selectTab(identifier: selectedTab)
+        if let selectedRegion {
+            view.selectRegion(identifier: selectedRegion)
+        }
         view.updateCaptureStatus(capture)
         return view
     }
@@ -888,6 +1034,7 @@ public enum OverlayScreenshotGenerator {
     private enum ScreenshotError: Error {
         case bitmapCreationFailed(String)
         case pngEncodingFailed(String)
+        case cropFailed(String)
     }
 }
 

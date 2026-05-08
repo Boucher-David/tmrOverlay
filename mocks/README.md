@@ -28,6 +28,7 @@ When adding or materially changing an overlay, update that overlay's mock folder
 - one focused screenshot of the main expected live state
 - one multi-state contact sheet covering waiting/unavailable, normal/healthy, edge/warning, and error/fallback behavior when those states apply
 - one smaller per-state PNG under `mocks/<overlay-id>/states/` for each contact-sheet scenario, so individual states are easy to inspect, attach to issues, and validate
+- for complex settings or shared design work, cropped component PNGs under `mocks/<overlay-id>/components/` when buttons, tabs, inputs, matrices, or browser-source blocks need focused platform parity review
 
 Validate generated screenshots before review:
 

@@ -64,6 +64,7 @@ internal static class Program
             }
 
             Directory.CreateDirectory(Path.Combine(outputRoot, "states"));
+            Directory.CreateDirectory(Path.Combine(outputRoot, "components", "settings"));
             var screenshots = RenderAll(outputRoot);
             RenderContactSheet(outputRoot, screenshots);
             WriteManifest(outputRoot, screenshots);
@@ -152,6 +153,7 @@ internal static class Program
             "settings-support",
             "Settings - Support",
             () => CreateSettingsForm("Support")));
+        screenshots.AddRange(RenderSettingsComponentCrops(outputRoot));
         screenshots.Add(RenderForm(
             outputRoot,
             "fuel-calculator-live",
@@ -317,7 +319,87 @@ internal static class Program
         return screenshots;
     }
 
-    private static SettingsOverlayForm CreateSettingsForm(string selectedTabText)
+    private static IReadOnlyList<RenderedScreenshot> RenderSettingsComponentCrops(string outputRoot)
+    {
+        return
+        [
+            RenderSettingsCrop(
+                outputRoot,
+                "sidebar-tabs",
+                "Settings Components - Sidebar Tabs",
+                "General",
+                null,
+                new Rectangle(64, 116, 190, 506)),
+            RenderSettingsCrop(
+                outputRoot,
+                "region-tabs",
+                "Settings Components - Region Tabs",
+                "Relative",
+                null,
+                new Rectangle(300, 198, 420, 52)),
+            RenderSettingsCrop(
+                outputRoot,
+                "unit-choice",
+                "Settings Components - Unit Choice",
+                "General",
+                null,
+                new Rectangle(306, 214, 392, 132)),
+            RenderSettingsCrop(
+                outputRoot,
+                "overlay-controls",
+                "Settings Components - Overlay Controls",
+                "Relative",
+                null,
+                new Rectangle(306, 272, 392, 226)),
+            RenderSettingsCrop(
+                outputRoot,
+                "content-matrix",
+                "Settings Components - Content Matrix",
+                "Relative",
+                "Content",
+                new Rectangle(306, 272, 690, 222)),
+            RenderSettingsCrop(
+                outputRoot,
+                "chat-inputs",
+                "Settings Components - Chat Inputs",
+                "Stream Chat",
+                "Content",
+                new Rectangle(306, 272, 650, 204)),
+            RenderSettingsCrop(
+                outputRoot,
+                "support-buttons",
+                "Settings Components - Support Buttons",
+                "Support",
+                null,
+                new Rectangle(306, 410, 650, 174)),
+            RenderSettingsCrop(
+                outputRoot,
+                "browser-source",
+                "Settings Components - Browser Source",
+                "Relative",
+                null,
+                new Rectangle(306, 518, 650, 70))
+        ];
+    }
+
+    private static RenderedScreenshot RenderSettingsCrop(
+        string outputRoot,
+        string fileStem,
+        string label,
+        string selectedTabText,
+        string? selectedRegionText,
+        Rectangle cropBounds)
+    {
+        return RenderFormCrop(
+            outputRoot,
+            Path.Combine("components", "settings"),
+            fileStem,
+            label,
+            () => CreateSettingsForm(selectedTabText, selectedRegionText),
+            cropBounds);
+    }
+
+    private static SettingsOverlayForm CreateSettingsForm(string selectedTabText, string? selectedRegionText = null)
     {
         var storage = StorageOptionsFor(Path.Combine(Path.GetTempPath(), "tmr-overlay-windows-screenshots", Guid.NewGuid().ToString("N")));
         var captureState = new TelemetryCaptureState();
@@ -380,6 +462,10 @@ internal static class Program
             Noop,
             _ => { });
         SelectTab(form, selectedTabText);
+        if (!string.IsNullOrWhiteSpace(selectedRegionText))
+        {
+            SelectRegion(form, selectedRegionText);
+        }
         return form;
     }
 
@@ -428,6 +514,52 @@ internal static class Program
         int refreshPasses = 1)
     {
         using var form = createForm();
+        PrepareForm(form, refreshPasses);
+
+        using var bitmap = new Bitmap(form.ClientSize.Width, form.ClientSize.Height, PixelFormat.Format32bppArgb);
+        form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, form.ClientSize));
+        postProcess?.Invoke(bitmap);
+
+        var path = Path.Combine(outputRoot, "states", $"{fileStem}.png");
+        bitmap.Save(path, ImageFormat.Png);
+        return new RenderedScreenshot(label, path, form.ClientSize.Width, form.ClientSize.Height);
+    }
+
+    private static RenderedScreenshot RenderFormCrop(
+        string outputRoot,
+        string relativeDirectory,
+        string fileStem,
+        string label,
+        Func<Form> createForm,
+        Rectangle cropBounds,
+        int refreshPasses = 1)
+    {
+        using var form = createForm();
+        PrepareForm(form, refreshPasses);
+        using var full = new Bitmap(form.ClientSize.Width, form.ClientSize.Height, PixelFormat.Format32bppArgb);
+        form.DrawToBitmap(full, new Rectangle(Point.Empty, form.ClientSize));
+
+        var boundedCrop = Rectangle.Intersect(new Rectangle(Point.Empty, form.ClientSize), cropBounds);
+        if (boundedCrop.Width <= 0 || boundedCrop.Height <= 0)
+        {
+            throw new InvalidOperationException($"{label} crop is outside the rendered form bounds.");
+        }
+
+        using var bitmap = new Bitmap(boundedCrop.Width, boundedCrop.Height, PixelFormat.Format32bppArgb);
+        using (var graphics = Graphics.FromImage(bitmap))
+        {
+            graphics.DrawImage(full, new Rectangle(Point.Empty, boundedCrop.Size), boundedCrop, GraphicsUnit.Pixel);
+        }
+
+        var directory = Path.Combine(outputRoot, relativeDirectory);
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, $"{fileStem}.png");
+        bitmap.Save(path, ImageFormat.Png);
+        return new RenderedScreenshot(label, path, bitmap.Width, bitmap.Height);
+    }
+
+    private static void PrepareForm(Form form, int refreshPasses)
+    {
         var targetClientSize = form.ClientSize;
         form.Location = new Point(-20000, -20000);
         form.CreateControl();
@@ -453,13 +585,6 @@ internal static class Program
         }
 
         form.PerformLayout();
-        using var bitmap = new Bitmap(form.ClientSize.Width, form.ClientSize.Height, PixelFormat.Format32bppArgb);
-        form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, form.ClientSize));
-        postProcess?.Invoke(bitmap);
-
-        var path = Path.Combine(outputRoot, "states", $"{fileStem}.png");
-        bitmap.Save(path, ImageFormat.Png);
-        return new RenderedScreenshot(label, path, form.ClientSize.Width, form.ClientSize.Height);
     }
 
     private static void CreateControlHandles(Control control)
@@ -502,6 +627,15 @@ internal static class Program
                 tabs.SelectedTab = page;
                 return;
             }
+        }
+    }
+
+    private static void SelectRegion(Control root, string selectedRegionText)
+    {
+        foreach (var surface in Descendants(root).OfType<DesignV2SettingsSurface>())
+        {
+            surface.SelectRegion(selectedRegionText);
+            return;
         }
     }
 
@@ -647,9 +781,10 @@ internal static class Program
         {
             var screenshot = screenshots[index];
             var comma = index == screenshots.Count - 1 ? string.Empty : ",";
+            var relativePath = Path.GetRelativePath(outputRoot, screenshot.Path).Replace('\\', '/');
             lines.Add("    {");
             lines.Add($"      \"label\": \"{EscapeJson(screenshot.Label)}\",");
-            lines.Add($"      \"path\": \"states/{EscapeJson(Path.GetFileName(screenshot.Path))}\",");
+            lines.Add($"      \"path\": \"{EscapeJson(relativePath)}\",");
             lines.Add($"      \"width\": {screenshot.Width},");
             lines.Add($"      \"height\": {screenshot.Height}");
             lines.Add($"    }}{comma}");

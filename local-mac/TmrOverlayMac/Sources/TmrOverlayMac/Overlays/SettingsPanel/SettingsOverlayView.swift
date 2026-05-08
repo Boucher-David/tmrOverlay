@@ -81,6 +81,15 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         tabView.selectTabViewItem(item)
     }
 
+    func selectRegion(identifier: String) {
+        guard let selectedIdentifier = tabView.selectedTabViewItem?.identifier as? String,
+              let surface = designV2OverlaySurfaces[selectedIdentifier] else {
+            return
+        }
+
+        surface.selectRegion(identifier: identifier)
+    }
+
     override func layout() {
         super.layout()
         titleBar.frame = NSRect(x: 0, y: bounds.height - 42, width: bounds.width, height: 42)
