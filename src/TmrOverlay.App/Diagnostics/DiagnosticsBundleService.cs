@@ -306,7 +306,9 @@ internal sealed class DiagnosticsBundleService
                     trackMapsSucceeded);
             }
 
-            AddTextEntry(archive, "metadata/performance.json", JsonSerializer.Serialize(_performanceState.Snapshot(), JsonOptions));
+            var performanceSnapshot = _performanceState.Snapshot();
+            AddTextEntry(archive, "metadata/performance.json", JsonSerializer.Serialize(performanceSnapshot, JsonOptions));
+            AddTextEntry(archive, "metadata/ui-freeze-watch.json", JsonSerializer.Serialize(UiFreezeWatch(performanceSnapshot), JsonOptions));
 
             _logger.LogInformation("Created diagnostics bundle {DiagnosticsBundlePath}.", bundlePath);
             RecordSuccess(bundlePath, createdAtUtc, source);
@@ -430,6 +432,33 @@ internal sealed class DiagnosticsBundleService
                 Error = exception.Message
             };
         }
+    }
+
+    private static object UiFreezeWatch(AppPerformanceSnapshot performance)
+    {
+        static bool IsUiFreezeMetric(string id)
+        {
+            return id.StartsWith("overlay.settings.", StringComparison.OrdinalIgnoreCase)
+                || id.StartsWith("overlay.manager.", StringComparison.OrdinalIgnoreCase)
+                || id.StartsWith("overlay.flags.", StringComparison.OrdinalIgnoreCase)
+                || id.StartsWith("overlay.timer.", StringComparison.OrdinalIgnoreCase)
+                || id.Contains(".timer.", StringComparison.OrdinalIgnoreCase)
+                || id.Contains(".window.", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return new
+        {
+            performance.TimestampUtc,
+            Metrics = performance.Metrics
+                .Where(metric => IsUiFreezeMetric(metric.Id))
+                .OrderBy(metric => metric.Id, StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            Values = performance.OverlayUpdates
+                .Where(value => IsUiFreezeMetric(value.Id))
+                .OrderBy(value => value.Id, StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            Windows = performance.OverlayWindows
+        };
     }
 
     private static void AddRecentFiles(

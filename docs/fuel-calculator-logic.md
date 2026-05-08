@@ -7,6 +7,7 @@ Implementation files:
 - `src/TmrOverlay.Core/Telemetry/Live/LiveTelemetrySnapshot.cs`
 - `src/TmrOverlay.Core/Telemetry/Live/LiveRaceModels.cs`
 - `src/TmrOverlay.Core/Telemetry/Live/LiveRaceProgressProjector.cs`
+- `src/TmrOverlay.Core/Telemetry/Live/LiveRaceProjectionTracker.cs`
 - `src/TmrOverlay.Core/Fuel/FuelStrategyCalculator.cs`
 - `src/TmrOverlay.App/Overlays/FuelCalculator/FuelCalculatorViewModel.cs`
 - `src/TmrOverlay.App/Overlays/FuelCalculator/FuelCalculatorForm.cs`
@@ -53,9 +54,10 @@ The calculator builds `FuelStrategyInputs` from:
 - `LiveFuelPitModel`: current fuel level/percent, fuel burn projection, fuel confidence, and pit/service signals.
 - `LiveSessionModel`: session state, remaining clock, and lap limits.
 - `LiveRaceProgressModel`: strategy-car progress, reference progress, leader progress, lap gaps, race pace, positions, and race-laps-remaining estimates.
+- `LiveRaceProjectionModel`: rolling clean-lap pace and timed-race lap projections for overall leader, reference class, and team strategy.
 - `HistoricalSessionAggregate`: fuel burn history, lap history, tank metadata fallback, teammate stint targets, fill-rate evidence, pit lane time, and tire-service estimates.
 
-`LiveRaceProgressProjector` owns the shared race-laps-remaining calculation so Fuel, future Pit Service suggested-refuel rows, and other strategy overlays do not each recalculate leader progress and timed-race finish laps differently.
+`LiveRaceProgressProjector` remains the frame-local compatibility layer. `LiveRaceProjectionTracker` owns the stateful rolling clean-lap calculation so Fuel, Session / Weather, Flags, Standings class separators, future Pit Service suggested-refuel rows, and strategy overlays do not each recalculate timed-race finish laps differently. It requires a small clean-lap window before overriding session lap fields and ignores yellow/caution, non-racing, pit-road team laps, and obvious pace outliers.
 
 ## Live Fuel Snapshot
 

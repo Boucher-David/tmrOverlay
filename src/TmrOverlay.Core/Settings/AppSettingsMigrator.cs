@@ -5,7 +5,13 @@ namespace TmrOverlay.Core.Settings;
 
 internal static class AppSettingsMigrator
 {
-    public const int CurrentVersion = 6;
+    public const int CurrentVersion = 7;
+    private const string FlagsOverlayId = "flags";
+    private const string FlagsPrimaryScreenDefaultId = "primary-screen-default";
+    private const int FlagsDefaultWidth = 360;
+    private const int FlagsDefaultHeight = 170;
+    private const int FlagsMaximumWidth = 960;
+    private const int FlagsMaximumHeight = 420;
 
     private static readonly string[] ObsoleteOptionKeys =
     [
@@ -68,9 +74,22 @@ internal static class AppSettingsMigrator
             EnsureOption(overlay, OverlayOptionKeys.ChromeFooterSourceQualifying, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.ChromeFooterSourceRace, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true);
+            EnsureOption(overlay, OverlayOptionKeys.StandingsClassSeparatorsEnabled, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.StandingsOtherClassRows, defaultValue: 2, minimum: 0, maximum: 6);
+            EnsureOption(overlay, OverlayOptionKeys.StandingsColumnClassWidth, defaultValue: 54, minimum: 42, maximum: 110);
+            EnsureOption(overlay, OverlayOptionKeys.StandingsColumnCarWidth, defaultValue: 66, minimum: 48, maximum: 130);
+            EnsureOption(overlay, OverlayOptionKeys.StandingsColumnDriverWidth, defaultValue: 300, minimum: 180, maximum: 520);
+            EnsureOption(overlay, OverlayOptionKeys.StandingsColumnGapWidth, defaultValue: 92, minimum: 64, maximum: 160);
+            EnsureOption(overlay, OverlayOptionKeys.StandingsColumnIntervalWidth, defaultValue: 92, minimum: 64, maximum: 160);
+            EnsureOption(overlay, OverlayOptionKeys.StandingsColumnPitWidth, defaultValue: 46, minimum: 34, maximum: 90);
             EnsureOption(overlay, OverlayOptionKeys.RelativeCarsAhead, defaultValue: 5, minimum: 0, maximum: 8);
             EnsureOption(overlay, OverlayOptionKeys.RelativeCarsBehind, defaultValue: 5, minimum: 0, maximum: 8);
+            EnsureOption(overlay, OverlayOptionKeys.InputShowThrottle, defaultValue: true);
+            EnsureOption(overlay, OverlayOptionKeys.InputShowBrake, defaultValue: true);
+            EnsureOption(overlay, OverlayOptionKeys.InputShowClutch, defaultValue: true);
+            EnsureOption(overlay, OverlayOptionKeys.InputShowSteering, defaultValue: true);
+            EnsureOption(overlay, OverlayOptionKeys.InputShowGear, defaultValue: true);
+            EnsureOption(overlay, OverlayOptionKeys.InputShowSpeed, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.GapCarsAhead, defaultValue: 5, minimum: 0, maximum: 12);
             EnsureOption(overlay, OverlayOptionKeys.GapCarsBehind, defaultValue: 5, minimum: 0, maximum: 12);
             EnsureOption(overlay, OverlayOptionKeys.TrackMapBuildFromTelemetry, defaultValue: true);
@@ -79,8 +98,34 @@ internal static class AppSettingsMigrator
             overlay.Width = Math.Max(0, overlay.Width);
             overlay.Height = Math.Max(0, overlay.Height);
             overlay.Opacity = ClampFinite(overlay.Opacity, 0.2d, 1d, 0.88d);
+            NormalizeFlagsOverlay(overlay);
             overlay.LegacyProperties = null;
         }
+    }
+
+    private static void NormalizeFlagsOverlay(OverlaySettings overlay)
+    {
+        if (!string.Equals(overlay.Id, FlagsOverlayId, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var hadPrimaryScreenDefault = string.Equals(
+            overlay.ScreenId,
+            FlagsPrimaryScreenDefaultId,
+            StringComparison.Ordinal);
+        var hadFullScreenSize = overlay.Width > FlagsMaximumWidth
+            || overlay.Height > FlagsMaximumHeight
+            || (overlay.Width >= 900 && overlay.Height >= 500);
+        if (!hadPrimaryScreenDefault && !hadFullScreenSize)
+        {
+            return;
+        }
+
+        overlay.Scale = 1d;
+        overlay.Width = FlagsDefaultWidth;
+        overlay.Height = FlagsDefaultHeight;
+        overlay.ScreenId ??= FlagsPrimaryScreenDefaultId;
     }
 
     private static void MigrateLegacyOverlayOptions(OverlaySettings overlay)

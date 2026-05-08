@@ -66,7 +66,7 @@ EXPECTED_STATE_PNGS = [
 WINDOWS_EXPECTED_PNGS = {
     "states/fuel-calculator-live.png": (600, 320),
     "states/relative-live.png": (520, 360),
-    "states/standings-live.png": (620, 340),
+    "states/standings-live.png": (780, 520),
     "states/track-map-placeholder.png": (360, 360),
     "states/flags-blue.png": (360, 170),
     "states/session-weather-live.png": (420, 270),

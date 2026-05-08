@@ -25,6 +25,8 @@ internal sealed class HistoricalSessionContext
     public IReadOnlyList<HistoricalTrackSector> Sectors { get; init; } = [];
 
     public IReadOnlyList<HistoricalSessionResultPosition> ResultPositions { get; init; } = [];
+
+    public IReadOnlyList<HistoricalSessionResultPosition> StartingGridPositions { get; init; } = [];
 }
 
 internal sealed class HistoricalSessionSummary

@@ -16,6 +16,7 @@ internal sealed class AppPerformanceState
     private readonly Dictionary<string, DateTimeOffset> _lastOverlayRefreshAtUtc = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, OverlayLifecycleDiagnosticState> _lastOverlayLifecycleStates = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, OverlayTimerDiagnosticState> _lastOverlayTimerTicks = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, OverlayWindowDiagnosticSnapshot> _lastOverlayWindowStates = new(StringComparer.OrdinalIgnoreCase);
     private long _telemetryFrameCount;
     private DateTimeOffset? _firstTelemetryFrameAtUtc;
     private DateTimeOffset? _lastTelemetryFrameAtUtc;
@@ -164,6 +165,16 @@ internal sealed class AppPerformanceState
         lock (_sync)
         {
             var prefix = $"overlay.{NormalizeMetricSegment(overlayId)}.timer";
+            if (_lastOverlayTimerTicks.TryGetValue(overlayId, out var previousTick))
+            {
+                var elapsedMilliseconds = Math.Max(0d, (timestampUtc - previousTick.LastTickAtUtc).TotalMilliseconds);
+                var lateMilliseconds = Math.Max(0d, elapsedMilliseconds - safeInterval);
+                var lateThresholdMilliseconds = Math.Max(250d, safeInterval * 0.5d);
+                RecordOverlayUpdateValue($"{prefix}.elapsed_ms", elapsedMilliseconds, timestampUtc);
+                RecordOverlayUpdateValue($"{prefix}.late_ms", lateMilliseconds, timestampUtc);
+                RecordOverlayUpdateValue($"{prefix}.late", lateMilliseconds > lateThresholdMilliseconds ? 1d : 0d, timestampUtc);
+            }
+
             _lastOverlayTimerTicks[overlayId] = new OverlayTimerDiagnosticState(
                 safeInterval,
                 visible,
@@ -244,6 +255,89 @@ internal sealed class AppPerformanceState
                 timestampUtc);
 
             _lastOverlayLifecycleStates[overlayId] = current;
+        }
+    }
+
+    public void RecordOverlayWindowState(
+        string overlayId,
+        DateTimeOffset timestampUtc,
+        bool actualVisible,
+        bool topMost,
+        bool alwaysOnTopSetting,
+        bool inputTransparent,
+        bool noActivate,
+        bool settingsOverlayActive,
+        int x,
+        int y,
+        int width,
+        int height,
+        double opacity)
+    {
+        if (string.IsNullOrWhiteSpace(overlayId))
+        {
+            return;
+        }
+
+        lock (_sync)
+        {
+            var normalizedOverlayId = NormalizeMetricSegment(overlayId);
+            var prefix = $"overlay.{normalizedOverlayId}.window";
+            var clampedOpacity = Math.Clamp(opacity, 0d, 1d);
+            var inputInterceptRisk = settingsOverlayActive
+                && actualVisible
+                && !inputTransparent
+                && clampedOpacity > 0.01d;
+            RecordOverlayUpdateValue($"{prefix}.visible", actualVisible ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.top_most", topMost ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.always_on_top_setting", alwaysOnTopSetting ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.input_transparent", inputTransparent ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.no_activate", noActivate ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.settings_overlay_active", settingsOverlayActive ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.input_intercept_risk", inputInterceptRisk ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.opacity", clampedOpacity, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.x", x, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.y", y, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.width", Math.Max(0, width), timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.height", Math.Max(0, height), timestampUtc);
+
+            _lastOverlayWindowStates[overlayId] = new OverlayWindowDiagnosticSnapshot(
+                OverlayId: overlayId,
+                TimestampUtc: timestampUtc,
+                Visible: actualVisible,
+                TopMost: topMost,
+                AlwaysOnTopSetting: alwaysOnTopSetting,
+                InputTransparent: inputTransparent,
+                NoActivate: noActivate,
+                SettingsOverlayActive: settingsOverlayActive,
+                InputInterceptRisk: inputInterceptRisk,
+                X: x,
+                Y: y,
+                Width: Math.Max(0, width),
+                Height: Math.Max(0, height),
+                Opacity: Math.Round(clampedOpacity, 3));
+        }
+    }
+
+    public void RecordSettingsSaveApplyQueued(int coalescedRequestCount, bool timerAlreadyPending)
+    {
+        var timestampUtc = DateTimeOffset.UtcNow;
+        lock (_sync)
+        {
+            RecordOverlayUpdateValue("overlay.settings.apply.queued", 1d, timestampUtc);
+            RecordOverlayUpdateValue("overlay.settings.apply.coalesced_request_count", Math.Max(1, coalescedRequestCount), timestampUtc);
+            RecordOverlayUpdateValue("overlay.settings.apply.timer_already_pending", timerAlreadyPending ? 1d : 0d, timestampUtc);
+        }
+    }
+
+    public void RecordSettingsSaveApplyFlushed(int coalescedRequestCount, TimeSpan queuedFor, bool succeeded)
+    {
+        var timestampUtc = DateTimeOffset.UtcNow;
+        lock (_sync)
+        {
+            RecordOverlayUpdateValue("overlay.settings.apply.flush", 1d, timestampUtc);
+            RecordOverlayUpdateValue("overlay.settings.apply.flush_success", succeeded ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue("overlay.settings.apply.flushed_request_count", Math.Max(1, coalescedRequestCount), timestampUtc);
+            RecordOverlayUpdateValue("overlay.settings.apply.queued_ms", Math.Max(0d, queuedFor.TotalMilliseconds), timestampUtc);
         }
     }
 
@@ -359,6 +453,10 @@ internal sealed class AppPerformanceState
                     .Values
                     .Select(metric => metric.Snapshot())
                     .OrderBy(metric => metric.Id, StringComparer.OrdinalIgnoreCase)
+                    .ToArray(),
+                OverlayWindows: _lastOverlayWindowStates
+                    .Values
+                    .OrderBy(window => window.OverlayId, StringComparer.OrdinalIgnoreCase)
                     .ToArray(),
                 Capture: new CapturePerformanceSnapshot(
                     WriteStatusCount: _captureWriteStatusCount,
@@ -723,6 +821,11 @@ internal static class AppPerformanceMetricIds
     public const string OverlaySettingsSyncCapture = "overlay.settings.sync_capture";
     public const string OverlaySettingsSyncDiagnostics = "overlay.settings.sync_diagnostics";
     public const string OverlaySettingsSyncAnalysis = "overlay.settings.sync_analysis";
+    public const string OverlaySettingsSaveAndApply = "overlay.settings.save_and_apply";
+    public const string OverlaySettingsSave = "overlay.settings.save";
+    public const string OverlaySettingsApply = "overlay.settings.apply";
+    public const string OverlaySettingsRefreshBrowserSizes = "overlay.settings.refresh_browser_sizes";
+    public const string OverlayManagerApplySettings = "overlay.manager.apply_settings";
     public const string LocalhostRequest = "localhost.request";
     public const string DiagnosticsBundleCreate = "diagnostics.bundle.create";
     public const string DiagnosticsBundleMetadata = "diagnostics.bundle.metadata";
@@ -760,8 +863,25 @@ internal sealed record AppPerformanceSnapshot(
     IReadOnlyList<PerformanceMetricSnapshot> Metrics,
     IReadOnlyList<PerformanceValueSnapshot> IRacingSystem,
     IReadOnlyList<PerformanceValueSnapshot> OverlayUpdates,
+    IReadOnlyList<OverlayWindowDiagnosticSnapshot> OverlayWindows,
     CapturePerformanceSnapshot Capture,
     ProcessPerformanceSnapshot Process);
+
+internal sealed record OverlayWindowDiagnosticSnapshot(
+    string OverlayId,
+    DateTimeOffset TimestampUtc,
+    bool Visible,
+    bool TopMost,
+    bool AlwaysOnTopSetting,
+    bool InputTransparent,
+    bool NoActivate,
+    bool SettingsOverlayActive,
+    bool InputInterceptRisk,
+    int X,
+    int Y,
+    int Width,
+    int Height,
+    double Opacity);
 
 internal sealed record PerformanceMetricSnapshot(
     string Id,

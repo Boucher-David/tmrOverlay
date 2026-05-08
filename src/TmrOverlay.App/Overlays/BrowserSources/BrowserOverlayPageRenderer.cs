@@ -186,7 +186,7 @@ internal static class BrowserOverlayPageRenderer
     .overlay {
       width: fit-content;
       min-width: 360px;
-      max-width: min(760px, calc(100vw - 16px));
+      max-width: calc(100vw - 16px);
       border: 1px solid rgba(255, 255, 255, 0.22);
       border-radius: 8px;
       background: rgba(10, 14, 17, 0.84);
@@ -290,8 +290,8 @@ internal static class BrowserOverlayPageRenderer
     }
 
     tr.class-header td {
-      color: #e7edf2;
-      background: rgba(255, 255, 255, 0.07);
+      color: var(--class-header-fg, #e7edf2);
+      background: var(--class-header-bg, rgba(255, 255, 255, 0.07));
       font-size: 10px;
       font-weight: 800;
       text-transform: uppercase;
@@ -524,7 +524,9 @@ internal static class BrowserOverlayPageRenderer
     const escapeAttribute = escapeHtml;
 
     const driverName = (row) => row?.driverName || row?.teamName || `Car ${row?.carIdx ?? '--'}`;
-    const carNumber = (row) => row?.carNumber ? `#${row.carNumber}` : `#${row?.carIdx ?? '--'}`;
+    const carNumber = (row) => row?.carNumber ? `#${String(row.carNumber).replace(/^#/, '')}` : `#${row?.carIdx ?? '--'}`;
+    const parsedHexColors = new Map();
+    const classHeaderStyles = new Map();
     const telemetryAvailability = (live) => {
       if (!live?.isConnected) {
         return { isAvailable: false, isFresh: false, reason: 'disconnected', status: 'iRacing disconnected' };
@@ -565,17 +567,73 @@ internal static class BrowserOverlayPageRenderer
       if (!rows.length) {
         return '<div class="empty">Waiting for live rows.</div>';
       }
-      const headerHtml = headers.map((header) => `<th>${escapeHtml(header.label)}</th>`).join('');
+      const fixedWidth = headers.reduce((total, header) => total + columnWidth(header), 0);
+      const tableStyle = fixedWidth > 0
+        ? ` style="width:${fixedWidth}px; min-width:${fixedWidth}px; table-layout:fixed;"`
+        : '';
+      const colGroup = fixedWidth > 0
+        ? `<colgroup>${headers.map((header) => `<col style="width:${columnWidth(header)}px;">`).join('')}</colgroup>`
+        : '';
+      const headerHtml = headers.map((header) => `<th${cellStyle(header)}>${escapeHtml(header.label)}</th>`).join('');
       const rowHtml = rows.map((row) => {
-        const cells = headers.map((header) => `<td>${header.value(row)}</td>`).join('');
+        const cells = headers.map((header) => `<td${cellStyle(header)}>${header.value(row)}</td>`).join('');
         const classes = [
           row.isFocus || row.isReferenceCar ? 'focus' : '',
           row.onPitRoad && !(row.isFocus || row.isReferenceCar) ? 'pit' : '',
           row.rowKind === 'header' || row.isClassHeader ? 'class-header' : ''
         ].filter(Boolean).join(' ');
-        return `<tr class="${classes}">${cells}</tr>`;
+        return `<tr class="${classes}"${classHeaderStyle(row)}>${cells}</tr>`;
       }).join('');
-      return `<table><thead><tr>${headerHtml}</tr></thead><tbody>${rowHtml}</tbody></table>`;
+      return `<table${tableStyle}>${colGroup}<thead><tr>${headerHtml}</tr></thead><tbody>${rowHtml}</tbody></table>`;
+    }
+
+    function columnWidth(header) {
+      const width = Number(header?.width);
+      return Number.isFinite(width) && width > 0 ? Math.round(width) : 0;
+    }
+
+    function cellStyle(header) {
+      const styles = [];
+      const width = columnWidth(header);
+      if (width > 0) styles.push(`width:${width}px`);
+      const align = ['left', 'right', 'center'].includes(header?.align) ? header.align : null;
+      if (align) styles.push(`text-align:${align}`);
+      return styles.length ? ` style="${styles.join(';')}"` : '';
+    }
+
+    function classHeaderStyle(row) {
+      if (row?.rowKind !== 'header' && !row?.isClassHeader) return '';
+      return classColorStyle(row?.carClassColorHex);
+    }
+
+    function classColorStyle(value) {
+      const color = parseHexColor(value);
+      if (!color) return '';
+      if (classHeaderStyles.has(color.key)) return classHeaderStyles.get(color.key);
+      const style = ` style="--class-header-bg: rgba(${color.r}, ${color.g}, ${color.b}, 0.28); --class-header-fg: #ffffff;"`;
+      classHeaderStyles.set(color.key, style);
+      return style;
+    }
+
+    function classColorCss(value, fallback = '#ecf4f8') {
+      const color = parseHexColor(value);
+      return color ? `#${color.key}` : fallback;
+    }
+
+    function parseHexColor(value) {
+      const match = /^(?:#|0x)?([0-9a-f]{6})$/i.exec(String(value || '').trim());
+      if (!match) return null;
+      const key = match[1].toUpperCase();
+      if (parsedHexColors.has(key)) return parsedHexColors.get(key);
+      const rgb = Number.parseInt(key, 16);
+      const color = {
+        key,
+        r: (rgb >> 16) & 255,
+        g: (rgb >> 8) & 255,
+        b: rgb & 255
+      };
+      parsedHexColors.set(key, color);
+      return color;
     }
 
     function metric(label, value) {

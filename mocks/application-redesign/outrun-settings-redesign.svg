@@ -1,0 +1,219 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="680" viewBox="0 0 1240 680" role="img" aria-label="TMR Overlay application redesign mockup with 80s outrun aesthetic">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#13051f"/>
+      <stop offset="0.48" stop-color="#231050"/>
+      <stop offset="1" stop-color="#061832"/>
+    </linearGradient>
+    <linearGradient id="chrome" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff2aa7"/>
+      <stop offset="0.52" stop-color="#8d5cff"/>
+      <stop offset="1" stop-color="#00d9ff"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#24113c" stop-opacity="0.94"/>
+      <stop offset="1" stop-color="#091729" stop-opacity="0.96"/>
+    </linearGradient>
+    <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffd15b"/>
+      <stop offset="0.48" stop-color="#ff5b8f"/>
+      <stop offset="1" stop-color="#7d32ff"/>
+    </linearGradient>
+    <linearGradient id="gridFade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#00e8ff" stop-opacity="0"/>
+      <stop offset="0.36" stop-color="#00e8ff" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#ff2aa7" stop-opacity="0.58"/>
+    </linearGradient>
+    <filter id="pinkGlow" x="-35%" y="-35%" width="170%" height="170%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="softShadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#000000" flood-opacity="0.42"/>
+    </filter>
+    <clipPath id="windowClip">
+      <rect x="44" y="36" width="1152" height="608" rx="18"/>
+    </clipPath>
+    <clipPath id="sunClip">
+      <circle cx="1008" cy="120" r="80"/>
+    </clipPath>
+    <style>
+      .font { font-family: Inter, Segoe UI, Arial, sans-serif; }
+      .mono { font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace; }
+      .title { font-size: 24px; font-weight: 800; letter-spacing: 0; fill: #fff7ff; }
+      .small { font-size: 12px; fill: #c7dcff; }
+      .muted { fill: #8fb1d7; }
+      .tab { font-size: 13px; font-weight: 700; fill: #b9d9ff; }
+      .tabActive { font-size: 13px; font-weight: 800; fill: #fff7ff; }
+      .label { font-size: 13px; fill: #cfe6ff; }
+      .value { font-size: 14px; font-weight: 700; fill: #fff7ff; }
+      .accent { fill: #00e8ff; }
+      .hot { fill: #ff3fb7; }
+      .warn { fill: #ffd15b; }
+      .line { stroke: #26456b; stroke-width: 1; }
+      .neonLine { stroke: url(#chrome); stroke-width: 2; filter: url(#pinkGlow); }
+    </style>
+  </defs>
+
+  <rect width="1240" height="680" fill="url(#bg)"/>
+  <g opacity="0.42">
+    <rect x="0" y="390" width="1240" height="290" fill="url(#gridFade)"/>
+    <path d="M0 665H1240M0 632H1240M0 604H1240M0 579H1240M0 558H1240M0 539H1240M0 522H1240M0 507H1240M0 494H1240M0 482H1240M0 471H1240M0 461H1240M0 452H1240M0 444H1240M0 436H1240M0 429H1240M0 422H1240M0 416H1240M0 410H1240M0 405H1240M0 400H1240" stroke="#00e8ff" stroke-width="1"/>
+    <path d="M620 392L105 680M620 392L238 680M620 392L365 680M620 392L493 680M620 392L620 680M620 392L747 680M620 392L875 680M620 392L1002 680M620 392L1135 680" stroke="#ff2aa7" stroke-width="1.1"/>
+  </g>
+
+  <g clip-path="url(#sunClip)" opacity="0.9">
+    <circle cx="1008" cy="120" r="80" fill="url(#sun)"/>
+    <rect x="920" y="92" width="176" height="7" fill="#13051f" opacity="0.9"/>
+    <rect x="920" y="112" width="176" height="8" fill="#13051f" opacity="0.9"/>
+    <rect x="920" y="135" width="176" height="10" fill="#13051f" opacity="0.9"/>
+    <rect x="920" y="162" width="176" height="12" fill="#13051f" opacity="0.9"/>
+  </g>
+
+  <rect x="44" y="36" width="1152" height="608" rx="18" fill="#050914" stroke="#00e8ff" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="45" y="37" width="1150" height="606" rx="17" fill="url(#panel)" opacity="0.96"/>
+  <g clip-path="url(#windowClip)">
+    <rect x="44" y="36" width="1152" height="58" fill="#0b1025"/>
+    <rect x="44" y="92" width="1152" height="2" fill="url(#chrome)" filter="url(#pinkGlow)"/>
+    <path d="M44 94H1196V130H44Z" fill="#140821" opacity="0.72"/>
+  </g>
+
+  <g class="font">
+    <rect x="66" y="54" width="46" height="24" rx="5" fill="#111a35" stroke="#ff2aa7" stroke-width="1.4"/>
+    <text x="79" y="71" font-size="14" font-weight="900" fill="#fff7ff">TMR</text>
+    <text x="128" y="61" class="title">Tech Mates Racing Overlay</text>
+    <text x="129" y="81" class="small muted">Settings control plane - outrun concept skin</text>
+    <rect x="1054" y="56" width="64" height="20" rx="10" fill="#123750" stroke="#00e8ff" stroke-width="1"/>
+    <circle cx="1070" cy="66" r="4" fill="#62ff9f"/>
+    <text x="1081" y="70" font-size="11" font-weight="700" fill="#cfffff">LIVE</text>
+    <rect x="1130" y="54" width="30" height="24" rx="7" fill="#2a1230" stroke="#ff2aa7" stroke-width="1"/>
+    <text x="1141" y="71" font-size="13" font-weight="900" fill="#ffc8ef">X</text>
+  </g>
+
+  <g class="font">
+    <rect x="64" y="116" width="190" height="506" rx="14" fill="#090f20" stroke="#243c63" stroke-width="1"/>
+    <text x="84" y="146" font-size="12" font-weight="800" fill="#6fdfff">OVERLAYS</text>
+    <g transform="translate(78 168)">
+      <rect x="0" y="0" width="162" height="34" rx="8" fill="#111a32"/>
+      <text x="15" y="22" class="tab">General</text>
+    </g>
+    <g transform="translate(78 210)">
+      <rect x="0" y="0" width="162" height="38" rx="8" fill="#301044" stroke="#ff2aa7" stroke-width="1.5" filter="url(#pinkGlow)"/>
+      <rect x="0" y="0" width="5" height="38" rx="3" fill="#00e8ff"/>
+      <text x="15" y="24" class="tabActive">Standings</text>
+    </g>
+    <g transform="translate(78 256)">
+      <rect x="0" y="0" width="162" height="34" rx="8" fill="#111a32"/>
+      <text x="15" y="22" class="tab">Relative</text>
+    </g>
+    <g transform="translate(78 298)">
+      <rect x="0" y="0" width="162" height="34" rx="8" fill="#111a32"/>
+      <text x="15" y="22" class="tab">Gap To Leader</text>
+    </g>
+    <g transform="translate(78 340)">
+      <rect x="0" y="0" width="162" height="34" rx="8" fill="#111a32"/>
+      <text x="15" y="22" class="tab">Track Map</text>
+    </g>
+    <g transform="translate(78 382)">
+      <rect x="0" y="0" width="162" height="34" rx="8" fill="#111a32"/>
+      <text x="15" y="22" class="tab">Fuel Calculator</text>
+    </g>
+    <g transform="translate(78 424)">
+      <rect x="0" y="0" width="162" height="34" rx="8" fill="#111a32"/>
+      <text x="15" y="22" class="tab">Input / Car State</text>
+    </g>
+    <g transform="translate(78 466)">
+      <rect x="0" y="0" width="162" height="34" rx="8" fill="#111a32"/>
+      <text x="15" y="22" class="tab">Car Radar</text>
+    </g>
+    <g transform="translate(78 508)">
+      <rect x="0" y="0" width="162" height="34" rx="8" fill="#111a32"/>
+      <text x="15" y="22" class="tab">Flags</text>
+    </g>
+    <g transform="translate(78 560)">
+      <rect x="0" y="0" width="162" height="36" rx="8" fill="#071827" stroke="#00e8ff" stroke-width="1"/>
+      <text x="15" y="23" class="tab">Support</text>
+    </g>
+  </g>
+
+  <g class="font">
+    <rect x="278" y="116" width="890" height="506" rx="16" fill="#081121" stroke="#28476e" stroke-width="1.2"/>
+    <rect x="278" y="116" width="890" height="70" rx="16" fill="#101632"/>
+    <path d="M278 171H1168" class="neonLine"/>
+    <text x="306" y="151" font-size="26" font-weight="900" fill="#fff7ff">Standings</text>
+    <text x="306" y="174" class="small muted">Native overlay, browser source, shared header and footer slots</text>
+    <rect x="1004" y="134" width="120" height="30" rx="15" fill="#103246" stroke="#00e8ff" stroke-width="1"/>
+    <text x="1024" y="154" font-size="12" font-weight="800" fill="#d8ffff">Scale 100%</text>
+
+    <g transform="translate(306 206)">
+      <rect x="0" y="0" width="282" height="42" rx="21" fill="#090f20" stroke="#283f63" stroke-width="1"/>
+      <rect x="6" y="6" width="86" height="30" rx="15" fill="#ff2aa7" filter="url(#pinkGlow)"/>
+      <text x="25" y="26" font-size="13" font-weight="900" fill="#fff7ff">General</text>
+      <text x="119" y="26" font-size="13" font-weight="800" fill="#9edfff">Header</text>
+      <text x="206" y="26" font-size="13" font-weight="800" fill="#9edfff">Footer</text>
+    </g>
+
+    <g transform="translate(306 272)">
+      <rect x="0" y="0" width="392" height="220" rx="12" fill="#0b1629" stroke="#244266" stroke-width="1"/>
+      <text x="22" y="32" font-size="15" font-weight="900" fill="#fff7ff">Overlay Controls</text>
+      <line x1="22" y1="48" x2="370" y2="48" class="line"/>
+      <text x="22" y="80" class="label">Visible</text>
+      <rect x="300" y="62" width="54" height="26" rx="13" fill="#053c45" stroke="#00e8ff" stroke-width="1"/>
+      <circle cx="340" cy="75" r="10" fill="#62ff9f"/>
+      <text x="22" y="118" class="label">Opacity</text>
+      <rect x="148" y="108" width="205" height="6" rx="3" fill="#213550"/>
+      <rect x="148" y="108" width="172" height="6" rx="3" fill="url(#chrome)"/>
+      <circle cx="320" cy="111" r="8" fill="#ffd15b"/>
+      <text x="22" y="156" class="label">Other-class rows</text>
+      <rect x="286" y="138" width="68" height="28" rx="8" fill="#111a32" stroke="#00e8ff" stroke-width="1"/>
+      <text x="316" y="157" text-anchor="middle" class="value">6</text>
+      <text x="22" y="194" class="label">Display in sessions</text>
+      <rect x="188" y="178" width="58" height="24" rx="12" fill="#251138" stroke="#ff2aa7" stroke-width="1"/>
+      <text x="205" y="195" font-size="11" font-weight="800" fill="#fff7ff">Race</text>
+      <rect x="254" y="178" width="76" height="24" rx="12" fill="#0b2432" stroke="#00e8ff" stroke-width="1"/>
+      <text x="270" y="195" font-size="11" font-weight="800" fill="#d8ffff">Practice</text>
+    </g>
+
+    <g transform="translate(726 272)">
+      <rect x="0" y="0" width="414" height="220" rx="12" fill="#0b1629" stroke="#244266" stroke-width="1"/>
+      <text x="22" y="32" font-size="15" font-weight="900" fill="#fff7ff">Preview</text>
+      <line x1="22" y1="48" x2="392" y2="48" class="line"/>
+      <rect x="26" y="66" width="360" height="122" rx="10" fill="#050914" stroke="#00e8ff" stroke-width="1"/>
+      <rect x="26" y="66" width="360" height="25" rx="10" fill="#181235"/>
+      <text x="43" y="83" font-size="11" font-weight="900" fill="#00e8ff">P</text>
+      <text x="78" y="83" font-size="11" font-weight="900" fill="#ff7fd0">DRIVER</text>
+      <text x="264" y="83" font-size="11" font-weight="900" fill="#ffd15b">GAP</text>
+      <g class="mono" font-size="12" font-weight="700">
+        <text x="44" y="111" fill="#ffffff">1</text>
+        <text x="78" y="111" fill="#ffffff">Boucher</text>
+        <text x="262" y="111" fill="#62ff9f">Leader</text>
+        <text x="44" y="136" fill="#d9f7ff">2</text>
+        <text x="78" y="136" fill="#d9f7ff">Martinez</text>
+        <text x="262" y="136" fill="#d9f7ff">+0.42</text>
+        <text x="44" y="161" fill="#ffb8e7">3</text>
+        <text x="78" y="161" fill="#ffb8e7">Kavanagh</text>
+        <text x="262" y="161" fill="#ffb8e7">+1.18</text>
+      </g>
+      <text x="28" y="209" class="small muted">Outrun theme keeps dense race data readable.</text>
+    </g>
+
+    <g transform="translate(306 516)">
+      <rect x="0" y="0" width="834" height="72" rx="12" fill="#0b1629" stroke="#244266" stroke-width="1"/>
+      <text x="22" y="29" class="label">Browser source</text>
+      <rect x="140" y="13" width="522" height="34" rx="8" fill="#050914" stroke="#263f62" stroke-width="1"/>
+      <text x="158" y="35" class="mono" font-size="12" fill="#9fdcff">http://localhost:5011/overlays/standings</text>
+      <rect x="680" y="13" width="78" height="34" rx="8" fill="#251138" stroke="#ff2aa7" stroke-width="1.2"/>
+      <text x="706" y="35" font-size="12" font-weight="900" fill="#fff7ff">Copy</text>
+      <rect x="774" y="13" width="38" height="34" rx="8" fill="#0b2a36" stroke="#00e8ff" stroke-width="1.2"/>
+      <text x="786" y="35" font-size="15" font-weight="900" fill="#d8ffff">?</text>
+    </g>
+  </g>
+
+  <g opacity="0.55">
+    <path d="M284 604C421 575 500 617 622 588C754 557 852 603 1011 575C1087 562 1136 571 1168 584" fill="none" stroke="#ff2aa7" stroke-width="2" filter="url(#pinkGlow)"/>
+    <path d="M284 613C421 584 500 626 622 597C754 566 852 612 1011 584C1087 571 1136 580 1168 593" fill="none" stroke="#00e8ff" stroke-width="1"/>
+  </g>
+</svg>

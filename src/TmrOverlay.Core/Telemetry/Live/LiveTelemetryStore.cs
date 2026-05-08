@@ -11,6 +11,7 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
     private readonly object _sync = new();
     private readonly Dictionary<int, ProximityHistory> _proximityHistory = [];
     private readonly TrackMapSectorTracker _trackMapSectorTracker = new();
+    private readonly LiveRaceProjectionTracker _raceProjectionTracker = new();
     private HistoricalSessionContext _context = HistoricalSessionContext.Empty;
     private LiveTelemetrySnapshot _snapshot = LiveTelemetrySnapshot.Empty;
     private int? _lastProximityReferenceCarIdx;
@@ -44,6 +45,7 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
             if (!string.Equals(_snapshot.SourceId, sourceId, StringComparison.Ordinal))
             {
                 _trackMapSectorTracker.Reset();
+                _raceProjectionTracker.Reset();
             }
 
             _snapshot = _snapshot with
@@ -65,6 +67,7 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
             _context = HistoricalSessionContext.Empty;
             _proximityHistory.Clear();
             _trackMapSectorTracker.Reset();
+            _raceProjectionTracker.Reset();
             _lastProximityReferenceCarIdx = null;
             _snapshot = LiveTelemetrySnapshot.Empty with
             {
@@ -81,6 +84,7 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
         {
             _context = context;
             _trackMapSectorTracker.Reset();
+            _raceProjectionTracker.Reset();
             _snapshot = _snapshot with
             {
                 Context = context,
@@ -109,6 +113,12 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
             var leaderGap = LiveLeaderGapSnapshot.From(sample);
             var trackMap = _trackMapSectorTracker.Update(_context, sample);
             var models = LiveRaceModelBuilder.From(_context, sample, fuel, proximity, leaderGap, trackMap);
+            var raceProjection = _raceProjectionTracker.Update(_context, sample, models);
+            models = models with
+            {
+                RaceProjection = raceProjection,
+                RaceProgress = LiveRaceProjectionMapper.ApplyToRaceProgress(models.RaceProgress, raceProjection)
+            };
 
             _snapshot = new LiveTelemetrySnapshot(
                 IsConnected: true,

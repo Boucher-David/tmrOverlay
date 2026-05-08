@@ -6,6 +6,7 @@ namespace TmrOverlay.Core.Telemetry.Live;
 internal static class LiveRaceProgressProjector
 {
     private const int UnlimitedLapsSentinel = 32000;
+    private const int MaxPlausibleLiveLapCount = 1000;
 
     public static LiveRaceLapEstimate EstimateLapsRemaining(
         HistoricalSessionContext context,
@@ -21,12 +22,13 @@ internal static class LiveRaceProgressProjector
             return new LiveRaceLapEstimate(0d, "session ended");
         }
 
-        if (ValidLapCount(session.SessionLapsRemain) is { } liveLapsRemaining)
+        var timedOrUnlimited = IsTimedOrUnlimitedSession(context, session);
+        if (!timedOrUnlimited && ValidLapCount(session.SessionLapsRemain) is { } liveLapsRemaining)
         {
             return new LiveRaceLapEstimate(liveLapsRemaining, "session laps remain");
         }
 
-        if (ValidLapCount(session.SessionLapsTotal) is { } liveLapTotal)
+        if (!timedOrUnlimited && ValidLapCount(session.SessionLapsTotal) is { } liveLapTotal)
         {
             return new LiveRaceLapEstimate(
                 strategyCarProgressLaps is not null
@@ -95,6 +97,18 @@ internal static class LiveRaceProgressProjector
             : null;
     }
 
+    private static bool IsTimedOrUnlimitedSession(HistoricalSessionContext context, LiveSessionModel session)
+    {
+        return ContainsUnlimited(context.Session.SessionLaps)
+            || session.SessionLapsTotal is >= UnlimitedLapsSentinel
+            || session.SessionLapsRemain is >= UnlimitedLapsSentinel;
+    }
+
+    private static bool ContainsUnlimited(string? value)
+    {
+        return value?.IndexOf("unlimited", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
     private static double? ParseSeconds(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -110,7 +124,10 @@ internal static class LiveRaceProgressProjector
 
     private static double? ValidLapCount(int? laps)
     {
-        return laps is { } lapCount && lapCount > 0 && lapCount < UnlimitedLapsSentinel
+        return laps is { } lapCount
+            && lapCount > 0
+            && lapCount < UnlimitedLapsSentinel
+            && lapCount <= MaxPlausibleLiveLapCount
             ? lapCount
             : null;
     }

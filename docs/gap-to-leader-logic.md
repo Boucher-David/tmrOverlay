@@ -11,7 +11,7 @@ Implementation files:
 
 ## Purpose
 
-The gap-to-leader overlay is a live in-class race trend graph. It shows how the currently focused car and nearby same-class cars relate to that car's class leader over time.
+The gap-to-leader overlay is a live in-class race trend graph. It shows how the currently focused car and nearby same-class cars relate to the nearest eligible same-lap reference over time. That reference is normally the class leader, but it can move down the order when the focused car is more than a lap behind the cars ahead.
 
 The overlay is race-only product UI. The settings tab omits ordinary session filters, and the overlay manager normalizes its visibility to race sessions only.
 
@@ -86,6 +86,8 @@ Data review note from the May 2026 capture analysis:
 - Same-class timing rows can have standings/F2 data while lap-distance progress is missing. The graph should keep accepting those rows for timing, but it should flag the source as partial and avoid using them for radar-style placement.
 - Large class-gap jumps can happen around leader changes, session transitions, pit windows, and stale/uninitialized timing rows. Model-v2 should carry source quality and missing-leader reasons so the overlay can segment or de-emphasize those points instead of drawing them as normal continuity.
 
+Long-race feedback changed the reference behavior from "always leader" to "nearest eligible same-lap reference." The graph limits the +/- comparison field to cars on the same lap as the focused car. If P1/reference crosses more than one lap ahead, the graph switches to the next same-lap in-class car such as P2 or P3. If the focused car unlaps itself from P1, P1 becomes eligible again. Out-of-reach cars can still be named as `P<N> +N lap` reference context, but they do not draw the white same-lap reference line.
+
 ## Same-Class Car List
 
 The graph list always attempts to include:
@@ -145,7 +147,7 @@ Every car gets a render state when seen.
 Always desired:
 
 - Focused/reference car.
-- Class leader.
+- Current same-lap reference car.
 
 Additional desired cars:
 
@@ -206,7 +208,7 @@ Y-axis maximum is based on visible points in the current X-axis domain.
 2. Ensure it is at least 1 second.
 3. Round up to a nice ceiling.
 
-The class leader baseline is always drawn at the top.
+The current same-lap reference baseline is always drawn at the top. When that reference is the class leader, the Y-axis label still reads `Leader`; when the focused car is lapped, the label uses the nearest eligible position context instead of pretending the out-of-reach leader is still a comparable zero line.
 
 ## Drawing Order
 
@@ -215,7 +217,7 @@ The graph draws:
 1. Weather bands.
 2. Grid lines.
 3. Leader-change markers.
-4. Class leader baseline.
+4. Current reference baseline.
 5. Selected car series.
 6. Endpoint position labels.
 7. Driver-change markers.
@@ -298,6 +300,6 @@ When no gap data exists:
 Live endurance-race review found several product issues that should guide the model-v2 migration:
 
 - Practice, qualifying, and test sessions make this graph misleading because the useful comparison is not race-position gap to class leader. Keep the race-gap view race-oriented unless a dedicated non-race timing mode exists.
-- Multi-lap leader gaps can make local position battles unreadable, especially on long laps. Future graph modes should separate leader-gap context from local fight readability, or use lap-normalized/segmented Y-axis behavior.
+- Multi-lap leader gaps can make local position battles unreadable, especially on long laps. The current graph mitigates this by keeping +/- comparisons same-lap and switching the reference to the nearest eligible in-class car when the leader is more than a lap ahead. Future graph modes can still add richer pit-strategy or alternate-reference context if endurance review shows the same-lap rule hides useful strategy information.
 - Threat and leader summary text did not handle pit cycles and on-track pace differences well. That interpretation may belong in future relative, standings, or strategy overlays rather than in this graph.
 - The graph should be tested for more frequent update cadence. The collector reads `CarIdxPosition` and `CarIdxClassPosition` every frame, but we still need to verify from race captures whether iRacing updates those positions continuously or only around lap/scoring events.

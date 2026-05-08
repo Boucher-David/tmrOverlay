@@ -216,6 +216,12 @@ internal static class FuelStrategyCalculator
 
     private static MetricSelection SelectRacePace(FuelStrategyInputs inputs, MetricSelection strategyLapTime)
     {
+        var projection = inputs.RaceProjection;
+        if (ValidLapTime(projection.OverallLeaderPaceSeconds) is { } projectedRacePace)
+        {
+            return new MetricSelection(projectedRacePace, projection.OverallLeaderPaceSource);
+        }
+
         var raceProgress = inputs.RaceProgress;
         if (ValidLapTime(raceProgress.RacePaceSeconds) is { } liveRacePace
             && IsLeaderRacePaceSource(raceProgress.RacePaceSource))
@@ -238,6 +244,13 @@ internal static class FuelStrategyCalculator
 
     private static RaceLapEstimate SelectRaceLapEstimate(FuelStrategyInputs inputs, MetricSelection racePace)
     {
+        if (inputs.RaceProjection.EstimatedTeamLapsRemaining is { } projectedRemaining)
+        {
+            return new RaceLapEstimate(
+                projectedRemaining,
+                inputs.RaceProjection.EstimatedTeamLapsRemainingSource);
+        }
+
         var estimate = LiveRaceProgressProjector.EstimateLapsRemaining(
             inputs.Context,
             inputs.Session,
@@ -972,6 +985,7 @@ internal sealed record FuelStrategyInputs(
     HistoricalSessionContext Context,
     LiveSessionModel Session,
     LiveRaceProgressModel RaceProgress,
+    LiveRaceProjectionModel RaceProjection,
     LiveFuelPitModel FuelPit,
     int CompletedStintCount)
 {
@@ -990,6 +1004,13 @@ internal sealed record FuelStrategyInputs(
                 live.Proximity,
                 live.LeaderGap,
                 models.TrackMap);
+            models = models with
+            {
+                RaceProjection = live.Models.RaceProjection,
+                RaceProgress = LiveRaceProjectionMapper.ApplyToRaceProgress(
+                    models.RaceProgress,
+                    live.Models.RaceProjection)
+            };
         }
 
         var fuelPit = models.FuelPit;
@@ -1007,6 +1028,7 @@ internal sealed record FuelStrategyInputs(
             Context: live.Context,
             Session: models.Session,
             RaceProgress: models.RaceProgress,
+            RaceProjection: models.RaceProjection,
             FuelPit: fuelPit,
             CompletedStintCount: live.CompletedStintCount);
     }

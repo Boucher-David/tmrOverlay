@@ -424,22 +424,23 @@ internal sealed record LiveLeaderGapSnapshot(
         var focusProgress = FocusProgress(sample);
         var focusClassLeaderCarIdx = FocusClassLeaderCarIdx(sample);
         var focusClassLeaderProgress = Progress(FocusClassLeaderLapCompleted(sample), FocusClassLeaderLapDistPct(sample));
+        var allowLiveGapSignals = AllowsLiveGapSignals(sample);
         var overallGap = BuildGap(
             position: FocusPosition(sample),
             leaderCarIdx: sample.LeaderCarIdx,
             referenceCarIdx: focusCarIdx,
-            referenceF2TimeSeconds: FocusF2TimeSecondsForGap(sample),
-            leaderF2TimeSeconds: sample.LeaderF2TimeSeconds,
-            referenceProgress: focusProgress,
-            leaderProgress: Progress(sample.LeaderLapCompleted, sample.LeaderLapDistPct));
+            referenceF2TimeSeconds: allowLiveGapSignals ? FocusF2TimeSecondsForGap(sample) : null,
+            leaderF2TimeSeconds: allowLiveGapSignals ? sample.LeaderF2TimeSeconds : null,
+            referenceProgress: allowLiveGapSignals ? focusProgress : null,
+            leaderProgress: allowLiveGapSignals ? Progress(sample.LeaderLapCompleted, sample.LeaderLapDistPct) : null);
         var classGap = BuildGap(
             position: FocusClassPosition(sample),
             leaderCarIdx: focusClassLeaderCarIdx,
             referenceCarIdx: focusCarIdx,
-            referenceF2TimeSeconds: FocusF2TimeSecondsForGap(sample),
-            leaderF2TimeSeconds: FocusClassLeaderF2TimeSeconds(sample),
-            referenceProgress: focusProgress,
-            leaderProgress: focusClassLeaderProgress);
+            referenceF2TimeSeconds: allowLiveGapSignals ? FocusF2TimeSecondsForGap(sample) : null,
+            leaderF2TimeSeconds: allowLiveGapSignals ? FocusClassLeaderF2TimeSeconds(sample) : null,
+            referenceProgress: allowLiveGapSignals ? focusProgress : null,
+            leaderProgress: allowLiveGapSignals ? focusClassLeaderProgress : null);
 
         return new LiveLeaderGapSnapshot(
             HasData: overallGap.HasData || classGap.HasData,
@@ -449,13 +450,14 @@ internal sealed record LiveLeaderGapSnapshot(
             ClassLeaderCarIdx: focusClassLeaderCarIdx,
             OverallLeaderGap: overallGap,
             ClassLeaderGap: classGap,
-            ClassCars: BuildClassCars(sample, focusCarIdx, classGap));
+            ClassCars: BuildClassCars(sample, focusCarIdx, classGap, allowLiveGapSignals));
     }
 
     private static IReadOnlyList<LiveClassGapCar> BuildClassCars(
         HistoricalTelemetrySample sample,
         int? focusCarIdx,
-        LiveGapValue referenceClassGap)
+        LiveGapValue referenceClassGap,
+        bool allowLiveGapSignals)
     {
         var focusClass = FocusCarClass(sample);
         var classLeaderCarIdx = FocusClassLeaderCarIdx(sample);
@@ -507,8 +509,10 @@ internal sealed record LiveLeaderGapSnapshot(
                 continue;
             }
 
-            var gapSeconds = CalculateClassGapSeconds(car.F2TimeSeconds, classLeaderF2);
-            var gapLaps = gapSeconds is null && classLeaderProgress is not null
+            var gapSeconds = allowLiveGapSignals
+                ? CalculateClassGapSeconds(car.F2TimeSeconds, classLeaderF2)
+                : null;
+            var gapLaps = gapSeconds is null && allowLiveGapSignals && classLeaderProgress is not null
                 ? CalculateClassGapLaps(car.LapCompleted, car.LapDistPct, classLeaderProgress.Value)
                 : null;
             if (gapSeconds is null && gapLaps is null)
@@ -572,6 +576,11 @@ internal sealed record LiveLeaderGapSnapshot(
         return gapSeconds is not null && referenceGapSeconds is not null
             ? gapSeconds.Value - referenceGapSeconds.Value
             : null;
+    }
+
+    private static bool AllowsLiveGapSignals(HistoricalTelemetrySample sample)
+    {
+        return sample.SessionState is null or >= 4;
     }
 
     private static LiveGapValue BuildGap(

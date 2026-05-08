@@ -1,6 +1,7 @@
 using System.Drawing;
 using TmrOverlay.App.Localhost;
 using TmrOverlay.App.Overlays.BrowserSources;
+using TmrOverlay.App.Overlays.Content;
 using TmrOverlay.App.Overlays.Styling;
 using TmrOverlay.App.Overlays.TrackMap;
 using TmrOverlay.Core.Overlays;
@@ -10,6 +11,17 @@ namespace TmrOverlay.App.Overlays.SettingsPanel;
 
 internal static class SettingsOverlayTabSections
 {
+    private sealed record BrowserSizeReadoutBinding(
+        OverlayDefinition Definition,
+        OverlaySettings Settings);
+
+    private sealed class ContentColumnRowBinding
+    {
+        public required OverlayContentColumnDefinition Definition { get; init; }
+
+        public required Panel Row { get; init; }
+    }
+
     public static int AddOverlayBasics(
         Control parent,
         OverlayDefinition definition,
@@ -132,14 +144,14 @@ internal static class SettingsOverlayTabSections
         {
             ForeColor = OverlayTheme.Colors.TextControl,
             Location = new Point(22, optionsTop),
-            Size = new Size(360, 154),
+            Size = new Size(430, 76),
             Text = "Display in sessions"
         };
 
-        var testCheckBox = SettingsUi.CreateCheckBox("Test", settings.ShowInTest, 16, 28, 150);
-        var practiceCheckBox = SettingsUi.CreateCheckBox("Practice", settings.ShowInPractice, 180, 28, 150);
-        var qualifyingCheckBox = SettingsUi.CreateCheckBox("Qualifying", settings.ShowInQualifying, 16, 72, 150);
-        var raceCheckBox = SettingsUi.CreateCheckBox("Race", settings.ShowInRace, 180, 72, 150);
+        var testCheckBox = SettingsUi.CreateCheckBox("Test", settings.ShowInTest, 16, 30, 80);
+        var practiceCheckBox = SettingsUi.CreateCheckBox("Practice", settings.ShowInPractice, 106, 30, 100);
+        var qualifyingCheckBox = SettingsUi.CreateCheckBox("Qualifying", settings.ShowInQualifying, 216, 30, 112);
+        var raceCheckBox = SettingsUi.CreateCheckBox("Race", settings.ShowInRace, 338, 30, 76);
 
         testCheckBox.CheckedChanged += (_, _) =>
         {
@@ -167,7 +179,7 @@ internal static class SettingsOverlayTabSections
         sessionBox.Controls.Add(qualifyingCheckBox);
         sessionBox.Controls.Add(raceCheckBox);
         parent.Controls.Add(sessionBox);
-        return optionsTop + 176;
+        return optionsTop + 98;
     }
 
     public static void AddChromeSettingsPage(
@@ -198,25 +210,361 @@ internal static class SettingsOverlayTabSections
     public static void AddLocalhostOptions(
         Control parent,
         OverlayDefinition definition,
+        OverlaySettings settings,
         LocalhostOverlayOptions localhostOptions,
         int top,
         Action<string> copyTextToClipboard)
     {
-        const int x = 560;
+        const int x = 22;
         parent.Controls.Add(SettingsUi.CreateSectionLabel("Localhost browser source", x, top, 500));
         if (BrowserOverlayPageRenderer.TryGetRouteForOverlayId(definition.Id, out var route))
         {
             var url = $"{localhostOptions.Prefix.TrimEnd('/')}{route}";
-            parent.Controls.Add(SettingsUi.CreateLabel("URL", x + 4, top + 42, 120));
-            parent.Controls.Add(SettingsUi.CreateSelectableValueBox(url, x + 92, top + 36, 300, 30));
-            var copyButton = SettingsUi.CreateActionButton("Copy", x + 402, top + 36, 76);
+            parent.Controls.Add(SettingsUi.CreateLabel("URL", x + 4, top + 42, 42));
+            parent.Controls.Add(SettingsUi.CreateSelectableValueBox(url, x + 52, top + 36, 360, 30));
+            var copyButton = SettingsUi.CreateActionButton("Copy", x + 420, top + 36, 64);
             copyButton.Click += (_, _) => copyTextToClipboard(url);
             parent.Controls.Add(copyButton);
-            parent.Controls.Add(SettingsUi.CreateMutedLabel("This browser-source route does not require the native overlay to be visible. Disable LocalhostOverlays in configuration if the local server is not needed.", x + 4, top + 76, 500));
+            var sizeText = BrowserSizeText(definition, settings);
+            parent.Controls.Add(SettingsUi.CreateLabel("OBS", x + 500, top + 42, 36));
+            var sizeBox = SettingsUi.CreateSelectableValueBox(sizeText, x + 538, top + 36, 86, 30);
+            sizeBox.Tag = new BrowserSizeReadoutBinding(definition, settings);
+            parent.Controls.Add(sizeBox);
+            parent.Controls.Add(SettingsUi.CreateMutedLabel("This browser-source route does not require the native overlay to be visible.", x + 4, top + 76, 620));
             return;
         }
 
         parent.Controls.Add(SettingsUi.CreateMutedLabel("No localhost route is available for this overlay yet.", x + 4, top + 42, 560));
+    }
+
+    public static void RefreshBrowserSizeReadouts(Control root)
+    {
+        foreach (Control child in root.Controls)
+        {
+            if (child is TextBox { Tag: BrowserSizeReadoutBinding binding } textBox)
+            {
+                textBox.Text = BrowserSizeText(binding.Definition, binding.Settings);
+            }
+
+            if (child.HasChildren)
+            {
+                RefreshBrowserSizeReadouts(child);
+            }
+        }
+    }
+
+    public static int AddContentColumnSettingsPage(
+        Control parent,
+        OverlaySettings settings,
+        OverlayContentDefinition contentDefinition,
+        int top,
+        Action saveAndApply)
+    {
+        var definitions = contentDefinition.Columns;
+        if (definitions.Count == 0)
+        {
+            return AddContentBlockSettings(parent, settings, contentDefinition.Blocks ?? [], top, saveAndApply);
+        }
+
+        parent.Controls.Add(SettingsUi.CreateSectionLabel("Content columns", 18, top, 500));
+        parent.Controls.Add(SettingsUi.CreateLabel("Order", 22, top + 42, 70));
+        parent.Controls.Add(SettingsUi.CreateLabel("Column", 102, top + 42, 150));
+        parent.Controls.Add(SettingsUi.CreateLabel("Show", 316, top + 42, 70));
+        parent.Controls.Add(SettingsUi.CreateLabel("Width", 386, top + 42, 80));
+        parent.Controls.Add(SettingsUi.CreateLabel("Range", 488, top + 42, 120));
+
+        var orderedDefinitions = OrderedColumnDefinitions(settings, definitions);
+        var rows = new List<ContentColumnRowBinding>();
+        var listPanel = new Panel
+        {
+            AllowDrop = true,
+            Location = new Point(18, top + 70),
+            Size = new Size(650, Math.Max(1, orderedDefinitions.Count) * 40 + 2)
+        };
+        listPanel.DragEnter += (_, e) => SetColumnDragEffect(e);
+        listPanel.DragOver += (_, e) => SetColumnDragEffect(e);
+        listPanel.DragDrop += (_, e) =>
+        {
+            var draggedId = ReadDraggedColumnId(e);
+            if (draggedId is null || orderedDefinitions.Count == 0)
+            {
+                return;
+            }
+
+            MoveColumn(draggedId, orderedDefinitions[^1].Id, insertAfterTarget: true);
+        };
+
+        foreach (var columnDefinition in orderedDefinitions)
+        {
+            var state = OverlayContentColumnSettings.ToState(settings, columnDefinition, definitions.Count);
+            var row = new Panel
+            {
+                AllowDrop = true,
+                BackColor = OverlayTheme.Colors.PanelBackground,
+                Size = new Size(640, 34),
+                Tag = columnDefinition.Id
+            };
+            row.DragEnter += (_, e) => SetColumnDragEffect(e);
+            row.DragOver += (_, e) => SetColumnDragEffect(e);
+            row.DragDrop += (_, e) =>
+            {
+                var draggedId = ReadDraggedColumnId(e);
+                if (draggedId is null)
+                {
+                    return;
+                }
+
+                var point = row.PointToClient(new Point(e.X, e.Y));
+                MoveColumn(draggedId, columnDefinition.Id, point.Y >= row.Height / 2);
+            };
+
+            var handle = SettingsUi.CreateLabel("::", 12, 5, 36);
+            handle.Cursor = Cursors.SizeAll;
+            handle.MouseDown += (_, _) => handle.DoDragDrop(columnDefinition.Id, DragDropEffects.Move);
+            row.Controls.Add(handle);
+
+            row.Controls.Add(SettingsUi.CreateLabel(columnDefinition.Label, 84, 5, 190));
+
+            var enabled = SettingsUi.CreateCheckBox(
+                string.Empty,
+                state.Enabled,
+                318,
+                3,
+                32);
+            enabled.CheckedChanged += (_, _) =>
+            {
+                settings.SetBooleanOption(columnDefinition.EnabledKey(settings.Id), enabled.Checked);
+                ApplyContentColumnRowStyle(row, enabled.Checked);
+                saveAndApply();
+            };
+            row.Controls.Add(enabled);
+
+            var width = SettingsUi.CreateIntegerInput(
+                state.Width,
+                columnDefinition.MinimumWidth,
+                columnDefinition.MaximumWidth,
+                x: 386,
+                y: 3);
+            width.ValueChanged += (_, _) =>
+            {
+                settings.SetIntegerOption(
+                    columnDefinition.WidthKey(settings.Id),
+                    (int)width.Value,
+                    columnDefinition.MinimumWidth,
+                    columnDefinition.MaximumWidth);
+                saveAndApply();
+            };
+            row.Controls.Add(width);
+
+            row.Controls.Add(SettingsUi.CreateLabel($"{columnDefinition.MinimumWidth}-{columnDefinition.MaximumWidth}", 488, 5, 90));
+
+            listPanel.Controls.Add(row);
+            ApplyContentColumnRowStyle(row, state.Enabled);
+            rows.Add(new ContentColumnRowBinding
+            {
+                Definition = columnDefinition,
+                Row = row
+            });
+        }
+
+        parent.Controls.Add(listPanel);
+        LayoutRows();
+        return AddContentBlockSettings(parent, settings, contentDefinition.Blocks ?? [], top + 86 + listPanel.Height, saveAndApply);
+
+        void MoveColumn(string draggedId, string targetId, bool insertAfterTarget)
+        {
+            var sourceIndex = orderedDefinitions.FindIndex(definition => string.Equals(definition.Id, draggedId, StringComparison.Ordinal));
+            var targetIndex = orderedDefinitions.FindIndex(definition => string.Equals(definition.Id, targetId, StringComparison.Ordinal));
+            if (sourceIndex < 0 || targetIndex < 0 || sourceIndex == targetIndex)
+            {
+                return;
+            }
+
+            var moved = orderedDefinitions[sourceIndex];
+            var insertIndex = targetIndex + (insertAfterTarget ? 1 : 0);
+            orderedDefinitions.RemoveAt(sourceIndex);
+            if (sourceIndex < insertIndex)
+            {
+                insertIndex--;
+            }
+
+            orderedDefinitions.Insert(Math.Clamp(insertIndex, 0, orderedDefinitions.Count), moved);
+            PersistOrder();
+            LayoutRows();
+            saveAndApply();
+        }
+
+        void PersistOrder()
+        {
+            for (var index = 0; index < orderedDefinitions.Count; index++)
+            {
+                var definition = orderedDefinitions[index];
+                settings.SetIntegerOption(
+                    definition.OrderKey(settings.Id),
+                    index + 1,
+                    minimum: 1,
+                    maximum: Math.Max(1, definitions.Count));
+            }
+        }
+
+        void LayoutRows()
+        {
+            for (var index = 0; index < orderedDefinitions.Count; index++)
+            {
+                var definition = orderedDefinitions[index];
+                var row = rows.FirstOrDefault(row => string.Equals(row.Definition.Id, definition.Id, StringComparison.Ordinal));
+                if (row is null)
+                {
+                    continue;
+                }
+
+                row.Row.Location = new Point(0, index * 40);
+            }
+        }
+    }
+
+    private static int AddContentBlockSettings(
+        Control parent,
+        OverlaySettings settings,
+        IReadOnlyList<OverlayContentBlockDefinition> blocks,
+        int top,
+        Action saveAndApply)
+    {
+        if (blocks.Count == 0)
+        {
+            return top;
+        }
+
+        parent.Controls.Add(SettingsUi.CreateSectionLabel("Content blocks", 18, top + 12, 500));
+        var rowTop = top + 52;
+        foreach (var block in blocks)
+        {
+            var row = new Panel
+            {
+                BackColor = OverlayTheme.Colors.PanelBackground,
+                Location = new Point(18, rowTop),
+                Size = new Size(650, 76),
+                Tag = block.Id
+            };
+
+            var enabled = SettingsUi.CreateCheckBox(
+                block.Label,
+                OverlayContentColumnSettings.BlockEnabled(settings, block),
+                12,
+                8,
+                220);
+            enabled.CheckedChanged += (_, _) =>
+            {
+                settings.SetBooleanOption(block.EnabledOptionKey, enabled.Checked);
+                ApplyContentBlockRowStyle(row, enabled.Checked);
+                saveAndApply();
+            };
+            row.Controls.Add(enabled);
+
+            if (block.CountOptionKey is { } countOptionKey && block.CountLabel is { } countLabel)
+            {
+                row.Controls.Add(SettingsUi.CreateLabel(countLabel, 316, 12, 120));
+                var count = SettingsUi.CreateIntegerInput(
+                    OverlayContentColumnSettings.BlockCount(settings, block),
+                    block.MinimumCount,
+                    block.MaximumCount,
+                    x: 446,
+                    y: 8);
+                count.ValueChanged += (_, _) =>
+                {
+                    settings.SetIntegerOption(
+                        countOptionKey,
+                        (int)count.Value,
+                        block.MinimumCount,
+                        block.MaximumCount);
+                    saveAndApply();
+                };
+                row.Controls.Add(count);
+            }
+
+            row.Controls.Add(SettingsUi.CreateMutedLabel(block.Description, 36, 42, 580));
+            parent.Controls.Add(row);
+            ApplyContentBlockRowStyle(row, enabled.Checked);
+            rowTop += 86;
+        }
+
+        return rowTop;
+    }
+
+    private static void ApplyContentColumnRowStyle(Panel row, bool enabled)
+    {
+        row.BackColor = enabled
+            ? OverlayTheme.Colors.PanelBackground
+            : Color.FromArgb(255, 22, 29, 34);
+        foreach (Control child in row.Controls)
+        {
+            child.ForeColor = enabled
+                ? OverlayTheme.Colors.TextControl
+                : OverlayTheme.Colors.TextMuted;
+        }
+    }
+
+    private static void ApplyContentBlockRowStyle(Panel row, bool enabled)
+    {
+        row.BackColor = enabled
+            ? OverlayTheme.Colors.PanelBackground
+            : Color.FromArgb(255, 22, 29, 34);
+        foreach (Control child in row.Controls)
+        {
+            child.ForeColor = enabled
+                ? OverlayTheme.Colors.TextControl
+                : OverlayTheme.Colors.TextMuted;
+        }
+    }
+
+    private static List<OverlayContentColumnDefinition> OrderedColumnDefinitions(
+        OverlaySettings settings,
+        IReadOnlyList<OverlayContentColumnDefinition> definitions)
+    {
+        var definitionsById = definitions.ToDictionary(definition => definition.Id, StringComparer.Ordinal);
+        var ordered = OverlayContentColumnSettings.ColumnsFor(settings, definitions)
+            .Select(column => definitionsById.TryGetValue(column.Id, out var definition) ? definition : null)
+            .OfType<OverlayContentColumnDefinition>()
+            .ToList();
+        foreach (var definition in definitions.OrderBy(definition => definition.DefaultOrder))
+        {
+            if (ordered.Any(existing => string.Equals(existing.Id, definition.Id, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            ordered.Add(definition);
+        }
+
+        return ordered;
+    }
+
+    private static void SetColumnDragEffect(DragEventArgs e)
+    {
+        e.Effect = ReadDraggedColumnId(e) is null ? DragDropEffects.None : DragDropEffects.Move;
+    }
+
+    private static string? ReadDraggedColumnId(DragEventArgs e)
+    {
+        if (e.Data?.GetData(typeof(string)) is string draggedColumnId)
+        {
+            return draggedColumnId;
+        }
+
+        if (e.Data?.GetDataPresent(DataFormats.UnicodeText) == true)
+        {
+            return e.Data.GetData(DataFormats.UnicodeText) as string;
+        }
+
+        return e.Data?.GetDataPresent(DataFormats.Text) == true
+            ? e.Data.GetData(DataFormats.Text) as string
+            : null;
+    }
+
+    private static string BrowserSizeText(OverlayDefinition definition, OverlaySettings settings)
+    {
+        var recommendedSize = BrowserOverlayRecommendedSize.For(definition, settings);
+        return $"{recommendedSize.Width}x{recommendedSize.Height}";
     }
 
     public static void AddDescriptorOptions(

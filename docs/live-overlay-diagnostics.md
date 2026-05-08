@@ -42,3 +42,5 @@ The mac harness mirrors this path under `~/Library/Application Support/TmrOverla
 - Diagnostic only: event counts are evidence for future branches, not automatic behavior changes.
 
 Use it with `live-model-parity.json`, `ibt-analysis/ibt-local-car-summary.json`, and `captures/_analysis/raw-capture-overlay-assumptions.json` when deciding whether model v2 is ready to power overlays.
+
+Settings/Flags freeze triage is intentionally separate from `live-overlay-diagnostics.json`. Diagnostics bundles include `metadata/ui-freeze-watch.json`, which summarizes rolling performance data for settings save/apply churn, UI timer lateness, flags refresh/render timings, and overlay window click-through/topmost state. Use that file with `metadata/performance.json` and recent logs when validating Windows reports where enabling Flags appears to freeze or block the Settings UI.

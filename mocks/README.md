@@ -10,6 +10,7 @@ mocks/
   car-radar/
   gap-to-leader/
   settings-overlay/
+  application-redesign/
   design-v2/
   standings/
   relative/

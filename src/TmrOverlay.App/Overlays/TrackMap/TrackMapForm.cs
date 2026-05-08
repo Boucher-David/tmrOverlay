@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
-using System.Globalization;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Overlays.Abstractions;
 using TmrOverlay.App.Overlays.Styling;
@@ -124,7 +123,6 @@ internal sealed class TrackMapForm : PersistentOverlayForm
         _settings.Y = Location.Y;
         _settings.Width = Size.Width;
         _settings.Height = Size.Height;
-        _settings.AlwaysOnTop = TopMost;
         _saveSettings();
     }
 
@@ -725,6 +723,11 @@ internal sealed class TrackMapForm : PersistentOverlayForm
             }
         }
 
+        if (markers.Count == 0 && snapshot.Models.Scoring.Rows.Count > 0)
+        {
+            AddStartingGridMarkers(markers, snapshot.Models.Scoring.Rows, referenceCarIdx);
+        }
+
         var focusProgress = snapshot.Models.Spatial.ReferenceLapDistPct
             ?? MarkerProgress(snapshot.LatestSample);
         var focusMarkerCarIdx = referenceCarIdx ?? -1;
@@ -739,6 +742,41 @@ internal sealed class TrackMapForm : PersistentOverlayForm
         }
 
         return markers.Values.ToArray();
+    }
+
+    private static void AddStartingGridMarkers(
+        Dictionary<int, TrackMapMarker> markers,
+        IReadOnlyList<LiveScoringRow> scoringRows,
+        int? referenceCarIdx)
+    {
+        var rows = scoringRows
+            .OrderBy(row => row.OverallPosition ?? int.MaxValue)
+            .ThenBy(row => row.ClassPosition ?? int.MaxValue)
+            .ThenBy(row => row.CarIdx)
+            .ToArray();
+        if (rows.Length == 0)
+        {
+            return;
+        }
+
+        for (var index = 0; index < rows.Length; index++)
+        {
+            var row = rows[index];
+            var isFocus = row.IsFocus
+                || row.IsPlayer
+                || row.CarIdx == referenceCarIdx;
+            markers[row.CarIdx] = new TrackMapMarker(
+                row.CarIdx,
+                GridProgress(index, rows.Length),
+                isFocus,
+                MarkerColor(row.CarClassColorHex, isFocus),
+                isFocus ? PositionLabel(row) : null);
+        }
+    }
+
+    private static double GridProgress(int index, int count)
+    {
+        return count <= 1 ? 0d : NormalizeProgress(index / (double)count);
     }
 
     private static string? PositionLabel(LiveTimingRow row, LiveScoringRow? scoringRow, int? referenceCarIdx)
@@ -810,28 +848,7 @@ internal sealed class TrackMapForm : PersistentOverlayForm
             return FocusMarkerColor;
         }
 
-        return TryParseColor(classColorHex) ?? DefaultMarkerColor;
-    }
-
-    private static Color? TryParseColor(string? hex)
-    {
-        if (string.IsNullOrWhiteSpace(hex))
-        {
-            return null;
-        }
-
-        var value = hex.Trim().TrimStart('#');
-        if (value.Length != 6
-            || !int.TryParse(value, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var rgb))
-        {
-            return null;
-        }
-
-        return Color.FromArgb(
-            245,
-            (rgb >> 16) & 0xff,
-            (rgb >> 8) & 0xff,
-            rgb & 0xff);
+        return OverlayClassColor.TryParseWithAlpha(classColorHex, 245) ?? DefaultMarkerColor;
     }
 
     private static double NormalizeProgress(double value)

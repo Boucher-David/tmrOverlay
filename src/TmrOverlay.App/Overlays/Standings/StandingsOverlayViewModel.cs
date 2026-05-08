@@ -12,7 +12,8 @@ internal sealed record StandingsOverlayViewModel(
         LiveTelemetrySnapshot snapshot,
         DateTimeOffset now,
         int maximumRows = 8,
-        int otherClassRowsPerClass = 2)
+        int otherClassRowsPerClass = 2,
+        bool showClassSeparators = true)
     {
         var availability = OverlayAvailabilityEvaluator.FromSnapshot(
             snapshot,
@@ -43,7 +44,8 @@ internal sealed record StandingsOverlayViewModel(
                 snapshot,
                 referenceCarIdx,
                 Math.Clamp(maximumRows, 1, 20),
-                Math.Clamp(otherClassRowsPerClass, 0, 6));
+                Math.Clamp(otherClassRowsPerClass, 0, 6),
+                showClassSeparators);
             if (scoringRows.Length == 0)
             {
                 return Waiting("waiting for scoring rows");
@@ -94,7 +96,8 @@ internal sealed record StandingsOverlayViewModel(
         LiveTelemetrySnapshot snapshot,
         int? referenceCarIdx,
         int maximumRows,
-        int otherClassRowsPerClass)
+        int otherClassRowsPerClass,
+        bool showClassSeparators)
     {
         var scoring = snapshot.Models.Scoring;
         var groups = scoring.ClassGroups.Count > 0
@@ -114,9 +117,9 @@ internal sealed record StandingsOverlayViewModel(
         var primaryGroup = orderedGroups.FirstOrDefault(group => group.IsReferenceClass)
             ?? orderedGroups.First();
         var otherGroups = orderedGroups
-            .Where(group => !ReferenceEquals(group, primaryGroup) && otherClassRowsPerClass > 0)
+            .Where(group => showClassSeparators && !ReferenceEquals(group, primaryGroup) && otherClassRowsPerClass > 0)
             .ToArray();
-        var includeHeaders = orderedGroups.Length > 1;
+        var includeHeaders = showClassSeparators && orderedGroups.Length > 1;
         var rows = new List<StandingsOverlayRowViewModel>();
         var timingByCarIdx = snapshot.Models.Timing.OverallRows
             .Concat(snapshot.Models.Timing.ClassRows)
@@ -130,6 +133,7 @@ internal sealed record StandingsOverlayViewModel(
             primaryGroup,
             timingByCarIdx,
             referenceCarIdx,
+            ClassEstimatedLaps(primaryGroup, snapshot),
             maximumRows,
             primaryLimit,
             includeHeaders);
@@ -149,6 +153,7 @@ internal sealed record StandingsOverlayViewModel(
                 group,
                 timingByCarIdx,
                 referenceCarIdx,
+                ClassEstimatedLaps(group, snapshot),
                 maximumRows,
                 groupLimit,
                 includeHeaders);
@@ -173,6 +178,7 @@ internal sealed record StandingsOverlayViewModel(
         LiveScoringClassGroup group,
         IReadOnlyDictionary<int, LiveTimingRow> timingByCarIdx,
         int? referenceCarIdx,
+        string classEstimatedLaps,
         int maximumRows,
         int groupLimit,
         bool includeHeader)
@@ -184,7 +190,7 @@ internal sealed record StandingsOverlayViewModel(
 
         if (includeHeader)
         {
-            rows.Add(ClassHeaderRow(group));
+            rows.Add(ClassHeaderRow(group, classEstimatedLaps));
             groupLimit--;
         }
 
@@ -200,20 +206,63 @@ internal sealed record StandingsOverlayViewModel(
         }
     }
 
-    private static StandingsOverlayRowViewModel ClassHeaderRow(LiveScoringClassGroup group)
+    private static StandingsOverlayRowViewModel ClassHeaderRow(LiveScoringClassGroup group, string classEstimatedLaps)
     {
         return new StandingsOverlayRowViewModel(
             ClassPosition: string.Empty,
             CarNumber: string.Empty,
             Driver: group.ClassName,
             Gap: $"{group.RowCount} cars",
-            Interval: string.Empty,
+            Interval: classEstimatedLaps,
             Pit: string.Empty,
             IsReference: false,
             IsLeader: false,
             IsClassHeader: true,
             IsPartial: false,
             CarClassColorHex: group.CarClassColorHex);
+    }
+
+    private static string ClassEstimatedLaps(LiveScoringClassGroup group, LiveTelemetrySnapshot snapshot)
+    {
+        var projection = snapshot.Models.RaceProjection.ClassProjections
+            .FirstOrDefault(candidate => candidate.CarClass == group.CarClass);
+        if (projection?.EstimatedLapsRemaining is { } projectedLaps
+            && IsFinite(projectedLaps)
+            && projectedLaps >= 0d
+            && projectedLaps < 1000d)
+        {
+            return $"~{projectedLaps:0.#} laps";
+        }
+
+        var pace = group.Rows
+            .Select(row => row.LastLapTimeSeconds ?? row.BestLapTimeSeconds)
+            .FirstOrDefault(IsUsableLapTime);
+        if (pace is null)
+        {
+            pace = snapshot.Models.RaceProgress.RacePaceSeconds;
+        }
+
+        if (snapshot.Models.Session.SessionTimeRemainSeconds is { } remaining
+            && remaining > 0d
+            && IsUsableLapTime(pace))
+        {
+            return $"~{Math.Ceiling(remaining / pace.Value + 1d):0} laps";
+        }
+
+        if (snapshot.Models.RaceProgress.RaceLapsRemaining is { } laps
+            && IsFinite(laps)
+            && laps >= 0d
+            && laps < 1000d)
+        {
+            return $"~{laps:0.#} laps";
+        }
+
+        return string.Empty;
+    }
+
+    private static bool IsUsableLapTime(double? seconds)
+    {
+        return seconds is { } value && value > 20d && value < 1800d && IsFinite(value);
     }
 
     private static LiveTimingRow? SelectDisplayRow(

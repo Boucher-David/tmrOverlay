@@ -10,10 +10,28 @@ internal static class InputStateBrowserSource
         canonicalRoute: "/overlays/input-state",
         aliases: ["/overlays/inputs"],
         fadeWhenTelemetryUnavailable: InputStateOverlayDefinition.Definition.FadeWhenLiveTelemetryUnavailable,
+        bodyClass: "input-state-page",
         script: Script);
 
     private const string Script = """
+    const defaultInputSettings = {
+      showThrottle: true,
+      showBrake: true,
+      showClutch: true,
+      showSteering: true,
+      showGear: true,
+      showSpeed: true
+    };
+    let inputSettings = defaultInputSettings;
+    let nextInputSettingsFetchAt = 0;
+    const inputTrace = [];
+    const maximumInputTracePoints = 180;
+    ensureInputStyle();
+
     TmrBrowserOverlay.register({
+      async beforeRefresh() {
+        await refreshInputSettings();
+      },
       render(live) {
         const inputs = live?.models?.inputs || {};
         const race = live?.models?.raceEvents || {};
@@ -22,21 +40,380 @@ internal static class InputStateBrowserSource
           setStatus(live, 'waiting for player in car');
           return;
         }
+
+        if (inputs.hasData) {
+          appendInputTrace(inputs);
+        }
+
         const brakeAbsActive = inputs.brakeAbsActive === true;
+        const railEnabled = inputRailEnabled();
         contentEl.innerHTML = `
-          <div class="bars">
-            ${bar('Throttle', inputs.throttle, '#4dd77a')}
-            ${bar(brakeAbsActive ? 'Brake ABS' : 'Brake', inputs.brake, brakeAbsActive ? '#ffd166' : '#ff6b63')}
-            ${bar('Clutch', inputs.clutch, '#62c7ff')}
-            <div class="grid">
-              ${metric('Gear', inputs.gear === -1 ? 'R' : inputs.gear === 0 ? 'N' : inputs.gear ?? '--')}
-              ${metric('RPM', Number.isFinite(inputs.rpm) ? Math.round(inputs.rpm).toLocaleString() : '--')}
-              ${metric('Speed', formatSpeed(inputs.speedMetersPerSecond))}
-              ${metric('Steering', Number.isFinite(inputs.steeringWheelAngle) ? `${inputs.steeringWheelAngle.toFixed(1)} deg` : '--')}
+          <div class="input-layout${railEnabled ? '' : ' no-rail'}">
+            <div class="input-graph-panel">
+              <canvas class="input-graph" aria-label="Input trace graph"></canvas>
             </div>
+            ${railEnabled ? renderInputRail(inputs, brakeAbsActive) : ''}
           </div>`;
+        drawInputGraph(contentEl.querySelector('.input-graph'), inputs, brakeAbsActive);
         setStatus(live, inputs.hasData ? `live | ${quality(inputs)}${brakeAbsActive ? ' | ABS' : ''}` : 'waiting for inputs');
       }
     });
+
+    async function refreshInputSettings() {
+      if (Date.now() < nextInputSettingsFetchAt) {
+        return;
+      }
+
+      nextInputSettingsFetchAt = Date.now() + 2000;
+      try {
+        const response = await fetch('/api/input-state', { cache: 'no-store' });
+        if (!response.ok) return;
+        const payload = await response.json();
+        inputSettings = normalizeInputSettings(payload.inputStateSettings || inputSettings);
+      } catch {
+        inputSettings = defaultInputSettings;
+      }
+    }
+
+    function normalizeInputSettings(settings) {
+      return {
+        showThrottle: settings?.showThrottle ?? defaultInputSettings.showThrottle,
+        showBrake: settings?.showBrake ?? defaultInputSettings.showBrake,
+        showClutch: settings?.showClutch ?? defaultInputSettings.showClutch,
+        showSteering: settings?.showSteering ?? defaultInputSettings.showSteering,
+        showGear: settings?.showGear ?? defaultInputSettings.showGear,
+        showSpeed: settings?.showSpeed ?? defaultInputSettings.showSpeed
+      };
+    }
+
+    function ensureInputStyle() {
+      if (document.getElementById('input-state-browser-style')) {
+        return;
+      }
+
+      const style = document.createElement('style');
+      style.id = 'input-state-browser-style';
+      style.textContent = `
+        body.input-state-page .header {
+          display: none;
+        }
+
+        body.input-state-page .overlay {
+          width: calc(100vw - 16px);
+          height: calc(100vh - 16px);
+          min-width: 0;
+          max-width: none;
+        }
+
+        body.input-state-page .content {
+          width: 100%;
+          height: 100%;
+          padding: 10px;
+        }
+
+        .input-layout {
+          display: grid;
+          grid-template-columns: minmax(220px, 1fr) minmax(126px, 30%);
+          gap: 10px;
+          width: 100%;
+          height: 100%;
+          min-width: 0;
+        }
+
+        .input-layout.no-rail {
+          grid-template-columns: minmax(220px, 1fr);
+        }
+
+        .input-graph-panel,
+        .input-rail {
+          min-width: 0;
+          min-height: 0;
+          border: 1px solid rgba(255, 255, 255, 0.16);
+          background: rgba(255, 255, 255, 0.045);
+        }
+
+        .input-graph {
+          display: block;
+          width: 100%;
+          height: 100%;
+        }
+
+        .input-rail {
+          display: grid;
+          grid-template-rows: auto auto minmax(0, 1fr);
+          gap: 8px;
+          padding: 8px;
+          overflow: hidden;
+        }
+
+        .input-numbers {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(50px, 1fr));
+          gap: 6px;
+        }
+
+        .input-number {
+          display: grid;
+          gap: 2px;
+          min-width: 0;
+        }
+
+        .input-number .label,
+        .input-wheel-label,
+        .input-pedal-label {
+          color: #91a3af;
+          font-size: 9px;
+          font-weight: 700;
+          text-transform: uppercase;
+          white-space: nowrap;
+        }
+
+        .input-number .value,
+        .input-wheel-value,
+        .input-pedal-value {
+          color: #f4f9fb;
+          font-family: Consolas, "Courier New", monospace;
+          font-size: 12px;
+          font-weight: 700;
+          white-space: nowrap;
+        }
+
+        .input-wheel {
+          display: grid;
+          grid-template-columns: 1fr auto;
+          grid-template-rows: 14px minmax(32px, 1fr);
+          column-gap: 8px;
+          align-items: center;
+          min-height: 48px;
+        }
+
+        .input-wheel svg {
+          grid-column: 1 / -1;
+          justify-self: center;
+          width: min(58px, 100%);
+          height: min(58px, 100%);
+        }
+
+        .input-pedals {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(30px, 1fr));
+          gap: 6px;
+          min-height: 44px;
+        }
+
+        .input-pedal {
+          display: grid;
+          grid-template-rows: 15px minmax(20px, 1fr) 15px;
+          justify-items: center;
+          min-width: 0;
+        }
+
+        .input-pedal-track {
+          position: relative;
+          width: 14px;
+          min-height: 18px;
+          background: rgba(255, 255, 255, 0.12);
+          overflow: hidden;
+        }
+
+        .input-pedal-track span {
+          position: absolute;
+          left: 0;
+          bottom: 0;
+          width: 100%;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    function appendInputTrace(inputs) {
+      inputTrace.push({
+        throttle: clamp01(inputs.throttle),
+        brake: clamp01(inputs.brake),
+        clutch: clamp01(inputs.clutch),
+        brakeAbsActive: inputs.brakeAbsActive === true
+      });
+      if (inputTrace.length > maximumInputTracePoints) {
+        inputTrace.splice(0, inputTrace.length - maximumInputTracePoints);
+      }
+    }
+
+    function inputRailEnabled() {
+      return inputSettings.showThrottle
+        || inputSettings.showBrake
+        || inputSettings.showClutch
+        || inputSettings.showSteering
+        || inputSettings.showGear
+        || inputSettings.showSpeed;
+    }
+
+    function renderInputRail(inputs, brakeAbsActive) {
+      const numbers = [
+        inputSettings.showGear ? railNumber('Gear', formatGear(inputs.gear)) : '',
+        inputSettings.showSpeed ? railNumber('Speed', formatSpeed(inputs.speedMetersPerSecond)) : ''
+      ].filter(Boolean).join('');
+      const pedals = [
+        inputSettings.showThrottle ? railPedal('T', inputs.throttle, '#4dd77a') : '',
+        inputSettings.showBrake ? railPedal(brakeAbsActive ? 'ABS' : 'B', inputs.brake, brakeAbsActive ? '#ffd166' : '#ff6b63') : '',
+        inputSettings.showClutch ? railPedal('C', inputs.clutch, '#62c7ff') : ''
+      ].filter(Boolean).join('');
+      return `
+        <div class="input-rail">
+          ${numbers ? `<div class="input-numbers">${numbers}</div>` : '<div></div>'}
+          ${inputSettings.showSteering ? renderWheel(inputs.steeringWheelAngle) : '<div></div>'}
+          ${pedals ? `<div class="input-pedals">${pedals}</div>` : '<div></div>'}
+        </div>`;
+    }
+
+    function railNumber(label, value) {
+      return `
+        <div class="input-number">
+          <div class="label">${escapeHtml(label)}</div>
+          <div class="value">${escapeHtml(value)}</div>
+        </div>`;
+    }
+
+    function railPedal(label, value, color) {
+      const normalized = clamp01(value);
+      return `
+        <div class="input-pedal">
+          <div class="input-pedal-label">${escapeHtml(label)}</div>
+          <div class="input-pedal-track"><span style="height:${(normalized * 100).toFixed(0)}%; background:${color};"></span></div>
+          <div class="input-pedal-value">${formatPercent(Number.isFinite(value) ? normalized : null)}</div>
+        </div>`;
+    }
+
+    function renderWheel(angleDegrees) {
+      const angle = Number.isFinite(angleDegrees) ? angleDegrees : 0;
+      return `
+        <div class="input-wheel">
+          <div class="input-wheel-label">Wheel</div>
+          <div class="input-wheel-value">${Number.isFinite(angleDegrees) ? `${angleDegrees.toFixed(0)} deg` : '--'}</div>
+          <svg viewBox="0 0 64 64" aria-hidden="true">
+            <circle cx="32" cy="32" r="25" fill="none" stroke="#d9e4eb" stroke-width="4"></circle>
+            <g transform="rotate(${escapeAttribute(angle * 2.1)} 32 32)" stroke="#62c7ff" stroke-width="3" stroke-linecap="round">
+              <line x1="32" y1="32" x2="32" y2="12"></line>
+              <line x1="32" y1="32" x2="49" y2="43"></line>
+              <line x1="32" y1="32" x2="15" y2="43"></line>
+            </g>
+          </svg>
+        </div>`;
+    }
+
+    function drawInputGraph(canvas, inputs, brakeAbsActive) {
+      if (!canvas) {
+        return;
+      }
+
+      const rect = canvas.getBoundingClientRect();
+      const width = Math.max(1, rect.width);
+      const height = Math.max(1, rect.height);
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+      ctx.lineWidth = 1;
+      for (let step = 1; step < 4; step += 1) {
+        const y = Math.round(height * step / 4) + 0.5;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+
+      drawTraceLine(ctx, width, height, 'throttle', '#4dd77a', 2);
+      drawTraceLine(ctx, width, height, 'brake', '#ff6b63', 2);
+      drawTraceLine(ctx, width, height, 'clutch', '#62c7ff', 2);
+      drawAbsSegments(ctx, width, height);
+      drawInputLegend(ctx, brakeAbsActive);
+
+      if (inputTrace.length < 2 && !inputs.hasData) {
+        ctx.fillStyle = '#98a8b3';
+        ctx.font = '700 13px "Segoe UI", Arial, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('waiting for inputs', width / 2, height / 2);
+      }
+    }
+
+    function drawTraceLine(ctx, width, height, key, color, lineWidth) {
+      if (inputTrace.length < 2) {
+        return;
+      }
+
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      inputTrace.forEach((point, index) => {
+        const x = xForTracePoint(index, width);
+        const y = yForTraceValue(point[key], height);
+        if (index === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      });
+      ctx.stroke();
+    }
+
+    function drawAbsSegments(ctx, width, height) {
+      if (inputTrace.length < 2) {
+        return;
+      }
+
+      ctx.strokeStyle = '#ffd166';
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      for (let index = 1; index < inputTrace.length; index += 1) {
+        if (inputTrace[index].brakeAbsActive !== true) {
+          continue;
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(xForTracePoint(index - 1, width), yForTraceValue(inputTrace[index - 1].brake, height));
+        ctx.lineTo(xForTracePoint(index, width), yForTraceValue(inputTrace[index].brake, height));
+        ctx.stroke();
+      }
+    }
+
+    function drawInputLegend(ctx, brakeAbsActive) {
+      const items = [
+        ['Throttle', '#4dd77a'],
+        [brakeAbsActive ? 'Brake ABS' : 'Brake', brakeAbsActive ? '#ffd166' : '#ff6b63'],
+        ['Clutch', '#62c7ff']
+      ];
+      let x = 8;
+      ctx.font = '700 11px "Segoe UI", Arial, sans-serif';
+      ctx.textBaseline = 'top';
+      for (const [label, color] of items) {
+        ctx.fillStyle = color;
+        ctx.fillRect(x, 14, 14, 3);
+        x += 18;
+        ctx.fillText(label, x, 7);
+        x += ctx.measureText(label).width + 14;
+      }
+    }
+
+    function xForTracePoint(index, width) {
+      return inputTrace.length <= 1 ? 0 : index / (inputTrace.length - 1) * width;
+    }
+
+    function yForTraceValue(value, height) {
+      return height - clamp01(value) * height;
+    }
+
+    function clamp01(value) {
+      return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+    }
+
+    function formatGear(value) {
+      return value === -1 ? 'R' : value === 0 ? 'N' : Number.isFinite(value) ? String(value) : '--';
+    }
     """;
 }
