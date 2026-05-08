@@ -12,6 +12,9 @@ on:
 permissions:
   contents: read
 
+env:
+  VELOPACK_VERSION: 0.0.1589-ga2c5a97
+
 jobs:
   mac_harness_build:
     name: macOS harness build
@@ -211,7 +214,7 @@ jobs:
 
       - name: Install Velopack CLI
         shell: pwsh
-        run: dotnet tool install --global vpk --version 0.0.1298
+        run: dotnet tool install --global vpk --version "${{ env.VELOPACK_VERSION }}"
 
       - name: Velopack pack dry run
         shell: pwsh
@@ -229,17 +232,24 @@ jobs:
             --packAuthors "Tech Mates Racing" `
             --outputDir $velopackPath `
             --channel "win-x64" `
+            --shortcuts "StartMenu" `
+            --msi `
+            --instLocation "Either" `
+            --msiBanner ".\assets\brand\TMRMsiBanner.bmp" `
+            --msiLogo ".\assets\brand\TMRMsiLogo.bmp" `
             --icon ".\src\TmrOverlay.App\Assets\TmrOverlay.ico"
           if ($LASTEXITCODE -ne 0) {
               exit $LASTEXITCODE
           }
 
-          $setup = Get-ChildItem $velopackPath -Filter "*Setup*.exe" | Select-Object -First 1
+          $msi = Get-ChildItem $velopackPath -Filter "*.msi" |
+            Sort-Object LastWriteTimeUtc -Descending |
+            Select-Object -First 1
           $fullPackage = Get-ChildItem $velopackPath -Filter "*${{ steps.publish_dry_run.outputs.version }}*-full.nupkg" | Select-Object -First 1
           $releaseIndex = Join-Path $velopackPath "releases.win-x64.json"
-          if ($null -eq $setup -or $null -eq $fullPackage -or !(Test-Path $releaseIndex)) {
+          if ($null -eq $msi -or $null -eq $fullPackage -or !(Test-Path $releaseIndex)) {
               Get-ChildItem $velopackPath | Format-Table Name, Length
-              throw "Velopack dry run output is missing the setup executable, full package, or releases.win-x64.json."
+              throw "Velopack dry run output is missing the MSI package, full package, or releases.win-x64.json."
           }
 
   windows_release_package:
@@ -344,7 +354,7 @@ jobs:
 
       - name: Install Velopack CLI
         shell: pwsh
-        run: dotnet tool install --global vpk --version 0.0.1298
+        run: dotnet tool install --global vpk --version "${{ env.VELOPACK_VERSION }}"
 
       - name: Build Velopack release
         shell: pwsh
@@ -362,6 +372,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
               Write-Warning "No previous Velopack release was downloaded; continuing without a delta base."
           }
+          Get-ChildItem $velopackPath -Filter "*.msi" -ErrorAction SilentlyContinue | Remove-Item -Force
+          Get-ChildItem $velopackPath -Filter "*Setup*.exe" -ErrorAction SilentlyContinue | Remove-Item -Force
 
           & $vpk pack `
             --packId "TMROverlay" `
@@ -372,29 +384,40 @@ jobs:
             --packAuthors "Tech Mates Racing" `
             --outputDir $velopackPath `
             --channel "win-x64" `
+            --shortcuts "StartMenu" `
+            --msi `
+            --instLocation "Either" `
+            --msiBanner ".\assets\brand\TMRMsiBanner.bmp" `
+            --msiLogo ".\assets\brand\TMRMsiLogo.bmp" `
             --icon ".\src\TmrOverlay.App\Assets\TmrOverlay.ico"
           if ($LASTEXITCODE -ne 0) {
               exit $LASTEXITCODE
           }
 
-          $setup = Get-ChildItem $velopackPath -Filter "*Setup*.exe" | Select-Object -First 1
+          $msi = Get-ChildItem $velopackPath -Filter "*.msi" |
+            Sort-Object LastWriteTimeUtc -Descending |
+            Select-Object -First 1
           $fullPackage = Get-ChildItem $velopackPath -Filter "*${{ steps.release_metadata.outputs.version }}*-full.nupkg" | Select-Object -First 1
           $releaseIndex = Join-Path $velopackPath "releases.win-x64.json"
-          if ($null -eq $setup -or $null -eq $fullPackage -or !(Test-Path $releaseIndex)) {
+          if ($null -eq $msi -or $null -eq $fullPackage -or !(Test-Path $releaseIndex)) {
               Get-ChildItem $velopackPath | Format-Table Name, Length
-              throw "Velopack output is missing the setup executable, full package, or releases.win-x64.json."
+              throw "Velopack output is missing the MSI package, full package, or releases.win-x64.json."
           }
 
           $uploadPath = ".\artifacts\velopack-upload"
           New-Item -ItemType Directory -Force -Path $uploadPath | Out-Null
-          Copy-Item $setup.FullName -Destination $uploadPath -Force
+          $uploadMsiName = "TMROverlay-v${{ steps.release_metadata.outputs.version }}-win-x64.msi"
+          $uploadMsiPath = Join-Path $uploadPath $uploadMsiName
+          Copy-Item $msi.FullName -Destination $uploadMsiPath -Force
           Copy-Item $releaseIndex -Destination $uploadPath -Force
           Get-ChildItem $velopackPath -Filter "*${{ steps.release_metadata.outputs.version }}*.nupkg" |
             Copy-Item -Destination $uploadPath -Force
+          $uploadSetup = Get-ChildItem $uploadPath -Filter "*Setup*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
           $uploadPackage = Get-ChildItem $uploadPath -Filter "*${{ steps.release_metadata.outputs.version }}*.nupkg" | Select-Object -First 1
-          if ($null -eq $uploadPackage) {
+          $uploadReleaseIndex = Join-Path $uploadPath "releases.win-x64.json"
+          if (!(Test-Path $uploadMsiPath) -or $null -eq $uploadPackage -or !(Test-Path $uploadReleaseIndex) -or $null -ne $uploadSetup) {
               Get-ChildItem $uploadPath | Format-Table Name, Length
-              throw "Velopack upload output is missing the current-version package."
+              throw "Velopack upload output must contain the named MSI, release index, and current-version packages without Setup.exe."
           }
 
       - name: Upload package artifact

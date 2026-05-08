@@ -37,6 +37,10 @@ internal sealed class DesignV2SettingsCallbacks
 
     public required Func<Task> CheckForUpdatesAsync { get; init; }
 
+    public required Func<Task> DownloadAndPrepareUpdateAsync { get; init; }
+
+    public required Action RestartToApplyUpdate { get; init; }
+
     public required Action OpenReleaseUpdatePage { get; init; }
 
     public required Action<string> CopyTextToClipboard { get; init; }
@@ -451,8 +455,18 @@ internal sealed class DesignV2SettingsSurface : Control
         AddActionButton(new Rectangle(754, 510, 132, 34), "Diagnostics", () => _callbacks.OpenSupportDirectory(_storageOptions.DiagnosticsRoot, "diagnostics"));
         AddActionButton(new Rectangle(902, 510, 100, 34), "Captures", () => _callbacks.OpenSupportDirectory(_storageOptions.CaptureRoot, "captures"));
         AddActionButton(new Rectangle(1018, 510, 92, 34), "History", () => _callbacks.OpenSupportDirectory(_storageOptions.UserHistoryRoot, "history"));
-        AddActionButton(new Rectangle(912, 548, 86, 30), "Check", () => _callbacks.CheckForUpdatesAsync());
-        AddActionButton(new Rectangle(1012, 548, 104, 30), "Releases", _callbacks.OpenReleaseUpdatePage);
+        var update = _releaseUpdates.Snapshot();
+        AddActionButton(new Rectangle(754, 548, 76, 30), "Check", () => _callbacks.CheckForUpdatesAsync(), update.CanCheck);
+        if (update.Status == ReleaseUpdateStatus.PendingRestart)
+        {
+            AddActionButton(new Rectangle(844, 548, 88, 30), "Restart", _callbacks.RestartToApplyUpdate, update.CanRestartToApply);
+        }
+        else
+        {
+            AddActionButton(new Rectangle(844, 548, 88, 30), "Install", () => _callbacks.DownloadAndPrepareUpdateAsync(), update.CanDownload);
+        }
+
+        AddActionButton(new Rectangle(946, 548, 104, 30), "Releases", _callbacks.OpenReleaseUpdatePage, !string.IsNullOrWhiteSpace(update.ReleasePageUrl));
     }
 
     private void BuildOverlayGeneralControls(OverlayDefinition definition, OverlaySettings settings)
@@ -765,16 +779,18 @@ internal sealed class DesignV2SettingsSurface : Control
         }));
     }
 
-    private void AddActionButton(Rectangle bounds, string text, Action onClick)
+    private void AddActionButton(Rectangle bounds, string text, Action onClick, bool enabled = true)
     {
         var button = new V2ActionButton(bounds, text);
+        button.Enabled = enabled;
         button.Click += (_, _) => onClick();
         AddDynamic(button);
     }
 
-    private void AddActionButton(Rectangle bounds, string text, Func<Task> onClick)
+    private void AddActionButton(Rectangle bounds, string text, Func<Task> onClick, bool enabled = true)
     {
         var button = new V2ActionButton(bounds, text);
+        button.Enabled = enabled;
         button.Click += async (_, _) => await onClick().ConfigureAwait(true);
         AddDynamic(button);
     }
@@ -948,9 +964,8 @@ internal sealed class DesignV2SettingsSurface : Control
         DrawPanel(graphics, new Rectangle(306, 410, 834, 156), "Support Bundle");
         DrawText(graphics, "Latest bundle", new Rectangle(328, 478, 110, 18), 13f, FontStyle.Regular, TextMuted);
         DrawText(graphics, SupportStatusText.LatestBundleDisplayText(latestPath), new Rectangle(456, 477, 420, 18), 12f, FontStyle.Bold, TextPrimary, monospaced: true);
-        DrawText(graphics, _callbacks.AdvancedDiagnosticsText().Replace(Environment.NewLine, " / "), new Rectangle(328, 548, 400, 18), 10f, FontStyle.Regular, TextDim);
-        DrawText(graphics, "Updates", new Rectangle(754, 552, 70, 18), 11f, FontStyle.Regular, TextMuted);
-        DrawText(graphics, ReleaseUpdateSupportText(update), new Rectangle(824, 552, 80, 18), 10f, FontStyle.Bold, ColorForReleaseUpdateStatus(update.Status));
+        DrawText(graphics, "Updates", new Rectangle(328, 552, 70, 18), 11f, FontStyle.Regular, TextMuted);
+        DrawText(graphics, ReleaseUpdateSupportText(update), new Rectangle(398, 552, 320, 18), 10f, FontStyle.Bold, ColorForReleaseUpdateStatus(update.Status));
         if (!string.IsNullOrWhiteSpace(_supportStatusText))
         {
             DrawText(graphics, _supportStatusText, new Rectangle(328, 578, 620, 18), 11f, FontStyle.Bold, _supportStatusIsError ? OverlayTheme.Colors.WarningText : Green);
@@ -1656,7 +1671,11 @@ internal sealed class DesignV2SettingsSurface : Control
             ReleaseUpdateStatus.Checking => "Checking...",
             ReleaseUpdateStatus.UpToDate => $"Current v{snapshot.CurrentVersion}.",
             ReleaseUpdateStatus.Available => $"v{snapshot.LatestVersion} available.",
+            ReleaseUpdateStatus.Downloading => snapshot.DownloadProgressPercent is { } progress
+                ? $"Downloading v{snapshot.LatestVersion}: {progress}%."
+                : $"Downloading v{snapshot.LatestVersion}.",
             ReleaseUpdateStatus.PendingRestart => $"v{snapshot.LatestVersion} pending restart.",
+            ReleaseUpdateStatus.Applying => $"Restarting for v{snapshot.LatestVersion}.",
             ReleaseUpdateStatus.Failed => string.IsNullOrWhiteSpace(snapshot.LastError) ? "Check failed." : snapshot.LastError,
             _ => "Unknown."
         };
@@ -1669,7 +1688,7 @@ internal sealed class DesignV2SettingsSurface : Control
             ReleaseUpdateStatus.Available or ReleaseUpdateStatus.PendingRestart => OverlayTheme.Colors.WarningText,
             ReleaseUpdateStatus.UpToDate => OverlayTheme.Colors.SuccessText,
             ReleaseUpdateStatus.Failed => OverlayTheme.Colors.ErrorText,
-            ReleaseUpdateStatus.Checking => OverlayTheme.Colors.InfoText,
+            ReleaseUpdateStatus.Checking or ReleaseUpdateStatus.Downloading or ReleaseUpdateStatus.Applying => OverlayTheme.Colors.InfoText,
             _ => TextMuted
         };
     }
@@ -1810,9 +1829,12 @@ internal sealed class DesignV2SettingsSurface : Control
         {
             base.OnPaint(e);
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            FillRounded(e.Graphics, ClientRectangle, 8, ClientRectangle.Contains(PointToClient(Cursor.Position)) ? Rgb(48, 20, 74) : Rgb(36, 17, 56));
+            var background = Enabled
+                ? (ClientRectangle.Contains(PointToClient(Cursor.Position)) ? Rgb(48, 20, 74) : Rgb(36, 17, 56))
+                : Rgb(25, 30, 42);
+            FillRounded(e.Graphics, ClientRectangle, 8, background);
             StrokeRounded(e.Graphics, new Rectangle(0, 0, Width, Height), 8, Rgba(255, 255, 255, 40), 1f);
-            DrawCentered(e.Graphics, Text, ClientRectangle, 12f, FontStyle.Bold, TextPrimary);
+            DrawCentered(e.Graphics, Text, ClientRectangle, 12f, FontStyle.Bold, Enabled ? TextPrimary : TextMuted);
         }
     }
 

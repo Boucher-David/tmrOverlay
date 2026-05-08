@@ -136,7 +136,7 @@ internal static class AppSettingsMigrator
                 overlay.GetIntegerOption(OverlayOptionKeys.RelativeCarsAhead, defaultValue: 5, minimum: 0, maximum: 8),
                 overlay.GetIntegerOption(OverlayOptionKeys.RelativeCarsBehind, defaultValue: 5, minimum: 0, maximum: 8));
         overlay.SetIntegerOption(OverlayOptionKeys.RelativeCarsEachSide, carsEachSide, 0, 8);
-        // Keep the old split keys normalized for pre-v0.16.2 browser/native readers.
+        // Keep the old split keys normalized for pre-v0.17.0 browser/native readers.
         overlay.SetIntegerOption(OverlayOptionKeys.RelativeCarsAhead, carsEachSide, 0, 8);
         overlay.SetIntegerOption(OverlayOptionKeys.RelativeCarsBehind, carsEachSide, 0, 8);
     }

@@ -5,7 +5,8 @@
     <Authors>TmrOverlay contributors</Authors>
     <RepositoryType>git</RepositoryType>
     <RepositoryUrl>https://github.com/Boucher-David/TMROverlay</RepositoryUrl>
-    <VersionPrefix>0.16.2</VersionPrefix>
+    <Description>iRacing overlay and telemetry tools for Tech Mates Racing.</Description>
+    <VersionPrefix>0.18.0</VersionPrefix>
     <Version Condition="'$(Version)' == ''">$(VersionPrefix)</Version>
     <AssemblyVersion>$(VersionPrefix).0</AssemblyVersion>
     <FileVersion>$(VersionPrefix).0</FileVersion>

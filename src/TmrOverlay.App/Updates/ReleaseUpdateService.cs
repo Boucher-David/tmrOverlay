@@ -179,6 +179,298 @@ internal sealed class ReleaseUpdateService : IHostedService, IDisposable
         }
     }
 
+    public async Task<ReleaseUpdateSnapshot> DownloadAndPrepareUpdateAsync(CancellationToken cancellationToken = default)
+    {
+        if (!_options.Enabled)
+        {
+            return SetSnapshot(ReleaseUpdateSnapshot.Disabled(_options.RepositoryUrl));
+        }
+
+        await _checkLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var manager = CreateUpdateManager();
+            if (manager is null)
+            {
+                return Snapshot();
+            }
+
+            if (!manager.IsInstalled)
+            {
+                return SetSnapshot(NotInstalledSnapshot(manager));
+            }
+
+            var pendingRestart = manager.UpdatePendingRestart;
+            if (pendingRestart is not null)
+            {
+                return SetSnapshot(PendingRestartSnapshot(manager, pendingRestart));
+            }
+
+            var operationStartedAtUtc = DateTimeOffset.UtcNow;
+            _events.Record("update_download_started", new Dictionary<string, string?>
+            {
+                ["repositoryUrl"] = _options.RepositoryUrl
+            });
+
+            try
+            {
+                var previous = Snapshot();
+                SetSnapshot(InstalledSnapshot(
+                    ReleaseUpdateStatus.Checking,
+                    manager,
+                    checkInProgress: true,
+                    latestVersion: previous.LatestVersion,
+                    latestFileName: previous.LatestFileName,
+                    deltaCount: previous.DeltaCount,
+                    lastCheckedAtUtc: previous.LastCheckedAtUtc,
+                    lastFailedAtUtc: previous.LastFailedAtUtc,
+                    lastError: previous.LastError,
+                    releasePageUrl: previous.ReleasePageUrl,
+                    lastDownloadStartedAtUtc: previous.LastDownloadStartedAtUtc,
+                    lastDownloadedAtUtc: previous.LastDownloadedAtUtc,
+                    downloadProgressPercent: previous.DownloadProgressPercent,
+                    lastApplyStartedAtUtc: previous.LastApplyStartedAtUtc));
+
+                var update = await manager.CheckForUpdatesAsync().ConfigureAwait(false);
+                var checkedAtUtc = DateTimeOffset.UtcNow;
+                if (update is null)
+                {
+                    _events.Record("update_download_skipped", new Dictionary<string, string?>
+                    {
+                        ["result"] = "up_to_date"
+                    });
+                    return SetSnapshot(InstalledSnapshot(
+                        ReleaseUpdateStatus.UpToDate,
+                        manager,
+                        checkInProgress: false,
+                        latestVersion: manager.CurrentVersion?.ToString(),
+                        latestFileName: null,
+                        deltaCount: 0,
+                        lastCheckedAtUtc: checkedAtUtc,
+                        lastFailedAtUtc: null,
+                        lastError: null,
+                        releasePageUrl: ReleasePageUrl(null)));
+                }
+
+                var target = update.TargetFullRelease;
+                var latestVersion = target.Version?.ToString();
+                var latestFileName = target.FileName;
+                var deltaCount = update.DeltasToTarget?.Length ?? 0;
+                var releasePageUrl = ReleasePageUrl(latestVersion);
+                SetSnapshot(InstalledSnapshot(
+                    ReleaseUpdateStatus.Downloading,
+                    manager,
+                    checkInProgress: false,
+                    latestVersion: latestVersion,
+                    latestFileName: latestFileName,
+                    deltaCount: deltaCount,
+                    lastCheckedAtUtc: checkedAtUtc,
+                    lastFailedAtUtc: null,
+                    lastError: null,
+                    releasePageUrl: releasePageUrl,
+                    lastDownloadStartedAtUtc: operationStartedAtUtc,
+                    downloadProgressPercent: 0));
+
+                await manager.DownloadUpdatesAsync(
+                        update,
+                        progress =>
+                        {
+                            SetSnapshot(InstalledSnapshot(
+                                ReleaseUpdateStatus.Downloading,
+                                manager,
+                                checkInProgress: false,
+                                latestVersion: latestVersion,
+                                latestFileName: latestFileName,
+                                deltaCount: deltaCount,
+                                lastCheckedAtUtc: checkedAtUtc,
+                                lastFailedAtUtc: null,
+                                lastError: null,
+                                releasePageUrl: releasePageUrl,
+                                lastDownloadStartedAtUtc: operationStartedAtUtc,
+                                downloadProgressPercent: Math.Clamp(progress, 0, 100)));
+                        },
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
+                var downloadedAtUtc = DateTimeOffset.UtcNow;
+                pendingRestart = manager.UpdatePendingRestart;
+                if (pendingRestart is null)
+                {
+                    _events.Record("update_download_failed", new Dictionary<string, string?>
+                    {
+                        ["latestVersion"] = latestVersion,
+                        ["latestFileName"] = latestFileName,
+                        ["error"] = "PendingRestartMissing"
+                    });
+                    return SetSnapshot(InstalledSnapshot(
+                        ReleaseUpdateStatus.Failed,
+                        manager,
+                        checkInProgress: false,
+                        latestVersion: latestVersion,
+                        latestFileName: latestFileName,
+                        deltaCount: deltaCount,
+                        lastCheckedAtUtc: checkedAtUtc,
+                        lastFailedAtUtc: DateTimeOffset.UtcNow,
+                        lastError: "Update downloaded, but Velopack did not report a pending restart.",
+                        releasePageUrl: releasePageUrl,
+                        lastDownloadStartedAtUtc: operationStartedAtUtc,
+                        lastDownloadedAtUtc: downloadedAtUtc,
+                        downloadProgressPercent: 100));
+                }
+
+                _events.Record("update_download_succeeded", new Dictionary<string, string?>
+                {
+                    ["latestVersion"] = latestVersion,
+                    ["latestFileName"] = latestFileName,
+                    ["deltaCount"] = deltaCount.ToString()
+                });
+                return SetSnapshot(PendingRestartSnapshot(
+                    manager,
+                    pendingRestart,
+                    lastCheckedAtUtc: checkedAtUtc,
+                    lastDownloadStartedAtUtc: operationStartedAtUtc,
+                    lastDownloadedAtUtc: downloadedAtUtc,
+                    downloadProgressPercent: 100));
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                _logger.LogWarning(exception, "Failed to download TmrOverlay update.");
+                _events.Record("update_download_failed", new Dictionary<string, string?>
+                {
+                    ["error"] = exception.GetType().Name
+                });
+                var previous = Snapshot();
+                return SetSnapshot(InstalledSnapshot(
+                    ReleaseUpdateStatus.Failed,
+                    manager,
+                    checkInProgress: false,
+                    latestVersion: previous.LatestVersion,
+                    latestFileName: previous.LatestFileName,
+                    deltaCount: previous.DeltaCount,
+                    lastCheckedAtUtc: previous.LastCheckedAtUtc,
+                    lastFailedAtUtc: DateTimeOffset.UtcNow,
+                    lastError: exception.Message,
+                    releasePageUrl: previous.ReleasePageUrl ?? ReleasePageUrl(previous.LatestVersion),
+                    lastDownloadStartedAtUtc: previous.LastDownloadStartedAtUtc,
+                    lastDownloadedAtUtc: previous.LastDownloadedAtUtc,
+                    downloadProgressPercent: previous.DownloadProgressPercent,
+                    lastApplyStartedAtUtc: previous.LastApplyStartedAtUtc));
+            }
+        }
+        finally
+        {
+            _checkLock.Release();
+        }
+    }
+
+    public ReleaseUpdateSnapshot BeginApplyUpdateAndRestart()
+    {
+        if (!_options.Enabled)
+        {
+            return SetSnapshot(ReleaseUpdateSnapshot.Disabled(_options.RepositoryUrl));
+        }
+
+        if (!_checkLock.Wait(0))
+        {
+            return Snapshot();
+        }
+
+        try
+        {
+            var manager = CreateUpdateManager();
+            if (manager is null)
+            {
+                return Snapshot();
+            }
+
+            if (!manager.IsInstalled)
+            {
+                return SetSnapshot(NotInstalledSnapshot(manager));
+            }
+
+            var pendingRestart = manager.UpdatePendingRestart;
+            if (pendingRestart is null)
+            {
+                var previous = Snapshot();
+                return SetSnapshot(InstalledSnapshot(
+                    ReleaseUpdateStatus.Failed,
+                    manager,
+                    checkInProgress: false,
+                    latestVersion: previous.LatestVersion,
+                    latestFileName: previous.LatestFileName,
+                    deltaCount: previous.DeltaCount,
+                    lastCheckedAtUtc: previous.LastCheckedAtUtc,
+                    lastFailedAtUtc: DateTimeOffset.UtcNow,
+                    lastError: "No downloaded update is pending restart.",
+                    releasePageUrl: previous.ReleasePageUrl ?? ReleasePageUrl(previous.LatestVersion),
+                    lastDownloadStartedAtUtc: previous.LastDownloadStartedAtUtc,
+                    lastDownloadedAtUtc: previous.LastDownloadedAtUtc,
+                    downloadProgressPercent: previous.DownloadProgressPercent,
+                    lastApplyStartedAtUtc: previous.LastApplyStartedAtUtc));
+            }
+
+            var applyStartedAtUtc = DateTimeOffset.UtcNow;
+            var previousPending = Snapshot();
+            SetSnapshot(InstalledSnapshot(
+                ReleaseUpdateStatus.Applying,
+                manager,
+                checkInProgress: false,
+                latestVersion: pendingRestart.Version?.ToString(),
+                latestFileName: pendingRestart.FileName,
+                deltaCount: previousPending.DeltaCount,
+                lastCheckedAtUtc: previousPending.LastCheckedAtUtc,
+                lastFailedAtUtc: null,
+                lastError: null,
+                releasePageUrl: ReleasePageUrl(pendingRestart.Version?.ToString()),
+                lastDownloadStartedAtUtc: previousPending.LastDownloadStartedAtUtc,
+                lastDownloadedAtUtc: previousPending.LastDownloadedAtUtc,
+                downloadProgressPercent: previousPending.DownloadProgressPercent,
+                lastApplyStartedAtUtc: applyStartedAtUtc));
+
+            _events.Record("update_apply_started", new Dictionary<string, string?>
+            {
+                ["latestVersion"] = pendingRestart.Version?.ToString(),
+                ["latestFileName"] = pendingRestart.FileName
+            });
+            manager.WaitExitThenApplyUpdates(pendingRestart, false, true, Array.Empty<string>());
+            return Snapshot();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Failed to start TmrOverlay update apply.");
+            _events.Record("update_apply_failed", new Dictionary<string, string?>
+            {
+                ["error"] = exception.GetType().Name
+            });
+            var manager = CreateUpdateManager();
+            if (manager is null)
+            {
+                return SetSnapshot(FailedSnapshot(exception));
+            }
+
+            var previous = Snapshot();
+            return SetSnapshot(InstalledSnapshot(
+                ReleaseUpdateStatus.Failed,
+                manager,
+                checkInProgress: false,
+                latestVersion: previous.LatestVersion,
+                latestFileName: previous.LatestFileName,
+                deltaCount: previous.DeltaCount,
+                lastCheckedAtUtc: previous.LastCheckedAtUtc,
+                lastFailedAtUtc: DateTimeOffset.UtcNow,
+                lastError: exception.Message,
+                releasePageUrl: previous.ReleasePageUrl ?? ReleasePageUrl(previous.LatestVersion),
+                lastDownloadStartedAtUtc: previous.LastDownloadStartedAtUtc,
+                lastDownloadedAtUtc: previous.LastDownloadedAtUtc,
+                downloadProgressPercent: previous.DownloadProgressPercent,
+                lastApplyStartedAtUtc: previous.LastApplyStartedAtUtc));
+        }
+        finally
+        {
+            _checkLock.Release();
+        }
+    }
+
     public void Dispose()
     {
         _startupCheckCancellation?.Cancel();
@@ -270,6 +562,10 @@ internal sealed class ReleaseUpdateService : IHostedService, IDisposable
         LatestFileName: null,
         DeltaCount: 0,
         LastCheckedAtUtc: null,
+        LastDownloadStartedAtUtc: null,
+        LastDownloadedAtUtc: null,
+        DownloadProgressPercent: null,
+        LastApplyStartedAtUtc: null,
         LastFailedAtUtc: null,
         LastError: null,
         ReleasePageUrl: ReleasePageUrl(null));
@@ -287,11 +583,21 @@ internal sealed class ReleaseUpdateService : IHostedService, IDisposable
         LatestFileName: null,
         DeltaCount: 0,
         LastCheckedAtUtc: null,
+        LastDownloadStartedAtUtc: null,
+        LastDownloadedAtUtc: null,
+        DownloadProgressPercent: null,
+        LastApplyStartedAtUtc: null,
         LastFailedAtUtc: null,
         LastError: null,
         ReleasePageUrl: ReleasePageUrl(null));
 
-    private ReleaseUpdateSnapshot PendingRestartSnapshot(UpdateManager manager, VelopackAsset pendingRestart) => new(
+    private ReleaseUpdateSnapshot PendingRestartSnapshot(
+        UpdateManager manager,
+        VelopackAsset pendingRestart,
+        DateTimeOffset? lastCheckedAtUtc = null,
+        DateTimeOffset? lastDownloadStartedAtUtc = null,
+        DateTimeOffset? lastDownloadedAtUtc = null,
+        int? downloadProgressPercent = null) => new(
         ReleaseUpdateStatus.PendingRestart,
         Enabled: _options.Enabled,
         IsInstalled: true,
@@ -303,7 +609,11 @@ internal sealed class ReleaseUpdateService : IHostedService, IDisposable
         LatestVersion: pendingRestart.Version?.ToString(),
         LatestFileName: pendingRestart.FileName,
         DeltaCount: 0,
-        LastCheckedAtUtc: Snapshot().LastCheckedAtUtc,
+        LastCheckedAtUtc: lastCheckedAtUtc ?? Snapshot().LastCheckedAtUtc,
+        LastDownloadStartedAtUtc: lastDownloadStartedAtUtc ?? Snapshot().LastDownloadStartedAtUtc,
+        LastDownloadedAtUtc: lastDownloadedAtUtc ?? Snapshot().LastDownloadedAtUtc,
+        DownloadProgressPercent: downloadProgressPercent ?? Snapshot().DownloadProgressPercent,
+        LastApplyStartedAtUtc: Snapshot().LastApplyStartedAtUtc,
         LastFailedAtUtc: null,
         LastError: null,
         ReleasePageUrl: ReleasePageUrl(pendingRestart.Version?.ToString()));
@@ -318,7 +628,11 @@ internal sealed class ReleaseUpdateService : IHostedService, IDisposable
         DateTimeOffset? lastCheckedAtUtc,
         DateTimeOffset? lastFailedAtUtc,
         string? lastError,
-        string? releasePageUrl) => new(
+        string? releasePageUrl,
+        DateTimeOffset? lastDownloadStartedAtUtc = null,
+        DateTimeOffset? lastDownloadedAtUtc = null,
+        int? downloadProgressPercent = null,
+        DateTimeOffset? lastApplyStartedAtUtc = null) => new(
         status,
         Enabled: _options.Enabled,
         IsInstalled: true,
@@ -331,6 +645,10 @@ internal sealed class ReleaseUpdateService : IHostedService, IDisposable
         LatestFileName: latestFileName,
         DeltaCount: deltaCount,
         LastCheckedAtUtc: lastCheckedAtUtc,
+        LastDownloadStartedAtUtc: lastDownloadStartedAtUtc,
+        LastDownloadedAtUtc: lastDownloadedAtUtc,
+        DownloadProgressPercent: downloadProgressPercent,
+        LastApplyStartedAtUtc: lastApplyStartedAtUtc,
         LastFailedAtUtc: lastFailedAtUtc,
         LastError: lastError,
         ReleasePageUrl: releasePageUrl);
@@ -348,6 +666,10 @@ internal sealed class ReleaseUpdateService : IHostedService, IDisposable
         LatestFileName: null,
         DeltaCount: 0,
         LastCheckedAtUtc: null,
+        LastDownloadStartedAtUtc: null,
+        LastDownloadedAtUtc: null,
+        DownloadProgressPercent: null,
+        LastApplyStartedAtUtc: null,
         LastFailedAtUtc: DateTimeOffset.UtcNow,
         LastError: exception.Message,
         ReleasePageUrl: ReleasePageUrl(null));

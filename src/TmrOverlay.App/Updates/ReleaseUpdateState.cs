@@ -8,7 +8,9 @@ internal enum ReleaseUpdateStatus
     Checking,
     UpToDate,
     Available,
+    Downloading,
     PendingRestart,
+    Applying,
     Failed
 }
 
@@ -31,10 +33,25 @@ internal sealed record ReleaseUpdateSnapshot(
     string? LatestFileName,
     int DeltaCount,
     DateTimeOffset? LastCheckedAtUtc,
+    DateTimeOffset? LastDownloadStartedAtUtc,
+    DateTimeOffset? LastDownloadedAtUtc,
+    int? DownloadProgressPercent,
+    DateTimeOffset? LastApplyStartedAtUtc,
     DateTimeOffset? LastFailedAtUtc,
     string? LastError,
     string? ReleasePageUrl)
 {
+    public string StatusText => Status.ToString();
+
+    public bool OperationInProgress => CheckInProgress
+        || Status is ReleaseUpdateStatus.Downloading or ReleaseUpdateStatus.Applying;
+
+    public bool CanCheck => Enabled && IsInstalled && !OperationInProgress;
+
+    public bool CanDownload => Enabled && IsInstalled && Status == ReleaseUpdateStatus.Available && !OperationInProgress;
+
+    public bool CanRestartToApply => Enabled && IsInstalled && Status == ReleaseUpdateStatus.PendingRestart && !OperationInProgress;
+
     public static ReleaseUpdateSnapshot Disabled(string repositoryUrl) => new(
         ReleaseUpdateStatus.Disabled,
         Enabled: false,
@@ -48,6 +65,10 @@ internal sealed record ReleaseUpdateSnapshot(
         LatestFileName: null,
         DeltaCount: 0,
         LastCheckedAtUtc: null,
+        LastDownloadStartedAtUtc: null,
+        LastDownloadedAtUtc: null,
+        DownloadProgressPercent: null,
+        LastApplyStartedAtUtc: null,
         LastFailedAtUtc: null,
         LastError: null,
         ReleasePageUrl: null);
