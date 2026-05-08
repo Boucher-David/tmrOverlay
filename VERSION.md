@@ -23,7 +23,7 @@ Planned scope:
 - Preserve the current production content contracts while making the tracked mac harness V2 settings shell the primary mac settings design for the main app window and the current overlay tabs.
 - Make the mac harness capable of opening live Design V2 component-review overlays, not just generating static screenshots.
 - Generate component-level outrun review artifacts and full settings-window review artifacts from the same mac-harness views used for live review.
-- Keep Design V2 development surfaces out of the Windows production UI until the WinForms V2 layer is ported against the same settings contracts.
+- Promote Design V2 into the Windows production settings app through an additive WinForms V2 layer over the same settings contracts.
 - Use stable semantic tokens for surfaces, text, borders, evidence colors, graph chrome, buttons, tabs, table rows, localhost blocks, settings content blocks, and app/overlay chrome so Windows can map the same roles.
 
 Technical implementation checklist:
@@ -36,7 +36,7 @@ Technical implementation checklist:
 6. Preserve current settings semantics for visibility, scale, opacity, session filters, shared header/footer options, content toggles, browser-source routes, Garage Cover image import, and Stream Chat source configuration.
 7. Refactor reusable mac settings helpers where V2 and legacy settings share behavior.
 8. Expand screenshot validation expectations for Design V2 component and settings-window artifacts.
-9. Defer the Windows production V2 port to the next branch, using this branch's mac settings shell and shared content descriptors as the parity reference.
+9. Add the Windows WinForms V2 settings surface for the main app window and overlay settings tabs, using the mac settings shell and shared content descriptors as the parity reference.
 
 Likely squash title:
 
@@ -54,7 +54,7 @@ Likely squash body:
 - Preserved current production settings contracts while applying V2 visuals: visibility, scale, opacity, sessions, shared header/footer toggles, content toggles, browser-source routes, Garage Cover image import, and Stream Chat source setup remain settings-backed.
 - Reused descriptor-driven content rows and shared mac helpers for Garage Cover image storage, Stream Chat provider normalization, sidebar ordering, steppers, toggles, segmented choices, and settings screenshot states.
 - Regenerated tracked Design V2 and settings-window screenshot artifacts and updated screenshot validation expectations.
-- Updated docs/context for the tracked mac harness, generated settings artifacts, and the Windows V2 parity handoff; the existing Windows settings UI remains the legacy WinForms surface until the explicit V2 port lands.
+- Updated docs/context for the tracked mac harness, generated settings artifacts, and the Windows V2 settings app port; the Windows settings UI now uses an additive WinForms Design V2 surface over the existing production contracts.
 ```
 
 ## Next Planned Milestone

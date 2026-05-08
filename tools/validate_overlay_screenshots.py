@@ -115,8 +115,18 @@ WINDOWS_MINIMUM_PNGS = {
     # target is wider than the previous 1080x600 shell. Keep the height exact enough for layout review while
     # accepting the runner-observed width.
     "states/settings-general.png": (1000, 680),
+    "states/settings-standings.png": (1000, 680),
     "states/settings-relative.png": (1000, 680),
+    "states/settings-gap-to-leader.png": (1000, 680),
     "states/settings-track-map.png": (1000, 680),
+    "states/settings-stream-chat.png": (1000, 680),
+    "states/settings-garage-cover.png": (1000, 680),
+    "states/settings-fuel-calculator.png": (1000, 680),
+    "states/settings-inputs.png": (1000, 680),
+    "states/settings-car-radar.png": (1000, 680),
+    "states/settings-flags.png": (1000, 680),
+    "states/settings-session-weather.png": (1000, 680),
+    "states/settings-pit-service.png": (1000, 680),
     "states/settings-support.png": (1000, 680),
 }
 

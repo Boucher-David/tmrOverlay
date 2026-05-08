@@ -10,6 +10,7 @@ using TmrOverlay.App.Localhost;
 using TmrOverlay.App.Overlays.CarRadar;
 using TmrOverlay.App.Overlays.Flags;
 using TmrOverlay.App.Overlays.FuelCalculator;
+using TmrOverlay.App.Overlays.GarageCover;
 using TmrOverlay.App.Overlays.GapToLeader;
 using TmrOverlay.App.Overlays.InputState;
 using TmrOverlay.App.Overlays.PitService;
@@ -88,14 +89,64 @@ internal static class Program
             () => CreateSettingsForm("General")));
         screenshots.Add(RenderForm(
             outputRoot,
+            "settings-standings",
+            "Settings - Standings",
+            () => CreateSettingsForm("Standings")));
+        screenshots.Add(RenderForm(
+            outputRoot,
             "settings-relative",
             "Settings - Relative",
             () => CreateSettingsForm("Relative")));
         screenshots.Add(RenderForm(
             outputRoot,
+            "settings-gap-to-leader",
+            "Settings - Gap To Leader",
+            () => CreateSettingsForm("Gap To Leader")));
+        screenshots.Add(RenderForm(
+            outputRoot,
             "settings-track-map",
             "Settings - Track Map",
             () => CreateSettingsForm("Track Map")));
+        screenshots.Add(RenderForm(
+            outputRoot,
+            "settings-stream-chat",
+            "Settings - Stream Chat",
+            () => CreateSettingsForm("Stream Chat")));
+        screenshots.Add(RenderForm(
+            outputRoot,
+            "settings-garage-cover",
+            "Settings - Garage Cover",
+            () => CreateSettingsForm("Garage Cover")));
+        screenshots.Add(RenderForm(
+            outputRoot,
+            "settings-fuel-calculator",
+            "Settings - Fuel Calculator",
+            () => CreateSettingsForm("Fuel Calculator")));
+        screenshots.Add(RenderForm(
+            outputRoot,
+            "settings-inputs",
+            "Settings - Inputs",
+            () => CreateSettingsForm("Inputs")));
+        screenshots.Add(RenderForm(
+            outputRoot,
+            "settings-car-radar",
+            "Settings - Car Radar",
+            () => CreateSettingsForm("Car Radar")));
+        screenshots.Add(RenderForm(
+            outputRoot,
+            "settings-flags",
+            "Settings - Flags",
+            () => CreateSettingsForm("Flags")));
+        screenshots.Add(RenderForm(
+            outputRoot,
+            "settings-session-weather",
+            "Settings - Session / Weather",
+            () => CreateSettingsForm("Session / Weather")));
+        screenshots.Add(RenderForm(
+            outputRoot,
+            "settings-pit-service",
+            "Settings - Pit Service",
+            () => CreateSettingsForm("Pit Service")));
         screenshots.Add(RenderForm(
             outputRoot,
             "settings-support",
@@ -341,6 +392,7 @@ internal static class Program
             RelativeOverlayDefinition.Definition,
             TrackMapOverlayDefinition.Definition,
             StreamChatOverlayDefinition.Definition,
+            GarageCoverOverlayDefinition.Definition,
             FlagsOverlayDefinition.Definition,
             SessionWeatherOverlayDefinition.Definition,
             PitServiceOverlayDefinition.Definition,
@@ -427,6 +479,12 @@ internal static class Program
 
     private static void SelectTab(Control root, string selectedTabText)
     {
+        foreach (var surface in Descendants(root).OfType<DesignV2SettingsSurface>())
+        {
+            surface.SelectTab(DesignV2TabId(selectedTabText));
+            return;
+        }
+
         foreach (var control in Descendants(root))
         {
             if (control is not TabControl tabs)
@@ -445,6 +503,28 @@ internal static class Program
                 return;
             }
         }
+    }
+
+    private static string DesignV2TabId(string selectedTabText)
+    {
+        return selectedTabText.Trim().ToLowerInvariant() switch
+        {
+            "general" => "general",
+            "standings" => "standings",
+            "relative" => "relative",
+            "gap to leader" => "gap-to-leader",
+            "track map" => "track-map",
+            "stream chat" => "stream-chat",
+            "garage cover" => "garage-cover",
+            "fuel calculator" => "fuel-calculator",
+            "inputs" => "input-state",
+            "car radar" => "car-radar",
+            "flags" => "flags",
+            "session / weather" => "session-weather",
+            "pit service" => "pit-service",
+            "support" => "error-logging",
+            _ => selectedTabText
+        };
     }
 
     private static IEnumerable<Control> Descendants(Control root)

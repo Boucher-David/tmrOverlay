@@ -80,6 +80,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private readonly TabControl _tabs;
     private readonly System.Windows.Forms.Timer _refreshTimer;
     private readonly System.Windows.Forms.Timer _saveApplyTimer;
+    private DesignV2SettingsSurface? _v2Surface;
     private CheckBox? _rawCaptureCheckBox;
     private string? _lastDisplayedDiagnosticsBundlePath;
     private DateTimeOffset? _lastDisplayedDiagnosticsBundleErrorAtUtc;
@@ -266,11 +267,47 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         Controls.Add(_titleBar);
         Controls.Add(_updateBannerPanel);
         Controls.Add(_tabs);
+        _titleBar.Visible = false;
+        _updateBannerPanel.Visible = false;
+        _tabs.Visible = false;
+
+        _v2Surface = new DesignV2SettingsSurface(
+            _applicationSettings,
+            OrderedSettingsOverlays().ToArray(),
+            _captureState,
+            _diagnosticsBundleService,
+            _storageOptions,
+            _localhostOverlayOptions,
+            _releaseUpdates,
+            new DesignV2SettingsCallbacks
+            {
+                SaveAndApply = SaveAndApply,
+                RequestApplicationExit = RequestApplicationExit,
+                SelectedOverlayChanged = _selectedOverlayChanged,
+                SetRawCaptureEnabled = SetRawCaptureEnabledFromV2,
+                CreateDiagnosticsBundle = CreateDiagnosticsBundleFromTab,
+                CopyLatestDiagnosticsBundlePath = CopyLatestDiagnosticsBundlePath,
+                OpenSupportDirectory = OpenSupportDirectory,
+                CheckForUpdatesAsync = CheckForUpdatesFromSettingsAsync,
+                OpenReleaseUpdatePage = OpenReleaseUpdatePage,
+                CopyTextToClipboard = CopyTextToClipboard,
+                ImportGarageCoverImage = ImportGarageCoverImage,
+                ClearGarageCoverImage = ClearGarageCoverImage,
+                ShowGarageCoverPreview = ShowGarageCoverPreview,
+                LatestDiagnosticsBundlePath = LatestDiagnosticsBundlePath,
+                AdvancedDiagnosticsText = AdvancedDiagnosticsText
+            })
+        {
+            Location = Point.Empty,
+            Size = ClientSize,
+            Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
+        };
+        Controls.Add(_v2Surface);
+        _v2Surface.BringToFront();
 
         RegisterDragSurfaces(_titleBar, _brandLogo, _titleLabel, _subtitleLabel);
         _releaseUpdates.StateChanged += ReleaseUpdatesStateChanged;
 
-        BuildTabs();
         ReportSelectedOverlayTab();
         RefreshSelectedSettingsTab(force: true);
         ApplyFontFamily(OverlayTheme.DefaultFontFamily);
@@ -308,6 +345,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             _refreshTimer.Stop();
             _refreshTimer.Dispose();
             _releaseUpdates.StateChanged -= ReleaseUpdatesStateChanged;
+            _v2Surface?.Dispose();
             _tabs.Dispose();
             _updateBannerCheckButton.Dispose();
             _updateBannerOpenButton.Dispose();
@@ -343,6 +381,11 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _titleLabel.Size = new Size(Math.Max(120, ClientSize.Width - 132), 19);
         _subtitleLabel.Size = new Size(Math.Max(120, ClientSize.Width - 132), 16);
         _closeButton.Location = new Point(ClientSize.Width - 36, 8);
+        if (_v2Surface is not null)
+        {
+            _v2Surface.Size = ClientSize;
+        }
+
         LayoutUpdateBanner();
         LayoutSettingsTabs();
     }
@@ -469,7 +512,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
     private void ReportSelectedOverlayTab()
     {
-        _selectedOverlayChanged(_tabs.SelectedTab?.Tag as string);
+        _selectedOverlayChanged(_v2Surface?.SelectedOverlayId ?? _tabs.SelectedTab?.Tag as string);
     }
 
     private void SelectedSettingsTabChanged()
@@ -480,6 +523,12 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
     private void SelectOverlayTab(string overlayId)
     {
+        if (_v2Surface is not null)
+        {
+            _v2Surface.SelectTab(overlayId);
+            return;
+        }
+
         foreach (TabPage page in _tabs.TabPages)
         {
             if (string.Equals(page.Tag as string, overlayId, StringComparison.OrdinalIgnoreCase))
@@ -561,6 +610,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             }
 
             succeeded = true;
+            _v2Surface?.RefreshRuntimeState();
         }
         finally
         {
@@ -615,6 +665,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             SetLabelText(_releaseUpdateStatusLabel, ReleaseUpdateSupportText(snapshot));
             SetLabelColor(_releaseUpdateStatusLabel, ColorForReleaseUpdateStatus(snapshot.Status));
         }
+
+        _v2Surface?.Invalidate();
     }
 
     private async Task CheckForUpdatesFromSettingsAsync()
@@ -674,15 +726,30 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         {
             SyncGarageCoverStateLabel();
         }
+
+        if (force)
+        {
+            _v2Surface?.RefreshSelectedPage();
+        }
     }
 
     private bool IsSupportTabSelected()
     {
+        if (_v2Surface is not null)
+        {
+            return _v2Surface.IsSupportSelected;
+        }
+
         return string.Equals(_tabs.SelectedTab?.Text, "Support", StringComparison.Ordinal);
     }
 
     private bool IsGarageCoverTabSelected()
     {
+        if (_v2Surface is not null)
+        {
+            return _v2Surface.IsGarageCoverSelected;
+        }
+
         return string.Equals(
             _tabs.SelectedTab?.Tag as string,
             GarageCoverOverlayDefinition.Definition.Id,
@@ -1132,25 +1199,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         page.Controls.Add(importButton);
 
         var clearButton = CreateActionButton("Clear", 256, top + 78, 80);
-        clearButton.Click += (_, _) =>
-        {
-            try
-            {
-                settings.SetStringOption(OverlayOptionKeys.GarageCoverImagePath, null);
-                GarageCoverImageStore.ClearImportedImages(_storageOptions.SettingsRoot);
-                SaveAndApply();
-                RefreshGarageCoverImageState(settings);
-            }
-            catch (Exception exception)
-            {
-                MessageBox.Show(
-                    this,
-                    exception.Message,
-                    "Garage Cover",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
-            }
-        };
+        clearButton.Click += (_, _) => ClearGarageCoverImage(settings);
         page.Controls.Add(clearButton);
 
         var previewButton = CreateActionButton("Show Test Cover", 346, top + 78, 150);
@@ -1179,6 +1228,27 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         page.Controls.Add(_garageCoverPreviewCaptionLabel);
     }
 
+    private void ClearGarageCoverImage(OverlaySettings settings)
+    {
+        try
+        {
+            settings.SetStringOption(OverlayOptionKeys.GarageCoverImagePath, null);
+            GarageCoverImageStore.ClearImportedImages(_storageOptions.SettingsRoot);
+            SaveAndApply();
+            RefreshGarageCoverImageState(settings);
+            _v2Surface?.RefreshSelectedPage();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(
+                this,
+                exception.Message,
+                "Garage Cover",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
+    }
+
     private void ShowGarageCoverPreview(OverlaySettings settings)
     {
         GarageCoverBrowserSettings.SetPreviewUntil(settings, DateTimeOffset.UtcNow.AddSeconds(10));
@@ -1189,6 +1259,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         SaveAndApply();
         SetSupportStatus("Garage Cover test is visible in OBS for 10 seconds.", isError: false);
         SyncGarageCoverStateLabel();
+        _v2Surface?.Invalidate();
     }
 
     private void RefreshGarageCoverImageState(OverlaySettings settings)
@@ -1215,6 +1286,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     {
         if (_garageCoverStateLabel is null)
         {
+            _v2Surface?.Invalidate();
             return;
         }
 
@@ -1240,6 +1312,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
                     "garage_hidden" => OverlayTheme.Colors.TextSecondary,
                     _ => OverlayTheme.Colors.WarningText
                 });
+        _v2Surface?.Invalidate();
     }
 
     private static string GarageCoverImageStatusText(GarageCoverImageStatus status)
@@ -1320,6 +1393,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             });
             SaveAndApply();
             RefreshGarageCoverImageState(settings);
+            _v2Surface?.RefreshSelectedPage();
         }
         catch (Exception exception)
         {
@@ -1594,6 +1668,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             try
             {
                 SettingsOverlayTabSections.RefreshBrowserSizeReadouts(this);
+                _v2Surface?.Invalidate();
                 browserSizeSucceeded = true;
             }
             finally
@@ -1651,6 +1726,18 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         }
     }
 
+    private bool SetRawCaptureEnabledFromV2(bool requested)
+    {
+        var accepted = _captureState.SetRawCaptureEnabled(requested);
+        _events.Record("raw_capture_runtime_toggle", new Dictionary<string, string?>
+        {
+            ["requested"] = requested.ToString(),
+            ["accepted"] = accepted.ToString(),
+            ["source"] = "settings_overlay"
+        });
+        return accepted;
+    }
+
     private void SyncRawCaptureCheckBox()
     {
         if (_rawCaptureCheckBox is null)
@@ -1676,12 +1763,25 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
     private void SyncErrorLoggingTab()
     {
+        var hasLegacySupportControls = _appVersionLabel is not null
+            || _appStatusLabel is not null
+            || _sessionStateLabel is not null
+            || _currentIssueLabel is not null
+            || _advancedDiagnosticsLabel is not null
+            || _latestDiagnosticsBundleLabel is not null;
+        if (!hasLegacySupportControls
+            && _v2Surface?.IsSupportSelected != true)
+        {
+            return;
+        }
+
         if (_appVersionLabel is null
             && _appStatusLabel is null
             && _sessionStateLabel is null
             && _currentIssueLabel is null
             && _advancedDiagnosticsLabel is null
-            && _latestDiagnosticsBundleLabel is null)
+            && _latestDiagnosticsBundleLabel is null
+            && _v2Surface?.IsSupportSelected != true)
         {
             return;
         }
@@ -1730,14 +1830,16 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         {
             _nextSupportHeavyRefreshAtUtc = now + SupportHeavyRefreshInterval;
             var diagnosticsSnapshot = _diagnosticsBundleService.Snapshot();
+            var latestBundlePath = diagnosticsSnapshot.LastBundlePath ?? LatestDiagnosticsBundlePathCached(now) ?? string.Empty;
             if (_latestDiagnosticsBundleLabel is not null)
             {
-                var latestBundlePath = diagnosticsSnapshot.LastBundlePath ?? LatestDiagnosticsBundlePathCached(now) ?? string.Empty;
                 SetLabelText(_latestDiagnosticsBundleLabel, SupportStatusText.LatestBundleDisplayText(latestBundlePath));
-                ReportAutomaticDiagnosticsBundleStatus(diagnosticsSnapshot, latestBundlePath);
             }
 
+            ReportAutomaticDiagnosticsBundleStatus(diagnosticsSnapshot, latestBundlePath);
         }
+
+        _v2Surface?.Invalidate();
     }
 
     private void CreateDiagnosticsBundleFromTab()
@@ -1850,7 +1952,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         DiagnosticsBundleStatus diagnosticsSnapshot,
         string latestBundlePath)
     {
-        if (_supportStatusLabel is null)
+        if (_supportStatusLabel is null
+            && _v2Surface is null)
         {
             return;
         }
@@ -1885,6 +1988,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
     private void SetSupportStatus(string message, bool isError)
     {
+        _v2Surface?.SetSupportStatus(message, isError);
         if (_supportStatusLabel is null)
         {
             return;
