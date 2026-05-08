@@ -311,7 +311,7 @@ struct DesignV2SettingsRenderer {
             drawCentered("TMR", in: NSRect(x: 66, y: 53, width: 46, height: 24), size: 14, weight: .black, color: DesignV2SettingsPalette.text)
         }
         drawText("Tech Mates Racing Overlay", in: NSRect(x: 128, y: 52, width: 480, height: 28), size: 24, weight: .heavy, color: DesignV2SettingsPalette.text)
-        drawText("Settings control plane - outrun concept skin", in: NSRect(x: 129, y: 75, width: 480, height: 16), size: 12, color: DesignV2SettingsPalette.muted)
+        drawText("Settings control plane - mac Design V2", in: NSRect(x: 129, y: 75, width: 480, height: 16), size: 12, color: DesignV2SettingsPalette.muted)
         drawCentered("X", in: NSRect(x: 1132, y: 54, width: 30, height: 24), size: 13, weight: .black, color: NSColor(red255: 255, green: 200, blue: 239))
     }
 

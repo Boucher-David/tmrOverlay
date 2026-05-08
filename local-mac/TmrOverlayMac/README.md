@@ -110,6 +110,10 @@ Comparison windows show old timing rows, conservative de-overlap, and wide-row g
 
 The current mac harness can run four-hour mock overlays and capture-derived radar/gap demos with live diagnostics. It does not yet replay an arbitrary 24-hour raw capture through all overlay types. That should be added as a future development-only replay provider that decodes existing raw captures into normalized live snapshots at high playback speed, drives one overlay of each type, and saves screenshots plus `live-overlay-diagnostics.json`.
 
+## Main Mac Settings Design
+
+The mac settings window now treats Design V2 as the primary mac design for the converted application and overlay settings surfaces. The V2 shell is the default review surface for General, Support, Standings, Relative, Gap To Leader, Fuel Calculator, Session / Weather, Pit Service, Track Map, Stream Chat, Inputs, Car Radar, Flags, and Garage Cover. Legacy settings controls remain in source only as compatibility/fallback scaffolding for tabs or behaviors that have not been promoted to the V2 shell yet.
+
 ## Design V2 Proving Ground
 
 The mac screenshot target also renders a design-v2 proving ground under:

@@ -10,7 +10,7 @@ Generated mac-harness proving-ground screenshots for design-v2 overlay primitive
 - `states/flag-display.png` shows a minimal race-control/flag state.
 - `states/analysis-exception.png` shows where source/evidence labels still belong: derived analysis products such as fuel, radar, gap, and strategy.
 
-This folder is not a production overlay mock. It is the mac-only proving ground for shared visual language before the Windows overlays adopt the same semantics. The default design direction is direct telemetry first, including local in-car radar. Confidence/source chrome should be quiet unless a value is stale, unavailable, modeled, or derived.
+This folder is not the primary mac settings surface. The converted mac settings window now treats Design V2 as its main design; this folder remains the mac-only proving ground for shared overlay primitives before the Windows overlays adopt the same semantics. The default design direction is direct telemetry first, including local in-car radar. Confidence/source chrome should be quiet unless a value is stale, unavailable, modeled, or derived.
 
 Component review artifacts are generated from the same mac-harness views used by the live Design V2 component overlay. The current theme preserves the default product direction; the outrun theme stress-tests the same semantic roles with a bolder review palette.
 

@@ -1,6 +1,6 @@
 import AppKit
 
-// Designer-facing tokens for the mac-only design v2 proving ground.
+// Designer-facing tokens for mac Design V2 surfaces and proving-ground components.
 // Keep semantic names stable so Windows can later map the same roles to WinForms.
 struct DesignV2Theme {
     let id: String
