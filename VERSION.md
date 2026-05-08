@@ -9,40 +9,40 @@ TmrOverlay uses SemVer-style annotated Git tags for product milestones:
 
 ## Current Branch Target
 
-### v0.18.1 - Restore Windows Settings Clickability
+### v0.18.2 - Force Startup Diagnostics For Frozen UI
 
 Planned branch name:
 
 ```text
-v0.18.1-settings-click-fix
+v0.18.2-ui-freeze-fix
 ```
 
 Planned scope:
 
-- Ship a patch release on top of `v0.18.0` for teammate feedback that the app loads but mouse clicks do not work.
-- Keep the settings window active and clickable when enabled product overlays are restored during startup.
-- Preserve the v0.18.0 MSI/Velopack install and update product shape while producing a higher patch version for upgrade testing.
+- Ship a diagnostic patch on top of `v0.18.1` for teammate feedback that the app still loads but the UI remains frozen.
+- Force raw diagnostic telemetry capture on from startup so testers do not need the Support checkbox.
+- Keep advanced overlay/model diagnostics enabled and increase file logging detail/retention to capture startup and frozen-window evidence.
 
 Technical implementation checklist:
 
-1. Bump shared .NET product/version metadata to `0.18.1`.
-2. Prevent product overlay forms from stealing activation when they are shown while Settings is open.
-3. Reassert Settings z-order/activation after overlay settings are applied during startup.
-4. Validate local static checks, then use Windows CI or a Windows machine for the full .NET build/test and v0.18.0-to-v0.18.1 upgrade check.
+1. Bump shared .NET product/version metadata to `0.18.2`.
+2. Default raw telemetry capture on for this diagnostic patch.
+3. Raise file logging to Debug with larger retained logs so frozen-window sessions leave useful evidence.
+4. Validate local static checks, then use Windows CI or a Windows machine for the full .NET build/test and v0.18.1-to-v0.18.2 upgrade check.
 
 Likely squash title:
 
 ```text
-[v0.18.1] Restore Windows settings clickability
+[v0.18.2] Force startup diagnostics for frozen UI
 ```
 
 Likely squash body:
 
 ```text
-- Bumped shared .NET product/version metadata to 0.18.1.
-- Kept product overlay windows from taking activation when they are shown while the Settings app is already active.
-- Reasserted the Settings window after overlay settings are applied so restored startup overlays cannot sit above it and intercept clicks.
-- Preserved the v0.18.0 MSI/Velopack install and update behavior for patch upgrade testing.
+- Bumped shared .NET product/version metadata to 0.18.2.
+- Forced raw diagnostic telemetry capture on at startup so testers can collect evidence even when Settings is frozen.
+- Kept advanced telemetry/model/overlay diagnostics enabled and increased file logging to Debug with larger retained log files.
+- Preserved the v0.18.1 MSI/Velopack install and update behavior for patch upgrade testing.
 ```
 
 ## Next Planned Milestone
@@ -55,6 +55,23 @@ Likely scope:
 - Keep hard release-blocking fixes in 0.x only if teammate testing finds installer/update, AppData compatibility, or V1 candidate regressions.
 
 ## Merged Mainline Milestones
+
+### v0.18.1 - Restore Windows Settings Clickability
+
+Commit: `0a6b070`
+
+Squash title:
+
+```text
+[v0.18.1] Restore Windows settings clickability
+```
+
+Summary:
+
+- Bumped shared .NET product/version metadata to 0.18.1.
+- Kept product overlay windows from taking activation when they are shown while the Settings app is already active.
+- Reasserted the Settings window after overlay settings are applied so restored startup overlays cannot sit above it and intercept clicks.
+- Preserved the v0.18.0 MSI/Velopack install and update behavior for patch upgrade testing.
 
 ### v0.18.0 - Windows MSI Install And Active Updates
 

@@ -56,7 +56,7 @@ By default, TmrOverlay stores user data outside the install folder under:
 
 That app-data root contains settings, history, logs, diagnostics, runtime state, generated track maps, and optional captures. Updating or replacing the app does not delete this data.
 
-Raw telemetry capture is opt-in. Normal diagnostics are compact summaries and logs; diagnostics bundles intentionally exclude raw `telemetry.bin` and source `.ibt` files.
+Raw telemetry capture is normally opt-in. The `v0.18.2` frozen-UI diagnostic patch temporarily forces raw capture on from startup so testers can collect evidence without reaching the Support checkbox. Normal diagnostics are compact summaries and logs; diagnostics bundles intentionally exclude raw `telemetry.bin` and source `.ibt` files.
 
 Streamlabs widget URLs and other private local settings are redacted from diagnostics bundles.
 
@@ -131,6 +131,8 @@ The settings Support tab and tray menu can create diagnostics bundles under:
 ```
 
 Bundles include app/storage metadata, telemetry state, release update state, localhost request state, track-map inventory metadata, performance snapshots, recent logs/events, runtime state, settings, latest capture metadata and compact sidecars, recent history summaries, and advanced collection artifacts when present.
+
+If the Settings UI is frozen and a bundle cannot be created, collect `%LOCALAPPDATA%\TmrOverlay\logs` and the latest `%LOCALAPPDATA%\TmrOverlay\captures` folder from the diagnostic patch build.
 
 Performance diagnostics are always on and write periodic JSONL snapshots under:
 
