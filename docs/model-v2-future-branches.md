@@ -116,10 +116,10 @@ Goal: make Velopack the canonical installer/update channel using public GitHub R
 Likely scope:
 
 - Add Velopack startup integration and CI `vpk pack` validation.
-- Publish Velopack setup/full/delta/feed assets to public GitHub Releases on release tags.
+- Publish Velopack MSI/full/delta/feed assets to public GitHub Releases on release tags.
 - Add passive startup/manual update checks for installed Velopack builds without embedding a GitHub token in the client.
 - Show update available/failure state in the tray menu, settings banner, Support tab, and diagnostics bundle.
-- Keep active download/apply/restart controls deferred until at least one installed teammate update is validated.
+- Add explicit user-initiated download/install and restart-to-apply controls once the installer path is ready for teammate testing.
 - Keep deep fuel/strategy/engineer/advanced-track-map/streaming/builder work out of the V1.0 release candidate unless it is hidden development tooling.
 
 ## Suggested V1.X Roadmap

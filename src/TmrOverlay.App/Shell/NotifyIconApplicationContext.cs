@@ -31,6 +31,8 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
     private readonly ToolStripMenuItem _captureItem;
     private readonly ToolStripMenuItem _updateStatusItem;
     private readonly ToolStripMenuItem _checkUpdatesItem;
+    private readonly ToolStripMenuItem _installUpdateItem;
+    private readonly ToolStripMenuItem _restartUpdateItem;
     private readonly ToolStripMenuItem _openUpdatePageItem;
     private readonly ToolStripMenuItem _rootItem;
     private readonly System.Windows.Forms.Timer _refreshTimer;
@@ -76,6 +78,14 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
             Enabled = false
         };
         _checkUpdatesItem = new ToolStripMenuItem("Check for Updates", null, async (_, _) => await CheckForUpdatesFromTrayAsync().ConfigureAwait(true));
+        _installUpdateItem = new ToolStripMenuItem("Download and Install Update", null, async (_, _) => await DownloadUpdateFromTrayAsync().ConfigureAwait(true))
+        {
+            Enabled = false
+        };
+        _restartUpdateItem = new ToolStripMenuItem("Restart to Apply Update", null, (_, _) => RestartToApplyUpdateFromTray())
+        {
+            Enabled = false
+        };
         _openUpdatePageItem = new ToolStripMenuItem("Open Releases", null, (_, _) => OpenUpdatePage())
         {
             Enabled = false
@@ -103,6 +113,8 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
             new ToolStripSeparator(),
             _updateStatusItem,
             _checkUpdatesItem,
+            _installUpdateItem,
+            _restartUpdateItem,
             _openUpdatePageItem,
             new ToolStripSeparator(),
             diagnosticsItem,
@@ -220,7 +232,11 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
             ReleaseUpdateStatus.Available => string.IsNullOrWhiteSpace(snapshot.LatestVersion)
                 ? "Update available"
                 : $"Update available: v{snapshot.LatestVersion}",
+            ReleaseUpdateStatus.Downloading => snapshot.DownloadProgressPercent is { } progress
+                ? $"Downloading update: {progress}%"
+                : "Downloading update...",
             ReleaseUpdateStatus.PendingRestart => "Update pending restart",
+            ReleaseUpdateStatus.Applying => "Restarting to apply update...",
             ReleaseUpdateStatus.UpToDate => "Up to date",
             ReleaseUpdateStatus.Checking => "Checking for updates...",
             ReleaseUpdateStatus.NotInstalled => "Updates require installer build",
@@ -228,7 +244,9 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
             ReleaseUpdateStatus.Failed => "Update check failed",
             _ => "Updates not checked"
         };
-        _checkUpdatesItem.Enabled = snapshot.Enabled && snapshot.IsInstalled && !snapshot.CheckInProgress;
+        _checkUpdatesItem.Enabled = snapshot.CanCheck;
+        _installUpdateItem.Enabled = snapshot.CanDownload;
+        _restartUpdateItem.Enabled = snapshot.CanRestartToApply;
         _openUpdatePageItem.Enabled = !string.IsNullOrWhiteSpace(snapshot.ReleasePageUrl);
     }
 
@@ -242,6 +260,36 @@ internal sealed class NotifyIconApplicationContext : ApplicationContext
         catch (Exception exception)
         {
             _logger.LogWarning(exception, "Manual update check failed from tray menu.");
+        }
+    }
+
+    private async Task DownloadUpdateFromTrayAsync()
+    {
+        try
+        {
+            await _releaseUpdates.DownloadAndPrepareUpdateAsync().ConfigureAwait(true);
+            RefreshUpdateMenu();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Manual update download failed from tray menu.");
+        }
+    }
+
+    private void RestartToApplyUpdateFromTray()
+    {
+        try
+        {
+            var snapshot = _releaseUpdates.BeginApplyUpdateAndRestart();
+            RefreshUpdateMenu();
+            if (snapshot.Status == ReleaseUpdateStatus.Applying)
+            {
+                ExitApplication();
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Manual update apply failed from tray menu.");
         }
     }
 

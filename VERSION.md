@@ -9,52 +9,48 @@ TmrOverlay uses SemVer-style annotated Git tags for product milestones:
 
 ## Current Branch Target
 
-### v0.16.2 - Design V2 Theme Foundation
+### v0.18.0 - Windows MSI Install And Active Updates
 
 Planned branch name:
 
 ```text
-v0.16.2-design-v2-theme-foundation
+v0.18.0-installable-windows-app
 ```
 
 Planned scope:
 
-- Build the Design V2 theme foundation before V1.x so future visual changes, overlay additions, settings surfaces, and component iterations can share a tokenized architecture instead of one-off styling.
-- Preserve the current production content contracts while making the tracked mac harness V2 settings shell the primary mac settings design for the main app window and the current overlay tabs.
-- Make the mac harness capable of opening live Design V2 component-review overlays, not just generating static screenshots.
-- Generate component-level outrun review artifacts and full settings-window review artifacts from the same mac-harness views used for live review.
-- Promote Design V2 into the Windows production settings app through an additive WinForms V2 layer over the same settings contracts.
-- Use stable semantic tokens for surfaces, text, borders, evidence colors, graph chrome, buttons, tabs, table rows, localhost blocks, settings content blocks, and app/overlay chrome so Windows can map the same roles.
+- Make the Windows release feel like a normal installable application by publishing one MSI installer path instead of sending teammates through a desktop-focused one-click setup choice.
+- Keep Velopack as the installer/update channel while using the MSI for the user-facing install flow.
+- Add explicit in-app update actions so installed builds can check, download/install, and restart to apply updates from the tray menu and Support tab.
+- Expand update diagnostics so support bundles capture update progress, pending restart/apply state, action availability, and failure details.
 
 Technical implementation checklist:
 
-1. Bump shared .NET product/version metadata to `0.16.2`.
-2. Refactor mac Design V2 tokens into named current/outrun theme instances while keeping current visuals as the default.
-3. Add live mac-harness Design V2 component overlay entry points through the tray menu and env/CLI launch flags.
-4. Render component-level screenshots from the same component overlay views used by the live mac harness.
-5. Add the mac V2 settings shell as the primary mac settings design for General, Support, Standings, Relative, Gap To Leader, Fuel Calculator, Session / Weather, Pit Service, Track Map, Stream Chat, Inputs, Car Radar, Flags, and Garage Cover.
-6. Preserve current settings semantics for visibility, scale, opacity, session filters, shared header/footer options, content toggles, browser-source routes, Garage Cover image import, and Stream Chat source configuration.
-7. Refactor reusable mac settings helpers where V2 and legacy settings share behavior.
-8. Expand screenshot validation expectations for Design V2 component and settings-window artifacts.
-9. Add the Windows WinForms V2 settings surface for the main app window and overlay settings tabs, using the mac settings shell and shared content descriptors as the parity reference.
+1. Bump shared .NET product/version metadata to `0.18.0`.
+2. Update the Velopack SDK/CLI pin together so Windows CI can generate MSI assets.
+3. Generate branded MSI banner/logo artwork from tracked brand assets.
+4. Publish the MSI, Velopack update feed, packages, and portable zip fallback from release tags while keeping Setup.exe out of the release-facing assets.
+5. Add user-initiated update download/install and restart-to-apply controls to the tray menu and settings Support surface.
+6. Keep startup update checks passive and avoid automatic app restarts.
+7. Include update action/progress/apply metadata in diagnostics bundles.
+8. Update Windows release/update docs and the teammate install guide.
 
 Likely squash title:
 
 ```text
-[v0.16.2] Add Design V2 theme and mac settings surfaces
+[v0.18.0] Add MSI install flow and active Velopack updates
 ```
 
 Likely squash body:
 
 ```text
-- Bumped shared .NET product/version metadata to 0.16.2.
-- Refactored the mac Design V2 proving-ground theme into named current/outrun token sets while preserving current visuals by default.
-- Added live mac-harness Design V2 component-review overlays and component screenshots generated from the same views.
-- Made the mac V2 settings shell the primary mac settings design for the main app General/Support surfaces and the current overlay settings tabs, including Standings, Relative, Gap To Leader, Fuel Calculator, Session / Weather, Pit Service, Track Map, Stream Chat, Inputs, Car Radar, Flags, and Garage Cover.
-- Preserved current production settings contracts while applying V2 visuals: visibility, scale, opacity, sessions, shared header/footer toggles, content toggles, browser-source routes, Garage Cover image import, and Stream Chat source setup remain settings-backed.
-- Reused descriptor-driven content rows and shared mac helpers for Garage Cover image storage, Stream Chat provider normalization, sidebar ordering, steppers, toggles, segmented choices, and settings screenshot states.
-- Regenerated tracked Design V2 and settings-window screenshot artifacts and updated screenshot validation expectations.
-- Updated docs/context for the tracked mac harness, generated settings artifacts, and the Windows V2 settings app port; the Windows settings UI now uses an additive WinForms Design V2 surface over the existing production contracts.
+- Bumped shared .NET product/version metadata to 0.18.0.
+- Updated Velopack SDK/CLI packaging to generate the MSI installer and update feed from the same release build.
+- Added tracked MSI banner/logo artwork generated from the TMR brand asset.
+- Published one user-facing Windows installer option, the MSI, while keeping Velopack update packages/feed and the portable zip fallback.
+- Added user-initiated update download/install and restart-to-apply actions in the tray menu and Support settings surface.
+- Expanded release update state and diagnostics metadata for progress, pending restart/apply state, action availability, and failures.
+- Updated Windows release/update docs and regenerated the teammate installer guide.
 ```
 
 ## Next Planned Milestone
@@ -67,6 +63,24 @@ Likely scope:
 - Keep hard release-blocking fixes in 0.x only if teammate testing finds installer/update, AppData compatibility, or V1 candidate regressions.
 
 ## Merged Mainline Milestones
+
+### v0.17.0 - Design V2 Theme Foundation
+
+Commit: `b30afd7`
+
+Squash title:
+
+```text
+[v0.17.0] Promote Design V2 settings across mac and Windows
+```
+
+Summary:
+
+- Bumped shared .NET product/version metadata to 0.17.0.
+- Made the tracked mac harness Design V2 settings shell the primary mac settings surface for the main app and current overlay tabs.
+- Promoted Design V2 into the Windows production settings app through an additive WinForms V2 surface over the existing settings contracts.
+- Preserved production settings behavior for visibility, scale, opacity, sessions, header/footer/content toggles, browser-source routes, Garage Cover image import, and Stream Chat setup.
+- Added shared Design V2 tokens, component screenshots, and screenshot validation coverage for mac and Windows settings review.
 
 ### v0.16.1 - Overlay Feedback Hardening
 

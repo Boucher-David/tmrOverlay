@@ -203,6 +203,19 @@ public sealed class DiagnosticsBundleServiceTests
                 Assert.Equal(1L, ((long?)localhostJson?["routeCounts"]?["track_map"]) ?? -1L);
             }
 
+            var releaseUpdatesEntry = archive.GetEntry("metadata/release-updates.json");
+            Assert.NotNull(releaseUpdatesEntry);
+            using (var releaseUpdatesReader = new StreamReader(releaseUpdatesEntry.Open()))
+            {
+                var releaseUpdatesJson = JsonNode.Parse(releaseUpdatesReader.ReadToEnd());
+                Assert.Equal("Disabled", (string?)releaseUpdatesJson?["statusText"]);
+                Assert.False(((bool?)releaseUpdatesJson?["canCheck"]) ?? true);
+                Assert.False(((bool?)releaseUpdatesJson?["canDownload"]) ?? true);
+                Assert.False(((bool?)releaseUpdatesJson?["canRestartToApply"]) ?? true);
+                Assert.Null(releaseUpdatesJson?["downloadProgressPercent"]);
+                Assert.Null(releaseUpdatesJson?["lastApplyStartedAtUtc"]);
+            }
+
             var trackMapsEntry = archive.GetEntry("metadata/track-maps.json");
             Assert.NotNull(trackMapsEntry);
             using (var trackMapsReader = new StreamReader(trackMapsEntry.Open()))

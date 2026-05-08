@@ -103,6 +103,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private DateTimeOffset _nextSupportHeavyRefreshAtUtc;
     private DateTimeOffset _nextLatestDiagnosticsScanAtUtc;
     private DateTimeOffset? _firstPendingSaveApplyAtUtc;
+    private ReleaseUpdateStatus? _lastReleaseUpdateUiStatus;
     private string? _cachedLatestDiagnosticsBundlePath;
     private int _pendingSaveApplyRequestCount;
 
@@ -241,7 +242,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _updateBannerOpenButton = CreateBannerButton("Open", ClientSize.Width - 184);
         _updateBannerOpenButton.Click += (_, _) => OpenReleaseUpdatePage();
         _updateBannerCheckButton = CreateBannerButton("Check", ClientSize.Width - 104);
-        _updateBannerCheckButton.Click += async (_, _) => await CheckForUpdatesFromSettingsAsync().ConfigureAwait(true);
+        _updateBannerCheckButton.Click += async (_, _) => await RunPrimaryUpdateActionFromSettingsAsync().ConfigureAwait(true);
         _updateBannerPanel.Controls.Add(_updateBannerLabel);
         _updateBannerPanel.Controls.Add(_updateBannerOpenButton);
         _updateBannerPanel.Controls.Add(_updateBannerCheckButton);
@@ -289,6 +290,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
                 CopyLatestDiagnosticsBundlePath = CopyLatestDiagnosticsBundlePath,
                 OpenSupportDirectory = OpenSupportDirectory,
                 CheckForUpdatesAsync = CheckForUpdatesFromSettingsAsync,
+                DownloadAndPrepareUpdateAsync = DownloadAndPrepareUpdateFromSettingsAsync,
+                RestartToApplyUpdate = RestartToApplyUpdateFromSettings,
                 OpenReleaseUpdatePage = OpenReleaseUpdatePage,
                 CopyTextToClipboard = CopyTextToClipboard,
                 ImportGarageCoverImage = ImportGarageCoverImage,
@@ -640,8 +643,12 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private void SyncReleaseUpdateUi()
     {
         var snapshot = _releaseUpdates.Snapshot();
+        var releaseStatusChanged = _lastReleaseUpdateUiStatus != snapshot.Status;
+        _lastReleaseUpdateUiStatus = snapshot.Status;
         var showBanner = snapshot.Status is ReleaseUpdateStatus.Available
+            or ReleaseUpdateStatus.Downloading
             or ReleaseUpdateStatus.PendingRestart
+            or ReleaseUpdateStatus.Applying
             or ReleaseUpdateStatus.Failed;
 
         if (_updateBannerPanel.Visible != showBanner)
@@ -657,7 +664,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             ? OverlayTheme.Colors.WarningText
             : OverlayTheme.Colors.TextPrimary;
         SetLabelText(_updateBannerLabel, ReleaseUpdateBannerText(snapshot));
-        SetEnabledIfChanged(_updateBannerCheckButton, snapshot.Enabled && snapshot.IsInstalled && !snapshot.CheckInProgress);
+        SetTextIfChanged(_updateBannerCheckButton, PrimaryUpdateActionText(snapshot));
+        SetEnabledIfChanged(_updateBannerCheckButton, PrimaryUpdateActionEnabled(snapshot));
         SetEnabledIfChanged(_updateBannerOpenButton, !string.IsNullOrWhiteSpace(snapshot.ReleasePageUrl));
 
         if (_releaseUpdateStatusLabel is not null)
@@ -666,7 +674,17 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             SetLabelColor(_releaseUpdateStatusLabel, ColorForReleaseUpdateStatus(snapshot.Status));
         }
 
-        _v2Surface?.Invalidate();
+        if (_v2Surface is not null)
+        {
+            if (releaseStatusChanged && _v2Surface.IsSupportSelected)
+            {
+                _v2Surface.RefreshSelectedPage();
+            }
+            else
+            {
+                _v2Surface.Invalidate();
+            }
+        }
     }
 
     private async Task CheckForUpdatesFromSettingsAsync()
@@ -681,6 +699,52 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         catch (Exception exception)
         {
             SetSupportStatus($"Update check failed: {exception.Message}", isError: true);
+        }
+    }
+
+    private async Task DownloadAndPrepareUpdateFromSettingsAsync()
+    {
+        SetSupportStatus("Downloading update...", isError: false);
+        try
+        {
+            var snapshot = await _releaseUpdates.DownloadAndPrepareUpdateAsync().ConfigureAwait(true);
+            SyncReleaseUpdateUi();
+            SetSupportStatus(ReleaseUpdateActionResultText(snapshot), snapshot.Status == ReleaseUpdateStatus.Failed);
+        }
+        catch (Exception exception)
+        {
+            SetSupportStatus($"Update download failed: {exception.Message}", isError: true);
+        }
+    }
+
+    private void RestartToApplyUpdateFromSettings()
+    {
+        var snapshot = _releaseUpdates.BeginApplyUpdateAndRestart();
+        SyncReleaseUpdateUi();
+        if (snapshot.Status == ReleaseUpdateStatus.Applying)
+        {
+            SetSupportStatus("Restarting to apply update...", isError: false);
+            RequestApplicationExit();
+            return;
+        }
+
+        SetSupportStatus(ReleaseUpdateActionResultText(snapshot), snapshot.Status == ReleaseUpdateStatus.Failed);
+    }
+
+    private async Task RunPrimaryUpdateActionFromSettingsAsync()
+    {
+        var snapshot = _releaseUpdates.Snapshot();
+        switch (snapshot.Status)
+        {
+            case ReleaseUpdateStatus.Available:
+                await DownloadAndPrepareUpdateFromSettingsAsync().ConfigureAwait(true);
+                break;
+            case ReleaseUpdateStatus.PendingRestart:
+                RestartToApplyUpdateFromSettings();
+                break;
+            default:
+                await CheckForUpdatesFromSettingsAsync().ConfigureAwait(true);
+                break;
         }
     }
 
@@ -882,15 +946,18 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         var title = CreateSectionLabel("Updates", 560, top, 330);
         var note = CreateMutedLabel("Installed builds check public GitHub Releases without embedding a token.", 564, top + 30, 330);
         _releaseUpdateStatusLabel = CreateMultiLineValueLabel(ReleaseUpdateSupportText(_releaseUpdates.Snapshot()), 564, top + 62, 330, 76);
-        var checkButton = CreateActionButton("Check Updates", 564, top + 150, 126);
+        var checkButton = CreateActionButton("Check", 564, top + 150, 86);
         checkButton.Click += async (_, _) => await CheckForUpdatesFromSettingsAsync().ConfigureAwait(true);
-        var openButton = CreateActionButton("Open Releases", 700, top + 150, 126);
+        var installButton = CreateActionButton("Install", 660, top + 150, 86);
+        installButton.Click += async (_, _) => await RunPrimaryUpdateActionFromSettingsAsync().ConfigureAwait(true);
+        var openButton = CreateActionButton("Releases", 756, top + 150, 92);
         openButton.Click += (_, _) => OpenReleaseUpdatePage();
 
         page.Controls.Add(title);
         page.Controls.Add(note);
         page.Controls.Add(_releaseUpdateStatusLabel);
         page.Controls.Add(checkButton);
+        page.Controls.Add(installButton);
         page.Controls.Add(openButton);
     }
 
@@ -2015,9 +2082,13 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             ReleaseUpdateStatus.Available => string.IsNullOrWhiteSpace(snapshot.LatestVersion)
                 ? "Update available from GitHub Releases."
                 : $"Update available: v{snapshot.LatestVersion}.",
+            ReleaseUpdateStatus.Downloading => snapshot.DownloadProgressPercent is { } progress
+                ? $"Downloading update: {progress}%."
+                : "Downloading update.",
             ReleaseUpdateStatus.PendingRestart => string.IsNullOrWhiteSpace(snapshot.LatestVersion)
                 ? "Downloaded update is ready to apply after restart."
                 : $"Update v{snapshot.LatestVersion} is ready to apply after restart.",
+            ReleaseUpdateStatus.Applying => "Restarting to apply update.",
             ReleaseUpdateStatus.Failed => string.IsNullOrWhiteSpace(snapshot.LastError)
                 ? "Update check failed."
                 : $"Update check failed: {snapshot.LastError}",
@@ -2038,7 +2109,11 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             ReleaseUpdateStatus.Checking => "Checking GitHub Releases...",
             ReleaseUpdateStatus.UpToDate => $"Up to date at v{snapshot.CurrentVersion}; {checkedText}.",
             ReleaseUpdateStatus.Available => $"Available: v{snapshot.LatestVersion}; current v{snapshot.CurrentVersion}; {checkedText}.",
+            ReleaseUpdateStatus.Downloading => snapshot.DownloadProgressPercent is { } progress
+                ? $"Downloading v{snapshot.LatestVersion}: {progress}%."
+                : $"Downloading v{snapshot.LatestVersion}.",
             ReleaseUpdateStatus.PendingRestart => $"Downloaded update v{snapshot.LatestVersion} is pending restart.",
+            ReleaseUpdateStatus.Applying => $"Restarting to apply v{snapshot.LatestVersion}.",
             ReleaseUpdateStatus.Failed => string.IsNullOrWhiteSpace(snapshot.LastError)
                 ? "Check failed."
                 : $"Check failed: {snapshot.LastError}",
@@ -2053,6 +2128,13 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             ReleaseUpdateStatus.Available => string.IsNullOrWhiteSpace(snapshot.LatestVersion)
                 ? "Update available."
                 : $"Update available: v{snapshot.LatestVersion}.",
+            ReleaseUpdateStatus.Downloading => snapshot.DownloadProgressPercent is { } progress
+                ? $"Downloading update: {progress}%."
+                : "Downloading update.",
+            ReleaseUpdateStatus.PendingRestart => string.IsNullOrWhiteSpace(snapshot.LatestVersion)
+                ? "Downloaded update is ready; restart to apply."
+                : $"Downloaded v{snapshot.LatestVersion}; restart to apply.",
+            ReleaseUpdateStatus.Applying => "Restarting to apply update.",
             ReleaseUpdateStatus.UpToDate => "No update available.",
             ReleaseUpdateStatus.NotInstalled => "Install with Velopack to enable update checks.",
             ReleaseUpdateStatus.Disabled => "Update checks are disabled.",
@@ -2063,6 +2145,44 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         };
     }
 
+    private static string ReleaseUpdateActionResultText(ReleaseUpdateSnapshot snapshot)
+    {
+        return snapshot.Status switch
+        {
+            ReleaseUpdateStatus.PendingRestart => string.IsNullOrWhiteSpace(snapshot.LatestVersion)
+                ? "Update downloaded. Restart to apply it."
+                : $"Update v{snapshot.LatestVersion} downloaded. Restart to apply it.",
+            ReleaseUpdateStatus.Applying => "Restarting to apply update.",
+            ReleaseUpdateStatus.UpToDate => "No update available.",
+            ReleaseUpdateStatus.Failed => string.IsNullOrWhiteSpace(snapshot.LastError)
+                ? "Update failed."
+                : $"Update failed: {snapshot.LastError}",
+            _ => ReleaseUpdateSupportText(snapshot)
+        };
+    }
+
+    private static string PrimaryUpdateActionText(ReleaseUpdateSnapshot snapshot)
+    {
+        return snapshot.Status switch
+        {
+            ReleaseUpdateStatus.Available => "Install",
+            ReleaseUpdateStatus.Downloading => "Wait",
+            ReleaseUpdateStatus.PendingRestart => "Restart",
+            ReleaseUpdateStatus.Applying => "Wait",
+            _ => "Check"
+        };
+    }
+
+    private static bool PrimaryUpdateActionEnabled(ReleaseUpdateSnapshot snapshot)
+    {
+        return snapshot.Status switch
+        {
+            ReleaseUpdateStatus.Available => snapshot.CanDownload,
+            ReleaseUpdateStatus.PendingRestart => snapshot.CanRestartToApply,
+            _ => snapshot.CanCheck
+        };
+    }
+
     private static Color ColorForReleaseUpdateStatus(ReleaseUpdateStatus status)
     {
         return status switch
@@ -2070,7 +2190,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             ReleaseUpdateStatus.Available or ReleaseUpdateStatus.PendingRestart => OverlayTheme.Colors.WarningText,
             ReleaseUpdateStatus.UpToDate => OverlayTheme.Colors.SuccessText,
             ReleaseUpdateStatus.Failed => OverlayTheme.Colors.ErrorText,
-            ReleaseUpdateStatus.Checking => OverlayTheme.Colors.InfoText,
+            ReleaseUpdateStatus.Checking or ReleaseUpdateStatus.Downloading or ReleaseUpdateStatus.Applying => OverlayTheme.Colors.InfoText,
             _ => OverlayTheme.Colors.TextMuted
         };
     }

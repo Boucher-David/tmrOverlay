@@ -186,6 +186,6 @@ While the settings window is active, the transparent Flags overlay suppresses it
 
 - Keep settings as a normal desktop UI.
 - Keep driving overlays focused and simulator-friendly.
-- Show release update available, pending restart, and update-check failure states as a passive yellow banner above the tabs and below the main app title area. Do not show modal prompts over the simulator.
+- Show release update available, downloading, pending restart, applying, and update-check failure states as a yellow banner above the tabs and below the main app title area. Expose explicit install/restart actions only from the settings surface and tray menu; do not show modal prompts over the simulator.
 - If an overlay has preview behavior, document which settings tab triggers it.
 - If new overlay visibility rules are added, update this file and the overlay-specific logic doc.
