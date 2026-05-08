@@ -6,6 +6,7 @@ using TmrOverlay.App.Localhost;
 using TmrOverlay.App.Overlays.BrowserSources;
 using TmrOverlay.App.Overlays.Content;
 using TmrOverlay.App.Overlays.Flags;
+using TmrOverlay.App.Overlays.GarageCover;
 using TmrOverlay.App.Overlays.GapToLeader;
 using TmrOverlay.App.Overlays.StreamChat;
 using TmrOverlay.App.Overlays.Styling;
