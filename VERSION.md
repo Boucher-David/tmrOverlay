@@ -9,40 +9,41 @@ TmrOverlay uses SemVer-style annotated Git tags for product milestones:
 
 ## Current Branch Target
 
-### v0.18.2 - Force Startup Diagnostics For Frozen UI
+### v0.18.3 - Refresh Windows Overlay Screenshots And Settings Typography
 
 Planned branch name:
 
 ```text
-v0.18.2-ui-freeze-fix
+v0.18.3-windows-screenshot-refresh
 ```
 
 Planned scope:
 
-- Ship a diagnostic patch on top of `v0.18.1` for teammate feedback that the app still loads but the UI remains frozen.
-- Force raw diagnostic telemetry capture on from startup so testers do not need the Support checkbox.
-- Keep advanced overlay/model diagnostics enabled and increase file logging detail/retention to capture startup and frozen-window evidence.
+- Ship a validation-artifact patch on top of `v0.18.2` for the Windows overlay/settings screenshot refresh.
+- Refresh the Windows-rendered overlay/settings screenshot contact sheet, manifest, component crops, and per-state PNGs.
+- Fix the Windows Design V2 settings typography scale so the production settings surface matches the expected visual density.
+- Remove stale tracked diagnostic zip artifacts from release-ready source.
 
 Technical implementation checklist:
 
-1. Bump shared .NET product/version metadata to `0.18.2`.
-2. Default raw telemetry capture on for this diagnostic patch.
-3. Raise file logging to Debug with larger retained logs so frozen-window sessions leave useful evidence.
-4. Validate local static checks, then use Windows CI or a Windows machine for the full .NET build/test and v0.18.1-to-v0.18.2 upgrade check.
+1. Bump shared .NET product/version metadata to `0.18.3`.
+2. Refresh the Windows overlay/settings screenshot artifacts for the current UI.
+3. Fix Windows V2 settings typography scale.
+4. Validate local static checks and screenshot expectations, then use Windows CI or a Windows machine for the full .NET build/test and v0.18.2-to-v0.18.3 upgrade check.
 
 Likely squash title:
 
 ```text
-[v0.18.2] Force startup diagnostics for frozen UI
+[v0.18.3] Refresh Windows overlay screenshots and settings typography
 ```
 
 Likely squash body:
 
 ```text
-- Bumped shared .NET product/version metadata to 0.18.2.
-- Forced raw diagnostic telemetry capture on at startup so testers can collect evidence even when Settings is frozen.
-- Kept advanced telemetry/model/overlay diagnostics enabled and increased file logging to Debug with larger retained log files.
-- Preserved the v0.18.1 MSI/Velopack install and update behavior for patch upgrade testing.
+- Bumped shared .NET product/version metadata to 0.18.3.
+- Refreshed Windows overlay/settings screenshot artifacts, manifest, and contact sheet for the current UI.
+- Fixed Windows Design V2 settings typography scale so the production settings surface matches the expected visual density.
+- Removed stale tracked diagnostic zip artifacts from release-ready source.
 ```
 
 ## Next Planned Milestone
@@ -55,6 +56,23 @@ Likely scope:
 - Keep hard release-blocking fixes in 0.x only if teammate testing finds installer/update, AppData compatibility, or V1 candidate regressions.
 
 ## Merged Mainline Milestones
+
+### v0.18.2 - Force Startup Diagnostics For Frozen UI
+
+Commit: `3759454`
+
+Squash title:
+
+```text
+[v0.18.2] Force startup diagnostics for frozen UI
+```
+
+Summary:
+
+- Bumped shared .NET product/version metadata to 0.18.2.
+- Forced raw diagnostic telemetry capture on at startup so testers can collect evidence even when Settings is frozen.
+- Kept advanced telemetry/model/overlay diagnostics enabled and increased file logging to Debug with larger retained log files.
+- Preserved the v0.18.1 MSI/Velopack install and update behavior for patch upgrade testing.
 
 ### v0.18.1 - Restore Windows Settings Clickability
 

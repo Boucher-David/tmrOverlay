@@ -1327,8 +1327,8 @@ internal sealed class DesignV2SettingsSurface : Control
         bool monospaced = false)
     {
         using var font = monospaced
-            ? OverlayTheme.MonospaceFont(size, style)
-            : OverlayTheme.Font(OverlayTheme.DefaultFontFamily, size, style);
+            ? DesignPixelMonospaceFont(size, style)
+            : DesignPixelFont(size, style);
         using var brush = new SolidBrush(color);
         using var format = new StringFormat
         {
@@ -1343,8 +1343,8 @@ internal sealed class DesignV2SettingsSurface : Control
     private static void DrawCentered(Graphics graphics, string text, Rectangle rect, float size, FontStyle style, Color color, bool monospaced = false)
     {
         using var font = monospaced
-            ? OverlayTheme.MonospaceFont(size, style)
-            : OverlayTheme.Font(OverlayTheme.DefaultFontFamily, size, style);
+            ? DesignPixelMonospaceFont(size, style)
+            : DesignPixelFont(size, style);
         using var brush = new SolidBrush(color);
         using var format = new StringFormat
         {
@@ -1353,6 +1353,23 @@ internal sealed class DesignV2SettingsSurface : Control
             Trimming = StringTrimming.EllipsisCharacter
         };
         graphics.DrawString(text, font, brush, rect, format);
+    }
+
+    private static Font DesignPixelFont(float size, FontStyle style)
+    {
+        // The V2 settings surface is a fixed bitmap-style design canvas. These sizes
+        // match the mac screenshot mocks in pixels; point units make WinForms render
+        // roughly one-third larger at 96 DPI and clip the captured Windows UI.
+        return new Font(
+            string.IsNullOrWhiteSpace(OverlayTheme.DefaultFontFamily) ? "Segoe UI" : OverlayTheme.DefaultFontFamily,
+            size,
+            style,
+            GraphicsUnit.Pixel);
+    }
+
+    private static Font DesignPixelMonospaceFont(float size, FontStyle style)
+    {
+        return new Font(FontFamily.GenericMonospace, size, style, GraphicsUnit.Pixel);
     }
 
     private static void FillRounded(Graphics graphics, Rectangle rect, int radius, Color color)
