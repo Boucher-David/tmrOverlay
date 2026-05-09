@@ -8,6 +8,7 @@ using TmrOverlay.App.Analysis;
 using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.History;
+using TmrOverlay.App.Installation;
 using TmrOverlay.App.Localhost;
 using TmrOverlay.App.Logging;
 using TmrOverlay.App.Overlays;
@@ -33,7 +34,9 @@ internal static class Program
     {
         VelopackApp.Build()
             .SetAutoApplyOnStartup(false)
+            .OnBeforeUninstallFastCallback(_ => InstallerCleanup.RemoveUserDataForUninstall())
             .Run();
+        InstallerCleanup.RemoveLegacyInstallerArtifacts();
 
         Application.SetHighDpiMode(HighDpiMode.SystemAware);
         Application.EnableVisualStyles();

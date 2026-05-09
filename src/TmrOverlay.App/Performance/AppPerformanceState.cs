@@ -283,10 +283,9 @@ internal sealed class AppPerformanceState
             var normalizedOverlayId = NormalizeMetricSegment(overlayId);
             var prefix = $"overlay.{normalizedOverlayId}.window";
             var clampedOpacity = Math.Clamp(opacity, 0d, 1d);
-            var inputInterceptRisk = settingsOverlayActive
-                && actualVisible
+            var inputInterceptRisk = actualVisible
                 && !inputTransparent
-                && clampedOpacity > 0.01d;
+                && (settingsOverlayActive || clampedOpacity <= 0.01d);
             RecordOverlayUpdateValue($"{prefix}.visible", actualVisible ? 1d : 0d, timestampUtc);
             RecordOverlayUpdateValue($"{prefix}.top_most", topMost ? 1d : 0d, timestampUtc);
             RecordOverlayUpdateValue($"{prefix}.always_on_top_setting", alwaysOnTopSetting ? 1d : 0d, timestampUtc);

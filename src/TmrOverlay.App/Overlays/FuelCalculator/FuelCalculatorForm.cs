@@ -385,9 +385,9 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
             && string.Equals(left.SessionKey, right.SessionKey, StringComparison.Ordinal);
     }
 
-    private bool UpdateVisibleRows(int _, bool showAdvice)
+    private bool UpdateVisibleRows(int rowCount, bool showAdvice)
     {
-        var visibleStintRows = StintRowCount;
+        var visibleStintRows = Math.Clamp(rowCount, 0, StintRowCount);
         if (_lastVisibleStintRows == visibleStintRows && _lastAdviceRowVisibility == showAdvice)
         {
             return false;

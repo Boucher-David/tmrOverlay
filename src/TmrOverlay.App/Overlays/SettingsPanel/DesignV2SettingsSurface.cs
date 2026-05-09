@@ -860,8 +860,8 @@ internal sealed class DesignV2SettingsSurface : Control
             DrawCentered(graphics, "TMR", new Rectangle(66, 53, 46, 24), 14f, FontStyle.Bold, TextPrimary);
         }
 
-        DrawText(graphics, "Tech Mates Racing Overlay", new Rectangle(128, 52, 480, 28), 24f, FontStyle.Bold, TextPrimary);
-        DrawText(graphics, "Settings control plane - Windows Design V2", new Rectangle(129, 75, 480, 16), 12f, FontStyle.Regular, TextMuted);
+        DrawText(graphics, "Tech Mates Racing Overlay", new Rectangle(128, 53, 480, 24), 20f, FontStyle.Bold, TextPrimary);
+        DrawText(graphics, "Settings control plane - Windows Design V2", new Rectangle(129, 78, 480, 16), 12f, FontStyle.Regular, TextMuted);
         DrawCentered(graphics, "X", CloseButtonBounds(), 13f, FontStyle.Bold, Rgb(255, 200, 239));
     }
 
@@ -961,14 +961,14 @@ internal sealed class DesignV2SettingsSurface : Control
         DrawStatusRow(graphics, "iRacing", capture.IsConnected ? "Connected" : "Waiting", 314, capture.IsConnected ? Green : TextSecondary);
         DrawStatusRow(graphics, "Session", SupportStatusText.SessionStateText(capture), 348, capture.IsCapturing ? Cyan : TextSecondary);
 
-        DrawPanel(graphics, new Rectangle(306, 410, 834, 156), "Support Bundle");
+        DrawPanel(graphics, new Rectangle(306, 410, 834, 202), "Support Bundle");
         DrawText(graphics, "Latest bundle", new Rectangle(328, 478, 110, 18), 13f, FontStyle.Regular, TextMuted);
         DrawText(graphics, SupportStatusText.LatestBundleDisplayText(latestPath), new Rectangle(456, 477, 420, 18), 12f, FontStyle.Bold, TextPrimary, monospaced: true);
         DrawText(graphics, "Updates", new Rectangle(328, 552, 70, 18), 11f, FontStyle.Regular, TextMuted);
         DrawText(graphics, ReleaseUpdateSupportText(update), new Rectangle(398, 552, 320, 18), 10f, FontStyle.Bold, ColorForReleaseUpdateStatus(update.Status));
         if (!string.IsNullOrWhiteSpace(_supportStatusText))
         {
-            DrawText(graphics, _supportStatusText, new Rectangle(328, 578, 620, 18), 11f, FontStyle.Bold, _supportStatusIsError ? OverlayTheme.Colors.WarningText : Green);
+            DrawText(graphics, _supportStatusText, new Rectangle(328, 586, 760, 18), 11f, FontStyle.Bold, _supportStatusIsError ? OverlayTheme.Colors.WarningText : Green);
         }
     }
 
@@ -1050,7 +1050,7 @@ internal sealed class DesignV2SettingsSurface : Control
             DrawText(graphics, $"{definition.DefaultWidth} x {definition.DefaultHeight}", new Rectangle(852, 468, 120, 18), 12f, FontStyle.Bold, TextSecondary, monospaced: true);
         }
 
-        DrawBrowserSourcePanel(graphics, definition, settings, new Rectangle(306, 518, 834, 70));
+        DrawBrowserSourcePanel(graphics, definition, settings, new Rectangle(306, 518, 834, 92));
     }
 
     private void DrawOverlayContentPage(Graphics graphics, OverlayDefinition definition, OverlaySettings settings)
@@ -1239,7 +1239,7 @@ internal sealed class DesignV2SettingsSurface : Control
     {
         DrawText(graphics, label, new Rectangle(750, y, 110, 18), 13f, FontStyle.Regular, TextMuted);
         FillRounded(graphics, new Rectangle(884, y + 5, 8, 8), 4, color);
-        DrawText(graphics, value, new Rectangle(904, y, 190, 18), 13f, FontStyle.Bold, color == TextSecondary ? TextSecondary : TextPrimary);
+        DrawText(graphics, value, new Rectangle(904, y, 220, 18), 13f, FontStyle.Bold, color == TextSecondary ? TextSecondary : TextPrimary);
     }
 
     private void DrawBodyLines(Graphics graphics, IReadOnlyList<string> lines, int x, int y, int width, float size = 12f)

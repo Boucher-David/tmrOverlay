@@ -137,4 +137,33 @@ public sealed class AppPerformanceStateTests
         Assert.Contains(snapshot.OverlayUpdates, metric => metric.Id == "localhost.idle_no_recent_requests" && metric.Last == 1d);
         Assert.Contains(snapshot.OverlayUpdates, metric => metric.Id == "localhost.request.route.snapshot.tick" && metric.Count == 1);
     }
+
+    [Fact]
+    public void OverlayWindowState_FlagsVisibleInvisibleInputInterception()
+    {
+        var state = new AppPerformanceState();
+        var timestamp = DateTimeOffset.Parse("2026-05-09T12:00:00Z");
+
+        state.RecordOverlayWindowState(
+            "standings",
+            timestamp,
+            actualVisible: true,
+            topMost: true,
+            alwaysOnTopSetting: true,
+            inputTransparent: false,
+            noActivate: false,
+            settingsOverlayActive: false,
+            x: 10,
+            y: 20,
+            width: 780,
+            height: 520,
+            opacity: 0d);
+
+        var snapshot = state.Snapshot();
+
+        Assert.Contains(snapshot.OverlayUpdates, metric =>
+            metric.Id == "overlay.standings.window.input_intercept_risk" && metric.Last == 1d);
+        var window = Assert.Single(snapshot.OverlayWindows);
+        Assert.True(window.InputInterceptRisk);
+    }
 }

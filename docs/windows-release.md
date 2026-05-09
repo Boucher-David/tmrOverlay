@@ -56,17 +56,17 @@ The expected package shape is intentionally small:
 - `Assets/TMRLogo.png`
 - optional `Assets/TrackMaps/*.json` bundled derived track maps
 
-The executable icon is embedded from `src/TmrOverlay.App/Assets/TmrOverlay.ico`. MSI branding is generated from `tools/render_windows_installer_splash.swift` into `assets/brand/TMRMsiBanner.bmp` and `assets/brand/TMRMsiLogo.bmp`. The release manifest asset lists the exact published files and sizes for each build, so package review can happen without downloading and unzipping the app.
+The executable icon is embedded from `src/TmrOverlay.App/Assets/TmrOverlay.ico`. Installer branding is generated from `tools/render_windows_installer_splash.swift` into `assets/brand/TMRInstallerSplash.png`, `assets/brand/TMRMsiBanner.bmp`, and `assets/brand/TMRMsiLogo.bmp`; the MSI welcome text lives in `assets/brand/TMRMsiWelcome.md`. The release manifest asset lists the exact published files and sizes for each build, so package review can happen without downloading and unzipping the app.
 
-Velopack package assets are generated from that audited publish folder. The package id is `TMROverlay`, the title is `Tech Mates Racing Overlay`, and the current channel is `win-x64`. The MSI installs a Start Menu shortcut instead of using Velopack's default desktop shortcut. The package id intentionally changed from the early `TechMatesRacing.TmrOverlay` tester identity while the app is still pre-1.0 so installed package identity matches the shorter executable name.
+Velopack package assets are generated from that audited publish folder. The package id is `TMROverlay`, the title is `Tech Mates Racing Overlay`, and the current channel is `win-x64`. The MSI installs Desktop and Start Menu shortcuts. Velopack shortcut locations are package-time options in the generated MSI path, so this branch creates both shortcuts by default rather than exposing per-shortcut wizard checkboxes. The package id intentionally changed from the early `TechMatesRacing.TmrOverlay` tester identity while the app is still pre-1.0 so installed package identity matches the shorter executable name.
 
 ## Tester Download
 
 1. Open the repository's GitHub Releases page.
 2. Open the latest `vMAJOR.MINOR.PATCH` release.
 3. Download and run `TMROverlay-v<version>-win-x64.msi`.
-4. Use the MSI's standard Windows Installer dialog flow for the install location and shortcut setup.
-5. Launch TmrOverlay from the Start Menu shortcut under the Tech Mates Racing folder. The installed app executable is `TMROverlay.exe`, but teammates should normally use the shortcut created by the MSI.
+4. Use the MSI's standard Windows Installer dialog flow for the install location.
+5. Launch TmrOverlay from the Desktop shortcut or from the Start Menu shortcut under the Tech Mates Racing folder. The installed app executable is `TMROverlay.exe`, but teammates should normally use a shortcut created by the MSI.
 6. Use the portable zip only as a fallback or support artifact. For the zip fallback, download `TmrOverlay-v<version>-win-x64.zip` and the matching `.sha256` asset when you want to verify the file.
 7. Unzip the portable package into a normal user-writable folder, for example:
 
@@ -76,7 +76,7 @@ Velopack package assets are generated from that audited publish folder. The pack
 
 8. Run `TMROverlay.exe`.
 
-The app stores settings, history, logs, diagnostics bundles, and captures under `%LOCALAPPDATA%\TmrOverlay` by default. Replacing the portable application folder or updating an installed Velopack build does not delete that user data.
+The app stores settings, history, logs, diagnostics bundles, and captures under `%LOCALAPPDATA%\TmrOverlay` by default. Replacing the portable application folder or updating an installed Velopack build does not delete that user data. Uninstalling an installed Velopack build removes this app-data root.
 
 ## User Data And Compatibility
 
@@ -86,7 +86,11 @@ Installed and portable builds keep user data separate from application binaries 
 %LOCALAPPDATA%\TmrOverlay
 ```
 
-That app-data root contains settings, user history, logs, events, diagnostics, runtime state, and optional captures. A new install path or a Velopack-updated app folder should still find the same app-data root unless the user explicitly overrides storage through configuration or `TMR_` environment variables.
+That app-data root contains settings, user history, logs, events, diagnostics, runtime state, imported Garage Cover images, user-generated track maps, and optional captures. A new install path or a Velopack-updated app folder should still find the same app-data root unless the user explicitly overrides storage through configuration or `TMR_` environment variables.
+
+Installed-build uninstall cleanup removes the default `%LOCALAPPDATA%\TmrOverlay` root and any configured app-data root that is still safely inside LocalAppData. Unsafe broad paths, such as LocalAppData itself or a configured path outside LocalAppData, are skipped rather than recursively deleted.
+
+Normal startup/update cleanup is intentionally narrower than uninstall cleanup. On startup, the app removes stale pre-0.18.4 `TechMatesRacing.TmrOverlay` package folders under LocalAppData and Desktop/Start Menu shortcuts that still point at that legacy package identity. It does not delete the current `%LOCALAPPDATA%\TmrOverlay` user-data root. Diagnostics bundles include `metadata/installer-cleanup.json` so support can see whether this cleanup ran, which paths were removed, and which paths were skipped.
 
 Settings are versioned in `settings/settings.json` and loaded through `AppSettingsMigrator`, which normalizes older settings and writes them back at the current settings version. Session history has explicit summary, collection-model, aggregate, and analysis version constants. On startup, `HistoryMaintenanceService` scans user history in the background, backs up and normalizes compatible legacy summaries, skips incompatible/future/corrupt summaries into a maintenance manifest, and rebuilds aggregates. History-backed overlays reject incompatible aggregate versions while maintenance is still running.
 
@@ -115,15 +119,15 @@ To upgrade a Velopack-installed build:
 2. If a newer release is available in the app, choose `Download and Install Update`.
 3. After the download finishes, choose `Restart to Apply Update`.
 4. If the in-app update flow is unavailable or fails, close TmrOverlay and run the latest MSI from the GitHub Release.
-5. Launch TmrOverlay from the Start Menu shortcut.
+5. Launch TmrOverlay from the Desktop or Start Menu shortcut.
 
-Because the pre-1.0 package id moved from `TechMatesRacing.TmrOverlay` to `TMROverlay`, installed builds that used the older package id should be treated as a fresh installer transition: close the old app, run the new MSI, confirm `%LOCALAPPDATA%\TmrOverlay` settings/history are still present, and uninstall the old tester package if Windows shows both entries.
+Because the pre-1.0 package id moved from `TechMatesRacing.TmrOverlay` to `TMROverlay`, installed builds that used the older package id should be treated as a fresh installer transition: close the old app, run the new MSI, confirm `%LOCALAPPDATA%\TmrOverlay` settings/history are still present, and check the diagnostics bundle installer-cleanup metadata if a stale shortcut or old launch path is suspected. If Windows still shows both package entries, uninstall the old tester package from Windows settings.
 
 To move from a portable zip to the Velopack installer:
 
 1. Close the portable copy of TmrOverlay.
 2. Run the latest MSI.
-3. Launch TmrOverlay from the Start Menu shortcut.
+3. Launch TmrOverlay from the Desktop or Start Menu shortcut.
 4. Keep the old portable folder until the installed app opens correctly, then remove it when no longer needed.
 
 Installed and portable builds both use `%LOCALAPPDATA%\TmrOverlay` by default, so settings, history, logs, diagnostics, runtime state, and captures should carry forward unless the user explicitly overrides storage through configuration or `TMR_` environment variables.
@@ -153,4 +157,4 @@ For teammate feedback, ask testers to include:
 
 Diagnostics bundles include app version/runtime metadata and local logs, but they intentionally exclude raw `telemetry.bin` and source `.ibt` payloads.
 
-Diagnostics bundles also include release update state: whether the app is installed through Velopack, whether the current run is portable, the update source, current/latest versions, last checked time, download/apply timestamps, download progress, available update actions, and last failure if any.
+Diagnostics bundles also include release update state: whether the app is installed through Velopack, whether the current run is portable, the update source, current/latest versions, last checked time, download/apply timestamps, download progress, available update actions, and last failure if any. Installer cleanup metadata records the last startup/update legacy cleanup result so stale shortcuts or old package identity residue can be reviewed from the same bundle.

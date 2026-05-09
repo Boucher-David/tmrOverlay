@@ -9,41 +9,50 @@ TmrOverlay uses SemVer-style annotated Git tags for product milestones:
 
 ## Current Branch Target
 
-### v0.18.3 - Refresh Windows Overlay Screenshots And Settings Typography
+### v0.18.4 - Harden Installer Cleanup And Windows Validation Fixes
 
 Planned branch name:
 
 ```text
-v0.18.3-windows-screenshot-refresh
+v0.18.4-installer-and-design-tweaks
 ```
 
 Planned scope:
 
-- Ship a validation-artifact patch on top of `v0.18.2` for the Windows overlay/settings screenshot refresh.
-- Refresh the Windows-rendered overlay/settings screenshot contact sheet, manifest, component crops, and per-state PNGs.
-- Fix the Windows Design V2 settings typography scale so the production settings surface matches the expected visual density.
-- Remove stale tracked diagnostic zip artifacts from release-ready source.
+- Ship an installer hardening patch on top of `v0.18.3` for teammate uninstall/reinstall testing and early design feedback.
+- Remove TmrOverlay's local app-data root during installed-app uninstall, including settings, history, logs, diagnostics, captures, runtime state, Garage Cover imports, and user-generated track maps.
+- Clean stale `TechMatesRacing.TmrOverlay` package folders and shortcuts on normal startup/update without deleting current `%LOCALAPPDATA%\TmrOverlay` user data.
+- Update Velopack packaging to request both Desktop and Start Menu shortcuts.
+- Refresh MSI welcome/splash/banner/logo artwork so the first installer surfaces are visibly branded.
+- Fix the first Windows screenshot feedback items: invisible/topmost overlay input behavior, obvious settings/component crop layout issues, and too-short simple telemetry overlay windows.
+- Retain the pulled v0.18.3 Windows screenshot/diagnostic evidence artifacts for branch review; the diagnostic zip is a known follow-up repo-hygiene issue.
 
 Technical implementation checklist:
 
-1. Bump shared .NET product/version metadata to `0.18.3`.
-2. Refresh the Windows overlay/settings screenshot artifacts for the current UI.
-3. Fix Windows V2 settings typography scale.
-4. Validate local static checks and screenshot expectations, then use Windows CI or a Windows machine for the full .NET build/test and v0.18.2-to-v0.18.3 upgrade check.
+1. Bump shared .NET product/version metadata to `0.18.4`.
+2. Add a Velopack uninstall hook that removes the default app-data root while guarding against broad or unsafe configured paths.
+3. Add startup/update cleanup for stale legacy package identity artifacts, with diagnostics bundle metadata showing the last cleanup result.
+4. Update release packaging to request Desktop and Start Menu shortcuts and consume branded installer welcome/splash assets.
+5. Regenerate installer artwork and update release/install documentation.
+6. Apply targeted Windows UI fixes for overlay input transparency, settings screenshot crops, and simple telemetry overlay sizing.
+7. Validate local static checks, installer cleanup tests, and screenshot expectations, then use Windows CI or a Windows machine for the full .NET build/test and v0.18.3-to-v0.18.4 install/uninstall check.
 
 Likely squash title:
 
 ```text
-[v0.18.3] Refresh Windows overlay screenshots and settings typography
+[v0.18.4] Harden installer cleanup and Windows validation fixes
 ```
 
 Likely squash body:
 
 ```text
-- Bumped shared .NET product/version metadata to 0.18.3.
-- Refreshed Windows overlay/settings screenshot artifacts, manifest, and contact sheet for the current UI.
-- Fixed Windows Design V2 settings typography scale so the production settings surface matches the expected visual density.
-- Removed stale tracked diagnostic zip artifacts from release-ready source.
+- Bumped shared .NET product/version metadata to 0.18.4.
+- Added a Velopack uninstall hook that removes TmrOverlay's LocalAppData stores while guarding against unsafe configured paths.
+- Added startup/update cleanup for stale TechMatesRacing.TmrOverlay package folders and shortcuts, plus diagnostics bundle metadata for the cleanup result.
+- Updated release packaging to request Desktop and Start Menu shortcuts and added branded installer welcome/splash assets.
+- Fixed invisible/topmost overlay input diagnostics, support/browser-source screenshot crops, simple telemetry overlay heights, and blank fuel calculator rows.
+- Retained pulled v0.18.3 Windows screenshot/diagnostic review artifacts for branch analysis.
+- Regenerated MSI banner/logo artwork with a brighter first-screen treatment and updated installer release docs.
 ```
 
 ## Next Planned Milestone
@@ -56,6 +65,23 @@ Likely scope:
 - Keep hard release-blocking fixes in 0.x only if teammate testing finds installer/update, AppData compatibility, or V1 candidate regressions.
 
 ## Merged Mainline Milestones
+
+### v0.18.3 - Refresh Windows Overlay Screenshots And Settings Typography
+
+Commit: `b2c5e71`
+
+Squash title:
+
+```text
+[v0.18.3] Refresh Windows overlay screenshots and settings typography
+```
+
+Summary:
+
+- Bumped shared .NET product/version metadata to 0.18.3.
+- Refreshed Windows overlay/settings screenshot artifacts, manifest, and contact sheet for the current UI.
+- Fixed Windows Design V2 settings typography scale so the production settings surface matches the expected visual density.
+- Removed stale tracked diagnostic zip artifacts from release-ready source.
 
 ### v0.18.2 - Force Startup Diagnostics For Frozen UI
 

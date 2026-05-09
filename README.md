@@ -34,13 +34,13 @@ Current releases focus on:
 Pre-release Windows builds are published from GitHub Actions on version tags.
 
 1. Open the latest GitHub Release.
-2. Prefer the Velopack setup executable for normal installs and upgrades.
+2. Prefer the Velopack MSI installer for normal installs and upgrades.
 3. Use the portable `TmrOverlay-<version>-win-x64.zip` only as a fallback or support artifact.
 4. Start TmrOverlay and open the settings window from the tray icon.
 
 ## Upgrade
 
-Velopack-installed builds check GitHub Releases passively on startup and from the tray or Support tab. The current app does not auto-download or auto-restart; when an update is available, open the release page, close TmrOverlay, run the latest setup executable, and launch from the installed shortcut.
+Velopack-installed builds check GitHub Releases passively on startup and from the tray or Support tab. The current app does not auto-download or auto-restart; when an update is available, use `Download and Install Update` and then `Restart to Apply Update`, or run the latest MSI installer from the release page.
 
 Portable zip users should close TmrOverlay, unzip the newer package into a fresh folder or replace the old app files while the app is closed, then run `TMROverlay.exe`. Settings, history, logs, diagnostics, and captures stay under `%LOCALAPPDATA%\TmrOverlay`, so switching from the portable zip to the setup installer should keep existing user data.
 
@@ -54,7 +54,7 @@ By default, TmrOverlay stores user data outside the install folder under:
 %LOCALAPPDATA%\TmrOverlay
 ```
 
-That app-data root contains settings, history, logs, diagnostics, runtime state, generated track maps, and optional captures. Updating or replacing the app does not delete this data.
+That app-data root contains settings, history, logs, diagnostics, runtime state, generated track maps, and optional captures. Updating or replacing the app does not delete this data. Startup/update cleanup only removes stale legacy installer identity folders/shortcuts; uninstalling an installed Velopack build removes this app-data root as part of uninstall cleanup.
 
 Raw telemetry capture is normally opt-in. The `v0.18.2` frozen-UI diagnostic patch temporarily forces raw capture on from startup so testers can collect evidence without reaching the Support checkbox. Normal diagnostics are compact summaries and logs; diagnostics bundles intentionally exclude raw `telemetry.bin` and source `.ibt` files.
 
@@ -140,7 +140,7 @@ Performance diagnostics are always on and write periodic JSONL snapshots under:
 %LOCALAPPDATA%\TmrOverlay\logs\performance
 ```
 
-Those snapshots include telemetry throughput, iRacing network/system values, overlay refresh timings, timer cadence and late-tick summaries, lifecycle visibility/fade states, overlay window/input-intercept state, settings save/apply queue metrics, skipped unchanged-sequence updates, paint samples, localhost activity, process memory, GDI/USER handle counts, and GC counts. Diagnostics bundles also include `metadata/ui-freeze-watch.json` for focused Settings/Flags freeze triage.
+Those snapshots include telemetry throughput, iRacing network/system values, overlay refresh timings, timer cadence and late-tick summaries, lifecycle visibility/fade states, overlay window/input-intercept state, settings save/apply queue metrics, skipped unchanged-sequence updates, paint samples, localhost activity, process memory, GDI/USER handle counts, and GC counts. Diagnostics bundles also include `metadata/ui-freeze-watch.json` for focused Settings/Flags freeze triage and `metadata/installer-cleanup.json` for stale legacy shortcut/package cleanup triage.
 
 ## Documentation
 
