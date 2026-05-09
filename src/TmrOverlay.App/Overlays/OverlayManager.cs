@@ -579,15 +579,30 @@ internal sealed class OverlayManager : IDisposable
                 ApplyScaleIfChanged(registration.Definition, settings, form);
                 ApplyOpacityIfChanged(registration.Definition, settings, form);
                 ApplyRadarSettingsPreview(form, settingsPreview);
-                ApplyLiveTelemetryFade(
+                var fadeAllowsVisible = ApplyLiveTelemetryFade(
                     registration.Definition,
                     form,
                     overlayLiveTelemetryAvailable,
                     immediate: !wasVisible);
-                ApplyOverlayTopMost(settings, form);
-                if (!form.Visible)
+                if (fadeAllowsVisible)
                 {
-                    form.Show();
+                    ApplyOverlayTopMost(settings, form);
+                    if (!form.Visible)
+                    {
+                        form.Show();
+                    }
+                }
+                else
+                {
+                    if (form.TopMost)
+                    {
+                        form.TopMost = false;
+                    }
+
+                    if (form.Visible)
+                    {
+                        form.Hide();
+                    }
                 }
 
                 RecordOverlayLifecycleState(
@@ -840,7 +855,7 @@ internal sealed class OverlayManager : IDisposable
         return OverlayAvailabilityEvaluator.FromSnapshot(snapshot, DateTimeOffset.UtcNow).IsAvailable;
     }
 
-    private void ApplyLiveTelemetryFade(
+    private bool ApplyLiveTelemetryFade(
         OverlayDefinition definition,
         Form form,
         bool liveTelemetryAvailable,
@@ -848,7 +863,7 @@ internal sealed class OverlayManager : IDisposable
     {
         if (form is not PersistentOverlayForm persistent)
         {
-            return;
+            return true;
         }
 
         var shouldBeVisible = !definition.FadeWhenLiveTelemetryUnavailable || liveTelemetryAvailable;
@@ -858,6 +873,7 @@ internal sealed class OverlayManager : IDisposable
             DateTimeOffset.UtcNow,
             liveTelemetryAvailable,
             persistent.LiveTelemetryFadeAlpha);
+        return shouldBeVisible || persistent.EffectiveOverlayOpacity > 0.01d;
     }
 
     private void RecordOverlayLifecycleState(
@@ -893,7 +909,9 @@ internal sealed class OverlayManager : IDisposable
         var bounds = hasForm
             ? form!.Bounds
             : new Rectangle(settings.X, settings.Y, settings.Width, settings.Height);
-        var isInputTransparent = form is FlagsOverlayForm;
+        var isInputTransparent = form is FlagsOverlayForm
+            || form is PersistentOverlayForm { IsEffectivelyInputTransparent: true };
+        var noActivate = form is PersistentOverlayForm;
         _performanceState.RecordOverlayWindowState(
             definition.Id,
             DateTimeOffset.UtcNow,
@@ -901,7 +919,7 @@ internal sealed class OverlayManager : IDisposable
             hasForm && form!.TopMost,
             settings.AlwaysOnTop,
             isInputTransparent,
-            isInputTransparent,
+            noActivate,
             _settingsOverlayActive,
             bounds.X,
             bounds.Y,

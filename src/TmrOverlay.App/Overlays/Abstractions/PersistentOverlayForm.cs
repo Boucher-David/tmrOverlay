@@ -6,9 +6,13 @@ namespace TmrOverlay.App.Overlays.Abstractions;
 internal abstract class PersistentOverlayForm : Form
 {
     private const int WsExToolWindow = 0x00000080;
+    private const int WsExNoActivate = 0x08000000;
+    private const int WmNcHitTest = 0x0084;
+    private const int HtTransparent = -1;
     private const int FadeIntervalMilliseconds = 50;
     private const double FadeInSeconds = 0.22d;
     private const double FadeOutSeconds = 0.65d;
+    private const double InputTransparentOpacityThreshold = 0.01d;
 
     private readonly OverlaySettings _settings;
     private readonly Action _saveSettings;
@@ -57,6 +61,10 @@ internal abstract class PersistentOverlayForm : Form
 
     public double LiveTelemetryFadeAlpha => _telemetryFadeAlpha;
 
+    public double EffectiveOverlayOpacity => EffectiveOpacity();
+
+    public bool IsEffectivelyInputTransparent => EffectiveOverlayOpacity <= InputTransparentOpacityThreshold;
+
     public void SetBaseOverlayOpacity(double opacity)
     {
         _baseOpacity = Math.Clamp(opacity, 0d, 1d);
@@ -98,13 +106,31 @@ internal abstract class PersistentOverlayForm : Form
                 createParams.ExStyle |= WsExToolWindow;
             }
 
+            if (UseNoActivateStyle)
+            {
+                createParams.ExStyle |= WsExNoActivate;
+            }
+
             return createParams;
         }
     }
 
     protected virtual bool UseToolWindowStyle => true;
 
+    protected virtual bool UseNoActivateStyle => true;
+
     protected override bool ShowWithoutActivation => UseToolWindowStyle;
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == WmNcHitTest && IsEffectivelyInputTransparent)
+        {
+            m.Result = new IntPtr(HtTransparent);
+            return;
+        }
+
+        base.WndProc(ref m);
+    }
 
     protected void RegisterDragSurfaces(params Control[] controls)
     {
@@ -211,11 +237,16 @@ internal abstract class PersistentOverlayForm : Form
 
     private void ApplyEffectiveOpacity()
     {
-        var effective = Math.Clamp(_baseOpacity * _telemetryFadeAlpha, 0d, 1d);
+        var effective = EffectiveOpacity();
         if (Math.Abs(Opacity - effective) > 0.001d)
         {
             Opacity = effective;
         }
+    }
+
+    private double EffectiveOpacity()
+    {
+        return Math.Clamp(_baseOpacity * _telemetryFadeAlpha, 0d, 1d);
     }
 
     private static double MoveToward(double current, double target, double delta)

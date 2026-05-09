@@ -366,6 +366,8 @@ Keep migration additive:
 
 Model v2 does not standardize visual code by itself. Treat overlay UI/style v2 as the presentation language for model-v2 telemetry first, with evidence/source UI reserved for stale, unavailable, modeled, or derived values.
 
+The 0.18.4 branch is not the real overlay UI/style V2 pass. It only fixes blocking Windows validation issues found in screenshots and diagnostics: invisible/topmost overlay input behavior, clipped settings component crops, too-short Session / Weather and Pit Service windows, and blank Fuel Calculator rows. The runtime overlays can still look like V1 after 0.18.4; a future 0.18.N or V1.x design branch should migrate overlay visuals deliberately with side-by-side screenshots and shared token work.
+
 The alignment is:
 
 - Data Model V2 defines normalized telemetry: stable rows, session context, direct iRacing values, availability, source, freshness, quality, usability, and missing reasons.
@@ -438,6 +440,33 @@ Treat layout profiles as V2.0 because they need stable overlay metadata, durable
 Publishing is a separate app-platform branch and is the v0.9 target. The v0.9 baseline turns product tags into portable Windows GitHub Release assets with a checksum, but that is still only the first release channel.
 
 A complete publishing path should still define signed Windows artifacts, installer or portable packaging, update-channel policy, rollback/compatibility expectations for durable user settings/history, diagnostics bundle expectations for tester builds, and passive update checks. v0.9 derives the Windows executable icon from `assets/brand/` into `src/TmrOverlay.App/Assets/`; future overlay-branding derivatives should follow the same source-to-platform-asset pattern.
+
+### Brand Palette Refresh
+
+Future 0.18.N design work should review `assets/brand/Team_Logo_4k_TMRBRANDING.png` before changing app or overlay color tokens. The image is a 3840x2160 fully opaque RGBA PNG with 227,192 unique RGB values, so the exact palette is mostly gradients, glow, antialiasing, snow/noise, and art texture rather than a small UI palette. Use the dominant flat colors and grouped palette candidates as discussion inputs instead of importing the full image palette. If an audit needs every exact hex, keep that as a generated CSV under ignored `artifacts/brand-palettes/`, not as tracked documentation.
+
+Dominant exact image colors:
+
+| Hex | Candidate use |
+| --- | --- |
+| `#FF2D97` | brand pink / primary action accent |
+| `#11FFE3` | brand aqua / active cyan accent |
+| `#2F004E` | deep purple hero or installer background |
+| `#FFFFFF` | text, outlines, snow/highlight treatment |
+| `#7B00FF` | electric purple accent / road stripe |
+| `#FF2C42` | coral-red alert or tail-light accent |
+| `#CF4E00` | sunset orange shadow |
+| `#CA00F1` | neon violet-magenta |
+| `#EA9C00` | amber/sun highlight |
+| `#CE5751` | muted coral shadow |
+| `#E6FEFB` | ice highlight |
+| `#88FFF1` | aqua glow tint |
+| `#111111` | near-black detail |
+| `#009883` | teal shadow |
+| `#242424` | dark neutral detail |
+| `#6CFFEE` | secondary aqua tint |
+
+Current Windows settings Design V2 tokens are close but not identical: cyan `#00E8FF`, magenta `#FF2AA7`, amber `#FFD15B`, green `#62FF9F`, orange `#FF7D49`, purple `#7E32FF`, with shell backgrounds `#12051F`, `#0C122A`, and `#030B18`. A future branch should compare these against the image candidates, especially `#11FFE3`, `#FF2D97`, `#7B00FF`, `#2F004E`, `#EA9C00`, and `#FF2C42`, then update semantic tokens only where contrast, readability, screenshot parity, and Windows/mac parity remain strong.
 
 ### Telemetry-First Overlay Branches
 

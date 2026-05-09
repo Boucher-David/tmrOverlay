@@ -454,19 +454,19 @@ internal sealed class DesignV2SettingsSurface : Control
         AddActionButton(new Rectangle(618, 510, 116, 34), "Copy Path", _callbacks.CopyLatestDiagnosticsBundlePath);
         AddActionButton(new Rectangle(754, 510, 132, 34), "Diagnostics", () => _callbacks.OpenSupportDirectory(_storageOptions.DiagnosticsRoot, "diagnostics"));
         AddActionButton(new Rectangle(902, 510, 100, 34), "Captures", () => _callbacks.OpenSupportDirectory(_storageOptions.CaptureRoot, "captures"));
-        AddActionButton(new Rectangle(1018, 510, 92, 34), "History", () => _callbacks.OpenSupportDirectory(_storageOptions.UserHistoryRoot, "history"));
+        AddActionButton(new Rectangle(328, 548, 92, 30), "History", () => _callbacks.OpenSupportDirectory(_storageOptions.UserHistoryRoot, "history"));
         var update = _releaseUpdates.Snapshot();
-        AddActionButton(new Rectangle(754, 548, 76, 30), "Check", () => _callbacks.CheckForUpdatesAsync(), update.CanCheck);
+        AddActionButton(new Rectangle(720, 548, 76, 30), "Check", () => _callbacks.CheckForUpdatesAsync(), update.CanCheck);
         if (update.Status == ReleaseUpdateStatus.PendingRestart)
         {
-            AddActionButton(new Rectangle(844, 548, 88, 30), "Restart", _callbacks.RestartToApplyUpdate, update.CanRestartToApply);
+            AddActionButton(new Rectangle(810, 548, 88, 30), "Restart", _callbacks.RestartToApplyUpdate, update.CanRestartToApply);
         }
         else
         {
-            AddActionButton(new Rectangle(844, 548, 88, 30), "Install", () => _callbacks.DownloadAndPrepareUpdateAsync(), update.CanDownload);
+            AddActionButton(new Rectangle(810, 548, 88, 30), "Install", () => _callbacks.DownloadAndPrepareUpdateAsync(), update.CanDownload);
         }
 
-        AddActionButton(new Rectangle(946, 548, 104, 30), "Releases", _callbacks.OpenReleaseUpdatePage, !string.IsNullOrWhiteSpace(update.ReleasePageUrl));
+        AddActionButton(new Rectangle(912, 548, 104, 30), "Releases", _callbacks.OpenReleaseUpdatePage, !string.IsNullOrWhiteSpace(update.ReleasePageUrl));
     }
 
     private void BuildOverlayGeneralControls(OverlayDefinition definition, OverlaySettings settings)
@@ -536,7 +536,7 @@ internal sealed class DesignV2SettingsSurface : Control
         if (BrowserOverlayCatalog.TryGetRouteForOverlayId(definition.Id, out var route))
         {
             var url = $"{_localhostOverlayOptions.Prefix.TrimEnd('/')}{route}";
-            AddActionButton(new Rectangle(950, 542, 70, 30), "Copy", () => _callbacks.CopyTextToClipboard(url));
+            AddActionButton(new Rectangle(862, 542, 70, 30), "Copy", () => _callbacks.CopyTextToClipboard(url));
         }
 
         void AddSessionCheck(Rectangle bounds, string text, bool current, Action<bool> setter)
@@ -696,7 +696,7 @@ internal sealed class DesignV2SettingsSurface : Control
         if (BrowserOverlayCatalog.TryGetRouteForOverlayId(definition.Id, out var route))
         {
             var url = $"{_localhostOverlayOptions.Prefix.TrimEnd('/')}{route}";
-            AddActionButton(new Rectangle(950, 552, 70, 30), "Copy", () => _callbacks.CopyTextToClipboard(url));
+            AddActionButton(new Rectangle(862, 552, 70, 30), "Copy", () => _callbacks.CopyTextToClipboard(url));
         }
     }
 
@@ -860,8 +860,8 @@ internal sealed class DesignV2SettingsSurface : Control
             DrawCentered(graphics, "TMR", new Rectangle(66, 53, 46, 24), 14f, FontStyle.Bold, TextPrimary);
         }
 
-        DrawText(graphics, "Tech Mates Racing Overlay", new Rectangle(128, 52, 480, 28), 24f, FontStyle.Bold, TextPrimary);
-        DrawText(graphics, "Settings control plane - Windows Design V2", new Rectangle(129, 75, 480, 16), 12f, FontStyle.Regular, TextMuted);
+        DrawText(graphics, "Tech Mates Racing Overlay", new Rectangle(128, 53, 480, 24), 20f, FontStyle.Bold, TextPrimary);
+        DrawText(graphics, "Settings control plane - Windows Design V2", new Rectangle(129, 78, 480, 16), 12f, FontStyle.Regular, TextMuted);
         DrawCentered(graphics, "X", CloseButtonBounds(), 13f, FontStyle.Bold, Rgb(255, 200, 239));
     }
 
@@ -961,14 +961,14 @@ internal sealed class DesignV2SettingsSurface : Control
         DrawStatusRow(graphics, "iRacing", capture.IsConnected ? "Connected" : "Waiting", 314, capture.IsConnected ? Green : TextSecondary);
         DrawStatusRow(graphics, "Session", SupportStatusText.SessionStateText(capture), 348, capture.IsCapturing ? Cyan : TextSecondary);
 
-        DrawPanel(graphics, new Rectangle(306, 410, 834, 156), "Support Bundle");
+        DrawPanel(graphics, new Rectangle(306, 410, 716, 202), "Support Bundle");
         DrawText(graphics, "Latest bundle", new Rectangle(328, 478, 110, 18), 13f, FontStyle.Regular, TextMuted);
         DrawText(graphics, SupportStatusText.LatestBundleDisplayText(latestPath), new Rectangle(456, 477, 420, 18), 12f, FontStyle.Bold, TextPrimary, monospaced: true);
-        DrawText(graphics, "Updates", new Rectangle(328, 552, 70, 18), 11f, FontStyle.Regular, TextMuted);
-        DrawText(graphics, ReleaseUpdateSupportText(update), new Rectangle(398, 552, 320, 18), 10f, FontStyle.Bold, ColorForReleaseUpdateStatus(update.Status));
+        DrawText(graphics, "Updates", new Rectangle(438, 552, 70, 18), 11f, FontStyle.Regular, TextMuted);
+        DrawText(graphics, ReleaseUpdateSupportText(update), new Rectangle(508, 552, 200, 18), 10f, FontStyle.Bold, ColorForReleaseUpdateStatus(update.Status));
         if (!string.IsNullOrWhiteSpace(_supportStatusText))
         {
-            DrawText(graphics, _supportStatusText, new Rectangle(328, 578, 620, 18), 11f, FontStyle.Bold, _supportStatusIsError ? OverlayTheme.Colors.WarningText : Green);
+            DrawText(graphics, _supportStatusText, new Rectangle(328, 586, 650, 18), 11f, FontStyle.Bold, _supportStatusIsError ? OverlayTheme.Colors.WarningText : Green);
         }
     }
 
@@ -1050,7 +1050,7 @@ internal sealed class DesignV2SettingsSurface : Control
             DrawText(graphics, $"{definition.DefaultWidth} x {definition.DefaultHeight}", new Rectangle(852, 468, 120, 18), 12f, FontStyle.Bold, TextSecondary, monospaced: true);
         }
 
-        DrawBrowserSourcePanel(graphics, definition, settings, new Rectangle(306, 518, 834, 70));
+        DrawBrowserSourcePanel(graphics, definition, settings, new Rectangle(306, 518, 716, 92));
     }
 
     private void DrawOverlayContentPage(Graphics graphics, OverlayDefinition definition, OverlaySettings settings)
@@ -1144,7 +1144,7 @@ internal sealed class DesignV2SettingsSurface : Control
         DrawText(graphics, "Streamlabs URL", new Rectangle(328, 412, 120, 18), 13f, FontStyle.Regular, TextSecondary);
         DrawText(graphics, "Twitch channel", new Rectangle(328, 450, 120, 18), 13f, FontStyle.Regular, TextSecondary);
         DrawPanel(graphics, new Rectangle(306, 500, 834, 92), "Localhost");
-        DrawLocalhostBox(graphics, definition, new Rectangle(462, 552, 470, 30));
+        DrawLocalhostBox(graphics, definition, new Rectangle(462, 552, 380, 30));
         DrawText(graphics, "OBS browser source", new Rectangle(328, 560, 120, 18), 13f, FontStyle.Regular, TextSecondary);
     }
 
@@ -1211,7 +1211,7 @@ internal sealed class DesignV2SettingsSurface : Control
     private void DrawBrowserSourcePanel(Graphics graphics, OverlayDefinition definition, OverlaySettings settings, Rectangle bounds)
     {
         DrawPanel(graphics, bounds, "Browser Source");
-        DrawLocalhostBox(graphics, definition, new Rectangle(462, 542, 470, 30));
+        DrawLocalhostBox(graphics, definition, new Rectangle(462, 542, 380, 30));
         var browserSize = BrowserOverlayRecommendedSize.For(definition, settings);
         DrawText(graphics, $"OBS browser size {browserSize.Width} x {browserSize.Height}; native visibility is controlled separately.", new Rectangle(328, 594, 620, 18), 11f, FontStyle.Regular, TextDim);
     }
@@ -1239,7 +1239,7 @@ internal sealed class DesignV2SettingsSurface : Control
     {
         DrawText(graphics, label, new Rectangle(750, y, 110, 18), 13f, FontStyle.Regular, TextMuted);
         FillRounded(graphics, new Rectangle(884, y + 5, 8, 8), 4, color);
-        DrawText(graphics, value, new Rectangle(904, y, 190, 18), 13f, FontStyle.Bold, color == TextSecondary ? TextSecondary : TextPrimary);
+        DrawText(graphics, value, new Rectangle(904, y, 220, 18), 13f, FontStyle.Bold, color == TextSecondary ? TextSecondary : TextPrimary);
     }
 
     private void DrawBodyLines(Graphics graphics, IReadOnlyList<string> lines, int x, int y, int width, float size = 12f)

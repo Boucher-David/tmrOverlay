@@ -232,9 +232,11 @@ jobs:
             --packAuthors "Tech Mates Racing" `
             --outputDir $velopackPath `
             --channel "win-x64" `
-            --shortcuts "StartMenu" `
+            --shortcuts "Desktop,StartMenu" `
             --msi `
             --instLocation "Either" `
+            --instWelcome ".\assets\brand\TMRMsiWelcome.md" `
+            --splashImage ".\assets\brand\TMRInstallerSplash.png" `
             --msiBanner ".\assets\brand\TMRMsiBanner.bmp" `
             --msiLogo ".\assets\brand\TMRMsiLogo.bmp" `
             --icon ".\src\TmrOverlay.App\Assets\TmrOverlay.ico"
@@ -384,9 +386,11 @@ jobs:
             --packAuthors "Tech Mates Racing" `
             --outputDir $velopackPath `
             --channel "win-x64" `
-            --shortcuts "StartMenu" `
+            --shortcuts "Desktop,StartMenu" `
             --msi `
             --instLocation "Either" `
+            --instWelcome ".\assets\brand\TMRMsiWelcome.md" `
+            --splashImage ".\assets\brand\TMRInstallerSplash.png" `
             --msiBanner ".\assets\brand\TMRMsiBanner.bmp" `
             --msiLogo ".\assets\brand\TMRMsiLogo.bmp" `
             --icon ".\src\TmrOverlay.App\Assets\TmrOverlay.ico"

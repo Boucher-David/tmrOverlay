@@ -4,13 +4,14 @@ This folder holds repo-owned visual source assets that are useful across app, ov
 
 ## Structure
 
-- `brand/` - source brand images, logos, and future app-icon inputs.
+- `brand/` - source brand images, logos, installer welcome/splash assets, and future app-icon inputs.
 
 ## Usage
 
 Keep source images here when they are not yet wired into a specific runtime. Platform-specific derivatives should live near the consuming project once they are generated:
 
 - Windows app icons: `src/TmrOverlay.App/Assets/`.
+- Windows installer artwork: generated under `assets/brand/` by `tools/render_windows_installer_splash.swift`.
 - macOS harness icons: `local-mac/TmrOverlayMac/` if the ignored harness needs local-only resources.
 - Screenshot/mock artifacts: `mocks/`, not this folder.
 

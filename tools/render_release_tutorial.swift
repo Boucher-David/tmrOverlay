@@ -187,7 +187,7 @@ private func renderTutorial(_ c: Canvas) {
             title: "Install",
             subtitle: "MSI is the normal path.",
             bullets: [
-                "Run the MSI and use the shortcut.",
+                "Run the MSI and use a shortcut.",
                 "SmartScreen: More info > Run anyway.",
                 "Portable fallback runs TMROverlay.exe."
             ],
@@ -295,12 +295,12 @@ private func drawInstallPreview(_ c: Canvas, _ rect: CGRect) {
     c.stroke(rect, Theme.border, width: 1, radius: 7)
     c.text("Installed app", CGRect(x: rect.minX + 12, y: rect.maxY - 25, width: rect.width - 24, height: 18), size: 11, weight: .bold)
     let lines = [
-        "Start menu shortcut",
+        "Desktop shortcut",
+        "  Tech Mates Racing Overlay",
+        "Start Menu shortcut",
         "  Tech Mates Racing Overlay",
         "MSI installer",
-        "  TMROverlay-vX.Y.Z-win-x64.msi",
-        "Portable fallback",
-        "  unzip and run TMROverlay.exe"
+        "  TMROverlay-vX.Y.Z-win-x64.msi"
     ]
     for (index, line) in lines.enumerated() {
         let color = line.contains(".exe") || line.contains(".msi") || line.contains("shortcut") ? Theme.success : Theme.secondary
@@ -425,7 +425,7 @@ private func drawFooter(_ c: Canvas) {
     c.text("Support-safe reminders", CGRect(x: footer.minX + 24, y: footer.maxY - 34, width: 260, height: 20), size: 15, weight: .bold)
     c.pill("User data: %LOCALAPPDATA%\\TmrOverlay", CGRect(x: footer.minX + 310, y: footer.maxY - 45, width: 340, height: 30), color: Theme.infoBackground, textColor: Theme.info)
     c.pill("Upgrade: install update, restart to apply", CGRect(x: footer.minX + 674, y: footer.maxY - 45, width: 356, height: 30), color: Theme.successBackground, textColor: Theme.success)
-    c.pill("Exit: settings X or tray menu", CGRect(x: footer.minX + 1054, y: footer.maxY - 45, width: 276, height: 30), color: Theme.warningBackground, textColor: Theme.warning)
+    c.pill("Uninstall removes user data", CGRect(x: footer.minX + 1054, y: footer.maxY - 45, width: 276, height: 30), color: Theme.warningBackground, textColor: Theme.warning)
     c.text("Attach the diagnostics bundle when reporting telemetry, overlay, or startup problems.", CGRect(x: footer.minX + 24, y: footer.minY + 16, width: footer.width - 48, height: 18), size: 12, color: Theme.muted)
 }
 

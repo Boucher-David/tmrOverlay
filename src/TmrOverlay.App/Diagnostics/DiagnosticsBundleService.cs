@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.Core.AppInfo;
+using TmrOverlay.App.Installation;
 using TmrOverlay.App.Localhost;
 using TmrOverlay.App.Overlays.GarageCover;
 using TmrOverlay.App.Performance;
@@ -123,6 +124,7 @@ internal sealed class DiagnosticsBundleService
                 AddTextEntry(archive, "metadata/telemetry-state.json", JsonSerializer.Serialize(_captureState.Snapshot(), JsonOptions));
                 AddTextEntry(archive, "metadata/localhost-overlays.json", JsonSerializer.Serialize(_localhostOverlayState.Snapshot(), JsonOptions));
                 AddTextEntry(archive, "metadata/release-updates.json", JsonSerializer.Serialize(_releaseUpdates.Snapshot(), JsonOptions));
+                AddTextEntry(archive, "metadata/installer-cleanup.json", JsonSerializer.Serialize(InstallerCleanup.LegacyInstallerCleanupSnapshot(), JsonOptions));
                 AddTextEntry(archive, "metadata/track-maps.json", JsonSerializer.Serialize(_trackMapStore.DiagnosticsSnapshot(), JsonOptions));
                 AddTextEntry(archive, "metadata/garage-cover.json", JsonSerializer.Serialize(GarageCoverDiagnostics(), JsonOptions));
                 metadataSucceeded = true;

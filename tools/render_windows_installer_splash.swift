@@ -2,12 +2,14 @@ import AppKit
 import Foundation
 
 private enum SplashTheme {
-    static let background = NSColor(calibratedRed: 12 / 255, green: 15 / 255, blue: 18 / 255, alpha: 1)
-    static let panel = NSColor(calibratedRed: 19 / 255, green: 24 / 255, blue: 28 / 255, alpha: 1)
-    static let border = NSColor(white: 1, alpha: 0.18)
-    static let text = NSColor.white
-    static let muted = NSColor(calibratedRed: 128 / 255, green: 145 / 255, blue: 153 / 255, alpha: 1)
+    static let background = NSColor(calibratedRed: 244 / 255, green: 248 / 255, blue: 250 / 255, alpha: 1)
+    static let panel = NSColor.white
+    static let darkPanel = NSColor(calibratedRed: 12 / 255, green: 15 / 255, blue: 18 / 255, alpha: 1)
+    static let border = NSColor(calibratedRed: 189 / 255, green: 204 / 255, blue: 212 / 255, alpha: 1)
+    static let text = NSColor(calibratedRed: 16 / 255, green: 24 / 255, blue: 32 / 255, alpha: 1)
+    static let muted = NSColor(calibratedRed: 75 / 255, green: 92 / 255, blue: 102 / 255, alpha: 1)
     static let accent = NSColor(calibratedRed: 69 / 255, green: 203 / 255, blue: 250 / 255, alpha: 1)
+    static let accentDark = NSColor(calibratedRed: 0 / 255, green: 103 / 255, blue: 150 / 255, alpha: 1)
 
     static func font(_ size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
         NSFont(name: "SF Pro", size: size) ?? NSFont.systemFont(ofSize: size, weight: weight)
@@ -69,10 +71,10 @@ private func renderSplash(_ canvas: SplashCanvas, logo: NSImage?) {
     canvas.fill(bounds, SplashTheme.background)
 
     for x in stride(from: CGFloat(0), through: bounds.width, by: 64) {
-        canvas.line(from: CGPoint(x: x, y: 0), to: CGPoint(x: x, y: bounds.height), color: NSColor(white: 1, alpha: 0.018))
+        canvas.line(from: CGPoint(x: x, y: 0), to: CGPoint(x: x, y: bounds.height), color: NSColor(calibratedRed: 189 / 255, green: 204 / 255, blue: 212 / 255, alpha: 0.18))
     }
     for y in stride(from: CGFloat(0), through: bounds.height, by: 64) {
-        canvas.line(from: CGPoint(x: 0, y: y), to: CGPoint(x: bounds.width, y: y), color: NSColor(white: 1, alpha: 0.018))
+        canvas.line(from: CGPoint(x: 0, y: y), to: CGPoint(x: bounds.width, y: y), color: NSColor(calibratedRed: 189 / 255, green: 204 / 255, blue: 212 / 255, alpha: 0.18))
     }
 
     let panel = bounds.insetBy(dx: 34, dy: 32)
@@ -81,25 +83,25 @@ private func renderSplash(_ canvas: SplashCanvas, logo: NSImage?) {
     canvas.fill(CGRect(x: panel.minX, y: panel.maxY - 4, width: panel.width, height: 4), SplashTheme.accent, radius: 12)
 
     if let logo {
-        logo.draw(in: CGRect(x: panel.minX + 44, y: panel.maxY - 151, width: 216, height: 122), from: .zero, operation: .sourceOver, fraction: 1)
+        logo.draw(in: CGRect(x: panel.minX + 50, y: panel.maxY - 150, width: 205, height: 115), from: .zero, operation: .sourceOver, fraction: 1)
     }
 
     canvas.text(
         "Tech Mates Racing Overlay",
-        in: CGRect(x: panel.minX + 308, y: panel.maxY - 112, width: 320, height: 32),
-        size: 24,
+        in: CGRect(x: panel.minX + 292, y: panel.maxY - 110, width: 266, height: 32),
+        size: 20,
         weight: .bold
     )
     canvas.text(
         "Windows installer",
-        in: CGRect(x: panel.minX + 310, y: panel.maxY - 145, width: 280, height: 22),
+        in: CGRect(x: panel.minX + 294, y: panel.maxY - 143, width: 230, height: 22),
         size: 15,
         weight: .semibold,
         color: SplashTheme.accent
     )
     canvas.text(
-        "Installing the app and Start Menu shortcut.",
-        in: CGRect(x: panel.minX + 310, y: panel.maxY - 178, width: 318, height: 20),
+        "Desktop and Start Menu shortcuts.",
+        in: CGRect(x: panel.minX + 294, y: panel.maxY - 176, width: 254, height: 20),
         size: 13,
         color: SplashTheme.muted
     )
@@ -141,7 +143,7 @@ private func renderMsiBanner(_ canvas: SplashCanvas, logo: NSImage?) {
         in: CGRect(x: 112, y: 12, width: 190, height: 15),
         size: 10.5,
         weight: .semibold,
-        color: SplashTheme.accent
+        color: SplashTheme.accentDark
     )
 }
 
@@ -150,19 +152,24 @@ private func renderMsiLogo(_ canvas: SplashCanvas, logo: NSImage?) {
     canvas.fill(bounds, SplashTheme.background)
 
     for x in stride(from: CGFloat(0), through: bounds.width, by: 56) {
-        canvas.line(from: CGPoint(x: x, y: 0), to: CGPoint(x: x, y: bounds.height), color: NSColor(white: 1, alpha: 0.018))
+        canvas.line(from: CGPoint(x: x, y: 0), to: CGPoint(x: x, y: bounds.height), color: NSColor(calibratedRed: 189 / 255, green: 204 / 255, blue: 212 / 255, alpha: 0.18))
     }
     for y in stride(from: CGFloat(0), through: bounds.height, by: 56) {
-        canvas.line(from: CGPoint(x: 0, y: y), to: CGPoint(x: bounds.width, y: y), color: NSColor(white: 1, alpha: 0.018))
+        canvas.line(from: CGPoint(x: 0, y: y), to: CGPoint(x: bounds.width, y: y), color: NSColor(calibratedRed: 189 / 255, green: 204 / 255, blue: 212 / 255, alpha: 0.18))
     }
 
+    let brandBlock = CGRect(x: 32, y: 48, width: bounds.width - 64, height: 222)
+    canvas.fill(brandBlock, SplashTheme.panel, radius: 14)
+    canvas.stroke(brandBlock, SplashTheme.border, width: 1, radius: 14)
+    canvas.fill(CGRect(x: brandBlock.minX, y: brandBlock.maxY - 5, width: brandBlock.width, height: 5), SplashTheme.accent, radius: 14)
+
     if let logo {
-        logo.draw(in: CGRect(x: 54, y: 116, width: 385, height: 216), from: .zero, operation: .sourceOver, fraction: 1)
+        logo.draw(in: CGRect(x: 111, y: 122, width: 270, height: 152), from: .zero, operation: .sourceOver, fraction: 1)
     }
 
     canvas.text(
-        "Install the overlay app, Start Menu shortcut, and update-ready package identity.",
-        in: CGRect(x: 54, y: 44, width: 370, height: 36),
+        "Desktop and Start Menu shortcuts included.",
+        in: CGRect(x: 60, y: 72, width: 378, height: 42),
         size: 13,
         color: SplashTheme.muted
     )
@@ -180,26 +187,98 @@ private func renderImage(
         pixelsWide: Int(size.width),
         pixelsHigh: Int(size.height),
         bitsPerSample: 8,
-        samplesPerPixel: 3,
-        hasAlpha: false,
+        samplesPerPixel: 4,
+        hasAlpha: true,
         isPlanar: false,
-        colorSpaceName: .calibratedRGB,
+        colorSpaceName: .deviceRGB,
         bytesPerRow: 0,
-        bitsPerPixel: 24
+        bitsPerPixel: 0
     ) else {
         throw NSError(domain: "render_windows_installer_splash", code: 1)
     }
 
     NSGraphicsContext.saveGraphicsState()
-    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+    let graphicsContext = NSGraphicsContext(bitmapImageRep: rep)!
+    NSGraphicsContext.current = graphicsContext
+    graphicsContext.cgContext.clear(CGRect(origin: .zero, size: size))
     render(SplashCanvas(size: size), logo)
     NSGraphicsContext.restoreGraphicsState()
+
+    if type == .bmp {
+        try writeBmp24(rep, to: url)
+        return
+    }
 
     guard let data = rep.representation(using: type, properties: [:]) else {
         throw NSError(domain: "render_windows_installer_splash", code: 2)
     }
 
     try data.write(to: url)
+}
+
+private func writeBmp24(_ rep: NSBitmapImageRep, to url: URL) throws {
+    let width = rep.pixelsWide
+    let height = rep.pixelsHigh
+    let rowStride = ((width * 3 + 3) / 4) * 4
+    let imageSize = rowStride * height
+    let fileSize = 54 + imageSize
+    var data = Data(capacity: fileSize)
+
+    appendUInt16LE(0x4D42, to: &data)
+    appendUInt32LE(UInt32(fileSize), to: &data)
+    appendUInt16LE(0, to: &data)
+    appendUInt16LE(0, to: &data)
+    appendUInt32LE(54, to: &data)
+    appendUInt32LE(40, to: &data)
+    appendInt32LE(Int32(width), to: &data)
+    appendInt32LE(-Int32(height), to: &data)
+    appendUInt16LE(1, to: &data)
+    appendUInt16LE(24, to: &data)
+    appendUInt32LE(0, to: &data)
+    appendUInt32LE(UInt32(imageSize), to: &data)
+    appendInt32LE(0, to: &data)
+    appendInt32LE(0, to: &data)
+    appendUInt32LE(0, to: &data)
+    appendUInt32LE(0, to: &data)
+
+    for y in 0..<height {
+        var row = Data(capacity: rowStride)
+        for x in 0..<width {
+            let color = rep.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB)
+                ?? NSColor.black
+            row.append(UInt8(clamping: Int((color.blueComponent * 255).rounded())))
+            row.append(UInt8(clamping: Int((color.greenComponent * 255).rounded())))
+            row.append(UInt8(clamping: Int((color.redComponent * 255).rounded())))
+        }
+
+        while row.count < rowStride {
+            row.append(0)
+        }
+        data.append(row)
+    }
+
+    try data.write(to: url)
+}
+
+private func appendUInt16LE(_ value: UInt16, to data: inout Data) {
+    var littleEndian = value.littleEndian
+    withUnsafeBytes(of: &littleEndian) { bytes in
+        data.append(contentsOf: bytes)
+    }
+}
+
+private func appendUInt32LE(_ value: UInt32, to data: inout Data) {
+    var littleEndian = value.littleEndian
+    withUnsafeBytes(of: &littleEndian) { bytes in
+        data.append(contentsOf: bytes)
+    }
+}
+
+private func appendInt32LE(_ value: Int32, to data: inout Data) {
+    var littleEndian = value.littleEndian
+    withUnsafeBytes(of: &littleEndian) { bytes in
+        data.append(contentsOf: bytes)
+    }
 }
 
 let currentDirectory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
@@ -211,6 +290,12 @@ let outputDirectory = CommandLine.arguments.dropFirst().first.map(URL.init(fileU
 do {
     try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
     let outputs: [(URL, CGSize, NSBitmapImageRep.FileType, (SplashCanvas, NSImage?) -> Void)] = [
+        (
+            outputDirectory.appendingPathComponent("TMRInstallerSplash.png"),
+            CGSize(width: 640, height: 400),
+            .png,
+            renderSplash
+        ),
         (
             outputDirectory.appendingPathComponent("TMRMsiBanner.bmp"),
             CGSize(width: 493, height: 58),

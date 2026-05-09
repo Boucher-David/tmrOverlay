@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Text.Json.Nodes;
 using TmrOverlay.App.Events;
+using TmrOverlay.App.Installation;
 using TmrOverlay.App.Localhost;
 using Microsoft.Extensions.Logging.Abstractions;
 using TmrOverlay.App.Diagnostics;
@@ -23,6 +24,13 @@ public sealed class DiagnosticsBundleServiceTests
         var root = Path.Combine(Path.GetTempPath(), "tmr-overlay-diagnostics-test", Guid.NewGuid().ToString("N"));
         try
         {
+            InstallerCleanup.ResetLegacyInstallerCleanupForTests();
+            InstallerCleanup.RecordLegacyInstallerCleanupForTests(
+                new InstallerCleanupResult(
+                    [@"C:\Users\David\AppData\Local\TechMatesRacing.TmrOverlay"],
+                    [new InstallerCleanupSkippedPath(@"C:\Users\David\Desktop\TmrOverlay.lnk", "IOException")]),
+                DateTimeOffset.Parse("2026-05-09T12:00:00Z"));
+
             var storage = CreateStorage(root);
             Directory.CreateDirectory(storage.LogsRoot);
             Directory.CreateDirectory(storage.EventsRoot);
@@ -163,6 +171,7 @@ public sealed class DiagnosticsBundleServiceTests
             Assert.Contains("metadata/telemetry-state.json", entryNames);
             Assert.Contains("metadata/localhost-overlays.json", entryNames);
             Assert.Contains("metadata/release-updates.json", entryNames);
+            Assert.Contains("metadata/installer-cleanup.json", entryNames);
             Assert.Contains("metadata/track-maps.json", entryNames);
             Assert.Contains("metadata/garage-cover.json", entryNames);
             Assert.Contains("metadata/performance.json", entryNames);
@@ -216,6 +225,22 @@ public sealed class DiagnosticsBundleServiceTests
                 Assert.Null(releaseUpdatesJson?["lastApplyStartedAtUtc"]);
             }
 
+            var installerCleanupEntry = archive.GetEntry("metadata/installer-cleanup.json");
+            Assert.NotNull(installerCleanupEntry);
+            using (var installerCleanupReader = new StreamReader(installerCleanupEntry.Open()))
+            {
+                var installerCleanupJson = JsonNode.Parse(installerCleanupReader.ReadToEnd());
+                Assert.True(((bool?)installerCleanupJson?["hasRun"]) == true);
+                Assert.Equal("TechMatesRacing.TmrOverlay", (string?)installerCleanupJson?["legacyPackageDirectoryName"]);
+                Assert.Equal(
+                    DateTimeOffset.Parse("2026-05-09T12:00:00Z"),
+                    DateTimeOffset.Parse((string?)installerCleanupJson?["lastRunAtUtc"] ?? string.Empty));
+                Assert.Equal(
+                    @"C:\Users\David\AppData\Local\TechMatesRacing.TmrOverlay",
+                    (string?)installerCleanupJson?["deletedPaths"]?[0]);
+                Assert.Equal("IOException", (string?)installerCleanupJson?["skippedPaths"]?[0]?["reason"]);
+            }
+
             var trackMapsEntry = archive.GetEntry("metadata/track-maps.json");
             Assert.NotNull(trackMapsEntry);
             using (var trackMapsReader = new StreamReader(trackMapsEntry.Open()))
@@ -247,6 +272,7 @@ public sealed class DiagnosticsBundleServiceTests
         }
         finally
         {
+            InstallerCleanup.ResetLegacyInstallerCleanupForTests();
             if (Directory.Exists(root))
             {
                 Directory.Delete(root, recursive: true);
