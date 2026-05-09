@@ -371,14 +371,14 @@ internal static class Program
                 "Settings Components - Support Buttons",
                 "Support",
                 null,
-                new Rectangle(306, 410, 834, 202)),
+                new Rectangle(306, 410, 716, 202)),
             RenderSettingsCrop(
                 outputRoot,
                 "browser-source",
                 "Settings Components - Browser Source",
                 "Relative",
                 null,
-                new Rectangle(306, 518, 834, 92))
+                new Rectangle(306, 518, 716, 92))
         ];
     }
 

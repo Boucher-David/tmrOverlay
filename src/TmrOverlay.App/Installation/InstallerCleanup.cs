@@ -224,7 +224,10 @@ internal static class InstallerCleanup
             IEnumerable<string> shortcutPaths;
             try
             {
-                shortcutPaths = Directory.EnumerateFiles(root, "*.lnk", SearchOption.AllDirectories).ToArray();
+                shortcutPaths = Directory
+                    .EnumerateFiles(root, "*", SearchOption.AllDirectories)
+                    .Where(path => string.Equals(Path.GetExtension(path), ".lnk", StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
             }
             catch (Exception exception) when (IsCleanupException(exception))
             {
@@ -282,7 +285,10 @@ internal static class InstallerCleanup
     {
         var bytes = File.ReadAllBytes(path);
         return ContainsBytes(bytes, System.Text.Encoding.UTF8.GetBytes(LegacyPackageDirectoryName))
-            || ContainsBytes(bytes, System.Text.Encoding.Unicode.GetBytes(LegacyPackageDirectoryName));
+            || ContainsBytes(bytes, System.Text.Encoding.Unicode.GetBytes(LegacyPackageDirectoryName))
+            || DecodedFileContainsLegacyIdentity(bytes, System.Text.Encoding.UTF8)
+            || DecodedFileContainsLegacyIdentity(bytes, System.Text.Encoding.Unicode)
+            || DecodedFileContainsLegacyIdentity(bytes, System.Text.Encoding.Latin1);
     }
 
     private static bool IsCurrentAppBaseDirectoryInside(string directory)
@@ -301,6 +307,13 @@ internal static class InstallerCleanup
     private static bool ContainsBytes(ReadOnlySpan<byte> source, ReadOnlySpan<byte> value)
     {
         return value.Length > 0 && source.IndexOf(value) >= 0;
+    }
+
+    private static bool DecodedFileContainsLegacyIdentity(byte[] bytes, System.Text.Encoding encoding)
+    {
+        return encoding
+            .GetString(bytes)
+            .Contains(LegacyPackageDirectoryName, StringComparison.OrdinalIgnoreCase);
     }
 
     private static void DeleteEmptyParentDirectories(string? directory, string stopAtRoot)

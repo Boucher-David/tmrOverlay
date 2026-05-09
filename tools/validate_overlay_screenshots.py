@@ -146,8 +146,8 @@ WINDOWS_MINIMUM_PNGS = {
     "components/settings/overlay-controls.png": (392, 226),
     "components/settings/content-matrix.png": (690, 222),
     "components/settings/chat-inputs.png": (650, 204),
-    "components/settings/support-buttons.png": (834, 202),
-    "components/settings/browser-source.png": (834, 92),
+    "components/settings/support-buttons.png": (716, 202),
+    "components/settings/browser-source.png": (716, 92),
 }
 
 WINDOWS_MIN_UNIQUE_BYTES = {

@@ -118,15 +118,21 @@ public sealed class InstallerCleanupTests
         var desktopShortcut = Path.Combine(desktopRoot, "TmrOverlay.lnk");
         Directory.CreateDirectory(Path.GetDirectoryName(legacyShortcut)!);
         Directory.CreateDirectory(desktopRoot);
-        File.WriteAllText(legacyShortcut, @"C:\Users\David\AppData\Local\TechMatesRacing.TmrOverlay\current\TMROverlay.exe");
-        File.WriteAllText(currentShortcut, @"C:\Program Files\TMROverlay\current\TMROverlay.exe");
-        File.WriteAllText(desktopShortcut, @"C:\Users\David\AppData\Local\TechMatesRacing.TmrOverlay\current\TMROverlay.exe");
+        File.WriteAllBytes(
+            legacyShortcut,
+            System.Text.Encoding.UTF8.GetBytes(@"C:\Users\David\AppData\Local\TechMatesRacing.TmrOverlay\current\TMROverlay.exe"));
+        File.WriteAllBytes(
+            currentShortcut,
+            System.Text.Encoding.UTF8.GetBytes(@"C:\Program Files\TMROverlay\current\TMROverlay.exe"));
+        File.WriteAllBytes(
+            desktopShortcut,
+            System.Text.Encoding.Unicode.GetBytes(@"C:\Users\David\AppData\Local\TechMatesRacing.TmrOverlay\current\TMROverlay.exe"));
 
         var result = InstallerCleanup.RemoveLegacyInstallerArtifacts(localAppDataRoot, desktopRoot, programsRoot);
 
-        Assert.False(File.Exists(legacyShortcut));
-        Assert.False(File.Exists(desktopShortcut));
-        Assert.True(File.Exists(currentShortcut));
+        Assert.False(File.Exists(legacyShortcut), CleanupDebug(result));
+        Assert.False(File.Exists(desktopShortcut), CleanupDebug(result));
+        Assert.True(File.Exists(currentShortcut), CleanupDebug(result));
         Assert.Contains(Path.GetFullPath(legacyShortcut), result.DeletedPaths);
         Assert.Contains(Path.GetFullPath(desktopShortcut), result.DeletedPaths);
         Assert.Empty(result.SkippedPaths);
@@ -147,6 +153,11 @@ public sealed class InstallerCleanupTests
             EventsRoot = Path.Combine(appDataRoot, "logs", "events"),
             RuntimeStatePath = Path.Combine(appDataRoot, "runtime-state.json")
         };
+    }
+
+    private static string CleanupDebug(InstallerCleanupResult result)
+    {
+        return $"Deleted: {string.Join(", ", result.DeletedPaths)}; Skipped: {string.Join(", ", result.SkippedPaths.Select(skipped => $"{skipped.Path}={skipped.Reason}"))}";
     }
 
     private sealed class TemporaryDirectory : IDisposable
