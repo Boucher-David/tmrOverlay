@@ -114,7 +114,7 @@ public sealed class InstallerCleanupTests
         var desktopRoot = Path.Combine(temp.Path, "desktop");
         var programsRoot = Path.Combine(temp.Path, "programs");
         var legacyShortcut = Path.Combine(programsRoot, "Tech Mates Racing", "TmrOverlay.lnk");
-        var currentShortcut = Path.Combine(programsRoot, "Tech Mates Racing", "TMROverlay.lnk");
+        var currentShortcut = Path.Combine(programsRoot, "Tech Mates Racing", "TMROverlay Current.lnk");
         var desktopShortcut = Path.Combine(desktopRoot, "TmrOverlay.lnk");
         Directory.CreateDirectory(Path.GetDirectoryName(legacyShortcut)!);
         Directory.CreateDirectory(desktopRoot);
