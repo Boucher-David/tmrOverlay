@@ -41,6 +41,52 @@ internal static class GapToLeaderLiveModelAdapter
             ClassCars: classCars);
     }
 
+    public static double? SelectFocusedTrendPointSeconds(
+        LiveTelemetrySnapshot snapshot,
+        LiveLeaderGapSnapshot? gap = null)
+    {
+        var selectedGap = gap ?? Select(snapshot);
+        var lapReferenceSeconds = SelectLapReferenceSeconds(snapshot);
+        return ChartGapSeconds(selectedGap.ClassLeaderGap, lapReferenceSeconds)
+            ?? selectedGap.ClassCars
+                .Where(car => car.IsReferenceCar)
+                .Select(car => ChartGapSeconds(car, lapReferenceSeconds))
+                .FirstOrDefault(seconds => seconds is not null);
+    }
+
+    public static double? SelectLapReferenceSeconds(LiveTelemetrySnapshot snapshot)
+    {
+        var focusRow = snapshot.Models.Timing.FocusRow;
+        if (IsValidLapReference(focusRow?.LastLapTimeSeconds))
+        {
+            return focusRow?.LastLapTimeSeconds;
+        }
+
+        if (IsValidLapReference(focusRow?.BestLapTimeSeconds))
+        {
+            return focusRow?.BestLapTimeSeconds;
+        }
+
+        if (ReferenceUsesPlayerCar(snapshot) && IsValidLapReference(snapshot.Models.FuelPit.Fuel.LapTimeSeconds))
+        {
+            return snapshot.Models.FuelPit.Fuel.LapTimeSeconds;
+        }
+
+        if (IsValidLapReference(snapshot.Models.RaceProgress.StrategyLapTimeSeconds))
+        {
+            return snapshot.Models.RaceProgress.StrategyLapTimeSeconds;
+        }
+
+        if (ReferenceUsesPlayerCar(snapshot) && IsValidLapReference(snapshot.Context.Car.DriverCarEstLapTimeSeconds))
+        {
+            return snapshot.Context.Car.DriverCarEstLapTimeSeconds;
+        }
+
+        return ReferenceUsesTeamClass(snapshot) && IsValidLapReference(snapshot.Context.Car.CarClassEstLapTimeSeconds)
+            ? snapshot.Context.Car.CarClassEstLapTimeSeconds
+            : null;
+    }
+
     private static LiveGapValue BuildGap(
         int? position,
         int? leaderCarIdx,
@@ -151,6 +197,51 @@ internal static class GapToLeaderLiveModelAdapter
     private static bool HasChartGap(LiveClassGapCar car)
     {
         return car.GapSecondsToClassLeader is not null || car.GapLapsToClassLeader is not null;
+    }
+
+    private static double? ChartGapSeconds(LiveGapValue gap, double? lapReferenceSeconds)
+    {
+        if (gap.IsLeader)
+        {
+            return 0d;
+        }
+
+        return ValidGapSeconds(gap.Seconds)
+            ?? (ValidGapLaps(gap.Laps) is { } laps ? laps * ChartLapReferenceSeconds(lapReferenceSeconds) : null);
+    }
+
+    private static double? ChartGapSeconds(LiveClassGapCar car, double? lapReferenceSeconds)
+    {
+        return ValidGapSeconds(car.GapSecondsToClassLeader)
+            ?? (ValidGapLaps(car.GapLapsToClassLeader) is { } laps ? laps * ChartLapReferenceSeconds(lapReferenceSeconds) : null);
+    }
+
+    private static double ChartLapReferenceSeconds(double? lapReferenceSeconds)
+    {
+        return IsValidLapReference(lapReferenceSeconds) ? lapReferenceSeconds.Value : 60d;
+    }
+
+    private static bool ReferenceUsesPlayerCar(LiveTelemetrySnapshot snapshot)
+    {
+        var directory = snapshot.Models.DriverDirectory;
+        return directory.FocusCarIdx is null
+            || directory.PlayerCarIdx is null
+            || directory.FocusCarIdx == directory.PlayerCarIdx;
+    }
+
+    private static bool ReferenceUsesTeamClass(LiveTelemetrySnapshot snapshot)
+    {
+        var directory = snapshot.Models.DriverDirectory;
+        var focusClass = directory.FocusDriver?.CarClassId ?? directory.ReferenceCarClass;
+        var playerClass = directory.PlayerDriver?.CarClassId ?? directory.ReferenceCarClass;
+        return focusClass is null
+            || playerClass is null
+            || focusClass == playerClass;
+    }
+
+    private static bool IsValidLapReference(double? seconds)
+    {
+        return seconds is { } value && value is > 20d and < 1800d && IsFinite(value);
     }
 
     private static double? ValidGapSeconds(double? seconds)

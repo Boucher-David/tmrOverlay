@@ -9,6 +9,7 @@ internal abstract class PersistentOverlayForm : Form
     private const int WsExTransparent = 0x00000020;
     private const int WsExNoActivate = 0x08000000;
     private const int WmNcHitTest = 0x0084;
+    private const int HtClient = 1;
     private const int HtTransparent = -1;
     private const int FadeIntervalMilliseconds = 50;
     private const double FadeInSeconds = 0.22d;
@@ -69,6 +70,8 @@ internal abstract class PersistentOverlayForm : Form
     public bool IsEffectivelyInputTransparent =>
         _inputTransparentOverride || EffectiveOverlayOpacity <= InputTransparentOpacityThreshold;
 
+    public virtual bool IsIntrinsicallyInputTransparentOverlay => false;
+
     protected bool IsOverlayFramePersistenceSuppressed => _framePersistenceSuppressed;
 
     public void SetInputTransparentOverride(bool enabled)
@@ -94,6 +97,13 @@ internal abstract class PersistentOverlayForm : Form
     {
         _baseOpacity = Math.Clamp(opacity, 0d, 1d);
         ApplyEffectiveOpacity();
+    }
+
+    protected void DisableOverlayAndClose()
+    {
+        _settings.Enabled = false;
+        _saveSettings();
+        Close();
     }
 
     public void SetLiveTelemetryAvailable(bool available, bool immediate = false)
@@ -136,7 +146,7 @@ internal abstract class PersistentOverlayForm : Form
                 createParams.ExStyle |= WsExNoActivate;
             }
 
-            if (_inputTransparentOverride)
+            if (_inputTransparentOverride && UseInputTransparentExtendedWindowStyle)
             {
                 createParams.ExStyle |= WsExTransparent;
             }
@@ -149,17 +159,34 @@ internal abstract class PersistentOverlayForm : Form
 
     protected virtual bool UseNoActivateStyle => true;
 
+    protected virtual bool UseInputTransparentExtendedWindowStyle => true;
+
+    protected virtual bool ShouldReceiveInputWhileTransparent(Point clientPoint) => false;
+
     protected override bool ShowWithoutActivation => UseToolWindowStyle;
 
     protected override void WndProc(ref Message m)
     {
         if (m.Msg == WmNcHitTest && IsEffectivelyInputTransparent)
         {
+            var clientPoint = PointToClient(ScreenPointFromLParam(m.LParam));
+            if (ShouldReceiveInputWhileTransparent(clientPoint))
+            {
+                m.Result = new IntPtr(HtClient);
+                return;
+            }
+
             m.Result = new IntPtr(HtTransparent);
             return;
         }
 
         base.WndProc(ref m);
+    }
+
+    private static Point ScreenPointFromLParam(IntPtr lParam)
+    {
+        var value = lParam.ToInt64();
+        return new Point(unchecked((short)(value & 0xffff)), unchecked((short)((value >> 16) & 0xffff)));
     }
 
     protected void RegisterDragSurfaces(params Control[] controls)

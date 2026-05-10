@@ -25,6 +25,7 @@ internal sealed class StreamChatForm : PersistentOverlayForm
     private readonly string _fontFamily;
     private readonly System.Windows.Forms.Timer _settingsTimer;
     private readonly List<StreamChatMessage> _messages = [];
+    private readonly Button? _closeButton;
     private CancellationTokenSource? _connectionCancellation;
     private Task? _connectionTask;
     private string _status = "waiting for chat source";
@@ -69,6 +70,10 @@ internal sealed class StreamChatForm : PersistentOverlayForm
         };
         _settingsTimer.Start();
 
+        _closeButton = CreateCloseButton();
+        Controls.Add(_closeButton);
+        LayoutCloseButton();
+
         RefreshChatSettings(force: true);
     }
 
@@ -79,10 +84,37 @@ internal sealed class StreamChatForm : PersistentOverlayForm
             _disposed = true;
             _settingsTimer.Stop();
             _settingsTimer.Dispose();
+            _closeButton?.Dispose();
             StopConnection();
         }
 
         base.Dispose(disposing);
+    }
+
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+        LayoutCloseButton();
+    }
+
+    public override bool IsIntrinsicallyInputTransparentOverlay => true;
+
+    protected override bool UseInputTransparentExtendedWindowStyle => false;
+
+    protected override bool ShouldReceiveInputWhileTransparent(Point clientPoint)
+    {
+        return IsCloseButtonHit(clientPoint);
+    }
+
+    protected override void OnMouseUp(MouseEventArgs e)
+    {
+        if (e.Button == MouseButtons.Left && IsCloseButtonHit(e.Location))
+        {
+            DisableOverlayAndClose();
+            return;
+        }
+
+        base.OnMouseUp(e);
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -467,7 +499,7 @@ internal sealed class StreamChatForm : PersistentOverlayForm
         using var statusBrush = new SolidBrush(OverlayTheme.Colors.TextSubtle);
         graphics.DrawString("Stream Chat", titleFont, titleBrush, 14, 11);
 
-        var statusRect = new RectangleF(132, 13, Math.Max(90, ClientSize.Width - 146), 18);
+        var statusRect = new RectangleF(132, 13, Math.Max(90, ClientSize.Width - 180), 18);
         using var statusFormat = new StringFormat
         {
             Alignment = StringAlignment.Far,
@@ -475,6 +507,42 @@ internal sealed class StreamChatForm : PersistentOverlayForm
             Trimming = StringTrimming.EllipsisCharacter
         };
         graphics.DrawString(_status, statusFont, statusBrush, statusRect, statusFormat);
+    }
+
+    private Button CreateCloseButton()
+    {
+        var button = new Button
+        {
+            Text = "X",
+            FlatStyle = FlatStyle.Flat,
+            TabStop = false,
+            Width = 22,
+            Height = 22,
+            BackColor = OverlayTheme.Colors.TitleBarBackground,
+            ForeColor = OverlayTheme.Colors.TextPrimary,
+            Cursor = Cursors.Hand
+        };
+        button.FlatAppearance.BorderColor = OverlayTheme.Colors.WindowBorder;
+        button.FlatAppearance.BorderSize = 1;
+        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(74, 40, 48, 62);
+        button.FlatAppearance.MouseDownBackColor = Color.FromArgb(96, 60, 34, 44);
+        button.Click += (_, _) => DisableOverlayAndClose();
+        return button;
+    }
+
+    private void LayoutCloseButton()
+    {
+        if (_closeButton is null)
+        {
+            return;
+        }
+
+        _closeButton.Location = new Point(Math.Max(4, ClientSize.Width - _closeButton.Width - 10), 10);
+    }
+
+    private bool IsCloseButtonHit(Point clientPoint)
+    {
+        return _closeButton is not null && _closeButton.Bounds.Contains(clientPoint);
     }
 
     private void DrawMessages(Graphics graphics)

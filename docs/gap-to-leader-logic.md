@@ -116,9 +116,10 @@ The drawing code needs seconds for the Y-axis.
 For each `LiveClassGapCar`:
 
 - Use `GapSecondsToClassLeader` when available.
-- Otherwise convert laps to seconds using a lap reference when available.
+- Otherwise convert laps to seconds using a lap reference, falling back to 60 seconds when no valid reference is available.
 
 Lap reference is selected from live lap-time context and kept only when it looks valid.
+The compact Design V2 and browser-source gap graphs use the same conversion for their focused-car point buffer, so lap-distance placement fallback still advances the trend when second-based leader timing is partial or missing.
 
 ## Recording Points
 

@@ -233,7 +233,9 @@ internal sealed class BrowserOverlayModelFactory
     private BrowserOverlayDisplayModel BuildGapToLeader(LiveTelemetrySnapshot snapshot)
     {
         var gap = GapToLeaderLiveModelAdapter.Select(snapshot);
-        if (gap.HasData && gap.ClassLeaderGap.Seconds is { } seconds && IsFinite(seconds))
+        if (gap.HasData
+            && GapToLeaderLiveModelAdapter.SelectFocusedTrendPointSeconds(snapshot, gap) is { } seconds
+            && IsFinite(seconds))
         {
             _gapPoints.Add(seconds);
             if (_gapPoints.Count > 120)

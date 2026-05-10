@@ -1388,8 +1388,7 @@ internal sealed class OverlayManager : IDisposable
     {
         if (form is PersistentOverlayForm persistent)
         {
-            var intrinsicallyTransparent = form is FlagsOverlayForm
-                || form is DesignV2LiveOverlayForm { IsInputTransparentOverlay: true };
+            var intrinsicallyTransparent = persistent.IsIntrinsicallyInputTransparentOverlay;
             persistent.SetInputTransparentOverride(
                 intrinsicallyTransparent || forceInputTransparent || ShouldProtectSettingsWindowInput(form));
         }

@@ -373,6 +373,128 @@ public sealed class DiagnosticsBundleServiceTests
         }
     }
 
+    [Fact]
+    public void CreateBundle_UsesRecentHistoryAnalysisForNameWhenCaptureAndLiveContextUnavailable()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "tmr-overlay-diagnostics-test", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var storage = CreateStorage(root);
+            var analysisDirectory = Path.Combine(storage.UserHistoryRoot, "analysis");
+            var historySessionDirectory = Path.Combine(
+                storage.UserHistoryRoot,
+                "cars",
+                "car-132-bmwm4gt3",
+                "tracks",
+                "track-262-nurburgring-combinedshortb",
+                "sessions",
+                "race");
+            Directory.CreateDirectory(analysisDirectory);
+            Directory.CreateDirectory(historySessionDirectory);
+
+            var analysisPath = Path.Combine(analysisDirectory, "20260510-215638-session-20260510-214918-567.json");
+            File.WriteAllText(
+                analysisPath,
+                """
+                {
+                  "analysisVersion": 1,
+                  "id": "20260510-215638-session-20260510-214918-567",
+                  "createdAtUtc": "2026-05-10T21:56:38.5083337Z",
+                  "finishedAtUtc": "2026-05-10T21:56:38.4742549Z",
+                  "sourceId": "session-20260510-214918-567",
+                  "title": "Gesamtstrecke VLN - Race",
+                  "subtitle": "BMW M4 GT3 EVO | none confidence",
+                  "combo": {
+                    "carKey": "car-132-bmwm4gt3",
+                    "trackKey": "track-262-nurburgring-combinedshortb",
+                    "sessionKey": "race"
+                  },
+                  "lines": []
+                }
+                """);
+            File.WriteAllText(
+                Path.Combine(historySessionDirectory, "aggregate.json"),
+                """
+                {
+                  "aggregateVersion": 1,
+                  "combo": {
+                    "carKey": "car-132-bmwm4gt3",
+                    "trackKey": "track-262-nurburgring-combinedshortb",
+                    "sessionKey": "race"
+                  },
+                  "car": {
+                    "carId": 132,
+                    "carPath": "bmwm4gt3",
+                    "carScreenName": "BMW M4 GT3 EVO",
+                    "carScreenNameShort": "BMW M4 GT3 EVO"
+                  },
+                  "track": {
+                    "trackId": 262,
+                    "trackName": "nurburgring combinedshortb",
+                    "trackDisplayName": "Gesamtstrecke VLN"
+                  },
+                  "session": {
+                    "sessionType": "Race"
+                  },
+                  "updatedAtUtc": "2026-05-10T21:56:38.5015157Z",
+                  "sessionCount": 1
+                }
+                """);
+
+            var state = new TelemetryCaptureState();
+            var localhostState = new LocalhostOverlayState(new LocalhostOverlayOptions());
+            var performance = new AppPerformanceState();
+            var performanceRecorder = new AppPerformanceSnapshotRecorder(storage);
+            var trackMapStore = new TrackMapStore(storage);
+            var settingsStore = new AppSettingsStore(storage);
+            var releaseUpdates = new ReleaseUpdateService(
+                new ReleaseUpdateOptions { Enabled = false },
+                new AppEventRecorder(storage),
+                NullLogger<ReleaseUpdateService>.Instance);
+            var sessionPreview = new SessionPreviewState(new AppEventRecorder(storage));
+            var liveTelemetry = new TestLiveTelemetrySource(LiveTelemetrySnapshot.Empty);
+            var service = new DiagnosticsBundleService(
+                storage,
+                new LiveModelParityOptions(),
+                new LiveOverlayDiagnosticsOptions(),
+                state,
+                localhostState,
+                trackMapStore,
+                settingsStore,
+                liveTelemetry,
+                sessionPreview,
+                performance,
+                performanceRecorder,
+                new LiveOverlayWindowCaptureStore(storage),
+                releaseUpdates,
+                NullLogger<DiagnosticsBundleService>.Instance);
+
+            var bundlePath = service.CreateBundle(DiagnosticsBundleSources.SessionFinalization);
+
+            var bundleFileName = Path.GetFileName(bundlePath);
+            Assert.StartsWith("bmw-m4-gt3-evo-gesamtstrecke-vln-", bundleFileName);
+            Assert.EndsWith(".zip", bundleFileName);
+            Assert.DoesNotContain("unknown-car-unknown-track", bundleFileName);
+
+            using var archive = ZipFile.OpenRead(bundlePath);
+            var diagnosticsBundleEntry = archive.GetEntry("metadata/diagnostics-bundle.json");
+            Assert.NotNull(diagnosticsBundleEntry);
+            using var diagnosticsBundleReader = new StreamReader(diagnosticsBundleEntry.Open());
+            var diagnosticsBundleJson = JsonNode.Parse(diagnosticsBundleReader.ReadToEnd());
+            Assert.Equal(bundleFileName, (string?)diagnosticsBundleJson?["fileName"]);
+            Assert.Equal("BMW M4 GT3 EVO", (string?)diagnosticsBundleJson?["naming"]?["carName"]);
+            Assert.Equal("Gesamtstrecke VLN", (string?)diagnosticsBundleJson?["naming"]?["trackName"]);
+            Assert.Equal("history-analysis", (string?)diagnosticsBundleJson?["naming"]?["source"]);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
     private static AppStorageOptions CreateStorage(string root)
     {
         return new AppStorageOptions
