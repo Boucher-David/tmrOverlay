@@ -145,14 +145,12 @@
         candidates.push(
           scoring.referenceCarIdx,
           timing.focusRow?.carIdx,
-          timing.playerRow?.carIdx,
           timing.focusCarIdx,
-          timing.playerCarIdx);
+          directory.focusCarIdx);
         if (!options.preferRelative) candidates.push(relative.referenceCarIdx);
         if (!options.preferSpatial) candidates.push(spatial.referenceCarIdx);
-        candidates.push(directory.focusCarIdx, directory.playerCarIdx);
         if (options.includeLatestSample !== false) {
-          candidates.push(latest.focusCarIdx, latest.playerCarIdx);
+          candidates.push(latest.focusCarIdx);
         }
         return candidates.find((value) => Number.isFinite(value)) ?? null;
       },
@@ -211,9 +209,7 @@
       },
       samplePositionLabel(sample) {
         const position = sample?.focusClassPosition
-          ?? sample?.teamClassPosition
-          ?? sample?.focusPosition
-          ?? sample?.teamPosition;
+          ?? sample?.focusPosition;
         return Number.isFinite(position) && position > 0 ? `${position}` : null;
       },
       hasRelativePlacement(row) {

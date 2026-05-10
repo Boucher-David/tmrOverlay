@@ -50,14 +50,14 @@ The graph input contains:
 Reference car:
 
 - Prefer `CamCarIdx` when the camera focus car is valid.
-- Fall back to `PlayerCarIdx`.
-- Fuel and compact history still use the team/player car; this focus behavior is for live visual overlays.
+- Do not fall back to `PlayerCarIdx` when focus is unavailable.
+- Fuel and Pit Service use local player/team telemetry only after `LiveLocalStrategyContext` confirms the focus is the player car. Compact history and strategy history remain player/team scoped, but Fuel/Pit do not display that strategy surface while the user is focused on another car.
 
 Reference progress:
 
 - Prefer focused-car lap completed plus focused-car lap distance.
 - Fall back to team/player progress only when the focus car is the player car.
-- When the camera is focused on a non-player car, missing focus progress stays unavailable instead of silently using team progress.
+- When the camera focus is missing or focused on a non-player car with missing progress, missing focus progress stays unavailable instead of silently using team progress.
 
 ## Leader Gap Values
 

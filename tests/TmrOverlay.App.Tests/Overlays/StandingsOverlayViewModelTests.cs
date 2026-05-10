@@ -19,6 +19,42 @@ public sealed class StandingsOverlayViewModelTests
     }
 
     [Fact]
+    public void From_WhenFocusIsUnavailable_DoesNotFallBackToPlayerRow()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var player = TimingRow(
+            carIdx: 10,
+            driverName: "Player Driver",
+            carNumber: "10",
+            classPosition: 3,
+            gapSeconds: 12.4d,
+            deltaSeconds: 0d,
+            isFocus: false);
+        var snapshot = Snapshot(now, LiveRaceModels.Empty with
+        {
+            Timing = LiveTimingModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                PlayerCarIdx = 10,
+                PlayerRow = player,
+                ClassRows = [player]
+            },
+            DriverDirectory = LiveDriverDirectoryModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Partial,
+                PlayerCarIdx = 10
+            }
+        });
+
+        var viewModel = StandingsOverlayViewModel.From(snapshot, now);
+
+        Assert.Equal("waiting for focus car", viewModel.Status);
+        Assert.Empty(viewModel.Rows);
+    }
+
+    [Fact]
     public void From_FormatsClassTimingRows()
     {
         var now = DateTimeOffset.UtcNow;

@@ -111,6 +111,60 @@ public sealed class OverlayAvailabilityEvaluatorTests
         Assert.False(OverlayChromeSettings.ShowFooterSource(settings, race));
     }
 
+    [Fact]
+    public void LiveLocalStrategyContext_WaitsWhenFocusIsAnotherCar()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = LocalStrategySnapshot(now, playerCarIdx: 10, focusCarIdx: 42);
+
+        var fuel = LiveLocalStrategyContext.ForFuelCalculator(snapshot, now);
+        var pitService = LiveLocalStrategyContext.ForPitService(snapshot, now);
+
+        Assert.False(fuel.IsAvailable);
+        Assert.Equal("focus_on_another_car", fuel.Reason);
+        Assert.Equal(LiveLocalStrategyContext.FuelWaitingStatus, fuel.StatusText);
+        Assert.False(pitService.IsAvailable);
+        Assert.Equal("focus_on_another_car", pitService.Reason);
+        Assert.Equal(LiveLocalStrategyContext.PitServiceWaitingStatus, pitService.StatusText);
+    }
+
+    [Fact]
+    public void LiveLocalStrategyContext_AllowsLocalPitRoadContext()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = LocalStrategySnapshot(
+            now,
+            playerCarIdx: 10,
+            focusCarIdx: 10,
+            isOnTrack: false,
+            isInGarage: false,
+            onPitRoad: true);
+
+        var pitService = LiveLocalStrategyContext.ForPitService(snapshot, now);
+
+        Assert.True(pitService.IsAvailable);
+        Assert.Equal("available", pitService.Reason);
+    }
+
+    [Fact]
+    public void LiveLocalStrategyContext_WaitsInGarageEvenWithPlayerFocus()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = LocalStrategySnapshot(
+            now,
+            playerCarIdx: 10,
+            focusCarIdx: 10,
+            isOnTrack: false,
+            isInGarage: true,
+            onPitRoad: false);
+
+        var fuel = LiveLocalStrategyContext.ForFuelCalculator(snapshot, now);
+
+        Assert.False(fuel.IsAvailable);
+        Assert.Equal("garage", fuel.Reason);
+        Assert.Equal(LiveLocalStrategyContext.FuelWaitingStatus, fuel.StatusText);
+    }
+
     private static LiveTelemetrySnapshot SnapshotForSession(string sessionType)
     {
         return LiveTelemetrySnapshot.Empty with
@@ -121,6 +175,46 @@ public sealed class OverlayAvailabilityEvaluatorTests
                 {
                     HasData = true,
                     SessionType = sessionType
+                }
+            }
+        };
+    }
+
+    private static LiveTelemetrySnapshot LocalStrategySnapshot(
+        DateTimeOffset now,
+        int? playerCarIdx,
+        int? focusCarIdx,
+        bool isOnTrack = true,
+        bool isInGarage = false,
+        bool onPitRoad = false)
+    {
+        return LiveTelemetrySnapshot.Empty with
+        {
+            IsConnected = true,
+            IsCollecting = true,
+            LastUpdatedAtUtc = now,
+            Models = LiveRaceModels.Empty with
+            {
+                DriverDirectory = LiveDriverDirectoryModel.Empty with
+                {
+                    HasData = true,
+                    Quality = LiveModelQuality.Reliable,
+                    PlayerCarIdx = playerCarIdx,
+                    FocusCarIdx = focusCarIdx
+                },
+                RaceEvents = LiveRaceEventModel.Empty with
+                {
+                    HasData = true,
+                    Quality = LiveModelQuality.Reliable,
+                    IsOnTrack = isOnTrack,
+                    IsInGarage = isInGarage,
+                    OnPitRoad = onPitRoad
+                },
+                FuelPit = LiveFuelPitModel.Empty with
+                {
+                    HasData = true,
+                    Quality = LiveModelQuality.Reliable,
+                    OnPitRoad = onPitRoad
                 }
             }
         };

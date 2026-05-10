@@ -372,7 +372,7 @@ final class SimpleTelemetryOverlayView: NSView {
         return (
             "Pit Service",
             inPitWindow ? "hold" : "service requested",
-            "source: pit service telemetry",
+            "source: player/team pit service telemetry",
             tone,
             [
                 Row("Release", release, tone: tone),

@@ -31,7 +31,9 @@ It treats snapshots older than 1.5 seconds as stale and shows a waiting state in
 
 1. Cars ahead from `LiveRelativeRow.IsAhead`.
 2. Cars behind from `LiveRelativeRow.IsBehind`.
-3. One reference row from `Relative.ReferenceCarIdx`, then timing focus/player fallback.
+3. One reference row from `Relative.ReferenceCarIdx`, then timing focus references.
+
+Relative does not promote `PlayerCarIdx` to the reference row when `CamCarIdx`/focus is unavailable. If the focus car is missing, the overlay waits with `waiting for focus-relative telemetry` instead of showing a player-centered view the user did not ask for. When focus is the player/team car, model-v2 can still use team/local timing fields to fill missing focused-car details because those fields describe the same car.
 
 Cars ahead and behind are sorted by the best available absolute relative value:
 
@@ -84,7 +86,7 @@ The overlay shows waiting when:
 - iRacing is disconnected.
 - Live collection has not started.
 - The latest snapshot is stale.
-- There is no reference row and no relative row.
+- There is no focus/reference row.
 
 Unexpected refresh/render failures are logged through the overlay logger and surfaced as a compact visible `relative error` state.
 

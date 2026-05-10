@@ -38,12 +38,14 @@ Each refresh:
 
 1. Reads the latest `LiveTelemetrySnapshot`.
 2. Skips the expensive path when the live snapshot sequence and relevant display options are unchanged.
-3. Looks up exact combo history with a 30 second cache.
-4. Builds a `FuelStrategySnapshot`.
-5. Converts the snapshot to display text and rows.
-6. Applies status color, source visibility, advice-column visibility, and row text only when the target UI value changed.
-7. Keeps all six stint rows visible, using blank future rows when fewer rows are available.
-8. Records whether the timer tick saw new input, how old that input was, and whether the tick actually changed UI state.
+3. Verifies the local active driver/team strategy context through `LiveLocalStrategyContext`.
+4. Shows `waiting for local fuel context` without doing history or strategy work when focus is unavailable, focus is another car, the player car is unavailable, the user is in garage/setup context, or there is no active local/pit context.
+5. Looks up exact combo history with a 30 second cache.
+6. Builds a `FuelStrategySnapshot`.
+7. Converts the snapshot to display text and rows.
+8. Applies status color, source visibility, advice-column visibility, and row text only when the target UI value changed.
+9. Keeps all six stint rows visible, using blank future rows when fewer rows are available.
+10. Records whether the timer tick saw new input, how old that input was, and whether the tick actually changed UI state.
 
 ## Model V2 Inputs
 
@@ -97,7 +99,7 @@ Data review note from the May 2026 capture analysis:
 - Some frames expose positive `FuelUsePerHour` while `FuelLevel` is zero or unavailable. That must not become a measured fuel baseline.
 - Future live fuel work should prefer a rolling measured fuel-level delta over valid green-flag distance/time, using the instantaneous burn channel as an activity/diagnostic signal or short-term hint only after smoothing and confidence checks.
 
-When the selected/focused driver or team state cannot expose scalar fuel, the fuel calculator should not collapse to an empty table if history exists. It should still analyze completed stint history for the active car/track/session, render modeled stint rows and strategy comparison, and label the burn/stint source as historical/model rather than live measured fuel.
+For V1, the fuel calculator is local active driver/team context only. It does not display modeled strategy while the camera is focused on another car, while focus is unavailable, or while garage/setup context is active, even if historical data exists. Once local context is valid, history can still fill burn-rate/stint modeling gaps when live scalar fuel or live burn is unavailable, and the source text labels that as historical/model rather than live measured fuel.
 
 ## History Lookup
 

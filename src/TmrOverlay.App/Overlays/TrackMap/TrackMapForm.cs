@@ -800,10 +800,8 @@ internal sealed class TrackMapForm : PersistentOverlayForm
             .ToDictionary(group => group.Key, group => group.First());
         var referenceCarIdx = snapshot.Models.Scoring.ReferenceCarIdx
             ?? snapshot.Models.Timing.FocusCarIdx
-            ?? snapshot.Models.Timing.PlayerCarIdx
             ?? snapshot.Models.Spatial.ReferenceCarIdx
-            ?? snapshot.LatestSample?.FocusCarIdx
-            ?? snapshot.LatestSample?.PlayerCarIdx;
+            ?? snapshot.LatestSample?.FocusCarIdx;
         foreach (var row in snapshot.Models.Timing.OverallRows.Concat(snapshot.Models.Timing.ClassRows))
         {
             if (!row.HasSpatialProgress
@@ -815,10 +813,8 @@ internal sealed class TrackMapForm : PersistentOverlayForm
 
             scoringByCarIdx.TryGetValue(row.CarIdx, out var scoringRow);
             var isFocus = row.IsFocus
-                || row.IsPlayer
                 || row.CarIdx == referenceCarIdx
-                || scoringRow?.IsFocus == true
-                || scoringRow?.IsPlayer == true;
+                || scoringRow?.IsFocus == true;
             var marker = new TrackMapMarker(
                 row.CarIdx,
                 NormalizeProgress(lapDistPct),
@@ -838,10 +834,10 @@ internal sealed class TrackMapForm : PersistentOverlayForm
             AddStartingGridMarkers(markers, snapshot.Models.Scoring.Rows, referenceCarIdx);
         }
 
-        var focusProgress = snapshot.Models.Spatial.ReferenceLapDistPct
-            ?? MarkerProgress(snapshot.LatestSample);
-        var focusMarkerCarIdx = referenceCarIdx ?? -1;
-        if (focusProgress is { } progress && IsValidProgress(progress))
+        var focusProgress = MarkerProgress(snapshot.LatestSample);
+        if (referenceCarIdx is { } focusMarkerCarIdx
+            && focusProgress is { } progress
+            && IsValidProgress(progress))
         {
             markers[focusMarkerCarIdx] = new TrackMapMarker(
                 focusMarkerCarIdx,
@@ -873,7 +869,6 @@ internal sealed class TrackMapForm : PersistentOverlayForm
         {
             var row = rows[index];
             var isFocus = row.IsFocus
-                || row.IsPlayer
                 || row.CarIdx == referenceCarIdx;
             markers[row.CarIdx] = new TrackMapMarker(
                 row.CarIdx,
@@ -892,10 +887,8 @@ internal sealed class TrackMapForm : PersistentOverlayForm
     private static string? PositionLabel(LiveTimingRow row, LiveScoringRow? scoringRow, int? referenceCarIdx)
     {
         if (!row.IsFocus
-            && !row.IsPlayer
             && row.CarIdx != referenceCarIdx
-            && scoringRow?.IsFocus != true
-            && scoringRow?.IsPlayer != true)
+            && scoringRow?.IsFocus != true)
         {
             return null;
         }
@@ -925,27 +918,20 @@ internal sealed class TrackMapForm : PersistentOverlayForm
             return PositionLabel(scoringRow);
         }
 
-        var row = snapshot.Models.Timing.FocusRow
-            ?? snapshot.Models.Timing.PlayerRow;
-        return row is not null
-            ? PositionLabel(row)
-            : FocusPositionLabel(snapshot.LatestSample);
+        return PositionLabel(snapshot.Models.Timing.FocusRow)
+            ?? FocusPositionLabel(snapshot.LatestSample);
     }
 
     private static string? FocusPositionLabel(HistoricalTelemetrySample? sample)
     {
         var position = sample?.FocusClassPosition
-            ?? sample?.TeamClassPosition
-            ?? sample?.FocusPosition
-            ?? sample?.TeamPosition;
+            ?? sample?.FocusPosition;
         return position is > 0 ? $"P{position.Value}" : null;
     }
 
     private static double? MarkerProgress(HistoricalTelemetrySample? sample)
     {
-        var progress = sample?.FocusLapDistPct
-            ?? sample?.TeamLapDistPct
-            ?? sample?.LapDistPct;
+        var progress = sample?.FocusLapDistPct;
         return progress is { } value && IsValidProgress(value)
             ? NormalizeProgress(value)
             : null;

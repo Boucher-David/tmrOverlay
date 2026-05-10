@@ -23,9 +23,9 @@ internal sealed record RelativeOverlayViewModel(
 
         var reference = ReferenceRow(snapshot);
         var relativeRows = snapshot.Models.Relative.Rows;
-        if (reference is null && relativeRows.Count == 0)
+        if (reference is null)
         {
-            return Waiting("waiting for relative telemetry");
+            return Waiting("waiting for focus-relative telemetry");
         }
 
         var ahead = relativeRows
@@ -44,9 +44,7 @@ internal sealed record RelativeOverlayViewModel(
             .Take(Math.Clamp(carsBehind, 0, 8))
             .Select(row => ToRow(snapshot, row, direction: RelativeRowDirection.Behind))
             .ToArray();
-        var rows = reference is null
-            ? ahead.Concat(behind).ToArray()
-            : ahead.Concat([reference]).Concat(behind).ToArray();
+        var rows = ahead.Concat([reference]).Concat(behind).ToArray();
         var status = BuildStatus(snapshot, rows.Count(row => !row.IsReference), relativeRows.Count);
         var source = BuildSource(snapshot, relativeRows);
 
@@ -65,7 +63,8 @@ internal sealed record RelativeOverlayViewModel(
     {
         var referenceCarIdx = snapshot.Models.Relative.ReferenceCarIdx
             ?? snapshot.Models.Timing.FocusRow?.CarIdx
-            ?? snapshot.Models.Timing.PlayerRow?.CarIdx;
+            ?? snapshot.Models.Timing.FocusCarIdx
+            ?? snapshot.Models.DriverDirectory.FocusCarIdx;
         if (referenceCarIdx is null)
         {
             return null;
@@ -136,7 +135,8 @@ internal sealed record RelativeOverlayViewModel(
     {
         var referenceCarIdx = snapshot.Models.Relative.ReferenceCarIdx
             ?? snapshot.Models.Timing.FocusRow?.CarIdx
-            ?? snapshot.Models.Timing.PlayerRow?.CarIdx;
+            ?? snapshot.Models.Timing.FocusCarIdx
+            ?? snapshot.Models.DriverDirectory.FocusCarIdx;
         var reference = referenceCarIdx is null
             ? null
             : snapshot.Models.Timing.OverallRows.FirstOrDefault(row => row.CarIdx == referenceCarIdx)

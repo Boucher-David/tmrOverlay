@@ -24,6 +24,7 @@ test-results/
 *.log
 # Root diagnostics bundles are car-track-timestamp zip files now; keep them out of commits when extracted locally.
 /*-*.zip
+/[!-]*-*-20[0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]-*/
 /tmroverlay-diagnostics-*/
 /*.diagnostics/
 /*-*.diagnostics/

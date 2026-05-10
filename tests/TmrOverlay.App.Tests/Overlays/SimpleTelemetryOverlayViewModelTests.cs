@@ -310,18 +310,56 @@ public sealed class SimpleTelemetryOverlayViewModelTests
                 TireSetsUsed = 2,
                 FastRepairUsed = 0,
                 TeamFastRepairsUsed = 1
+            },
+            RaceEvents = LiveRaceEventModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                IsOnTrack = false,
+                IsInGarage = false,
+                OnPitRoad = true
             }
         });
 
         var viewModel = PitServiceOverlayViewModel.From(snapshot, now, "Metric");
 
         Assert.Equal("hold", viewModel.Status);
+        Assert.Equal("source: player/team pit service telemetry", viewModel.Source);
         Assert.Contains(viewModel.Rows, row => row.Label == "Release" && row.Value == "RED - service active");
         Assert.Contains(viewModel.Rows, row => row.Label == "Pit status" && row.Value == "in progress");
         Assert.Contains(viewModel.Rows, row => row.Label == "Service" && row.Value.Contains("active", StringComparison.Ordinal));
         Assert.Contains(viewModel.Rows, row => row.Label == "Fuel request" && row.Value == "45.5 L");
         Assert.Contains(viewModel.Rows, row => row.Label == "Repair" && row.Value.Contains("12s required", StringComparison.Ordinal));
         Assert.Contains(viewModel.Rows, row => row.Label == "Fast repair" && row.Value == "local 0 | team 1");
+    }
+
+    [Fact]
+    public void PitService_FromTelemetry_WaitsWhenFocusMovesToAnotherCar()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = Snapshot(now, LiveRaceModels.Empty with
+        {
+            DriverDirectory = LiveDriverDirectoryModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Partial,
+                PlayerCarIdx = 10,
+                FocusCarIdx = 42
+            },
+            FuelPit = LiveFuelPitModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                PitServiceFlags = 0x10,
+                PitServiceFuelLiters = 45.5d
+            }
+        });
+
+        var viewModel = PitServiceOverlayViewModel.From(snapshot, now, "Metric");
+
+        Assert.Equal("waiting for local pit-service context", viewModel.Status);
+        Assert.Equal("source: waiting", viewModel.Source);
+        Assert.Empty(viewModel.Rows);
     }
 
     [Fact]
@@ -532,13 +570,34 @@ public sealed class SimpleTelemetryOverlayViewModelTests
 
     private static LiveTelemetrySnapshot Snapshot(DateTimeOffset now, LiveRaceModels models)
     {
+        var normalizedModels = models with
+        {
+            DriverDirectory = models.DriverDirectory.HasData
+                ? models.DriverDirectory
+                : LiveDriverDirectoryModel.Empty with
+                {
+                    HasData = true,
+                    Quality = LiveModelQuality.Reliable,
+                    PlayerCarIdx = 10,
+                    FocusCarIdx = 10
+                },
+            RaceEvents = models.RaceEvents.HasData
+                ? models.RaceEvents
+                : LiveRaceEventModel.Empty with
+                {
+                    HasData = true,
+                    Quality = LiveModelQuality.Reliable,
+                    IsOnTrack = true
+                }
+        };
+
         return LiveTelemetrySnapshot.Empty with
         {
             IsConnected = true,
             IsCollecting = true,
             LastUpdatedAtUtc = now,
             Sequence = 1,
-            Models = models
+            Models = normalizedModels
         };
     }
 }

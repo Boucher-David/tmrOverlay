@@ -312,7 +312,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         {
             DesignV2LiveOverlayKind.Standings => BuildStandingsModel(snapshot, now),
             DesignV2LiveOverlayKind.Relative => BuildRelativeModel(snapshot, now),
-            DesignV2LiveOverlayKind.FuelCalculator => BuildFuelModel(snapshot),
+            DesignV2LiveOverlayKind.FuelCalculator => BuildFuelModel(snapshot, now),
             DesignV2LiveOverlayKind.SessionWeather => FromSimple(SessionWeatherOverlayViewModel.From(snapshot, now, _unitSystem)),
             DesignV2LiveOverlayKind.PitService => FromSimple(PitServiceOverlayViewModel.From(snapshot, now, _unitSystem)),
             DesignV2LiveOverlayKind.InputState => BuildInputModel(snapshot, now),
@@ -421,8 +421,19 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             .ToArray();
     }
 
-    private DesignV2OverlayModel BuildFuelModel(LiveTelemetrySnapshot snapshot)
+    private DesignV2OverlayModel BuildFuelModel(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
     {
+        var localContext = LiveLocalStrategyContext.ForFuelCalculator(snapshot, now);
+        if (!localContext.IsAvailable)
+        {
+            return new DesignV2OverlayModel(
+                "Fuel Calculator",
+                localContext.StatusText,
+                "source: waiting",
+                DesignV2Evidence.Unavailable,
+                new DesignV2MetricRowsBody([]));
+        }
+
         var history = LookupHistory(snapshot.Combo);
         var strategy = FuelStrategyCalculator.From(snapshot, history);
         var viewModel = FuelCalculatorViewModel.From(
@@ -1129,10 +1140,8 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             .ToDictionary(group => group.Key, group => group.First());
         var referenceCarIdx = snapshot.Models.Scoring.ReferenceCarIdx
             ?? snapshot.Models.Timing.FocusCarIdx
-            ?? snapshot.Models.Timing.PlayerCarIdx
             ?? snapshot.Models.Spatial.ReferenceCarIdx
-            ?? snapshot.LatestSample?.FocusCarIdx
-            ?? snapshot.LatestSample?.PlayerCarIdx;
+            ?? snapshot.LatestSample?.FocusCarIdx;
 
         foreach (var row in snapshot.Models.Timing.OverallRows.Concat(snapshot.Models.Timing.ClassRows))
         {
@@ -1145,10 +1154,8 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
             scoringByCarIdx.TryGetValue(row.CarIdx, out var scoringRow);
             var isFocus = row.IsFocus
-                || row.IsPlayer
                 || row.CarIdx == referenceCarIdx
-                || scoringRow?.IsFocus == true
-                || scoringRow?.IsPlayer == true;
+                || scoringRow?.IsFocus == true;
             var marker = new DesignV2TrackMapMarker(
                 row.CarIdx,
                 NormalizeProgress(lapDistPct),
@@ -1168,10 +1175,10 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             AddStartingGridMarkers(markers, snapshot.Models.Scoring.Rows, referenceCarIdx);
         }
 
-        var focusProgress = snapshot.Models.Spatial.ReferenceLapDistPct
-            ?? MarkerProgress(snapshot.LatestSample);
-        var focusMarkerCarIdx = referenceCarIdx ?? -1;
-        if (focusProgress is { } progress && IsValidProgress(progress))
+        var focusProgress = MarkerProgress(snapshot.LatestSample);
+        if (referenceCarIdx is { } focusMarkerCarIdx
+            && focusProgress is { } progress
+            && IsValidProgress(progress))
         {
             markers[focusMarkerCarIdx] = new DesignV2TrackMapMarker(
                 focusMarkerCarIdx,
@@ -1197,7 +1204,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         for (var index = 0; index < rows.Length; index++)
         {
             var row = rows[index];
-            var isFocus = row.IsFocus || row.IsPlayer || row.CarIdx == referenceCarIdx;
+            var isFocus = row.IsFocus || row.CarIdx == referenceCarIdx;
             markers[row.CarIdx] = new DesignV2TrackMapMarker(
                 row.CarIdx,
                 rows.Length <= 1 ? 0d : NormalizeProgress(index / (double)rows.Length),
@@ -1210,10 +1217,8 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private static string? PositionLabel(LiveTimingRow row, LiveScoringRow? scoringRow, int? referenceCarIdx)
     {
         if (!row.IsFocus
-            && !row.IsPlayer
             && row.CarIdx != referenceCarIdx
-            && scoringRow?.IsFocus != true
-            && scoringRow?.IsPlayer != true)
+            && scoringRow?.IsFocus != true)
         {
             return null;
         }
@@ -1243,27 +1248,20 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             return PositionLabel(scoringRow);
         }
 
-        var row = snapshot.Models.Timing.FocusRow
-            ?? snapshot.Models.Timing.PlayerRow;
-        return row is not null
-            ? PositionLabel(row)
-            : FocusPositionLabel(snapshot.LatestSample);
+        return PositionLabel(snapshot.Models.Timing.FocusRow)
+            ?? FocusPositionLabel(snapshot.LatestSample);
     }
 
     private static string? FocusPositionLabel(HistoricalTelemetrySample? sample)
     {
         var position = sample?.FocusClassPosition
-            ?? sample?.TeamClassPosition
-            ?? sample?.FocusPosition
-            ?? sample?.TeamPosition;
+            ?? sample?.FocusPosition;
         return position is > 0 ? position.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
     }
 
     private static double? MarkerProgress(HistoricalTelemetrySample? sample)
     {
-        var progress = sample?.FocusLapDistPct
-            ?? sample?.TeamLapDistPct
-            ?? sample?.LapDistPct;
+        var progress = sample?.FocusLapDistPct;
         return progress is { } value && IsValidProgress(value)
             ? NormalizeProgress(value)
             : null;

@@ -1078,7 +1078,7 @@ final class DesignV2OverlaySuiteView: NSView {
             DesignV2OverlayMetricRow(label: "Tires", value: inPitWindow ? "four tires | 2 sets used" : "none", evidence: inPitWindow ? .partial : .measured),
             DesignV2OverlayMetricRow(label: "Fast repair", value: "local 0 | team 0", evidence: .measured)
         ]
-        return DesignV2OverlayModel(title: "Pit Service", status: inPitWindow ? "hold" : "service requested", footer: "source: pit service telemetry", evidence: inPitWindow ? .error : .live, body: .metricRows(rows))
+        return DesignV2OverlayModel(title: "Pit Service", status: inPitWindow ? "hold" : "service requested", footer: "source: player/team pit service telemetry", evidence: inPitWindow ? .error : .live, body: .metricRows(rows))
     }
 
     private func sessionWeatherModel(_ snapshot: LiveTelemetrySnapshot) -> DesignV2OverlayModel {

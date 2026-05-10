@@ -52,7 +52,7 @@ internal sealed class BrowserOverlayModelFactory
         }
         else if (string.Equals(overlayId, FuelCalculatorOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
-            model = BuildFuel(snapshot, settings, unitSystem);
+            model = BuildFuel(snapshot, settings, unitSystem, now);
         }
         else if (string.Equals(overlayId, SessionWeatherOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
@@ -185,8 +185,20 @@ internal sealed class BrowserOverlayModelFactory
     private BrowserOverlayDisplayModel BuildFuel(
         LiveTelemetrySnapshot snapshot,
         ApplicationSettings settings,
-        string unitSystem)
+        string unitSystem,
+        DateTimeOffset now)
     {
+        var localContext = LiveLocalStrategyContext.ForFuelCalculator(snapshot, now);
+        if (!localContext.IsAvailable)
+        {
+            return BrowserOverlayDisplayModel.MetricRows(
+                FuelCalculatorOverlayDefinition.Definition.Id,
+                FuelCalculatorOverlayDefinition.Definition.DisplayName,
+                localContext.StatusText,
+                "source: waiting",
+                []);
+        }
+
         var overlay = FindOverlay(settings, FuelCalculatorOverlayDefinition.Definition.Id);
         var history = LookupHistory(snapshot.Combo);
         var strategy = FuelStrategyCalculator.From(snapshot, history);
