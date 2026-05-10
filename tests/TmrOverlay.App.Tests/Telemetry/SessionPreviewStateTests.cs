@@ -79,9 +79,10 @@ public sealed class SessionPreviewStateTests
         Assert.Equal(127, snapshot.LatestSample.PitServiceFlags);
         Assert.Equal(32767, snapshot.LatestSample.SessionLapsTotal);
 
-        var allCars = Assert.NotNull(snapshot.LatestSample.AllCars);
-        Assert.All(snapshot.Context.Drivers, driver => Assert.InRange(driver.CarIdx, 0, 63));
-        Assert.All(allCars, car => Assert.InRange(car.CarIdx, 0, 63));
+        var allCars = snapshot.LatestSample.AllCars;
+        Assert.NotNull(allCars);
+        Assert.All(snapshot.Context.Drivers, driver => Assert.True(driver.CarIdx is >= 0 and <= 63));
+        Assert.All(allCars, car => Assert.True(car.CarIdx is >= 0 and <= 63));
     }
 
     private static SessionPreviewState CreateState()
