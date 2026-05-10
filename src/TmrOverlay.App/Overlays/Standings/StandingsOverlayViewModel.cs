@@ -121,7 +121,7 @@ internal sealed record StandingsOverlayViewModel(
         var visibleGroups = orderedGroups
             .Where(group => groupLimits.ContainsKey(group))
             .ToArray();
-        var includeHeaders = showClassSeparators && orderedGroups.Count > 1;
+        var includeHeaders = showClassSeparators && orderedGroups.Length > 1;
         var rows = new List<StandingsOverlayRowViewModel>();
         var timingByCarIdx = snapshot.Models.Timing.OverallRows
             .Concat(snapshot.Models.Timing.ClassRows)
