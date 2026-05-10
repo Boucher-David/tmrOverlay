@@ -66,7 +66,7 @@ Likely squash body:
 
 Likely scope:
 
-- Treat the fundamental overlay logic as ready for V1-candidate validation. Overlay behavior should now be stable enough that adding a straightforward content field, such as a Standings `Team name` column, is a small descriptor/model wiring change instead of a table-behavior rewrite.
+- Treat the fundamental overlay logic as ready for V1-candidate validation. Overlay behavior should now be stable enough that adding a straightforward content field, such as a Standings `Team name` column, is a small descriptor/model wiring change instead of a table-behavior rewrite. New reusable telemetry fields should be consumed and normalized in the Core/live model first, then mapped into overlay columns or rows; Standings/Relative should not own root data extraction for shared fields.
 - Lock the V1 product scope: decide the final overlay list, make sure experimental/future surfaces are not exposed as normal user-facing tabs, keep browser review dev-only, and decide whether the mac harness remains tracked secondary scaffolding or moves to a deprecation branch.
 - Prove installer/update polish: MSI install, upgrade, rollback, Velopack update checks, release notes, checksums, and the acceptable stance on unsigned SmartScreen warnings for V1.
 - Add the minimum user-facing first-run docs: starting the app, enabling overlays, configuring OBS browser-source URLs, Stream Chat setup, Garage Cover setup, diagnostics bundle creation, and raw capture being opt-in.
