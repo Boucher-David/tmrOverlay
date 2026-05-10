@@ -1,0 +1,416 @@
+    :root {
+      color-scheme: dark;
+      font-family: "Segoe UI", Arial, sans-serif;
+{{THEME_CSS_VARIABLES}}
+      background: transparent;
+      color: var(--tmr-text);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      min-height: 100%;
+      overflow: hidden;
+      background: transparent;
+    }
+
+    body {
+      padding: 8px;
+    }
+
+    body.car-radar-page,
+    body.track-map-page,
+    body.garage-cover-page {
+      padding: 0;
+    }
+
+    .overlay {
+      position: relative;
+      width: fit-content;
+      min-width: 360px;
+      max-width: calc(100vw - 16px);
+      border: 1px solid var(--tmr-border);
+      border-radius: 8px;
+      background: var(--tmr-surface);
+      box-shadow: 0 14px 42px rgba(0, 0, 0, 0.36);
+      overflow: hidden;
+      opacity: 1;
+      transition: opacity 220ms ease;
+    }
+
+    .overlay::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 7px;
+      bottom: 7px;
+      width: 3px;
+      border-radius: 2px;
+      background: var(--tmr-cyan);
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    body.car-radar-page .overlay,
+    body.track-map-page .overlay,
+    body.garage-cover-page .overlay {
+      width: 100vw;
+      height: 100vh;
+      min-width: 0;
+      max-width: none;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    body.car-radar-page .overlay,
+    body.track-map-page .overlay {
+      background: transparent;
+    }
+
+    body.garage-cover-page .overlay {
+      background: #000000;
+    }
+
+    body.car-radar-page .overlay::before,
+    body.track-map-page .overlay::before,
+    body.garage-cover-page .overlay::before {
+      display: none;
+    }
+
+    .header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 18px;
+      min-height: 38px;
+      padding: 10px 14px 8px;
+      border-bottom: 2px solid var(--tmr-cyan);
+      background: var(--tmr-title);
+    }
+
+    body.car-radar-page .header,
+    body.track-map-page .header,
+    body.garage-cover-page .header {
+      display: none;
+    }
+
+    .title {
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: 0;
+      white-space: nowrap;
+    }
+
+    .status {
+      color: var(--tmr-text-secondary);
+      font-size: 11px;
+      font-weight: 700;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .content {
+      padding: 12px 16px 14px;
+    }
+
+    body.car-radar-page .content,
+    body.track-map-page .content,
+    body.garage-cover-page .content {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      place-items: center;
+      padding: 0;
+    }
+
+    table {
+      border-collapse: separate;
+      border-spacing: 0 5px;
+      width: 100%;
+      min-width: 500px;
+    }
+
+    th,
+    td {
+      padding: 7px 8px;
+      border: 0;
+      text-align: left;
+      white-space: nowrap;
+      font-size: 12px;
+    }
+
+    th {
+      color: var(--tmr-text-muted);
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    tbody tr {
+      background: var(--tmr-surface-raised);
+    }
+
+    tbody td:first-child {
+      border-radius: 5px 0 0 5px;
+    }
+
+    tbody td:last-child {
+      border-radius: 0 5px 5px 0;
+    }
+
+    tr.focus td {
+      color: var(--tmr-text);
+      background: rgba(var(--tmr-cyan-rgb), 0.14);
+      box-shadow: inset 0 0 0 1px rgba(var(--tmr-cyan-rgb), 0.30);
+    }
+
+    tr.pit td {
+      color: var(--tmr-text-muted);
+      background: rgba(var(--tmr-amber-rgb), 0.10);
+    }
+
+    tr.class-header {
+      background: transparent;
+    }
+
+    tr.class-header td {
+      color: var(--class-header-fg, var(--tmr-text));
+      background: transparent;
+      padding: 11px 0 0;
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+
+    .class-header-band {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-height: 24px;
+      padding: 4px 10px;
+      border-left: 3px solid var(--class-header-fg, var(--tmr-cyan));
+      border-radius: 5px;
+      background: var(--class-header-bg, rgba(var(--tmr-cyan-rgb), 0.14));
+    }
+
+    .class-header-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .class-header-detail {
+      color: var(--tmr-text-secondary);
+      font-size: 10px;
+      text-align: right;
+    }
+
+    .muted {
+      color: var(--tmr-text-muted);
+    }
+
+    .pill {
+      display: inline-flex;
+      min-width: 28px;
+      justify-content: center;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: rgba(var(--tmr-cyan-rgb), 0.16);
+      color: var(--tmr-text-secondary);
+      font-size: 10px;
+      font-weight: 800;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(120px, 1fr));
+      gap: 10px;
+      min-width: 420px;
+    }
+
+    .metric {
+      min-height: 58px;
+      padding: 9px 10px;
+      border: 1px solid var(--tmr-border-muted);
+      border-radius: 5px;
+      background: var(--tmr-surface-raised);
+    }
+
+    .metric .label {
+      color: var(--tmr-text-muted);
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .metric .value {
+      margin-top: 3px;
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--tmr-text);
+    }
+
+    .metric.highlight {
+      border-color: rgba(var(--tmr-cyan-rgb), 0.58);
+      background: rgba(var(--tmr-cyan-rgb), 0.12);
+    }
+
+    .metric.highlight .value {
+      color: var(--tmr-cyan);
+    }
+
+    .model-graph-panel {
+      min-width: 520px;
+      width: min(620px, calc(100vw - 48px));
+      height: min(220px, calc(100vh - 120px));
+      min-height: 150px;
+      border: 1px solid var(--tmr-border-muted);
+      border-radius: 5px;
+      background: var(--tmr-surface-inset);
+      padding: 12px;
+    }
+
+    .model-graph {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .bars {
+      display: grid;
+      gap: 8px;
+      min-width: 420px;
+    }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: 72px 1fr 56px;
+      align-items: center;
+      gap: 10px;
+      font-size: 12px;
+    }
+
+    .bar {
+      height: 9px;
+      border-radius: 999px;
+      background: var(--tmr-surface-inset);
+      overflow: hidden;
+    }
+
+    .bar span {
+      display: block;
+      height: 100%;
+      width: 0;
+      border-radius: inherit;
+      background: var(--tmr-cyan);
+    }
+
+    .track {
+      display: grid;
+      place-items: center;
+      width: 360px;
+      height: 300px;
+    }
+
+    body.track-map-page .track {
+      width: 100%;
+      height: 100%;
+      padding: 18px;
+    }
+
+    svg {
+      width: 320px;
+      height: 240px;
+      overflow: visible;
+    }
+
+    body.track-map-page svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    .empty {
+      min-width: 340px;
+      color: var(--tmr-text-muted);
+      font-size: 13px;
+      line-height: 1.4;
+      padding: 10px 2px;
+    }
+
+    .chat {
+      display: grid;
+      gap: 8px;
+      min-width: 360px;
+      max-width: 420px;
+      max-height: min(620px, calc(100vh - 74px));
+      overflow: hidden;
+    }
+
+    .chat-line {
+      display: grid;
+      gap: 2px;
+      padding: 8px 9px;
+      border: 1px solid var(--tmr-border-muted);
+      border-radius: 5px;
+      background: var(--tmr-surface-raised);
+    }
+
+    .chat-name {
+      color: var(--tmr-cyan);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .chat-text {
+      color: var(--tmr-text);
+      font-size: 13px;
+      line-height: 1.25;
+      overflow-wrap: anywhere;
+    }
+
+    .chat-line.system .chat-name {
+      color: var(--tmr-amber);
+    }
+
+    .chat-line.error .chat-name {
+      color: var(--tmr-error);
+    }
+
+    .chat-frame {
+      display: block;
+      width: min(420px, calc(100vw - 40px));
+      height: min(620px, calc(100vh - 74px));
+      min-height: 320px;
+      border: 0;
+      background: transparent;
+    }
+
+    .garage-cover {
+      width: 100vw;
+      height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #000000;
+      overflow: hidden;
+    }
+
+    .garage-cover img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .garage-cover-fallback div {
+      color: var(--tmr-text);
+      font-size: 96px;
+      font-weight: 800;
+      letter-spacing: 0;
+    }

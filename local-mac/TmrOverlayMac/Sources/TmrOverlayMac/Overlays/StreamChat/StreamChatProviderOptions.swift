@@ -1,6 +1,9 @@
 import Foundation
 
 enum StreamChatProviderOptions {
+    static let defaultProvider = SharedOverlayContract.current.streamChatDefaultProvider
+    static let defaultTwitchChannel = SharedOverlayContract.current.streamChatDefaultTwitchChannel
+
     static let choices: [(label: String, value: String)] = [
         ("Not configured", "none"),
         ("Streamlabs Chat Box URL", "streamlabs"),

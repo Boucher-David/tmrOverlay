@@ -7,11 +7,11 @@ namespace TmrOverlay.App.Tests.Telemetry;
 public sealed class TelemetryEdgeCaseOptionsTests
 {
     [Fact]
-    public void FromConfiguration_DefaultsToEnabled()
+    public void FromConfiguration_DefaultsToOptIn()
     {
         var options = TelemetryEdgeCaseOptions.FromConfiguration(new ConfigurationBuilder().Build());
 
-        Assert.True(options.Enabled);
+        Assert.False(options.Enabled);
     }
 
     [Fact]

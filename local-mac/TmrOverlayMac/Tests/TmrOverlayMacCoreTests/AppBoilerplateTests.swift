@@ -59,6 +59,44 @@ final class AppBoilerplateTests: XCTestCase {
         XCTAssertEqual(flags.screenId, "primary-screen-default")
     }
 
+    func testSettingsStoreCanonicalizesStreamChatSharedDefaultsIntoOptions() throws {
+        let root = temporaryRoot("settings")
+        defer {
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let settingsURL = root.appendingPathComponent("settings.json")
+        try """
+        {
+          "settingsVersion": 5,
+          "overlays": [
+            {
+              "id": "stream-chat",
+              "streamChatProvider": "",
+              "streamChatTwitchChannel": "",
+              "options": {}
+            }
+          ]
+        }
+        """.write(to: settingsURL, atomically: true, encoding: .utf8)
+
+        let reloaded = AppSettingsStore(settingsRoot: root).load()
+        let streamChat = try XCTUnwrap(reloaded.overlays.first)
+        XCTAssertEqual(reloaded.settingsVersion, SharedOverlayContract.current.settingsVersion)
+        XCTAssertEqual(streamChat.streamChatProvider, "twitch")
+        XCTAssertEqual(streamChat.streamChatTwitchChannel, "techmatesracing")
+        XCTAssertEqual(streamChat.options[SharedOverlayContract.streamChatProviderKey], "twitch")
+        XCTAssertEqual(streamChat.options[SharedOverlayContract.streamChatTwitchChannelKey], "techmatesracing")
+    }
+
+    func testSharedContractDrivesStreamChatDefaultsAndDesignTokens() {
+        XCTAssertEqual(StreamChatProviderOptions.defaultProvider, "twitch")
+        XCTAssertEqual(StreamChatProviderOptions.defaultTwitchChannel, "techmatesracing")
+        XCTAssertEqual(SharedOverlayContract.current.settingsVersion, 9)
+        XCTAssertEqual(SharedOverlayContract.current.designV2ColorHex("cyan", fallback: ""), "#00E8FF")
+    }
+
     func testOverlaySettingsAreIndependentById() {
         var settings = ApplicationSettings()
         var status = settings.overlay(id: "status", defaultSize: CGSize(width: 520, height: 150))
@@ -140,7 +178,12 @@ final class AppBoilerplateTests: XCTestCase {
               "id": "stream-chat",
               "streamChatProvider": "streamlabs",
               "streamChatStreamlabsUrl": "https://streamlabs.com/widgets/chat-box/private-token",
-              "streamChatTwitchChannel": "tmracing"
+              "streamChatTwitchChannel": "tmracing",
+              "options": {
+                "stream-chat.provider": "streamlabs",
+                "stream-chat.streamlabs-url": "https://streamlabs.com/widgets/chat-box/private-token",
+                "stream-chat.twitch-channel": "tmracing"
+              }
             }
           ]
         }
@@ -170,7 +213,10 @@ final class AppBoilerplateTests: XCTestCase {
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: bundle.appendingPathComponent("metadata").appendingPathComponent("app-version.json").path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: bundle.appendingPathComponent("metadata").appendingPathComponent("storage.json").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: bundle.appendingPathComponent("metadata").appendingPathComponent("shared-settings-contract.json").path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: bundle.appendingPathComponent("metadata").appendingPathComponent("ui-freeze-watch.json").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: bundle.appendingPathComponent("shared").appendingPathComponent("tmr-overlay-contract.json").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: bundle.appendingPathComponent("shared").appendingPathComponent("tmr-overlay-contract.schema.json").path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: bundle.appendingPathComponent("runtime").appendingPathComponent("runtime-state.json").path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: bundle.appendingPathComponent("settings").appendingPathComponent("settings.json").path))
         let bundledSettings = try Data(contentsOf: bundle.appendingPathComponent("settings").appendingPathComponent("settings.json"))
@@ -178,6 +224,9 @@ final class AppBoilerplateTests: XCTestCase {
         let overlays = settingsJson?["overlays"] as? [[String: Any]]
         XCTAssertEqual(overlays?.first?["streamChatStreamlabsUrl"] as? String, "<redacted>")
         XCTAssertEqual(overlays?.first?["streamChatTwitchChannel"] as? String, "tmracing")
+        let options = overlays?.first?["options"] as? [String: Any]
+        XCTAssertEqual(options?["stream-chat.streamlabs-url"] as? String, "<redacted>")
+        XCTAssertEqual(options?["stream-chat.twitch-channel"] as? String, "tmracing")
         XCTAssertTrue(FileManager.default.fileExists(atPath: bundle.appendingPathComponent("logs").appendingPathComponent("tmroverlay-test.log").path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: bundle.appendingPathComponent("overlay-diagnostics").appendingPathComponent("session-test-live-overlay-diagnostics.json").path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: bundle.appendingPathComponent("events").appendingPathComponent("events-test.jsonl").path))

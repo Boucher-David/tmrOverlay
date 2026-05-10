@@ -466,7 +466,7 @@ Dominant exact image colors:
 | `#242424` | dark neutral detail |
 | `#6CFFEE` | secondary aqua tint |
 
-Current Windows settings Design V2 tokens are close but not identical: cyan `#00E8FF`, magenta `#FF2AA7`, amber `#FFD15B`, green `#62FF9F`, orange `#FF7D49`, purple `#7E32FF`, with shell backgrounds `#12051F`, `#0C122A`, and `#030B18`. A future branch should compare these against the image candidates, especially `#11FFE3`, `#FF2D97`, `#7B00FF`, `#2F004E`, `#EA9C00`, and `#FF2C42`, then update semantic tokens only where contrast, readability, screenshot parity, and Windows/mac parity remain strong.
+Current Design V2 tokens are centralized in `shared/tmr-overlay-contract.json` and consumed by Windows native overlays, localhost browser CSS, and the mac harness outrun palette. Future palette experiments should update that shared contract first, then verify contrast, readability, screenshot parity, and Windows/mac/browser parity before changing overlay-specific drawing code.
 
 ### Telemetry-First Overlay Branches
 

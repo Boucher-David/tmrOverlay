@@ -44,9 +44,15 @@ internal static class BrowserOverlayCatalog
 
     public static bool TryGetRouteForOverlayId(string overlayId, out string route)
     {
-        var page = AllPages.FirstOrDefault(candidate =>
-            string.Equals(candidate.Id, overlayId, StringComparison.OrdinalIgnoreCase));
+        var found = TryGetPageByOverlayId(overlayId, out var page);
         route = page?.CanonicalRoute ?? string.Empty;
+        return found;
+    }
+
+    public static bool TryGetPageByOverlayId(string overlayId, out BrowserOverlayPage page)
+    {
+        page = AllPages.FirstOrDefault(candidate =>
+            string.Equals(candidate.Id, overlayId, StringComparison.OrdinalIgnoreCase))!;
         return page is not null;
     }
 }

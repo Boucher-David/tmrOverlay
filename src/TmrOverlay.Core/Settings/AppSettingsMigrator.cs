@@ -5,7 +5,7 @@ namespace TmrOverlay.Core.Settings;
 
 internal static class AppSettingsMigrator
 {
-    public const int CurrentVersion = 8;
+    public const int CurrentVersion = 9;
     private const string FlagsOverlayId = "flags";
     private const string FlagsPrimaryScreenDefaultId = "primary-screen-default";
     private const int FlagsDefaultWidth = 360;
@@ -87,7 +87,7 @@ internal static class AppSettingsMigrator
     {
         if (string.IsNullOrWhiteSpace(general.FontFamily))
         {
-            general.FontFamily = "Segoe UI";
+            general.FontFamily = SharedOverlayContract.Current.DefaultFontFamily;
         }
         else
         {
@@ -184,6 +184,9 @@ internal static class AppSettingsMigrator
             case "track-map":
                 EnsureOption(overlay, OverlayOptionKeys.TrackMapBuildFromTelemetry, defaultValue: true);
                 EnsureOption(overlay, OverlayOptionKeys.TrackMapSectorBoundariesEnabled, defaultValue: true);
+                break;
+            case "stream-chat":
+                NormalizeStreamChatOptions(overlay);
                 break;
             case "flags":
                 EnsureOption(overlay, OverlayOptionKeys.FlagsShowGreen, defaultValue: true);
@@ -304,6 +307,65 @@ internal static class AppSettingsMigrator
         // Keep the old split keys normalized for pre-v0.17.0 browser/native readers.
         overlay.SetIntegerOption(OverlayOptionKeys.RelativeCarsAhead, carsEachSide, 0, 8);
         overlay.SetIntegerOption(OverlayOptionKeys.RelativeCarsBehind, carsEachSide, 0, 8);
+    }
+
+    private static void NormalizeStreamChatOptions(OverlaySettings overlay)
+    {
+        var contract = SharedOverlayContract.Current;
+        var providerDefault = NormalizeStreamChatProvider(contract.StreamChatDefaultProvider, missingFallback: SharedOverlayContract.StreamChatProviderTwitch);
+        var provider = overlay.Options.TryGetValue(OverlayOptionKeys.StreamChatProvider, out var configuredProvider)
+            ? NormalizeStreamChatProvider(configuredProvider, missingFallback: providerDefault)
+            : providerDefault;
+        overlay.SetStringOption(OverlayOptionKeys.StreamChatProvider, provider);
+
+        if (overlay.Options.TryGetValue(OverlayOptionKeys.StreamChatStreamlabsUrl, out var streamlabsUrl))
+        {
+            overlay.SetStringOption(OverlayOptionKeys.StreamChatStreamlabsUrl, streamlabsUrl);
+        }
+
+        var channelDefault = NormalizeTwitchChannel(contract.StreamChatDefaultTwitchChannel) ?? "techmatesracing";
+        var channel = overlay.Options.TryGetValue(OverlayOptionKeys.StreamChatTwitchChannel, out var configuredChannel)
+            ? NormalizeTwitchChannel(configuredChannel)
+            : null;
+        overlay.SetStringOption(OverlayOptionKeys.StreamChatTwitchChannel, channel ?? channelDefault);
+    }
+
+    private static string NormalizeStreamChatProvider(string? value, string missingFallback)
+    {
+        var normalized = value?.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return missingFallback;
+        }
+
+        return normalized is SharedOverlayContract.StreamChatProviderNone
+            or SharedOverlayContract.StreamChatProviderStreamlabs
+            or SharedOverlayContract.StreamChatProviderTwitch
+            ? normalized
+            : SharedOverlayContract.StreamChatProviderNone;
+    }
+
+    private static string? NormalizeTwitchChannel(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var normalized = value.Trim();
+        if (Uri.TryCreate(normalized, UriKind.Absolute, out var uri)
+            && (string.Equals(uri.Host, "twitch.tv", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(uri.Host, "www.twitch.tv", StringComparison.OrdinalIgnoreCase)))
+        {
+            normalized = uri.AbsolutePath.Trim('/');
+        }
+
+        normalized = normalized.Trim().TrimStart('@').Split('/', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? string.Empty;
+        normalized = normalized.ToLowerInvariant();
+        return normalized.Length is >= 3 and <= 25
+            && normalized.All(character => char.IsAsciiLetterOrDigit(character) || character == '_')
+            ? normalized
+            : null;
     }
 
     private static void MigrateLegacyOverlayOptions(OverlaySettings overlay)

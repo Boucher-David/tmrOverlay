@@ -77,10 +77,15 @@ internal sealed record RelativeOverlayViewModel(
             ?? MatchingTimingRow(snapshot.Models.Timing.PlayerRow, referenceCarIdx.Value);
         var driver = snapshot.Models.DriverDirectory.Drivers.FirstOrDefault(row => row.CarIdx == referenceCarIdx);
         var scoring = snapshot.Models.Scoring.Rows.FirstOrDefault(row => row.CarIdx == referenceCarIdx);
+        var suppressPosition = ShouldSuppressReferencePosition(snapshot, timing);
+        int? overallPosition = suppressPosition
+            ? null
+            : (timing?.OverallPosition ?? scoring?.OverallPosition);
+        int? classPosition = suppressPosition
+            ? null
+            : (timing?.ClassPosition ?? scoring?.ClassPosition);
         return new RelativeOverlayRowViewModel(
-            Position: FormatPosition(
-                timing?.OverallPosition ?? scoring?.OverallPosition,
-                timing?.ClassPosition ?? scoring?.ClassPosition),
+            Position: FormatPosition(overallPosition, classPosition),
             Driver: FormatDriver(
                 scoring?.CarNumber ?? driver?.CarNumber,
                 FirstNonEmpty(timing?.DriverName, scoring?.DriverName, scoring?.TeamName, driver?.DriverName),
@@ -140,7 +145,9 @@ internal sealed record RelativeOverlayViewModel(
                 ?? MatchingTimingRow(snapshot.Models.Timing.PlayerRow, referenceCarIdx.Value);
         var position = reference is null
             ? null
-            : FormatPosition(reference.OverallPosition, reference.ClassPosition);
+            : ShouldSuppressReferencePosition(snapshot, reference)
+                ? null
+                : FormatPosition(reference.OverallPosition, reference.ClassPosition);
         var prefix = string.IsNullOrWhiteSpace(position) ? "live relative" : position;
         return availableRows > shownRows
             ? $"{prefix} - {shownRows}/{availableRows} cars"
@@ -232,6 +239,23 @@ internal sealed record RelativeOverlayViewModel(
     private static LiveTimingRow? MatchingTimingRow(LiveTimingRow? row, int carIdx)
     {
         return row?.CarIdx == carIdx ? row : null;
+    }
+
+    private static bool ShouldSuppressReferencePosition(
+        LiveTelemetrySnapshot snapshot,
+        LiveTimingRow? timing)
+    {
+        var raceEvents = snapshot.Models.RaceEvents;
+        if (raceEvents.HasData && (!raceEvents.IsOnTrack || raceEvents.IsInGarage))
+        {
+            return true;
+        }
+
+        var pitRoadLike = timing?.OnPitRoad == true || raceEvents is { HasData: true, OnPitRoad: true };
+        return pitRoadLike
+            && raceEvents.HasData
+            && raceEvents.LapCompleted <= 0
+            && raceEvents.LapDistPct <= 0.001d;
     }
 
     private static string? FirstNonEmpty(params string?[] values)

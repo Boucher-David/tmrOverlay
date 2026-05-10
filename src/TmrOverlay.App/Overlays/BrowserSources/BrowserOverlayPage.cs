@@ -6,7 +6,7 @@ internal sealed class BrowserOverlayPage
         string id,
         string title,
         string canonicalRoute,
-        string script,
+        string moduleAssetName,
         bool requiresTelemetry = true,
         bool renderWhenTelemetryUnavailable = false,
         bool fadeWhenTelemetryUnavailable = false,
@@ -17,7 +17,7 @@ internal sealed class BrowserOverlayPage
         Id = id;
         Title = title;
         CanonicalRoute = NormalizeRoute(canonicalRoute);
-        Script = script;
+        ModuleAssetName = moduleAssetName;
         RequiresTelemetry = requiresTelemetry;
         RenderWhenTelemetryUnavailable = renderWhenTelemetryUnavailable;
         FadeWhenTelemetryUnavailable = fadeWhenTelemetryUnavailable;
@@ -33,7 +33,9 @@ internal sealed class BrowserOverlayPage
 
     public string CanonicalRoute { get; }
 
-    public string Script { get; }
+    public string ModuleAssetName { get; }
+
+    public string Script => BrowserOverlayAssets.ModuleScript(ModuleAssetName);
 
     public bool RequiresTelemetry { get; }
 

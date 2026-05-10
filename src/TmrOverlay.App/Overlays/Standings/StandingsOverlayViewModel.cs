@@ -38,6 +38,7 @@ internal sealed record StandingsOverlayViewModel(
             ?? timing.PlayerCarIdx
             ?? snapshot.Models.DriverDirectory.FocusCarIdx
             ?? snapshot.Models.DriverDirectory.PlayerCarIdx;
+        var requiresValidLap = RequiresValidLapBeforeRendering(snapshot);
         if (scoring.HasData)
         {
             var scoringRows = ScoringRows(
@@ -45,26 +46,31 @@ internal sealed record StandingsOverlayViewModel(
                 referenceCarIdx,
                 Math.Clamp(maximumRows, 1, 20),
                 Math.Clamp(otherClassRowsPerClass, 0, 6),
-                showClassSeparators);
+                showClassSeparators,
+                requiresValidLap);
             if (scoringRows.Length == 0)
             {
-                return Waiting("waiting for scoring rows");
+                return Waiting(requiresValidLap ? "waiting for valid laps" : "waiting for scoring rows");
             }
 
             var shownCars = scoringRows.Count(row => !row.IsClassHeader);
             var scoringReference = scoringRows.FirstOrDefault(row => row.IsReference);
+            var scoringRowCount = requiresValidLap
+                ? scoring.Rows.Count(HasValidLap)
+                : scoring.Rows.Count;
             var scoringStatus = IsPositionLabel(scoringReference?.ClassPosition)
                 && scoringReference?.ClassPosition is { } scoringClassPosition
-                ? $"{scoringClassPosition} - {shownCars}/{scoring.Rows.Count} rows"
-                : $"{shownCars}/{scoring.Rows.Count} rows";
+                ? $"{scoringClassPosition} - {shownCars}/{scoringRowCount} rows"
+                : $"{shownCars}/{scoringRowCount} rows";
             return new StandingsOverlayViewModel(
                 scoringStatus,
                 SourceText(snapshot.Models.Coverage),
                 scoringRows);
         }
 
-        var candidateRows = PreferredRows(timing)
+        var orderedCandidateRows = PreferredRows(timing)
             .Where(row => row.HasTiming || row.OverallPosition is not null || row.ClassPosition is not null)
+            .Where(row => !requiresValidLap || HasValidLap(row))
             .GroupBy(row => row.CarIdx)
             .Select(group => SelectDisplayRow(group, referenceCarIdx))
             .Where(row => row is not null)
@@ -74,13 +80,18 @@ internal sealed record StandingsOverlayViewModel(
             .ThenBy(row => row.GapSecondsToClassLeader ?? double.MaxValue)
             .ThenBy(row => row.GapLapsToClassLeader ?? double.MaxValue)
             .ThenBy(row => row.CarIdx)
-            .Take(Math.Clamp(maximumRows, 1, 20))
+            .ToArray();
+        var candidateRows = SelectRowsAroundReference(
+                orderedCandidateRows,
+                referenceCarIdx,
+                Math.Clamp(maximumRows, 1, 20),
+                row => row.CarIdx)
             .Select(row => ToRow(row, referenceCarIdx))
             .ToArray();
 
         if (candidateRows.Length == 0)
         {
-            return Waiting("waiting for timing rows");
+            return Waiting(requiresValidLap ? "waiting for valid laps" : "waiting for timing rows");
         }
 
         var timingReference = candidateRows.FirstOrDefault(row => row.IsReference);
@@ -99,7 +110,8 @@ internal sealed record StandingsOverlayViewModel(
         int? referenceCarIdx,
         int maximumRows,
         int otherClassRowsPerClass,
-        bool showClassSeparators)
+        bool showClassSeparators,
+        bool requiresValidLap)
     {
         var scoring = snapshot.Models.Scoring;
         var groups = scoring.ClassGroups.Count > 0
@@ -111,22 +123,38 @@ internal sealed record StandingsOverlayViewModel(
                 IsReferenceClass: true,
                 RowCount: scoring.Rows.Count,
                 Rows: scoring.Rows)];
+        if (requiresValidLap)
+        {
+            groups = groups
+                .Select(group => group with
+                {
+                    RowCount = group.Rows.Count(HasValidLap),
+                    Rows = group.Rows.Where(HasValidLap).ToArray()
+                })
+                .Where(group => group.Rows.Count > 0)
+                .ToArray();
+            if (groups.Count == 0)
+            {
+                return [];
+            }
+        }
+
         var orderedGroups = groups
             .OrderBy(group => group.Rows.Min(row => row.OverallPosition ?? int.MaxValue))
             .ThenBy(group => group.CarClass ?? int.MaxValue)
             .ToArray();
-        var primaryGroup = orderedGroups.FirstOrDefault(group => group.IsReferenceClass)
+        var primaryGroup = PrimaryGroup(orderedGroups, referenceCarIdx)
             ?? orderedGroups.First();
         var groupLimits = BuildGroupLimits(orderedGroups, primaryGroup, maximumRows, otherClassRowsPerClass, showClassSeparators);
         var visibleGroups = orderedGroups
             .Where(group => groupLimits.ContainsKey(group))
             .ToArray();
-        var includeHeaders = showClassSeparators && orderedGroups.Length > 1;
         var rows = new List<StandingsOverlayRowViewModel>();
         var timingByCarIdx = snapshot.Models.Timing.OverallRows
             .Concat(snapshot.Models.Timing.ClassRows)
             .GroupBy(row => row.CarIdx)
             .ToDictionary(group => group.Key, SelectTimingRow);
+        var includeHeaders = showClassSeparators && visibleGroups.Length > 1;
 
         foreach (var group in visibleGroups)
         {
@@ -143,6 +171,7 @@ internal sealed record StandingsOverlayViewModel(
                 ClassEstimatedLaps(group, snapshot),
                 maximumRows,
                 Math.Min(maximumRows - rows.Count, groupLimits[group]),
+                ReferenceEquals(group, primaryGroup),
                 includeHeaders);
         }
 
@@ -173,6 +202,22 @@ internal sealed record StandingsOverlayViewModel(
         return limits;
     }
 
+    private static LiveScoringClassGroup? PrimaryGroup(
+        IReadOnlyList<LiveScoringClassGroup> orderedGroups,
+        int? referenceCarIdx)
+    {
+        if (referenceCarIdx is { } carIdx)
+        {
+            var containingReference = orderedGroups.FirstOrDefault(group => group.Rows.Any(row => row.CarIdx == carIdx));
+            if (containingReference is not null)
+            {
+                return containingReference;
+            }
+        }
+
+        return orderedGroups.FirstOrDefault(group => group.IsReferenceClass);
+    }
+
     private static LiveTimingRow SelectTimingRow(IEnumerable<LiveTimingRow> group)
     {
         return group
@@ -192,6 +237,7 @@ internal sealed record StandingsOverlayViewModel(
         string classEstimatedLaps,
         int maximumRows,
         int groupLimit,
+        bool useReferenceWindow,
         bool includeHeader)
     {
         if (groupLimit <= 0 || rows.Count >= maximumRows)
@@ -205,7 +251,11 @@ internal sealed record StandingsOverlayViewModel(
             groupLimit--;
         }
 
-        foreach (var scoringRow in group.Rows.Take(Math.Max(0, groupLimit)))
+        foreach (var scoringRow in SelectRowsAroundReference(
+            group.Rows,
+            useReferenceWindow ? referenceCarIdx : null,
+            Math.Max(0, groupLimit),
+            row => row.CarIdx))
         {
             if (rows.Count >= maximumRows)
             {
@@ -273,7 +323,63 @@ internal sealed record StandingsOverlayViewModel(
 
     private static bool IsUsableLapTime(double? seconds)
     {
-        return seconds is { } value && value > 20d && value < 1800d && IsFinite(value);
+        return LiveRaceProgressProjector.ValidLapTime(seconds) is not null;
+    }
+
+    private static bool RequiresValidLapBeforeRendering(LiveTelemetrySnapshot snapshot)
+    {
+        return OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot) is
+            OverlaySessionKind.Test or
+            OverlaySessionKind.Practice or
+            OverlaySessionKind.Qualifying;
+    }
+
+    private static bool HasValidLap(LiveScoringRow row)
+    {
+        return IsUsableLapTime(row.BestLapTimeSeconds)
+            || IsUsableLapTime(row.LastLapTimeSeconds);
+    }
+
+    private static bool HasValidLap(LiveTimingRow row)
+    {
+        return IsUsableLapTime(row.BestLapTimeSeconds)
+            || IsUsableLapTime(row.LastLapTimeSeconds);
+    }
+
+    private static IReadOnlyList<T> SelectRowsAroundReference<T>(
+        IReadOnlyList<T> orderedRows,
+        int? referenceCarIdx,
+        int limit,
+        Func<T, int> carIdx)
+    {
+        if (limit <= 0 || orderedRows.Count <= limit)
+        {
+            return orderedRows.Take(Math.Max(0, limit)).ToArray();
+        }
+
+        if (referenceCarIdx is null)
+        {
+            return orderedRows.Take(limit).ToArray();
+        }
+
+        var referenceIndex = -1;
+        for (var index = 0; index < orderedRows.Count; index++)
+        {
+            if (carIdx(orderedRows[index]) == referenceCarIdx)
+            {
+                referenceIndex = index;
+                break;
+            }
+        }
+
+        if (referenceIndex < 0)
+        {
+            return orderedRows.Take(limit).ToArray();
+        }
+
+        var ahead = limit / 2;
+        var start = Math.Clamp(referenceIndex - ahead, 0, Math.Max(0, orderedRows.Count - limit));
+        return orderedRows.Skip(start).Take(limit).ToArray();
     }
 
     private static LiveTimingRow? SelectDisplayRow(

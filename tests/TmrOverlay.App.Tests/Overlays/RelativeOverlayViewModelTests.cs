@@ -191,6 +191,60 @@ public sealed class RelativeOverlayViewModelTests
         Assert.Contains("PIT", pitRow.Detail, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void From_HidesReferencePositionWhenFocusIsTowedBeforeGreen()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var reference = TimingRow(
+            10,
+            "Reference Driver",
+            classPosition: 1,
+            overallPosition: 1,
+            isPlayer: true,
+            isFocus: true,
+            onPitRoad: true);
+        var snapshot = Snapshot(now) with
+        {
+            Models = Snapshot(now).Models with
+            {
+                Timing = LiveTimingModel.Empty with
+                {
+                    HasData = true,
+                    Quality = LiveModelQuality.Reliable,
+                    PlayerCarIdx = 10,
+                    FocusCarIdx = 10,
+                    PlayerRow = reference,
+                    FocusRow = reference,
+                    OverallRows = [reference],
+                    ClassRows = [reference]
+                },
+                RaceEvents = new LiveRaceEventModel(
+                    HasData: true,
+                    Quality: LiveModelQuality.Reliable,
+                    IsOnTrack: false,
+                    IsInGarage: false,
+                    IsGarageVisible: false,
+                    OnPitRoad: true,
+                    Lap: 0,
+                    LapCompleted: 0,
+                    LapDistPct: 0d,
+                    DriversSoFar: null,
+                    DriverChangeLapStatus: null)
+            }
+        };
+
+        var viewModel = RelativeOverlayViewModel.From(
+            snapshot,
+            now,
+            carsAhead: 5,
+            carsBehind: 5);
+
+        var referenceRow = Assert.Single(viewModel.Rows);
+        Assert.True(referenceRow.IsReference);
+        Assert.Equal("--", referenceRow.Position);
+        Assert.Equal("live relative - 0 cars", viewModel.Status);
+    }
+
     private static LiveTelemetrySnapshot Snapshot(DateTimeOffset now, params LiveRelativeRow[] rows)
     {
         var reference = TimingRow(10, "Reference Driver", classPosition: 6, isPlayer: true, isFocus: true);
@@ -295,7 +349,8 @@ public sealed class RelativeOverlayViewModelTests
         int classPosition,
         int overallPosition = 10,
         bool isPlayer = false,
-        bool isFocus = false)
+        bool isFocus = false,
+        bool onPitRoad = false)
     {
         return new LiveTimingRow(
             CarIdx: carIdx,
@@ -331,7 +386,7 @@ public sealed class RelativeOverlayViewModelTests
             GapLapsToClassLeader: null,
             DeltaSecondsToFocus: null,
             TrackSurface: null,
-            OnPitRoad: false);
+            OnPitRoad: onPitRoad);
     }
 
     private static LiveDriverIdentity Driver(int carIdx, string? name, string carNumber)

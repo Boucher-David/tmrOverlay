@@ -474,7 +474,7 @@ final class RelativeDesignV2OverlayView: NSView {
     }
 
     private func relativeGap(car: LiveProximityCar, direction: RelativeDesignV2Direction) -> String {
-        let sign = direction == .ahead ? "+" : "-"
+        let sign = direction == .ahead ? "-" : "+"
         if let seconds = car.relativeSeconds, seconds.isFinite {
             return String(format: "%@%.3f", sign, abs(seconds))
         }
@@ -499,6 +499,10 @@ final class RelativeDesignV2OverlayView: NSView {
     }
 
     private func referencePosition(_ frame: MockLiveTelemetryFrame?) -> String {
+        if referencePositionShouldBeHidden(frame) {
+            return "--"
+        }
+
         if let classPosition = frame?.teamClassPosition {
             return "\(classPosition)"
         }
@@ -508,6 +512,20 @@ final class RelativeDesignV2OverlayView: NSView {
         }
 
         return "--"
+    }
+
+    private func referencePositionShouldBeHidden(_ frame: MockLiveTelemetryFrame?) -> Bool {
+        guard let frame else {
+            return false
+        }
+
+        if !frame.isOnTrack || frame.isInGarage {
+            return true
+        }
+
+        return frame.onPitRoad
+            && frame.teamLapCompleted <= 0
+            && frame.teamLapDistPct <= 0.001
     }
 
     private func referenceDriver(_ frame: MockLiveTelemetryFrame?) -> String {

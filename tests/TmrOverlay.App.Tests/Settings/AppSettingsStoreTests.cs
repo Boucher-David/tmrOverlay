@@ -236,6 +236,51 @@ public sealed class AppSettingsStoreTests
     }
 
     [Fact]
+    public void Load_CanonicalizesStreamChatSharedDefaultsIntoOptions()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "tmr-overlay-settings-test", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var storage = CreateStorage(root);
+            Directory.CreateDirectory(storage.SettingsRoot);
+            var settingsPath = Path.Combine(storage.SettingsRoot, "settings.json");
+            File.WriteAllText(
+                settingsPath,
+                """
+                {
+                  "settingsVersion": 8,
+                  "overlays": [
+                    {
+                      "id": "stream-chat",
+                      "options": {}
+                    }
+                  ]
+                }
+                """);
+
+            var settings = new AppSettingsStore(storage).Load();
+            var overlay = Assert.Single(settings.Overlays);
+
+            Assert.Equal("stream-chat", overlay.Id);
+            Assert.Equal("twitch", overlay.GetStringOption(OverlayOptionKeys.StreamChatProvider));
+            Assert.Equal("techmatesracing", overlay.GetStringOption(OverlayOptionKeys.StreamChatTwitchChannel));
+            Assert.True(overlay.Options.ContainsKey(OverlayOptionKeys.StreamChatProvider));
+            Assert.True(overlay.Options.ContainsKey(OverlayOptionKeys.StreamChatTwitchChannel));
+
+            var saved = File.ReadAllText(settingsPath);
+            Assert.Contains("\"stream-chat.provider\": \"twitch\"", saved);
+            Assert.Contains("\"stream-chat.twitch-channel\": \"techmatesracing\"", saved);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void GetOrAddOverlay_KeepsOverlaySettingsIndependentById()
     {
         var settings = new ApplicationSettings();

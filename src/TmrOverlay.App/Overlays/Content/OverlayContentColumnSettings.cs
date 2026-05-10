@@ -109,7 +109,7 @@ internal static class OverlayContentColumnSettings
 
     public static OverlayContentDefinition Standings { get; } = new(
         OverlayId: StandingsOverlayDefinition.Definition.Id,
-        BrowserWidthPadding: 42,
+        BrowserWidthPadding: 66,
         BrowserMinimumHeight: 520,
         NativeMinimumTableHeight: 390,
         FallbackColumnId: StandingsDriverColumnId,
@@ -139,7 +139,7 @@ internal static class OverlayContentColumnSettings
 
     public static OverlayContentDefinition Relative { get; } = new(
         OverlayId: RelativeOverlayDefinition.Definition.Id,
-        BrowserWidthPadding: 42,
+        BrowserWidthPadding: 66,
         BrowserMinimumHeight: 360,
         NativeMinimumTableHeight: 180,
         FallbackColumnId: RelativeDriverColumnId,
@@ -284,6 +284,15 @@ internal static class OverlayContentColumnSettings
         OverlayContentDefinition definition)
     {
         return VisibleColumnsFor(settings, definition).Sum(column => column.Width);
+    }
+
+    public static int TotalVisibleTableWidth(
+        OverlaySettings settings,
+        OverlayContentDefinition definition)
+    {
+        var columns = VisibleColumnsFor(settings, definition);
+        var columnGaps = Math.Max(0, columns.Count - 1) * 8;
+        return columns.Sum(column => column.Width) + columnGaps;
     }
 
     public static bool BlockEnabled(OverlaySettings settings, OverlayContentBlockDefinition block)

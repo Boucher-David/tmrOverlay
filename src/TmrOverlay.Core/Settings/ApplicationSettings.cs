@@ -38,7 +38,7 @@ internal sealed class ApplicationSettings
 
 internal sealed class ApplicationGeneralSettings
 {
-    public string FontFamily { get; set; } = "Segoe UI";
+    public string FontFamily { get; set; } = SharedOverlayContract.Current.DefaultFontFamily;
 
-    public string UnitSystem { get; set; } = "Metric";
+    public string UnitSystem { get; set; } = SharedOverlayContract.Current.DefaultUnitSystem;
 }

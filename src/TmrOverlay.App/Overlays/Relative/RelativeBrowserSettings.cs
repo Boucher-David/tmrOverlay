@@ -27,7 +27,7 @@ internal sealed record RelativeBrowserSettings(
                 OverlayContentColumnSettings.Relative));
     }
 
-    private static int CarsEachSide(OverlaySettings? relative)
+    internal static int CarsEachSide(OverlaySettings? relative)
     {
         if (relative is null)
         {

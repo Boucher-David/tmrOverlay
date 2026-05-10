@@ -60,6 +60,29 @@ jobs:
         working-directory: local-mac/TmrOverlayMac
         run: swift test
 
+  browser_overlay_tests:
+    name: Browser overlay tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install browser test dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Test browser overlays
+        run: npm run test:browser
+
   windows_static_validation:
     name: Windows static validation
     runs-on: windows-latest

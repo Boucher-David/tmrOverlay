@@ -1,10 +1,12 @@
 using System.IO.Compression;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.Core.AppInfo;
 using TmrOverlay.App.Installation;
 using TmrOverlay.App.Localhost;
+using TmrOverlay.App.Overlays.BrowserSources;
 using TmrOverlay.App.Overlays.GarageCover;
 using TmrOverlay.App.Performance;
 using TmrOverlay.App.Settings;
@@ -13,6 +15,8 @@ using TmrOverlay.App.Telemetry;
 using TmrOverlay.App.TrackMaps;
 using TmrOverlay.App.Updates;
 using TmrOverlay.Core.Overlays;
+using TmrOverlay.Core.Settings;
+using TmrOverlay.Core.History;
 using TmrOverlay.Core.Telemetry.Live;
 
 namespace TmrOverlay.App.Diagnostics;
@@ -27,6 +31,7 @@ internal sealed class DiagnosticsBundleService
     private const int MaxRecentModelParityFiles = 10;
     private const int MaxRecentOverlayDiagnosticsFiles = 10;
     private const int MaxRecentTrackMapReports = 10;
+    private const int MaxBundleNameSegmentLength = 48;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -42,8 +47,10 @@ internal sealed class DiagnosticsBundleService
     private readonly TrackMapStore _trackMapStore;
     private readonly AppSettingsStore _settingsStore;
     private readonly ILiveTelemetrySource _liveTelemetrySource;
+    private readonly SessionPreviewState _sessionPreviewState;
     private readonly AppPerformanceState _performanceState;
     private readonly AppPerformanceSnapshotRecorder _performanceRecorder;
+    private readonly LiveOverlayWindowCaptureStore _liveOverlayWindowCaptureStore;
     private readonly ReleaseUpdateService _releaseUpdates;
     private readonly ILogger<DiagnosticsBundleService> _logger;
     private readonly object _sync = new();
@@ -63,8 +70,10 @@ internal sealed class DiagnosticsBundleService
         TrackMapStore trackMapStore,
         AppSettingsStore settingsStore,
         ILiveTelemetrySource liveTelemetrySource,
+        SessionPreviewState sessionPreviewState,
         AppPerformanceState performanceState,
         AppPerformanceSnapshotRecorder performanceRecorder,
+        LiveOverlayWindowCaptureStore liveOverlayWindowCaptureStore,
         ReleaseUpdateService releaseUpdates,
         ILogger<DiagnosticsBundleService> logger)
     {
@@ -76,8 +85,10 @@ internal sealed class DiagnosticsBundleService
         _trackMapStore = trackMapStore;
         _settingsStore = settingsStore;
         _liveTelemetrySource = liveTelemetrySource;
+        _sessionPreviewState = sessionPreviewState;
         _performanceState = performanceState;
         _performanceRecorder = performanceRecorder;
+        _liveOverlayWindowCaptureStore = liveOverlayWindowCaptureStore;
         _releaseUpdates = releaseUpdates;
         _logger = logger;
     }
@@ -104,9 +115,8 @@ internal sealed class DiagnosticsBundleService
         {
             Directory.CreateDirectory(_storageOptions.DiagnosticsRoot);
             var createdAtUtc = DateTimeOffset.UtcNow;
-            var bundlePath = Path.Combine(
-                _storageOptions.DiagnosticsRoot,
-                $"tmroverlay-diagnostics-{createdAtUtc:yyyyMMdd-HHmmss-fff}.zip");
+            var bundleIdentity = ResolveBundleIdentity();
+            var bundlePath = CreateUniqueBundlePath(createdAtUtc, bundleIdentity);
 
             using var archive = ZipFile.Open(bundlePath, ZipArchiveMode.Create);
 
@@ -118,11 +128,23 @@ internal sealed class DiagnosticsBundleService
                 AddTextEntry(archive, "metadata/diagnostics-bundle.json", JsonSerializer.Serialize(new
                 {
                     CreatedAtUtc = createdAtUtc,
-                    Source = source
+                    Source = source,
+                    FileName = Path.GetFileName(bundlePath),
+                    Naming = new
+                    {
+                        bundleIdentity.CarName,
+                        bundleIdentity.TrackName,
+                        bundleIdentity.CarSlug,
+                        bundleIdentity.TrackSlug,
+                        bundleIdentity.Source
+                    }
                 }, JsonOptions));
                 AddTextEntry(archive, "metadata/storage.json", JsonSerializer.Serialize(_storageOptions, JsonOptions));
                 AddTextEntry(archive, "metadata/telemetry-state.json", JsonSerializer.Serialize(_captureState.Snapshot(), JsonOptions));
                 AddTextEntry(archive, "metadata/localhost-overlays.json", JsonSerializer.Serialize(_localhostOverlayState.Snapshot(), JsonOptions));
+                AddTextEntry(archive, "metadata/browser-overlays.json", JsonSerializer.Serialize(BrowserOverlayDiagnostics(), JsonOptions));
+                AddTextEntry(archive, "metadata/session-preview.json", JsonSerializer.Serialize(_sessionPreviewState.Snapshot(), JsonOptions));
+                AddTextEntry(archive, "metadata/shared-settings-contract.json", JsonSerializer.Serialize(SharedOverlayContract.DiagnosticsSnapshot(), JsonOptions));
                 AddTextEntry(archive, "metadata/release-updates.json", JsonSerializer.Serialize(_releaseUpdates.Snapshot(), JsonOptions));
                 AddTextEntry(archive, "metadata/installer-cleanup.json", JsonSerializer.Serialize(InstallerCleanup.LegacyInstallerCleanupSnapshot(), JsonOptions));
                 AddTextEntry(archive, "metadata/track-maps.json", JsonSerializer.Serialize(_trackMapStore.DiagnosticsSnapshot(), JsonOptions));
@@ -142,6 +164,7 @@ internal sealed class DiagnosticsBundleService
             try
             {
                 AddFileIfExists(archive, _storageOptions.RuntimeStatePath, "runtime/runtime-state.json");
+                AddSharedContractFiles(archive);
                 AddSanitizedSettingsIfExists(archive, Path.Combine(_storageOptions.SettingsRoot, "settings.json"));
                 runtimeSettingsSucceeded = true;
             }
@@ -273,6 +296,21 @@ internal sealed class DiagnosticsBundleService
                     overlayDiagnosticsSucceeded);
             }
 
+            var liveOverlayWindowsStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+            var liveOverlayWindowsSucceeded = false;
+            try
+            {
+                AddLiveOverlayWindows(archive);
+                liveOverlayWindowsSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.DiagnosticsBundleLiveOverlayWindows,
+                    liveOverlayWindowsStarted,
+                    liveOverlayWindowsSucceeded);
+            }
+
             var historyStarted = System.Diagnostics.Stopwatch.GetTimestamp();
             var historySucceeded = false;
             try
@@ -329,6 +367,110 @@ internal sealed class DiagnosticsBundleService
                 bundleStarted,
                 bundleSucceeded);
         }
+    }
+
+    private string CreateUniqueBundlePath(DateTimeOffset createdAtUtc, DiagnosticsBundleIdentity identity)
+    {
+        var timestamp = createdAtUtc.UtcDateTime.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture);
+        var baseName = $"{identity.CarSlug}-{identity.TrackSlug}-{timestamp}";
+        var path = Path.Combine(_storageOptions.DiagnosticsRoot, $"{baseName}.zip");
+        for (var index = 2; File.Exists(path); index++)
+        {
+            path = Path.Combine(_storageOptions.DiagnosticsRoot, $"{baseName}-{index}.zip");
+        }
+
+        return path;
+    }
+
+    private DiagnosticsBundleIdentity ResolveBundleIdentity()
+    {
+        var captureDirectory = LatestCaptureDirectory();
+        if (!string.IsNullOrWhiteSpace(captureDirectory))
+        {
+            var latestSessionPath = Path.Combine(captureDirectory, "latest-session.yaml");
+            if (File.Exists(latestSessionPath))
+            {
+                try
+                {
+                    var context = SessionInfoSummaryParser.Parse(File.ReadAllText(latestSessionPath));
+                    if (TryBuildBundleIdentity(context, "latest-capture", out var captureIdentity))
+                    {
+                        return captureIdentity;
+                    }
+                }
+                catch (Exception exception)
+                {
+                    _logger.LogDebug(exception, "Failed to parse latest session info for diagnostics bundle naming.");
+                }
+            }
+        }
+
+        try
+        {
+            if (TryBuildBundleIdentity(_liveTelemetrySource.Snapshot().Context, "live-telemetry", out var liveIdentity))
+            {
+                return liveIdentity;
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger.LogDebug(exception, "Failed to read live telemetry context for diagnostics bundle naming.");
+        }
+
+        return new DiagnosticsBundleIdentity(
+            CarName: "unknown car",
+            TrackName: "unknown track",
+            CarSlug: "unknown-car",
+            TrackSlug: "unknown-track",
+            Source: "fallback");
+    }
+
+    private static bool TryBuildBundleIdentity(
+        HistoricalSessionContext context,
+        string source,
+        out DiagnosticsBundleIdentity identity)
+    {
+        var carName = FirstNonEmpty(context.Car.CarScreenNameShort, context.Car.CarScreenName, context.Car.CarPath);
+        var trackName = FirstNonEmpty(context.Track.TrackDisplayName, context.Track.TrackName, context.Track.TrackConfigName);
+        if (string.IsNullOrWhiteSpace(carName) && string.IsNullOrWhiteSpace(trackName))
+        {
+            identity = default!;
+            return false;
+        }
+
+        identity = new DiagnosticsBundleIdentity(
+            CarName: carName ?? "unknown car",
+            TrackName: trackName ?? "unknown track",
+            CarSlug: SlugSegment(carName, "unknown-car"),
+            TrackSlug: SlugSegment(trackName, "unknown-track"),
+            Source: source);
+        return true;
+    }
+
+    private static string SlugSegment(string? value, string fallback)
+    {
+        var slug = SessionHistoryPath.Slug(value);
+        if (string.IsNullOrWhiteSpace(slug) || string.Equals(slug, "unknown", StringComparison.OrdinalIgnoreCase))
+        {
+            slug = fallback;
+        }
+
+        return slug.Length <= MaxBundleNameSegmentLength
+            ? slug
+            : slug[..MaxBundleNameSegmentLength].Trim('-');
+    }
+
+    private static string? FirstNonEmpty(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value.Trim();
+            }
+        }
+
+        return null;
     }
 
     private void RecordSuccess(string bundlePath, DateTimeOffset createdAtUtc, string source)
@@ -389,8 +531,7 @@ internal sealed class DiagnosticsBundleService
 
     private void AddLatestCaptureMetadata(ZipArchive archive)
     {
-        var snapshot = _captureState.Snapshot();
-        var captureDirectory = snapshot.CurrentCaptureDirectory ?? snapshot.LastCaptureDirectory;
+        var captureDirectory = LatestCaptureDirectory();
         if (string.IsNullOrWhiteSpace(captureDirectory) || !Directory.Exists(captureDirectory))
         {
             return;
@@ -414,6 +555,46 @@ internal sealed class DiagnosticsBundleService
             "*.json",
             "latest-capture/ibt-analysis",
             MaxLatestCaptureIbtAnalysisFiles);
+    }
+
+    private string? LatestCaptureDirectory()
+    {
+        var snapshot = _captureState.Snapshot();
+        return snapshot.CurrentCaptureDirectory ?? snapshot.LastCaptureDirectory;
+    }
+
+    private void AddLiveOverlayWindows(ZipArchive archive)
+    {
+        AddTextEntry(
+            archive,
+            "live-overlays/manifest.json",
+            JsonSerializer.Serialize(_liveOverlayWindowCaptureStore.Snapshot(), JsonOptions));
+        foreach (var file in _liveOverlayWindowCaptureStore.CaptureFiles())
+        {
+            AddFileIfExists(archive, file.SourcePath, file.EntryName);
+        }
+    }
+
+    private static object BrowserOverlayDiagnostics()
+    {
+        return new
+        {
+            Pages = BrowserOverlayCatalog.Pages
+                .Select(page => new
+                {
+                    page.Id,
+                    page.Title,
+                    page.CanonicalRoute,
+                    page.Routes,
+                    page.RequiresTelemetry,
+                    page.RenderWhenTelemetryUnavailable,
+                    page.FadeWhenTelemetryUnavailable,
+                    page.RefreshIntervalMilliseconds,
+                    page.BodyClass
+                })
+                .OrderBy(page => page.Id, StringComparer.OrdinalIgnoreCase)
+                .ToArray()
+        };
     }
 
     private object GarageCoverDiagnostics()
@@ -559,6 +740,21 @@ internal sealed class DiagnosticsBundleService
             "Settings were empty or invalid; omitted to avoid copying private stream chat widget URLs.");
     }
 
+    private static void AddSharedContractFiles(ZipArchive archive)
+    {
+        var contractPath = SharedOverlayContract.LoadStatus.Path ?? SharedOverlayContract.TryFindDefaultContractPath();
+        if (contractPath is not null)
+        {
+            AddFileIfExists(archive, contractPath, SharedOverlayContract.DefaultContractRelativePath);
+        }
+
+        var schemaPath = SharedOverlayContract.TryFindDefaultSchemaPath();
+        if (schemaPath is not null)
+        {
+            AddFileIfExists(archive, schemaPath, SharedOverlayContract.DefaultSchemaRelativePath);
+        }
+    }
+
     private static void RedactStreamChatSecrets(JsonNode node)
     {
         if (node["overlays"] is not JsonArray overlays)
@@ -606,3 +802,10 @@ internal sealed record DiagnosticsBundleStatus(
     string? LastError,
     DateTimeOffset? LastErrorAtUtc,
     string? LastErrorSource);
+
+internal sealed record DiagnosticsBundleIdentity(
+    string CarName,
+    string TrackName,
+    string CarSlug,
+    string TrackSlug,
+    string Source);

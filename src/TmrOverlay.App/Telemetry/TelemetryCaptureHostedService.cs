@@ -66,7 +66,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         PostRaceAnalysisPipeline postRaceAnalysisPipeline,
         DiagnosticsBundleService diagnosticsBundleService,
         ILiveTelemetrySink liveTelemetrySink,
-        ILiveTelemetrySource liveTelemetrySource,
+        LiveTelemetryStore liveTelemetrySource,
         TelemetryCaptureState state,
         AppPerformanceState performance,
         TelemetryEdgeCaseRecorder edgeCaseRecorder,
@@ -1038,6 +1038,39 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         return cars;
     }
 
+    private static IReadOnlyList<HistoricalCarProximity> ReadAllTimingCars(IRacingSDK sdk)
+    {
+        var cars = new List<HistoricalCarProximity>();
+        for (var carIdx = 0; carIdx < 64; carIdx++)
+        {
+            var lapCompleted = ReadInt32ArrayElement(sdk, "CarIdxLapCompleted", carIdx);
+            var lapDistPct = ReadDoubleArrayElement(sdk, "CarIdxLapDistPct", carIdx);
+            var f2TimeSeconds = ReadNullableDoubleArrayElement(sdk, "CarIdxF2Time", carIdx);
+            var estimatedTimeSeconds = ReadNullableDoubleArrayElement(sdk, "CarIdxEstTime", carIdx);
+            var position = ReadInt32ArrayElement(sdk, "CarIdxPosition", carIdx);
+            var classPosition = ReadInt32ArrayElement(sdk, "CarIdxClassPosition", carIdx);
+            var hasLapProgress = HasLapProgress(lapCompleted, lapDistPct);
+            if (!hasLapProgress && !HasStandingOrTiming(position, classPosition, f2TimeSeconds, estimatedTimeSeconds))
+            {
+                continue;
+            }
+
+            cars.Add(new HistoricalCarProximity(
+                CarIdx: carIdx,
+                LapCompleted: hasLapProgress ? lapCompleted!.Value : -1,
+                LapDistPct: hasLapProgress ? Math.Clamp(lapDistPct!.Value, 0d, 1d) : -1d,
+                F2TimeSeconds: f2TimeSeconds,
+                EstimatedTimeSeconds: estimatedTimeSeconds,
+                Position: position,
+                ClassPosition: classPosition,
+                CarClass: ReadInt32ArrayElement(sdk, "CarIdxClass", carIdx),
+                TrackSurface: ReadInt32ArrayElement(sdk, "CarIdxTrackSurface", carIdx),
+                OnPitRoad: ReadBooleanArrayElement(sdk, "CarIdxOnPitRoad", carIdx)));
+        }
+
+        return cars;
+    }
+
     private static bool HasLapProgress(int? lapCompleted, double? lapDistPct)
     {
         return lapCompleted is >= 0
@@ -1414,6 +1447,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             var focusClassCars = focusCarIdx == playerCarIdx
                 ? classCars
                 : ReadClassCars(sdk, focusCarIdx);
+            var allCars = ReadAllTimingCars(sdk);
 
             sample = new HistoricalTelemetrySample(
                 CapturedAtUtc: capturedAtUtc,
@@ -1504,6 +1538,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 NearbyCars: nearbyCars,
                 ClassCars: classCars,
                 FocusClassCars: focusClassCars,
+                AllCars: allCars,
                 TeamOnPitRoad: ReadBooleanArrayElement(sdk, "CarIdxOnPitRoad", playerCarIdx),
                 TeamFastRepairsUsed: ReadInt32ArrayElement(sdk, "CarIdxFastRepairsUsed", playerCarIdx),
                 PitServiceStatus: ReadNullableInt32(sdk, "PlayerCarPitSvStatus"),

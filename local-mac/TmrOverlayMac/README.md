@@ -2,7 +2,15 @@
 
 Tracked macOS development harness for the Windows `TmrOverlay.App`.
 
-This folder is tracked source so mock-telemetry UI parity, screenshot generation, and local review demos can evolve with the Windows app. Generated `.build` output, local app data, captures, logs, and screenshots stay ignored.
+This harness is deprecated as the primary overlay parity/review surface. Use the browser review server from the repo root for normal browser-source design and functionality work:
+
+```bash
+npm run review:browser
+```
+
+Keep this harness for secondary native-shell experiments, legacy screenshot paths, and cases where a mac app window is still useful. It does not replace Windows validation for iRacing SDK behavior, focus/topmost/click-through behavior, or installer/update workflows.
+
+This folder remains tracked source so existing mock-telemetry UI coverage, screenshot generation, and local review demos can evolve with the Windows app while the browser review path takes over primary parity work. Generated `.build` output, local app data, captures, logs, and screenshots stay ignored.
 
 ## Run
 
@@ -71,6 +79,8 @@ TMR_MAC_HISTORY_ROOT=/absolute/path ./run.sh
 The raw mock capture emits the same artifact names and `telemetry.bin` framing as the Windows collector, but it does not connect to iRacing.
 
 The mac harness also mirrors the Windows app boilerplate: persisted overlay settings, rolling logs, JSONL app events, runtime-state markers, diagnostics bundles, and retention cleanup. Runtime raw-capture requests live in the Support settings tab, matching Windows. The menu-bar item includes entries to open captures, open logs, open settings, and create diagnostics bundles.
+
+Shared settings defaults and Design V2 color tokens are loaded from the repo-level `shared/tmr-overlay-contract.json` when the harness is run from source. If that file is unavailable, the harness falls back to compiled defaults. Diagnostics bundles include the resolved shared-contract metadata and copy the contract/schema files when they are available.
 
 ## Overlay Health Demo
 

@@ -32,6 +32,7 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly TrackMapStore _trackMapStore;
     private readonly AppSettingsStore _settingsStore;
+    private readonly BrowserOverlayModelFactory _browserModelFactory;
     private readonly LocalhostOverlayState _state;
     private readonly AppEventRecorder _events;
     private readonly AppPerformanceState _performanceState;
@@ -46,6 +47,7 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
         ILiveTelemetrySource liveTelemetrySource,
         TrackMapStore trackMapStore,
         AppSettingsStore settingsStore,
+        BrowserOverlayModelFactory browserModelFactory,
         LocalhostOverlayState state,
         AppEventRecorder events,
         AppPerformanceState performanceState,
@@ -55,6 +57,7 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
         _liveTelemetrySource = liveTelemetrySource;
         _trackMapStore = trackMapStore;
         _settingsStore = settingsStore;
+        _browserModelFactory = browserModelFactory;
         _state = state;
         _events = events;
         _performanceState = performanceState;
@@ -187,6 +190,31 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
             }
 
             var path = context.Request.Url?.AbsolutePath.TrimEnd('/') ?? string.Empty;
+            if (TryGetOverlayModelId(path, out var overlayModelId))
+            {
+                route = "overlay_model";
+                var modelSnapshot = _liveTelemetrySource.Snapshot();
+                var modelSettings = _settingsStore.Load();
+                if (_browserModelFactory.TryBuild(
+                    overlayModelId,
+                    modelSnapshot,
+                    modelSettings,
+                    DateTimeOffset.UtcNow,
+                    out var modelResponse))
+                {
+                    await WriteJsonAsync(context.Response, HttpStatusCode.OK, modelResponse, cancellationToken).ConfigureAwait(false);
+                    statusCode = (int)HttpStatusCode.OK;
+                    return;
+                }
+
+                await WriteJsonAsync(context.Response, HttpStatusCode.NotFound, new
+                {
+                    error = "overlay_model_not_found"
+                }, cancellationToken).ConfigureAwait(false);
+                statusCode = (int)HttpStatusCode.NotFound;
+                return;
+            }
+
             switch (path)
             {
                 case "":
@@ -477,6 +505,20 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
             ".bmp" => "image/bmp",
             _ => "image/png"
         };
+    }
+
+    private static bool TryGetOverlayModelId(string path, out string overlayId)
+    {
+        const string prefix = "/api/overlay-model/";
+        if (path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            overlayId = path[prefix.Length..];
+            return !string.IsNullOrWhiteSpace(overlayId)
+                && overlayId.IndexOf('/', StringComparison.Ordinal) < 0;
+        }
+
+        overlayId = string.Empty;
+        return false;
     }
 
     private static void AddCorsHeaders(HttpListenerResponse response)
