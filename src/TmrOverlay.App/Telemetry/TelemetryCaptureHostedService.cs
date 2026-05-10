@@ -1385,8 +1385,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             var playerCarIdx = ReadInt32(sdk, "PlayerCarIdx");
             var focusSelection = ReadFocusCarSelection(sdk);
             var focusCarIdx = focusSelection.FocusCarIdx;
-            var focusProgress = focusCarIdx is { } focusIdx
-                ? ReadCarProgress(sdk, focusIdx, requireLapProgress: false)
+            var focusProgress = focusCarIdx is { } focusProgressCarIdx
+                ? ReadCarProgress(sdk, focusProgressCarIdx, requireLapProgress: false)
                 : null;
 
             CarProgress? leaderProgress;
@@ -1432,8 +1432,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             var nearbySucceeded = false;
             try
             {
-                nearbyCars = focusCarIdx is { } focusIdx
-                    ? ReadNearbyCars(sdk, focusIdx)
+                nearbyCars = focusCarIdx is { } nearbyFocusCarIdx
+                    ? ReadNearbyCars(sdk, nearbyFocusCarIdx)
                     : [];
                 nearbySucceeded = true;
             }
@@ -1522,11 +1522,11 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 FocusPosition: focusProgress?.Position,
                 FocusClassPosition: focusProgress?.ClassPosition,
                 FocusCarClass: focusProgress?.CarClass,
-                FocusOnPitRoad: focusCarIdx is { } focusIdx
-                    ? ReadBooleanArrayElement(sdk, "CarIdxOnPitRoad", focusIdx)
+                FocusOnPitRoad: focusCarIdx is { } focusPitCarIdx
+                    ? ReadBooleanArrayElement(sdk, "CarIdxOnPitRoad", focusPitCarIdx)
                     : null,
-                FocusTrackSurface: focusCarIdx is { } focusIdx
-                    ? ReadInt32ArrayElement(sdk, "CarIdxTrackSurface", focusIdx)
+                FocusTrackSurface: focusCarIdx is { } focusSurfaceCarIdx
+                    ? ReadInt32ArrayElement(sdk, "CarIdxTrackSurface", focusSurfaceCarIdx)
                     : null,
                 TeamLapCompleted: ReadInt32ArrayElement(sdk, "CarIdxLapCompleted", playerCarIdx),
                 TeamLapDistPct: ReadDoubleArrayElement(sdk, "CarIdxLapDistPct", playerCarIdx),
