@@ -236,7 +236,7 @@ final class RelativeDesignV2OverlayView: NSView {
     private func displayRow(car: LiveProximityCar, direction: RelativeDesignV2Direction) -> RelativeDesignV2Row {
         RelativeDesignV2Row(
             position: car.classPosition.map { "\($0)" } ?? car.overallPosition.map { "\($0)" } ?? "--",
-            driver: "Car \(car.carIdx)",
+            driver: car.driverName ?? MockDriverNames.displayName(for: car.carIdx),
             gap: relativeGap(car: car, direction: direction),
             isReference: false,
             isAhead: direction == .ahead,

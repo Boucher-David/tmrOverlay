@@ -8,6 +8,6 @@ internal static class SessionWeatherOverlayDefinition
         Id: "session-weather",
         DisplayName: "Session / Weather",
         DefaultWidth: 420,
-        DefaultHeight: 310,
+        DefaultHeight: 330,
         FadeWhenLiveTelemetryUnavailable: true);
 }

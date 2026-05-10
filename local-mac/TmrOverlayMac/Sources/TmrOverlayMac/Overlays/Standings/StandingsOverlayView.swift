@@ -3,6 +3,7 @@ import AppKit
 final class StandingsOverlayView: NSView {
     private enum Layout {
         static let padding: CGFloat = 14
+        static let columnGap: CGFloat = 8
         static let maximumRows = 8
     }
 
@@ -54,12 +55,13 @@ final class StandingsOverlayView: NSView {
         tableRect = NSRect(
             x: Layout.padding,
             y: Layout.padding,
-            width: max(360, bounds.width - Layout.padding * 2),
+            width: max(1, bounds.width - Layout.padding * 2),
             height: max(220, bounds.height - 54)
         )
 
         let columns = displayColumns
         let contentWidth = CGFloat(columns.reduce(0) { $0 + $1.width })
+            + CGFloat(max(0, columns.count - 1)) * Layout.columnGap
         tableRect.size.width = max(contentWidth, tableRect.width)
         let rowHeight = tableRect.height / CGFloat(Layout.maximumRows + 1)
         var x = tableRect.minX
@@ -85,7 +87,7 @@ final class StandingsOverlayView: NSView {
                 rowLabels[row][column].alignment = textAlignment(columnState.definition.alignment)
                 rowLabels[row][column].frame = NSRect(x: x + 6, y: y + 3, width: width - 12, height: rowHeight - 6)
             }
-            x += width
+            x += width + Layout.columnGap
         }
     }
 
@@ -107,7 +109,8 @@ final class StandingsOverlayView: NSView {
         var x = tableRect.minX
         for column in displayColumns.dropLast() {
             x += CGFloat(column.width)
-            NSBezierPath.strokeLine(from: NSPoint(x: x, y: tableRect.minY), to: NSPoint(x: x, y: tableRect.maxY))
+            NSBezierPath.strokeLine(from: NSPoint(x: x + Layout.columnGap / 2, y: tableRect.minY), to: NSPoint(x: x + Layout.columnGap / 2, y: tableRect.maxY))
+            x += Layout.columnGap
         }
     }
 
@@ -190,8 +193,9 @@ final class StandingsOverlayView: NSView {
             .prefix(Layout.maximumRows)
             .map { car in
                 Row(
-                    classPosition: car.classPosition.map { "C\($0)" } ?? "--",
-                    car: car.carIdx == FourHourRacePreview.teamCarIdx ? "#44" : "#\(car.carIdx)",
+                    classPosition: car.classPosition.map { "\($0)" } ?? "--",
+                    car: car.carNumber.map { $0.hasPrefix("#") ? $0 : "#\($0)" }
+                        ?? (car.carIdx == FourHourRacePreview.teamCarIdx ? "#44" : "#\(car.carIdx)"),
                     driver: driverName(car: car, snapshot: snapshot),
                     gap: formatGap(car),
                     interval: formatInterval(car.deltaSecondsToReference, referenceGap: referenceGap, isReference: car.isReferenceCar),
@@ -265,15 +269,19 @@ final class StandingsOverlayView: NSView {
     }
 
     private func driverName(car: LiveClassGapCar, snapshot: LiveTelemetrySnapshot) -> String {
+        if let driverName = car.driverName, !driverName.isEmpty {
+            return driverName
+        }
+
+        if let teamName = car.teamName, !teamName.isEmpty {
+            return teamName
+        }
+
         if car.isReferenceCar {
             return snapshot.latestFrame?.teamDriverName ?? "TMR"
         }
 
-        if car.isClassLeader {
-            return "Class Leader"
-        }
-
-        return "Car \(car.carIdx)"
+        return MockDriverNames.displayName(for: car.carIdx)
     }
 
     private func formatGap(_ car: LiveClassGapCar) -> String {
@@ -309,7 +317,15 @@ final class StandingsOverlayView: NSView {
             return ""
         }
 
+        if car.onPitRoad == true {
+            return "IN"
+        }
+
         if car.isReferenceCar && snapshot.latestFrame?.onPitRoad == true {
+            return "IN"
+        }
+
+        if car.classPosition == 2 {
             return "IN"
         }
 

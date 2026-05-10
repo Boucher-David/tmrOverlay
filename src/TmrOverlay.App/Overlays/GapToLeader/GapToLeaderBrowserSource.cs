@@ -58,11 +58,11 @@ internal static class GapToLeaderBrowserSource
           : legacyGap.classCars || [];
         const summary = `
           <div class="grid" style="margin-bottom: 10px;">
-            ${metric('Class pos', classPosition ? `P${classPosition}` : '--')}
+            ${metric('Class pos', classPosition ? `${classPosition}` : '--')}
             ${metric('Class leader', formatGap(classGapSeconds, classGapLaps, legacyGap.classLeaderGap))}
           </div>`;
         contentEl.innerHTML = summary + rowsTable([
-          { label: 'Pos', value: (row) => row.classPosition ? `P${row.classPosition}` : '--' },
+          { label: 'Pos', value: (row) => row.classPosition ? `${row.classPosition}` : '--' },
           { label: 'Car', value: (row) => `#${row.carIdx}` },
           { label: 'Leader', value: (row) => row.isClassLeader ? 'LEADER' : formatGap(row.gapSecondsToClassLeader, row.gapLapsToClassLeader) },
           { label: 'Focus', value: (row) => formatSeconds(row.deltaSecondsToReference) }

@@ -174,12 +174,12 @@ internal sealed record RelativeOverlayViewModel(
     {
         if (classPosition is > 0)
         {
-            return $"C{classPosition.Value.ToString(CultureInfo.InvariantCulture)}";
+            return classPosition.Value.ToString(CultureInfo.InvariantCulture);
         }
 
         if (overallPosition is > 0)
         {
-            return $"P{overallPosition.Value.ToString(CultureInfo.InvariantCulture)}";
+            return overallPosition.Value.ToString(CultureInfo.InvariantCulture);
         }
 
         return "--";
@@ -190,10 +190,6 @@ internal sealed record RelativeOverlayViewModel(
         var label = string.IsNullOrWhiteSpace(driverName)
             ? $"Car {carIdx.ToString(CultureInfo.InvariantCulture)}"
             : driverName.Trim();
-        if (label.Length > 18)
-        {
-            label = label[..18].TrimEnd();
-        }
 
         return string.IsNullOrWhiteSpace(carNumber)
             ? label

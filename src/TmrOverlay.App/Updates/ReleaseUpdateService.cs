@@ -15,8 +15,10 @@ internal sealed class ReleaseUpdateService : IHostedService, IDisposable
     private readonly SemaphoreSlim _checkLock = new(1, 1);
     private readonly object _sync = new();
     private CancellationTokenSource? _startupCheckCancellation;
+    private Task? _startupCheckTask;
     private UpdateManager? _updateManager;
     private bool _updateManagerCreated;
+    private bool _disposed;
     private ReleaseUpdateSnapshot _snapshot;
 
     public ReleaseUpdateService(
@@ -42,14 +44,26 @@ internal sealed class ReleaseUpdateService : IHostedService, IDisposable
         }
 
         _startupCheckCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _ = CheckOnStartupAsync(_startupCheckCancellation.Token);
+        _startupCheckTask = CheckOnStartupAsync(_startupCheckCancellation.Token);
         return Task.CompletedTask;
     }
 
-    public Task StopAsync(CancellationToken cancellationToken)
+    public async Task StopAsync(CancellationToken cancellationToken)
     {
-        _startupCheckCancellation?.Cancel();
-        return Task.CompletedTask;
+        CancelStartupCheck();
+        var startupCheckTask = _startupCheckTask;
+        if (startupCheckTask is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await startupCheckTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
     }
 
     public ReleaseUpdateSnapshot Snapshot()
@@ -473,9 +487,27 @@ internal sealed class ReleaseUpdateService : IHostedService, IDisposable
 
     public void Dispose()
     {
-        _startupCheckCancellation?.Cancel();
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        CancelStartupCheck();
         _startupCheckCancellation?.Dispose();
+        _startupCheckCancellation = null;
         _checkLock.Dispose();
+    }
+
+    private void CancelStartupCheck()
+    {
+        try
+        {
+            _startupCheckCancellation?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
     }
 
     private async Task CheckOnStartupAsync(CancellationToken cancellationToken)

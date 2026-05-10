@@ -13,12 +13,12 @@ internal static class StandingsBrowserSource
 
     private const string Script = """
     const defaultStandingsColumns = [
-      { id: 'standings.class-position', label: 'CLS', dataKey: 'class-position', width: 54, alignment: 'right' },
-      { id: 'standings.car-number', label: 'CAR', dataKey: 'car-number', width: 66, alignment: 'right' },
-      { id: 'standings.driver', label: 'Driver', dataKey: 'driver', width: 300, alignment: 'left' },
-      { id: 'standings.gap', label: 'GAP', dataKey: 'gap', width: 92, alignment: 'right' },
-      { id: 'standings.interval', label: 'INT', dataKey: 'interval', width: 92, alignment: 'right' },
-      { id: 'standings.pit', label: 'PIT', dataKey: 'pit', width: 46, alignment: 'right' }
+      { id: 'standings.class-position', label: 'CLS', dataKey: 'class-position', width: 35, alignment: 'right' },
+      { id: 'standings.car-number', label: 'CAR', dataKey: 'car-number', width: 50, alignment: 'right' },
+      { id: 'standings.driver', label: 'Driver', dataKey: 'driver', width: 250, alignment: 'left' },
+      { id: 'standings.gap', label: 'GAP', dataKey: 'gap', width: 60, alignment: 'right' },
+      { id: 'standings.interval', label: 'INT', dataKey: 'interval', width: 60, alignment: 'right' },
+      { id: 'standings.pit', label: 'PIT', dataKey: 'pit', width: 30, alignment: 'right' }
     ];
     const defaultStandingsSettings = {
       maximumRows: 14,
@@ -91,6 +91,7 @@ internal static class StandingsBrowserSource
       return normalizeColumns(standingsSettings.columns, defaultStandingsColumns)
         .map((column) => ({
           label: column.label,
+          dataKey: column.dataKey,
           width: column.width,
           align: column.alignment,
           value: (row) => standingsColumnValue(row, column.dataKey)
@@ -100,7 +101,7 @@ internal static class StandingsBrowserSource
     function standingsColumnValue(row, dataKey) {
       switch (dataKey) {
         case 'class-position':
-          return row.rowKind === 'header' ? '' : `<span class="pill">${row.classPosition ? `C${row.classPosition}` : '--'}</span>`;
+          return row.rowKind === 'header' ? '' : `<span class="pill">${row.classPosition ? row.classPosition : '--'}</span>`;
         case 'car-number':
           return row.rowKind === 'header' ? '' : escapeHtml(carNumber(row));
         case 'driver':
@@ -122,7 +123,7 @@ internal static class StandingsBrowserSource
           id: String(column?.id || ''),
           label: String(column?.label || ''),
           dataKey: normalizeStandingsDataKey(column?.dataKey, column?.id),
-          width: clamp(Number(column?.width), 34, 520),
+          width: clamp(Number(column?.width), 24, 520),
           alignment: normalizeColumnAlignment(column?.alignment ?? column?.align, column?.id, fallbackColumns)
         }))
         .filter((column) => column.id && column.label && column.dataKey);
@@ -184,8 +185,7 @@ internal static class StandingsBrowserSource
         ? [...scoring.classGroups]
         : [{ className: 'Standings', isReferenceClass: true, rowCount: scoring.rows?.length || 0, rows: scoring.rows || [] }];
       groups.sort((left, right) =>
-        Number(right.isReferenceClass) - Number(left.isReferenceClass)
-        || groupFirstPosition(left) - groupFirstPosition(right)
+        groupFirstPosition(left) - groupFirstPosition(right)
         || (left.carClass ?? 999999) - (right.carClass ?? 999999));
       const primary = groups.find((group) => group.isReferenceClass) || groups[0];
       const otherGroups = groups.filter((group) => classSeparatorsEnabled && group !== primary && otherClassRows > 0);
@@ -193,9 +193,14 @@ internal static class StandingsBrowserSource
       const reservedOtherRows = otherGroups.length * (includeHeaders ? 1 + otherClassRows : otherClassRows);
       const minimumPrimaryRows = Math.min(maximumRows, includeHeaders ? 2 : 1);
       const primaryLimit = clamp(maximumRows - reservedOtherRows, minimumPrimaryRows, maximumRows);
-      const rows = [];
-      appendScoringGroup(live, rows, primary, timingByCarIdx, referenceCarIdx, maximumRows, primaryLimit, includeHeaders);
+      const groupLimits = new Map([[primary, primaryLimit]]);
       for (const group of otherGroups) {
+        groupLimits.set(group, includeHeaders ? 1 + otherClassRows : otherClassRows);
+      }
+      const rows = [];
+      for (const group of groups) {
+        const limit = groupLimits.get(group);
+        if (!limit) continue;
         if (rows.length >= maximumRows) break;
         appendScoringGroup(
           live,
@@ -204,7 +209,7 @@ internal static class StandingsBrowserSource
           timingByCarIdx,
           referenceCarIdx,
           maximumRows,
-          Math.min(maximumRows - rows.length, includeHeaders ? 1 + otherClassRows : otherClassRows),
+          Math.min(maximumRows - rows.length, limit),
           includeHeaders);
       }
       return rows;

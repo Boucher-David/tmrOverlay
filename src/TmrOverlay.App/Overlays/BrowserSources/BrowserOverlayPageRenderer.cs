@@ -78,8 +78,8 @@ internal static class BrowserOverlayPageRenderer
     :root {
       color-scheme: dark;
       font-family: "Segoe UI", Arial, sans-serif;
-      background: #0e1215;
-      color: #e7edf2;
+      background: #080a1c;
+      color: #fff7ff;
     }
 
     body {
@@ -87,14 +87,14 @@ internal static class BrowserOverlayPageRenderer
       min-height: 100vh;
       display: grid;
       place-items: center;
-      background: #0e1215;
+      background: #080a1c;
     }
 
     main {
       width: min(720px, calc(100vw - 48px));
-      border: 1px solid rgba(255, 255, 255, 0.16);
+      border: 1px solid rgba(40, 72, 108, 0.86);
       border-radius: 8px;
-      background: rgba(20, 27, 32, 0.96);
+      background: rgba(9, 14, 32, 0.95);
       padding: 24px;
       box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
     }
@@ -107,7 +107,7 @@ internal static class BrowserOverlayPageRenderer
 
     p {
       margin: 0 0 20px;
-      color: #9eacb6;
+      color: #8caed4;
       font-size: 13px;
       line-height: 1.4;
     }
@@ -120,17 +120,17 @@ internal static class BrowserOverlayPageRenderer
 
     a {
       display: block;
-      color: #e7edf2;
+      color: #fff7ff;
       text-decoration: none;
-      border: 1px solid rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(32, 54, 84, 0.58);
       border-radius: 6px;
       padding: 11px 12px;
-      background: rgba(255, 255, 255, 0.05);
+      background: rgba(18, 31, 60, 0.92);
     }
 
     a:hover {
-      border-color: #62c7ff;
-      background: rgba(98, 199, 255, 0.10);
+      border-color: #00e8ff;
+      background: rgba(0, 232, 255, 0.12);
     }
   </style>
 </head>
@@ -157,8 +157,23 @@ internal static class BrowserOverlayPageRenderer
     :root {
       color-scheme: dark;
       font-family: "Segoe UI", Arial, sans-serif;
+      --tmr-surface: rgba(9, 14, 32, 0.95);
+      --tmr-surface-inset: rgba(13, 21, 44, 0.90);
+      --tmr-surface-raised: rgba(18, 31, 60, 0.92);
+      --tmr-title: rgba(8, 10, 28, 0.97);
+      --tmr-border: rgba(40, 72, 108, 0.86);
+      --tmr-border-muted: rgba(32, 54, 84, 0.58);
+      --tmr-text: #fff7ff;
+      --tmr-text-secondary: #d0e6ff;
+      --tmr-text-muted: #8caed4;
+      --tmr-cyan: #00e8ff;
+      --tmr-magenta: #ff2aa7;
+      --tmr-amber: #ffd15b;
+      --tmr-green: #62ff9f;
+      --tmr-orange: #ff7d49;
+      --tmr-error: #ff6274;
       background: transparent;
-      color: #edf4f8;
+      color: var(--tmr-text);
     }
 
     * {
@@ -184,16 +199,30 @@ internal static class BrowserOverlayPageRenderer
     }
 
     .overlay {
+      position: relative;
       width: fit-content;
       min-width: 360px;
       max-width: calc(100vw - 16px);
-      border: 1px solid rgba(255, 255, 255, 0.22);
+      border: 1px solid var(--tmr-border);
       border-radius: 8px;
-      background: rgba(10, 14, 17, 0.84);
-      box-shadow: 0 10px 36px rgba(0, 0, 0, 0.34);
+      background: var(--tmr-surface);
+      box-shadow: 0 14px 42px rgba(0, 0, 0, 0.36);
       overflow: hidden;
       opacity: 1;
       transition: opacity 220ms ease;
+    }
+
+    .overlay::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 7px;
+      bottom: 7px;
+      width: 3px;
+      border-radius: 2px;
+      background: var(--tmr-cyan);
+      pointer-events: none;
+      z-index: 2;
     }
 
     body.track-map-page .overlay,
@@ -215,14 +244,20 @@ internal static class BrowserOverlayPageRenderer
       background: #000000;
     }
 
+    body.track-map-page .overlay::before,
+    body.garage-cover-page .overlay::before {
+      display: none;
+    }
+
     .header {
       display: flex;
       align-items: baseline;
       justify-content: space-between;
       gap: 18px;
-      padding: 10px 12px 8px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.10);
-      background: rgba(255, 255, 255, 0.04);
+      min-height: 38px;
+      padding: 10px 14px 8px;
+      border-bottom: 2px solid var(--tmr-cyan);
+      background: var(--tmr-title);
     }
 
     body.track-map-page .header,
@@ -232,20 +267,21 @@ internal static class BrowserOverlayPageRenderer
 
     .title {
       font-size: 15px;
-      font-weight: 700;
+      font-weight: 800;
       letter-spacing: 0;
       white-space: nowrap;
     }
 
     .status {
-      color: #98a8b3;
+      color: var(--tmr-text-secondary);
       font-size: 11px;
+      font-weight: 700;
       text-align: right;
       white-space: nowrap;
     }
 
     .content {
-      padding: 10px 12px 12px;
+      padding: 12px 16px 14px;
     }
 
     body.track-map-page .content,
@@ -258,60 +294,102 @@ internal static class BrowserOverlayPageRenderer
     }
 
     table {
-      border-collapse: collapse;
+      border-collapse: separate;
+      border-spacing: 0 5px;
       width: 100%;
       min-width: 500px;
     }
 
     th,
     td {
-      padding: 5px 7px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 7px 8px;
+      border: 0;
       text-align: left;
       white-space: nowrap;
       font-size: 12px;
     }
 
     th {
-      color: #8fa1ad;
+      color: var(--tmr-text-muted);
       font-size: 10px;
-      font-weight: 700;
+      font-weight: 800;
       text-transform: uppercase;
     }
 
+    tbody tr {
+      background: var(--tmr-surface-raised);
+    }
+
+    tbody td:first-child {
+      border-radius: 5px 0 0 5px;
+    }
+
+    tbody td:last-child {
+      border-radius: 0 5px 5px 0;
+    }
+
     tr.focus td {
-      color: #ffffff;
-      background: rgba(98, 199, 255, 0.14);
+      color: var(--tmr-text);
+      background: rgba(0, 232, 255, 0.14);
+      box-shadow: inset 0 0 0 1px rgba(0, 232, 255, 0.30);
     }
 
     tr.pit td {
-      color: #8fa1ad;
-      background: rgba(255, 255, 255, 0.045);
+      color: var(--tmr-text-muted);
+      background: rgba(255, 209, 91, 0.10);
+    }
+
+    tr.class-header {
+      background: transparent;
     }
 
     tr.class-header td {
-      color: var(--class-header-fg, #e7edf2);
-      background: var(--class-header-bg, rgba(255, 255, 255, 0.07));
+      color: var(--class-header-fg, var(--tmr-text));
+      background: transparent;
+      padding: 11px 0 0;
       font-size: 10px;
       font-weight: 800;
       text-transform: uppercase;
       letter-spacing: 0;
     }
 
+    .class-header-band {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-height: 24px;
+      padding: 4px 10px;
+      border-left: 3px solid var(--class-header-fg, var(--tmr-cyan));
+      border-radius: 5px;
+      background: var(--class-header-bg, rgba(0, 232, 255, 0.14));
+    }
+
+    .class-header-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .class-header-detail {
+      color: var(--tmr-text-secondary);
+      font-size: 10px;
+      text-align: right;
+    }
+
     .muted {
-      color: #8fa1ad;
+      color: var(--tmr-text-muted);
     }
 
     .pill {
       display: inline-flex;
       min-width: 28px;
       justify-content: center;
-      padding: 2px 6px;
+      padding: 2px 7px;
       border-radius: 4px;
-      background: rgba(255, 255, 255, 0.10);
-      color: #dbe6ec;
+      background: rgba(0, 232, 255, 0.16);
+      color: var(--tmr-text-secondary);
       font-size: 10px;
-      font-weight: 700;
+      font-weight: 800;
     }
 
     .grid {
@@ -322,24 +400,34 @@ internal static class BrowserOverlayPageRenderer
     }
 
     .metric {
+      min-height: 58px;
       padding: 9px 10px;
-      border: 1px solid rgba(255, 255, 255, 0.10);
-      border-radius: 6px;
-      background: rgba(255, 255, 255, 0.045);
+      border: 1px solid var(--tmr-border-muted);
+      border-radius: 5px;
+      background: var(--tmr-surface-raised);
     }
 
     .metric .label {
-      color: #91a3af;
+      color: var(--tmr-text-muted);
       font-size: 10px;
-      font-weight: 700;
+      font-weight: 800;
       text-transform: uppercase;
     }
 
     .metric .value {
       margin-top: 3px;
       font-size: 18px;
-      font-weight: 700;
-      color: #f4f9fb;
+      font-weight: 800;
+      color: var(--tmr-text);
+    }
+
+    .metric.highlight {
+      border-color: rgba(0, 232, 255, 0.58);
+      background: rgba(0, 232, 255, 0.12);
+    }
+
+    .metric.highlight .value {
+      color: var(--tmr-cyan);
     }
 
     .bars {
@@ -359,7 +447,7 @@ internal static class BrowserOverlayPageRenderer
     .bar {
       height: 9px;
       border-radius: 999px;
-      background: rgba(255, 255, 255, 0.10);
+      background: var(--tmr-surface-inset);
       overflow: hidden;
     }
 
@@ -368,7 +456,7 @@ internal static class BrowserOverlayPageRenderer
       height: 100%;
       width: 0;
       border-radius: inherit;
-      background: #62c7ff;
+      background: var(--tmr-cyan);
     }
 
     .track {
@@ -397,7 +485,7 @@ internal static class BrowserOverlayPageRenderer
 
     .empty {
       min-width: 340px;
-      color: #98a8b3;
+      color: var(--tmr-text-muted);
       font-size: 13px;
       line-height: 1.4;
       padding: 10px 2px;
@@ -416,29 +504,30 @@ internal static class BrowserOverlayPageRenderer
       display: grid;
       gap: 2px;
       padding: 8px 9px;
-      border-radius: 6px;
-      background: rgba(255, 255, 255, 0.055);
+      border: 1px solid var(--tmr-border-muted);
+      border-radius: 5px;
+      background: var(--tmr-surface-raised);
     }
 
     .chat-name {
-      color: #62c7ff;
+      color: var(--tmr-cyan);
       font-size: 11px;
-      font-weight: 700;
+      font-weight: 800;
     }
 
     .chat-text {
-      color: #edf4f8;
+      color: var(--tmr-text);
       font-size: 13px;
       line-height: 1.25;
       overflow-wrap: anywhere;
     }
 
     .chat-line.system .chat-name {
-      color: #ffc44d;
+      color: var(--tmr-amber);
     }
 
     .chat-line.error .chat-name {
-      color: #ff7168;
+      color: var(--tmr-error);
     }
 
     .chat-frame {
@@ -467,7 +556,7 @@ internal static class BrowserOverlayPageRenderer
     }
 
     .garage-cover-fallback div {
-      color: #edf4f8;
+      color: var(--tmr-text);
       font-size: 96px;
       font-weight: 800;
       letter-spacing: 0;
@@ -525,6 +614,7 @@ internal static class BrowserOverlayPageRenderer
 
     const driverName = (row) => row?.driverName || row?.teamName || `Car ${row?.carIdx ?? '--'}`;
     const carNumber = (row) => row?.carNumber ? `#${String(row.carNumber).replace(/^#/, '')}` : `#${row?.carIdx ?? '--'}`;
+    const themeColor = (name, fallback) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
     const parsedHexColors = new Map();
     const classHeaderStyles = new Map();
     const telemetryAvailability = (live) => {
@@ -576,15 +666,36 @@ internal static class BrowserOverlayPageRenderer
         : '';
       const headerHtml = headers.map((header) => `<th${cellStyle(header)}>${escapeHtml(header.label)}</th>`).join('');
       const rowHtml = rows.map((row) => {
-        const cells = headers.map((header) => `<td${cellStyle(header)}>${header.value(row)}</td>`).join('');
         const classes = [
           row.isFocus || row.isReferenceCar ? 'focus' : '',
           row.onPitRoad && !(row.isFocus || row.isReferenceCar) ? 'pit' : '',
-          row.rowKind === 'header' || row.isClassHeader ? 'class-header' : ''
+          isClassHeaderRow(row) ? 'class-header' : ''
         ].filter(Boolean).join(' ');
+        if (isClassHeaderRow(row)) {
+          return `<tr class="${classes}"${classHeaderStyle(row)}><td colspan="${Math.max(1, headers.length)}">${classHeaderContent(row)}</td></tr>`;
+        }
+
+        const cells = headers.map((header) => `<td${cellStyle(header)}>${header.value(row)}</td>`).join('');
         return `<tr class="${classes}"${classHeaderStyle(row)}>${cells}</tr>`;
       }).join('');
       return `<table${tableStyle}>${colGroup}<thead><tr>${headerHtml}</tr></thead><tbody>${rowHtml}</tbody></table>`;
+    }
+
+    function isClassHeaderRow(row) {
+      return row?.rowKind === 'header' || row?.isClassHeader === true;
+    }
+
+    function classHeaderContent(row) {
+      const title = escapeHtml(row?.driverName || row?.className || row?.label || 'Class');
+      const detail = [
+        row?.rowCount ? `${row.rowCount} cars` : '',
+        row?.estimatedLapsLabel || ''
+      ].filter(Boolean).map(escapeHtml).join(' | ');
+      return `
+        <div class="class-header-band">
+          <span class="class-header-title">${title}</span>
+          <span class="class-header-detail">${detail}</span>
+        </div>`;
     }
 
     function columnWidth(header) {
@@ -598,11 +709,12 @@ internal static class BrowserOverlayPageRenderer
       if (width > 0) styles.push(`width:${width}px`);
       const align = ['left', 'right', 'center'].includes(header?.align) ? header.align : null;
       if (align) styles.push(`text-align:${align}`);
+      if (header?.dataKey === 'driver') styles.push('padding-left:14px');
       return styles.length ? ` style="${styles.join(';')}"` : '';
     }
 
     function classHeaderStyle(row) {
-      if (row?.rowKind !== 'header' && !row?.isClassHeader) return '';
+      if (!isClassHeaderRow(row)) return '';
       return classColorStyle(row?.carClassColorHex);
     }
 
@@ -615,7 +727,7 @@ internal static class BrowserOverlayPageRenderer
       return style;
     }
 
-    function classColorCss(value, fallback = '#ecf4f8') {
+    function classColorCss(value, fallback = 'var(--tmr-text-secondary)') {
       const color = parseHexColor(value);
       return color ? `#${color.key}` : fallback;
     }

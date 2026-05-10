@@ -8,7 +8,7 @@ internal static class FuelCalculatorOverlayDefinition
         Id: "fuel-calculator",
         DisplayName: "Fuel Calculator",
         DefaultWidth: 600,
-        DefaultHeight: 320,
+        DefaultHeight: 340,
         Options:
         [
             OverlaySettingsOptionDescriptor.Boolean(

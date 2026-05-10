@@ -8,6 +8,6 @@ internal static class PitServiceOverlayDefinition
         Id: "pit-service",
         DisplayName: "Pit Service",
         DefaultWidth: 420,
-        DefaultHeight: 310,
+        DefaultHeight: 330,
         FadeWhenLiveTelemetryUnavailable: true);
 }

@@ -90,12 +90,12 @@ enum OverlayContentColumns {
     static let standings = OverlayContentDefinition(
         overlayId: StandingsOverlayDefinition.definition.id,
         columns: [
-            OverlayContentColumnDefinition(id: standingsClassPositionColumnId, label: "CLS", dataKey: dataClassPosition, defaultEnabled: true, defaultOrder: 1, defaultWidth: 54, minimumWidth: 42, maximumWidth: 110, widthOptionKey: "standings.column.cls-width"),
-            OverlayContentColumnDefinition(id: standingsCarNumberColumnId, label: "CAR", dataKey: dataCarNumber, defaultEnabled: true, defaultOrder: 2, defaultWidth: 66, minimumWidth: 48, maximumWidth: 130, widthOptionKey: "standings.column.car-width"),
-            OverlayContentColumnDefinition(id: standingsDriverColumnId, label: "Driver", dataKey: dataDriver, defaultEnabled: true, defaultOrder: 3, defaultWidth: 300, minimumWidth: 180, maximumWidth: 520, widthOptionKey: "standings.column.driver-width", alignment: .left),
-            OverlayContentColumnDefinition(id: standingsGapColumnId, label: "GAP", dataKey: dataGap, defaultEnabled: true, defaultOrder: 4, defaultWidth: 92, minimumWidth: 64, maximumWidth: 160, widthOptionKey: "standings.column.gap-width"),
-            OverlayContentColumnDefinition(id: standingsIntervalColumnId, label: "INT", dataKey: dataInterval, defaultEnabled: true, defaultOrder: 5, defaultWidth: 92, minimumWidth: 64, maximumWidth: 160, widthOptionKey: "standings.column.interval-width"),
-            OverlayContentColumnDefinition(id: standingsPitColumnId, label: "PIT", dataKey: dataPit, defaultEnabled: true, defaultOrder: 6, defaultWidth: 46, minimumWidth: 34, maximumWidth: 90, widthOptionKey: "standings.column.pit-width")
+            OverlayContentColumnDefinition(id: standingsClassPositionColumnId, label: "CLS", dataKey: dataClassPosition, defaultEnabled: true, defaultOrder: 1, defaultWidth: 35, minimumWidth: 30, maximumWidth: 110, widthOptionKey: "standings.column.cls-width"),
+            OverlayContentColumnDefinition(id: standingsCarNumberColumnId, label: "CAR", dataKey: dataCarNumber, defaultEnabled: true, defaultOrder: 2, defaultWidth: 50, minimumWidth: 42, maximumWidth: 130, widthOptionKey: "standings.column.car-width"),
+            OverlayContentColumnDefinition(id: standingsDriverColumnId, label: "Driver", dataKey: dataDriver, defaultEnabled: true, defaultOrder: 3, defaultWidth: 250, minimumWidth: 180, maximumWidth: 520, widthOptionKey: "standings.column.driver-width", alignment: .left),
+            OverlayContentColumnDefinition(id: standingsGapColumnId, label: "GAP", dataKey: dataGap, defaultEnabled: true, defaultOrder: 4, defaultWidth: 60, minimumWidth: 50, maximumWidth: 160, widthOptionKey: "standings.column.gap-width"),
+            OverlayContentColumnDefinition(id: standingsIntervalColumnId, label: "INT", dataKey: dataInterval, defaultEnabled: true, defaultOrder: 5, defaultWidth: 60, minimumWidth: 50, maximumWidth: 160, widthOptionKey: "standings.column.interval-width"),
+            OverlayContentColumnDefinition(id: standingsPitColumnId, label: "PIT", dataKey: dataPit, defaultEnabled: true, defaultOrder: 6, defaultWidth: 30, minimumWidth: 24, maximumWidth: 90, widthOptionKey: "standings.column.pit-width")
         ],
         browserWidthPadding: 42,
         browserMinimumHeight: 520,
@@ -120,10 +120,10 @@ enum OverlayContentColumns {
     static let relative = OverlayContentDefinition(
         overlayId: RelativeOverlayDefinition.definition.id,
         columns: [
-            OverlayContentColumnDefinition(id: relativePositionColumnId, label: "Pos", dataKey: dataRelativePosition, defaultEnabled: true, defaultOrder: 1, defaultWidth: 58, minimumWidth: 44, maximumWidth: 100),
-            OverlayContentColumnDefinition(id: relativeDriverColumnId, label: "Driver", dataKey: dataDriver, defaultEnabled: true, defaultOrder: 2, defaultWidth: 300, minimumWidth: 180, maximumWidth: 520, alignment: .left),
-            OverlayContentColumnDefinition(id: relativeGapColumnId, label: "Gap", dataKey: dataGap, defaultEnabled: true, defaultOrder: 3, defaultWidth: 92, minimumWidth: 64, maximumWidth: 160),
-            OverlayContentColumnDefinition(id: relativePitColumnId, label: "Pit", dataKey: dataPit, defaultEnabled: false, defaultOrder: 4, defaultWidth: 46, minimumWidth: 34, maximumWidth: 90)
+            OverlayContentColumnDefinition(id: relativePositionColumnId, label: "Pos", dataKey: dataRelativePosition, defaultEnabled: true, defaultOrder: 1, defaultWidth: 38, minimumWidth: 32, maximumWidth: 100),
+            OverlayContentColumnDefinition(id: relativeDriverColumnId, label: "Driver", dataKey: dataDriver, defaultEnabled: true, defaultOrder: 2, defaultWidth: 250, minimumWidth: 180, maximumWidth: 520, alignment: .left),
+            OverlayContentColumnDefinition(id: relativeGapColumnId, label: "Gap", dataKey: dataGap, defaultEnabled: true, defaultOrder: 3, defaultWidth: 70, minimumWidth: 60, maximumWidth: 160),
+            OverlayContentColumnDefinition(id: relativePitColumnId, label: "Pit", dataKey: dataPit, defaultEnabled: false, defaultOrder: 4, defaultWidth: 30, minimumWidth: 24, maximumWidth: 90)
         ],
         browserWidthPadding: 42,
         browserMinimumHeight: 360,
@@ -240,7 +240,8 @@ enum OverlayContentColumns {
                         settings.options[column.widthKey(overlayId: definition.overlayId)],
                         defaultValue: column.defaultWidth,
                         minimum: column.minimumWidth,
-                        maximum: column.maximumWidth
+                        maximum: column.maximumWidth,
+                        clamp: !debugWidthEditorEnabled
                     )
                 )
             }
@@ -266,15 +267,16 @@ enum OverlayContentColumns {
         overlay definition: OverlayDefinition,
         settings: OverlaySettings
     ) -> NSSize {
-        let baseWidth = settings.width > 0 ? settings.width : definition.defaultSize.width
         let baseHeight = settings.height > 0 ? settings.height : definition.defaultSize.height
-        guard let content = self.definition(for: definition.id) else {
+        guard let content = self.definition(for: definition.id),
+              !content.columns.isEmpty else {
+            let baseWidth = settings.width > 0 ? settings.width : definition.defaultSize.width
             return NSSize(width: baseWidth, height: baseHeight)
         }
 
         let contentWidth = visibleColumnStates(for: content, settings: settings).reduce(0) { $0 + $1.width }
         return NSSize(
-            width: max(baseWidth, CGFloat(contentWidth + content.browserWidthPadding)),
+            width: max(1, CGFloat(contentWidth + content.browserWidthPadding)),
             height: max(baseHeight, CGFloat(content.browserMinimumHeight))
         )
     }
@@ -304,11 +306,23 @@ enum OverlayContentColumns {
         return (value as NSString).boolValue
     }
 
-    private static func intOption(_ value: String?, defaultValue: Int, minimum: Int, maximum: Int) -> Int {
+    private static func intOption(_ value: String?, defaultValue: Int, minimum: Int, maximum: Int, clamp: Bool = true) -> Int {
         guard let value, let parsed = Int(value.trimmingCharacters(in: .whitespacesAndNewlines)) else {
             return min(max(defaultValue, minimum), maximum)
         }
 
+        if !clamp {
+            return max(1, parsed)
+        }
+
         return min(max(parsed, minimum), maximum)
+    }
+
+    private static var debugWidthEditorEnabled: Bool {
+        guard let value = ProcessInfo.processInfo.environment["TMR_MAC_COLUMN_WIDTH_DEBUG"]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() else {
+            return false
+        }
+
+        return ["true", "1", "yes", "on"].contains(value)
     }
 }

@@ -94,10 +94,6 @@ internal static class InputStateBrowserSource
       const style = document.createElement('style');
       style.id = 'input-state-browser-style';
       style.textContent = `
-        body.input-state-page .header {
-          display: none;
-        }
-
         body.input-state-page .overlay {
           width: calc(100vw - 16px);
           height: calc(100vh - 16px);
@@ -107,14 +103,14 @@ internal static class InputStateBrowserSource
 
         body.input-state-page .content {
           width: 100%;
-          height: 100%;
-          padding: 10px;
+          height: calc(100% - 38px);
+          padding: 12px 16px 14px;
         }
 
         .input-layout {
           display: grid;
           grid-template-columns: minmax(220px, 1fr) minmax(126px, 30%);
-          gap: 10px;
+          gap: 12px;
           width: 100%;
           height: 100%;
           min-width: 0;
@@ -128,8 +124,9 @@ internal static class InputStateBrowserSource
         .input-rail {
           min-width: 0;
           min-height: 0;
-          border: 1px solid rgba(255, 255, 255, 0.16);
-          background: rgba(255, 255, 255, 0.045);
+          border: 1px solid var(--tmr-border-muted);
+          border-radius: 5px;
+          background: var(--tmr-surface-inset);
         }
 
         .input-graph {
@@ -144,6 +141,7 @@ internal static class InputStateBrowserSource
           gap: 8px;
           padding: 8px;
           overflow: hidden;
+          background: var(--tmr-surface-raised);
         }
 
         .input-numbers {
@@ -156,14 +154,18 @@ internal static class InputStateBrowserSource
           display: grid;
           gap: 2px;
           min-width: 0;
+          padding: 4px 5px;
+          border: 1px solid var(--tmr-border-muted);
+          border-radius: 4px;
+          background: var(--tmr-surface-inset);
         }
 
         .input-number .label,
         .input-wheel-label,
         .input-pedal-label {
-          color: #91a3af;
+          color: var(--tmr-text-muted);
           font-size: 9px;
-          font-weight: 700;
+          font-weight: 800;
           text-transform: uppercase;
           white-space: nowrap;
         }
@@ -171,10 +173,10 @@ internal static class InputStateBrowserSource
         .input-number .value,
         .input-wheel-value,
         .input-pedal-value {
-          color: #f4f9fb;
+          color: var(--tmr-text);
           font-family: Consolas, "Courier New", monospace;
           font-size: 12px;
-          font-weight: 700;
+          font-weight: 800;
           white-space: nowrap;
         }
 
@@ -212,7 +214,8 @@ internal static class InputStateBrowserSource
           position: relative;
           width: 14px;
           min-height: 18px;
-          background: rgba(255, 255, 255, 0.12);
+          border-radius: 7px;
+          background: var(--tmr-surface-inset);
           overflow: hidden;
         }
 
@@ -253,9 +256,9 @@ internal static class InputStateBrowserSource
         inputSettings.showSpeed ? railNumber('Speed', formatSpeed(inputs.speedMetersPerSecond)) : ''
       ].filter(Boolean).join('');
       const pedals = [
-        inputSettings.showThrottle ? railPedal('T', inputs.throttle, '#4dd77a') : '',
-        inputSettings.showBrake ? railPedal(brakeAbsActive ? 'ABS' : 'B', inputs.brake, brakeAbsActive ? '#ffd166' : '#ff6b63') : '',
-        inputSettings.showClutch ? railPedal('C', inputs.clutch, '#62c7ff') : ''
+        inputSettings.showThrottle ? railPedal('T', inputs.throttle, 'var(--tmr-green)') : '',
+        inputSettings.showBrake ? railPedal(brakeAbsActive ? 'ABS' : 'B', inputs.brake, brakeAbsActive ? 'var(--tmr-amber)' : 'var(--tmr-error)') : '',
+        inputSettings.showClutch ? railPedal('C', inputs.clutch, 'var(--tmr-cyan)') : ''
       ].filter(Boolean).join('');
       return `
         <div class="input-rail">
@@ -290,8 +293,8 @@ internal static class InputStateBrowserSource
           <div class="input-wheel-label">Wheel</div>
           <div class="input-wheel-value">${Number.isFinite(angleDegrees) ? `${angleDegrees.toFixed(0)} deg` : '--'}</div>
           <svg viewBox="0 0 64 64" aria-hidden="true">
-            <circle cx="32" cy="32" r="25" fill="none" stroke="#d9e4eb" stroke-width="4"></circle>
-            <g transform="rotate(${escapeAttribute(angle * 2.1)} 32 32)" stroke="#62c7ff" stroke-width="3" stroke-linecap="round">
+            <circle cx="32" cy="32" r="25" fill="none" stroke="var(--tmr-text-secondary)" stroke-width="4"></circle>
+            <g transform="rotate(${escapeAttribute(angle * 2.1)} 32 32)" stroke="var(--tmr-cyan)" stroke-width="3" stroke-linecap="round">
               <line x1="32" y1="32" x2="32" y2="12"></line>
               <line x1="32" y1="32" x2="49" y2="43"></line>
               <line x1="32" y1="32" x2="15" y2="43"></line>
@@ -315,7 +318,7 @@ internal static class InputStateBrowserSource
       const ctx = canvas.getContext('2d');
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, width, height);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+      ctx.strokeStyle = 'rgba(140, 174, 212, 0.18)';
       ctx.lineWidth = 1;
       for (let step = 1; step < 4; step += 1) {
         const y = Math.round(height * step / 4) + 0.5;
@@ -325,14 +328,14 @@ internal static class InputStateBrowserSource
         ctx.stroke();
       }
 
-      drawTraceLine(ctx, width, height, 'throttle', '#4dd77a', 2);
-      drawTraceLine(ctx, width, height, 'brake', '#ff6b63', 2);
-      drawTraceLine(ctx, width, height, 'clutch', '#62c7ff', 2);
+      drawTraceLine(ctx, width, height, 'throttle', themeColor('--tmr-green', '#62ff9f'), 2);
+      drawTraceLine(ctx, width, height, 'brake', themeColor('--tmr-error', '#ff6274'), 2);
+      drawTraceLine(ctx, width, height, 'clutch', themeColor('--tmr-cyan', '#00e8ff'), 2);
       drawAbsSegments(ctx, width, height);
       drawInputLegend(ctx, brakeAbsActive);
 
       if (inputTrace.length < 2 && !inputs.hasData) {
-        ctx.fillStyle = '#98a8b3';
+        ctx.fillStyle = themeColor('--tmr-text-muted', '#8caed4');
         ctx.font = '700 13px "Segoe UI", Arial, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -367,7 +370,7 @@ internal static class InputStateBrowserSource
         return;
       }
 
-      ctx.strokeStyle = '#ffd166';
+      ctx.strokeStyle = themeColor('--tmr-amber', '#ffd15b');
       ctx.lineWidth = 3;
       ctx.lineCap = 'round';
       for (let index = 1; index < inputTrace.length; index += 1) {
@@ -384,9 +387,9 @@ internal static class InputStateBrowserSource
 
     function drawInputLegend(ctx, brakeAbsActive) {
       const items = [
-        ['Throttle', '#4dd77a'],
-        [brakeAbsActive ? 'Brake ABS' : 'Brake', brakeAbsActive ? '#ffd166' : '#ff6b63'],
-        ['Clutch', '#62c7ff']
+        ['Throttle', themeColor('--tmr-green', '#62ff9f')],
+        [brakeAbsActive ? 'Brake ABS' : 'Brake', brakeAbsActive ? themeColor('--tmr-amber', '#ffd15b') : themeColor('--tmr-error', '#ff6274')],
+        ['Clutch', themeColor('--tmr-cyan', '#00e8ff')]
       ];
       let x = 8;
       ctx.font = '700 11px "Segoe UI", Arial, sans-serif';

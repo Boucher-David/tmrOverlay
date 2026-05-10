@@ -23,6 +23,11 @@ internal sealed class StandingsForm : PersistentOverlayForm
         OverlayTheme.Layout.OverlayDenseCellVerticalPadding,
         OverlayTheme.Layout.OverlayDenseCellHorizontalPadding,
         OverlayTheme.Layout.OverlayDenseCellVerticalPadding);
+    private static readonly Padding StandingsDriverCellPadding = new(
+        OverlayTheme.Layout.OverlayDenseCellHorizontalPadding + 8,
+        OverlayTheme.Layout.OverlayDenseCellVerticalPadding,
+        OverlayTheme.Layout.OverlayDenseCellHorizontalPadding,
+        OverlayTheme.Layout.OverlayDenseCellVerticalPadding);
 
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly ILogger<StandingsForm> _logger;
@@ -378,6 +383,7 @@ internal sealed class StandingsForm : PersistentOverlayForm
             if (columnState is not null)
             {
                 changed |= ApplyColumnAlignment(_headerLabels[column], columnState);
+                changed |= ApplyColumnPadding(_headerLabels[column], columnState);
             }
 
             for (var row = 0; row < MaximumRows; row++)
@@ -386,6 +392,7 @@ internal sealed class StandingsForm : PersistentOverlayForm
                 if (columnState is not null)
                 {
                     changed |= ApplyColumnAlignment(_rowLabels[row, column], columnState);
+                    changed |= ApplyColumnPadding(_rowLabels[row, column], columnState);
                 }
             }
         }
@@ -407,6 +414,20 @@ internal sealed class StandingsForm : PersistentOverlayForm
         }
 
         label.TextAlign = alignment;
+        return true;
+    }
+
+    private static bool ApplyColumnPadding(Label label, OverlayContentColumnState column)
+    {
+        var padding = column.DataKey == OverlayContentColumnSettings.DataDriver
+            ? StandingsDriverCellPadding
+            : StandingsCellPadding;
+        if (label.Padding == padding)
+        {
+            return false;
+        }
+
+        label.Padding = padding;
         return true;
     }
 

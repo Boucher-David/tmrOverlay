@@ -15,6 +15,7 @@ final class MockTelemetryCaptureService {
     private var timer: DispatchSourceTimer?
     private var captureSession: MockCaptureSession?
     private var liveSession: MockLiveAnalysisSession?
+    private var replaySession: RaceStartCaptureReplaySession?
     private var stopped = false
 
     init(
@@ -77,6 +78,7 @@ final class MockTelemetryCaptureService {
             finalizeActiveCollection()
             captureSession = nil
             liveSession = nil
+            replaySession = nil
             state.markCaptureStopped()
             state.markDisconnected()
             liveTelemetryStore.markDisconnected()
@@ -86,8 +88,33 @@ final class MockTelemetryCaptureService {
     }
 
     private func startCollection() {
-        guard !stopped, captureSession == nil, liveSession == nil else {
+        guard !stopped, captureSession == nil, liveSession == nil, replaySession == nil else {
             return
+        }
+
+        if let configuration = RaceStartCaptureReplaySession.Configuration.fromEnvironment() {
+            do {
+                let session = try RaceStartCaptureReplaySession(configuration: configuration)
+                replaySession = session
+                state.markCollectionStarted(startedAtUtc: session.startedAtUtc)
+                liveTelemetryStore.markCollectionStarted(sourceId: session.sourceId, startedAtUtc: session.startedAtUtc)
+                liveOverlayDiagnosticsRecorder.startCollection(sourceId: session.sourceId, startedAtUtc: session.startedAtUtc)
+                events.record("telemetry_replay_started", properties: [
+                    "sourceId": session.sourceId,
+                    "captureDirectory": session.captureDirectory.path,
+                    "source": "mac_capture_replay"
+                ])
+                logger.info("Started race-start capture replay \(session.sourceId) from \(session.captureDirectory.path).")
+                startTimer()
+                return
+            } catch {
+                state.recordError("Failed to start race-start replay: \(error)")
+                events.record("telemetry_replay_start_failed", properties: [
+                    "error": "\(type(of: error))",
+                    "source": "mac_capture_replay"
+                ])
+                logger.error("Failed to start race-start replay: \(error)")
+            }
         }
 
         if !rawCaptureEnabled {
@@ -150,6 +177,18 @@ final class MockTelemetryCaptureService {
         if let liveSession {
             let frame = liveSession.recordNextFrame()
             writeRawCaptureFrameIfActive(capturedAtUtc: frame.capturedAtUtc)
+            liveTelemetryStore.recordFrame(frame)
+            liveOverlayDiagnosticsRecorder.record(liveTelemetryStore.snapshot())
+            state.recordFrame(capturedAtUtc: frame.capturedAtUtc)
+            return
+        }
+
+        if let replaySession {
+            guard let frame = replaySession.recordNextFrame() else {
+                state.recordDroppedFrame()
+                return
+            }
+
             liveTelemetryStore.recordFrame(frame)
             liveOverlayDiagnosticsRecorder.record(liveTelemetryStore.snapshot())
             state.recordFrame(capturedAtUtc: frame.capturedAtUtc)
@@ -230,6 +269,12 @@ final class MockTelemetryCaptureService {
             }
             liveOverlayDiagnosticsRecorder.completeCollection()
             logger.info("Finalized mock live telemetry analysis \(liveSession.sourceId).")
+        }
+
+        if let replaySession {
+            finalizedCollection = true
+            liveOverlayDiagnosticsRecorder.completeCollection()
+            logger.info("Finalized race-start capture replay \(replaySession.sourceId).")
         }
 
         if let captureSession {

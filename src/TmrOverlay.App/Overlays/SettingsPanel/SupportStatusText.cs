@@ -17,6 +17,31 @@ internal static class SupportStatusText
         return AppDiagnosticsStatusModel.From(snapshot).SessionStateText;
     }
 
+    public static string SessionStateCompactText(TelemetryCaptureStatusSnapshot snapshot)
+    {
+        if (snapshot.RawCaptureActive)
+        {
+            return $"Diagnostics active ({FormatCount(snapshot.WrittenFrameCount)} frames)";
+        }
+
+        if (snapshot.RawCaptureEnabled)
+        {
+            return "Diagnostics armed";
+        }
+
+        if (snapshot.IsCapturing)
+        {
+            return $"Live telemetry ({FormatCount(snapshot.FrameCount)} frames)";
+        }
+
+        if (snapshot.IsConnected)
+        {
+            return "Connected, waiting";
+        }
+
+        return "Not connected";
+    }
+
     public static string CurrentIssueText(TelemetryCaptureStatusSnapshot snapshot)
     {
         return AppDiagnosticsStatusModel.From(snapshot).CurrentIssueText;
@@ -56,6 +81,16 @@ internal static class SupportStatusText
         return version.EndsWith(".0", StringComparison.Ordinal) && version.Count(character => character == '.') == 3
             ? version[..^2]
             : version;
+    }
+
+    private static string FormatCount(long value)
+    {
+        return value switch
+        {
+            >= 1_000_000 => $"{value / 1_000_000d:0.#}M",
+            >= 10_000 => $"{value / 1_000d:0.#}k",
+            _ => value.ToString()
+        };
     }
 
     private static SupportStatusLevel ToSupportStatusLevel(AppDiagnosticsSeverity severity)

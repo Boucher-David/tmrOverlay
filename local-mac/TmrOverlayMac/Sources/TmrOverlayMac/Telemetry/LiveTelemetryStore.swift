@@ -118,6 +118,10 @@ struct LiveProximitySnapshot {
     )
 
     static func from(_ frame: MockLiveTelemetryFrame) -> LiveProximitySnapshot {
+        if !frame.capturedCars.isEmpty, let replaySnapshot = fromCapturedReplay(frame) {
+            return replaySnapshot
+        }
+
         guard frame.isOnTrack,
               !frame.isInGarage,
               !frame.onPitRoad,
@@ -206,6 +210,103 @@ struct LiveProximitySnapshot {
         )
     }
 
+    private static func fromCapturedReplay(_ frame: MockLiveTelemetryFrame) -> LiveProximitySnapshot? {
+        guard frame.isOnTrack,
+              !frame.isInGarage,
+              let reference = frame.capturedReferenceCar,
+              let referenceProgress = reference.trackProgress,
+              frame.focusCarIdx == nil || frame.focusCarIdx == frame.playerCarIdx else {
+            return nil
+        }
+
+        let lapSeconds = frame.estimatedLapSeconds.isFinite && frame.estimatedLapSeconds > 0
+            ? frame.estimatedLapSeconds
+            : FourHourRacePreview.medianLapSeconds
+        let cars = frame.capturedCars
+            .filter { $0.carIdx != reference.carIdx && $0.trackProgress != nil }
+            .map { car -> LiveProximityCar in
+                let relativeLaps = normalizedRelativeLaps((car.trackProgress ?? referenceProgress) - referenceProgress)
+                return LiveProximityCar(
+                    carIdx: car.carIdx,
+                    relativeLaps: relativeLaps,
+                    relativeSeconds: relativeLaps * lapSeconds,
+                    relativeMeters: nil,
+                    overallPosition: car.overallPosition,
+                    classPosition: car.classPosition,
+                    carClass: car.carClass,
+                    carClassColorHex: car.carClassColorHex,
+                    onPitRoad: car.onPitRoad,
+                    driverName: car.driverName,
+                    carNumber: car.carNumber,
+                    carClassName: car.carClassName
+                )
+            }
+            .filter {
+                guard let seconds = $0.relativeSeconds, seconds.isFinite else {
+                    return false
+                }
+
+                return abs(seconds) <= max(45, lapSeconds * 0.18)
+            }
+            .sorted { abs($0.relativeLaps) < abs($1.relativeLaps) }
+
+        let approaches = cars
+            .filter {
+                guard let seconds = $0.relativeSeconds, seconds.isFinite else {
+                    return false
+                }
+
+                return reference.carClass != nil
+                    && $0.carClass != nil
+                    && $0.carClass != reference.carClass
+                    && seconds < -closeRadarRangeSeconds
+                    && seconds >= -multiclassWarningRangeSeconds
+            }
+            .map {
+                let seconds = abs($0.relativeSeconds ?? multiclassWarningRangeSeconds)
+                let range = multiclassWarningRangeSeconds - closeRadarRangeSeconds
+                let urgency = 1 - min(max((seconds - closeRadarRangeSeconds) / range, 0), 1)
+                return LiveMulticlassApproach(
+                    carIdx: $0.carIdx,
+                    carClass: $0.carClass,
+                    relativeLaps: $0.relativeLaps,
+                    relativeSeconds: $0.relativeSeconds,
+                    closingRateSecondsPerSecond: nil,
+                    urgency: urgency
+                )
+            }
+
+        return LiveProximitySnapshot(
+            hasData: true,
+            carLeftRight: frame.carLeftRight,
+            referenceCarClass: reference.carClass,
+            sideStatus: sideStatus(frame.carLeftRight),
+            hasCarLeft: hasCarLeft(frame.carLeftRight),
+            hasCarRight: hasCarRight(frame.carLeftRight),
+            nearbyCars: cars,
+            nearestAhead: cars.filter { $0.relativeLaps > 0 }.min { $0.relativeLaps < $1.relativeLaps },
+            nearestBehind: cars.filter { $0.relativeLaps < 0 }.max { $0.relativeLaps < $1.relativeLaps },
+            multiclassApproaches: approaches,
+            strongestMulticlassApproach: approaches.max { $0.urgency < $1.urgency },
+            sideOverlapWindowSeconds: 0.22
+        )
+    }
+
+    private static func normalizedRelativeLaps(_ raw: Double) -> Double {
+        guard raw.isFinite else {
+            return 0
+        }
+
+        var value = raw
+        while value > 0.5 {
+            value -= 1
+        }
+        while value < -0.5 {
+            value += 1
+        }
+        return value
+    }
+
     private static func sideStatus(_ carLeftRight: Int?) -> String {
         switch carLeftRight {
         case 2:
@@ -246,6 +347,9 @@ struct LiveProximityCar {
     var carClass: Int?
     var carClassColorHex: String?
     var onPitRoad: Bool?
+    var driverName: String?
+    var carNumber: String?
+    var carClassName: String?
 
     init(
         carIdx: Int,
@@ -256,7 +360,10 @@ struct LiveProximityCar {
         classPosition: Int?,
         carClass: Int?,
         carClassColorHex: String? = nil,
-        onPitRoad: Bool?
+        onPitRoad: Bool?,
+        driverName: String? = nil,
+        carNumber: String? = nil,
+        carClassName: String? = nil
     ) {
         self.carIdx = carIdx
         self.relativeLaps = relativeLaps
@@ -267,6 +374,9 @@ struct LiveProximityCar {
         self.carClass = carClass
         self.carClassColorHex = carClassColorHex
         self.onPitRoad = onPitRoad
+        self.driverName = driverName
+        self.carNumber = carNumber
+        self.carClassName = carClassName
     }
 }
 
@@ -379,6 +489,10 @@ struct LiveLeaderGapSnapshot {
     )
 
     static func from(_ frame: MockLiveTelemetryFrame) -> LiveLeaderGapSnapshot {
+        if !frame.capturedCars.isEmpty, let replaySnapshot = fromCapturedReplay(frame) {
+            return replaySnapshot
+        }
+
         let overall = makeGap(
             position: frame.teamPosition,
             leaderCarIdx: 1,
@@ -475,6 +589,117 @@ struct LiveLeaderGapSnapshot {
             )
         }
     }
+
+    private static func fromCapturedReplay(_ frame: MockLiveTelemetryFrame) -> LiveLeaderGapSnapshot? {
+        guard let reference = frame.capturedReferenceCar else {
+            return nil
+        }
+
+        let rankedCars = frame.capturedCars.filter {
+            $0.overallPosition != nil || $0.classPosition != nil || $0.trackProgress != nil
+        }
+        guard !rankedCars.isEmpty else {
+            return nil
+        }
+
+        let sameClassCars = rankedCars
+            .filter { reference.carClass == nil || $0.carClass == reference.carClass }
+            .sorted(by: classSort)
+        guard !sameClassCars.isEmpty else {
+            return nil
+        }
+
+        let classLeader = sameClassCars.first
+        let overallLeader = rankedCars.sorted(by: overallSort).first
+        let referenceClassGap = gapSeconds(from: classLeader, to: reference, lapSeconds: frame.estimatedLapSeconds)
+        let referenceOverallGap = gapSeconds(from: overallLeader, to: reference, lapSeconds: frame.estimatedLapSeconds)
+        let classCars = sameClassCars.map { car -> LiveClassGapCar in
+            let gap = gapSeconds(from: classLeader, to: car, lapSeconds: frame.estimatedLapSeconds)
+            return LiveClassGapCar(
+                carIdx: car.carIdx,
+                isReferenceCar: car.carIdx == reference.carIdx,
+                isClassLeader: classLeader?.carIdx == car.carIdx,
+                classPosition: car.classPosition,
+                gapSecondsToClassLeader: gap,
+                gapLapsToClassLeader: classLeader?.carIdx == car.carIdx ? 0 : nil,
+                deltaSecondsToReference: gap.map { $0 - (referenceClassGap ?? 0) },
+                carClassColorHex: car.carClassColorHex,
+                driverName: car.driverName,
+                teamName: car.teamName,
+                carNumber: car.carNumber,
+                carClass: car.carClass,
+                carClassName: car.carClassName,
+                onPitRoad: car.onPitRoad
+            )
+        }
+
+        return LiveLeaderGapSnapshot(
+            hasData: true,
+            referenceOverallPosition: reference.overallPosition,
+            referenceClassPosition: reference.classPosition,
+            overallLeaderCarIdx: overallLeader?.carIdx,
+            classLeaderCarIdx: classLeader?.carIdx,
+            overallLeaderGap: LiveGapValue(
+                hasData: referenceOverallGap != nil || reference.overallPosition == 1,
+                isLeader: overallLeader?.carIdx == reference.carIdx || reference.overallPosition == 1,
+                seconds: referenceOverallGap,
+                laps: nil,
+                source: "capture-replay"
+            ),
+            classLeaderGap: LiveGapValue(
+                hasData: referenceClassGap != nil || classLeader?.carIdx == reference.carIdx || reference.classPosition == 1,
+                isLeader: classLeader?.carIdx == reference.carIdx || reference.classPosition == 1,
+                seconds: referenceClassGap,
+                laps: nil,
+                source: "capture-replay"
+            ),
+            classCars: classCars
+        )
+    }
+
+    private static func classSort(_ left: CapturedReplayCar, _ right: CapturedReplayCar) -> Bool {
+        let leftPosition = left.classPosition ?? Int.max
+        let rightPosition = right.classPosition ?? Int.max
+        if leftPosition != rightPosition {
+            return leftPosition < rightPosition
+        }
+
+        return overallSort(left, right)
+    }
+
+    private static func overallSort(_ left: CapturedReplayCar, _ right: CapturedReplayCar) -> Bool {
+        let leftPosition = left.overallPosition ?? Int.max
+        let rightPosition = right.overallPosition ?? Int.max
+        if leftPosition != rightPosition {
+            return leftPosition < rightPosition
+        }
+
+        let leftProgress = left.trackProgress ?? -Double.greatestFiniteMagnitude
+        let rightProgress = right.trackProgress ?? -Double.greatestFiniteMagnitude
+        if leftProgress != rightProgress {
+            return leftProgress > rightProgress
+        }
+
+        return left.carIdx < right.carIdx
+    }
+
+    private static func gapSeconds(
+        from leader: CapturedReplayCar?,
+        to car: CapturedReplayCar,
+        lapSeconds: Double
+    ) -> Double? {
+        guard let leader,
+              leader.carIdx != car.carIdx,
+              let leaderProgress = leader.trackProgress,
+              let carProgress = car.trackProgress else {
+            return leader?.carIdx == car.carIdx ? 0 : nil
+        }
+
+        let effectiveLapSeconds = lapSeconds.isFinite && lapSeconds > 0
+            ? lapSeconds
+            : FourHourRacePreview.medianLapSeconds
+        return max(0, (leaderProgress - carProgress) * effectiveLapSeconds)
+    }
 }
 
 private struct ClassCarDraft {
@@ -508,6 +733,58 @@ struct LiveClassGapCar {
     var gapLapsToClassLeader: Double?
     var deltaSecondsToReference: Double?
     var carClassColorHex: String?
+    var driverName: String? = nil
+    var teamName: String? = nil
+    var carNumber: String? = nil
+    var carClass: Int? = nil
+    var carClassName: String? = nil
+    var onPitRoad: Bool? = nil
+}
+
+struct CapturedReplayCar {
+    var carIdx: Int
+    var carNumber: String?
+    var driverName: String?
+    var teamName: String?
+    var carClass: Int?
+    var carClassName: String?
+    var carClassColorHex: String?
+    var overallPosition: Int?
+    var classPosition: Int?
+    var lapCompleted: Int?
+    var lapDistPct: Double?
+    var f2TimeSeconds: Double?
+    var estTimeSeconds: Double?
+    var onPitRoad: Bool
+    var trackSurface: Int?
+
+    var trackProgress: Double? {
+        guard let lapDistPct,
+              lapDistPct.isFinite,
+              lapDistPct >= 0 else {
+            return nil
+        }
+
+        return Double(max(0, lapCompleted ?? 0)) + min(max(lapDistPct, 0), 1)
+    }
+
+    var displayDriverName: String {
+        if let driverName, !driverName.isEmpty {
+            return driverName
+        }
+        if let teamName, !teamName.isEmpty {
+            return teamName
+        }
+        return MockDriverNames.displayName(for: carIdx)
+    }
+
+    var displayCarNumber: String {
+        guard let carNumber, !carNumber.isEmpty else {
+            return "#\(carIdx)"
+        }
+
+        return carNumber.hasPrefix("#") ? carNumber : "#\(carNumber)"
+    }
 }
 
 struct MockLiveTelemetryFrame {
@@ -548,6 +825,22 @@ struct MockLiveTelemetryFrame {
     var teamDriverName: String
     var teamDriverInitials: String
     var driversSoFar: Int
+    var capturedCars: [CapturedReplayCar] = []
+
+    var capturedReferenceCar: CapturedReplayCar? {
+        let preferredCarIdx = focusCarIdx ?? playerCarIdx
+        if let preferredCarIdx,
+           let car = capturedCars.first(where: { $0.carIdx == preferredCarIdx }) {
+            return car
+        }
+
+        if let playerCarIdx,
+           let car = capturedCars.first(where: { $0.carIdx == playerCarIdx }) {
+            return car
+        }
+
+        return capturedCars.first
+    }
 
     static func mock(
         capturedAtUtc: Date,

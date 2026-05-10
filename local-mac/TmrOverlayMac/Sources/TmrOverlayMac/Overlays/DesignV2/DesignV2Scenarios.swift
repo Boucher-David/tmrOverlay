@@ -9,8 +9,8 @@ extension DesignV2PreviewScenario {
             DesignV2Badge(title: "GT3", evidence: .measured)
         ],
         metrics: [
-            DesignV2Metric(title: "Position", value: "P12", detail: "overall timing row", evidence: .live),
-            DesignV2Metric(title: "Class", value: "P7", detail: "class timing row", evidence: .measured),
+            DesignV2Metric(title: "Position", value: "12", detail: "overall timing row", evidence: .live),
+            DesignV2Metric(title: "Class", value: "7", detail: "class timing row", evidence: .measured),
             DesignV2Metric(title: "Pit", value: "clear", detail: "not on pit road", evidence: .live)
         ],
         rows: [],
@@ -19,11 +19,11 @@ extension DesignV2PreviewScenario {
         table: DesignV2Table(
             columns: ["POS", "CLS", "#", "DRIVER", "GAP", "INT", "PIT"],
             rows: [
-                ["10", "5", "71", "M. Keller", "+1L", "+8.4", ""],
-                ["11", "6", "24", "A. Rowan", "+1L", "+3.1", ""],
-                ["12", "7", "44", "TMR", "+1L", "--", ""],
-                ["13", "8", "18", "L. Nordin", "+1L", "-2.7", "IN"],
-                ["14", "9", "52", "R. Singh", "+1L", "-9.8", ""]
+                ["10", "5", "71", "Maya Keller", "+1L", "+8.4", ""],
+                ["11", "6", "24", "Avery Rowan", "+1L", "+3.1", ""],
+                ["12", "7", "44", "Tech Mates Racing", "+1L", "--", ""],
+                ["13", "8", "18", "Luca Nordin", "+1L", "-2.7", "IN"],
+                ["14", "9", "52", "Ravi Singh", "+1L", "-9.8", ""]
             ],
             highlightedRowIndex: 2
         )
@@ -47,11 +47,11 @@ extension DesignV2PreviewScenario {
         table: DesignV2Table(
             columns: ["POS", "DRIVER", "GAP"],
             rows: [
-                ["C5", "#24 A. Rowan", "-3.100"],
-                ["C6", "#71 M. Keller", "-1.400"],
-                ["C7", "#44 TMR", "0.000"],
-                ["C8", "#18 L. Nordin", "+2.700"],
-                ["C9", "#63 S. Blake", "+5.800"]
+                ["5", "#24 Avery Rowan", "-3.100"],
+                ["6", "#71 Maya Keller", "-1.400"],
+                ["7", "#44 Tech Mates Racing", "0.000"],
+                ["8", "#18 Luca Nordin", "+2.700"],
+                ["9", "#63 Sofia Blake", "+5.800"]
             ],
             highlightedRowIndex: 2
         )

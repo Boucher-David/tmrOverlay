@@ -208,7 +208,7 @@ internal static class SessionWeatherOverlayViewModel
     private static string FormatSky(LiveWeatherModel weather)
     {
         string? precipitation = weather.PrecipitationPercent is { } value
-            ? $"rain {value.ToString("0", CultureInfo.InvariantCulture)}%"
+            ? $"rain:{value.ToString("0", CultureInfo.InvariantCulture)}%"
             : null;
         return SimpleTelemetryOverlayViewModel.JoinAvailable(Trim(weather.SkiesLabel), Trim(weather.WeatherType), precipitation);
     }

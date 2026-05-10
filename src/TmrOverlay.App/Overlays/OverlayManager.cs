@@ -2,6 +2,7 @@ using TmrOverlay.Core.Overlays;
 using TmrOverlay.App.Overlays.Abstractions;
 using TmrOverlay.App.Overlays.CarRadar;
 using TmrOverlay.App.Overlays.Content;
+using TmrOverlay.App.Overlays.DesignV2;
 using TmrOverlay.App.Overlays.Flags;
 using TmrOverlay.App.Overlays.FuelCalculator;
 using TmrOverlay.App.Overlays.GarageCover;
@@ -245,148 +246,241 @@ internal sealed class OverlayManager : IDisposable
     [
         new OverlayRegistration(
             StandingsOverlayDefinition.Definition,
-            settings => new StandingsForm(
-                _liveTelemetrySource,
-                _standingsLogger,
-                _performanceState,
+            settings => CreateLiveOverlayForm(
+                DesignV2LiveOverlayKind.Standings,
+                StandingsOverlayDefinition.Definition,
                 settings,
-                SelectedFontFamily,
-                SaveSettings),
+                _standingsLogger,
+                () => new StandingsForm(
+                    _liveTelemetrySource,
+                    _standingsLogger,
+                    _performanceState,
+                    settings,
+                    SelectedFontFamily,
+                    SaveSettings)),
             24,
             190),
         new OverlayRegistration(
             FuelCalculatorOverlayDefinition.Definition,
-            settings => new FuelCalculatorForm(
-                _liveTelemetrySource,
-                _historyQueryService,
-                _performanceState,
+            settings => CreateLiveOverlayForm(
+                DesignV2LiveOverlayKind.FuelCalculator,
+                FuelCalculatorOverlayDefinition.Definition,
                 settings,
-                SelectedFontFamily,
-                SelectedUnitSystem,
-                SaveSettings),
+                _simpleTelemetryLogger,
+                () => new FuelCalculatorForm(
+                    _liveTelemetrySource,
+                    _historyQueryService,
+                    _performanceState,
+                    settings,
+                    SelectedFontFamily,
+                    SelectedUnitSystem,
+                    SaveSettings)),
             24,
             550),
         new OverlayRegistration(
             RelativeOverlayDefinition.Definition,
-            settings => new RelativeForm(
-                _liveTelemetrySource,
-                _relativeLogger,
-                _performanceState,
+            settings => CreateLiveOverlayForm(
+                DesignV2LiveOverlayKind.Relative,
+                RelativeOverlayDefinition.Definition,
                 settings,
-                SelectedFontFamily,
-                SaveSettings),
+                _relativeLogger,
+                () => new RelativeForm(
+                    _liveTelemetrySource,
+                    _relativeLogger,
+                    _performanceState,
+                    settings,
+                    SelectedFontFamily,
+                    SaveSettings)),
             650,
             24),
         new OverlayRegistration(
             TrackMapOverlayDefinition.Definition,
-            settings => new TrackMapForm(
-                _liveTelemetrySource,
-                _trackMapStore,
-                _trackMapLogger,
-                _performanceState,
+            settings => CreateLiveOverlayForm(
+                DesignV2LiveOverlayKind.TrackMap,
+                TrackMapOverlayDefinition.Definition,
                 settings,
-                SelectedFontFamily,
-                SaveSettings),
+                _trackMapLogger,
+                () => new TrackMapForm(
+                    _liveTelemetrySource,
+                    _trackMapStore,
+                    _trackMapLogger,
+                    _performanceState,
+                    settings,
+                    SelectedFontFamily,
+                    SaveSettings)),
             650,
             400),
         new OverlayRegistration(
             StreamChatOverlayDefinition.Definition,
-            settings => new StreamChatForm(
-                _settingsStore,
-                _streamChatLogger,
-                _performanceState,
+            settings => CreateLiveOverlayForm(
+                DesignV2LiveOverlayKind.StreamChat,
+                StreamChatOverlayDefinition.Definition,
                 settings,
-                SelectedFontFamily,
-                SaveSettings),
+                _streamChatLogger,
+                () => new StreamChatForm(
+                    _settingsStore,
+                    _streamChatLogger,
+                    _performanceState,
+                    settings,
+                    SelectedFontFamily,
+                    SaveSettings)),
             1490,
             24),
         new OverlayRegistration(
             FlagsOverlayDefinition.Definition,
-            settings => new FlagsOverlayForm(
-                _liveTelemetrySource,
-                _simpleTelemetryLogger,
-                _performanceState,
+            settings => CreateLiveOverlayForm(
+                DesignV2LiveOverlayKind.Flags,
+                FlagsOverlayDefinition.Definition,
                 settings,
-                SaveSettings),
+                _simpleTelemetryLogger,
+                () => new FlagsOverlayForm(
+                    _liveTelemetrySource,
+                    _simpleTelemetryLogger,
+                    _performanceState,
+                    settings,
+                    SaveSettings)),
             DefaultOverlayLocation(FlagsOverlayDefinition.Definition).X,
             DefaultOverlayLocation(FlagsOverlayDefinition.Definition).Y),
         new OverlayRegistration(
             SessionWeatherOverlayDefinition.Definition,
-            settings => new SimpleTelemetryOverlayForm(
+            settings => CreateLiveOverlayForm(
+                DesignV2LiveOverlayKind.SessionWeather,
                 SessionWeatherOverlayDefinition.Definition,
-                _liveTelemetrySource,
-                _simpleTelemetryLogger,
-                _performanceState,
                 settings,
-                SelectedFontFamily,
-                SelectedUnitSystem,
-                new SimpleTelemetryOverlayMetrics(
-                    AppPerformanceMetricIds.OverlaySessionWeatherRefresh,
-                    AppPerformanceMetricIds.OverlaySessionWeatherSnapshot,
-                    AppPerformanceMetricIds.OverlaySessionWeatherViewModel,
-                    AppPerformanceMetricIds.OverlaySessionWeatherApplyUi,
-                    AppPerformanceMetricIds.OverlaySessionWeatherRows,
-                    AppPerformanceMetricIds.OverlaySessionWeatherPaint),
-                SessionWeatherOverlayViewModel.CreateBuilder(),
-                SaveSettings),
+                _simpleTelemetryLogger,
+                () => new SimpleTelemetryOverlayForm(
+                    SessionWeatherOverlayDefinition.Definition,
+                    _liveTelemetrySource,
+                    _simpleTelemetryLogger,
+                    _performanceState,
+                    settings,
+                    SelectedFontFamily,
+                    SelectedUnitSystem,
+                    new SimpleTelemetryOverlayMetrics(
+                        AppPerformanceMetricIds.OverlaySessionWeatherRefresh,
+                        AppPerformanceMetricIds.OverlaySessionWeatherSnapshot,
+                        AppPerformanceMetricIds.OverlaySessionWeatherViewModel,
+                        AppPerformanceMetricIds.OverlaySessionWeatherApplyUi,
+                        AppPerformanceMetricIds.OverlaySessionWeatherRows,
+                        AppPerformanceMetricIds.OverlaySessionWeatherPaint),
+                    SessionWeatherOverlayViewModel.CreateBuilder(),
+                    SaveSettings)),
             1070,
             24),
         new OverlayRegistration(
             PitServiceOverlayDefinition.Definition,
-            settings => new SimpleTelemetryOverlayForm(
+            settings => CreateLiveOverlayForm(
+                DesignV2LiveOverlayKind.PitService,
                 PitServiceOverlayDefinition.Definition,
-                _liveTelemetrySource,
-                _simpleTelemetryLogger,
-                _performanceState,
                 settings,
-                SelectedFontFamily,
-                SelectedUnitSystem,
-                new SimpleTelemetryOverlayMetrics(
-                    AppPerformanceMetricIds.OverlayPitServiceRefresh,
-                    AppPerformanceMetricIds.OverlayPitServiceSnapshot,
-                    AppPerformanceMetricIds.OverlayPitServiceViewModel,
-                    AppPerformanceMetricIds.OverlayPitServiceApplyUi,
-                    AppPerformanceMetricIds.OverlayPitServiceRows,
-                    AppPerformanceMetricIds.OverlayPitServicePaint),
-                PitServiceOverlayViewModel.CreateBuilder(),
-                SaveSettings),
+                _simpleTelemetryLogger,
+                () => new SimpleTelemetryOverlayForm(
+                    PitServiceOverlayDefinition.Definition,
+                    _liveTelemetrySource,
+                    _simpleTelemetryLogger,
+                    _performanceState,
+                    settings,
+                    SelectedFontFamily,
+                    SelectedUnitSystem,
+                    new SimpleTelemetryOverlayMetrics(
+                        AppPerformanceMetricIds.OverlayPitServiceRefresh,
+                        AppPerformanceMetricIds.OverlayPitServiceSnapshot,
+                        AppPerformanceMetricIds.OverlayPitServiceViewModel,
+                        AppPerformanceMetricIds.OverlayPitServiceApplyUi,
+                        AppPerformanceMetricIds.OverlayPitServiceRows,
+                        AppPerformanceMetricIds.OverlayPitServicePaint),
+                    PitServiceOverlayViewModel.CreateBuilder(),
+                    SaveSettings)),
             1070,
             320),
         new OverlayRegistration(
             InputStateOverlayDefinition.Definition,
-            settings => new InputStateOverlayForm(
-                _liveTelemetrySource,
-                _simpleTelemetryLogger,
-                _performanceState,
+            settings => CreateLiveOverlayForm(
+                DesignV2LiveOverlayKind.InputState,
+                InputStateOverlayDefinition.Definition,
                 settings,
-                SelectedFontFamily,
-                SelectedUnitSystem,
-                SaveSettings),
+                _simpleTelemetryLogger,
+                () => new InputStateOverlayForm(
+                    _liveTelemetrySource,
+                    _simpleTelemetryLogger,
+                    _performanceState,
+                    settings,
+                    SelectedFontFamily,
+                    SelectedUnitSystem,
+                    SaveSettings)),
             1070,
             590),
         new OverlayRegistration(
             CarRadarOverlayDefinition.Definition,
-            settings => new CarRadarForm(
-                _liveTelemetrySource,
-                _carRadarLogger,
-                _performanceState,
+            settings => CreateLiveOverlayForm(
+                DesignV2LiveOverlayKind.CarRadar,
+                CarRadarOverlayDefinition.Definition,
                 settings,
-                SelectedFontFamily,
-                SaveSettings),
+                _carRadarLogger,
+                () => new CarRadarForm(
+                    _liveTelemetrySource,
+                    _carRadarLogger,
+                    _performanceState,
+                    settings,
+                    SelectedFontFamily,
+                    SaveSettings)),
             650,
             24),
         new OverlayRegistration(
             GapToLeaderOverlayDefinition.Definition,
-            settings => new GapToLeaderForm(
-                _liveTelemetrySource,
-                _gapToLeaderLogger,
-                _performanceState,
+            settings => CreateLiveOverlayForm(
+                DesignV2LiveOverlayKind.GapToLeader,
+                GapToLeaderOverlayDefinition.Definition,
                 settings,
-                SelectedFontFamily,
-                SaveSettings),
+                _gapToLeaderLogger,
+                () => new GapToLeaderForm(
+                    _liveTelemetrySource,
+                    _gapToLeaderLogger,
+                    _performanceState,
+                    settings,
+                    SelectedFontFamily,
+                    SaveSettings)),
             650,
             260)
     ];
+
+    private Form CreateLiveOverlayForm(
+        DesignV2LiveOverlayKind kind,
+        OverlayDefinition definition,
+        OverlaySettings settings,
+        ILogger logger,
+        Func<Form> createLegacyForm)
+    {
+        if (!UseDesignV2LiveOverlays)
+        {
+            return createLegacyForm();
+        }
+
+        return new DesignV2LiveOverlayForm(
+            kind,
+            definition,
+            _liveTelemetrySource,
+            _historyQueryService,
+            _performanceState,
+            logger,
+            settings,
+            SelectedFontFamily,
+            SelectedUnitSystem,
+            SaveSettings);
+    }
+
+    private static bool UseDesignV2LiveOverlays
+    {
+        get
+        {
+            var configured = Environment.GetEnvironmentVariable("TMR_WINDOWS_DESIGN_V2_LIVE_OVERLAYS");
+            return configured is null
+                || !configured.Equals("false", StringComparison.OrdinalIgnoreCase)
+                    && !configured.Equals("0", StringComparison.OrdinalIgnoreCase)
+                    && !configured.Equals("off", StringComparison.OrdinalIgnoreCase)
+                    && !configured.Equals("no", StringComparison.OrdinalIgnoreCase);
+        }
+    }
 
     private void EnsureManagedOverlaySettings()
     {
@@ -513,6 +607,12 @@ internal sealed class OverlayManager : IDisposable
 
     private void ApplyOverlaySettingsCore()
     {
+        var appSettings = _settings;
+        if (appSettings is null)
+        {
+            return;
+        }
+
         var started = System.Diagnostics.Stopwatch.GetTimestamp();
         var succeeded = false;
         Form? activeSettingsForm = null;
@@ -529,7 +629,7 @@ internal sealed class OverlayManager : IDisposable
             var currentSession = CurrentSessionKind(liveSnapshot);
             foreach (var registration in ManagedOverlayRegistrations)
             {
-                var settings = _settings.GetOrAddOverlay(
+                var settings = appSettings.GetOrAddOverlay(
                     registration.Definition.Id,
                     registration.Definition.DefaultWidth,
                     registration.Definition.DefaultHeight,
@@ -737,7 +837,8 @@ internal sealed class OverlayManager : IDisposable
         settings.Opacity = Math.Clamp(settings.Opacity, 0.2d, 1d);
         var opacityChanged = !_appliedOpacities.TryGetValue(definition.Id, out var previousOpacity)
             || Math.Abs(previousOpacity - settings.Opacity) > 0.001d;
-        if (string.Equals(definition.Id, TrackMapOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        if (string.Equals(definition.Id, TrackMapOverlayDefinition.Definition.Id, StringComparison.Ordinal)
+            && form is TrackMapForm)
         {
             if (opacityChanged || !_appliedOpacities.ContainsKey(definition.Id))
             {
@@ -935,27 +1036,31 @@ internal sealed class OverlayManager : IDisposable
 
     private static Size ScaledOverlaySize(OverlayDefinition definition, OverlaySettings settings)
     {
-        var size = new Size(
-            ScaleDimension(definition.DefaultWidth, settings.Scale),
-            ScaleDimension(definition.DefaultHeight, settings.Scale));
+        var baseWidth = definition.DefaultWidth;
+        var baseHeight = definition.DefaultHeight;
 
-        if (OverlayContentColumnSettings.TryGetContentDefinition(definition.Id, out var contentDefinition))
+        if (OverlayContentColumnSettings.TryGetContentDefinition(definition.Id, out var contentDefinition)
+            && contentDefinition.Columns.Count > 0)
         {
-            var contentMinimum = OverlayMinimumSize(settings, contentDefinition);
-            size.Width = Math.Max(size.Width, contentMinimum.Width);
-            size.Height = Math.Max(size.Height, contentMinimum.Height);
+            var contentSize = OverlayContentBaseSize(settings, contentDefinition);
+            baseWidth = contentSize.Width;
+            baseHeight = Math.Max(baseHeight, contentSize.Height);
         }
 
-        return size;
+        return new Size(
+            ScaleDimension(baseWidth, settings.Scale),
+            ScaleDimension(baseHeight, settings.Scale));
     }
 
-    private static Size OverlayMinimumSize(
+    private static Size OverlayContentBaseSize(
         OverlaySettings settings,
         OverlayContentDefinition definition)
     {
-        var contentWidth = OverlayContentColumnSettings.TotalVisibleWidth(settings, definition);
+        var columns = OverlayContentColumnSettings.VisibleColumnsFor(settings, definition);
+        var contentWidth = columns.Sum(column => column.Width);
+        var columnGaps = Math.Max(0, columns.Count - 1) * 8;
         return new Size(
-            contentWidth + OverlayTheme.Layout.OuterPadding * 2,
+            contentWidth + columnGaps + 52,
             definition.NativeMinimumTableHeight + OverlayTheme.Layout.OverlayTableWithFooterReservedHeight);
     }
 

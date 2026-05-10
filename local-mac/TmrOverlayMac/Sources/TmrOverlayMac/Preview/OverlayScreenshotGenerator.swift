@@ -422,55 +422,61 @@ public enum OverlayScreenshotGenerator {
             selectedTab: StreamChatOverlayDefinition.definition.id,
             selectedRegion: DesignV2SettingsRegion.content.rawValue
         ))
+        func matchedWindowCrop(_ rect: NSRect) -> NSRect {
+            rect.offsetBy(
+                dx: -DesignV2SettingsChrome.matchedWindowBoundsOrigin.x,
+                dy: -DesignV2SettingsChrome.matchedWindowBoundsOrigin.y
+            )
+        }
 
         let components = [
             ContactSheetState(
                 title: "1. Sidebar Tabs",
                 note: "Actual V2 settings navigation tab states.",
                 fileName: "sidebar-tabs.png",
-                image: try cropImage(general, rect: NSRect(x: 64, y: 116, width: 190, height: 506))
+                image: try cropImage(general, rect: matchedWindowCrop(NSRect(x: 64, y: 116, width: 190, height: 506)))
             ),
             ContactSheetState(
                 title: "2. Region Tabs",
                 note: "General, Content, Header, and Footer segmented tabs.",
                 fileName: "region-tabs.png",
-                image: try cropImage(relativeGeneral, rect: NSRect(x: 300, y: 198, width: 420, height: 52))
+                image: try cropImage(relativeGeneral, rect: matchedWindowCrop(NSRect(x: 300, y: 198, width: 420, height: 52)))
             ),
             ContactSheetState(
                 title: "3. Unit Choice",
                 note: "Metric/Imperial segmented input inside a panel.",
                 fileName: "unit-choice.png",
-                image: try cropImage(general, rect: NSRect(x: 306, y: 214, width: 392, height: 132))
+                image: try cropImage(general, rect: matchedWindowCrop(NSRect(x: 306, y: 214, width: 392, height: 132)))
             ),
             ContactSheetState(
                 title: "4. Overlay Controls",
                 note: "Toggle, sliders, session checks, and panel spacing.",
                 fileName: "overlay-controls.png",
-                image: try cropImage(relativeGeneral, rect: NSRect(x: 306, y: 272, width: 392, height: 226))
+                image: try cropImage(relativeGeneral, rect: matchedWindowCrop(NSRect(x: 306, y: 272, width: 392, height: 226)))
             ),
             ContactSheetState(
                 title: "5. Content Matrix",
                 note: "Content rows with session-state checkbox columns.",
                 fileName: "content-matrix.png",
-                image: try cropImage(relativeContent, rect: NSRect(x: 306, y: 272, width: 690, height: 222))
+                image: try cropImage(relativeContent, rect: matchedWindowCrop(NSRect(x: 306, y: 272, width: 690, height: 222)))
             ),
             ContactSheetState(
                 title: "6. Chat Inputs",
                 note: "Choice control, text fields, save button, and labels.",
                 fileName: "chat-inputs.png",
-                image: try cropImage(streamChatContent, rect: NSRect(x: 306, y: 272, width: 650, height: 204))
+                image: try cropImage(streamChatContent, rect: matchedWindowCrop(NSRect(x: 306, y: 272, width: 650, height: 204)))
             ),
             ContactSheetState(
                 title: "7. Support Buttons",
                 note: "Action button row density and update controls.",
                 fileName: "support-buttons.png",
-                image: try cropImage(support, rect: NSRect(x: 306, y: 410, width: 650, height: 174))
+                image: try cropImage(support, rect: matchedWindowCrop(NSRect(x: 306, y: 410, width: 650, height: 174)))
             ),
             ContactSheetState(
                 title: "8. Browser Source",
                 note: "Localhost block and copy action alignment.",
                 fileName: "browser-source.png",
-                image: try cropImage(relativeGeneral, rect: NSRect(x: 306, y: 518, width: 650, height: 70))
+                image: try cropImage(relativeGeneral, rect: matchedWindowCrop(NSRect(x: 306, y: 518, width: 650, height: 70)))
             )
         ]
 

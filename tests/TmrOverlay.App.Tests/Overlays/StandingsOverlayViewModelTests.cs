@@ -68,14 +68,14 @@ public sealed class StandingsOverlayViewModelTests
 
         var viewModel = StandingsOverlayViewModel.From(snapshot, now);
 
-        Assert.Equal("C3 - 3 rows", viewModel.Status);
+        Assert.Equal("3 - 3 rows", viewModel.Status);
         Assert.Equal("source: live timing telemetry", viewModel.Source);
         Assert.Collection(
             viewModel.Rows,
             row =>
             {
                 Assert.True(row.IsLeader);
-                Assert.Equal("C1", row.ClassPosition);
+                Assert.Equal("1", row.ClassPosition);
                 Assert.Equal("Leader", row.Gap);
                 Assert.Equal("-12.4", row.Interval);
             },
@@ -203,7 +203,7 @@ public sealed class StandingsOverlayViewModelTests
 
         var viewModel = StandingsOverlayViewModel.From(snapshot, now, maximumRows: 3);
 
-        Assert.Equal("C3 - 3/3 rows", viewModel.Status);
+        Assert.Equal("3 - 3/3 rows", viewModel.Status);
         Assert.Equal("source: scoring snapshot (partial live)", viewModel.Source);
         Assert.Collection(
             viewModel.Rows,
@@ -211,7 +211,7 @@ public sealed class StandingsOverlayViewModelTests
             {
                 Assert.Equal("#1", row.CarNumber);
                 Assert.Equal("Leader", row.Driver);
-                Assert.Equal("C1", row.ClassPosition);
+                Assert.Equal("1", row.ClassPosition);
             },
             row =>
             {
@@ -222,12 +222,12 @@ public sealed class StandingsOverlayViewModelTests
             {
                 Assert.Equal("#3", row.CarNumber);
                 Assert.True(row.IsReference);
-                Assert.Equal("C3", row.ClassPosition);
+                Assert.Equal("3", row.ClassPosition);
             });
     }
 
     [Fact]
-    public void From_GroupsScoringRowsByClassWithConfiguredOtherClassRows()
+    public void From_KeepsOfficialMulticlassGroupOrderWithConfiguredOtherClassRows()
     {
         var now = DateTimeOffset.UtcNow;
         var gt3Rows = new[]
@@ -288,16 +288,16 @@ public sealed class StandingsOverlayViewModelTests
             row =>
             {
                 Assert.True(row.IsClassHeader);
-                Assert.Equal("GT3", row.Driver);
+                Assert.Equal("GTP", row.Driver);
             },
-            row => Assert.Equal("#10", row.CarNumber),
-            row => Assert.Equal("#11", row.CarNumber),
+            row => Assert.Equal("#21", row.CarNumber),
             row =>
             {
                 Assert.True(row.IsClassHeader);
-                Assert.Equal("GTP", row.Driver);
+                Assert.Equal("GT3", row.Driver);
             },
-            row => Assert.Equal("#21", row.CarNumber));
+            row => Assert.Equal("#10", row.CarNumber),
+            row => Assert.Equal("#11", row.CarNumber));
     }
 
     private static LiveTimingRow TimingRow(

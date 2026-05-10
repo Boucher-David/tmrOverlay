@@ -228,9 +228,9 @@ internal static class PitServiceBrowserSource
     function pitMetric(label, value, highlighted) {
       if (!highlighted) return metric(label, value);
       return `
-        <div class="metric" style="border-color: rgba(98, 199, 255, 0.55); background: rgba(98, 199, 255, 0.10);">
+        <div class="metric highlight">
           <div class="label">${escapeHtml(label)}</div>
-          <div class="value" style="color: #68c1ff;">${escapeHtml(value)}</div>
+          <div class="value">${escapeHtml(value)}</div>
         </div>`;
     }
     """;

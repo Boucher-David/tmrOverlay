@@ -92,6 +92,8 @@ enum DesignV2SettingsReferenceImages {
 }
 
 enum DesignV2SettingsChrome {
+    static let matchedWindowBoundsOrigin = NSPoint(x: 44, y: 36)
+
     static let sidebarTabs: [DesignV2SettingsSidebarTab] = [
         DesignV2SettingsSidebarTab(id: "general", label: "General"),
         DesignV2SettingsSidebarTab(id: "standings", label: "Standings"),

@@ -53,7 +53,8 @@ internal sealed record StandingsOverlayViewModel(
 
             var shownCars = scoringRows.Count(row => !row.IsClassHeader);
             var scoringReference = scoringRows.FirstOrDefault(row => row.IsReference);
-            var scoringStatus = scoringReference?.ClassPosition is { Length: > 1 } scoringClassPosition
+            var scoringStatus = IsPositionLabel(scoringReference?.ClassPosition)
+                && scoringReference?.ClassPosition is { } scoringClassPosition
                 ? $"{scoringClassPosition} - {shownCars}/{scoring.Rows.Count} rows"
                 : $"{shownCars}/{scoring.Rows.Count} rows";
             return new StandingsOverlayViewModel(
@@ -83,7 +84,8 @@ internal sealed record StandingsOverlayViewModel(
         }
 
         var timingReference = candidateRows.FirstOrDefault(row => row.IsReference);
-        var timingStatus = timingReference?.ClassPosition is { Length: > 1 } timingClassPosition
+        var timingStatus = IsPositionLabel(timingReference?.ClassPosition)
+            && timingReference?.ClassPosition is { } timingClassPosition
             ? $"{timingClassPosition} - {candidateRows.Length} rows"
             : $"{candidateRows.Length} rows";
         return new StandingsOverlayViewModel(
@@ -110,14 +112,14 @@ internal sealed record StandingsOverlayViewModel(
                 RowCount: scoring.Rows.Count,
                 Rows: scoring.Rows)];
         var orderedGroups = groups
-            .OrderByDescending(group => group.IsReferenceClass)
-            .ThenBy(group => group.Rows.Min(row => row.OverallPosition ?? int.MaxValue))
+            .OrderBy(group => group.Rows.Min(row => row.OverallPosition ?? int.MaxValue))
             .ThenBy(group => group.CarClass ?? int.MaxValue)
             .ToArray();
         var primaryGroup = orderedGroups.FirstOrDefault(group => group.IsReferenceClass)
             ?? orderedGroups.First();
-        var otherGroups = orderedGroups
-            .Where(group => showClassSeparators && !ReferenceEquals(group, primaryGroup) && otherClassRowsPerClass > 0)
+        var groupLimits = BuildGroupLimits(orderedGroups, primaryGroup, maximumRows, otherClassRowsPerClass, showClassSeparators);
+        var visibleGroups = orderedGroups
+            .Where(group => groupLimits.ContainsKey(group))
             .ToArray();
         var includeHeaders = showClassSeparators && orderedGroups.Length > 1;
         var rows = new List<StandingsOverlayRowViewModel>();
@@ -125,29 +127,14 @@ internal sealed record StandingsOverlayViewModel(
             .Concat(snapshot.Models.Timing.ClassRows)
             .GroupBy(row => row.CarIdx)
             .ToDictionary(group => group.Key, SelectTimingRow);
-        var reservedOtherRows = otherGroups.Sum(_ => includeHeaders ? 1 + otherClassRowsPerClass : otherClassRowsPerClass);
-        var minimumPrimaryRows = Math.Min(maximumRows, includeHeaders ? 2 : 1);
-        var primaryLimit = Math.Clamp(maximumRows - reservedOtherRows, minimumPrimaryRows, maximumRows);
-        AddScoringGroup(
-            rows,
-            primaryGroup,
-            timingByCarIdx,
-            referenceCarIdx,
-            ClassEstimatedLaps(primaryGroup, snapshot),
-            maximumRows,
-            primaryLimit,
-            includeHeaders);
 
-        foreach (var group in otherGroups)
+        foreach (var group in visibleGroups)
         {
             if (rows.Count >= maximumRows)
             {
                 break;
             }
 
-            var groupLimit = Math.Min(
-                maximumRows - rows.Count,
-                includeHeaders ? 1 + otherClassRowsPerClass : otherClassRowsPerClass);
             AddScoringGroup(
                 rows,
                 group,
@@ -155,11 +142,35 @@ internal sealed record StandingsOverlayViewModel(
                 referenceCarIdx,
                 ClassEstimatedLaps(group, snapshot),
                 maximumRows,
-                groupLimit,
+                Math.Min(maximumRows - rows.Count, groupLimits[group]),
                 includeHeaders);
         }
 
         return rows.ToArray();
+    }
+
+    private static Dictionary<LiveScoringClassGroup, int> BuildGroupLimits(
+        IReadOnlyList<LiveScoringClassGroup> orderedGroups,
+        LiveScoringClassGroup primaryGroup,
+        int maximumRows,
+        int otherClassRowsPerClass,
+        bool showClassSeparators)
+    {
+        var limits = new Dictionary<LiveScoringClassGroup, int>();
+        var otherGroups = orderedGroups
+            .Where(group => showClassSeparators && !ReferenceEquals(group, primaryGroup) && otherClassRowsPerClass > 0)
+            .ToArray();
+        var includeHeaders = showClassSeparators && (otherGroups.Length > 0 || orderedGroups.Count > 1);
+        var reservedOtherRows = otherGroups.Sum(_ => includeHeaders ? 1 + otherClassRowsPerClass : otherClassRowsPerClass);
+        var minimumPrimaryRows = Math.Min(maximumRows, includeHeaders ? 2 : 1);
+        limits[primaryGroup] = Math.Clamp(maximumRows - reservedOtherRows, minimumPrimaryRows, maximumRows);
+
+        foreach (var group in otherGroups)
+        {
+            limits[group] = includeHeaders ? 1 + otherClassRowsPerClass : otherClassRowsPerClass;
+        }
+
+        return limits;
     }
 
     private static LiveTimingRow SelectTimingRow(IEnumerable<LiveTimingRow> group)
@@ -318,9 +329,9 @@ internal sealed record StandingsOverlayViewModel(
     {
         var isReference = referenceCarIdx is not null && row.CarIdx == referenceCarIdx;
         return new StandingsOverlayRowViewModel(
-            ClassPosition: row.ClassPosition is { } classPosition ? $"C{classPosition}" : "--",
+            ClassPosition: row.ClassPosition is { } classPosition ? $"{classPosition}" : "--",
             CarNumber: FormatCarNumber(row),
-            Driver: ShortDriverName(row.DriverName, row.TeamName, row.CarIdx),
+            Driver: DriverName(row.DriverName, row.TeamName, row.CarIdx),
             Gap: FormatGap(row),
             Interval: FormatInterval(row, isReference),
             Pit: row.OnPitRoad == true ? "IN" : string.Empty,
@@ -338,9 +349,9 @@ internal sealed record StandingsOverlayViewModel(
     {
         var isReference = referenceCarIdx is not null && scoringRow.CarIdx == referenceCarIdx;
         return new StandingsOverlayRowViewModel(
-            ClassPosition: scoringRow.ClassPosition is { } classPosition ? $"C{classPosition}" : "--",
+            ClassPosition: scoringRow.ClassPosition is { } classPosition ? $"{classPosition}" : "--",
             CarNumber: FormatCarNumber(scoringRow),
-            Driver: ShortDriverName(scoringRow.DriverName, scoringRow.TeamName, scoringRow.CarIdx),
+            Driver: DriverName(scoringRow.DriverName, scoringRow.TeamName, scoringRow.CarIdx),
             Gap: FormatGap(scoringRow, timingRow),
             Interval: timingRow is not null ? FormatInterval(timingRow, isReference) : "--",
             Pit: timingRow?.OnPitRoad == true ? "IN" : string.Empty,
@@ -387,11 +398,10 @@ internal sealed record StandingsOverlayViewModel(
             : $"#{row.CarNumber.Trim().TrimStart('#')}";
     }
 
-    private static string ShortDriverName(string? driverName, string? teamName, int carIdx)
+    private static string DriverName(string? driverName, string? teamName, int carIdx)
     {
         var name = FirstNonEmpty(driverName, teamName) ?? $"Car {carIdx}";
-        name = name.Trim();
-        return name.Length <= 24 ? name : $"{name[..21]}...";
+        return name.Trim();
     }
 
     private static string FormatGap(LiveTimingRow row)
@@ -452,6 +462,11 @@ internal sealed record StandingsOverlayViewModel(
     private static string? FirstNonEmpty(params string?[] values)
     {
         return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+    }
+
+    private static bool IsPositionLabel(string? value)
+    {
+        return !string.IsNullOrWhiteSpace(value) && !string.Equals(value, "--", StringComparison.Ordinal);
     }
 
     private static bool IsFinite(double value)

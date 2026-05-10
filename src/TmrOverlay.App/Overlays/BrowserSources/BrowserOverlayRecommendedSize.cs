@@ -13,13 +13,14 @@ internal static class BrowserOverlayRecommendedSize
             settings.Width > 0 ? settings.Width : definition.DefaultWidth,
             settings.Height > 0 ? settings.Height : definition.DefaultHeight);
 
-        if (OverlayContentColumnSettings.TryGetContentDefinition(definition.Id, out var contentDefinition))
+        if (OverlayContentColumnSettings.TryGetContentDefinition(definition.Id, out var contentDefinition)
+            && contentDefinition.Columns.Count > 0)
         {
             var contentWidth = OverlayContentColumnSettings.TotalVisibleWidth(
                 settings,
                 contentDefinition);
             return new Size(
-                Math.Max(baseSize.Width, contentWidth + contentDefinition.BrowserWidthPadding),
+                Math.Max(1, contentWidth + contentDefinition.BrowserWidthPadding),
                 Math.Max(baseSize.Height, contentDefinition.BrowserMinimumHeight));
         }
 

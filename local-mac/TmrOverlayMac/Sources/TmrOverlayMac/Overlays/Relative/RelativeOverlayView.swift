@@ -212,9 +212,9 @@ final class RelativeOverlayView: NSView {
         let sameClass = referenceClass != nil && car.carClass == referenceClass
         return RelativeDisplayRow(
             position: car.classPosition.map { "\($0)" } ?? car.overallPosition.map { "\($0)" } ?? "--",
-            driver: "Car \(car.carIdx)",
+            driver: car.driverName ?? MockDriverNames.displayName(for: car.carIdx),
             gap: relativeGap(car: car, direction: direction),
-            detail: classLabel(carClass: car.carClass, onPitRoad: car.onPitRoad),
+            detail: classLabel(carClass: car.carClass, carClassName: car.carClassName, onPitRoad: car.onPitRoad),
             classColorHex: car.carClassColorHex,
             isReference: false,
             isAhead: direction == .ahead,
@@ -462,17 +462,21 @@ final class RelativeOverlayView: NSView {
         return "GT3"
     }
 
-    private func classLabel(carClass: Int?, onPitRoad: Bool?) -> String {
+    private func classLabel(carClass: Int?, carClassName: String?, onPitRoad: Bool?) -> String {
         let label: String
-        switch carClass {
-        case 4098:
-            label = "GT3"
-        case 4099:
-            label = "LMP"
-        case let value?:
-            label = "C\(value)"
-        case nil:
-            label = "class"
+        if let carClassName, !carClassName.isEmpty {
+            label = carClassName
+        } else {
+            switch carClass {
+            case 4098:
+                label = "GT3"
+            case 4099:
+                label = "LMP"
+            case let value?:
+                label = "Class \(value)"
+            case nil:
+                label = "class"
+            }
         }
 
         return onPitRoad == true ? "\(label) PIT" : label

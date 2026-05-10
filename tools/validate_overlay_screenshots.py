@@ -93,13 +93,13 @@ EXPECTED_COMPONENT_PNGS = {
 }
 
 WINDOWS_EXPECTED_PNGS = {
-    "states/fuel-calculator-live.png": (600, 320),
+    "states/fuel-calculator-live.png": (600, 340),
     "states/relative-live.png": (520, 360),
     "states/standings-live.png": (780, 520),
     "states/track-map-placeholder.png": (360, 360),
     "states/flags-blue.png": (360, 170),
-    "states/session-weather-live.png": (420, 310),
-    "states/pit-service-active.png": (420, 310),
+    "states/session-weather-live.png": (420, 330),
+    "states/pit-service-active.png": (420, 330),
     "states/input-state-trace.png": (520, 220),
     "states/car-radar-side-pressure.png": (300, 300),
     "states/gap-to-leader-trend.png": (560, 260),

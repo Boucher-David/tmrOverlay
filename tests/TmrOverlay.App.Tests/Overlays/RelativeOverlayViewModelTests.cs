@@ -38,26 +38,26 @@ public sealed class RelativeOverlayViewModelTests
             carsAhead: 1,
             carsBehind: 1);
 
-        Assert.Equal("C6 - 2/4 cars", viewModel.Status);
+        Assert.Equal("6 - 2/4 cars", viewModel.Status);
         Assert.Equal("source: live proximity telemetry", viewModel.Source);
         Assert.Collection(
             viewModel.Rows,
             row =>
             {
                 Assert.True(row.IsAhead);
-                Assert.Equal("C5", row.Position);
+                Assert.Equal("5", row.Position);
                 Assert.Equal("-0.400", row.Gap);
             },
             row =>
             {
                 Assert.True(row.IsReference);
-                Assert.Equal("C6", row.Position);
+                Assert.Equal("6", row.Position);
                 Assert.Equal("0.000", row.Gap);
             },
             row =>
             {
                 Assert.True(row.IsBehind);
-                Assert.Equal("C7", row.Position);
+                Assert.Equal("7", row.Position);
                 Assert.Equal("+0.500", row.Gap);
             });
     }
@@ -163,7 +163,7 @@ public sealed class RelativeOverlayViewModelTests
         Assert.DoesNotContain(viewModel.Rows, row => row.Driver.Contains("Scoring Only", StringComparison.Ordinal));
         Assert.Contains(viewModel.Rows, row =>
             row.IsAhead
-            && row.Position == "C5"
+            && row.Position == "5"
             && row.Driver == "#88 Scored Nearby");
     }
 
