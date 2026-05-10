@@ -19,7 +19,8 @@ public sealed class SessionPreviewStateTests
         var mode = Enum.Parse<OverlaySessionKind>(modeName);
 
         state.SetMode(mode);
-        var snapshot = Assert.NotNull(state.TryBuildSnapshot(now));
+        var snapshot = state.TryBuildSnapshot(now);
+        Assert.NotNull(snapshot);
         var availability = OverlayAvailabilityEvaluator.FromSnapshot(snapshot, now);
 
         Assert.True(snapshot.IsConnected);
@@ -65,7 +66,8 @@ public sealed class SessionPreviewStateTests
         var now = DateTimeOffset.Parse("2026-05-10T15:30:00Z");
 
         state.SetMode(OverlaySessionKind.Race);
-        var snapshot = Assert.NotNull(state.TryBuildSnapshot(now));
+        var snapshot = state.TryBuildSnapshot(now);
+        Assert.NotNull(snapshot);
 
         Assert.Equal("nurburgring combinedshortb", snapshot.Context.Track.TrackName);
         Assert.Equal("Gesamtstrecke 24h", snapshot.Context.Track.TrackDisplayName);
