@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TMR {{TITLE}}</title>
+  <style>
+{{OVERLAY_CSS}}
+  </style>
+</head>
+<body class="{{BODY_CLASS}}">
+  <section class="overlay">
+    <div class="header">
+      <div class="title">{{TITLE}}</div>
+      <div id="status" class="status">waiting</div>
+    </div>
+    <div id="content" class="content">
+      <div class="empty">Waiting for live telemetry.</div>
+    </div>
+  </section>
+
+  <script>
+{{OVERLAY_SCRIPT}}
+  </script>
+</body>
+</html>

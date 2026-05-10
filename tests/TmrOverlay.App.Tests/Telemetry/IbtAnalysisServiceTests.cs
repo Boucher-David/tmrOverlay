@@ -10,14 +10,14 @@ namespace TmrOverlay.App.Tests.Telemetry;
 public sealed class IbtAnalysisServiceTests
 {
     [Fact]
-    public void FromConfiguration_DefaultsToEnabledAnalysisAndTelemetryLogging()
+    public void FromConfiguration_DefaultsToOptInAnalysisAndTelemetryLogging()
     {
         var configuration = new ConfigurationBuilder().Build();
 
         var options = IbtAnalysisOptions.FromConfiguration(configuration);
 
-        Assert.True(options.Enabled);
-        Assert.True(options.TelemetryLoggingEnabled);
+        Assert.False(options.Enabled);
+        Assert.False(options.TelemetryLoggingEnabled);
         Assert.EndsWith(Path.Combine("iRacing", "telemetry"), options.TelemetryRoot);
         Assert.Equal(60, options.MaxIRacingExitWaitSeconds);
         Assert.False(options.CopyIbtIntoCaptureDirectory);
@@ -71,6 +71,7 @@ public sealed class IbtAnalysisServiceTests
             var service = new IbtAnalysisService(
                 new IbtAnalysisOptions
                 {
+                    Enabled = true,
                     TelemetryRoot = telemetryRoot,
                     MaxCandidateAgeMinutes = 60,
                     MaxAnalysisMilliseconds = 10_000,
@@ -122,6 +123,7 @@ public sealed class IbtAnalysisServiceTests
             var service = new IbtAnalysisService(
                 new IbtAnalysisOptions
                 {
+                    Enabled = true,
                     TelemetryRoot = Path.Combine(root, "missing"),
                     MinStableAgeSeconds = 0
                 },

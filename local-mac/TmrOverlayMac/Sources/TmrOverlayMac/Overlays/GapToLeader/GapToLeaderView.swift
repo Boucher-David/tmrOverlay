@@ -183,7 +183,7 @@ final class GapToLeaderView: NSView {
                 : "source: waiting"
         } else {
             statusLabel.stringValue = gap.hasData
-                ? "C\(position(gap.referenceClassPosition)) \(gapText(gap.classLeaderGap))"
+                ? "\(position(gap.referenceClassPosition)) \(gapText(gap.classLeaderGap))"
                 : "waiting"
             let scaleText = trendScale?.isFocusRelative == true ? "local scale" : "class trend"
             sourceLabel.stringValue = gap.hasData

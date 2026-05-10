@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using TmrOverlay.Core.Settings;
 
 namespace TmrOverlay.App.Overlays.Styling;
 
@@ -78,6 +79,42 @@ internal static class OverlayTheme
         public static Color ErrorIndicator { get; set; } = Color.FromArgb(245, 88, 88);
     }
 
+    public static class DesignV2
+    {
+        public static Color BackgroundTop { get; set; } = Color.FromArgb(18, 5, 31);
+        public static Color BackgroundMid { get; set; } = Color.FromArgb(12, 18, 42);
+        public static Color BackgroundBottom { get; set; } = Color.FromArgb(3, 11, 24);
+        public static Color Surface { get; set; } = Color.FromArgb(242, 9, 14, 32);
+        public static Color SurfaceInset { get; set; } = Color.FromArgb(230, 13, 21, 44);
+        public static Color SurfaceRaised { get; set; } = Color.FromArgb(235, 18, 31, 60);
+        public static Color TitleBar { get; set; } = Color.FromArgb(248, 8, 10, 28);
+        public static Color Border { get; set; } = Color.FromArgb(210, 40, 72, 108);
+        public static Color BorderMuted { get; set; } = Color.FromArgb(150, 32, 54, 84);
+        public static Color GridLine { get; set; } = Color.FromArgb(61, 0, 232, 255);
+        public static Color TextPrimary { get; set; } = Color.FromArgb(255, 247, 255);
+        public static Color TextSecondary { get; set; } = Color.FromArgb(208, 230, 255);
+        public static Color TextMuted { get; set; } = Color.FromArgb(140, 174, 212);
+        public static Color TextDim { get; set; } = Color.FromArgb(82, 112, 148);
+        public static Color Cyan { get; set; } = Color.FromArgb(0, 232, 255);
+        public static Color Magenta { get; set; } = Color.FromArgb(255, 42, 167);
+        public static Color Amber { get; set; } = Color.FromArgb(255, 209, 91);
+        public static Color Green { get; set; } = Color.FromArgb(98, 255, 159);
+        public static Color Orange { get; set; } = Color.FromArgb(255, 125, 73);
+        public static Color Purple { get; set; } = Color.FromArgb(126, 50, 255);
+        public static Color Error { get; set; } = Color.FromArgb(255, 98, 116);
+        public static Color TrackInterior { get; set; } = Color.FromArgb(150, 9, 14, 18);
+        public static Color TrackHalo { get; set; } = Color.FromArgb(82, 255, 255, 255);
+        public static Color TrackLine { get; set; } = Color.FromArgb(222, 237, 245);
+        public static Color TrackMarkerBorder { get; set; } = Color.FromArgb(230, 8, 14, 18);
+        public static Color PitLine { get; set; } = Color.FromArgb(190, 98, 199, 255);
+        public static Color StartFinishBoundary { get; set; } = Color.FromArgb(255, 209, 91);
+        public static Color StartFinishBoundaryShadow { get; set; } = Color.FromArgb(210, 5, 9, 14);
+        public static Color PersonalBestSector { get; set; } = Color.FromArgb(80, 214, 124);
+        public static Color BestLapSector { get; set; } = Color.FromArgb(182, 92, 255);
+        public static Color FlagPole { get; set; } = Color.FromArgb(225, 214, 220, 226);
+        public static Color FlagPoleShadow { get; set; } = Color.FromArgb(120, 0, 0, 0);
+    }
+
     public static class Layout
     {
         public const int OuterPadding = 14;
@@ -117,6 +154,56 @@ internal static class OverlayTheme
     public static Font MonospaceFont(float size, FontStyle style = FontStyle.Regular)
     {
         return new Font(FontFamily.GenericMonospace, size, style, GraphicsUnit.Point);
+    }
+
+    public static void LoadSharedContract(SharedOverlayContractSnapshot contract, ILogger logger)
+    {
+        if (!string.IsNullOrWhiteSpace(contract.DefaultFontFamily))
+        {
+            DefaultFontFamily = contract.DefaultFontFamily.Trim();
+        }
+
+        ApplyDesignV2Colors(contract.DesignV2Colors, logger);
+    }
+
+    public static string DesignV2CssVariables(string indent = "      ")
+    {
+        var variables = new[]
+        {
+            ("--tmr-surface", DesignV2.Surface),
+            ("--tmr-surface-inset", DesignV2.SurfaceInset),
+            ("--tmr-surface-raised", DesignV2.SurfaceRaised),
+            ("--tmr-title", DesignV2.TitleBar),
+            ("--tmr-border", DesignV2.Border),
+            ("--tmr-border-muted", DesignV2.BorderMuted),
+            ("--tmr-text", DesignV2.TextPrimary),
+            ("--tmr-text-secondary", DesignV2.TextSecondary),
+            ("--tmr-text-muted", DesignV2.TextMuted),
+            ("--tmr-cyan", DesignV2.Cyan),
+            ("--tmr-cyan-rgb", DesignV2.Cyan),
+            ("--tmr-magenta", DesignV2.Magenta),
+            ("--tmr-magenta-rgb", DesignV2.Magenta),
+            ("--tmr-amber", DesignV2.Amber),
+            ("--tmr-amber-rgb", DesignV2.Amber),
+            ("--tmr-green", DesignV2.Green),
+            ("--tmr-green-rgb", DesignV2.Green),
+            ("--tmr-orange", DesignV2.Orange),
+            ("--tmr-orange-rgb", DesignV2.Orange),
+            ("--tmr-error", DesignV2.Error),
+            ("--tmr-error-rgb", DesignV2.Error),
+            ("--tmr-text-rgb", DesignV2.TextPrimary),
+            ("--tmr-text-secondary-rgb", DesignV2.TextSecondary),
+            ("--tmr-text-muted-rgb", DesignV2.TextMuted),
+            ("--tmr-track-line", DesignV2.TrackLine),
+            ("--tmr-start-finish-boundary", DesignV2.StartFinishBoundary),
+            ("--tmr-start-finish-boundary-shadow", DesignV2.StartFinishBoundaryShadow)
+        };
+        return string.Join(
+            Environment.NewLine,
+            variables.Select(variable =>
+                variable.Item1.EndsWith("-rgb", StringComparison.Ordinal)
+                    ? $"{indent}{variable.Item1}: {RgbTuple(variable.Item2)};"
+                    : $"{indent}{variable.Item1}: {CssColor(variable.Item2)};"));
     }
 
     public static void LoadOverrides(string themePath, ILogger logger)
@@ -173,6 +260,26 @@ internal static class OverlayTheme
         }
     }
 
+    private static void ApplyDesignV2Colors(IReadOnlyDictionary<string, string> colors, ILogger logger)
+    {
+        var properties = typeof(DesignV2).GetProperties(BindingFlags.Public | BindingFlags.Static)
+            .Where(property => property.PropertyType == typeof(Color))
+            .ToDictionary(property => property.Name, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var configuredColor in colors)
+        {
+            var propertyName = NormalizeThemeKey(configuredColor.Key);
+            if (!properties.TryGetValue(propertyName, out var property)
+                || !TryParseCssHexColor(configuredColor.Value, out var color))
+            {
+                logger.LogWarning("Ignoring invalid shared Design V2 color {ColorKey}.", configuredColor.Key);
+                continue;
+            }
+
+            property.SetValue(null, color);
+        }
+    }
+
     private static string NormalizeThemeKey(string key)
     {
         return string.Concat(key
@@ -211,5 +318,54 @@ internal static class OverlayTheme
         }
 
         return false;
+    }
+
+    private static bool TryParseCssHexColor(string? configured, out Color color)
+    {
+        color = Color.Empty;
+        if (string.IsNullOrWhiteSpace(configured))
+        {
+            return false;
+        }
+
+        var value = configured.Trim().TrimStart('#');
+        if (value.Length == 6
+            && int.TryParse(value, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var rgb))
+        {
+            color = Color.FromArgb(
+                (rgb >> 16) & 0xff,
+                (rgb >> 8) & 0xff,
+                rgb & 0xff);
+            return true;
+        }
+
+        if (value.Length == 8
+            && uint.TryParse(value, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var rgba))
+        {
+            color = Color.FromArgb(
+                (int)(rgba & 0xff),
+                (int)((rgba >> 24) & 0xff),
+                (int)((rgba >> 16) & 0xff),
+                (int)((rgba >> 8) & 0xff));
+            return true;
+        }
+
+        return false;
+    }
+
+    private static string CssColor(Color color)
+    {
+        if (color.A == 255)
+        {
+            return $"#{color.R:x2}{color.G:x2}{color.B:x2}";
+        }
+
+        var alpha = Math.Round(color.A / 255d, 3).ToString("0.###", CultureInfo.InvariantCulture);
+        return $"rgba({color.R}, {color.G}, {color.B}, {alpha})";
+    }
+
+    private static string RgbTuple(Color color)
+    {
+        return $"{color.R}, {color.G}, {color.B}";
     }
 }

@@ -8,6 +8,39 @@ namespace TmrOverlay.App.Tests.Localhost;
 public sealed class StreamChatOverlaySettingsTests
 {
     [Fact]
+    public void From_DefaultsToTechMatesRacingTwitchChannel()
+    {
+        var settings = new ApplicationSettings();
+
+        var result = StreamChatOverlaySettings.From(settings);
+
+        Assert.True(result.IsConfigured);
+        Assert.Equal(StreamChatOverlaySettings.ProviderTwitch, result.Provider);
+        Assert.Null(result.StreamlabsWidgetUrl);
+        Assert.Equal("techmatesracing", result.TwitchChannel);
+        Assert.Equal("configured_twitch", result.Status);
+    }
+
+    [Fact]
+    public void From_RespectsExplicitNotConfiguredProvider()
+    {
+        var settings = new ApplicationSettings();
+        var overlay = settings.GetOrAddOverlay(
+            StreamChatOverlayDefinition.Definition.Id,
+            StreamChatOverlayDefinition.Definition.DefaultWidth,
+            StreamChatOverlayDefinition.Definition.DefaultHeight);
+        overlay.SetStringOption(OverlayOptionKeys.StreamChatProvider, StreamChatOverlaySettings.ProviderNone);
+
+        var result = StreamChatOverlaySettings.From(settings);
+
+        Assert.False(result.IsConfigured);
+        Assert.Equal(StreamChatOverlaySettings.ProviderNone, result.Provider);
+        Assert.Null(result.StreamlabsWidgetUrl);
+        Assert.Null(result.TwitchChannel);
+        Assert.Equal("not_configured", result.Status);
+    }
+
+    [Fact]
     public void From_UsesOnlySelectedStreamlabsProvider()
     {
         var settings = new ApplicationSettings();

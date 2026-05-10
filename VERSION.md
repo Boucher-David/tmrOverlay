@@ -9,59 +9,72 @@ TmrOverlay uses SemVer-style annotated Git tags for product milestones:
 
 ## Current Branch Target
 
-### v0.18.5 - Live Test Hardening And Screenshot Review Fixes
+### v0.18.6 - Browser Validation And Native Session Preview
 
 Planned branch name:
 
 ```text
-v0.18.5_more-tweaks
+v0.18.6-more-validation
 ```
 
 Planned scope:
 
-- Ship a follow-up hardening patch on top of `v0.18.4` for live teammate testing.
-- Fix shutdown/update-service diagnostics, settings option bloat, version metadata duplication, remaining screenshot layout issues, and live-test overlay styling regressions.
-- Keep raw diagnostics intentionally broad for maximum live-test evidence.
-- Preserve official multiclass standings order while still keeping the focused class visible under row limits.
-- Promote the reviewed V2 overlay shell to Windows native and browser-source surfaces for live testing.
-- Carry the mac-reviewed compact Standings/Relative column defaults and table sizing into Windows.
-- Land active update install/restart behavior and installer screenshot review support.
+- Ship the next hardening patch on top of `v0.18.5` for live teammate testing.
+- Replace production-facing forced overlay visibility diagnostics with a native Show Preview mode that supplies deterministic session telemetry while preserving normal overlay visibility, session filters, z-order, and Stream Chat behavior.
+- Promote browser-source assets to first-class source files shared by Windows localhost routes, browser review, and Playwright integration tests.
+- Add a mac-friendly browser review server and full application validator route for fast overlay/settings review without relying on the mac native harness.
+- Return the temporary validation diagnostics to production-safe opt-in defaults now that native Show Preview covers the common review path.
+- Improve diagnostics bundle naming and metadata, including session-preview guardrails and browser route catalog metadata.
+- Mine 4-hour and 24-hour capture fragments plus SDK header references for extreme real-world fixture values used by preview telemetry.
+- Remove committed local diagnostics bundle artifacts and ignore future root diagnostics/test outputs.
+- Keep browser review and Playwright validation as development tooling while avoiding runtime-heavy diagnostics by default.
 
 Technical implementation checklist:
 
-1. Bump shared .NET product/version metadata to `0.18.5`.
-2. Make release-update startup cancellation/disposal idempotent.
-3. Scope persisted overlay defaults to the overlays that own them.
-4. Patch settings/support and simple-overlay screenshot issues.
-5. Keep standings multiclass groups in official table order.
-6. Validate local static checks and targeted tests, then use Windows CI or a Windows machine for the full .NET build/test and screenshot pass.
+1. Bump shared .NET product/version metadata to `0.18.6`.
+2. Remove forced managed-overlay visibility from production runtime diagnostics.
+3. Add native Practice/Qualifying/Race Show Preview telemetry fixtures and diagnostics metadata.
+4. Split browser-source HTML/CSS/JS assets out of embedded C# strings.
+5. Add npm/Vitest/Playwright browser-source validation and the browser review server.
+6. Refresh app/docs/context references for browser review replacing the mac harness as the primary mac-friendly parity surface.
+7. Validate local static checks, browser tests, screenshot expectations, mac harness build/test, and Python analysis tooling; use Windows CI or a Windows machine for the full .NET build/test and Windows screenshot pass.
 
 Likely squash title:
 
 ```text
-[v0.18.5] Harden live test overlays and update flow
+[v0.18.6] Add browser validation and native session previews
 ```
 
 Likely squash body:
 
 ```text
-- Bumped shared .NET product/version metadata to 0.18.5.
-- Made release-update startup cancellation/disposal idempotent and added user-initiated update download/install/restart behavior.
-- Scoped overlay option migration so settings JSON only carries options relevant to each overlay.
-- Promoted V2 live-overlay styling across Windows native overlays and localhost browser sources while keeping an opt-out for live testing.
-- Ported compact Standings/Relative column defaults, full driver-name display, plain numeric positions, content-driven overlay widths, and full-width class separator bands across native/browser surfaces.
-- Preserved official multiclass standings group order in native and browser standings.
-- Fixed support/settings clipping, route-less browser-source UI, simple telemetry wrapping, fuel/pit layout artifacts, and screenshot review coverage including installer windows.
+- Bumped shared .NET product/version metadata to 0.18.6.
+- Removed production-facing forced overlay visibility diagnostics so hidden overlays and Stream Chat are not forced open during runtime review.
+- Added native General-tab Show Preview for Practice, Qualifying, and Race using deterministic telemetry fixtures while preserving normal overlay enabled state, session filters, window placement, opacity, topmost behavior, and Stream Chat configuration.
+- Added session-preview diagnostics metadata, car/track/timestamp diagnostics bundle naming, and browser route catalog metadata in support bundles.
+- Promoted browser-source HTML/CSS/JS into first-class assets shared by Windows localhost routes, the browser review server, and Playwright tests.
+- Added npm/Vitest/Playwright browser validation plus a browser review server with full app, settings, and overlay routes; Playwright uses managed Chromium by default instead of the user's Chrome app.
+- Documented browser review as the primary mac-friendly parity loop while keeping the mac harness as secondary native-shell scaffolding.
+- Mined large local capture fragments and SDK header references for preview fixture extremes, then applied long names, large fields, SDK-range car indexes, and max-ish telemetry values to session preview fixtures.
+- Restored raw capture, edge-case clips, model parity, live overlay diagnostics, IBT logging/analysis, and rolling overlay screenshots to opt-in defaults.
+- Removed committed local diagnostics bundle artifacts and tightened ignores for root diagnostics bundles, Playwright test output, and generated cleanup noise.
 ```
 
 ## Next Planned Milestone
 
-### V1.x - Performance Foundation And Post-Candidate Hardening
+### v0.18.7 - V1 Candidate Readiness
 
 Likely scope:
 
-- Use the V1.x roadmap for overlay lifecycle/timer efficiency, rendering/cache performance, capture replay, and heavier analysis products.
-- Keep hard release-blocking fixes in 0.x only if teammate testing finds installer/update, AppData compatibility, or V1 candidate regressions.
+- Treat the fundamental overlay logic as ready for V1-candidate validation. Overlay behavior should now be stable enough that adding a straightforward content field, such as a Standings `Team name` column, is a small descriptor/model wiring change instead of a table-behavior rewrite. New reusable telemetry fields should be consumed and normalized in the Core/live model first, then mapped into overlay columns or rows; Standings/Relative should not own root data extraction for shared fields.
+- Lock the V1 product scope: decide the final overlay list, make sure experimental/future surfaces are not exposed as normal user-facing tabs, keep browser review dev-only, and decide whether the mac harness remains tracked secondary scaffolding or moves to a deprecation branch.
+- Prove installer/update polish: MSI install, upgrade, rollback, Velopack update checks, release notes, checksums, and the acceptable stance on unsigned SmartScreen warnings for V1.
+- Add the minimum user-facing first-run docs: starting the app, enabling overlays, configuring OBS browser-source URLs, Stream Chat setup, Garage Cover setup, diagnostics bundle creation, and raw capture being opt-in.
+- Complete an explicit privacy/defaults pass: logged fields, diagnostics bundle contents, redactions, retention defaults, app-data locations, and confirmation that raw `telemetry.bin` and source `.ibt` payloads stay out of support bundles.
+- Freeze durable settings/history schema unless a V1-blocking bug requires a change. Any schema change now needs version constants, migrations or compatible readers, docs, fixtures, and compatibility tests in the same pass.
+- Run a native Windows behavior sweep because browser review cannot prove focus, topmost, click-through, no-activate behavior, Stream Chat window behavior, iRacing SDK capture, installer/update behavior, or WinForms screenshot output.
+- Harden the support posture so one teammate diagnostics bundle is enough to answer version, settings, update state, overlay visibility, browser routes, runtime errors, recent telemetry state, and recent performance/freeze state without raw payloads.
+- Keep V1.x performance and heavier analysis work out of this milestone unless validation finds a release-blocking regression. Use the V1.x roadmap for overlay lifecycle/timer efficiency, rendering/cache performance, capture replay, and larger post-race analysis products after the candidate is stable.
 
 ## Merged Mainline Milestones
 

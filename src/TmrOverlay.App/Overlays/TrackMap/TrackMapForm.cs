@@ -122,6 +122,11 @@ internal sealed class TrackMapForm : PersistentOverlayForm
 
     protected override void PersistOverlayFrame()
     {
+        if (IsOverlayFramePersistenceSuppressed)
+        {
+            return;
+        }
+
         _settings.X = Location.X;
         _settings.Y = Location.Y;
         _settings.Width = Size.Width;

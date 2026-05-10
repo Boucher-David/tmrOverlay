@@ -612,7 +612,8 @@ internal sealed record HistoricalTelemetrySample(
     double? FuelPressureBar = null,
     double? OilTempC = null,
     double? OilPressureBar = null,
-    bool? BrakeAbsActive = null);
+    bool? BrakeAbsActive = null,
+    IReadOnlyList<HistoricalCarProximity>? AllCars = null);
 
 internal sealed record HistoricalCarProximity(
     int CarIdx,

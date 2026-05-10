@@ -197,9 +197,9 @@ internal static class LiveModelParityAnalyzer
             }
 
             CompareNullableInt(observations, "timing", $"class-position-{legacyCar.CarIdx}", legacyCar.ClassPosition, row.ClassPosition);
-            CompareNullableDouble(observations, "timing", $"gap-seconds-{legacyCar.CarIdx}", legacyCar.GapSecondsToClassLeader, row.GapSecondsToClassLeader, SecondsTolerance);
-            CompareNullableDouble(observations, "timing", $"gap-laps-{legacyCar.CarIdx}", legacyCar.GapLapsToClassLeader, row.GapLapsToClassLeader, LapDistanceTolerance);
-            CompareNullableDouble(observations, "timing", $"delta-to-focus-{legacyCar.CarIdx}", legacyCar.DeltaSecondsToReference, row.DeltaSecondsToFocus, SecondsTolerance);
+            CompareTimingNullableDouble(observations, "timing", $"gap-seconds-{legacyCar.CarIdx}", legacyCar.GapSecondsToClassLeader, row.GapSecondsToClassLeader, SecondsTolerance);
+            CompareTimingNullableDouble(observations, "timing", $"gap-laps-{legacyCar.CarIdx}", legacyCar.GapLapsToClassLeader, row.GapLapsToClassLeader, LapDistanceTolerance);
+            CompareTimingNullableDouble(observations, "timing", $"delta-to-focus-{legacyCar.CarIdx}", legacyCar.DeltaSecondsToReference, row.DeltaSecondsToFocus, SecondsTolerance);
         }
     }
 
@@ -358,6 +358,22 @@ internal static class LiveModelParityAnalyzer
         }
 
         observations.Add(new LiveModelParityObservation(family, key, "mismatch", FormatValue(legacy), FormatValue(model), $"tolerance={tolerance}"));
+    }
+
+    private static void CompareTimingNullableDouble(
+        List<LiveModelParityObservation> observations,
+        string family,
+        string key,
+        double? legacy,
+        double? model,
+        double tolerance)
+    {
+        if (legacy is null && model is { } modelValue && Math.Abs(modelValue) <= tolerance)
+        {
+            return;
+        }
+
+        CompareNullableDouble(observations, family, key, legacy, model, tolerance);
     }
 
     private static bool NumbersEqual(double? left, double? right, double tolerance)

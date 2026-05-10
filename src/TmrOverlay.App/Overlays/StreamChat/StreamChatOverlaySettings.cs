@@ -9,6 +9,8 @@ internal static partial class StreamChatOverlaySettings
     public const string ProviderNone = "none";
     public const string ProviderStreamlabs = "streamlabs";
     public const string ProviderTwitch = "twitch";
+    public static string DefaultProvider => SharedOverlayContract.Current.StreamChatDefaultProvider;
+    public static string DefaultTwitchChannel => SharedOverlayContract.Current.StreamChatDefaultTwitchChannel;
 
     public static StreamChatBrowserSettings From(ApplicationSettings settings)
     {
@@ -17,9 +19,14 @@ internal static partial class StreamChatOverlaySettings
             StreamChatOverlayDefinition.Definition.DefaultWidth,
             StreamChatOverlayDefinition.Definition.DefaultHeight,
             defaultEnabled: false);
-        var provider = NormalizeProvider(overlay.GetStringOption(OverlayOptionKeys.StreamChatProvider, ProviderNone));
+        return FromOverlay(overlay);
+    }
+
+    public static StreamChatBrowserSettings FromOverlay(OverlaySettings overlay)
+    {
+        var provider = NormalizeProvider(overlay.GetStringOption(OverlayOptionKeys.StreamChatProvider, DefaultProvider));
         var streamlabsUrl = NormalizeStreamlabsUrl(overlay.GetStringOption(OverlayOptionKeys.StreamChatStreamlabsUrl));
-        var twitchChannel = NormalizeTwitchChannel(overlay.GetStringOption(OverlayOptionKeys.StreamChatTwitchChannel));
+        var twitchChannel = NormalizeTwitchChannel(overlay.GetStringOption(OverlayOptionKeys.StreamChatTwitchChannel, DefaultTwitchChannel));
 
         return provider switch
         {

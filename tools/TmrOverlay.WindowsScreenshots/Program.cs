@@ -421,6 +421,7 @@ internal static class Program
             IsCollecting = true,
             LastUpdatedAtUtc = DateTimeOffset.UtcNow
         });
+        var sessionPreview = new SessionPreviewState(new AppEventRecorder(storage));
         var diagnostics = new DiagnosticsBundleService(
             storage,
             new LiveModelParityOptions(),
@@ -430,8 +431,10 @@ internal static class Program
             new TrackMapStore(storage),
             settingsStore,
             liveTelemetry,
+            sessionPreview,
             performanceState,
             new AppPerformanceSnapshotRecorder(storage),
+            new LiveOverlayWindowCaptureStore(storage),
             releaseUpdates,
             NullLogger<DiagnosticsBundleService>.Instance);
         var settings = CreateApplicationSettings();
@@ -446,6 +449,7 @@ internal static class Program
             new PostRaceAnalysisOptions(),
             performanceState,
             releaseUpdates,
+            sessionPreview,
             storage,
             localhostOptions,
             localhostState,
@@ -1086,14 +1090,14 @@ internal static class Program
                 },
                 Drivers =
                 [
-                    Driver(1, "Overall Leader", "001", 4099, "GT4", "#48A868"),
-                    Driver(2, "Class Leader", "002", 4098, "GT3", "#2D7DFF"),
-                    Driver(3, "A. Novak", "003", 4098, "GT3", "#2D7DFF"),
-                    Driver(4, "M. Rossi", "004", 4098, "GT3", "#2D7DFF"),
-                    Driver(5, "TMR Driver", "005", 4098, "GT3", "#2D7DFF"),
-                    Driver(6, "K. Meyer", "006", 4098, "GT3", "#2D7DFF"),
-                    Driver(7, "S. Patel", "007", 4098, "GT3", "#2D7DFF"),
-                    Driver(21, "Prototype Traffic", "021", 4101, "P2", "#D84B4B")
+                    Driver(1, "Olivia Grant", "001", 4099, "GT4", "#48A868"),
+                    Driver(2, "Noah Park", "002", 4098, "GT3", "#2D7DFF"),
+                    Driver(3, "Alex Novak", "003", 4098, "GT3", "#2D7DFF"),
+                    Driver(4, "Maya Rossi", "004", 4098, "GT3", "#2D7DFF"),
+                    Driver(5, "Taylor Morgan", "005", 4098, "GT3", "#2D7DFF"),
+                    Driver(6, "Kai Meyer", "006", 4098, "GT3", "#2D7DFF"),
+                    Driver(7, "Samira Patel", "007", 4098, "GT3", "#2D7DFF"),
+                    Driver(21, "Priya Shah", "021", 4101, "P2", "#D84B4B")
                 ],
                 Sectors =
                 [

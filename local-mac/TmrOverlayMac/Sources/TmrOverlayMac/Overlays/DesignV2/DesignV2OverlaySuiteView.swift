@@ -854,12 +854,13 @@ final class DesignV2OverlaySuiteView: NSView {
             return sortedCars.prefix(8).map { standingsRow(car: $0, snapshot: snapshot, referenceGap: referenceGap) }
         }
 
-        let otherClassRows = otherClassStandingsRows(snapshot: snapshot)
+        let referenceClass = referenceCarClass(snapshot)
+        let otherClassRows = otherClassStandingsRows(snapshot: snapshot, referenceClass: referenceClass)
             .prefix(max(0, standingsOtherClassRows))
         let primaryLimit = otherClassRows.isEmpty ? 7 : 4
         var rows: [DesignV2OverlayRow] = [
             standingsClassHeader(
-                className: "GT3",
+                className: referenceClassName(snapshot),
                 rowCount: sortedCars.count,
                 estimatedLaps: estimatedLaps(snapshot.latestFrame?.sessionTimeRemain, lapSeconds: snapshot.latestFrame?.estimatedLapSeconds),
                 colorHex: sortedCars.first?.carClassColorHex ?? FourHourRacePreview.teamClassColorHex
@@ -871,13 +872,13 @@ final class DesignV2OverlaySuiteView: NSView {
 
         if !otherClassRows.isEmpty {
             let otherClassName = snapshot.proximity.nearbyCars
-                .first { $0.carClass != nil && $0.carClass != 4098 }?
+                .first { isOtherClass($0.carClass, referenceClass: referenceClass) }?
                 .carClassName
                 ?? "Other"
             rows.append(
                 standingsClassHeader(
                     className: otherClassName,
-                    rowCount: max(otherClassRows.count, snapshot.proximity.nearbyCars.filter { $0.carClass == 4099 }.count),
+                    rowCount: max(otherClassRows.count, snapshot.proximity.nearbyCars.filter { isOtherClass($0.carClass, referenceClass: referenceClass) }.count),
                     estimatedLaps: estimatedLaps(snapshot.latestFrame?.sessionTimeRemain, lapSeconds: (snapshot.latestFrame?.estimatedLapSeconds).map { $0 * 0.76 }),
                     colorHex: otherClassRows.first?.classColorHex ?? "#33CEFF"
                 )
@@ -936,9 +937,9 @@ final class DesignV2OverlaySuiteView: NSView {
         )
     }
 
-    private func otherClassStandingsRows(snapshot: LiveTelemetrySnapshot) -> [DesignV2OverlayRow] {
+    private func otherClassStandingsRows(snapshot: LiveTelemetrySnapshot, referenceClass: Int?) -> [DesignV2OverlayRow] {
         let cars = snapshot.proximity.nearbyCars
-            .filter { $0.carClass != nil && $0.carClass != 4098 }
+            .filter { isOtherClass($0.carClass, referenceClass: referenceClass) }
             .sorted { abs($0.relativeLaps) < abs($1.relativeLaps) }
 
         let sourceCars = cars.isEmpty
@@ -1004,6 +1005,26 @@ final class DesignV2OverlaySuiteView: NSView {
             return snapshot.latestFrame?.teamDriverName ?? "TMR"
         }
         return MockDriverNames.displayName(for: car.carIdx)
+    }
+
+    private func referenceCarClass(_ snapshot: LiveTelemetrySnapshot) -> Int? {
+        snapshot.latestFrame?.capturedReferenceCar?.carClass
+            ?? snapshot.leaderGap.classCars.first(where: { $0.isReferenceCar })?.carClass
+            ?? 4098
+    }
+
+    private func referenceClassName(_ snapshot: LiveTelemetrySnapshot) -> String {
+        snapshot.latestFrame?.capturedReferenceCar?.carClassName
+            ?? snapshot.leaderGap.classCars.first(where: { $0.isReferenceCar })?.carClassName
+            ?? "GT3"
+    }
+
+    private func isOtherClass(_ carClass: Int?, referenceClass: Int?) -> Bool {
+        guard let carClass else {
+            return false
+        }
+
+        return referenceClass.map { carClass != $0 } ?? false
     }
 
     private func standingsValues(valuesByKey: [String: String]) -> [String] {

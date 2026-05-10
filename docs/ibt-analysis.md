@@ -4,9 +4,9 @@ TmrOverlay can request iRacing's own binary telemetry logging and then analyze t
 
 ## Runtime Behavior
 
-- `IbtAnalysis:TelemetryLoggingEnabled` defaults to `true`.
+- `IbtAnalysis:TelemetryLoggingEnabled` defaults to `false`.
 - IBT logging follows the same switch as raw capture. The startup raw-capture flag or the Support tab's diagnostic telemetry capture control starts a raw segment and sends iRacing's telemetry start command; stopping or finalizing that raw segment sends the telemetry stop command.
-- `IbtAnalysis:Enabled` defaults to `true`.
+- `IbtAnalysis:Enabled` defaults to `false`.
 - After raw capture finalization, the app writes `capture-synthesis.json` immediately with its own timeout, then waits up to `IbtAnalysis:MaxIRacingExitWaitSeconds` for iRacing to stop writing telemetry before looking for the best matching `.ibt` under the configured telemetry root.
 - The app writes compact JSON sidecars under the raw capture directory in `ibt-analysis/`.
 - The app does not copy the source `.ibt` into the capture directory by default.
@@ -21,6 +21,19 @@ Override it with:
 
 ```powershell
 $env:TMR_IbtAnalysis__TelemetryRoot = "D:\iRacing\telemetry"
+```
+
+Enable only the post-session sidecar analysis path:
+
+```powershell
+$env:TMR_IbtAnalysis__Enabled = "true"
+```
+
+Enable the iRacing start/stop command requests while keeping analysis available:
+
+```powershell
+$env:TMR_IbtAnalysis__Enabled = "true"
+$env:TMR_IbtAnalysis__TelemetryLoggingEnabled = "true"
 ```
 
 Disable only the iRacing start/stop command requests while keeping analysis available:

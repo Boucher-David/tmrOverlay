@@ -12,6 +12,7 @@ using TmrOverlay.App.Installation;
 using TmrOverlay.App.Localhost;
 using TmrOverlay.App.Logging;
 using TmrOverlay.App.Overlays;
+using TmrOverlay.App.Overlays.BrowserSources;
 using TmrOverlay.App.Overlays.Styling;
 using TmrOverlay.App.Performance;
 using TmrOverlay.App.Replay;
@@ -23,6 +24,7 @@ using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
 using TmrOverlay.App.TrackMaps;
 using TmrOverlay.App.Updates;
+using TmrOverlay.Core.Settings;
 using TmrOverlay.Core.Telemetry.Live;
 
 namespace TmrOverlay.App;
@@ -62,6 +64,7 @@ internal static class Program
         var captureState = host.Services.GetRequiredService<TelemetryCaptureState>();
 
         RegisterUnhandledExceptionLogging(logger);
+        LoadSharedContract(logger);
         OverlayTheme.LoadOverrides(Path.Combine(storageOptions.SettingsRoot, "overlay-theme.json"), logger);
 
         host.Start();
@@ -78,6 +81,22 @@ internal static class Program
 
         host.StopAsync().GetAwaiter().GetResult();
         logger.LogInformation("TmrOverlay stopped.");
+    }
+
+    private static void LoadSharedContract(ILogger logger)
+    {
+        if (!SharedOverlayContract.TryLoadFromDefaultLocation(out var error))
+        {
+            logger.LogWarning("Shared overlay contract was not loaded: {Error}", error);
+        }
+        else
+        {
+            logger.LogInformation(
+                "Loaded shared overlay contract from {ContractPath}.",
+                SharedOverlayContract.LoadStatus.Path);
+        }
+
+        OverlayTheme.LoadSharedContract(SharedOverlayContract.Current, logger);
     }
 
     private static IHostBuilder CreateHostBuilder()
@@ -107,6 +126,7 @@ internal static class Program
                 services.AddSingleton(TelemetryEdgeCaseOptions.FromConfiguration(context.Configuration));
                 services.AddSingleton(LiveModelParityOptions.FromConfiguration(context.Configuration));
                 services.AddSingleton(LiveOverlayDiagnosticsOptions.FromConfiguration(context.Configuration));
+                services.AddSingleton(LiveOverlayWindowCaptureOptions.FromConfiguration(context.Configuration));
                 services.AddSingleton(IbtAnalysisOptions.FromConfiguration(context.Configuration));
                 services.AddSingleton(PostRaceAnalysisOptions.FromConfiguration(context.Configuration));
                 services.AddSingleton(SessionHistoryOptions.FromConfiguration(context.Configuration, storageOptions));
@@ -119,11 +139,13 @@ internal static class Program
                 services.AddSingleton<AppSettingsStore>();
                 services.AddSingleton<SessionHistoryStore>();
                 services.AddSingleton<SessionHistoryQueryService>();
+                services.AddSingleton<BrowserOverlayModelFactory>();
                 services.AddSingleton<PostRaceAnalysisStore>();
                 services.AddSingleton<PostRaceAnalysisPipeline>();
                 services.AddSingleton<IbtAnalysisService>();
                 services.AddSingleton<IbtTrackMapBuilder>();
                 services.AddSingleton<TrackMapStore>();
+                services.AddSingleton<LiveOverlayWindowCaptureStore>();
                 services.AddSingleton<DiagnosticsBundleService>();
                 services.AddSingleton<TelemetryCaptureState>();
                 services.AddSingleton<TelemetryEdgeCaseRecorder>();
@@ -132,8 +154,10 @@ internal static class Program
                 services.AddSingleton<AppPerformanceState>();
                 services.AddSingleton<AppPerformanceSnapshotRecorder>();
                 services.AddSingleton<ReleaseUpdateService>();
+                services.AddSingleton<SessionPreviewState>();
                 services.AddSingleton<LiveTelemetryStore>();
-                services.AddSingleton<ILiveTelemetrySource>(services => services.GetRequiredService<LiveTelemetryStore>());
+                services.AddSingleton<SessionPreviewLiveTelemetrySource>();
+                services.AddSingleton<ILiveTelemetrySource>(services => services.GetRequiredService<SessionPreviewLiveTelemetrySource>());
                 services.AddSingleton<ILiveTelemetrySink>(services => services.GetRequiredService<LiveTelemetryStore>());
                 services.AddSingleton<OverlayManager>();
                 services.AddSingleton<NotifyIconApplicationContext>();

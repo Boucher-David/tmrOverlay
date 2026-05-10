@@ -27,8 +27,8 @@ Release packaging should include only published runtime output from `src/TmrOver
 - `history/baseline/` contains small tracked sample history for development; the app does not read it by default.
 - `mocks/` contains screenshot and visual-review artifacts. These are validation/design artifacts, not publish output.
 - `skills/` contains agent workflow context and validation instructions.
-- `tools/` contains local analysis and rendering tools, including the Windows WinForms screenshot generator used by CI for parity artifacts.
-- `local-mac/TmrOverlayMac/` is tracked local harness source for macOS review, mock telemetry, and screenshot iteration. Generated `.build`, app data, logs, captures, and local screenshots stay ignored.
+- `tools/` contains local analysis and rendering tools, including the Windows WinForms screenshot generator used by CI for parity artifacts and the browser review server for fixture-backed localhost overlay review.
+- `local-mac/TmrOverlayMac/` is tracked local harness source for secondary macOS native-shell review, mock telemetry, and legacy screenshot iteration. Browser review is the primary mac-friendly parity surface now. Generated `.build`, app data, logs, captures, and local screenshots stay ignored.
 
 These are useful inside the repo but should not appear in a Windows tester package.
 
@@ -43,15 +43,15 @@ The app writes user/runtime data outside the install folder by default, under `%
 - `history/user/`
 - `runtime-state.json`
 - `artifacts/`
-- `tmroverlay-diagnostics-*/`
-- `tmroverlay-diagnostics-*.zip`
+- `*-*.diagnostics/`
+- `*-*.zip` diagnostics bundles
 
 The release workflow should continue auditing publish output so these folders cannot leak into a shipped package.
 
 ## Cleanup Candidates
 
 - `artifacts/` is generated build/screenshot output, including Windows screenshot parity artifacts, and can be deleted locally whenever those files are no longer being inspected.
-- Root `tmroverlay-diagnostics-*` folders and `tmroverlay-diagnostics-*.zip` files are extracted or generated diagnostics bundles and can be deleted locally after support review.
+- Root diagnostics bundle folders or zip files, now named from car, track, and timestamp when session context is available, can be deleted locally after support review.
 - Ignored raw capture folders under `captures/`, especially `captures/IBT/` and large capture directories, should live outside git or in external storage once analysis is complete.
 - The tracked legacy raw capture under `captures/capture-20260426-032822-916/` is not customer-facing and still contains `telemetry.bin`. Replace any remaining references with compact fixtures under `fixtures/` before removing it from git in a dedicated cleanup branch.
 - `mocks/overlay-catalog/` is exploratory reference material. Keep it under `mocks/` while useful, but do not treat it as product documentation.

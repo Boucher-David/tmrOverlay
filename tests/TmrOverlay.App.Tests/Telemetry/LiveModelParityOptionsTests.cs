@@ -7,11 +7,11 @@ namespace TmrOverlay.App.Tests.Telemetry;
 public sealed class LiveModelParityOptionsTests
 {
     [Fact]
-    public void FromConfiguration_DefaultsToEnabled()
+    public void FromConfiguration_DefaultsToOptIn()
     {
         var options = LiveModelParityOptions.FromConfiguration(BuildConfiguration(new Dictionary<string, string?>()));
 
-        Assert.True(options.Enabled);
+        Assert.False(options.Enabled);
     }
 
     [Fact]

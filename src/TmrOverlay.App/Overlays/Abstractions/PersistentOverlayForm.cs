@@ -6,6 +6,7 @@ namespace TmrOverlay.App.Overlays.Abstractions;
 internal abstract class PersistentOverlayForm : Form
 {
     private const int WsExToolWindow = 0x00000080;
+    private const int WsExTransparent = 0x00000020;
     private const int WsExNoActivate = 0x08000000;
     private const int WmNcHitTest = 0x0084;
     private const int HtTransparent = -1;
@@ -20,6 +21,8 @@ internal abstract class PersistentOverlayForm : Form
     private Point _dragCursorOrigin;
     private Point _dragFormOrigin;
     private bool _dragging;
+    private bool _inputTransparentOverride;
+    private bool _framePersistenceSuppressed;
     private double _baseOpacity;
     private double _telemetryFadeAlpha = 1d;
     private double _telemetryFadeTarget = 1d;
@@ -63,7 +66,29 @@ internal abstract class PersistentOverlayForm : Form
 
     public double EffectiveOverlayOpacity => EffectiveOpacity();
 
-    public bool IsEffectivelyInputTransparent => EffectiveOverlayOpacity <= InputTransparentOpacityThreshold;
+    public bool IsEffectivelyInputTransparent =>
+        _inputTransparentOverride || EffectiveOverlayOpacity <= InputTransparentOpacityThreshold;
+
+    protected bool IsOverlayFramePersistenceSuppressed => _framePersistenceSuppressed;
+
+    public void SetInputTransparentOverride(bool enabled)
+    {
+        if (_inputTransparentOverride == enabled)
+        {
+            return;
+        }
+
+        _inputTransparentOverride = enabled;
+        if (IsHandleCreated)
+        {
+            RecreateHandle();
+        }
+    }
+
+    public void SetFramePersistenceSuppressed(bool suppressed)
+    {
+        _framePersistenceSuppressed = suppressed;
+    }
 
     public void SetBaseOverlayOpacity(double opacity)
     {
@@ -109,6 +134,11 @@ internal abstract class PersistentOverlayForm : Form
             if (UseNoActivateStyle)
             {
                 createParams.ExStyle |= WsExNoActivate;
+            }
+
+            if (_inputTransparentOverride)
+            {
+                createParams.ExStyle |= WsExTransparent;
             }
 
             return createParams;
@@ -208,6 +238,11 @@ internal abstract class PersistentOverlayForm : Form
 
     protected virtual void PersistOverlayFrame()
     {
+        if (_framePersistenceSuppressed)
+        {
+            return;
+        }
+
         var persistedSize = GetPersistedOverlaySize();
         _settings.X = Location.X;
         _settings.Y = Location.Y;

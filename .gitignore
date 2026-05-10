@@ -6,12 +6,14 @@
 *.swo
 .vscode/
 .idea/
+node_modules/
 
 # Visual Studio / .NET build outputs
 .vs/
 [Bb]in/
 [Oo]bj/
 [Tt]est[Rr]esult*/
+test-results/
 *.user
 *.suo
 *.rsuser
@@ -20,7 +22,11 @@
 
 # Logs and local diagnostics
 *.log
-# /tmroverlay-diagnostics-*.zip
+# Root diagnostics bundles are car-track-timestamp zip files now; keep them out of commits when extracted locally.
+/*-*.zip
+/tmroverlay-diagnostics-*/
+/*.diagnostics/
+/*-*.diagnostics/
 
 # Repo-local app data when development overrides are enabled.
 # Raw/imported captures can be multi-GB and must stay out of git.

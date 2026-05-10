@@ -16,7 +16,7 @@ internal static class BrowserOverlayRecommendedSize
         if (OverlayContentColumnSettings.TryGetContentDefinition(definition.Id, out var contentDefinition)
             && contentDefinition.Columns.Count > 0)
         {
-            var contentWidth = OverlayContentColumnSettings.TotalVisibleWidth(
+            var contentWidth = OverlayContentColumnSettings.TotalVisibleTableWidth(
                 settings,
                 contentDefinition);
             return new Size(

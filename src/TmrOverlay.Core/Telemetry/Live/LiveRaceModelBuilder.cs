@@ -631,6 +631,7 @@ internal static class LiveRaceModelBuilder
         AddProximityRows(rows, context, driverDirectory, sample.FocusClassCars, "focus-class-cars", focusCarIdx, playerCarIdx, leaderGap.OverallLeaderCarIdx, classLeaderCarIdx);
         AddProximityRows(rows, context, driverDirectory, sample.ClassCars, "player-class-cars", focusCarIdx, playerCarIdx, leaderGap.OverallLeaderCarIdx, classLeaderCarIdx);
         AddProximityRows(rows, context, driverDirectory, sample.NearbyCars, "nearby-cars", focusCarIdx, playerCarIdx, leaderGap.OverallLeaderCarIdx, classLeaderCarIdx);
+        AddProximityRows(rows, context, driverDirectory, sample.AllCars, "all-cars", focusCarIdx, playerCarIdx, leaderGap.OverallLeaderCarIdx, classLeaderCarIdx);
 
         var classGapByCarIdx = leaderGap.ClassCars.ToDictionary(car => car.CarIdx);
         var mergedRows = rows
@@ -641,6 +642,7 @@ internal static class LiveRaceModelBuilder
             .ThenByDescending(row => row.ProgressLaps ?? double.MinValue)
             .ThenBy(row => row.CarIdx)
             .ToArray();
+        mergedRows = ApplyDerivedClassGaps(mergedRows);
 
         var referenceClass = ReferenceCarClass(sample);
         var classRows = mergedRows
@@ -1326,6 +1328,80 @@ internal static class LiveRaceModelBuilder
             DeltaSecondsToFocus = row.DeltaSecondsToFocus ?? gap.DeltaSecondsToReference,
             GapEvidence = BuildClassGapRowEvidence(gap, classGapEvidence)
         };
+    }
+
+    private static LiveTimingRow[] ApplyDerivedClassGaps(IReadOnlyList<LiveTimingRow> rows)
+    {
+        var focusF2 = rows.FirstOrDefault(row => row.IsFocus)?.F2TimeSeconds;
+        var leadersByClass = rows
+            .Where(row => row.CarClass is not null && ValidNonNegative(row.F2TimeSeconds) is not null)
+            .GroupBy(row => row.CarClass!.Value)
+            .Select(group => new
+            {
+                CarClass = group.Key,
+                Leader = SelectDerivedClassLeader(group)
+            })
+            .Where(item => item.Leader is not null)
+            .ToDictionary(
+                item => item.CarClass,
+                item => item.Leader!);
+
+        return rows
+            .Select(row =>
+            {
+                var updated = row;
+                if (row.CarClass is { } carClass
+                    && leadersByClass.TryGetValue(carClass, out var leader)
+                    && ValidNonNegative(row.F2TimeSeconds) is { } rowF2
+                    && ValidNonNegative(leader.F2TimeSeconds) is { } leaderF2
+                    && rowF2 >= leaderF2)
+                {
+                    var derivedGap = row.ClassPosition == 1 || row.CarIdx == leader.CarIdx
+                        ? 0d
+                        : rowF2 - leaderF2;
+                    updated = updated with
+                    {
+                        IsClassLeader = updated.IsClassLeader || row.CarIdx == leader.CarIdx || row.ClassPosition == 1,
+                        GapSecondsToClassLeader = updated.GapSecondsToClassLeader ?? derivedGap,
+                        GapEvidence = updated.GapEvidence.IsUsable
+                            ? updated.GapEvidence
+                            : LiveSignalEvidence.Inferred("all-cars-f2")
+                    };
+                }
+
+                if (ValidNonNegative(focusF2) is { } focus
+                    && ValidNonNegative(row.F2TimeSeconds) is { } current)
+                {
+                    updated = updated with
+                    {
+                        DeltaSecondsToFocus = updated.DeltaSecondsToFocus ?? current - focus
+                    };
+                }
+
+                return updated;
+            })
+            .ToArray();
+    }
+
+    private static LiveTimingRow? SelectDerivedClassLeader(IEnumerable<LiveTimingRow> rows)
+    {
+        var candidates = rows
+            .Where(row => ValidNonNegative(row.F2TimeSeconds) is not null)
+            .ToArray();
+        var explicitLeader = candidates
+            .Where(row => row.IsClassLeader || row.ClassPosition == 1)
+            .OrderBy(row => row.ClassPosition == 1 ? 0 : 1)
+            .ThenBy(row => row.F2TimeSeconds ?? double.MaxValue)
+            .FirstOrDefault();
+
+        if (explicitLeader is not null)
+        {
+            return explicitLeader;
+        }
+
+        return candidates.Length > 1
+            ? candidates.OrderBy(row => row.F2TimeSeconds ?? double.MaxValue).First()
+            : null;
     }
 
     private static LiveSignalEvidence BuildLeaderGapEvidence(

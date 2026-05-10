@@ -1,10 +1,15 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using TmrOverlay.App.Overlays.BrowserSources;
+using TmrOverlay.App.Overlays.Styling;
+using TmrOverlay.Core.Settings;
 using Xunit;
 
 namespace TmrOverlay.App.Tests.Localhost;
 
 public sealed class BrowserOverlayPageRendererTests
 {
+    private static readonly SharedOverlayContractSnapshot SharedContract = LoadSharedContractForTests();
+
     [Theory]
     [InlineData("/overlays/standings", "standings")]
     [InlineData("/overlays/relative", "relative")]
@@ -25,20 +30,37 @@ public sealed class BrowserOverlayPageRendererTests
 
         Assert.True(rendered);
         Assert.Contains("\"id\":\"" + expectedId + "\"", html);
-        Assert.Contains("fetch('/api/snapshot'", html);
+        Assert.Contains("apiPath('/api/snapshot')", html);
         Assert.Contains("telemetryAvailability", html);
         Assert.Contains("waiting for fresh telemetry", html);
         Assert.Contains("--tmr-surface", html);
+        Assert.Contains($"--tmr-cyan: {SharedColor("cyan")}", html);
+        Assert.Contains($"--tmr-magenta: {SharedColor("magenta")}", html);
+        Assert.Contains($"--tmr-amber: {SharedColor("amber")}", html);
         Assert.Contains("border-bottom: 2px solid var(--tmr-cyan)", html);
         Assert.Contains("var(--tmr-surface-raised)", html);
         Assert.Contains("themeColor", html);
+        Assert.Contains("fetchOverlayModel(overlayId)", html);
+        Assert.Contains("renderOverlayModel(model)", html);
+        Assert.Contains("displayModelHeaders(model)", html);
+        Assert.Contains("window.TmrBrowserModel = browserModel", html);
+        Assert.Contains("window.TmrBrowserApiPath = apiPath", html);
+        Assert.Contains("model(live, name)", html);
+        Assert.Contains("currentSessionKind(live)", html);
+        Assert.Contains("referenceCarIdx(live, options = {})", html);
+        Assert.Contains("hasDriverIdentity(row, referenceCarIdx)", html);
+        Assert.Contains("selectRowsAroundReference(rows, referenceCarIdx, limit, carIdxForRow)", html);
         if (expectedId == "track-map")
         {
             Assert.Contains("track-map-page", html);
-            Assert.Contains("fetch('/api/track-map'", html);
+            Assert.Contains("TmrBrowserApiPath('/api/track-map')", html);
             Assert.Contains("renderOffline()", html);
             Assert.Contains("let cachedTrackMapSettings", html);
             Assert.Contains("row.hasSpatialProgress === false", html);
+            Assert.Contains("const trackMapModel = window.TmrBrowserModel", html);
+            Assert.Contains("trackMapModel.spatial(live)", html);
+            Assert.Contains("trackMapModel.referenceCarIdx", html);
+            Assert.Contains("trackMapModel.timingRows", html);
             Assert.Contains("\"refreshIntervalMilliseconds\":100", html);
             Assert.Contains(": null", html);
             Assert.Contains("stroke=\"var(--tmr-cyan)\"", html);
@@ -46,39 +68,34 @@ public sealed class BrowserOverlayPageRendererTests
         }
         if (expectedId == "standings")
         {
-            Assert.Contains("hasStandingDriverIdentity", html);
-            Assert.Contains("fetch('/api/standings'", html);
-            Assert.Contains("otherClassRowsPerClass", html);
-            Assert.Contains("width: 35", html);
-            Assert.Contains("width: 50", html);
-            Assert.Contains("width: 250", html);
-            Assert.Contains("width: 60", html);
-            Assert.Contains("width: 30", html);
+            Assert.Contains("fetchOverlayModel('standings')", html);
             Assert.Contains("class-header", html);
             Assert.Contains("colspan=\"${Math.max(1, headers.length)}\"", html);
             Assert.Contains("class-header-band", html);
+            Assert.Contains("standingsDisplayModel", html);
+        }
+        if (expectedId == "fuel-calculator")
+        {
+            Assert.Contains("fetchOverlayModel('fuel-calculator')", html);
+            Assert.Contains("fuelDisplayModel", html);
         }
         if (expectedId == "relative")
         {
-            Assert.Contains("models?.relative", html);
-            Assert.Contains("fetch('/api/relative'", html);
-            Assert.Contains("relativeSettings", html);
-            Assert.Contains("width: 38", html);
-            Assert.Contains("width: 250", html);
-            Assert.Contains("width: 70", html);
-            Assert.Contains("row.onPitRoad ? 'IN'", html);
+            Assert.Contains("fetchOverlayModel('relative')", html);
+            Assert.Contains("relativeDisplayModel", html);
         }
         if (expectedId == "pit-service")
         {
-            Assert.Contains("YELLOW - optional repair", html);
-            Assert.Contains("hasFastRepairSelected", html);
-            Assert.Contains("pitStatus.complete", html);
-            Assert.Contains("pitValueChanged", html);
-            Assert.Contains("metric highlight", html);
+            Assert.Contains("fetchOverlayModel('pit-service')", html);
+            Assert.Contains("pitServiceDisplayModel", html);
+            Assert.Contains(".metric.highlight", html);
         }
         if (expectedId == "input-state")
         {
             Assert.Contains("waiting for player in car", html);
+            Assert.Contains("const inputModel = window.TmrBrowserModel", html);
+            Assert.Contains("inputModel.inputs(live)", html);
+            Assert.Contains("inputModel.isPlayerInCar(live)", html);
             Assert.Contains("brakeAbsActive", html);
             Assert.Contains("var(--tmr-green)", html);
             Assert.Contains("themeColor('--tmr-green'", html);
@@ -87,21 +104,37 @@ public sealed class BrowserOverlayPageRendererTests
         if (expectedId == "car-radar")
         {
             Assert.Contains("radar-v2", html);
+            Assert.Contains("const radarModel = window.TmrBrowserModel", html);
+            Assert.Contains("radarModel.spatial(live)", html);
+            Assert.Contains("radarModel.hasRelativePlacement", html);
             Assert.Contains("body.car-radar-page .overlay", html);
             Assert.Contains("classColorCss(car.carClassColorHex)", html);
         }
+        if (expectedId == "session-weather")
+        {
+            Assert.Contains("fetchOverlayModel('session-weather')", html);
+            Assert.Contains("sessionWeatherDisplayModel", html);
+        }
+        if (expectedId == "gap-to-leader")
+        {
+            Assert.Contains("fetchOverlayModel('gap-to-leader')", html);
+            Assert.Contains("gapDisplayModel", html);
+        }
         if (expectedId == "stream-chat")
         {
-            Assert.Contains("fetch('/api/stream-chat'", html);
+            Assert.Contains("TmrBrowserApiPath('/api/stream-chat')", html);
             Assert.Contains("connectTwitchChat", html);
             Assert.Contains("chat connected", html);
         }
         if (expectedId == "garage-cover")
         {
             Assert.Contains("garage-cover-page", html);
-            Assert.Contains("fetch('/api/garage-cover'", html);
+            Assert.Contains("TmrBrowserApiPath('/api/garage-cover')", html);
             Assert.Contains("/api/garage-cover/image", html);
             Assert.Contains("preview visible", html);
+            Assert.Contains("const garageCoverModel = window.TmrBrowserModel", html);
+            Assert.Contains("garageCoverModel.isLiveTelemetryAvailable(live)", html);
+            Assert.Contains("garageCoverModel.raceEvents(live)", html);
             Assert.Contains("shouldFailClosed", html);
             Assert.Contains("isGarageVisible", html);
         }
@@ -138,6 +171,19 @@ public sealed class BrowserOverlayPageRendererTests
                 Assert.DoesNotContain(fragment, html);
             }
         }
+    }
+
+    [Fact]
+    public void TryRender_UsesSharedDesignV2ContractTokens()
+    {
+        Assert.True(BrowserOverlayPageRenderer.TryRender("/overlays/relative", out var html));
+
+        Assert.Contains(
+            $"--tmr-cyan: {SharedColor("cyan")}",
+            html);
+        Assert.Contains(
+            $"--tmr-magenta: {SharedColor("magenta")}",
+            html);
     }
 
     [Fact]
@@ -205,5 +251,23 @@ public sealed class BrowserOverlayPageRendererTests
         Assert.Contains("/overlays/garage-cover", html);
         Assert.DoesNotContain("/overlays/calculator", html);
         Assert.DoesNotContain("/overlays/inputs", html);
+    }
+
+    private static SharedOverlayContractSnapshot LoadSharedContractForTests()
+    {
+        var contractPath = SharedOverlayContract.TryFindDefaultContractPath();
+        if (string.IsNullOrWhiteSpace(contractPath))
+        {
+            throw new InvalidOperationException("Shared overlay contract file was not found for browser renderer tests.");
+        }
+
+        var contract = SharedOverlayContract.Parse(File.ReadAllText(contractPath));
+        OverlayTheme.LoadSharedContract(contract, NullLogger.Instance);
+        return contract;
+    }
+
+    private static string SharedColor(string key)
+    {
+        return SharedContract.DesignV2Color(key, "#missing").ToLowerInvariant();
     }
 }

@@ -58,6 +58,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private readonly PostRaceAnalysisOptions _postRaceAnalysisOptions;
     private readonly AppPerformanceState _performanceState;
     private readonly ReleaseUpdateService _releaseUpdates;
+    private readonly SessionPreviewState _sessionPreviewState;
     private readonly AppStorageOptions _storageOptions;
     private readonly LocalhostOverlayOptions _localhostOverlayOptions;
     private readonly LocalhostOverlayState _localhostOverlayState;
@@ -117,6 +118,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         PostRaceAnalysisOptions postRaceAnalysisOptions,
         AppPerformanceState performanceState,
         ReleaseUpdateService releaseUpdates,
+        SessionPreviewState sessionPreviewState,
         AppStorageOptions storageOptions,
         LocalhostOverlayOptions localhostOverlayOptions,
         LocalhostOverlayState localhostOverlayState,
@@ -143,6 +145,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _postRaceAnalysisOptions = postRaceAnalysisOptions;
         _performanceState = performanceState;
         _releaseUpdates = releaseUpdates;
+        _sessionPreviewState = sessionPreviewState;
         _storageOptions = storageOptions;
         _localhostOverlayOptions = localhostOverlayOptions;
         _localhostOverlayState = localhostOverlayState;
@@ -294,6 +297,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
                 RestartToApplyUpdate = RestartToApplyUpdateFromSettings,
                 OpenReleaseUpdatePage = OpenReleaseUpdatePage,
                 CopyTextToClipboard = CopyTextToClipboard,
+                SetSessionPreview = SetSessionPreview,
+                SessionPreviewSnapshot = _sessionPreviewState.Snapshot,
                 ImportGarageCoverImage = ImportGarageCoverImage,
                 ClearGarageCoverImage = ClearGarageCoverImage,
                 ShowGarageCoverPreview = ShowGarageCoverPreview,
@@ -310,6 +315,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
         RegisterDragSurfaces(_titleBar, _brandLogo, _titleLabel, _subtitleLabel);
         _releaseUpdates.StateChanged += ReleaseUpdatesStateChanged;
+        _sessionPreviewState.Changed += SessionPreviewStateChanged;
 
         ReportSelectedOverlayTab();
         RefreshSelectedSettingsTab(force: true);
@@ -348,6 +354,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             _refreshTimer.Stop();
             _refreshTimer.Dispose();
             _releaseUpdates.StateChanged -= ReleaseUpdatesStateChanged;
+            _sessionPreviewState.Changed -= SessionPreviewStateChanged;
             _v2Surface?.Dispose();
             _tabs.Dispose();
             _updateBannerCheckButton.Dispose();
@@ -772,6 +779,43 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         }
     }
 
+    private void SetSessionPreview(OverlaySessionKind? mode)
+    {
+        _sessionPreviewState.SetMode(mode);
+    }
+
+    private void SessionPreviewStateChanged(object? sender, EventArgs e)
+    {
+        if (IsDisposed || !IsHandleCreated)
+        {
+            return;
+        }
+
+        if (InvokeRequired)
+        {
+            try
+            {
+                BeginInvoke((Action)(() => SessionPreviewStateChanged(sender, e)));
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            return;
+        }
+
+        try
+        {
+            _applyOverlaySettings();
+            RefreshSelectedSettingsTab(force: true);
+            Invalidate();
+        }
+        catch (Exception exception)
+        {
+            SetSupportStatus($"Preview update failed: {exception.Message}", isError: true);
+        }
+    }
+
     private void RefreshSelectedSettingsTab(bool force)
     {
         if (force && IsSupportTabSelected())
@@ -915,6 +959,27 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
         page.Controls.Add(unitsLabel);
         page.Controls.Add(unitsCombo);
+        var previewTitle = CreateSectionLabel("Show Preview", 18, 126, 500);
+        var previewNote = CreateMutedLabel(
+            "Mock telemetry only. Overlay visibility, session filters, position, scale, and opacity still apply.",
+            22,
+            156,
+            640);
+        var offButton = CreateActionButton("Off", 22, 196, 80);
+        offButton.Click += (_, _) => SetSessionPreview(null);
+        var practiceButton = CreateActionButton("Practice", 112, 196, 96);
+        practiceButton.Click += (_, _) => SetSessionPreview(OverlaySessionKind.Practice);
+        var qualifyingButton = CreateActionButton("Qualifying", 218, 196, 106);
+        qualifyingButton.Click += (_, _) => SetSessionPreview(OverlaySessionKind.Qualifying);
+        var raceButton = CreateActionButton("Race", 334, 196, 86);
+        raceButton.Click += (_, _) => SetSessionPreview(OverlaySessionKind.Race);
+
+        page.Controls.Add(previewTitle);
+        page.Controls.Add(previewNote);
+        page.Controls.Add(offButton);
+        page.Controls.Add(practiceButton);
+        page.Controls.Add(qualifyingButton);
+        page.Controls.Add(raceButton);
         return page;
     }
 
@@ -1532,7 +1597,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             new StreamChatProviderItem("Twitch channel", StreamChatOverlaySettings.ProviderTwitch)
         ]);
         var provider = StreamChatOverlaySettings.NormalizeProvider(
-            settings.GetStringOption(OverlayOptionKeys.StreamChatProvider, StreamChatOverlaySettings.ProviderNone));
+            settings.GetStringOption(OverlayOptionKeys.StreamChatProvider, StreamChatOverlaySettings.DefaultProvider));
         providerCombo.SelectedIndex = providerCombo.Items
             .Cast<StreamChatProviderItem>()
             .Select((item, index) => new { item, index })
@@ -1552,7 +1617,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
         page.Controls.Add(CreateLabel("Twitch channel", 22, top + 166, 120));
         var twitchBox = CreateEditableTextBox(
-            settings.GetStringOption(OverlayOptionKeys.StreamChatTwitchChannel),
+            settings.GetStringOption(OverlayOptionKeys.StreamChatTwitchChannel, StreamChatOverlaySettings.DefaultTwitchChannel),
             150,
             top + 160,
             220,
@@ -1996,7 +2061,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         }
 
         return Directory
-            .EnumerateFiles(_storageOptions.DiagnosticsRoot, "tmroverlay-diagnostics-*.zip")
+            .EnumerateFiles(_storageOptions.DiagnosticsRoot, "*.zip")
             .Select(path => new FileInfo(path))
             .OrderByDescending(file => file.LastWriteTimeUtc)
             .FirstOrDefault()

@@ -97,7 +97,26 @@ public sealed class DiagnosticsBundleServiceTests
             Directory.CreateDirectory(captureDirectory);
             File.WriteAllText(Path.Combine(captureDirectory, "capture-manifest.json"), "{}");
             File.WriteAllText(Path.Combine(captureDirectory, "telemetry-schema.json"), "[]");
-            File.WriteAllText(Path.Combine(captureDirectory, "latest-session.yaml"), "WeekendInfo: {}");
+            File.WriteAllText(
+                Path.Combine(captureDirectory, "latest-session.yaml"),
+                """
+                WeekendInfo:
+                 TrackName: nurburgring combinedshortb
+                 TrackDisplayName: Gesamtstrecke VLN
+                SessionInfo:
+                 CurrentSessionNum: 0
+                 Sessions:
+                 - SessionNum: 0
+                   SessionType: Race
+                   SessionName: RACE
+                DriverInfo:
+                 DriverCarIdx: 0
+                 Drivers:
+                 - CarIdx: 0
+                   CarPath: bmwm4gt3
+                   CarScreenName: BMW M4 GT3 EVO
+                   CarScreenNameShort: BMW M4 GT3 EVO
+                """);
             File.WriteAllText(Path.Combine(captureDirectory, "capture-synthesis.json"), "{}");
             File.WriteAllText(Path.Combine(captureDirectory, "live-model-parity.json"), "{}");
             File.WriteAllText(Path.Combine(captureDirectory, "live-overlay-diagnostics.json"), "{}");
@@ -133,6 +152,8 @@ public sealed class DiagnosticsBundleServiceTests
                 new ReleaseUpdateOptions { Enabled = false },
                 new AppEventRecorder(storage),
                 NullLogger<ReleaseUpdateService>.Instance);
+            var sessionPreview = new SessionPreviewState(new AppEventRecorder(storage));
+            sessionPreview.SetMode(TmrOverlay.Core.Overlays.OverlaySessionKind.Qualifying);
             var liveTelemetry = new TestLiveTelemetrySource(LiveTelemetrySnapshot.Empty with
             {
                 IsConnected = true,
@@ -157,12 +178,18 @@ public sealed class DiagnosticsBundleServiceTests
                 trackMapStore,
                 settingsStore,
                 liveTelemetry,
+                sessionPreview,
                 performance,
                 performanceRecorder,
+                new LiveOverlayWindowCaptureStore(storage),
                 releaseUpdates,
                 NullLogger<DiagnosticsBundleService>.Instance);
 
             var bundlePath = service.CreateBundle();
+
+            var bundleFileName = Path.GetFileName(bundlePath);
+            Assert.StartsWith("bmw-m4-gt3-evo-gesamtstrecke-vln-", bundleFileName);
+            Assert.EndsWith(".zip", bundleFileName);
 
             using var archive = ZipFile.OpenRead(bundlePath);
             var entryNames = archive.Entries.Select(entry => entry.FullName).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -170,13 +197,19 @@ public sealed class DiagnosticsBundleServiceTests
             Assert.Contains("metadata/storage.json", entryNames);
             Assert.Contains("metadata/telemetry-state.json", entryNames);
             Assert.Contains("metadata/localhost-overlays.json", entryNames);
+            Assert.Contains("metadata/browser-overlays.json", entryNames);
+            Assert.Contains("metadata/session-preview.json", entryNames);
+            Assert.Contains("metadata/shared-settings-contract.json", entryNames);
             Assert.Contains("metadata/release-updates.json", entryNames);
             Assert.Contains("metadata/installer-cleanup.json", entryNames);
             Assert.Contains("metadata/track-maps.json", entryNames);
             Assert.Contains("metadata/garage-cover.json", entryNames);
             Assert.Contains("metadata/performance.json", entryNames);
             Assert.Contains("metadata/ui-freeze-watch.json", entryNames);
+            Assert.Contains("live-overlays/manifest.json", entryNames);
             Assert.Contains("runtime/runtime-state.json", entryNames);
+            Assert.Contains("shared/tmr-overlay-contract.json", entryNames);
+            Assert.Contains("shared/tmr-overlay-contract.schema.json", entryNames);
             Assert.Contains("settings/settings.json", entryNames);
             Assert.Contains("logs/tmroverlay-20260426.log", entryNames);
             Assert.Contains("edge-cases/session-20260426-edge-cases.json", entryNames);
@@ -201,6 +234,26 @@ public sealed class DiagnosticsBundleServiceTests
             Assert.DoesNotContain("latest-capture/ibt-analysis/source.ibt", entryNames);
             Assert.DoesNotContain("settings/garage-cover/cover.png", entryNames);
 
+            var diagnosticsBundleEntry = archive.GetEntry("metadata/diagnostics-bundle.json");
+            Assert.NotNull(diagnosticsBundleEntry);
+            using (var diagnosticsBundleReader = new StreamReader(diagnosticsBundleEntry.Open()))
+            {
+                var diagnosticsBundleJson = JsonNode.Parse(diagnosticsBundleReader.ReadToEnd());
+                Assert.Equal(bundleFileName, (string?)diagnosticsBundleJson?["fileName"]);
+                Assert.Equal("BMW M4 GT3 EVO", (string?)diagnosticsBundleJson?["naming"]?["carName"]);
+                Assert.Equal("Gesamtstrecke VLN", (string?)diagnosticsBundleJson?["naming"]?["trackName"]);
+                Assert.Equal("latest-capture", (string?)diagnosticsBundleJson?["naming"]?["source"]);
+            }
+
+            var liveOverlaysEntry = archive.GetEntry("live-overlays/manifest.json");
+            Assert.NotNull(liveOverlaysEntry);
+            using (var liveOverlaysReader = new StreamReader(liveOverlaysEntry.Open()))
+            {
+                var liveOverlaysJson = JsonNode.Parse(liveOverlaysReader.ReadToEnd());
+                Assert.Equal("live-window-screen-crops", (string?)liveOverlaysJson?["captureKind"]);
+                Assert.Empty(Assert.IsType<JsonArray>(liveOverlaysJson?["overlays"]));
+            }
+
             var localhostEntry = archive.GetEntry("metadata/localhost-overlays.json");
             Assert.NotNull(localhostEntry);
             using (var localhostReader = new StreamReader(localhostEntry.Open()))
@@ -210,6 +263,46 @@ public sealed class DiagnosticsBundleServiceTests
                 Assert.Equal("listening", (string?)localhostJson?["status"]);
                 Assert.Equal(1L, ((long?)localhostJson?["totalRequests"]) ?? -1L);
                 Assert.Equal(1L, ((long?)localhostJson?["routeCounts"]?["track_map"]) ?? -1L);
+            }
+
+            var browserOverlaysEntry = archive.GetEntry("metadata/browser-overlays.json");
+            Assert.NotNull(browserOverlaysEntry);
+            using (var browserOverlaysReader = new StreamReader(browserOverlaysEntry.Open()))
+            {
+                var browserOverlaysJson = JsonNode.Parse(browserOverlaysReader.ReadToEnd());
+                var pages = Assert.IsType<JsonArray>(browserOverlaysJson?["pages"]);
+                Assert.Contains(pages, page =>
+                    string.Equals((string?)page?["id"], "standings", StringComparison.Ordinal)
+                    && string.Equals((string?)page?["canonicalRoute"], "/overlays/standings", StringComparison.Ordinal)
+                    && ((int?)page?["refreshIntervalMilliseconds"]) == 250);
+                Assert.Contains(pages, page =>
+                    string.Equals((string?)page?["id"], "garage-cover", StringComparison.Ordinal)
+                    && string.Equals((string?)page?["canonicalRoute"], "/overlays/garage-cover", StringComparison.Ordinal)
+                    && ((bool?)page?["renderWhenTelemetryUnavailable"]) == true);
+            }
+
+            var sessionPreviewEntry = archive.GetEntry("metadata/session-preview.json");
+            Assert.NotNull(sessionPreviewEntry);
+            using (var sessionPreviewReader = new StreamReader(sessionPreviewEntry.Open()))
+            {
+                var sessionPreviewJson = JsonNode.Parse(sessionPreviewReader.ReadToEnd());
+                Assert.True(((bool?)sessionPreviewJson?["active"]) == true);
+                Assert.Equal("Qualifying", (string?)sessionPreviewJson?["mode"]);
+                Assert.True(((bool?)sessionPreviewJson?["usesNormalOverlayVisibility"]) == true);
+                Assert.False(((bool?)sessionPreviewJson?["overridesOverlayEnabledState"]) ?? true);
+                Assert.False(((bool?)sessionPreviewJson?["overridesOverlaySessionFilters"]) ?? true);
+                Assert.Equal("settings-general-preview", (string?)sessionPreviewJson?["source"]);
+            }
+
+            var sharedContractEntry = archive.GetEntry("metadata/shared-settings-contract.json");
+            Assert.NotNull(sharedContractEntry);
+            using (var sharedContractReader = new StreamReader(sharedContractEntry.Open()))
+            {
+                var sharedContractJson = JsonNode.Parse(sharedContractReader.ReadToEnd());
+                Assert.Equal(9, ((int?)sharedContractJson?["settingsVersion"]) ?? -1);
+                Assert.Equal("twitch", (string?)sharedContractJson?["streamChatDefaultProvider"]);
+                Assert.Equal("techmatesracing", (string?)sharedContractJson?["streamChatDefaultTwitchChannel"]);
+                Assert.Equal("#00E8FF", (string?)sharedContractJson?["designV2Colors"]?["cyan"]);
             }
 
             var releaseUpdatesEntry = archive.GetEntry("metadata/release-updates.json");

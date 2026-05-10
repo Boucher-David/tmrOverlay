@@ -97,7 +97,7 @@ enum OverlayContentColumns {
             OverlayContentColumnDefinition(id: standingsIntervalColumnId, label: "INT", dataKey: dataInterval, defaultEnabled: true, defaultOrder: 5, defaultWidth: 60, minimumWidth: 50, maximumWidth: 160, widthOptionKey: "standings.column.interval-width"),
             OverlayContentColumnDefinition(id: standingsPitColumnId, label: "PIT", dataKey: dataPit, defaultEnabled: true, defaultOrder: 6, defaultWidth: 30, minimumWidth: 24, maximumWidth: 90, widthOptionKey: "standings.column.pit-width")
         ],
-        browserWidthPadding: 42,
+        browserWidthPadding: 66,
         browserMinimumHeight: 520,
         nativeMinimumTableHeight: 390,
         fallbackColumnId: standingsDriverColumnId,
@@ -125,7 +125,7 @@ enum OverlayContentColumns {
             OverlayContentColumnDefinition(id: relativeGapColumnId, label: "Gap", dataKey: dataGap, defaultEnabled: true, defaultOrder: 3, defaultWidth: 70, minimumWidth: 60, maximumWidth: 160),
             OverlayContentColumnDefinition(id: relativePitColumnId, label: "Pit", dataKey: dataPit, defaultEnabled: false, defaultOrder: 4, defaultWidth: 30, minimumWidth: 24, maximumWidth: 90)
         ],
-        browserWidthPadding: 42,
+        browserWidthPadding: 66,
         browserMinimumHeight: 360,
         nativeMinimumTableHeight: 180,
         fallbackColumnId: relativeDriverColumnId
@@ -274,9 +274,11 @@ enum OverlayContentColumns {
             return NSSize(width: baseWidth, height: baseHeight)
         }
 
-        let contentWidth = visibleColumnStates(for: content, settings: settings).reduce(0) { $0 + $1.width }
+        let columns = visibleColumnStates(for: content, settings: settings)
+        let contentWidth = columns.reduce(0) { $0 + $1.width }
+        let columnGaps = max(0, columns.count - 1) * 8
         return NSSize(
-            width: max(1, CGFloat(contentWidth + content.browserWidthPadding)),
+            width: max(1, CGFloat(contentWidth + columnGaps + content.browserWidthPadding)),
             height: max(baseHeight, CGFloat(content.browserMinimumHeight))
         )
     }

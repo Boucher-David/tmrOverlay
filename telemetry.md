@@ -242,8 +242,8 @@ Primary source:
 
 - `CamCarIdx` is the active camera/focus car index. Live visual overlays use it when valid so radar and class-gap context can follow a watched car; fuel/history remain anchored to the player/team car.
 - `CarLeftRight` is the authoritative scalar side-warning signal for cars to the left, right, or both sides of the driver. Radar placement can choose which rendered car occupies a side slot only when its reliable relative meters, or fallback timing gap, is inside the side-overlap window.
-- `CarIdxF2Time` is used for race gap timing to the overall leader, class leader, and same-class cars in the gap trend graph when race-position data is available.
-- Gap graph class rows are kept separate from radar proximity rows: cars with valid standings/F2 timing can remain graphable even when `CarIdxLapCompleted` or `CarIdxLapDistPct` is unavailable.
+- `CarIdxF2Time` is used for race gap timing to the overall leader, class leader, same-class cars in the gap trend graph, and best-effort Standings enrichment for other classes when race-position data is available.
+- Gap graph and standings timing rows are kept separate from radar proximity rows: cars with valid standings/F2 timing can remain graphable or table-enriched even when `CarIdxLapCompleted` or `CarIdxLapDistPct` is unavailable.
 - `CarIdxEstTime`, `CarIdxLapCompleted`, and `CarIdxLapDistPct` provide the first-pass relative track-position model for nearby cars. Radar prefers `CarIdxLapDistPct` with track length for physical close-range distance and uses reliable estimated/F2 timing as fallback.
 - `CarIdxTrackSurface` and `CarIdxOnPitRoad` distinguish cars physically on track from pit-road or off-track cars. Radar excludes pit-road cars and hides while the focused car is in pit-road states.
 - The live radar model keeps a short in-memory proximity history so different-class cars approaching from behind can raise a multiclass warning before they reach the close-range radar circle. This derived warning is not persisted in compact history.

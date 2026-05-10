@@ -31,9 +31,9 @@ struct OverlaySettings: Codable {
     var flagsShowCritical = true
     var flagsShowFinish = true
     var trackMapBuildFromTelemetry = true
-    var streamChatProvider = "none"
+    var streamChatProvider = StreamChatProviderOptions.defaultProvider
     var streamChatStreamlabsUrl = ""
-    var streamChatTwitchChannel = ""
+    var streamChatTwitchChannel = StreamChatProviderOptions.defaultTwitchChannel
     var garageCoverImagePath = ""
     var garageCoverDefaultFrameApplied = false
     var options: [String: String] = [:]
@@ -110,9 +110,9 @@ struct OverlaySettings: Codable {
         flagsShowCritical: Bool = true,
         flagsShowFinish: Bool = true,
         trackMapBuildFromTelemetry: Bool = true,
-        streamChatProvider: String = "none",
+        streamChatProvider: String = StreamChatProviderOptions.defaultProvider,
         streamChatStreamlabsUrl: String = "",
-        streamChatTwitchChannel: String = "",
+        streamChatTwitchChannel: String = StreamChatProviderOptions.defaultTwitchChannel,
         garageCoverImagePath: String = "",
         garageCoverDefaultFrameApplied: Bool = false,
         options: [String: String] = [:],
@@ -189,9 +189,9 @@ struct OverlaySettings: Codable {
         flagsShowCritical = try container.decodeIfPresent(Bool.self, forKey: .flagsShowCritical) ?? true
         flagsShowFinish = try container.decodeIfPresent(Bool.self, forKey: .flagsShowFinish) ?? true
         trackMapBuildFromTelemetry = try container.decodeIfPresent(Bool.self, forKey: .trackMapBuildFromTelemetry) ?? true
-        streamChatProvider = try container.decodeIfPresent(String.self, forKey: .streamChatProvider) ?? "none"
+        streamChatProvider = try container.decodeIfPresent(String.self, forKey: .streamChatProvider) ?? StreamChatProviderOptions.defaultProvider
         streamChatStreamlabsUrl = try container.decodeIfPresent(String.self, forKey: .streamChatStreamlabsUrl) ?? ""
-        streamChatTwitchChannel = try container.decodeIfPresent(String.self, forKey: .streamChatTwitchChannel) ?? ""
+        streamChatTwitchChannel = try container.decodeIfPresent(String.self, forKey: .streamChatTwitchChannel) ?? StreamChatProviderOptions.defaultTwitchChannel
         garageCoverImagePath = try container.decodeIfPresent(String.self, forKey: .garageCoverImagePath) ?? ""
         garageCoverDefaultFrameApplied = try container.decodeIfPresent(Bool.self, forKey: .garageCoverDefaultFrameApplied) ?? false
         options = try container.decodeIfPresent([String: String].self, forKey: .options) ?? [:]
@@ -200,23 +200,28 @@ struct OverlaySettings: Codable {
 }
 
 struct ApplicationGeneralSettings: Codable {
-    var fontFamily = "SF Pro"
-    var unitSystem = "Metric"
+    var fontFamily = SharedOverlayContract.current.defaultFontFamily
+    var unitSystem = SharedOverlayContract.current.defaultUnitSystem
 
     enum CodingKeys: String, CodingKey {
         case fontFamily
         case unitSystem
     }
 
-    init(fontFamily: String = "SF Pro", unitSystem: String = "Metric") {
+    init(
+        fontFamily: String = SharedOverlayContract.current.defaultFontFamily,
+        unitSystem: String = SharedOverlayContract.current.defaultUnitSystem
+    ) {
         self.fontFamily = fontFamily
         self.unitSystem = unitSystem
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        fontFamily = try container.decodeIfPresent(String.self, forKey: .fontFamily) ?? "SF Pro"
-        unitSystem = try container.decodeIfPresent(String.self, forKey: .unitSystem) ?? "Metric"
+        fontFamily = try container.decodeIfPresent(String.self, forKey: .fontFamily)
+            ?? SharedOverlayContract.current.defaultFontFamily
+        unitSystem = try container.decodeIfPresent(String.self, forKey: .unitSystem)
+            ?? SharedOverlayContract.current.defaultUnitSystem
     }
 }
 
@@ -280,7 +285,7 @@ struct ApplicationSettings: Codable {
 }
 
 enum AppSettingsMigrator {
-    static let currentVersion = 5
+    static let currentVersion = SharedOverlayContract.current.settingsVersion
     private static let flagsOverlayId = "flags"
     private static let flagsPrimaryScreenDefaultId = "primary-screen-default"
     private static let flagsDefaultWidth = 360.0
@@ -301,7 +306,7 @@ enum AppSettingsMigrator {
     private static func normalizedGeneral(_ general: ApplicationGeneralSettings) -> ApplicationGeneralSettings {
         let trimmedFont = general.fontFamily.trimmingCharacters(in: .whitespacesAndNewlines)
         return ApplicationGeneralSettings(
-            fontFamily: trimmedFont.isEmpty ? "SF Pro" : trimmedFont,
+            fontFamily: trimmedFont.isEmpty ? SharedOverlayContract.current.defaultFontFamily : trimmedFont,
             unitSystem: general.unitSystem.caseInsensitiveCompare("Imperial") == .orderedSame ? "Imperial" : "Metric"
         )
     }
@@ -317,10 +322,58 @@ enum AppSettingsMigrator {
         normalized.relativeCarsBehind = relativeCarsEachSide
         normalized.classGapCarsAhead = min(max(normalized.classGapCarsAhead, 0), 12)
         normalized.classGapCarsBehind = min(max(normalized.classGapCarsBehind, 0), 12)
-        normalized.streamChatProvider = StreamChatProviderOptions.normalize(normalized.streamChatProvider)
-        normalized.streamChatStreamlabsUrl = normalized.streamChatStreamlabsUrl.trimmingCharacters(in: .whitespacesAndNewlines)
-        normalized.streamChatTwitchChannel = normalized.streamChatTwitchChannel.trimmingCharacters(in: .whitespacesAndNewlines)
+        normalizeStreamChatOptions(&normalized)
         normalizeFlagsOverlay(&normalized)
+        return normalized
+    }
+
+    private static func normalizeStreamChatOptions(_ overlay: inout OverlaySettings) {
+        let providerFromOptions = overlay.options[SharedOverlayContract.streamChatProviderKey]
+        let providerSource = providerFromOptions ?? overlay.streamChatProvider
+        let provider = providerSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? StreamChatProviderOptions.defaultProvider
+            : StreamChatProviderOptions.normalize(providerSource)
+        overlay.streamChatProvider = provider
+        overlay.options[SharedOverlayContract.streamChatProviderKey] = provider
+
+        if let streamlabsUrl = overlay.options[SharedOverlayContract.streamChatStreamlabsUrlKey] {
+            overlay.streamChatStreamlabsUrl = streamlabsUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            overlay.streamChatStreamlabsUrl = overlay.streamChatStreamlabsUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if !overlay.streamChatStreamlabsUrl.isEmpty {
+            overlay.options[SharedOverlayContract.streamChatStreamlabsUrlKey] = overlay.streamChatStreamlabsUrl
+        } else {
+            overlay.options.removeValue(forKey: SharedOverlayContract.streamChatStreamlabsUrlKey)
+        }
+
+        let channelFromOptions = overlay.options[SharedOverlayContract.streamChatTwitchChannelKey]
+        let channelSource = channelFromOptions ?? overlay.streamChatTwitchChannel
+        let channel = normalizeTwitchChannel(channelSource) ?? StreamChatProviderOptions.defaultTwitchChannel
+        overlay.streamChatTwitchChannel = channel
+        overlay.options[SharedOverlayContract.streamChatTwitchChannelKey] = channel
+    }
+
+    private static func normalizeTwitchChannel(_ value: String) -> String? {
+        var normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let url = URL(string: normalized),
+           let host = url.host?.lowercased(),
+           host == "twitch.tv" || host == "www.twitch.tv" {
+            normalized = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        }
+
+        normalized = normalized
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "@"))
+            .split(separator: "/")
+            .first
+            .map(String.init) ?? ""
+        normalized = normalized.lowercased()
+        guard (3...25).contains(normalized.count),
+              normalized.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" }) else {
+            return nil
+        }
+
         return normalized
     }
 

@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TMR Settings - General</title>
+  <style>
+{{SETTINGS_CSS}}
+  </style>
+</head>
+<body data-preview="{{PREVIEW_MODE}}">
+  <main class="settings-shell">
+    <aside class="sidebar" aria-label="Settings sections">
+      <div class="brand">
+        <div class="brand-mark">TMR</div>
+        <div>
+          <div class="brand-title">Tech Mates Racing Overlay</div>
+          <div class="brand-subtitle">TMR Overlay</div>
+        </div>
+      </div>
+      <nav class="nav-list">
+        <a class="nav-item {{APP_ACTIVE}}" href="/review/app">App Validator</a>
+        <a class="nav-item {{GENERAL_ACTIVE}}" href="/review/settings/general">General</a>
+        <a class="nav-item" href="/review/overlays/standings">Standings</a>
+        <a class="nav-item" href="/review/overlays/relative">Relative</a>
+        <a class="nav-item" href="/review/overlays/gap-to-leader">Gap To Leader</a>
+        <a class="nav-item" href="/review/overlays/track-map">Track Map</a>
+        <a class="nav-item" href="/review/overlays/stream-chat">Stream Chat</a>
+        <a class="nav-item" href="/review/overlays/garage-cover">Garage Cover</a>
+        <a class="nav-item" href="/review/overlays/fuel-calculator">Fuel Calculator</a>
+        <a class="nav-item" href="/review/overlays/input-state">Input / Car State</a>
+        <a class="nav-item" href="/review/overlays/car-radar">Car Radar</a>
+        <a class="nav-item" href="/review/settings/general#flags">Flags</a>
+        <a class="nav-item" href="/review/overlays/session-weather">Session / Weather</a>
+        <a class="nav-item" href="/review/overlays/pit-service">Pit Service</a>
+        <a class="nav-item" href="/review/settings/general#support">Support</a>
+      </nav>
+    </aside>
+    <section class="content" aria-labelledby="page-title">
+      <header class="content-header">
+        <div>
+          <h1 id="page-title">{{PAGE_TITLE}}</h1>
+          <p>{{PAGE_SUBTITLE}}</p>
+        </div>
+        <span class="status-pill" id="preview-pill">Preview off</span>
+      </header>
+      <section class="panel units-panel" aria-labelledby="units-title">
+        <h2 id="units-title">Units</h2>
+        <div class="field-row">
+          <span>Measurement system</span>
+          <div class="segmented" role="group" aria-label="Measurement system">
+            <button class="segment active" type="button" aria-pressed="true">Metric</button>
+            <button class="segment" type="button" aria-pressed="false">Imperial</button>
+          </div>
+        </div>
+      </section>
+      <section class="panel preview-panel" aria-labelledby="preview-title">
+        <h2 id="preview-title">{{PREVIEW_TITLE}}</h2>
+        <div class="preview-summary">
+          <div>
+            <span class="label">Session preview</span>
+            <strong id="preview-state">Preview off</strong>
+          </div>
+          <div class="segmented wide" role="group" aria-label="Session preview">
+            <button class="segment preview-choice" type="button" data-mode="off" aria-pressed="true">Off</button>
+            <button class="segment preview-choice" type="button" data-mode="practice" aria-pressed="false">Practice</button>
+            <button class="segment preview-choice" type="button" data-mode="qualifying" aria-pressed="false">Quali</button>
+            <button class="segment preview-choice" type="button" data-mode="race" aria-pressed="false">Race</button>
+          </div>
+        </div>
+        <ul class="preview-rules">
+          <li>Uses deterministic mock telemetry for the selected session.</li>
+          <li>Overlay visibility, session filters, positions, scale, and opacity stay normal.</li>
+          <li>Hidden overlays stay hidden; Stream Chat is not forced open.</li>
+        </ul>
+        <div class="preview-stage" aria-label="{{PREVIEW_LABEL}}">
+          <iframe class="overlay-frame standings-frame" title="Standings preview" src="/review/overlays/standings?preview=off"></iframe>
+          <iframe class="overlay-frame relative-frame" title="Relative preview" src="/review/overlays/relative?preview=off"></iframe>
+          <iframe class="overlay-frame gap-frame" title="Gap To Leader preview" src="/review/overlays/gap-to-leader?preview=off"></iframe>
+          <iframe class="overlay-frame fuel-frame" title="Fuel preview" src="/review/overlays/fuel-calculator?preview=off"></iframe>
+          <iframe class="overlay-frame weather-frame" title="Session Weather preview" src="/review/overlays/session-weather?preview=off"></iframe>
+          <iframe class="overlay-frame pit-frame" title="Pit Service preview" src="/review/overlays/pit-service?preview=off"></iframe>
+          <iframe class="overlay-frame input-frame" title="Input State preview" src="/review/overlays/input-state?preview=off"></iframe>
+          <iframe class="overlay-frame radar-frame" title="Car Radar preview" src="/review/overlays/car-radar?preview=off"></iframe>
+          <iframe class="overlay-frame track-frame" title="Track Map preview" src="/review/overlays/track-map?preview=off"></iframe>
+          <iframe class="overlay-frame chat-frame" title="Stream Chat preview" src="/review/overlays/stream-chat?preview=off"></iframe>
+          <iframe class="overlay-frame garage-frame" title="Garage Cover preview" src="/review/overlays/garage-cover?preview=off"></iframe>
+        </div>
+      </section>
+    </section>
+  </main>
+  <script>
+    (() => {
+      const labels = {
+        off: 'Preview off',
+        practice: 'Practice preview active',
+        qualifying: 'Qualifying preview active',
+        race: 'Race preview active'
+      };
+      const body = document.body;
+      const state = document.getElementById('preview-state');
+      const pill = document.getElementById('preview-pill');
+      const buttons = Array.from(document.querySelectorAll('.preview-choice'));
+
+      function setMode(mode) {
+        const selected = labels[mode] ? mode : 'off';
+        body.dataset.preview = selected;
+        state.textContent = labels[selected];
+        pill.textContent = labels[selected];
+        pill.classList.toggle('active', selected !== 'off');
+        for (const button of buttons) {
+          const active = button.dataset.mode === selected;
+          button.classList.toggle('active', active);
+          button.setAttribute('aria-pressed', active ? 'true' : 'false');
+        }
+        for (const frame of document.querySelectorAll('.overlay-frame')) {
+          const url = new URL(frame.getAttribute('src'), window.location.href);
+          url.searchParams.set('preview', selected);
+          frame.setAttribute('src', `${url.pathname}${url.search}`);
+        }
+      }
+
+      for (const button of buttons) {
+        button.addEventListener('click', () => setMode(button.dataset.mode));
+      }
+
+      setMode(body.dataset.preview);
+    })();
+  </script>
+</body>
+</html>

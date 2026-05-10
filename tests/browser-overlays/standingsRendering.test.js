@@ -1,0 +1,93 @@
+import { afterEach, describe, expect, it } from 'vitest';
+import { freshLiveSnapshot, renderBrowserOverlay } from './browserOverlayTestHost.js';
+
+let currentOverlay;
+
+afterEach(() => {
+  currentOverlay?.close();
+  currentOverlay = null;
+});
+
+describe('standings browser rendering', () => {
+  it('renders scoring-backed standings with class separators and configured other-class limit', async () => {
+    currentOverlay = await renderBrowserOverlay('standings', {
+      live: freshLiveSnapshot({}),
+      model: standingsDisplayModel()
+    });
+
+    const rows = [...currentOverlay.document.querySelectorAll('tbody tr')];
+    const rowText = rows.map(rowCells);
+
+    expect(rowText).toEqual([
+      'LMP2 2 cars | ~10 laps',
+      '1 #8 Proto One Leader -45.0',
+      'GT3 3 cars | ~12.4 laps',
+      '1 #11 GT3 Leader Leader -2.0',
+      '2 #71 Focus Racer +3.4 0.0',
+      '3 #91 Chaser +8.9 +5.5 IN'
+    ]);
+    expect(rows[0].classList.contains('class-header')).toBe(true);
+    expect(rows[4].classList.contains('focus')).toBe(true);
+    expect(rows[5].classList.contains('pit')).toBe(true);
+    expect(currentOverlay.document.getElementById('status').textContent).toBe('scoring | 5/5 live');
+    expect(currentOverlay.document.body.textContent).not.toContain('Proto Two');
+  });
+});
+
+function standingsDisplayModel() {
+  return {
+    overlayId: 'standings',
+    title: 'Standings',
+    status: 'scoring | 5/5 live',
+    source: 'source: scoring snapshot + live timing',
+    bodyKind: 'table',
+    columns: [
+      { id: 'standings.class-position', label: 'CLS', dataKey: 'class-position', width: 35, alignment: 'right' },
+      { id: 'standings.car-number', label: 'CAR', dataKey: 'car-number', width: 50, alignment: 'right' },
+      { id: 'standings.driver', label: 'Driver', dataKey: 'driver', width: 250, alignment: 'left' },
+      { id: 'standings.gap', label: 'GAP', dataKey: 'gap', width: 60, alignment: 'right' },
+      { id: 'standings.interval', label: 'INT', dataKey: 'interval', width: 60, alignment: 'right' },
+      { id: 'standings.pit', label: 'PIT', dataKey: 'pit', width: 30, alignment: 'right' }
+    ],
+    rows: [
+      headerRow('LMP2', '2 cars | ~10 laps', '#33CEFF'),
+      carRow(['1', '#8', 'Proto One', 'Leader', '-45.0', '']),
+      headerRow('GT3', '3 cars | ~12.4 laps', '#FFAA00'),
+      carRow(['1', '#11', 'GT3 Leader', 'Leader', '-2.0', '']),
+      carRow(['2', '#71', 'Focus Racer', '+3.4', '0.0', ''], { isReference: true }),
+      carRow(['3', '#91', 'Chaser', '+8.9', '+5.5', 'IN'], { isPit: true })
+    ],
+    metrics: []
+  };
+}
+
+function rowCells(row) {
+  return [...row.querySelectorAll('td')].map((cell) => cell.textContent.replace(/\s+/g, ' ').trim()).join(' ').trim();
+}
+
+function headerRow(headerTitle, headerDetail, carClassColorHex) {
+  return {
+    cells: [],
+    isClassHeader: true,
+    isReference: false,
+    isPit: false,
+    isPartial: false,
+    carClassColorHex,
+    headerTitle,
+    headerDetail
+  };
+}
+
+function carRow(cells, extra = {}) {
+  return {
+    cells,
+    isClassHeader: false,
+    isReference: false,
+    isPit: false,
+    isPartial: false,
+    carClassColorHex: null,
+    headerTitle: null,
+    headerDetail: null,
+    ...extra
+  };
+}

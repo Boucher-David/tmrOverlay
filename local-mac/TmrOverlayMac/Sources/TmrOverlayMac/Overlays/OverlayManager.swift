@@ -1529,7 +1529,7 @@ final class OverlayManager {
         }
         let columnGaps = CGFloat(max(0, columns.count - 1)) * 8
         return NSSize(
-            width: max(minimumWidth, columnWidth + columnGaps + 52),
+            width: max(minimumWidth, columnWidth + columnGaps + 64),
             height: defaultSize.height
         )
     }
@@ -2243,7 +2243,7 @@ final class OverlayManager {
             columnGaps = CGFloat(max(0, columns.count - 1)) * 8
             minimumWidth = 340
         case RelativeOverlayDefinition.definition.id:
-            columnGaps = 0
+            columnGaps = CGFloat(max(0, columns.count - 1)) * 8
             minimumWidth = 260
         default:
             columnGaps = 0
@@ -2251,7 +2251,7 @@ final class OverlayManager {
         }
 
         return NSSize(
-            width: max(minimumWidth, contentWidth + columnGaps + 28),
+            width: max(minimumWidth, contentWidth + columnGaps + 64),
             height: max(definition.defaultSize.height, CGFloat(content.nativeMinimumTableHeight + 64))
         )
     }

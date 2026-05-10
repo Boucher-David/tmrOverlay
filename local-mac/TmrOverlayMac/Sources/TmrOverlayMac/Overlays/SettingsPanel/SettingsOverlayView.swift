@@ -1427,7 +1427,7 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
     }
 
     private var mockDiagnosticsBundleURL: URL {
-        AppPaths.diagnosticsRoot().appendingPathComponent("tmroverlay-diagnostics-mock-20260428-120413.zip")
+        AppPaths.diagnosticsRoot().appendingPathComponent("mock-macos-local-dev-20260428-120413-000.diagnostics")
     }
 
     private func openSupportURL(_ url: URL, status: String) {

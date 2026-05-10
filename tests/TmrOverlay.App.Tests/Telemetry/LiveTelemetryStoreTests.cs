@@ -912,6 +912,94 @@ DriverInfo:
     }
 
     [Fact]
+    public void LiveModelParityAnalyzer_IgnoresLegacyMissingTimingZeroGaps()
+    {
+        var sample = CreateSample();
+        var classLeader = new LiveTimingRow(
+            CarIdx: 11,
+            Quality: LiveModelQuality.Reliable,
+            Source: "test",
+            IsPlayer: false,
+            IsFocus: false,
+            IsOverallLeader: false,
+            IsClassLeader: true,
+            HasTiming: true,
+            HasSpatialProgress: true,
+            CanUseForRadarPlacement: true,
+            TimingEvidence: LiveSignalEvidence.Reliable("test"),
+            SpatialEvidence: LiveSignalEvidence.Reliable("test"),
+            RadarPlacementEvidence: LiveSignalEvidence.Reliable("test"),
+            GapEvidence: LiveSignalEvidence.Inferred("all-cars-f2"),
+            DriverName: "Class Leader",
+            TeamName: null,
+            CarNumber: "11",
+            CarClassName: "GT3",
+            CarClassColorHex: "#FFDA59",
+            OverallPosition: 1,
+            ClassPosition: 1,
+            CarClass: 4098,
+            LapCompleted: 2,
+            LapDistPct: 0.5d,
+            ProgressLaps: 2.5d,
+            F2TimeSeconds: 0d,
+            EstimatedTimeSeconds: null,
+            LastLapTimeSeconds: null,
+            BestLapTimeSeconds: null,
+            GapSecondsToClassLeader: 0d,
+            GapLapsToClassLeader: null,
+            DeltaSecondsToFocus: 0d,
+            TrackSurface: 3,
+            OnPitRoad: false);
+        var snapshot = LiveTelemetrySnapshot.Empty with
+        {
+            IsConnected = true,
+            IsCollecting = true,
+            LastUpdatedAtUtc = sample.CapturedAtUtc,
+            LatestSample = sample,
+            LeaderGap = new LiveLeaderGapSnapshot(
+                HasData: true,
+                ReferenceOverallPosition: 1,
+                ReferenceClassPosition: 1,
+                OverallLeaderCarIdx: 11,
+                ClassLeaderCarIdx: 11,
+                OverallLeaderGap: new LiveGapValue(true, true, null, null, "legacy"),
+                ClassLeaderGap: new LiveGapValue(true, true, null, null, "legacy"),
+                ClassCars:
+                [
+                    new LiveClassGapCar(
+                        CarIdx: 11,
+                        IsReferenceCar: true,
+                        IsClassLeader: true,
+                        ClassPosition: 1,
+                        GapSecondsToClassLeader: null,
+                        GapLapsToClassLeader: null,
+                        DeltaSecondsToReference: null)
+                ]),
+            Models = LiveRaceModels.Empty with
+            {
+                Timing = LiveTimingModel.Empty with
+                {
+                    HasData = true,
+                    Quality = LiveModelQuality.Reliable,
+                    FocusCarIdx = 11,
+                    OverallLeaderCarIdx = 11,
+                    ClassLeaderCarIdx = 11,
+                    FocusRow = classLeader,
+                    OverallRows = [classLeader],
+                    ClassRows = [classLeader]
+                }
+            }
+        };
+
+        var parity = LiveModelParityAnalyzer.Analyze(snapshot);
+
+        Assert.DoesNotContain(parity.Observations, observation =>
+            observation.Family == "timing"
+            && (observation.Key.StartsWith("gap-seconds-", StringComparison.Ordinal)
+                || observation.Key.StartsWith("delta-to-focus-", StringComparison.Ordinal)));
+    }
+
+    [Fact]
     public void LiveModelParityAnalyzer_ReportsModelMismatch()
     {
         var store = new LiveTelemetryStore();

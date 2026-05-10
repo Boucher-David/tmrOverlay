@@ -155,6 +155,6 @@ For teammate feedback, ask testers to include:
 - if the Settings UI is frozen and a bundle cannot be created, the `%LOCALAPPDATA%\TmrOverlay\logs` folder plus the latest `%LOCALAPPDATA%\TmrOverlay\captures` folder from the diagnostic patch build
 - notes about whether iRacing was live, replaying, or not running
 
-Diagnostics bundles include app version/runtime metadata and local logs, but they intentionally exclude raw `telemetry.bin` and source `.ibt` payloads.
+Diagnostics bundles include app version/runtime metadata, local logs, and live-overlay expected-state metadata. Rolling live-window overlay crops are included only when explicitly enabled for a diagnostic run. Bundles intentionally exclude raw `telemetry.bin` and source `.ibt` payloads.
 
 Diagnostics bundles also include release update state: whether the app is installed through Velopack, whether the current run is portable, the update source, current/latest versions, last checked time, download/apply timestamps, download progress, available update actions, and last failure if any. Installer cleanup metadata records the last startup/update legacy cleanup result so stale shortcuts or old package identity residue can be reviewed from the same bundle.

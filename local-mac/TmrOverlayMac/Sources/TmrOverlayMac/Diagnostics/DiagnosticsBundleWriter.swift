@@ -35,22 +35,32 @@ final class DiagnosticsBundleWriter {
 
     func createBundle(source: String = "manual") throws -> URL {
         try FileManager.default.createDirectory(at: diagnosticsRoot, withIntermediateDirectories: true)
-        let bundleURL = diagnosticsRoot.appendingPathComponent("tmroverlay-diagnostics-\(Self.timestamp()).diagnostics", isDirectory: true)
+        let createdAt = Date()
+        let telemetrySnapshot = makeTelemetrySnapshot()
+        let bundleURL = uniqueBundleURL(baseName: bundleBaseName(createdAt: createdAt, telemetrySnapshot: telemetrySnapshot))
         try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
 
         let metadataURL = bundleURL.appendingPathComponent("metadata", isDirectory: true)
         try FileManager.default.createDirectory(at: metadataURL, withIntermediateDirectories: true)
-        let telemetrySnapshot = makeTelemetrySnapshot()
+        let identity = bundleIdentity(telemetrySnapshot)
         try writeJson(AppVersionInfo.current, to: metadataURL.appendingPathComponent("app-version.json"))
         try writeJson([
-            "createdAtUtc": ISO8601DateFormatter().string(from: Date()),
-            "source": source
+            "createdAtUtc": ISO8601DateFormatter().string(from: createdAt),
+            "source": source,
+            "fileName": bundleURL.lastPathComponent,
+            "carName": identity.carName,
+            "trackName": identity.trackName,
+            "carSlug": identity.carSlug,
+            "trackSlug": identity.trackSlug,
+            "namingSource": identity.source
         ], to: metadataURL.appendingPathComponent("diagnostics-bundle.json"))
         try writeJson(storageMetadata(), to: metadataURL.appendingPathComponent("storage.json"))
         try writeJson(telemetryStateMetadata(telemetrySnapshot), to: metadataURL.appendingPathComponent("telemetry-state.json"))
         try writeJson(performanceMetadata(telemetrySnapshot), to: metadataURL.appendingPathComponent("performance.json"))
+        try writeJson(sharedContractMetadata(), to: metadataURL.appendingPathComponent("shared-settings-contract.json"))
         try writeJson(uiFreezeWatchMetadata(telemetrySnapshot), to: metadataURL.appendingPathComponent("ui-freeze-watch.json"))
         copyIfExists(runtimeStateURL, to: bundleURL.appendingPathComponent("runtime", isDirectory: true).appendingPathComponent("runtime-state.json"))
+        copySharedContractFiles(to: bundleURL.appendingPathComponent("shared", isDirectory: true))
         copySanitizedSettingsIfExists(settingsRoot.appendingPathComponent("settings.json"), to: bundleURL.appendingPathComponent("settings", isDirectory: true).appendingPathComponent("settings.json"))
         copyRecentFiles(from: logsRoot, to: bundleURL.appendingPathComponent("logs", isDirectory: true), suffix: ".log", limit: 10)
         copyRecentFiles(from: logsRoot.appendingPathComponent("performance", isDirectory: true), to: bundleURL.appendingPathComponent("performance", isDirectory: true), suffix: ".jsonl", limit: 10)
@@ -58,6 +68,58 @@ final class DiagnosticsBundleWriter {
         copyRecentFiles(from: eventsRoot, to: bundleURL.appendingPathComponent("events", isDirectory: true), suffix: ".jsonl", limit: 10)
         copyLatestCaptureMetadata(to: bundleURL.appendingPathComponent("latest-capture", isDirectory: true))
         return bundleURL
+    }
+
+    private func bundleBaseName(createdAt: Date, telemetrySnapshot: TelemetryCaptureStatusSnapshot) -> String {
+        let identity = bundleIdentity(telemetrySnapshot)
+        return "\(identity.carSlug)-\(identity.trackSlug)-\(Self.timestamp(createdAt))"
+    }
+
+    private func uniqueBundleURL(baseName: String) -> URL {
+        var url = diagnosticsRoot.appendingPathComponent("\(baseName).diagnostics", isDirectory: true)
+        var index = 2
+        while FileManager.default.fileExists(atPath: url.path) {
+            url = diagnosticsRoot.appendingPathComponent("\(baseName)-\(index).diagnostics", isDirectory: true)
+            index += 1
+        }
+
+        return url
+    }
+
+    private func bundleIdentity(_ snapshot: TelemetryCaptureStatusSnapshot) -> DiagnosticsBundleIdentity {
+        let captureDirectory = snapshot.currentCaptureDirectory
+            ?? snapshot.lastCaptureDirectory
+            ?? latestDirectory(in: captureRoot, prefix: "capture-")
+        if let captureDirectory,
+           let yaml = try? String(contentsOf: captureDirectory.appendingPathComponent("latest-session.yaml"), encoding: .utf8) {
+            let carName = Self.firstNonEmpty(
+                Self.yamlValue("CarScreenNameShort", in: yaml),
+                Self.yamlValue("CarScreenName", in: yaml),
+                Self.yamlValue("CarPath", in: yaml)
+            )
+            let trackName = Self.firstNonEmpty(
+                Self.yamlValue("TrackDisplayName", in: yaml),
+                Self.yamlValue("TrackName", in: yaml),
+                Self.yamlValue("TrackConfigName", in: yaml)
+            )
+            if carName != nil || trackName != nil {
+                return DiagnosticsBundleIdentity(
+                    carName: carName ?? "unknown car",
+                    trackName: trackName ?? "unknown track",
+                    carSlug: Self.slug(carName, fallback: "unknown-car"),
+                    trackSlug: Self.slug(trackName, fallback: "unknown-track"),
+                    source: "latest-capture"
+                )
+            }
+        }
+
+        return DiagnosticsBundleIdentity(
+            carName: "unknown car",
+            trackName: "unknown track",
+            carSlug: "unknown-car",
+            trackSlug: "unknown-track",
+            source: "fallback"
+        )
     }
 
     private func copyLatestCaptureMetadata(to destination: URL) {
@@ -106,6 +168,15 @@ final class DiagnosticsBundleWriter {
         try? FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? FileManager.default.removeItem(at: destination)
         try? FileManager.default.copyItem(at: source, to: destination)
+    }
+
+    private func copySharedContractFiles(to destination: URL) {
+        if let contractURL = SharedOverlayContract.defaultContractURL() {
+            copyIfExists(contractURL, to: destination.appendingPathComponent("tmr-overlay-contract.json"))
+        }
+        if let schemaURL = SharedOverlayContract.defaultSchemaURL() {
+            copyIfExists(schemaURL, to: destination.appendingPathComponent("tmr-overlay-contract.schema.json"))
+        }
     }
 
     private func copySanitizedSettingsIfExists(_ source: URL, to destination: URL) {
@@ -202,6 +273,20 @@ final class DiagnosticsBundleWriter {
         ]
     }
 
+    private func sharedContractMetadata() -> [String: String] {
+        let contract = SharedOverlayContract.current
+        return [
+            "contractVersion": String(contract.contractVersion),
+            "settingsVersion": String(contract.settingsVersion),
+            "defaultFontFamily": contract.defaultFontFamily,
+            "defaultUnitSystem": contract.defaultUnitSystem,
+            "streamChatDefaultProvider": contract.streamChatDefaultProvider,
+            "streamChatDefaultTwitchChannel": contract.streamChatDefaultTwitchChannel,
+            "cyan": contract.designV2ColorHex("cyan", fallback: "#00E8FF"),
+            "loadedPath": contract.loadedPath ?? ""
+        ]
+    }
+
     private func uiFreezeWatchMetadata(_ snapshot: TelemetryCaptureStatusSnapshot) -> [String: String] {
         [
             "source": "mac-harness-mock",
@@ -210,6 +295,66 @@ final class DiagnosticsBundleWriter {
             "flagsInputPolicy": "ignoresMouseEvents-and-hidden-while-settings-active",
             "windowsValidationNote": "Production freeze triage lives in Windows metadata/ui-freeze-watch.json and performance overlay.window/timer metrics."
         ]
+    }
+
+    private static func firstNonEmpty(_ values: String?...) -> String? {
+        for value in values {
+            let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let trimmed, !trimmed.isEmpty {
+                return trimmed
+            }
+        }
+
+        return nil
+    }
+
+    private static func yamlValue(_ key: String, in yaml: String) -> String? {
+        let prefix = "\(key):"
+        for line in yaml.split(separator: "\n", omittingEmptySubsequences: false) {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed.hasPrefix(prefix) else {
+                continue
+            }
+
+            return String(trimmed.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        return nil
+    }
+
+    private static func slug(_ value: String?, fallback: String) -> String {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return fallback
+        }
+
+        var result = ""
+        var previousWasSeparator = false
+        for scalar in value.lowercased().unicodeScalars {
+            let isAsciiLetter = scalar.value >= 97 && scalar.value <= 122
+            let isAsciiDigit = scalar.value >= 48 && scalar.value <= 57
+            if isAsciiLetter || isAsciiDigit {
+                result.unicodeScalars.append(scalar)
+                previousWasSeparator = false
+                continue
+            }
+
+            if !previousWasSeparator {
+                result.append("-")
+                previousWasSeparator = true
+            }
+        }
+
+        let trimmed = result.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        if trimmed.isEmpty {
+            return fallback
+        }
+
+        let maxLength = 48
+        if trimmed.count <= maxLength {
+            return trimmed
+        }
+
+        return String(trimmed.prefix(maxLength)).trimmingCharacters(in: CharacterSet(charactersIn: "-"))
     }
 
     private func writeJson<T: Encodable>(_ value: T, to url: URL) throws {
@@ -223,12 +368,20 @@ final class DiagnosticsBundleWriter {
         ((try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate) ?? .distantPast
     }
 
-    private static func timestamp() -> String {
+    private static func timestamp(_ date: Date = Date()) -> String {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyyMMdd-HHmmss-SSS"
-        return formatter.string(from: Date())
+        return formatter.string(from: date)
     }
+}
+
+private struct DiagnosticsBundleIdentity {
+    let carName: String
+    let trackName: String
+    let carSlug: String
+    let trackSlug: String
+    let source: String
 }

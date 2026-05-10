@@ -834,6 +834,7 @@ internal static class AppPerformanceMetricIds
     public const string DiagnosticsBundleEvents = "diagnostics.bundle.events";
     public const string DiagnosticsBundleEdgeCases = "diagnostics.bundle.edge_cases";
     public const string DiagnosticsBundleOverlayDiagnostics = "diagnostics.bundle.overlay_diagnostics";
+    public const string DiagnosticsBundleLiveOverlayWindows = "diagnostics.bundle.live_overlay_windows";
     public const string DiagnosticsBundleLatestCapture = "diagnostics.bundle.latest_capture";
     public const string DiagnosticsBundleHistory = "diagnostics.bundle.history";
 }

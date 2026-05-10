@@ -31,7 +31,7 @@ internal sealed class LiveModelParityOptions
         var section = configuration.GetSection("LiveModelParity");
         return new LiveModelParityOptions
         {
-            Enabled = ParseBoolean(section["Enabled"], defaultValue: true),
+            Enabled = ParseBoolean(section["Enabled"], defaultValue: false),
             MinimumFrameSpacingSeconds = ParseDouble(section["MinimumFrameSpacingSeconds"], defaultValue: 1d, minimumValue: 0.1d),
             MaxFramesPerSession = ParseInt32(section["MaxFramesPerSession"], defaultValue: 600, minimumValue: 10),
             MaxObservationsPerFrame = ParseInt32(section["MaxObservationsPerFrame"], defaultValue: 20, minimumValue: 1),

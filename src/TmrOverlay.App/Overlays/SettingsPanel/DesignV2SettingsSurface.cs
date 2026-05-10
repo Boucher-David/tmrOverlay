@@ -45,6 +45,10 @@ internal sealed class DesignV2SettingsCallbacks
 
     public required Action<string> CopyTextToClipboard { get; init; }
 
+    public required Action<OverlaySessionKind?> SetSessionPreview { get; init; }
+
+    public required Func<SessionPreviewDiagnosticsSnapshot> SessionPreviewSnapshot { get; init; }
+
     public required Action<OverlaySettings> ImportGarageCoverImage { get; init; }
 
     public required Action<OverlaySettings> ClearGarageCoverImage { get; init; }
@@ -89,23 +93,23 @@ internal sealed class DesignV2SettingsSurface : Control
         "pit-service"
     ];
 
-    private static readonly Color BgTop = Rgb(18, 5, 31);
-    private static readonly Color BgMid = Rgb(12, 18, 42);
-    private static readonly Color BgBottom = Rgb(3, 11, 24);
-    private static readonly Color PanelRaised = Rgba(17, 28, 55, 250);
-    private static readonly Color TitleBar = Rgba(11, 14, 33, 250);
-    private static readonly Color Border = Rgba(40, 72, 108, 235);
-    private static readonly Color BorderDim = Rgba(30, 52, 82, 200);
-    private static readonly Color TextPrimary = Rgb(255, 247, 255);
-    private static readonly Color TextSecondary = Rgb(208, 230, 255);
-    private static readonly Color TextMuted = Rgb(140, 174, 212);
-    private static readonly Color TextDim = Rgb(82, 112, 148);
-    private static readonly Color Cyan = Rgb(0, 232, 255);
-    private static readonly Color Magenta = Rgb(255, 42, 167);
-    private static readonly Color Amber = Rgb(255, 209, 91);
-    private static readonly Color Green = Rgb(98, 255, 159);
-    private static readonly Color Orange = Rgb(255, 125, 73);
-    private static readonly Color Purple = Rgb(126, 50, 255);
+    private static Color BgTop => OverlayTheme.DesignV2.BackgroundTop;
+    private static Color BgMid => OverlayTheme.DesignV2.BackgroundMid;
+    private static Color BgBottom => OverlayTheme.DesignV2.BackgroundBottom;
+    private static Color PanelRaised => OverlayTheme.DesignV2.SurfaceRaised;
+    private static Color TitleBar => OverlayTheme.DesignV2.TitleBar;
+    private static Color Border => OverlayTheme.DesignV2.Border;
+    private static Color BorderDim => OverlayTheme.DesignV2.BorderMuted;
+    private static Color TextPrimary => OverlayTheme.DesignV2.TextPrimary;
+    private static Color TextSecondary => OverlayTheme.DesignV2.TextSecondary;
+    private static Color TextMuted => OverlayTheme.DesignV2.TextMuted;
+    private static Color TextDim => OverlayTheme.DesignV2.TextDim;
+    private static Color Cyan => OverlayTheme.DesignV2.Cyan;
+    private static Color Magenta => OverlayTheme.DesignV2.Magenta;
+    private static Color Amber => OverlayTheme.DesignV2.Amber;
+    private static Color Green => OverlayTheme.DesignV2.Green;
+    private static Color Orange => OverlayTheme.DesignV2.Orange;
+    private static Color Purple => OverlayTheme.DesignV2.Purple;
 
     private readonly ApplicationSettings _applicationSettings;
     private readonly Dictionary<string, OverlayDefinition> _overlayById;
@@ -419,6 +423,18 @@ internal sealed class DesignV2SettingsSurface : Control
                 _callbacks.SaveAndApply();
                 Invalidate();
             }));
+
+        var preview = _callbacks.SessionPreviewSnapshot();
+        AddDynamic(new V2ChoiceControl(
+            new Rectangle(328, 458, 468, 32),
+            ["Off", "Practice", "Quali", "Race"],
+            PreviewChoiceLabel(preview.Mode),
+            selected =>
+            {
+                _callbacks.SetSessionPreview(PreviewModeFromChoice(selected));
+                RebuildDynamicControls();
+                Invalidate();
+            }));
     }
 
     private void BuildSupportControls()
@@ -660,7 +676,8 @@ internal sealed class DesignV2SettingsSurface : Control
 
     private void BuildStreamChatControls(OverlayDefinition definition, OverlaySettings settings)
     {
-        var provider = StreamChatOverlaySettings.NormalizeProvider(settings.GetStringOption(OverlayOptionKeys.StreamChatProvider, StreamChatOverlaySettings.ProviderNone));
+        var provider = StreamChatOverlaySettings.NormalizeProvider(
+            settings.GetStringOption(OverlayOptionKeys.StreamChatProvider, StreamChatOverlaySettings.DefaultProvider));
         AddDynamic(new V2ChoiceControl(
             new Rectangle(454, 366, 300, 30),
             ["Not configured", "Streamlabs", "Twitch"],
@@ -680,7 +697,7 @@ internal sealed class DesignV2SettingsSurface : Control
         AddDynamic(streamlabsBox);
 
         var twitchBox = CreateTextBox(
-            settings.GetStringOption(OverlayOptionKeys.StreamChatTwitchChannel),
+            settings.GetStringOption(OverlayOptionKeys.StreamChatTwitchChannel, StreamChatOverlaySettings.DefaultTwitchChannel),
             new Rectangle(454, 442, 210, 28),
             provider == StreamChatOverlaySettings.ProviderTwitch);
         AddDynamic(twitchBox);
@@ -936,6 +953,27 @@ internal sealed class DesignV2SettingsSurface : Control
     {
         DrawPanel(graphics, new Rectangle(306, 214, 392, 132), "Units");
         DrawText(graphics, "Measurement system", new Rectangle(328, 281, 160, 18), 13f, FontStyle.Regular, TextSecondary);
+
+        var preview = _callbacks.SessionPreviewSnapshot();
+        DrawPanel(graphics, new Rectangle(306, 374, 612, 196), "Show Preview");
+        DrawText(graphics, "Session data", new Rectangle(328, 434, 120, 18), 13f, FontStyle.Regular, TextSecondary);
+        DrawText(
+            graphics,
+            preview.Active ? $"{PreviewDisplayName(preview.Mode)} preview active" : "Preview off",
+            new Rectangle(454, 434, 250, 18),
+            12f,
+            FontStyle.Bold,
+            preview.Active ? Green : TextMuted);
+        DrawBodyLines(
+            graphics,
+            [
+                "Uses deterministic mock telemetry for the selected session.",
+                "Overlay visibility, session filters, positions, scale, and opacity stay normal.",
+                "Hidden overlays stay hidden; Stream Chat is not forced open."
+            ],
+            328,
+            510,
+            542);
     }
 
     private void DrawSupportPage(Graphics graphics)
@@ -1027,32 +1065,23 @@ internal sealed class DesignV2SettingsSurface : Control
             DrawText(graphics, "Managed by overlay logic", new Rectangle(454, 454, 180, 18), 12f, FontStyle.Regular, TextMuted);
         }
 
-        var previewTitle = string.Equals(definition.Id, "garage-cover", StringComparison.OrdinalIgnoreCase)
-            ? "Cover Image"
-            : $"{definition.DisplayName} Preview";
-        DrawPanel(graphics, new Rectangle(726, 272, 414, 226), previewTitle);
-        var previewRect = string.Equals(definition.Id, "garage-cover", StringComparison.OrdinalIgnoreCase)
-            ? new Rectangle(750, 324, 366, 96)
-            : new Rectangle(750, 324, 366, 132);
-        FillRounded(graphics, previewRect, 10, Rgb(3, 8, 18));
-        StrokeRounded(graphics, previewRect, 10, Rgba(0, 232, 255, 165), 1f);
-
-        if (string.Equals(definition.Id, "garage-cover", StringComparison.OrdinalIgnoreCase))
+        if (isGarageCover)
         {
+            DrawPanel(graphics, new Rectangle(726, 272, 414, 226), "Cover Image");
+            var previewRect = new Rectangle(750, 324, 366, 96);
+            FillRounded(graphics, previewRect, 10, Rgb(3, 8, 18));
+            StrokeRounded(graphics, previewRect, 10, Rgba(0, 232, 255, 165), 1f);
             DrawGarageCoverPreview(graphics, previewRect, settings.GetStringOption(OverlayOptionKeys.GarageCoverImagePath));
             DrawText(graphics, "Image", new Rectangle(750, 468, 60, 18), 12f, FontStyle.Regular, TextMuted);
             DrawText(graphics, GarageCoverImageLabel(settings), new Rectangle(814, 468, 292, 18), 12f, FontStyle.Bold, TextSecondary);
         }
-        else
-        {
-            DrawPreviewPlaceholder(graphics, previewRect, definition.DisplayName);
-            DrawText(graphics, "Default size", new Rectangle(750, 468, 100, 18), 12f, FontStyle.Regular, TextMuted);
-            DrawText(graphics, $"{definition.DefaultWidth} x {definition.DefaultHeight}", new Rectangle(852, 468, 120, 18), 12f, FontStyle.Bold, TextSecondary, monospaced: true);
-        }
 
         if (BrowserOverlayCatalog.TryGetRouteForOverlayId(definition.Id, out _))
         {
-            DrawBrowserSourcePanel(graphics, definition, settings, new Rectangle(306, 518, 716, 92));
+            var browserPanelBounds = isGarageCover
+                ? new Rectangle(306, 506, 716, 108)
+                : new Rectangle(726, 272, 414, 132);
+            DrawBrowserSourcePanel(graphics, definition, settings, browserPanelBounds);
         }
     }
 
@@ -1214,9 +1243,31 @@ internal sealed class DesignV2SettingsSurface : Control
     private void DrawBrowserSourcePanel(Graphics graphics, OverlayDefinition definition, OverlaySettings settings, Rectangle bounds)
     {
         DrawPanel(graphics, bounds, "Browser Source");
-        DrawLocalhostBox(graphics, definition, new Rectangle(462, 542, 380, 30));
+        var urlBox = new Rectangle(
+            bounds.Left + 22,
+            bounds.Top + 52,
+            bounds.Width - 44,
+            30);
+        DrawLocalhostBox(graphics, definition, urlBox);
         var browserSize = BrowserOverlayRecommendedSize.For(definition, settings);
-        DrawText(graphics, $"OBS browser size {browserSize.Width} x {browserSize.Height}; native visibility is controlled separately.", new Rectangle(328, 594, 620, 18), 11f, FontStyle.Regular, TextDim);
+        var detailTop = urlBox.Bottom + 8;
+        DrawText(
+            graphics,
+            $"OBS size {browserSize.Width} x {browserSize.Height}",
+            new Rectangle(bounds.Left + 22, detailTop, bounds.Width - 44, 18),
+            11f,
+            FontStyle.Regular,
+            TextDim);
+        var visibilityTextRect = bounds.Width >= 520
+            ? new Rectangle(bounds.Left + 198, detailTop, bounds.Width - 220, 18)
+            : new Rectangle(bounds.Left + 22, detailTop + 18, bounds.Width - 44, 18);
+        DrawText(
+            graphics,
+            "Native visibility is separate.",
+            visibilityTextRect,
+            11f,
+            FontStyle.Regular,
+            TextDim);
     }
 
     private void DrawLocalhostBox(Graphics graphics, OverlayDefinition definition, Rectangle bounds)
@@ -1269,17 +1320,6 @@ internal sealed class DesignV2SettingsSurface : Control
         };
         graphics.DrawLine(pen, rect.Left + 5, rect.Top + rect.Height / 2, rect.Left + 9, rect.Bottom - 4);
         graphics.DrawLine(pen, rect.Left + 9, rect.Bottom - 4, rect.Right - 4, rect.Top + 5);
-    }
-
-    private void DrawPreviewPlaceholder(Graphics graphics, Rectangle rect, string text)
-    {
-        using var pen = new Pen(Rgba(0, 232, 255, 80));
-        for (var y = rect.Top + 12; y < rect.Bottom - 8; y += 16)
-        {
-            graphics.DrawLine(pen, rect.Left + 12, y, rect.Right - 12, y);
-        }
-
-        DrawCentered(graphics, text, rect, 16f, FontStyle.Bold, Rgba(208, 230, 255, 180));
     }
 
     private void DrawGarageCoverPreview(Graphics graphics, Rectangle rect, string? imagePath)
@@ -1625,6 +1665,39 @@ internal sealed class DesignV2SettingsSurface : Control
             "Streamlabs" => StreamChatOverlaySettings.ProviderStreamlabs,
             "Twitch" => StreamChatOverlaySettings.ProviderTwitch,
             _ => StreamChatOverlaySettings.ProviderNone
+        };
+    }
+
+    private static string PreviewChoiceLabel(string? mode)
+    {
+        return mode switch
+        {
+            nameof(OverlaySessionKind.Practice) => "Practice",
+            nameof(OverlaySessionKind.Qualifying) => "Quali",
+            nameof(OverlaySessionKind.Race) => "Race",
+            _ => "Off"
+        };
+    }
+
+    private static string PreviewDisplayName(string? mode)
+    {
+        return mode switch
+        {
+            nameof(OverlaySessionKind.Practice) => "Practice",
+            nameof(OverlaySessionKind.Qualifying) => "Qualifying",
+            nameof(OverlaySessionKind.Race) => "Race",
+            _ => "Session"
+        };
+    }
+
+    private static OverlaySessionKind? PreviewModeFromChoice(string selected)
+    {
+        return selected switch
+        {
+            "Practice" => OverlaySessionKind.Practice,
+            "Quali" => OverlaySessionKind.Qualifying,
+            "Race" => OverlaySessionKind.Race,
+            _ => null
         };
     }
 
