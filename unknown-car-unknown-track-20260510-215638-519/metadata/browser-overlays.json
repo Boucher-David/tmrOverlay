@@ -1,0 +1,149 @@
+{
+  "pages": [
+    {
+      "id": "car-radar",
+      "title": "Car Radar",
+      "canonicalRoute": "/overlays/car-radar",
+      "routes": [
+        "/overlays/car-radar"
+      ],
+      "requiresTelemetry": true,
+      "renderWhenTelemetryUnavailable": false,
+      "fadeWhenTelemetryUnavailable": true,
+      "refreshIntervalMilliseconds": 250,
+      "bodyClass": "car-radar-page"
+    },
+    {
+      "id": "fuel-calculator",
+      "title": "Fuel Calculator",
+      "canonicalRoute": "/overlays/fuel-calculator",
+      "routes": [
+        "/overlays/fuel-calculator",
+        "/overlays/calculator"
+      ],
+      "requiresTelemetry": true,
+      "renderWhenTelemetryUnavailable": false,
+      "fadeWhenTelemetryUnavailable": true,
+      "refreshIntervalMilliseconds": 250,
+      "bodyClass": ""
+    },
+    {
+      "id": "gap-to-leader",
+      "title": "Gap To Leader",
+      "canonicalRoute": "/overlays/gap-to-leader",
+      "routes": [
+        "/overlays/gap-to-leader"
+      ],
+      "requiresTelemetry": true,
+      "renderWhenTelemetryUnavailable": false,
+      "fadeWhenTelemetryUnavailable": true,
+      "refreshIntervalMilliseconds": 250,
+      "bodyClass": ""
+    },
+    {
+      "id": "garage-cover",
+      "title": "Garage Cover",
+      "canonicalRoute": "/overlays/garage-cover",
+      "routes": [
+        "/overlays/garage-cover"
+      ],
+      "requiresTelemetry": true,
+      "renderWhenTelemetryUnavailable": true,
+      "fadeWhenTelemetryUnavailable": false,
+      "refreshIntervalMilliseconds": 250,
+      "bodyClass": "garage-cover-page"
+    },
+    {
+      "id": "input-state",
+      "title": "Inputs",
+      "canonicalRoute": "/overlays/input-state",
+      "routes": [
+        "/overlays/input-state",
+        "/overlays/inputs"
+      ],
+      "requiresTelemetry": true,
+      "renderWhenTelemetryUnavailable": false,
+      "fadeWhenTelemetryUnavailable": true,
+      "refreshIntervalMilliseconds": 250,
+      "bodyClass": "input-state-page"
+    },
+    {
+      "id": "pit-service",
+      "title": "Pit Service",
+      "canonicalRoute": "/overlays/pit-service",
+      "routes": [
+        "/overlays/pit-service"
+      ],
+      "requiresTelemetry": true,
+      "renderWhenTelemetryUnavailable": false,
+      "fadeWhenTelemetryUnavailable": true,
+      "refreshIntervalMilliseconds": 250,
+      "bodyClass": ""
+    },
+    {
+      "id": "relative",
+      "title": "Relative",
+      "canonicalRoute": "/overlays/relative",
+      "routes": [
+        "/overlays/relative"
+      ],
+      "requiresTelemetry": true,
+      "renderWhenTelemetryUnavailable": false,
+      "fadeWhenTelemetryUnavailable": true,
+      "refreshIntervalMilliseconds": 250,
+      "bodyClass": ""
+    },
+    {
+      "id": "session-weather",
+      "title": "Session / Weather",
+      "canonicalRoute": "/overlays/session-weather",
+      "routes": [
+        "/overlays/session-weather"
+      ],
+      "requiresTelemetry": true,
+      "renderWhenTelemetryUnavailable": false,
+      "fadeWhenTelemetryUnavailable": true,
+      "refreshIntervalMilliseconds": 250,
+      "bodyClass": ""
+    },
+    {
+      "id": "standings",
+      "title": "Standings",
+      "canonicalRoute": "/overlays/standings",
+      "routes": [
+        "/overlays/standings"
+      ],
+      "requiresTelemetry": true,
+      "renderWhenTelemetryUnavailable": false,
+      "fadeWhenTelemetryUnavailable": true,
+      "refreshIntervalMilliseconds": 250,
+      "bodyClass": ""
+    },
+    {
+      "id": "stream-chat",
+      "title": "Stream Chat",
+      "canonicalRoute": "/overlays/stream-chat",
+      "routes": [
+        "/overlays/stream-chat"
+      ],
+      "requiresTelemetry": false,
+      "renderWhenTelemetryUnavailable": false,
+      "fadeWhenTelemetryUnavailable": false,
+      "refreshIntervalMilliseconds": 250,
+      "bodyClass": ""
+    },
+    {
+      "id": "track-map",
+      "title": "Track Map",
+      "canonicalRoute": "/overlays/track-map",
+      "routes": [
+        "/overlays/track-map"
+      ],
+      "requiresTelemetry": true,
+      "renderWhenTelemetryUnavailable": true,
+      "fadeWhenTelemetryUnavailable": true,
+      "refreshIntervalMilliseconds": 100,
+      "bodyClass": "track-map-page"
+    }
+  ]
+}

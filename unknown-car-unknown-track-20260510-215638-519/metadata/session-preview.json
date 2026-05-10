@@ -1,0 +1,11 @@
+{
+  "active": false,
+  "mode": null,
+  "startedAtUtc": null,
+  "lastChangedAtUtc": null,
+  "generation": 0,
+  "usesNormalOverlayVisibility": true,
+  "overridesOverlayEnabledState": false,
+  "overridesOverlaySessionFilters": false,
+  "source": "settings-general-preview"
+}

@@ -1,0 +1,62 @@
+{
+  "$schema": "./tmr-overlay-contract.schema.json",
+  "contractVersion": 1,
+  "settings": {
+    "settingsVersion": 9,
+    "general": {
+      "fontFamily": "Segoe UI",
+      "unitSystem": "Metric"
+    },
+    "overlays": {
+      "stream-chat": {
+        "options": {
+          "stream-chat.provider": "twitch",
+          "stream-chat.twitch-channel": "techmatesracing"
+        }
+      }
+    },
+    "optionKeys": {
+      "streamChatProvider": "stream-chat.provider",
+      "streamChatStreamlabsUrl": "stream-chat.streamlabs-url",
+      "streamChatTwitchChannel": "stream-chat.twitch-channel"
+    }
+  },
+  "design": {
+    "v2": {
+      "colors": {
+        "backgroundTop": "#12051F",
+        "backgroundMid": "#0C122A",
+        "backgroundBottom": "#030B18",
+        "surface": "#090E20F2",
+        "surfaceInset": "#0D152CE6",
+        "surfaceRaised": "#121F3CEB",
+        "titleBar": "#080A1CF8",
+        "border": "#28486CD2",
+        "borderMuted": "#20365496",
+        "gridLine": "#00E8FF3D",
+        "textPrimary": "#FFF7FF",
+        "textSecondary": "#D0E6FF",
+        "textMuted": "#8CAED4",
+        "textDim": "#527094",
+        "cyan": "#00E8FF",
+        "magenta": "#FF2AA7",
+        "amber": "#FFD15B",
+        "green": "#62FF9F",
+        "orange": "#FF7D49",
+        "purple": "#7E32FF",
+        "error": "#FF6274",
+        "trackInterior": "#090E1296",
+        "trackHalo": "#FFFFFF52",
+        "trackLine": "#DEEAF5",
+        "trackMarkerBorder": "#080E12E6",
+        "pitLine": "#62C7FFBE",
+        "startFinishBoundary": "#FFD15B",
+        "startFinishBoundaryShadow": "#05090ED2",
+        "personalBestSector": "#50D67C",
+        "bestLapSector": "#B65CFF",
+        "flagPole": "#D6DCE2E1",
+        "flagPoleShadow": "#00000078"
+      }
+    }
+  }
+}

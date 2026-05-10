@@ -1,0 +1,22 @@
+﻿{
+  "manifestVersion": 1,
+  "lastRunAtUtc": "2026-05-10T21:48:10.6888217+00:00",
+  "appVersion": {
+    "productName": "Tech Mates Racing Overlay",
+    "version": "0.18.6.0",
+    "informationalVersion": "0.18.6\u002Ba34b24baa560e5303df61411644a755a147fbfb9",
+    "runtimeVersion": ".NET 8.0.26",
+    "operatingSystem": "Microsoft Windows 10.0.26200",
+    "processArchitecture": "X64"
+  },
+  "currentSummaryVersion": 1,
+  "currentCollectionModelVersion": 1,
+  "currentAggregateVersion": 1,
+  "summaryFilesScanned": 0,
+  "summaryFilesCompatible": 0,
+  "summaryFilesMigrated": 0,
+  "summaryFilesSkipped": 0,
+  "summaryFilesBackedUp": 0,
+  "aggregateFilesRebuilt": 0,
+  "files": []
+}

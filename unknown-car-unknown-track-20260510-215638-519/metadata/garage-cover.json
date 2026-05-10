@@ -1,0 +1,16 @@
+{
+  "routeEnabled": true,
+  "routeStatus": "listening",
+  "route": "/overlays/garage-cover",
+  "imageStatus": "not_configured",
+  "imageFileName": null,
+  "imageExtension": null,
+  "imageLength": null,
+  "imageLastWriteTimeUtc": null,
+  "previewVisible": false,
+  "previewUntilUtc": null,
+  "lastDetectionState": "iracing_disconnected",
+  "lastGarageVisible": false,
+  "lastTelemetryAtUtc": "2026-05-10T21:56:38.4716192+00:00",
+  "fallbackReason": "not_configured"
+}

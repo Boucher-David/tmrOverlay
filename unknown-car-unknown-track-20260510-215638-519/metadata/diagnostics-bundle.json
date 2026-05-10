@@ -1,0 +1,12 @@
+{
+  "createdAtUtc": "2026-05-10T21:56:38.5194514+00:00",
+  "source": "session_finalization",
+  "fileName": "unknown-car-unknown-track-20260510-215638-519.zip",
+  "naming": {
+    "carName": "unknown car",
+    "trackName": "unknown track",
+    "carSlug": "unknown-car",
+    "trackSlug": "unknown-track",
+    "source": "fallback"
+  }
+}

@@ -1,0 +1,158 @@
+{
+  "aggregateVersion": 1,
+  "combo": {
+    "carKey": "car-132-bmwm4gt3",
+    "trackKey": "track-262-nurburgring-combinedshortb",
+    "sessionKey": "race"
+  },
+  "car": {
+    "carId": 132,
+    "carPath": "bmwm4gt3",
+    "carScreenName": "BMW M4 GT3 EVO",
+    "carScreenNameShort": "BMW M4 GT3 EVO",
+    "carClassId": 4098,
+    "carClassShortName": null,
+    "carClassEstLapTimeSeconds": 465.3139,
+    "driverCarFuelMaxLiters": 100,
+    "driverCarFuelKgPerLiter": 0.75,
+    "driverCarEstLapTimeSeconds": 465.3139,
+    "driverCarVersion": "2026.04.15.02",
+    "driverGearboxType": "Sequential",
+    "driverSetupName": "nurburgring_combined_endurance.sto",
+    "driverSetupIsModified": false
+  },
+  "track": {
+    "trackId": 262,
+    "trackName": "nurburgring combinedshortb",
+    "trackDisplayName": "Gesamtstrecke VLN",
+    "trackConfigName": null,
+    "trackLengthKm": 24.1544,
+    "trackCity": "N\u00FCrburg",
+    "trackCountry": "Germany",
+    "trackNumTurns": 165,
+    "trackType": "road course",
+    "trackVersion": "2026.03.30.02"
+  },
+  "session": {
+    "currentSessionNum": 0,
+    "sessionNum": 0,
+    "sessionType": "Race",
+    "sessionName": "RACE",
+    "sessionTime": "14400.0000 sec",
+    "sessionLaps": "unlimited",
+    "eventType": "Race",
+    "category": "SportsCar",
+    "official": false,
+    "teamRacing": false,
+    "seriesId": 0,
+    "seasonId": 0,
+    "sessionId": 0,
+    "subSessionId": 0,
+    "buildVersion": "2026.05.04.02"
+  },
+  "updatedAtUtc": "2026-05-10T21:56:38.5015157+00:00",
+  "sessionCount": 1,
+  "baselineSessionCount": 0,
+  "fuelPerLapLiters": {
+    "sampleCount": 0,
+    "mean": null,
+    "minimum": null,
+    "maximum": null
+  },
+  "fuelPerHourLiters": {
+    "sampleCount": 0,
+    "mean": null,
+    "minimum": null,
+    "maximum": null
+  },
+  "averageLapSeconds": {
+    "sampleCount": 0,
+    "mean": null,
+    "minimum": null,
+    "maximum": null
+  },
+  "medianLapSeconds": {
+    "sampleCount": 0,
+    "mean": null,
+    "minimum": null,
+    "maximum": null
+  },
+  "pitRoadEntryCount": {
+    "sampleCount": 0,
+    "mean": null,
+    "minimum": null,
+    "maximum": null
+  },
+  "pitServiceCount": {
+    "sampleCount": 0,
+    "mean": null,
+    "minimum": null,
+    "maximum": null
+  },
+  "averageStintLaps": {
+    "sampleCount": 0,
+    "mean": null,
+    "minimum": null,
+    "maximum": null
+  },
+  "averageStintSeconds": {
+    "sampleCount": 0,
+    "mean": null,
+    "minimum": null,
+    "maximum": null
+  },
+  "averageStintFuelPerLapLiters": {
+    "sampleCount": 0,
+    "mean": null,
+    "minimum": null,
+    "maximum": null
+  },
+  "localDriverStintLaps": {
+    "sampleCount": 0,
+    "mean": null,
+    "minimum": null,
+    "maximum": null
+  },
+  "teammateDriverStintLaps": {
+    "sampleCount": 0,
+    "mean": null,
+    "minimum": null,
+    "maximum": null
+  },
+  "averagePitLaneSeconds": {
+    "sampleCount": 0,
+    "mean": null,
+    "minimum": null,
+    "maximum": null
+  },
+  "averagePitStallSeconds": {
+    "sampleCount": 0,
+    "mean": null,
+    "minimum": null,
+    "maximum": null
+  },
+  "averagePitServiceSeconds": {
+    "sampleCount": 0,
+    "mean": null,
+    "minimum": null,
+    "maximum": null
+  },
+  "observedFuelFillRateLitersPerSecond": {
+    "sampleCount": 0,
+    "mean": null,
+    "minimum": null,
+    "maximum": null
+  },
+  "averageTireChangePitServiceSeconds": {
+    "sampleCount": 0,
+    "mean": null,
+    "minimum": null,
+    "maximum": null
+  },
+  "averageNoTirePitServiceSeconds": {
+    "sampleCount": 0,
+    "mean": null,
+    "minimum": null,
+    "maximum": null
+  }
+}

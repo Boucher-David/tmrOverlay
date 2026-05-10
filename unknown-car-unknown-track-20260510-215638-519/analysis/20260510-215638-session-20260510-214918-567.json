@@ -1,0 +1,29 @@
+{
+  "analysisVersion": 1,
+  "id": "20260510-215638-session-20260510-214918-567",
+  "createdAtUtc": "2026-05-10T21:56:38.5083337+00:00",
+  "finishedAtUtc": "2026-05-10T21:56:38.4742549+00:00",
+  "sourceId": "session-20260510-214918-567",
+  "title": "Gesamtstrecke VLN - Race",
+  "subtitle": "BMW M4 GT3 EVO | none confidence",
+  "combo": {
+    "carKey": "car-132-bmwm4gt3",
+    "trackKey": "track-262-nurburgring-combinedshortb",
+    "sessionKey": "race"
+  },
+  "lines": [
+    "Gesamtstrecke VLN - Race",
+    "BMW M4 GT3 EVO | none confidence",
+    "",
+    "Duration: 7.3m captured, 0 completed valid laps, 0.0 valid distance laps.",
+    "Fuel model: -- average, 100.0 L tank, laps/tank unavailable.",
+    "Pit service: no completed pit service detected in this summary.",
+    "",
+    "Strategy note:",
+    "Fuel data was not strong enough for a stint-rhythm recommendation yet.",
+    "",
+    "Quality: none; short_green_sample, insufficient_distance, no_completed_laps, no_reliable_fuel_per_lap."
+  ],
+  "displayName": "2026-05-10 Gesamtstrecke VLN - Race",
+  "body": "Gesamtstrecke VLN - Race\r\nBMW M4 GT3 EVO | none confidence\r\n\r\nDuration: 7.3m captured, 0 completed valid laps, 0.0 valid distance laps.\r\nFuel model: -- average, 100.0 L tank, laps/tank unavailable.\r\nPit service: no completed pit service detected in this summary.\r\n\r\nStrategy note:\r\nFuel data was not strong enough for a stint-rhythm recommendation yet.\r\n\r\nQuality: none; short_green_sample, insufficient_distance, no_completed_laps, no_reliable_fuel_per_lap."
+}
