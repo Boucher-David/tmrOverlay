@@ -13,9 +13,9 @@ internal static class RelativeBrowserSource
 
     private const string Script = """
     const defaultRelativeColumns = [
-      { id: 'relative.position', label: 'Pos', dataKey: 'relative-position', width: 58, alignment: 'right' },
-      { id: 'relative.driver', label: 'Driver', dataKey: 'driver', width: 300, alignment: 'left' },
-      { id: 'relative.gap', label: 'Gap', dataKey: 'gap', width: 92, alignment: 'right' }
+      { id: 'relative.position', label: 'Pos', dataKey: 'relative-position', width: 38, alignment: 'right' },
+      { id: 'relative.driver', label: 'Driver', dataKey: 'driver', width: 250, alignment: 'left' },
+      { id: 'relative.gap', label: 'Gap', dataKey: 'gap', width: 70, alignment: 'right' }
     ];
     const defaultRelativeSettings = {
       carsAhead: 5,
@@ -68,6 +68,7 @@ internal static class RelativeBrowserSource
       return normalizeColumns(relativeSettings.columns, defaultRelativeColumns)
         .map((column) => ({
           label: column.label,
+          dataKey: column.dataKey,
           width: column.width,
           align: column.alignment,
           value: (row) => relativeColumnValue(row, column.dataKey)
@@ -95,7 +96,7 @@ internal static class RelativeBrowserSource
           id: String(column?.id || ''),
           label: String(column?.label || ''),
           dataKey: normalizeRelativeDataKey(column?.dataKey, column?.id),
-          width: clamp(Number(column?.width), 34, 520),
+          width: clamp(Number(column?.width), 24, 520),
           alignment: normalizeColumnAlignment(column?.alignment ?? column?.align, column?.id, fallbackColumns)
         }))
         .filter((column) => column.id && column.label && column.dataKey);

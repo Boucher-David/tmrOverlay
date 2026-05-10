@@ -1,3 +1,6 @@
+using System.Drawing;
+using System.Reflection;
+using TmrOverlay.App.Overlays;
 using TmrOverlay.App.Overlays.BrowserSources;
 using TmrOverlay.App.Overlays.Content;
 using TmrOverlay.App.Overlays.Relative;
@@ -64,6 +67,58 @@ public sealed class OverlayContentColumnSettingsTests
 
         Assert.Equal(1212, size.Width);
         Assert.Equal(520, size.Height);
+    }
+
+    [Fact]
+    public void BrowserRecommendedSize_UsesCompactDefaultVisibleColumnWidths()
+    {
+        var settings = new ApplicationSettings();
+        var standings = settings.GetOrAddOverlay("standings", 780, 520);
+        var relative = settings.GetOrAddOverlay("relative", 520, 360);
+
+        var standingsSize = BrowserOverlayRecommendedSize.For(StandingsOverlayDefinition.Definition, standings);
+        var relativeSize = BrowserOverlayRecommendedSize.For(RelativeOverlayDefinition.Definition, relative);
+
+        Assert.Equal(527, standingsSize.Width);
+        Assert.Equal(520, standingsSize.Height);
+        Assert.Equal(400, relativeSize.Width);
+        Assert.Equal(360, relativeSize.Height);
+    }
+
+    [Fact]
+    public void OverlayManagerScaledOverlaySize_AppliesScaleAfterColumnDrivenBaseWidth()
+    {
+        var method = typeof(OverlayManager).GetMethod(
+            "ScaledOverlaySize",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var standings = new ApplicationSettings().GetOrAddOverlay("standings", 780, 520);
+        standings.Scale = 1.25d;
+
+        var size = (Size)method.Invoke(null, [StandingsOverlayDefinition.Definition, standings])!;
+
+        Assert.Equal(721, size.Width);
+        Assert.Equal(650, size.Height);
+    }
+
+    [Fact]
+    public void DefaultTableColumnWidthsMatchV2CompactProductionLayout()
+    {
+        Assert.Collection(
+            OverlayContentColumnSettings.Standings.Columns.Select(column => column.DefaultWidth),
+            width => Assert.Equal(35, width),
+            width => Assert.Equal(50, width),
+            width => Assert.Equal(250, width),
+            width => Assert.Equal(60, width),
+            width => Assert.Equal(60, width),
+            width => Assert.Equal(30, width));
+        Assert.Collection(
+            OverlayContentColumnSettings.Relative.Columns.Select(column => column.DefaultWidth),
+            width => Assert.Equal(38, width),
+            width => Assert.Equal(250, width),
+            width => Assert.Equal(70, width),
+            width => Assert.Equal(30, width));
     }
 
     [Fact]

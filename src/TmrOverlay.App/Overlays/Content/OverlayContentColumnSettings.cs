@@ -115,12 +115,12 @@ internal static class OverlayContentColumnSettings
         FallbackColumnId: StandingsDriverColumnId,
         Columns:
     [
-        new(StandingsClassPositionColumnId, "CLS", DataClassPosition, true, 1, 54, 42, 110, OverlayOptionKeys.StandingsColumnClassWidth),
-        new(StandingsCarNumberColumnId, "CAR", DataCarNumber, true, 2, 66, 48, 130, OverlayOptionKeys.StandingsColumnCarWidth),
-        new(StandingsDriverColumnId, "Driver", DataDriver, true, 3, 300, 180, 520, OverlayOptionKeys.StandingsColumnDriverWidth, Alignment: OverlayContentColumnAlignment.Left),
-        new(StandingsGapColumnId, "GAP", DataGap, true, 4, 92, 64, 160, OverlayOptionKeys.StandingsColumnGapWidth),
-        new(StandingsIntervalColumnId, "INT", DataInterval, true, 5, 92, 64, 160, OverlayOptionKeys.StandingsColumnIntervalWidth),
-        new(StandingsPitColumnId, "PIT", DataPit, true, 6, 46, 34, 90, OverlayOptionKeys.StandingsColumnPitWidth)
+        new(StandingsClassPositionColumnId, "CLS", DataClassPosition, true, 1, 35, 30, 110, OverlayOptionKeys.StandingsColumnClassWidth),
+        new(StandingsCarNumberColumnId, "CAR", DataCarNumber, true, 2, 50, 42, 130, OverlayOptionKeys.StandingsColumnCarWidth),
+        new(StandingsDriverColumnId, "Driver", DataDriver, true, 3, 250, 180, 520, OverlayOptionKeys.StandingsColumnDriverWidth, Alignment: OverlayContentColumnAlignment.Left),
+        new(StandingsGapColumnId, "GAP", DataGap, true, 4, 60, 50, 160, OverlayOptionKeys.StandingsColumnGapWidth),
+        new(StandingsIntervalColumnId, "INT", DataInterval, true, 5, 60, 50, 160, OverlayOptionKeys.StandingsColumnIntervalWidth),
+        new(StandingsPitColumnId, "PIT", DataPit, true, 6, 30, 24, 90, OverlayOptionKeys.StandingsColumnPitWidth)
     ],
         Blocks:
     [
@@ -145,10 +145,10 @@ internal static class OverlayContentColumnSettings
         FallbackColumnId: RelativeDriverColumnId,
         Columns:
     [
-        new(RelativePositionColumnId, "Pos", DataRelativePosition, true, 1, 58, 44, 100),
-        new(RelativeDriverColumnId, "Driver", DataDriver, true, 2, 300, 180, 520, Alignment: OverlayContentColumnAlignment.Left),
-        new(RelativeGapColumnId, "Gap", DataGap, true, 3, 92, 64, 160),
-        new(RelativePitColumnId, "Pit", DataPit, false, 4, 46, 34, 90)
+        new(RelativePositionColumnId, "Pos", DataRelativePosition, true, 1, 38, 32, 100),
+        new(RelativeDriverColumnId, "Driver", DataDriver, true, 2, 250, 180, 520, Alignment: OverlayContentColumnAlignment.Left),
+        new(RelativeGapColumnId, "Gap", DataGap, true, 3, 70, 60, 160),
+        new(RelativePitColumnId, "Pit", DataPit, false, 4, 30, 24, 90)
     ]);
 
     public static OverlayContentDefinition InputState { get; } = new(

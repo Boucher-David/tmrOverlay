@@ -146,6 +146,8 @@ struct DesignV2OverlayRow {
     var isReference: Bool = false
     var isClassHeader: Bool = false
     var classColorHex: String? = nil
+    var classHeaderTitle: String = ""
+    var classHeaderDetail: String = ""
 }
 
 struct DesignV2OverlayMetricRow {

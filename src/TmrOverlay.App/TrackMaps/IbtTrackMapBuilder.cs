@@ -76,10 +76,14 @@ internal sealed class IbtTrackMapBuilder
             .ToArray();
         if (racingSamples.Length == 0)
         {
-            return TrackMapBuildResult.Rejected(["no_valid_moving_racing_line_samples"]);
+            return TrackMapBuildResult.Rejected(
+                [
+                    "no_valid_moving_racing_line_samples",
+                    $"sample_count={samples.Count}"
+                ]);
         }
 
-        var completeLaps = racingSamples
+        var lapCandidates = racingSamples
             .GroupBy(sample => sample.LapNumber)
             .Select(group => new CompleteLapCandidate(
                 LapNumber: group.Key,
@@ -87,6 +91,8 @@ internal sealed class IbtTrackMapBuilder
                 MinPct: group.Min(sample => sample.LapDistPct),
                 MaxPct: group.Max(sample => sample.LapDistPct),
                 LapDistanceMeters: LapDistanceMeters(group)))
+            .ToArray();
+        var completeLaps = lapCandidates
             .Where(lap => lap.Samples.Count >= MinimumCompleteLapSamples
                 && lap.MinPct <= 0.06d
                 && lap.MaxPct >= 0.94d)
@@ -94,7 +100,12 @@ internal sealed class IbtTrackMapBuilder
             .ToArray();
         if (completeLaps.Length == 0)
         {
-            return TrackMapBuildResult.Rejected(["no_complete_positive_lap"]);
+            return TrackMapBuildResult.Rejected(
+                [
+                    "no_complete_positive_lap",
+                    $"racing_sample_count={racingSamples.Length}",
+                    $"candidate_lap_count={lapCandidates.Length}"
+                ]);
         }
 
         var selectedSamples = completeLaps.SelectMany(lap => lap.Samples).ToArray();
@@ -108,7 +119,12 @@ internal sealed class IbtTrackMapBuilder
         var interpolated = InterpolateMissingBins(binned);
         if (interpolated.Count < MinimumGeneratedBins)
         {
-            return TrackMapBuildResult.Rejected(["insufficient_generated_bins"]);
+            return TrackMapBuildResult.Rejected(
+                [
+                    "insufficient_generated_bins",
+                    $"generated_bin_count={interpolated.Count}",
+                    $"minimum_generated_bin_count={MinimumGeneratedBins}"
+                ]);
         }
 
         var closureMeters = Distance(interpolated[0], interpolated[^1]);

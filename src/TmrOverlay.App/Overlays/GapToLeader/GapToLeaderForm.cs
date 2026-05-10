@@ -1476,7 +1476,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
             ? OverlayChromeFooterMode.Always
             : OverlayChromeFooterMode.Never;
         var status = gap.HasData
-            ? $"C{FormatPosition(gap.ReferenceClassPosition)} {FormatGap(gap.ClassLeaderGap)}"
+            ? $"{FormatPosition(gap.ReferenceClassPosition)} {FormatGap(gap.ClassLeaderGap)}"
             : "waiting";
         var scaleText = gapScale.IsFocusRelative ? "local scale" : "class trend";
         var source = gap.HasData

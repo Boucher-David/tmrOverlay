@@ -79,7 +79,7 @@ internal static class TrackMapBrowserSource
             ? `<path d="${racingPath}" fill="${interior}" stroke="none"></path>`
             : '';
           const pitPath = trackMap?.pitLane?.points?.length >= 2
-            ? `<path d="${pathForGeometry(trackMap.pitLane, transform)}" fill="none" stroke="rgba(98,199,255,0.74)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path>`
+            ? `<path d="${pathForGeometry(trackMap.pitLane, transform)}" fill="none" stroke="var(--tmr-cyan)" stroke-opacity="0.74" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path>`
             : '';
           const sectorPaths = sectorHighlightPaths(sectors, racingLine, transform);
           const boundaryPaths = trackMapSectorBoundaryPaths(sectors, racingLine, transform, settings);
@@ -87,8 +87,8 @@ internal static class TrackMapBrowserSource
           return `
             <svg viewBox="0 0 320 320" role="img" aria-label="Track map">
               ${interiorPath}
-              <path d="${racingPath}" fill="none" stroke="rgba(255,255,255,0.32)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"></path>
-              <path d="${racingPath}" fill="none" stroke="rgba(222,238,246,1)" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"></path>
+              <path d="${racingPath}" fill="none" stroke="var(--tmr-text)" stroke-opacity="0.32" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"></path>
+              <path d="${racingPath}" fill="none" stroke="var(--tmr-text-secondary)" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"></path>
               ${sectorPaths}
               ${boundaryPaths}
               ${pitPath}
@@ -103,8 +103,8 @@ internal static class TrackMapBrowserSource
       return `
         <svg viewBox="0 0 320 320" role="img" aria-label="Track map">
           <circle cx="160" cy="160" r="138" fill="${interior}" stroke="none"></circle>
-          <circle cx="160" cy="160" r="138" fill="none" stroke="rgba(255,255,255,0.32)" stroke-width="11"></circle>
-          <circle cx="160" cy="160" r="138" fill="none" stroke="rgba(222,238,246,1)" stroke-width="4.4"></circle>
+          <circle cx="160" cy="160" r="138" fill="none" stroke="var(--tmr-text)" stroke-opacity="0.32" stroke-width="11"></circle>
+          <circle cx="160" cy="160" r="138" fill="none" stroke="var(--tmr-text-secondary)" stroke-width="4.4"></circle>
           ${sectorPaths}
           ${boundaryPaths}
           ${dots}
@@ -113,7 +113,7 @@ internal static class TrackMapBrowserSource
 
     function trackMapInteriorFill(settings) {
       const opacity = Math.max(0.2, Math.min(1, Number(settings?.internalOpacity ?? 0.88)));
-      return `rgba(9,14,18,${(0.59 * opacity).toFixed(3)})`;
+      return `rgba(9,14,32,${(0.59 * opacity).toFixed(3)})`;
     }
 
     function trackMapTransform(trackMap) {
@@ -218,7 +218,7 @@ internal static class TrackMapBrowserSource
     }
 
     function sectorHighlightColor(highlight) {
-      return highlight === 'best-lap' ? '#b65cff' : '#50d67c';
+      return highlight === 'best-lap' ? 'var(--tmr-magenta)' : 'var(--tmr-green)';
     }
 
     function trackMapSectorBoundaryPaths(sectors, geometry, transform, settings) {
@@ -226,7 +226,7 @@ internal static class TrackMapBrowserSource
       return sectorBoundaryProgresses(sectors)
         .map((progress) => geometryBoundaryTickPath(geometry, transform, progress))
         .filter(Boolean)
-        .map((d) => `<path d="${d}" fill="none" stroke="rgba(98,199,255,0.92)" stroke-width="2.2" stroke-linecap="round"></path>`)
+        .map((d) => `<path d="${d}" fill="none" stroke="var(--tmr-cyan)" stroke-opacity="0.92" stroke-width="2.2" stroke-linecap="round"></path>`)
         .join('');
     }
 
@@ -235,7 +235,7 @@ internal static class TrackMapBrowserSource
       return sectorBoundaryProgresses(sectors)
         .map((progress) => circleBoundaryTickPath(progress))
         .filter(Boolean)
-        .map((d) => `<path d="${d}" fill="none" stroke="rgba(98,199,255,0.92)" stroke-width="2.2" stroke-linecap="round"></path>`)
+        .map((d) => `<path d="${d}" fill="none" stroke="var(--tmr-cyan)" stroke-opacity="0.92" stroke-width="2.2" stroke-linecap="round"></path>`)
         .join('');
     }
 
@@ -325,7 +325,7 @@ internal static class TrackMapBrowserSource
       const radius = marker.isFocus && marker.positionLabel
         ? focusMarkerRadius(marker.positionLabel)
         : marker.isFocus ? 5.7 : 3.6;
-      const circle = `<circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="${radius}" fill="${marker.color}" stroke="rgb(8,14,18)" stroke-width="${marker.isFocus ? 2 : 1.4}"></circle>`;
+      const circle = `<circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="${radius}" fill="${marker.color}" stroke="var(--tmr-title)" stroke-width="${marker.isFocus ? 2 : 1.4}"></circle>`;
       if (!marker.isFocus || !marker.positionLabel) {
         return circle;
       }
@@ -333,7 +333,7 @@ internal static class TrackMapBrowserSource
       return `
         <g>
           ${circle}
-          <text x="${point.x.toFixed(1)}" y="${(point.y + 2.9).toFixed(1)}" text-anchor="middle" font-size="7.6" font-weight="800" fill="rgb(5,12,16)">${escapeHtml(marker.positionLabel)}</text>
+          <text x="${point.x.toFixed(1)}" y="${(point.y + 2.9).toFixed(1)}" text-anchor="middle" font-size="7.6" font-weight="800" fill="var(--tmr-title)">${escapeHtml(marker.positionLabel)}</text>
         </g>`;
     }
 
@@ -370,7 +370,7 @@ internal static class TrackMapBrowserSource
           carIdx: row.carIdx,
           lapDistPct: normalizeProgress(row.lapDistPct),
           isFocus,
-          color: isFocus ? '#62c7ff' : markerColor(scoringRow?.carClassColorHex || row.carClassColorHex),
+          color: isFocus ? 'var(--tmr-cyan)' : markerColor(scoringRow?.carClassColorHex || row.carClassColorHex),
           positionLabel: isFocus ? positionLabel(scoringRow) || positionLabel(row) : null
         };
         const existing = markers.get(row.carIdx);
@@ -390,7 +390,7 @@ internal static class TrackMapBrowserSource
             carIdx: row.carIdx,
             lapDistPct: gridRows.length <= 1 ? 0 : normalizeProgress(index / gridRows.length),
             isFocus,
-            color: isFocus ? '#62c7ff' : markerColor(row.carClassColorHex),
+            color: isFocus ? 'var(--tmr-cyan)' : markerColor(row.carClassColorHex),
             positionLabel: isFocus ? positionLabel(row) : null
           });
         });
@@ -402,7 +402,7 @@ internal static class TrackMapBrowserSource
           carIdx: focusCarIdx,
           lapDistPct: normalizeProgress(fallbackFocusPct),
           isFocus: true,
-          color: '#62c7ff',
+          color: 'var(--tmr-cyan)',
           positionLabel: focusPositionLabel(live, scoringByCarIdx, focusCarIdx)
         });
       }
@@ -454,7 +454,7 @@ internal static class TrackMapBrowserSource
 
     function positionLabel(row) {
       const position = row?.classPosition ?? row?.overallPosition;
-      return Number.isFinite(position) && position > 0 ? `P${position}` : null;
+      return Number.isFinite(position) && position > 0 ? `${position}` : null;
     }
 
     function focusPositionLabel(live, scoringByCarIdx, focusCarIdx) {
@@ -469,11 +469,11 @@ internal static class TrackMapBrowserSource
         ?? sample?.teamClassPosition
         ?? sample?.focusPosition
         ?? sample?.teamPosition;
-      return Number.isFinite(position) && position > 0 ? `P${position}` : null;
+      return Number.isFinite(position) && position > 0 ? `${position}` : null;
     }
 
     function markerColor(value) {
-      return classColorCss(value, '#ecf4f8');
+      return classColorCss(value);
     }
 
     function normalizeProgress(value) {

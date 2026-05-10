@@ -67,6 +67,7 @@ final class DesignV2ApplicationSettingsFullView: NSView {
         self.rawCaptureChanged = rawCaptureChanged
         self.onSelectTab = onSelectTab
         super.init(frame: frame)
+        alignBoundsToMatchedWindow()
         wantsLayer = true
         layer?.backgroundColor = theme.colors.surface.cgColor
         buildStaticControls()
@@ -91,9 +92,14 @@ final class DesignV2ApplicationSettingsFullView: NSView {
 
     override func layout() {
         super.layout()
+        alignBoundsToMatchedWindow()
         for (index, tab) in DesignV2SettingsChrome.sidebarTabs.enumerated() {
             sidebarButtons[tab.id]?.frame = DesignV2SettingsChrome.sidebarButtonFrame(index: index)
         }
+    }
+
+    private func alignBoundsToMatchedWindow() {
+        bounds = NSRect(origin: DesignV2SettingsChrome.matchedWindowBoundsOrigin, size: frame.size)
     }
 
     override func draw(_ dirtyRect: NSRect) {

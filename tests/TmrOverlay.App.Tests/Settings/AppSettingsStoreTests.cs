@@ -97,17 +97,19 @@ public sealed class AppSettingsStoreTests
             Assert.Equal(1d, overlay.Opacity);
             Assert.Equal(0, overlay.GetIntegerOption(OverlayOptionKeys.GapCarsAhead, 5, 0, 12));
             Assert.Equal(12, overlay.GetIntegerOption(OverlayOptionKeys.GapCarsBehind, 5, 0, 12));
-            Assert.Equal(5, overlay.GetIntegerOption(OverlayOptionKeys.RelativeCarsEachSide, 5, 0, 8));
-            Assert.Equal(5, overlay.GetIntegerOption(OverlayOptionKeys.RelativeCarsAhead, 5, 0, 8));
-            Assert.Equal(5, overlay.GetIntegerOption(OverlayOptionKeys.RelativeCarsBehind, 5, 0, 8));
-            Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.StandingsClassSeparatorsEnabled, defaultValue: false));
-            Assert.Equal(2, overlay.GetIntegerOption(OverlayOptionKeys.StandingsOtherClassRows, 2, 0, 6));
-            Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.FuelAdvice, defaultValue: true));
+            Assert.True(overlay.Options.ContainsKey(OverlayOptionKeys.GapCarsAhead));
+            Assert.True(overlay.Options.ContainsKey(OverlayOptionKeys.GapCarsBehind));
             Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.ChromeHeaderStatusPractice, defaultValue: false));
             Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.ChromeFooterSourcePractice, defaultValue: false));
-            Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true));
-            Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.TrackMapBuildFromTelemetry, defaultValue: true));
-            Assert.True(overlay.GetBooleanOption(OverlayOptionKeys.TrackMapSectorBoundariesEnabled, defaultValue: true));
+            Assert.False(overlay.Options.ContainsKey(OverlayOptionKeys.RelativeCarsEachSide));
+            Assert.False(overlay.Options.ContainsKey(OverlayOptionKeys.RelativeCarsAhead));
+            Assert.False(overlay.Options.ContainsKey(OverlayOptionKeys.RelativeCarsBehind));
+            Assert.False(overlay.Options.ContainsKey(OverlayOptionKeys.StandingsClassSeparatorsEnabled));
+            Assert.False(overlay.Options.ContainsKey(OverlayOptionKeys.StandingsOtherClassRows));
+            Assert.False(overlay.Options.ContainsKey(OverlayOptionKeys.FuelAdvice));
+            Assert.False(overlay.Options.ContainsKey(OverlayOptionKeys.RadarMulticlassWarning));
+            Assert.False(overlay.Options.ContainsKey(OverlayOptionKeys.TrackMapBuildFromTelemetry));
+            Assert.False(overlay.Options.ContainsKey(OverlayOptionKeys.TrackMapSectorBoundariesEnabled));
             Assert.False(overlay.Options.ContainsKey("flags.green-seconds"));
             Assert.False(overlay.Options.ContainsKey("flags.blue-seconds"));
 
@@ -168,6 +170,61 @@ public sealed class AppSettingsStoreTests
             Assert.Contains("\"height\": 170", saved);
             Assert.DoesNotContain("\"width\": 1920", saved);
             Assert.DoesNotContain("\"height\": 1440", saved);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void Load_RemovesKnownOptionsThatBelongToOtherOverlays()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "tmr-overlay-settings-test", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var storage = CreateStorage(root);
+            Directory.CreateDirectory(storage.SettingsRoot);
+            var settingsPath = Path.Combine(storage.SettingsRoot, "settings.json");
+            File.WriteAllText(
+                settingsPath,
+                """
+                {
+                  "settingsVersion": 8,
+                  "overlays": [
+                    {
+                      "id": "relative",
+                      "options": {
+                        "relative.cars-each-side": "3",
+                        "fuel.advice": "false",
+                        "standings.other-class-rows": "6"
+                      }
+                    },
+                    {
+                      "id": "fuel-calculator",
+                      "options": {
+                        "fuel.advice": "false",
+                        "relative.cars-each-side": "7",
+                        "track-map.build-from-telemetry": "false"
+                      }
+                    }
+                  ]
+                }
+                """);
+
+            var settings = new AppSettingsStore(storage).Load();
+            var relative = settings.Overlays.Single(overlay => overlay.Id == "relative");
+            var fuel = settings.Overlays.Single(overlay => overlay.Id == "fuel-calculator");
+
+            Assert.Equal(3, relative.GetIntegerOption(OverlayOptionKeys.RelativeCarsEachSide, 5, 0, 8));
+            Assert.False(relative.Options.ContainsKey(OverlayOptionKeys.FuelAdvice));
+            Assert.False(relative.Options.ContainsKey(OverlayOptionKeys.StandingsOtherClassRows));
+            Assert.False(fuel.GetBooleanOption(OverlayOptionKeys.FuelAdvice, defaultValue: true));
+            Assert.False(fuel.Options.ContainsKey(OverlayOptionKeys.RelativeCarsEachSide));
+            Assert.False(fuel.Options.ContainsKey(OverlayOptionKeys.TrackMapBuildFromTelemetry));
         }
         finally
         {

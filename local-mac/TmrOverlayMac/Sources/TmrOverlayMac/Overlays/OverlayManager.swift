@@ -737,6 +737,7 @@ final class OverlayManager {
     private static let liveTelemetryFreshnessSeconds = 1.5
     private static let telemetryFadeInSeconds = 0.22
     private static let telemetryFadeOutSeconds = 0.65
+    private static let debugOverlayWidthOptionKey = "mac-debug.overlay.width"
 
     private let state: TelemetryCaptureState
     private let liveTelemetryStore: LiveTelemetryStore
@@ -764,6 +765,8 @@ final class OverlayManager {
     private var gapToLeaderView: GapToLeaderView?
     private var relativeDesignV2View: RelativeDesignV2OverlayView?
     private var settingsOverlayView: SettingsOverlayView?
+    private var columnWidthDebugWindow: NSWindow?
+    private var columnWidthDebugView: OverlayColumnWidthDebugView?
     private var radarSettingsPreviewVisible = false
     private var radarCaptureDemoScenarios: [RadarCaptureScenario] = []
     private var radarCaptureDemoViews: [String: RadarCaptureDemoView] = [:]
@@ -819,6 +822,80 @@ final class OverlayManager {
         refreshOverlayVisibility()
         applyDisplaySettingsToOpenOverlays()
         settingsStore.save(settings)
+        showColumnWidthDebugWindowIfRequested()
+    }
+
+    private func showColumnWidthDebugWindowIfRequested() {
+        guard Self.environmentFlag("TMR_MAC_COLUMN_WIDTH_DEBUG"),
+              columnWidthDebugWindow == nil else {
+            return
+        }
+
+        let view = OverlayColumnWidthDebugView(
+            settings: settings,
+            overlayDefinitions: managedOverlayDefinitions,
+            onOverlayWidthChanged: { [weak self] definition, width in
+                self?.applyDebugOverlayWidth(definition: definition, width: width)
+            },
+            onColumnWidthChanged: { [weak self] definition, column, width in
+                self?.applyDebugColumnWidth(definition: definition, column: column, width: width)
+            }
+        )
+        let size = OverlayColumnWidthDebugView.preferredSize
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.titled, .closable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Column Widths"
+        window.contentView = view
+        window.isReleasedWhenClosed = false
+        window.level = .floating
+        if let visibleFrame = NSScreen.main?.visibleFrame {
+            window.setFrameOrigin(NSPoint(
+                x: visibleFrame.maxX - size.width - 24,
+                y: visibleFrame.minY + 24
+            ))
+        }
+        columnWidthDebugView = view
+        columnWidthDebugWindow = window
+        window.orderFrontRegardless()
+    }
+
+    private func applyDebugOverlayWidth(definition: OverlayDefinition, width: Int) {
+        var overlaySettings = settings.overlay(
+            id: definition.id,
+            defaultSize: definition.defaultSize,
+            defaultOrigin: defaultOrigin(definition: definition),
+            defaultEnabled: false
+        )
+        let debugWidth = max(1, width)
+        overlaySettings.width = CGFloat(debugWidth)
+        overlaySettings.options[Self.debugOverlayWidthOptionKey] = String(debugWidth)
+        settings.updateOverlay(overlaySettings)
+        settingsStore.save(settings)
+        refreshOverlayVisibility()
+        applyDisplaySettingsToOpenOverlays()
+    }
+
+    private func applyDebugColumnWidth(
+        definition: OverlayContentDefinition,
+        column: OverlayContentColumnDefinition,
+        width: Int
+    ) {
+        let sourceDefinition = managedOverlayDefinitions.first { $0.id == definition.overlayId }
+        var overlaySettings = settings.overlay(
+            id: definition.overlayId,
+            defaultSize: sourceDefinition?.defaultSize ?? .zero,
+            defaultOrigin: sourceDefinition.map { defaultOrigin(definition: $0) } ?? NSPoint(x: 24, y: 24),
+            defaultEnabled: false
+        )
+        overlaySettings.options[column.widthKey(overlayId: definition.overlayId)] = String(max(1, width))
+        settings.updateOverlay(overlaySettings)
+        settingsStore.save(settings)
+        refreshOverlayVisibility()
+        applyDisplaySettingsToOpenOverlays()
     }
 
     func openSettingsOverlay() {
@@ -1316,10 +1393,7 @@ final class OverlayManager {
             return
         }
 
-        let size = RelativeDesignV2OverlayView.demoSize(
-            settings: relativeSettings,
-            sessionKey: liveTelemetryStore.snapshot().combo.sessionKey
-        )
+        let size = relativeDesignV2DemoSize(settings: relativeSettings)
         let overlaySettings = OverlaySettings(
             id: relativeDesignV2DemoDefinition.id,
             x: relativeSettings.x + relativeSettings.width + 24,
@@ -1382,6 +1456,12 @@ final class OverlayManager {
             definition: definition,
             settings: overlaySettings
         )
+        applyDesignV2SuiteGeometry(
+            view: view,
+            kind: kind,
+            sourceSettings: sourceSettings,
+            windowSize: size
+        )
         window.title = definition.displayName
         overlayWindows[definition.id] = window
         designV2OverlaySuiteViews[kind] = view
@@ -1404,10 +1484,53 @@ final class OverlayManager {
     }
 
     private func designV2SuiteSize(kind: DesignV2OverlayMockKind, sourceSettings: OverlaySettings) -> NSSize {
-        let scale = min(max(sourceSettings.scale, 0.6), 2.0)
+        let scale = clampedOverlayScale(sourceSettings.scale)
+        var size = designV2SuiteBaseSize(kind: kind, sourceSettings: sourceSettings)
+        size.width *= scale
+        size.height *= scale
+        if let debugWidth = debugOverlayWidth(sourceSettings) {
+            size.width = debugWidth
+        }
+        return size
+    }
+
+    private func designV2SuiteBaseSize(kind: DesignV2OverlayMockKind, sourceSettings: OverlaySettings) -> NSSize {
+        switch kind {
+        case .standings:
+            return designV2TableBaseSize(
+                content: OverlayContentColumns.standings,
+                settings: sourceSettings,
+                defaultSize: kind.defaultSize,
+                minimumWidth: 340
+            )
+        default:
+            return kind.defaultSize
+        }
+    }
+
+    private func designV2SuiteBoundsSize(kind: DesignV2OverlayMockKind, sourceSettings: OverlaySettings) -> NSSize {
+        let scale = clampedOverlayScale(sourceSettings.scale)
+        var size = designV2SuiteBaseSize(kind: kind, sourceSettings: sourceSettings)
+        if let debugWidth = debugOverlayWidth(sourceSettings) {
+            size.width = debugWidth / scale
+        }
+        return size
+    }
+
+    private func designV2TableBaseSize(
+        content: OverlayContentDefinition,
+        settings sourceSettings: OverlaySettings,
+        defaultSize: NSSize,
+        minimumWidth: CGFloat
+    ) -> NSSize {
+        let columns = OverlayContentColumns.visibleColumnStates(for: content, settings: sourceSettings)
+        let columnWidth = columns.reduce(CGFloat(0)) { total, column in
+            total + CGFloat(column.width)
+        }
+        let columnGaps = CGFloat(max(0, columns.count - 1)) * 8
         return NSSize(
-            width: kind.defaultSize.width * scale,
-            height: kind.defaultSize.height * scale
+            width: max(minimumWidth, columnWidth + columnGaps + 52),
+            height: defaultSize.height
         )
     }
 
@@ -1456,6 +1579,9 @@ final class OverlayManager {
         carRadarView = nil
         gapToLeaderView = nil
         settingsOverlayView = nil
+        columnWidthDebugWindow?.close()
+        columnWidthDebugWindow = nil
+        columnWidthDebugView = nil
         radarCaptureDemoScenarios = []
         radarCaptureDemoViews.removeAll()
         radarCaptureDemoStartedAtUtc = nil
@@ -1534,6 +1660,7 @@ final class OverlayManager {
         let fontFamily = OverlayTheme.defaultFontFamily
         settingsOverlayView?.applySettings(settings)
         settingsOverlayView?.updateCaptureStatus(captureSnapshot ?? state.snapshot())
+        columnWidthDebugView?.applySettings(settings)
 
         if let fuelSettings = settings.overlays.first(where: { $0.id == FuelCalculatorOverlayDefinition.definition.id }) {
             fuelCalculatorView?.showAdvice = fuelSettings.showFuelAdvice
@@ -2080,20 +2207,57 @@ final class OverlayManager {
     }
 
     private func scaledOverlaySize(definition: OverlayDefinition, settings overlaySettings: OverlaySettings) -> NSSize {
-        var size = NSSize(
-            width: definition.defaultSize.width * overlaySettings.scale,
-            height: definition.defaultSize.height * overlaySettings.scale
-        )
+        let scale = clampedOverlayScale(overlaySettings.scale)
+        var baseSize = definition.defaultSize
         if let content = OverlayContentColumns.definition(for: definition.id) {
-            let contentWidth = OverlayContentColumns.visibleColumnStates(
-                for: content,
+            baseSize = contentDrivenNativeBaseSize(
+                definition: definition,
+                content: content,
                 settings: overlaySettings
-            ).reduce(0) { $0 + $1.width }
-            size.width = max(size.width, CGFloat(contentWidth + 28))
-            size.height = max(size.height, CGFloat(content.nativeMinimumTableHeight + 64))
+            )
         }
 
+        var size = NSSize(
+            width: baseSize.width * scale,
+            height: baseSize.height * scale
+        )
+        if let debugWidth = debugOverlayWidth(overlaySettings) {
+            size.width = debugWidth
+        }
         return size
+    }
+
+    private func contentDrivenNativeBaseSize(
+        definition: OverlayDefinition,
+        content: OverlayContentDefinition,
+        settings overlaySettings: OverlaySettings
+    ) -> NSSize {
+        let columns = OverlayContentColumns.visibleColumnStates(for: content, settings: overlaySettings)
+        let contentWidth = columns.reduce(CGFloat(0)) { total, column in
+            total + CGFloat(column.width)
+        }
+        let columnGaps: CGFloat
+        let minimumWidth: CGFloat
+        switch definition.id {
+        case StandingsOverlayDefinition.definition.id:
+            columnGaps = CGFloat(max(0, columns.count - 1)) * 8
+            minimumWidth = 340
+        case RelativeOverlayDefinition.definition.id:
+            columnGaps = 0
+            minimumWidth = 260
+        default:
+            columnGaps = 0
+            minimumWidth = definition.defaultSize.width
+        }
+
+        return NSSize(
+            width: max(minimumWidth, contentWidth + columnGaps + 28),
+            height: max(definition.defaultSize.height, CGFloat(content.nativeMinimumTableHeight + 64))
+        )
+    }
+
+    private func clampedOverlayScale(_ scale: Double) -> CGFloat {
+        CGFloat(min(max(scale, 0.6), 2.0))
     }
 
     private func resizeRelativeDesignV2Demo(settings relativeSettings: OverlaySettings) {
@@ -2102,10 +2266,7 @@ final class OverlayManager {
             return
         }
 
-        let size = RelativeDesignV2OverlayView.demoSize(
-            settings: relativeSettings,
-            sessionKey: liveTelemetryStore.snapshot().combo.sessionKey
-        )
+        let size = relativeDesignV2DemoSize(settings: relativeSettings)
         applyRelativeDesignV2Opacity(settings: relativeSettings)
         guard abs(window.frame.width - size.width) > 0.5
             || abs(window.frame.height - size.height) > 0.5 else {
@@ -2119,6 +2280,29 @@ final class OverlayManager {
         window.setFrame(frame, display: true)
         view.frame = NSRect(origin: .zero, size: size)
         appliedScales[relativeDesignV2DemoDefinition.id] = relativeSettings.scale
+    }
+
+    private func relativeDesignV2DemoSize(settings relativeSettings: OverlaySettings) -> NSSize {
+        var size = RelativeDesignV2OverlayView.demoSize(
+            settings: relativeSettings,
+            sessionKey: liveTelemetryStore.snapshot().combo.sessionKey
+        )
+        if let debugWidth = debugOverlayWidth(relativeSettings) {
+            size.width = debugWidth
+        }
+        return size
+    }
+
+    private func debugOverlayWidth(_ overlaySettings: OverlaySettings) -> CGFloat? {
+        guard Self.environmentFlag("TMR_MAC_COLUMN_WIDTH_DEBUG"),
+              let rawValue = overlaySettings.options[Self.debugOverlayWidthOptionKey]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              let width = Double(rawValue),
+              width.isFinite,
+              width > 0 else {
+            return nil
+        }
+
+        return CGFloat(width)
     }
 
     private func relativeCarsEachSide(_ overlaySettings: OverlaySettings) -> Int {
@@ -2169,18 +2353,43 @@ final class OverlayManager {
         }
 
         let size = designV2SuiteSize(kind: kind, sourceSettings: sourceSettings)
-        guard abs(window.frame.width - size.width) > 0.5
-            || abs(window.frame.height - size.height) > 0.5 else {
+        let boundsSize = designV2SuiteBoundsSize(kind: kind, sourceSettings: sourceSettings)
+        let needsFrame = abs(window.frame.width - size.width) > 0.5
+            || abs(window.frame.height - size.height) > 0.5
+        let needsBounds = abs(view.bounds.width - boundsSize.width) > 0.5
+            || abs(view.bounds.height - boundsSize.height) > 0.5
+        guard needsFrame || needsBounds else {
             return
         }
 
-        var frame = window.frame
-        let maxY = frame.maxY
-        frame.size = size
-        frame.origin.y = maxY - size.height
-        window.setFrame(frame, display: true)
-        view.frame = NSRect(origin: .zero, size: size)
+        if needsFrame {
+            var frame = window.frame
+            let maxY = frame.maxY
+            frame.size = size
+            frame.origin.y = maxY - size.height
+            window.setFrame(frame, display: true)
+        }
+        applyDesignV2SuiteGeometry(
+            view: view,
+            kind: kind,
+            sourceSettings: sourceSettings,
+            windowSize: size
+        )
         appliedScales[definition.id] = sourceSettings.scale
+    }
+
+    private func applyDesignV2SuiteGeometry(
+        view: DesignV2OverlaySuiteView,
+        kind: DesignV2OverlayMockKind,
+        sourceSettings: OverlaySettings,
+        windowSize: NSSize
+    ) {
+        view.frame = NSRect(origin: .zero, size: windowSize)
+        view.bounds = NSRect(
+            origin: .zero,
+            size: designV2SuiteBoundsSize(kind: kind, sourceSettings: sourceSettings)
+        )
+        view.needsDisplay = true
     }
 
     private func applyDesignV2OverlaySuiteOpacity(kind: DesignV2OverlayMockKind, settings sourceSettings: OverlaySettings) {
@@ -2556,6 +2765,14 @@ final class OverlayManager {
         }
 
         return value
+    }
+
+    private static func environmentFlag(_ key: String) -> Bool {
+        guard let value = environmentString(key)?.lowercased() else {
+            return false
+        }
+
+        return ["true", "1", "yes", "on"].contains(value)
     }
 
     private func configureGapToLeaderDemoView(_ view: GapToLeaderView) {

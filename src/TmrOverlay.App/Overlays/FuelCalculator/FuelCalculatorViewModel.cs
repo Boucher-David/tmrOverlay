@@ -57,7 +57,9 @@ internal sealed record FuelCalculatorViewModel(
                 BuildRhythmAdvice(comparison, unitSystem)));
         }
 
-        foreach (var stint in strategy.Stints.Take(Math.Max(0, maximumRows - rows.Count)))
+        foreach (var stint in strategy.Stints
+            .Where(ShouldDisplayStint)
+            .Take(Math.Max(0, maximumRows - rows.Count)))
         {
             rows.Add(new FuelDisplayRow(
                 $"Stint {stint.Number}",
@@ -66,6 +68,12 @@ internal sealed record FuelCalculatorViewModel(
         }
 
         return rows;
+    }
+
+    private static bool ShouldDisplayStint(FuelStintEstimate stint)
+    {
+        return stint.LengthLaps > 0.05d
+            || string.Equals(stint.Source, "finish", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string BuildStintText(FuelStintEstimate stint, string unitSystem)

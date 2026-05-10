@@ -100,8 +100,8 @@ enum FourHourRacePreview {
 
     static func teamDriver(sessionTime: TimeInterval) -> MockTeamDriver {
         sessionTime < dafyddToSimonHandoffSeconds
-            ? MockTeamDriver(key: "dafydd", name: "Dafydd", initials: "Daf", driversSoFar: 1)
-            : MockTeamDriver(key: "simon", name: "Simon", initials: "Sim", driversSoFar: 2)
+            ? MockTeamDriver(key: "dafydd", name: MockDriverNames.dafyddFullName, initials: "Daf", driversSoFar: 1)
+            : MockTeamDriver(key: "simon", name: MockDriverNames.simonFullName, initials: "Sim", driversSoFar: 2)
     }
 }
 

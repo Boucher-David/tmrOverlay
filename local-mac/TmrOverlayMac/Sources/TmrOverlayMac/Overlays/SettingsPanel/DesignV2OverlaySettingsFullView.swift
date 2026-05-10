@@ -44,6 +44,7 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
         self.onOverlayChanged = onOverlayChanged
         self.onSelectTab = onSelectTab
         super.init(frame: frame)
+        alignBoundsToMatchedWindow()
         if let initialRegion = Self.initialRegionFromEnvironment(),
            DesignV2SettingsOverlaySpecs.regions(for: definition.id).contains(initialRegion) {
             selectedRegion = initialRegion
@@ -84,6 +85,7 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
 
     override func layout() {
         super.layout()
+        alignBoundsToMatchedWindow()
         for (index, tab) in DesignV2SettingsChrome.sidebarTabs.enumerated() {
             sidebarButtons[tab.id]?.frame = DesignV2SettingsChrome.sidebarButtonFrame(index: index)
         }
@@ -97,6 +99,10 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
             regionButtons[region]?.frame = rect
             regionButtons[region]?.isHidden = false
         }
+    }
+
+    private func alignBoundsToMatchedWindow() {
+        bounds = NSRect(origin: DesignV2SettingsChrome.matchedWindowBoundsOrigin, size: frame.size)
     }
 
     override func draw(_ dirtyRect: NSRect) {

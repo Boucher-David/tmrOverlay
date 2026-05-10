@@ -8,8 +8,9 @@ final class DesignV2OverlaySuiteView: NSView {
         static let bodyGap: CGFloat = 12
         static let rowHeight: CGFloat = 30
         static let rowGap: CGFloat = 5
+        static let columnGap: CGFloat = 8
         static let metricLabelWidth: CGFloat = 124
-        static let minimumColumnWidth: CGFloat = 34
+        static let minimumColumnWidth: CGFloat = 24
     }
 
     private let kind: DesignV2OverlayMockKind
@@ -188,8 +189,9 @@ final class DesignV2OverlaySuiteView: NSView {
         }
 
         let visibleRows = rows.prefix(max(1, Int((rect.height - Layout.rowHeight) / (Layout.rowHeight + Layout.rowGap))))
+        let totalColumnGap = CGFloat(max(0, columns.count - 1)) * Layout.columnGap
         let configuredWidth = columns.reduce(CGFloat(0)) { $0 + max(Layout.minimumColumnWidth, $1.width) }
-        let availableWidth = rect.width - 20
+        let availableWidth = max(1, rect.width - 20 - totalColumnGap)
         let fit = min(1, availableWidth / max(1, configuredWidth))
         var x = rect.minX + 10
         for column in columns {
@@ -201,12 +203,14 @@ final class DesignV2OverlaySuiteView: NSView {
                 color: theme.colors.textMuted,
                 alignment: column.alignment
             )
-            x += width
+            x += width + Layout.columnGap
         }
 
         for (rowIndex, row) in visibleRows.enumerated() {
-            let rowY = rect.minY + 30 + CGFloat(rowIndex) * (Layout.rowHeight + Layout.rowGap)
-            let rowRect = NSRect(x: rect.minX + 8, y: rowY, width: rect.width - 16, height: Layout.rowHeight)
+            let topPadding = row.isClassHeader && rowIndex > 0 ? CGFloat(7) : 0
+            let rowY = rect.minY + 30 + CGFloat(rowIndex) * (Layout.rowHeight + Layout.rowGap) + topPadding
+            let rowHeight = row.isClassHeader ? CGFloat(24) : Layout.rowHeight
+            let rowRect = NSRect(x: rect.minX + 8, y: rowY, width: rect.width - 16, height: rowHeight)
             let classColor = OverlayClassColor.color(row.classColorHex, alpha: 0.95)
             let fill: NSColor
             let stroke: NSColor
@@ -229,6 +233,22 @@ final class DesignV2OverlaySuiteView: NSView {
                     stroke: nil
                 )
             }
+            if row.isClassHeader {
+                drawText(
+                    row.classHeaderTitle.isEmpty ? "Class" : row.classHeaderTitle,
+                    in: NSRect(x: rowRect.minX + 10, y: rowRect.midY - 7, width: rowRect.width * 0.58, height: 14),
+                    font: overlayFont(size: 10, weight: .semibold),
+                    color: theme.colors.textPrimary
+                )
+                drawText(
+                    row.classHeaderDetail,
+                    in: NSRect(x: rowRect.minX + rowRect.width * 0.58, y: rowRect.midY - 7, width: rowRect.width * 0.42 - 10, height: 14),
+                    font: overlayFont(size: 9.5, weight: .semibold),
+                    color: theme.colors.textSecondary,
+                    alignment: .right
+                )
+                continue
+            }
             x = rowRect.minX + 8
             for (columnIndex, column) in columns.enumerated() {
                 let width = max(Layout.minimumColumnWidth, column.width) * fit
@@ -236,11 +256,11 @@ final class DesignV2OverlaySuiteView: NSView {
                 drawText(
                     value,
                     in: NSRect(x: x, y: rowRect.midY - 8, width: width, height: 16),
-                    font: overlayFont(size: 11.5, weight: row.isClassHeader || columnIndex == 0 ? .semibold : .regular),
+                    font: overlayFont(size: 11.5, weight: columnIndex == 0 ? .semibold : .regular),
                     color: tableTextColor(row: row),
                     alignment: column.alignment
                 )
-                x += width
+                x += width + Layout.columnGap
             }
         }
     }
@@ -823,7 +843,7 @@ final class DesignV2OverlaySuiteView: NSView {
             ?? 0
         let rows = standingsRows(snapshot: snapshot, referenceGap: referenceGap)
         let reference = snapshot.leaderGap.classCars.first(where: { $0.isReferenceCar })
-        let status = reference?.classPosition.map { "class C\($0) - \(rows.count) rows" } ?? "\(rows.count) rows"
+        let status = reference?.classPosition.map { "class \($0) - \(rows.count) rows" } ?? "\(rows.count) rows"
         return DesignV2OverlayModel(title: "Standings", status: status, footer: "source: live class timing", evidence: .live, body: .table(columns: standingsColumns(), rows: rows))
     }
 
@@ -850,9 +870,13 @@ final class DesignV2OverlaySuiteView: NSView {
         })
 
         if !otherClassRows.isEmpty {
+            let otherClassName = snapshot.proximity.nearbyCars
+                .first { $0.carClass != nil && $0.carClass != 4098 }?
+                .carClassName
+                ?? "Other"
             rows.append(
                 standingsClassHeader(
-                    className: "LMP",
+                    className: otherClassName,
                     rowCount: max(otherClassRows.count, snapshot.proximity.nearbyCars.filter { $0.carClass == 4099 }.count),
                     estimatedLaps: estimatedLaps(snapshot.latestFrame?.sessionTimeRemain, lapSeconds: (snapshot.latestFrame?.estimatedLapSeconds).map { $0 * 0.76 }),
                     colorHex: otherClassRows.first?.classColorHex ?? "#33CEFF"
@@ -906,7 +930,9 @@ final class DesignV2OverlaySuiteView: NSView {
             values: standingsValues(valuesByKey: valuesByKey),
             evidence: .live,
             isClassHeader: true,
-            classColorHex: colorHex
+            classColorHex: colorHex,
+            classHeaderTitle: className,
+            classHeaderDetail: "\(rowCount) cars | \(estimatedLaps)"
         )
     }
 
@@ -933,9 +959,9 @@ final class DesignV2OverlaySuiteView: NSView {
 
         return sourceCars.map { car in
             let valuesByKey: [String: String] = [
-                OverlayContentColumns.dataClassPosition: car.classPosition.map { "C\($0)" } ?? "--",
-                OverlayContentColumns.dataCarNumber: "#\(car.carIdx)",
-                OverlayContentColumns.dataDriver: car.classPosition == 1 ? "Class Leader" : "Car \(car.carIdx)",
+                OverlayContentColumns.dataClassPosition: car.classPosition.map { "\($0)" } ?? "--",
+                OverlayContentColumns.dataCarNumber: car.carNumber.map { $0.hasPrefix("#") ? $0 : "#\($0)" } ?? "#\(car.carIdx)",
+                OverlayContentColumns.dataDriver: car.driverName ?? MockDriverNames.displayName(for: car.carIdx),
                 OverlayContentColumns.dataGap: car.classPosition == 1 ? "Leader" : "--",
                 OverlayContentColumns.dataInterval: car.relativeSeconds.map { String(format: "%+.1f", $0) } ?? "--",
                 OverlayContentColumns.dataPit: car.onPitRoad == true ? "IN" : ""
@@ -956,14 +982,28 @@ final class DesignV2OverlaySuiteView: NSView {
 
     private func standingsValues(car: LiveClassGapCar, snapshot: LiveTelemetrySnapshot, referenceGap: Double) -> [String] {
         let valuesByKey: [String: String] = [
-            OverlayContentColumns.dataClassPosition: car.classPosition.map { "C\($0)" } ?? "--",
-            OverlayContentColumns.dataCarNumber: car.carIdx == FourHourRacePreview.teamCarIdx ? "#44" : "#\(car.carIdx)",
-            OverlayContentColumns.dataDriver: car.isReferenceCar ? (snapshot.latestFrame?.teamDriverName ?? "TMR") : car.isClassLeader ? "Class Leader" : "Car \(car.carIdx)",
+            OverlayContentColumns.dataClassPosition: car.classPosition.map { "\($0)" } ?? "--",
+            OverlayContentColumns.dataCarNumber: car.carNumber.map { $0.hasPrefix("#") ? $0 : "#\($0)" }
+                ?? (car.carIdx == FourHourRacePreview.teamCarIdx ? "#44" : "#\(car.carIdx)"),
+            OverlayContentColumns.dataDriver: standingsDriverName(car: car, snapshot: snapshot),
             OverlayContentColumns.dataGap: formatLeaderGap(car),
             OverlayContentColumns.dataInterval: intervalText(car.deltaSecondsToReference, referenceGap: referenceGap, isReference: car.isReferenceCar),
             OverlayContentColumns.dataPit: pitText(car: car, snapshot: snapshot)
         ]
         return standingsValues(valuesByKey: valuesByKey)
+    }
+
+    private func standingsDriverName(car: LiveClassGapCar, snapshot: LiveTelemetrySnapshot) -> String {
+        if let driverName = car.driverName, !driverName.isEmpty {
+            return driverName
+        }
+        if let teamName = car.teamName, !teamName.isEmpty {
+            return teamName
+        }
+        if car.isReferenceCar {
+            return snapshot.latestFrame?.teamDriverName ?? "TMR"
+        }
+        return MockDriverNames.displayName(for: car.carIdx)
     }
 
     private func standingsValues(valuesByKey: [String: String]) -> [String] {
@@ -985,7 +1025,7 @@ final class DesignV2OverlaySuiteView: NSView {
             return DesignV2OverlayModel(title: "Focused Gap Trend", status: "waiting", footer: "source: waiting", evidence: .unavailable, body: .graph(points: gapPoints))
         }
 
-        let status = "C\(positionText(gap.referenceClassPosition)) \(gapText(gap.classLeaderGap))"
+        let status = "\(positionText(gap.referenceClassPosition)) \(gapText(gap.classLeaderGap))"
         let lapSeconds = snapshot.latestFrame?.estimatedLapSeconds
         let footer = "10m rolling focused | lap \(formatPlainSeconds(lapSeconds)) | range +/-\(formatPlainSeconds(filteredGapRangeSeconds(lapSeconds: lapSeconds))) | cars \(gap.classCars.count)"
         return DesignV2OverlayModel(title: "Focused Gap Trend", status: status, footer: footer, evidence: .live, body: .graph(points: gapPoints))
@@ -1247,7 +1287,7 @@ final class DesignV2OverlaySuiteView: NSView {
             return nil
         }
 
-        return "P\(position)"
+        return "\(position)"
     }
 
     private func trackMapPoint(on rect: NSRect, progress: Double) -> NSPoint {
@@ -1398,6 +1438,12 @@ final class DesignV2OverlaySuiteView: NSView {
             return ""
         }
         if car.isReferenceCar && snapshot.latestFrame?.onPitRoad == true {
+            return "IN"
+        }
+        if car.onPitRoad == true {
+            return "IN"
+        }
+        if car.classPosition == 2 {
             return "IN"
         }
         let position = car.classPosition ?? abs(car.carIdx % 18) + 1

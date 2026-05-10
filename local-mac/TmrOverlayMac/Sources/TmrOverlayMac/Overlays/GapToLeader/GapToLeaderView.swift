@@ -1860,7 +1860,7 @@ final class GapToLeaderView: NSView {
             return "focus"
         }
 
-        return "P\(position(reference.classPosition)) focus"
+        return "\(position(reference.classPosition)) focus"
     }
 
     private func formatLapReference() -> String {
@@ -1879,7 +1879,7 @@ final class GapToLeaderView: NSView {
         let gapDisplay = isPaceTimingMode && gap.classLeaderGap.isLeader
             ? "best"
             : gapText(gap.classLeaderGap)
-        return "\(isPaceTimingMode ? "pace" : "") C\(position(gap.referenceClassPosition)) \(gapDisplay)".trimmingCharacters(in: .whitespaces)
+        return "\(isPaceTimingMode ? "pace" : "") \(position(gap.referenceClassPosition)) \(gapDisplay)".trimmingCharacters(in: .whitespaces)
     }
 
     private func focusedTrendDescriptor() -> String {

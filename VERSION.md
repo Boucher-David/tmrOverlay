@@ -9,50 +9,49 @@ TmrOverlay uses SemVer-style annotated Git tags for product milestones:
 
 ## Current Branch Target
 
-### v0.18.4 - Harden Installer Cleanup And Windows Validation Fixes
+### v0.18.5 - Live Test Hardening And Screenshot Review Fixes
 
 Planned branch name:
 
 ```text
-v0.18.4-installer-and-design-tweaks
+v0.18.5_more-tweaks
 ```
 
 Planned scope:
 
-- Ship an installer hardening patch on top of `v0.18.3` for teammate uninstall/reinstall testing and early design feedback.
-- Remove TmrOverlay's local app-data root during installed-app uninstall, including settings, history, logs, diagnostics, captures, runtime state, Garage Cover imports, and user-generated track maps.
-- Clean stale `TechMatesRacing.TmrOverlay` package folders and shortcuts on normal startup/update without deleting current `%LOCALAPPDATA%\TmrOverlay` user data.
-- Update Velopack packaging to request both Desktop and Start Menu shortcuts.
-- Refresh MSI welcome/splash/banner/logo artwork so the first installer surfaces are visibly branded.
-- Fix the first Windows screenshot feedback items: invisible/topmost overlay input behavior, obvious settings/component crop layout issues, and too-short simple telemetry overlay windows.
-- Retain the pulled v0.18.3 Windows screenshot/diagnostic evidence artifacts for branch review; the diagnostic zip is a known follow-up repo-hygiene issue.
+- Ship a follow-up hardening patch on top of `v0.18.4` for live teammate testing.
+- Fix shutdown/update-service diagnostics, settings option bloat, version metadata duplication, remaining screenshot layout issues, and live-test overlay styling regressions.
+- Keep raw diagnostics intentionally broad for maximum live-test evidence.
+- Preserve official multiclass standings order while still keeping the focused class visible under row limits.
+- Promote the reviewed V2 overlay shell to Windows native and browser-source surfaces for live testing.
+- Carry the mac-reviewed compact Standings/Relative column defaults and table sizing into Windows.
+- Land active update install/restart behavior and installer screenshot review support.
 
 Technical implementation checklist:
 
-1. Bump shared .NET product/version metadata to `0.18.4`.
-2. Add a Velopack uninstall hook that removes the default app-data root while guarding against broad or unsafe configured paths.
-3. Add startup/update cleanup for stale legacy package identity artifacts, with diagnostics bundle metadata showing the last cleanup result.
-4. Update release packaging to request Desktop and Start Menu shortcuts and consume branded installer welcome/splash assets.
-5. Regenerate installer artwork and update release/install documentation.
-6. Apply targeted Windows UI fixes for overlay input transparency, settings screenshot crops, and simple telemetry overlay sizing.
-7. Validate local static checks, installer cleanup tests, and screenshot expectations, then use Windows CI or a Windows machine for the full .NET build/test and v0.18.3-to-v0.18.4 install/uninstall check.
+1. Bump shared .NET product/version metadata to `0.18.5`.
+2. Make release-update startup cancellation/disposal idempotent.
+3. Scope persisted overlay defaults to the overlays that own them.
+4. Patch settings/support and simple-overlay screenshot issues.
+5. Keep standings multiclass groups in official table order.
+6. Validate local static checks and targeted tests, then use Windows CI or a Windows machine for the full .NET build/test and screenshot pass.
 
 Likely squash title:
 
 ```text
-[v0.18.4] Harden installer cleanup and Windows validation fixes
+[v0.18.5] Harden live test overlays and update flow
 ```
 
 Likely squash body:
 
 ```text
-- Bumped shared .NET product/version metadata to 0.18.4.
-- Added a Velopack uninstall hook that removes TmrOverlay's LocalAppData stores while guarding against unsafe configured paths.
-- Added startup/update cleanup for stale TechMatesRacing.TmrOverlay package folders and shortcuts, plus diagnostics bundle metadata for the cleanup result.
-- Updated release packaging to request Desktop and Start Menu shortcuts and added branded installer welcome/splash assets.
-- Fixed invisible/topmost overlay input diagnostics, support/browser-source screenshot crops, simple telemetry overlay heights, and blank fuel calculator rows.
-- Retained pulled v0.18.3 Windows screenshot/diagnostic review artifacts for branch analysis.
-- Regenerated MSI banner/logo artwork with a brighter first-screen treatment and updated installer release docs.
+- Bumped shared .NET product/version metadata to 0.18.5.
+- Made release-update startup cancellation/disposal idempotent and added user-initiated update download/install/restart behavior.
+- Scoped overlay option migration so settings JSON only carries options relevant to each overlay.
+- Promoted V2 live-overlay styling across Windows native overlays and localhost browser sources while keeping an opt-out for live testing.
+- Ported compact Standings/Relative column defaults, full driver-name display, plain numeric positions, content-driven overlay widths, and full-width class separator bands across native/browser surfaces.
+- Preserved official multiclass standings group order in native and browser standings.
+- Fixed support/settings clipping, route-less browser-source UI, simple telemetry wrapping, fuel/pit layout artifacts, and screenshot review coverage including installer windows.
 ```
 
 ## Next Planned Milestone
@@ -65,6 +64,19 @@ Likely scope:
 - Keep hard release-blocking fixes in 0.x only if teammate testing finds installer/update, AppData compatibility, or V1 candidate regressions.
 
 ## Merged Mainline Milestones
+
+### v0.18.4 - Harden Installer Cleanup And Windows Validation Fixes
+
+Commit: `265788e`
+
+Summary:
+
+- Bumped shared .NET product/version metadata to 0.18.4.
+- Added a Velopack uninstall hook that removes TmrOverlay's LocalAppData stores while guarding against unsafe configured paths.
+- Added startup/update cleanup for stale TechMatesRacing.TmrOverlay package folders and shortcuts, plus diagnostics bundle metadata for the cleanup result.
+- Updated release packaging to request Desktop and Start Menu shortcuts and added branded installer welcome/splash assets.
+- Fixed invisible/topmost overlay input diagnostics, support/browser-source screenshot crops, simple telemetry overlay heights, and blank fuel calculator rows.
+- Regenerated MSI banner/logo artwork with a brighter first-screen treatment and updated installer release docs.
 
 ### v0.18.3 - Refresh Windows Overlay Screenshots And Settings Typography
 

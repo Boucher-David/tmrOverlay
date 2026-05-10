@@ -315,7 +315,7 @@ final class TrackMapView: NSView {
             return nil
         }
 
-        return "P\(position)"
+        return "\(position)"
     }
 
     private func point(on rect: NSRect, progress: Double) -> NSPoint {

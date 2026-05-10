@@ -959,7 +959,7 @@ internal sealed class DesignV2SettingsSurface : Control
         DrawPanel(graphics, new Rectangle(726, 214, 414, 170), "Current State");
         DrawStatusRow(graphics, "App", appStatus.Text, 280, ColorForSupportStatus(appStatus.Level));
         DrawStatusRow(graphics, "iRacing", capture.IsConnected ? "Connected" : "Waiting", 314, capture.IsConnected ? Green : TextSecondary);
-        DrawStatusRow(graphics, "Session", SupportStatusText.SessionStateText(capture), 348, capture.IsCapturing ? Cyan : TextSecondary);
+        DrawStatusRow(graphics, "Session", SupportStatusText.SessionStateCompactText(capture), 348, capture.IsCapturing ? Cyan : TextSecondary);
 
         DrawPanel(graphics, new Rectangle(306, 410, 716, 202), "Support Bundle");
         DrawText(graphics, "Latest bundle", new Rectangle(328, 478, 110, 18), 13f, FontStyle.Regular, TextMuted);
@@ -1050,7 +1050,10 @@ internal sealed class DesignV2SettingsSurface : Control
             DrawText(graphics, $"{definition.DefaultWidth} x {definition.DefaultHeight}", new Rectangle(852, 468, 120, 18), 12f, FontStyle.Bold, TextSecondary, monospaced: true);
         }
 
-        DrawBrowserSourcePanel(graphics, definition, settings, new Rectangle(306, 518, 716, 92));
+        if (BrowserOverlayCatalog.TryGetRouteForOverlayId(definition.Id, out _))
+        {
+            DrawBrowserSourcePanel(graphics, definition, settings, new Rectangle(306, 518, 716, 92));
+        }
     }
 
     private void DrawOverlayContentPage(Graphics graphics, OverlayDefinition definition, OverlaySettings settings)
