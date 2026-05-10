@@ -9,6 +9,15 @@ internal sealed record FuelCalculatorViewModel(
     string Source,
     IReadOnlyList<FuelDisplayRow> Rows)
 {
+    public static FuelCalculatorViewModel Waiting(string status)
+    {
+        return new FuelCalculatorViewModel(
+            Status: status,
+            Overview: "--",
+            Source: "source: waiting",
+            Rows: []);
+    }
+
     public static FuelCalculatorViewModel From(
         FuelStrategySnapshot strategy,
         SessionHistoryLookupResult history,

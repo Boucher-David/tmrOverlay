@@ -572,9 +572,9 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
     private static bool ReferenceUsesPlayerCar(LiveTelemetrySnapshot snapshot)
     {
         var directory = snapshot.Models.DriverDirectory;
-        return directory.FocusCarIdx is null
-            || directory.PlayerCarIdx is null
-            || directory.FocusCarIdx == directory.PlayerCarIdx;
+        return directory.FocusCarIdx is not null
+            && directory.PlayerCarIdx is not null
+            && directory.FocusCarIdx == directory.PlayerCarIdx;
     }
 
     private void RecordSessionInfoDriverChangeMarkers(
@@ -1821,6 +1821,11 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
     private static bool ReferenceUsesTeamClass(LiveTelemetrySnapshot snapshot)
     {
         var directory = snapshot.Models.DriverDirectory;
+        if (directory.FocusCarIdx is null)
+        {
+            return false;
+        }
+
         var focusClass = directory.FocusDriver?.CarClassId ?? directory.ReferenceCarClass;
         var playerClass = directory.PlayerDriver?.CarClassId ?? directory.ReferenceCarClass;
         return focusClass is null
@@ -1836,7 +1841,12 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
             return null;
         }
 
-        var referenceCarIdx = directory.FocusCarIdx ?? directory.PlayerCarIdx;
+        var referenceCarIdx = directory.FocusCarIdx;
+        if (referenceCarIdx is null)
+        {
+            return null;
+        }
+
         var referenceClass = ReferenceUsesPlayerCar(snapshot)
             ? directory.FocusDriver?.CarClassId ?? directory.PlayerDriver?.CarClassId ?? directory.ReferenceCarClass
             : directory.FocusDriver?.CarClassId ?? directory.ReferenceCarClass;

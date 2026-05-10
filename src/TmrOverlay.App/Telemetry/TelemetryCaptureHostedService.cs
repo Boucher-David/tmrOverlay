@@ -907,15 +907,25 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         return bestClassProgress;
     }
 
-    private static int ReadFocusCarIdx(IRacingSDK sdk, int playerCarIdx)
+    private static FocusCarSelection ReadFocusCarSelection(IRacingSDK sdk)
     {
         var camCarIdx = ReadNullableInt32(sdk, "CamCarIdx");
-        if (camCarIdx is >= 0 and < 64 && ReadCarProgress(sdk, camCarIdx.Value, requireLapProgress: false) is not null)
+        if (camCarIdx is null)
         {
-            return camCarIdx.Value;
+            return new FocusCarSelection(null, null, "cam_car_idx_missing");
         }
 
-        return playerCarIdx;
+        if (camCarIdx is < 0 or >= 64)
+        {
+            return new FocusCarSelection(camCarIdx, null, "cam_car_idx_invalid");
+        }
+
+        if (ReadCarProgress(sdk, camCarIdx.Value, requireLapProgress: false) is not null)
+        {
+            return new FocusCarSelection(camCarIdx, camCarIdx, null);
+        }
+
+        return new FocusCarSelection(camCarIdx, null, "cam_car_progress_unavailable");
     }
 
     private static CarProgress? ReadCarProgress(IRacingSDK sdk, int carIdx, bool requireLapProgress = true)
@@ -1373,8 +1383,11 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         try
         {
             var playerCarIdx = ReadInt32(sdk, "PlayerCarIdx");
-            var focusCarIdx = ReadFocusCarIdx(sdk, playerCarIdx);
-            var focusProgress = ReadCarProgress(sdk, focusCarIdx, requireLapProgress: false);
+            var focusSelection = ReadFocusCarSelection(sdk);
+            var focusCarIdx = focusSelection.FocusCarIdx;
+            var focusProgress = focusCarIdx is { } focusProgressCarIdx
+                ? ReadCarProgress(sdk, focusProgressCarIdx, requireLapProgress: false)
+                : null;
 
             CarProgress? leaderProgress;
             var leaderStarted = Stopwatch.GetTimestamp();
@@ -1408,16 +1421,20 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                     classLeaderSucceeded);
             }
 
-            var focusClassLeaderProgress = focusCarIdx == playerCarIdx
-                ? classLeaderProgress
-                : ReadClassLeaderProgress(sdk, focusCarIdx);
+            var focusClassLeaderProgress = focusCarIdx is null
+                ? null
+                : focusCarIdx == playerCarIdx
+                    ? classLeaderProgress
+                    : ReadClassLeaderProgress(sdk, focusCarIdx.Value);
 
             IReadOnlyList<HistoricalCarProximity> nearbyCars;
             var nearbyStarted = Stopwatch.GetTimestamp();
             var nearbySucceeded = false;
             try
             {
-                nearbyCars = ReadNearbyCars(sdk, focusCarIdx);
+                nearbyCars = focusCarIdx is { } nearbyFocusCarIdx
+                    ? ReadNearbyCars(sdk, nearbyFocusCarIdx)
+                    : [];
                 nearbySucceeded = true;
             }
             finally
@@ -1444,9 +1461,11 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                     classCarsSucceeded);
             }
 
-            var focusClassCars = focusCarIdx == playerCarIdx
-                ? classCars
-                : ReadClassCars(sdk, focusCarIdx);
+            var focusClassCars = focusCarIdx is null
+                ? []
+                : focusCarIdx == playerCarIdx
+                    ? classCars
+                    : ReadClassCars(sdk, focusCarIdx.Value);
             var allCars = ReadAllTimingCars(sdk);
 
             sample = new HistoricalTelemetrySample(
@@ -1491,7 +1510,9 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 SessionFlags: ReadNullableInt32(sdk, "SessionFlags"),
                 RaceLaps: ReadInt32(sdk, "RaceLaps"),
                 PlayerCarIdx: playerCarIdx,
+                RawCamCarIdx: focusSelection.RawCamCarIdx,
                 FocusCarIdx: focusCarIdx,
+                FocusUnavailableReason: focusSelection.UnavailableReason,
                 FocusLapCompleted: focusProgress?.LapCompleted,
                 FocusLapDistPct: focusProgress?.LapDistPct,
                 FocusF2TimeSeconds: focusProgress?.F2TimeSeconds,
@@ -1501,8 +1522,12 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 FocusPosition: focusProgress?.Position,
                 FocusClassPosition: focusProgress?.ClassPosition,
                 FocusCarClass: focusProgress?.CarClass,
-                FocusOnPitRoad: ReadBooleanArrayElement(sdk, "CarIdxOnPitRoad", focusCarIdx),
-                FocusTrackSurface: ReadInt32ArrayElement(sdk, "CarIdxTrackSurface", focusCarIdx),
+                FocusOnPitRoad: focusCarIdx is { } focusPitCarIdx
+                    ? ReadBooleanArrayElement(sdk, "CarIdxOnPitRoad", focusPitCarIdx)
+                    : null,
+                FocusTrackSurface: focusCarIdx is { } focusSurfaceCarIdx
+                    ? ReadInt32ArrayElement(sdk, "CarIdxTrackSurface", focusSurfaceCarIdx)
+                    : null,
                 TeamLapCompleted: ReadInt32ArrayElement(sdk, "CarIdxLapCompleted", playerCarIdx),
                 TeamLapDistPct: ReadDoubleArrayElement(sdk, "CarIdxLapDistPct", playerCarIdx),
                 TeamF2TimeSeconds: ReadNullableDoubleArrayElement(sdk, "CarIdxF2Time", playerCarIdx),
@@ -2354,6 +2379,11 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         string? CaptureId,
         DateTimeOffset? StartedAtUtc,
         string Reason);
+
+    private sealed record FocusCarSelection(
+        int? RawCamCarIdx,
+        int? FocusCarIdx,
+        string? UnavailableReason);
 
     private sealed record CarProgress(
         int CarIdx,

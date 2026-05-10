@@ -5,8 +5,9 @@
 The recorder does not change overlay output. It watches normalized live snapshots and writes bounded summaries for:
 
 - gap semantics: race vs non-race frames, class-gap source counts, large gaps, gap jumps, class row availability, and pit context
+- focus context: unavailable focus frames, raw `CamCarIdx`, reason counts, session kind/state counts, on-track/garage/pit context, and bounded `focus.unavailable` examples
 - radar semantics: focus kind, local-only suppression, pit/garage unavailability, local progress gaps, side-signal frames, side signal without placement candidates, timing-only vs spatial placement coverage, nearby-car counts, and multiclass approach frames
-- fuel semantics: valid level frames, instantaneous burn frames, burn-without-level frames, team timing without local fuel, pit context, and driver-control changes
+- fuel and pit-service semantics: valid level frames, instantaneous burn frames, burn-without-level frames, team timing without local fuel, pit context, driver-control changes, pit-service signal/request/change frames, whether those pit-service signals occur while focus is on another car or the user is off track, and local-strategy suppression reasons for the V1 Fuel/Pit overlays
 - position cadence: sampled position/class-position changes that happen before the car completes another lap
 - lap-delta readiness: availability and `_OK` usability counts for live iRacing delta channels such as best lap, optimal lap, session best, session optimal, and session last lap
 - relative lap-relationship probe: diagnostics-only counts for official completed-lap relationships among nearby cars, pit-road relationship counts, and same-lap cars near the wrap where a future branch might infer "about to lap" or "about to be lapped" behavior
@@ -34,8 +35,9 @@ The mac harness mirrors this path under `~/Library/Application Support/TmrOverla
 - Disabled by default for normal builds; enable it with `LiveOverlayDiagnostics:Enabled=true` or a `TMR_LiveOverlayDiagnostics__Enabled=true` override when a session should write this observer artifact.
 - Bounded by sampled frame and event caps.
 - Event examples are exact-duplicate suppressed and capped per kind before the global cap, so a stable condition such as a multi-lap class gap cannot crowd out unrelated radar/fuel/position examples.
+- Frame and event examples include session state, on-track/garage/pit context, raw `CamCarIdx`, focus-unavailable reason, player car index, and focus car index so startup/degraded telemetry can be separated from real focus bugs.
 - Radar event examples include the focus kind, raw `CarLeftRight`, raw nearby-car count, whether the production radar had data, and nearby/timing/spatial row counts. This lets suppressed spectator/teammate focus and other partial radar cases be reviewed from the capture without making them normal overlay UI.
-- Relative lap relationship examples are probe-only. They use raw nearby `CarIdxLapCompleted` and `CarIdxLapDistPct` against the current focus/player progress to help decide a later Relative V2.5 color treatment; current overlays do not consume these counts.
+- Relative lap relationship examples are probe-only. They use raw nearby `CarIdxLapCompleted` and `CarIdxLapDistPct` against the current focus progress to help decide a later Relative V2.5 color treatment; current overlays do not consume these counts.
 - Sector timing interval examples are derived diagnostics only for future timing-table work. They can use valid `LapDistPct` when lap counters are unavailable, but large reset-style progress jumps are counted as discontinuities instead of completed sectors. Track Map sector highlight state is now a production model-v2 contract under `LiveTelemetrySnapshot.Models.TrackMap`.
 - Best-effort: failures are logged and must not stop live telemetry, history, raw capture, IBT analysis, or overlays.
 - Additive: older captures without this file remain valid.

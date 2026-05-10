@@ -593,8 +593,10 @@ public sealed class LiveProximitySnapshotTests
         double? focusClassLeaderF2TimeSeconds = null,
         bool onPitRoad = false,
         bool isOnTrack = true,
-        bool isInGarage = false)
+        bool isInGarage = false,
+        bool focusUnavailable = false)
     {
+        var resolvedFocusCarIdx = focusUnavailable ? null : focusCarIdx ?? playerCarIdx;
         return new HistoricalTelemetrySample(
             CapturedAtUtc: DateTimeOffset.UtcNow,
             SessionTime: 123d,
@@ -620,7 +622,8 @@ public sealed class LiveProximitySnapshotTests
             WeatherDeclaredWet: false,
             PlayerTireCompound: 0,
             PlayerCarIdx: playerCarIdx,
-            FocusCarIdx: focusCarIdx,
+            FocusCarIdx: resolvedFocusCarIdx,
+            FocusUnavailableReason: focusUnavailable ? "cam_car_idx_missing" : null,
             FocusLapCompleted: focusLapDistPct is null ? null : 5,
             FocusLapDistPct: focusLapDistPct,
             FocusF2TimeSeconds: focusF2TimeSeconds,

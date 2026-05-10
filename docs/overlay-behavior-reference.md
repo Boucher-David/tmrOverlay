@@ -41,7 +41,7 @@ Behavior:
 
 - Waits for fresh telemetry, then waits for scoring or timing rows.
 - Uses the scoring model when available because it carries grouped multiclass standings.
-- Selects the reference car from scoring, timing focus/player rows, or the driver directory.
+- Selects the reference car from scoring/timing focus rows or the driver directory focus reference.
 - In race-like sessions, hides rows until cars have valid lap evidence so pre-grid noise does not look like race order.
 - Keeps class groups in official table order, then chooses the reference class as the primary group.
 - Shows as many primary-class rows as possible while reserving bounded rows for other classes when class separators are enabled.
@@ -61,13 +61,13 @@ Purpose: Show nearby cars ahead and behind the reference car.
 Inputs:
 
 - Primary: `LiveTelemetrySnapshot.Models.Relative.Rows`
-- Reference fallback from timing focus/player rows
+- Reference from model-v2 focus rows; no player fallback when focus is unavailable
 - Driver directory and scoring rows for labels, numbers, classes, and colors
 
 Behavior:
 
 - Waits for fresh telemetry and relative data.
-- Builds a reference row when a focus/player car index is known.
+- Builds a reference row when a focus car index is known.
 - Takes a configured number of cars ahead and behind.
 - Ahead rows are sorted nearest-first for selection, then displayed farthest-to-nearest above the reference row.
 - Behind rows are sorted nearest-first below the reference row.
@@ -86,12 +86,14 @@ Purpose: Estimate fuel range, stops, final stint shape, and whether tire service
 
 Inputs:
 
+- `LiveLocalStrategyContext`
 - `FuelStrategySnapshot`
 - User and baseline session history for burn-rate context
 - Unit system setting
 
 Behavior:
 
+- Waits for a local active driver/team context. Focus on another car, unavailable focus, missing player car, garage/setup context, and no active local/pit context show `waiting for local fuel context`.
 - Shows planned race laps, stint count, and final stint target when those are known.
 - Otherwise shows current fuel, race laps remaining, and additional fuel needed.
 - Displays a strategy row when changing fuel rhythm avoids extra stops.
@@ -237,7 +239,8 @@ Inputs:
 
 Behavior:
 
-- Waits for fresh telemetry and pit-service data.
+- Waits for fresh telemetry, local active driver/team context, and pit-service data. Focus on another car, unavailable focus, missing player car, garage/setup context, and no active local/pit context show `waiting for local pit-service context`.
+- Still renders during the local pit window: on pit road, in the pit stall, or while service is active.
 - Shows current service status, fuel add/target, tire selections, fast repair, pit-road/stall state, and service completion context when available.
 - Uses warning/info/success tones for service state rather than treating all pit messages equally.
 - Formats fuel volume according to the selected unit system.

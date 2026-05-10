@@ -1050,6 +1050,44 @@ DriverInfo:
     }
 
     [Fact]
+    public void RecordFrame_DoesNotPromotePlayerToVisualFocusWhenCameraFocusIsUnavailable()
+    {
+        var store = new LiveTelemetryStore();
+
+        store.RecordFrame(CreateSample(
+            playerCarIdx: 10,
+            teamLapDistPct: 0.50d,
+            teamEstimatedTimeSeconds: 50d,
+            teamCarClass: 4098,
+            teamPosition: 7,
+            teamClassPosition: 3,
+            focusUnavailable: true,
+            nearbyCars:
+            [
+                new HistoricalCarProximity(
+                    CarIdx: 12,
+                    LapCompleted: 2,
+                    LapDistPct: 0.49d,
+                    F2TimeSeconds: 4d,
+                    EstimatedTimeSeconds: 49d,
+                    Position: 8,
+                    ClassPosition: 4,
+                    CarClass: 4098,
+                    TrackSurface: 3,
+                    OnPitRoad: false)
+            ]));
+
+        var models = store.Snapshot().Models;
+
+        Assert.Equal(10, models.DriverDirectory.PlayerCarIdx);
+        Assert.Null(models.DriverDirectory.FocusCarIdx);
+        Assert.NotNull(models.Timing.PlayerRow);
+        Assert.Null(models.Timing.FocusRow);
+        Assert.Null(models.Relative.ReferenceCarIdx);
+        Assert.Equal(10, models.Spatial.ReferenceCarIdx);
+    }
+
+    [Fact]
     public void TimingColumnRegistry_ProvidesReusableDefaultColumns()
     {
         var keys = TimingColumnRegistry.All.Select(column => column.Key).ToArray();
@@ -1134,8 +1172,10 @@ DriverInfo:
         int? carLeftRight = null,
         bool? isGarageVisible = null,
         double? lapDeltaToSessionBestLapSeconds = null,
-        bool? lapDeltaToSessionBestLapOk = null)
+        bool? lapDeltaToSessionBestLapOk = null,
+        bool focusUnavailable = false)
     {
+        var resolvedFocusCarIdx = focusUnavailable ? null : focusCarIdx ?? playerCarIdx;
         return new HistoricalTelemetrySample(
             CapturedAtUtc: capturedAtUtc ?? DateTimeOffset.UtcNow,
             SessionTime: sessionTime,
@@ -1164,7 +1204,8 @@ DriverInfo:
             SessionState: sessionState,
             IsGarageVisible: isGarageVisible,
             PlayerCarIdx: playerCarIdx,
-            FocusCarIdx: focusCarIdx,
+            FocusCarIdx: resolvedFocusCarIdx,
+            FocusUnavailableReason: focusUnavailable ? "cam_car_idx_missing" : null,
             FocusLapCompleted: focusLapDistPct is null ? null : 2,
             FocusLapDistPct: focusLapDistPct,
             FocusEstimatedTimeSeconds: focusEstimatedTimeSeconds,

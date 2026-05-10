@@ -37,11 +37,10 @@ async function refreshTrackMapAsset() {
 function renderTrackMap(live, trackMap, trackMapSettings) {
   const spatial = trackMapModel.spatial(live);
   const race = trackMapModel.raceEvents(live);
-  const focusPct = Number.isFinite(spatial.referenceLapDistPct)
-    ? spatial.referenceLapDistPct
-    : Number.isFinite(race.lapDistPct)
-      ? race.lapDistPct
-      : null;
+  const latest = live?.latestSample || {};
+  const focusPct = Number.isFinite(latest.focusLapDistPct)
+    ? latest.focusLapDistPct
+    : null;
   const markers = smoothTrackMapMarkers(trackMapMarkers(live, focusPct));
   const sectors = trackMapModel.trackMap(live).sectors || [];
   const svg = trackMapSvg(trackMap, markers, sectors, trackMapSettings);
@@ -354,10 +353,8 @@ function trackMapMarkers(live, fallbackFocusPct) {
     const scoringRow = scoringByCarIdx.get(row.carIdx);
     const isFocus = Boolean(
       row.isFocus
-      || row.isPlayer
       || row.carIdx === referenceCarIdx
-      || scoringRow?.isFocus
-      || scoringRow?.isPlayer);
+      || scoringRow?.isFocus);
     const marker = {
       carIdx: row.carIdx,
       lapDistPct: normalizeProgress(row.lapDistPct),
@@ -377,7 +374,7 @@ function trackMapMarkers(live, fallbackFocusPct) {
       || (left.classPosition ?? 999999) - (right.classPosition ?? 999999)
       || left.carIdx - right.carIdx);
     gridRows.forEach((row, index) => {
-      const isFocus = Boolean(row.isFocus || row.isPlayer || row.carIdx === referenceCarIdx);
+      const isFocus = Boolean(row.isFocus || row.carIdx === referenceCarIdx);
       markers.set(row.carIdx, {
         carIdx: row.carIdx,
         lapDistPct: gridRows.length <= 1 ? 0 : normalizeProgress(index / gridRows.length),
@@ -389,7 +386,7 @@ function trackMapMarkers(live, fallbackFocusPct) {
   }
 
   const focusCarIdx = referenceCarIdx ?? -1;
-  if (Number.isFinite(fallbackFocusPct) && fallbackFocusPct >= 0) {
+  if (Number.isFinite(focusCarIdx) && Number.isFinite(fallbackFocusPct) && fallbackFocusPct >= 0) {
     markers.set(focusCarIdx, {
       carIdx: focusCarIdx,
       lapDistPct: normalizeProgress(fallbackFocusPct),
@@ -449,7 +446,6 @@ function focusPositionLabel(live, scoringByCarIdx, focusCarIdx) {
   const scoringRow = scoringByCarIdx?.get(focusCarIdx);
   if (scoringRow) return trackMapModel.positionLabel(scoringRow);
   return trackMapModel.positionLabel(timing.focusRow)
-    || trackMapModel.positionLabel(timing.playerRow)
     || trackMapModel.samplePositionLabel(live?.latestSample);
 }
 

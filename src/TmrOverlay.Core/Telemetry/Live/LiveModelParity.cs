@@ -119,7 +119,7 @@ internal static class LiveModelParityAnalyzer
             return;
         }
 
-        var expectedRelativeReferenceCarIdx = sample.FocusCarIdx ?? sample.PlayerCarIdx;
+        var expectedRelativeReferenceCarIdx = sample.FocusCarIdx;
         var expectedSpatialReferenceCarIdx = LiveLocalRadarContext.ReferenceCarIdx(sample);
         CompareNullableInt(observations, "proximity", "relative-reference-car-idx", expectedRelativeReferenceCarIdx, snapshot.Models.Relative.ReferenceCarIdx);
         CompareNullableInt(observations, "proximity", "spatial-reference-car-idx", expectedSpatialReferenceCarIdx, snapshot.Models.Spatial.ReferenceCarIdx);

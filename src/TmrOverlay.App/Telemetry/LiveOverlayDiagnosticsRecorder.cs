@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.Storage;
 using TmrOverlay.Core.History;
+using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Telemetry.Live;
 
 namespace TmrOverlay.App.Telemetry;
@@ -28,6 +29,9 @@ internal sealed class LiveOverlayDiagnosticsRecorder
     private readonly ILogger<LiveOverlayDiagnosticsRecorder> _logger;
     private readonly object _sync = new();
     private readonly Dictionary<string, int> _sessionFrameCounts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _focusUnavailableReasonCounts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _focusUnavailableSessionKindCounts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _focusUnavailableSessionStateCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _gapClassSourceCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _gapClassEvidenceCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _gapOverallEvidenceCounts = new(StringComparer.OrdinalIgnoreCase);
@@ -37,6 +41,8 @@ internal sealed class LiveOverlayDiagnosticsRecorder
     private readonly Dictionary<string, int> _fuelBurnEvidenceCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _fuelMeasuredEvidenceCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _fuelBaselineEvidenceCounts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _fuelLocalStrategyUnavailableReasonCounts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _pitServiceLocalStrategyUnavailableReasonCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _lapDeltaValueCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _lapDeltaUsableCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _relativeLapRelationshipCounts = new(StringComparer.OrdinalIgnoreCase);
@@ -68,6 +74,13 @@ internal sealed class LiveOverlayDiagnosticsRecorder
     private double? _maxClassGapLaps;
     private double? _previousClassGapSeconds;
     private DateTimeOffset? _previousClassGapAtUtc;
+    private int _focusUnavailableFrames;
+    private int _focusUnavailableWithPlayerCarFrames;
+    private int _focusUnavailableWithRawCamCarFrames;
+    private int _focusUnavailableOnTrackFrames;
+    private int _focusUnavailableOffTrackFrames;
+    private int _focusUnavailableGarageFrames;
+    private int _focusUnavailablePitContextFrames;
     private int _radarFramesWithData;
     private int _radarNonPlayerFocusFrames;
     private int _radarLocalSuppressedNonPlayerFocusFrames;
@@ -88,7 +101,15 @@ internal sealed class LiveOverlayDiagnosticsRecorder
     private int _fuelTeamContextWithoutLevelFrames;
     private int _fuelPitContextFrames;
     private int _fuelDriverControlFrames;
+    private int _fuelPitServiceSignalFrames;
+    private int _fuelPitServiceRequestFrames;
+    private int _fuelPitServiceChangeFrames;
+    private int _fuelPitServiceNonPlayerFocusFrames;
+    private int _fuelPitServiceOffTrackFrames;
+    private int _fuelLocalStrategyUnavailableFrames;
+    private int _pitServiceLocalStrategyUnavailableFrames;
     private int? _lastDriversSoFar;
+    private PitServiceTelemetryState? _lastPitServiceState;
     private int _positionObservedFrames;
     private int _positionOverallChanges;
     private int _positionClassChanges;
@@ -176,6 +197,13 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             _maxClassGapLaps = null;
             _previousClassGapSeconds = null;
             _previousClassGapAtUtc = null;
+            _focusUnavailableFrames = 0;
+            _focusUnavailableWithPlayerCarFrames = 0;
+            _focusUnavailableWithRawCamCarFrames = 0;
+            _focusUnavailableOnTrackFrames = 0;
+            _focusUnavailableOffTrackFrames = 0;
+            _focusUnavailableGarageFrames = 0;
+            _focusUnavailablePitContextFrames = 0;
             _radarFramesWithData = 0;
             _radarNonPlayerFocusFrames = 0;
             _radarLocalSuppressedNonPlayerFocusFrames = 0;
@@ -196,7 +224,15 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             _fuelTeamContextWithoutLevelFrames = 0;
             _fuelPitContextFrames = 0;
             _fuelDriverControlFrames = 0;
+            _fuelPitServiceSignalFrames = 0;
+            _fuelPitServiceRequestFrames = 0;
+            _fuelPitServiceChangeFrames = 0;
+            _fuelPitServiceNonPlayerFocusFrames = 0;
+            _fuelPitServiceOffTrackFrames = 0;
+            _fuelLocalStrategyUnavailableFrames = 0;
+            _pitServiceLocalStrategyUnavailableFrames = 0;
             _lastDriversSoFar = null;
+            _lastPitServiceState = null;
             _positionObservedFrames = 0;
             _positionOverallChanges = 0;
             _positionClassChanges = 0;
@@ -234,6 +270,9 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             _trackMapBestLapSectorFrames = 0;
             _trackMapFullLapHighlightFrames = 0;
             _sessionFrameCounts.Clear();
+            _focusUnavailableReasonCounts.Clear();
+            _focusUnavailableSessionKindCounts.Clear();
+            _focusUnavailableSessionStateCounts.Clear();
             _gapClassSourceCounts.Clear();
             _gapClassEvidenceCounts.Clear();
             _gapOverallEvidenceCounts.Clear();
@@ -243,6 +282,8 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             _fuelBurnEvidenceCounts.Clear();
             _fuelMeasuredEvidenceCounts.Clear();
             _fuelBaselineEvidenceCounts.Clear();
+            _fuelLocalStrategyUnavailableReasonCounts.Clear();
+            _pitServiceLocalStrategyUnavailableReasonCounts.Clear();
             _lapDeltaValueCounts.Clear();
             _lapDeltaUsableCounts.Clear();
             _relativeLapRelationshipCounts.Clear();
@@ -277,6 +318,7 @@ internal sealed class LiveOverlayDiagnosticsRecorder
                 ?? DateTimeOffset.UtcNow;
             _frameCount++;
             RecordSession(snapshot);
+            RecordFocus(snapshot, capturedAtUtc);
             RecordGap(snapshot, capturedAtUtc);
             RecordRadar(snapshot, capturedAtUtc);
             RecordFuel(snapshot, capturedAtUtc);
@@ -324,6 +366,17 @@ internal sealed class LiveOverlayDiagnosticsRecorder
                         DroppedFrameSampleCount: _droppedFrameSampleCount,
                         DroppedEventSampleCount: _droppedEventSampleCount,
                         SessionFrameCounts: Sorted(_sessionFrameCounts)),
+                    Focus: new FocusContextDiagnosticsSummary(
+                        UnavailableFrames: _focusUnavailableFrames,
+                        UnavailableWithPlayerCarFrames: _focusUnavailableWithPlayerCarFrames,
+                        UnavailableWithRawCamCarFrames: _focusUnavailableWithRawCamCarFrames,
+                        UnavailableOnTrackFrames: _focusUnavailableOnTrackFrames,
+                        UnavailableOffTrackFrames: _focusUnavailableOffTrackFrames,
+                        UnavailableGarageFrames: _focusUnavailableGarageFrames,
+                        UnavailablePitContextFrames: _focusUnavailablePitContextFrames,
+                        UnavailableReasonCounts: Sorted(_focusUnavailableReasonCounts),
+                        UnavailableSessionKindCounts: Sorted(_focusUnavailableSessionKindCounts),
+                        UnavailableSessionStateCounts: Sorted(_focusUnavailableSessionStateCounts)),
                     Gap: new GapOverlayDiagnosticsSummary(
                         FramesWithData: _gapFramesWithData,
                         NonRaceFramesWithData: _gapNonRaceFramesWithData,
@@ -362,10 +415,19 @@ internal sealed class LiveOverlayDiagnosticsRecorder
                         TeamContextWithoutFuelLevelFrames: _fuelTeamContextWithoutLevelFrames,
                         PitContextFrames: _fuelPitContextFrames,
                         DriverControlFrames: _fuelDriverControlFrames,
+                        PitServiceSignalFrames: _fuelPitServiceSignalFrames,
+                        PitServiceRequestFrames: _fuelPitServiceRequestFrames,
+                        PitServiceChangeFrames: _fuelPitServiceChangeFrames,
+                        PitServiceNonPlayerFocusFrames: _fuelPitServiceNonPlayerFocusFrames,
+                        PitServiceOffTrackFrames: _fuelPitServiceOffTrackFrames,
+                        FuelLocalStrategyUnavailableFrames: _fuelLocalStrategyUnavailableFrames,
+                        PitServiceLocalStrategyUnavailableFrames: _pitServiceLocalStrategyUnavailableFrames,
                         FuelLevelEvidenceCounts: Sorted(_fuelLevelEvidenceCounts),
                         InstantaneousBurnEvidenceCounts: Sorted(_fuelBurnEvidenceCounts),
                         MeasuredBurnEvidenceCounts: Sorted(_fuelMeasuredEvidenceCounts),
-                        BaselineEligibilityEvidenceCounts: Sorted(_fuelBaselineEvidenceCounts)),
+                        BaselineEligibilityEvidenceCounts: Sorted(_fuelBaselineEvidenceCounts),
+                        FuelLocalStrategyUnavailableReasonCounts: Sorted(_fuelLocalStrategyUnavailableReasonCounts),
+                        PitServiceLocalStrategyUnavailableReasonCounts: Sorted(_pitServiceLocalStrategyUnavailableReasonCounts)),
                     PositionCadence: new PositionCadenceDiagnosticsSummary(
                         ObservedFrames: _positionObservedFrames,
                         OverallPositionChanges: _positionOverallChanges,
@@ -448,6 +510,57 @@ internal sealed class LiveOverlayDiagnosticsRecorder
     private void RecordSession(LiveTelemetrySnapshot snapshot)
     {
         Increment(_sessionFrameCounts, SessionKind(snapshot));
+    }
+
+    private void RecordFocus(LiveTelemetrySnapshot snapshot, DateTimeOffset capturedAtUtc)
+    {
+        var sample = snapshot.LatestSample;
+        var playerCarIdx = snapshot.Models.DriverDirectory.PlayerCarIdx ?? sample?.PlayerCarIdx;
+        var focusCarIdx = snapshot.Models.DriverDirectory.FocusCarIdx ?? sample?.FocusCarIdx;
+        if (focusCarIdx is not null)
+        {
+            return;
+        }
+
+        _focusUnavailableFrames++;
+        if (playerCarIdx is not null)
+        {
+            _focusUnavailableWithPlayerCarFrames++;
+        }
+
+        if (sample?.RawCamCarIdx is not null)
+        {
+            _focusUnavailableWithRawCamCarFrames++;
+        }
+
+        if (sample?.IsOnTrack == true)
+        {
+            _focusUnavailableOnTrackFrames++;
+        }
+        else
+        {
+            _focusUnavailableOffTrackFrames++;
+        }
+
+        if (sample?.IsInGarage == true || sample?.IsGarageVisible == true)
+        {
+            _focusUnavailableGarageFrames++;
+        }
+
+        if (sample is not null && IsLocalRadarPitOrGarage(sample))
+        {
+            _focusUnavailablePitContextFrames++;
+        }
+
+        var reason = FocusUnavailableReason(snapshot);
+        Increment(_focusUnavailableReasonCounts, reason);
+        Increment(_focusUnavailableSessionKindCounts, SessionKind(snapshot));
+        Increment(_focusUnavailableSessionStateCounts, FormatSessionState(sample?.SessionState));
+        AddEvent(
+            "focus.unavailable",
+            FocusUnavailableDetail(snapshot, reason),
+            snapshot,
+            capturedAtUtc);
     }
 
     private void RecordGap(LiveTelemetrySnapshot snapshot, DateTimeOffset capturedAtUtc)
@@ -557,8 +670,7 @@ internal sealed class LiveOverlayDiagnosticsRecorder
         var sample = snapshot.LatestSample;
         var playerCarIdx = snapshot.Models.DriverDirectory.PlayerCarIdx ?? snapshot.LatestSample?.PlayerCarIdx;
         var focusCarIdx = snapshot.Models.DriverDirectory.FocusCarIdx
-            ?? snapshot.LatestSample?.FocusCarIdx
-            ?? playerCarIdx;
+            ?? snapshot.LatestSample?.FocusCarIdx;
         var focusKind = FocusKind(playerCarIdx, focusCarIdx);
         Increment(_radarFocusFrameCounts, focusKind);
 
@@ -662,6 +774,20 @@ internal sealed class LiveOverlayDiagnosticsRecorder
         Increment(_fuelMeasuredEvidenceCounts, EvidenceKey(fuelPit.MeasuredBurnEvidence));
         Increment(_fuelBaselineEvidenceCounts, EvidenceKey(fuelPit.BaselineEligibilityEvidence));
 
+        var fuelLocalContext = LiveLocalStrategyContext.ForFuelCalculator(snapshot, capturedAtUtc);
+        if (!fuelLocalContext.IsAvailable)
+        {
+            _fuelLocalStrategyUnavailableFrames++;
+            Increment(_fuelLocalStrategyUnavailableReasonCounts, fuelLocalContext.Reason);
+        }
+
+        var pitServiceLocalContext = LiveLocalStrategyContext.ForPitService(snapshot, capturedAtUtc);
+        if (!pitServiceLocalContext.IsAvailable)
+        {
+            _pitServiceLocalStrategyUnavailableFrames++;
+            Increment(_pitServiceLocalStrategyUnavailableReasonCounts, pitServiceLocalContext.Reason);
+        }
+
         var hasFuelLevel = snapshot.Fuel.HasValidFuel || IsPositiveFinite(snapshot.LatestSample?.FuelLevelLiters);
         var hasInstantaneousBurn = IsPositiveFinite(snapshot.LatestSample?.FuelUsePerHourKg)
             || IsPositiveFinite(snapshot.Fuel.FuelUsePerHourKg)
@@ -696,6 +822,43 @@ internal sealed class LiveOverlayDiagnosticsRecorder
         {
             _fuelPitContextFrames++;
         }
+
+        var pitServiceState = PitServiceTelemetryState.From(fuelPit);
+        if (pitServiceState.HasAnySignal)
+        {
+            _fuelPitServiceSignalFrames++;
+
+            if (IsNonPlayerFocus(
+                snapshot.Models.DriverDirectory.PlayerCarIdx ?? snapshot.LatestSample?.PlayerCarIdx,
+                snapshot.Models.DriverDirectory.FocusCarIdx ?? snapshot.LatestSample?.FocusCarIdx))
+            {
+                _fuelPitServiceNonPlayerFocusFrames++;
+            }
+
+            var race = snapshot.Models.RaceEvents;
+            if (race.HasData && (!race.IsOnTrack || race.IsInGarage))
+            {
+                _fuelPitServiceOffTrackFrames++;
+            }
+        }
+
+        if (pitServiceState.HasRequestedService)
+        {
+            _fuelPitServiceRequestFrames++;
+        }
+
+        if (_lastPitServiceState is { } previousPitServiceState
+            && !pitServiceState.Equals(previousPitServiceState))
+        {
+            _fuelPitServiceChangeFrames++;
+            AddEvent(
+                "pit-service.changed",
+                PitServiceChangeDetail(previousPitServiceState, pitServiceState),
+                snapshot,
+                capturedAtUtc);
+        }
+
+        _lastPitServiceState = pitServiceState;
 
         if (snapshot.LatestSample?.DriversSoFar is { } driversSoFar)
         {
@@ -1166,8 +1329,7 @@ internal sealed class LiveOverlayDiagnosticsRecorder
         }
 
         var focusCarIdx = snapshot.Models.DriverDirectory.FocusCarIdx
-            ?? sample.FocusCarIdx
-            ?? sample.PlayerCarIdx;
+            ?? sample.FocusCarIdx;
         var timingByCarIdx = snapshot.Models.Timing.OverallRows
             .GroupBy(row => row.CarIdx)
             .ToDictionary(group => group.Key, group => group.First());
@@ -1395,23 +1557,44 @@ internal sealed class LiveOverlayDiagnosticsRecorder
 
     private static int? FocusLapCompleted(HistoricalTelemetrySample sample)
     {
+        if (sample.FocusCarIdx is null)
+        {
+            return null;
+        }
+
         return HasExplicitNonPlayerFocus(sample)
             ? sample.FocusLapCompleted
-            : sample.FocusLapCompleted ?? sample.TeamLapCompleted ?? sample.LapCompleted;
+            : FocusUsesPlayerLocalFallback(sample)
+                ? sample.FocusLapCompleted ?? sample.TeamLapCompleted ?? sample.LapCompleted
+                : sample.FocusLapCompleted;
     }
 
     private static double? FocusLapDistPct(HistoricalTelemetrySample sample)
     {
+        if (sample.FocusCarIdx is null)
+        {
+            return null;
+        }
+
         return HasExplicitNonPlayerFocus(sample)
             ? sample.FocusLapDistPct
-            : sample.FocusLapDistPct ?? sample.TeamLapDistPct ?? sample.LapDistPct;
+            : FocusUsesPlayerLocalFallback(sample)
+                ? sample.FocusLapDistPct ?? sample.TeamLapDistPct ?? sample.LapDistPct
+                : sample.FocusLapDistPct;
     }
 
     private static bool? FocusOnPitRoad(HistoricalTelemetrySample sample)
     {
+        if (sample.FocusCarIdx is null)
+        {
+            return null;
+        }
+
         return HasExplicitNonPlayerFocus(sample)
             ? sample.FocusOnPitRoad
-            : sample.FocusOnPitRoad ?? sample.TeamOnPitRoad ?? sample.OnPitRoad;
+            : FocusUsesPlayerLocalFallback(sample)
+                ? sample.FocusOnPitRoad ?? sample.TeamOnPitRoad ?? sample.OnPitRoad
+                : sample.FocusOnPitRoad;
     }
 
     private static double RelativeSortKey(LiveRelativeRow row)
@@ -1450,15 +1633,21 @@ internal sealed class LiveOverlayDiagnosticsRecorder
 
         var playerCarIdx = snapshot.Models.DriverDirectory.PlayerCarIdx ?? snapshot.LatestSample?.PlayerCarIdx;
         var focusCarIdx = snapshot.Models.DriverDirectory.FocusCarIdx
-            ?? snapshot.LatestSample?.FocusCarIdx
-            ?? playerCarIdx;
+            ?? snapshot.LatestSample?.FocusCarIdx;
         _sampleFrames.Add(new LiveOverlayDiagnosticsFrameSample(
             CapturedAtUtc: capturedAtUtc,
             Sequence: snapshot.Sequence,
             SessionTimeSeconds: Round(snapshot.LatestSample?.SessionTime),
             SessionKind: SessionKind(snapshot),
+            SessionState: snapshot.LatestSample?.SessionState,
+            IsOnTrack: snapshot.LatestSample?.IsOnTrack,
+            IsInGarage: snapshot.LatestSample?.IsInGarage,
+            OnPitRoad: snapshot.LatestSample?.OnPitRoad,
+            IsGarageVisible: snapshot.LatestSample?.IsGarageVisible,
             PlayerCarIdx: playerCarIdx,
+            RawCamCarIdx: snapshot.LatestSample?.RawCamCarIdx,
             FocusCarIdx: focusCarIdx,
+            FocusUnavailableReason: FocusUnavailableReason(snapshot),
             FocusKind: FocusKind(playerCarIdx, focusCarIdx),
             ClassGapSeconds: Round(snapshot.LeaderGap.ClassLeaderGap.Seconds),
             ClassGapLaps: Round(snapshot.LeaderGap.ClassLeaderGap.Laps),
@@ -1486,8 +1675,7 @@ internal sealed class LiveOverlayDiagnosticsRecorder
         var normalizedDetail = string.IsNullOrWhiteSpace(detail) ? normalizedKind : detail.Trim();
         var playerCarIdx = snapshot.Models.DriverDirectory.PlayerCarIdx ?? snapshot.LatestSample?.PlayerCarIdx;
         var focusCarIdx = snapshot.Models.DriverDirectory.FocusCarIdx
-            ?? snapshot.LatestSample?.FocusCarIdx
-            ?? playerCarIdx;
+            ?? snapshot.LatestSample?.FocusCarIdx;
         var sessionKind = SessionKind(snapshot);
         var eventKey = string.Join(
             "\u001f",
@@ -1524,8 +1712,15 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             Sequence: snapshot.Sequence,
             SessionTimeSeconds: Round(snapshot.LatestSample?.SessionTime),
             SessionKind: sessionKind,
+            SessionState: snapshot.LatestSample?.SessionState,
+            IsOnTrack: snapshot.LatestSample?.IsOnTrack,
+            IsInGarage: snapshot.LatestSample?.IsInGarage,
+            OnPitRoad: snapshot.LatestSample?.OnPitRoad,
+            IsGarageVisible: snapshot.LatestSample?.IsGarageVisible,
             PlayerCarIdx: playerCarIdx,
+            RawCamCarIdx: snapshot.LatestSample?.RawCamCarIdx,
             FocusCarIdx: focusCarIdx,
+            FocusUnavailableReason: FocusUnavailableReason(snapshot),
             FocusKind: FocusKind(playerCarIdx, focusCarIdx),
             RawCarLeftRight: snapshot.LatestSample?.CarLeftRight,
             RawNearbyCarCount: snapshot.LatestSample?.NearbyCars?.Count ?? 0,
@@ -1666,11 +1861,55 @@ internal sealed class LiveOverlayDiagnosticsRecorder
         return string.Equals(sessionKind, "race", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static string FocusUnavailableReason(LiveTelemetrySnapshot snapshot)
+    {
+        var sample = snapshot.LatestSample;
+        if (sample is null)
+        {
+            return "no_latest_sample";
+        }
+
+        if (!string.IsNullOrWhiteSpace(sample.FocusUnavailableReason))
+        {
+            return sample.FocusUnavailableReason.Trim();
+        }
+
+        if (sample.FocusCarIdx is not null || snapshot.Models.DriverDirectory.FocusCarIdx is not null)
+        {
+            return "available";
+        }
+
+        if (sample.RawCamCarIdx is null)
+        {
+            return "cam_car_idx_missing";
+        }
+
+        return sample.RawCamCarIdx is < 0 or >= 64
+            ? "cam_car_idx_invalid"
+            : "cam_car_progress_unavailable";
+    }
+
+    private static string FocusUnavailableDetail(LiveTelemetrySnapshot snapshot, string reason)
+    {
+        var sample = snapshot.LatestSample;
+        var local = sample is null
+            ? "no sample"
+            : $"state {FormatSessionState(sample.SessionState)}, onTrack {sample.IsOnTrack}, garage {sample.IsInGarage}, pit {sample.OnPitRoad || sample.PlayerCarInPitStall || sample.TeamOnPitRoad == true}";
+        return $"focus unavailable: {reason}; session {SessionKind(snapshot)}; {local}; rawCam {sample?.RawCamCarIdx?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "--"}; player {sample?.PlayerCarIdx?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "--"}";
+    }
+
+    private static string FormatSessionState(int? state)
+    {
+        return state is { } value
+            ? value.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            : "unknown";
+    }
+
     private static string FocusKind(int? playerCarIdx, int? focusCarIdx)
     {
         if (focusCarIdx is null)
         {
-            return "unknown";
+            return "unavailable";
         }
 
         return playerCarIdx is not null && focusCarIdx == playerCarIdx
@@ -1698,9 +1937,49 @@ internal sealed class LiveOverlayDiagnosticsRecorder
         return LiveLocalRadarContext.HasExplicitNonPlayerFocus(sample);
     }
 
+    private static bool FocusUsesPlayerLocalFallback(HistoricalTelemetrySample sample)
+    {
+        return sample.FocusCarIdx is not null
+            && sample.PlayerCarIdx is not null
+            && sample.FocusCarIdx == sample.PlayerCarIdx;
+    }
+
+    private static bool IsNonPlayerFocus(int? playerCarIdx, int? focusCarIdx)
+    {
+        return playerCarIdx is not null
+            && focusCarIdx is not null
+            && playerCarIdx != focusCarIdx;
+    }
+
     private static bool IsPitRoadTrackSurface(int? trackSurface)
     {
         return trackSurface is 1 or 2;
+    }
+
+    private static string PitServiceChangeDetail(
+        PitServiceTelemetryState previous,
+        PitServiceTelemetryState current)
+    {
+        return "pit service changed: "
+            + $"status {FormatPitServiceValue(previous.Status)} -> {FormatPitServiceValue(current.Status)}, "
+            + $"flags {FormatPitServiceValue(previous.Flags)} -> {FormatPitServiceValue(current.Flags)}, "
+            + $"fuel {FormatPitServiceValue(previous.FuelLiters)} -> {FormatPitServiceValue(current.FuelLiters)}, "
+            + $"repair {FormatPitServiceValue(previous.RequiredRepairSeconds)} -> {FormatPitServiceValue(current.RequiredRepairSeconds)}, "
+            + $"optional {FormatPitServiceValue(previous.OptionalRepairSeconds)} -> {FormatPitServiceValue(current.OptionalRepairSeconds)}, "
+            + $"fastRepair {FormatPitServiceValue(previous.FastRepairUsed)} -> {FormatPitServiceValue(current.FastRepairUsed)}, "
+            + $"teamFastRepair {FormatPitServiceValue(previous.TeamFastRepairsUsed)} -> {FormatPitServiceValue(current.TeamFastRepairsUsed)}";
+    }
+
+    private static string FormatPitServiceValue(int? value)
+    {
+        return value?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "--";
+    }
+
+    private static string FormatPitServiceValue(double? value)
+    {
+        return value is { } finite && IsFinite(finite)
+            ? finite.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)
+            : "--";
     }
 
     private static string EvidenceKey(LiveSignalEvidence evidence)
@@ -1827,6 +2106,59 @@ internal sealed class LiveOverlayDiagnosticsRecorder
         public bool IsUsable => Ok == true && Seconds is { } seconds && !double.IsNaN(seconds) && !double.IsInfinity(seconds);
     }
 
+    private sealed record PitServiceTelemetryState(
+        int? Status,
+        int? Flags,
+        double? FuelLiters,
+        double? RequiredRepairSeconds,
+        double? OptionalRepairSeconds,
+        int? TireSetsUsed,
+        int? FastRepairUsed,
+        int? TeamFastRepairsUsed,
+        bool OnPitRoad,
+        bool PitstopActive,
+        bool PlayerCarInPitStall,
+        bool? TeamOnPitRoad)
+    {
+        public static PitServiceTelemetryState From(LiveFuelPitModel pit)
+        {
+            return new PitServiceTelemetryState(
+                Status: pit.PitServiceStatus,
+                Flags: pit.PitServiceFlags,
+                FuelLiters: pit.PitServiceFuelLiters,
+                RequiredRepairSeconds: pit.PitRepairLeftSeconds,
+                OptionalRepairSeconds: pit.PitOptRepairLeftSeconds,
+                TireSetsUsed: pit.TireSetsUsed,
+                FastRepairUsed: pit.FastRepairUsed,
+                TeamFastRepairsUsed: pit.TeamFastRepairsUsed,
+                OnPitRoad: pit.OnPitRoad,
+                PitstopActive: pit.PitstopActive,
+                PlayerCarInPitStall: pit.PlayerCarInPitStall,
+                TeamOnPitRoad: pit.TeamOnPitRoad);
+        }
+
+        public bool HasAnySignal =>
+            Status is not null
+            || Flags is not null
+            || FuelLiters is not null
+            || RequiredRepairSeconds is not null
+            || OptionalRepairSeconds is not null
+            || TireSetsUsed is not null
+            || FastRepairUsed is not null
+            || TeamFastRepairsUsed is not null
+            || OnPitRoad
+            || PitstopActive
+            || PlayerCarInPitStall
+            || TeamOnPitRoad == true;
+
+        public bool HasRequestedService =>
+            (Flags is { } flags && flags != 0)
+            || FuelLiters is > 0d
+            || RequiredRepairSeconds is > 0d
+            || OptionalRepairSeconds is > 0d
+            || PitstopActive;
+    }
+
     private sealed record SectorObservation(
         int CarIdx,
         string Role,
@@ -1855,6 +2187,7 @@ internal sealed record LiveOverlayDiagnosticsArtifact(
     DateTimeOffset FinishedAtUtc,
     LiveOverlayDiagnosticsArtifactOptions Options,
     LiveOverlayDiagnosticsTotals Totals,
+    FocusContextDiagnosticsSummary Focus,
     GapOverlayDiagnosticsSummary Gap,
     RadarOverlayDiagnosticsSummary Radar,
     FuelOverlayDiagnosticsSummary Fuel,
@@ -1881,6 +2214,18 @@ internal sealed record LiveOverlayDiagnosticsTotals(
     int DroppedFrameSampleCount,
     int DroppedEventSampleCount,
     IReadOnlyDictionary<string, int> SessionFrameCounts);
+
+internal sealed record FocusContextDiagnosticsSummary(
+    int UnavailableFrames,
+    int UnavailableWithPlayerCarFrames,
+    int UnavailableWithRawCamCarFrames,
+    int UnavailableOnTrackFrames,
+    int UnavailableOffTrackFrames,
+    int UnavailableGarageFrames,
+    int UnavailablePitContextFrames,
+    IReadOnlyDictionary<string, int> UnavailableReasonCounts,
+    IReadOnlyDictionary<string, int> UnavailableSessionKindCounts,
+    IReadOnlyDictionary<string, int> UnavailableSessionStateCounts);
 
 internal sealed record GapOverlayDiagnosticsSummary(
     int FramesWithData,
@@ -1922,10 +2267,19 @@ internal sealed record FuelOverlayDiagnosticsSummary(
     int TeamContextWithoutFuelLevelFrames,
     int PitContextFrames,
     int DriverControlFrames,
+    int PitServiceSignalFrames,
+    int PitServiceRequestFrames,
+    int PitServiceChangeFrames,
+    int PitServiceNonPlayerFocusFrames,
+    int PitServiceOffTrackFrames,
+    int FuelLocalStrategyUnavailableFrames,
+    int PitServiceLocalStrategyUnavailableFrames,
     IReadOnlyDictionary<string, int> FuelLevelEvidenceCounts,
     IReadOnlyDictionary<string, int> InstantaneousBurnEvidenceCounts,
     IReadOnlyDictionary<string, int> MeasuredBurnEvidenceCounts,
-    IReadOnlyDictionary<string, int> BaselineEligibilityEvidenceCounts);
+    IReadOnlyDictionary<string, int> BaselineEligibilityEvidenceCounts,
+    IReadOnlyDictionary<string, int> FuelLocalStrategyUnavailableReasonCounts,
+    IReadOnlyDictionary<string, int> PitServiceLocalStrategyUnavailableReasonCounts);
 
 internal sealed record PositionCadenceDiagnosticsSummary(
     int ObservedFrames,
@@ -1987,8 +2341,15 @@ internal sealed record LiveOverlayDiagnosticsFrameSample(
     long Sequence,
     double? SessionTimeSeconds,
     string SessionKind,
+    int? SessionState,
+    bool? IsOnTrack,
+    bool? IsInGarage,
+    bool? OnPitRoad,
+    bool? IsGarageVisible,
     int? PlayerCarIdx,
+    int? RawCamCarIdx,
     int? FocusCarIdx,
+    string FocusUnavailableReason,
     string FocusKind,
     double? ClassGapSeconds,
     double? ClassGapLaps,
@@ -2010,8 +2371,15 @@ internal sealed record LiveOverlayDiagnosticsEventSample(
     long Sequence,
     double? SessionTimeSeconds,
     string SessionKind,
+    int? SessionState,
+    bool? IsOnTrack,
+    bool? IsInGarage,
+    bool? OnPitRoad,
+    bool? IsGarageVisible,
     int? PlayerCarIdx,
+    int? RawCamCarIdx,
     int? FocusCarIdx,
+    string FocusUnavailableReason,
     string FocusKind,
     int? RawCarLeftRight,
     int RawNearbyCarCount,

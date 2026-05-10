@@ -33,11 +33,13 @@ internal sealed record StandingsOverlayViewModel(
 
         var referenceCarIdx = scoring.ReferenceCarIdx
             ?? timing.FocusRow?.CarIdx
-            ?? timing.PlayerRow?.CarIdx
             ?? timing.FocusCarIdx
-            ?? timing.PlayerCarIdx
-            ?? snapshot.Models.DriverDirectory.FocusCarIdx
-            ?? snapshot.Models.DriverDirectory.PlayerCarIdx;
+            ?? snapshot.Models.DriverDirectory.FocusCarIdx;
+        if (referenceCarIdx is null)
+        {
+            return Waiting("waiting for focus car");
+        }
+
         var requiresValidLap = RequiresValidLapBeforeRendering(snapshot);
         if (scoring.HasData)
         {

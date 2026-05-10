@@ -50,7 +50,7 @@ The live model carries additional atmospheric fields such as pressure and solar 
 
 ## Pit Service
 
-`Pit Service` reads `LiveFuelPitModel` and is read-only in this branch.
+`Pit Service` reads `LiveFuelPitModel` and is read-only in this branch. Product-wise it belongs with Fuel, not Input / Car State: for V1 it is a local active driver/team context overlay. It waits when the camera focus is unavailable, focused on another car, in garage/setup context, or otherwise lacks a valid local player car. It still renders while the local car is on pit road, in the pit stall, or service is active because that is the primary moment for this overlay.
 
 It displays:
 
@@ -70,7 +70,9 @@ It displays:
 
 Requested-service rows get a short info/blue highlight when their formatted value changes, such as fuel amount, tire request, repair time, or fast repair selected/counter state. Red/yellow/green release and repair severity still wins over the change highlight.
 
-Pit service details are local/team-car telemetry, not competitor-wide telemetry. Current captures expose per-car pit-road and fast-repair-used arrays (`CarIdxOnPitRoad`, `CarIdxFastRepairsUsed`) plus general per-car track-surface/timing arrays, but not per-car requested fuel, tire selections, repair timers, service-active state, or service-complete status. Standings/Relative can use those per-car arrays for pit-road context, but this overlay stays anchored to the player/team car service snapshot.
+Pit service details are player/team-car telemetry, not competitor-wide telemetry. Current captures expose per-car pit-road and fast-repair-used arrays (`CarIdxOnPitRoad`, `CarIdxFastRepairsUsed`) plus general per-car track-surface/timing arrays, but not per-car requested fuel, tire selections, repair timers, service-active state, or service-complete status. Standings/Relative can use those per-car arrays for pit-road context, but this overlay stays anchored to the local player/team car service snapshot and does not display while the user is intentionally following another car.
+
+Live overlay diagnostics count pit-service signal frames, request frames, value-change frames, non-player-focus frames, off-track frames, and local-strategy suppression reasons. That is intentionally diagnostic rather than product logic: a future Fuel/Pit Service V2 pass should decide how to present degraded-but-useful team strategy context for teammates, spectators, and garage/setup states after captures prove which channels remain trustworthy in those modes.
 
 The overlay does not send iRacing pit commands. A future pit crew/engineer overlay should own command-capable controls for refuel amount, tire/repair/tearoff choices, and operator workflow so read-only pit telemetry and active simulator control do not get mixed. Suggested refuel numbers should consume the shared Fuel strategy/race-progress model instead of recalculating laps-to-go inside Pit Service. Future spotter/engineer surfaces should also normalize viewer context from `IsOnTrack`, `IsOnTrackCar`, `IsReplayPlaying`, `IsInGarage`, `IsGarageVisible`, `CamCarIdx`, and camera group data so in-car, replay/watching, garage, and other-car focus modes do not accidentally reuse driver-only assumptions. Do not show teammate/spotter pit-value-change notifications until a capture proves which telemetry signal distinguishes a teammate changing service requests from the local user changing them.
 

@@ -14,6 +14,7 @@ using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
 using TmrOverlay.App.TrackMaps;
 using TmrOverlay.App.Updates;
+using TmrOverlay.Core.Analysis;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 using TmrOverlay.Core.History;
@@ -417,6 +418,16 @@ internal sealed class DiagnosticsBundleService
             _logger.LogDebug(exception, "Failed to read live telemetry context for diagnostics bundle naming.");
         }
 
+        if (TryResolveRecentAnalysisBundleIdentity(out var analysisIdentity))
+        {
+            return analysisIdentity;
+        }
+
+        if (TryResolveRecentAggregateBundleIdentity(out var aggregateIdentity))
+        {
+            return aggregateIdentity;
+        }
+
         return new DiagnosticsBundleIdentity(
             CarName: "unknown car",
             TrackName: "unknown track",
@@ -425,13 +436,113 @@ internal sealed class DiagnosticsBundleService
             Source: "fallback");
     }
 
+    private bool TryResolveRecentAnalysisBundleIdentity(out DiagnosticsBundleIdentity identity)
+    {
+        identity = default!;
+
+        var analysisDirectory = Path.Combine(_storageOptions.UserHistoryRoot, "analysis");
+        foreach (var file in EnumerateRecentFilesForNaming(analysisDirectory, "*.json", MaxRecentAnalysisFiles))
+        {
+            var analysis = ReadNamingJson<PostRaceAnalysis>(file.FullName, "post-race analysis");
+            if (analysis is null)
+            {
+                continue;
+            }
+
+            if (analysis.Combo is not null
+                && TryResolveAggregateBundleIdentity(analysis.Combo, "history-analysis", out identity))
+            {
+                return true;
+            }
+
+            var carName = ExtractAnalysisCarName(analysis);
+            var trackName = ExtractAnalysisTrackName(analysis);
+            if (analysis.Combo is not null)
+            {
+                carName ??= analysis.Combo.CarKey;
+                trackName ??= analysis.Combo.TrackKey;
+            }
+
+            if (TryBuildBundleIdentity(carName, trackName, "history-analysis", out identity))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool TryResolveRecentAggregateBundleIdentity(out DiagnosticsBundleIdentity identity)
+    {
+        identity = default!;
+
+        var carsRoot = Path.Combine(_storageOptions.UserHistoryRoot, "cars");
+        foreach (var file in EnumerateRecentRecursiveFilesForNaming(carsRoot, "aggregate.json", MaxRecentHistoryAggregateFiles))
+        {
+            var aggregate = ReadNamingJson<HistoricalSessionAggregate>(file.FullName, "history aggregate");
+            if (aggregate is not null
+                && TryBuildBundleIdentity(aggregate.Car, aggregate.Track, "history-aggregate", out identity))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool TryResolveAggregateBundleIdentity(
+        HistoricalComboIdentity combo,
+        string source,
+        out DiagnosticsBundleIdentity identity)
+    {
+        identity = default!;
+
+        if (string.IsNullOrWhiteSpace(combo.CarKey)
+            || string.IsNullOrWhiteSpace(combo.TrackKey)
+            || string.IsNullOrWhiteSpace(combo.SessionKey))
+        {
+            return false;
+        }
+
+        var aggregatePath = Path.Combine(
+            _storageOptions.UserHistoryRoot,
+            "cars",
+            combo.CarKey,
+            "tracks",
+            combo.TrackKey,
+            "sessions",
+            combo.SessionKey,
+            "aggregate.json");
+        var aggregate = ReadNamingJson<HistoricalSessionAggregate>(aggregatePath, "history aggregate");
+        return aggregate is not null
+            && TryBuildBundleIdentity(aggregate.Car, aggregate.Track, source, out identity);
+    }
+
     private static bool TryBuildBundleIdentity(
         HistoricalSessionContext context,
         string source,
         out DiagnosticsBundleIdentity identity)
     {
-        var carName = FirstNonEmpty(context.Car.CarScreenNameShort, context.Car.CarScreenName, context.Car.CarPath);
-        var trackName = FirstNonEmpty(context.Track.TrackDisplayName, context.Track.TrackName, context.Track.TrackConfigName);
+        return TryBuildBundleIdentity(context.Car, context.Track, source, out identity);
+    }
+
+    private static bool TryBuildBundleIdentity(
+        HistoricalCarIdentity? car,
+        HistoricalTrackIdentity? track,
+        string source,
+        out DiagnosticsBundleIdentity identity)
+    {
+        var carName = FirstNonEmpty(car?.CarScreenNameShort, car?.CarScreenName, car?.CarPath);
+        var trackName = FirstNonEmpty(track?.TrackDisplayName, track?.TrackName, track?.TrackConfigName);
+        return TryBuildBundleIdentity(carName, trackName, source, out identity);
+    }
+
+    private static bool TryBuildBundleIdentity(
+        string? carName,
+        string? trackName,
+        string source,
+        out DiagnosticsBundleIdentity identity)
+    {
         if (string.IsNullOrWhiteSpace(carName) && string.IsNullOrWhiteSpace(trackName))
         {
             identity = default!;
@@ -471,6 +582,105 @@ internal sealed class DiagnosticsBundleService
         }
 
         return null;
+    }
+
+    private IEnumerable<FileInfo> EnumerateRecentFilesForNaming(
+        string directory,
+        string searchPattern,
+        int maxFiles)
+    {
+        if (!Directory.Exists(directory))
+        {
+            return [];
+        }
+
+        try
+        {
+            return Directory
+                .EnumerateFiles(directory, searchPattern)
+                .Select(path => new FileInfo(path))
+                .OrderByDescending(file => file.LastWriteTimeUtc)
+                .Take(maxFiles)
+                .ToArray();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogDebug(exception, "Failed to enumerate {Directory} for diagnostics bundle naming.", directory);
+            return [];
+        }
+    }
+
+    private IEnumerable<FileInfo> EnumerateRecentRecursiveFilesForNaming(
+        string directory,
+        string searchPattern,
+        int maxFiles)
+    {
+        if (!Directory.Exists(directory))
+        {
+            return [];
+        }
+
+        try
+        {
+            return Directory
+                .EnumerateFiles(directory, searchPattern, SearchOption.AllDirectories)
+                .Select(path => new FileInfo(path))
+                .OrderByDescending(file => file.LastWriteTimeUtc)
+                .Take(maxFiles)
+                .ToArray();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogDebug(exception, "Failed to enumerate {Directory} recursively for diagnostics bundle naming.", directory);
+            return [];
+        }
+    }
+
+    private T? ReadNamingJson<T>(string path, string description)
+        where T : class
+    {
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var stream = File.OpenRead(path);
+            return JsonSerializer.Deserialize<T>(stream, JsonOptions);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogDebug(
+                exception,
+                "Failed to parse {Description} {Path} for diagnostics bundle naming.",
+                description,
+                path);
+            return null;
+        }
+    }
+
+    private static string? ExtractAnalysisCarName(PostRaceAnalysis analysis)
+    {
+        return TextBeforeDelimiter(analysis.Subtitle, " | ");
+    }
+
+    private static string? ExtractAnalysisTrackName(PostRaceAnalysis analysis)
+    {
+        return TextBeforeDelimiter(analysis.Title, " - ");
+    }
+
+    private static string? TextBeforeDelimiter(string? value, string delimiter)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var index = value.IndexOf(delimiter, StringComparison.Ordinal);
+        return index > 0
+            ? value[..index].Trim()
+            : value.Trim();
     }
 
     private void RecordSuccess(string bundlePath, DateTimeOffset createdAtUtc, string source)

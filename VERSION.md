@@ -9,60 +9,57 @@ TmrOverlay uses SemVer-style annotated Git tags for product milestones:
 
 ## Current Branch Target
 
-### v0.18.6 - Browser Validation And Native Session Preview
+### v0.18.7 - V1 Candidate Focus And Diagnostics Hardening
 
 Planned branch name:
 
 ```text
-v0.18.6-more-validation
+v0.18.7_stream-chat-debugging
 ```
 
 Planned scope:
 
-- Ship the next hardening patch on top of `v0.18.5` for live teammate testing.
-- Replace production-facing forced overlay visibility diagnostics with a native Show Preview mode that supplies deterministic session telemetry while preserving normal overlay visibility, session filters, z-order, and Stream Chat behavior.
-- Promote browser-source assets to first-class source files shared by Windows localhost routes, browser review, and Playwright integration tests.
-- Add a mac-friendly browser review server and full application validator route for fast overlay/settings review without relying on the mac native harness.
-- Return the temporary validation diagnostics to production-safe opt-in defaults now that native Show Preview covers the common review path.
-- Improve diagnostics bundle naming and metadata, including session-preview guardrails and browser route catalog metadata.
-- Mine 4-hour and 24-hour capture fragments plus SDK header references for extreme real-world fixture values used by preview telemetry.
-- Remove committed local diagnostics bundle artifacts and ignore future root diagnostics/test outputs.
-- Keep browser review and Playwright validation as development tooling while avoiding runtime-heavy diagnostics by default.
+- Ship the next V1-candidate hardening patch on top of `v0.18.6`.
+- Stop Stream Chat from blocking the Settings/app UI by keeping it no-activate/input-safe and adding an explicit close escape hatch.
+- Make `CamCarIdx`/focus the reference for live visual overlays: Standings, Relative, Track Map, and Focused Gap Trend should not silently promote `PlayerCarIdx` when focus is unavailable.
+- Keep local-player exceptions explicit: Radar remains local in-car only, and Fuel Calculator/Pit Service are local active driver/team context only for V1.
+- Expand diagnostics so focus-unavailable, raw `CamCarIdx`, session context, Fuel/Pit local-strategy suppression, pit-service signal changes, UI freeze/watch state, and browser/session-preview metadata can be reviewed from one support bundle.
+- Remove committed generated diagnostics bundle artifacts and ignore future root `car-track-date-uniquifier/` diagnostics folders.
+- Keep browser review/browser-source validation first class while avoiding Playwright runs that launch the user's Chrome app during local Mac validation.
+- Treat remaining V1 work as validation, installer/update polish, first-run/user docs, privacy/defaults review, and Windows-native behavior checks rather than core overlay-logic rewrites.
 
 Technical implementation checklist:
 
-1. Bump shared .NET product/version metadata to `0.18.6`.
-2. Remove forced managed-overlay visibility from production runtime diagnostics.
-3. Add native Practice/Qualifying/Race Show Preview telemetry fixtures and diagnostics metadata.
-4. Split browser-source HTML/CSS/JS assets out of embedded C# strings.
-5. Add npm/Vitest/Playwright browser-source validation and the browser review server.
-6. Refresh app/docs/context references for browser review replacing the mac harness as the primary mac-friendly parity surface.
-7. Validate local static checks, browser tests, screenshot expectations, mac harness build/test, and Python analysis tooling; use Windows CI or a Windows machine for the full .NET build/test and Windows screenshot pass.
+1. Bump shared .NET product/version metadata to `0.18.7`.
+2. Harden Stream Chat no-activate/input behavior and keep the close button available when the overlay misbehaves.
+3. Refactor Standings, Relative, Track Map, and Focused Gap Trend to use focus semantics without `PlayerCarIdx` fallback.
+4. Gate Fuel Calculator and Pit Service behind `LiveLocalStrategyContext` for V1 while leaving future teammate/spotter strategy stitching for V2.
+5. Update live overlay diagnostics and diagnostics bundle cleanup/ignore behavior.
+6. Patch overlay logic docs, flow diagrams, and behavior references to match the new focus/local-strategy contract.
+7. Validate local static checks, browser unit tests, screenshot expectations, mac harness build/test, and git hygiene; use Windows CI or a Windows machine for the full .NET build/test and Windows screenshot pass.
 
 Likely squash title:
 
 ```text
-[v0.18.6] Add browser validation and native session previews
+[v0.18.7] Harden focus semantics and diagnostics for V1 validation
 ```
 
 Likely squash body:
 
 ```text
-- Bumped shared .NET product/version metadata to 0.18.6.
-- Removed production-facing forced overlay visibility diagnostics so hidden overlays and Stream Chat are not forced open during runtime review.
-- Added native General-tab Show Preview for Practice, Qualifying, and Race using deterministic telemetry fixtures while preserving normal overlay enabled state, session filters, window placement, opacity, topmost behavior, and Stream Chat configuration.
-- Added session-preview diagnostics metadata, car/track/timestamp diagnostics bundle naming, and browser route catalog metadata in support bundles.
-- Promoted browser-source HTML/CSS/JS into first-class assets shared by Windows localhost routes, the browser review server, and Playwright tests.
-- Added npm/Vitest/Playwright browser validation plus a browser review server with full app, settings, and overlay routes; Playwright uses managed Chromium by default instead of the user's Chrome app.
-- Documented browser review as the primary mac-friendly parity loop while keeping the mac harness as secondary native-shell scaffolding.
-- Mined large local capture fragments and SDK header references for preview fixture extremes, then applied long names, large fields, SDK-range car indexes, and max-ish telemetry values to session preview fixtures.
-- Restored raw capture, edge-case clips, model parity, live overlay diagnostics, IBT logging/analysis, and rolling overlay screenshots to opt-in defaults.
-- Removed committed local diagnostics bundle artifacts and tightened ignores for root diagnostics bundles, Playwright test output, and generated cleanup noise.
+- Bumped shared .NET product/version metadata to 0.18.7.
+- Hardened Stream Chat window behavior with no-activate/input safeguards, diagnostics, and a close escape hatch so it cannot brick the Settings/app UI during validation.
+- Made `CamCarIdx`/focus the explicit reference for Standings, Relative, Track Map, and Focused Gap Trend, with diagnostics for unavailable focus instead of silently falling back to `PlayerCarIdx`.
+- Kept local-only product decisions explicit: Radar stays local in-car only, while Fuel Calculator and Pit Service now wait for local active driver/team context in V1.
+- Expanded live overlay diagnostics and support bundle metadata for focus context, Fuel/Pit suppression reasons, pit-service signal changes, UI freeze/watch state, browser routes, session preview, and current overlay assumptions.
+- Removed a committed generated diagnostics bundle and ignored future root `car-track-date-uniquifier/` diagnostics folders so local bundles do not pollute the branch.
+- Updated overlay logic docs, flow diagrams, and behavior references to make the focus/local-strategy contract reviewable.
+- Validated browser unit tests, mac harness build/test, screenshot artifacts, git hygiene, and local C# compile-shape checks; Windows .NET build/test and WinForms screenshot validation remain CI/Windows-machine gates.
 ```
 
 ## Next Planned Milestone
 
-### v0.18.7 - V1 Candidate Readiness
+### v0.18.8 - V1 Candidate Readiness
 
 Likely scope:
 

@@ -22,6 +22,53 @@ public sealed class RelativeOverlayViewModelTests
     }
 
     [Fact]
+    public void From_WhenFocusIsUnavailable_DoesNotFallBackToPlayerRow()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var player = TimingRow(10, "Player Driver", classPosition: 6, isPlayer: true);
+        var snapshot = Snapshot(
+            now,
+            RelativeRow(carIdx: 11, isAhead: true, seconds: 0.4d, classPosition: 5)) with
+        {
+            Models = Snapshot(now).Models with
+            {
+                DriverDirectory = LiveDriverDirectoryModel.Empty with
+                {
+                    HasData = true,
+                    Quality = LiveModelQuality.Partial,
+                    PlayerCarIdx = 10
+                },
+                Timing = LiveTimingModel.Empty with
+                {
+                    HasData = true,
+                    Quality = LiveModelQuality.Reliable,
+                    PlayerCarIdx = 10,
+                    PlayerRow = player,
+                    OverallRows = [player],
+                    ClassRows = [player]
+                },
+                Relative = new LiveRelativeModel(
+                    HasData: true,
+                    Quality: LiveModelQuality.Reliable,
+                    ReferenceCarIdx: null,
+                    Rows:
+                    [
+                        RelativeRow(carIdx: 11, isAhead: true, seconds: 0.4d, classPosition: 5)
+                    ])
+            }
+        };
+
+        var viewModel = RelativeOverlayViewModel.From(
+            snapshot,
+            now,
+            carsAhead: 5,
+            carsBehind: 5);
+
+        Assert.Equal("waiting for focus-relative telemetry", viewModel.Status);
+        Assert.Empty(viewModel.Rows);
+    }
+
+    [Fact]
     public void From_AddsReferenceRowAndCapsCarsAheadAndBehind()
     {
         var now = DateTimeOffset.UtcNow;

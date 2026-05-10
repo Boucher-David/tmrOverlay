@@ -45,8 +45,10 @@ flowchart TD
     Data -- no --> Timing{"Timing rows available?"}
     Timing -- no --> Waiting["Waiting for scoring/timing"]
     Timing -- yes --> Fallback["Build fallback table from timing rows"]
-    Scoring --> Ref["Resolve reference car and reference class"]
-    Fallback --> Ref
+    Scoring --> Focus{"Focus car known?"}
+    Fallback --> Focus
+    Focus -- no --> FocusWait["Waiting for focus car"]
+    Focus -- yes --> Ref["Resolve reference car and reference class"]
     Ref --> RaceGate{"Race-like session with lap evidence?"}
     RaceGate -- no --> Filter["Keep usable rows only"]
     RaceGate -- yes --> LapRows["Hide pre-lap noise until valid lap evidence"]
@@ -60,11 +62,12 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    Start["Fresh live snapshot"] --> Rows{"Relative rows available?"}
-    Rows -- no --> Waiting["Waiting for relative timing"]
-    Rows -- yes --> Ref{"Reference car known?"}
-    Ref -- no --> Waiting
-    Ref -- yes --> Window["Select configured cars ahead and behind"]
+    Start["Fresh live snapshot"] --> Ref{"Focus/reference car known?"}
+    Ref -- no --> Waiting["Waiting for focus-relative telemetry"]
+    Ref -- yes --> Rows{"Relative rows available?"}
+    Rows -- no --> ReferenceOnly["Render stable reference row only"]
+    Rows -- yes --> Window["Select configured cars ahead and behind"]
+    ReferenceOnly --> Position
     Window --> Ahead["Ahead: nearest for selection, farthest-to-nearest for display"]
     Window --> Behind["Behind: nearest-first below reference"]
     Ahead --> Evidence["Prefer relative seconds; mark partial fallback rows"]
@@ -80,8 +83,10 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    Start["Fresh live snapshot"] --> Fuel{"Fuel and race context usable?"}
-    Fuel -- no --> Waiting["Show waiting/current fuel fallback"]
+    Start["Fresh live snapshot"] --> Local{"Local active driver/team context?"}
+    Local -- no --> Waiting["Waiting for local fuel context"]
+    Local -- yes --> Fuel{"Fuel and race context usable?"}
+    Fuel -- no --> WaitingFuel["Show waiting/current fuel fallback"]
     Fuel -- yes --> History["Load user/baseline history for combo"]
     History --> Burn["Choose live or historical burn rate"]
     Burn --> Strategy{"Race laps/stints known?"}
@@ -174,7 +179,9 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    Start["Fresh live snapshot"] --> Pit{"Pit-service model usable?"}
+    Start["Fresh live snapshot"] --> Local{"Local active driver/team context?"}
+    Local -- no --> WaitingLocal["Waiting for local pit-service context"]
+    Local -- yes --> Pit{"Pit-service model usable?"}
     Pit -- no --> Waiting["Waiting for pit service data"]
     Pit -- yes --> Status["Resolve current service status"]
     Status --> Requests["Read fuel, tires, repair, pit road, pit stall"]

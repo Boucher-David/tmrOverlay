@@ -111,6 +111,164 @@ public sealed class LiveOverlayDiagnosticsRecorderTests
     }
 
     [Fact]
+    public void CompleteCollection_SummarizesUnavailableFocusContext()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "tmr-overlay-live-overlay-diagnostics-test", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var storage = CreateStorage(root);
+            var captureDirectory = Path.Combine(storage.CaptureRoot, "capture-diagnostics");
+            Directory.CreateDirectory(captureDirectory);
+            var recorder = new LiveOverlayDiagnosticsRecorder(
+                new LiveOverlayDiagnosticsOptions
+                {
+                    Enabled = true,
+                    MinimumFrameSpacingSeconds = 0.1d,
+                    MaxSampleFramesPerSession = 10,
+                    MaxEventExamplesPerSession = 20
+                },
+                storage,
+                new AppEventRecorder(storage),
+                NullLogger<LiveOverlayDiagnosticsRecorder>.Instance);
+            var context = CreateContext();
+            var startedAtUtc = DateTimeOffset.Parse("2026-05-02T12:00:00Z");
+            recorder.StartCollection("capture-diagnostics", startedAtUtc);
+
+            recorder.RecordFrame(CreateSnapshot(
+                context,
+                CreateSample(
+                    startedAtUtc,
+                    sessionTime: 0d,
+                    focusCarIdx: null,
+                    carLeftRight: 0,
+                    focusF2TimeSeconds: 0d,
+                    classPosition: 2,
+                    observedPosition: 25,
+                    observedClassPosition: 10,
+                    observedLapDistPct: 0.5d,
+                    rawCamCarIdx: 70,
+                    focusUnavailableReason: "cam_car_idx_invalid",
+                    isOnTrack: false,
+                    isInGarage: true,
+                    isGarageVisible: true),
+                sequence: 1));
+
+            var path = recorder.CompleteCollection(startedAtUtc.AddSeconds(1), captureDirectory);
+
+            using var document = JsonDocument.Parse(File.ReadAllText(path!));
+            var focus = document.RootElement.GetProperty("focus");
+            Assert.Equal(1, focus.GetProperty("unavailableFrames").GetInt32());
+            Assert.Equal(1, focus.GetProperty("unavailableWithPlayerCarFrames").GetInt32());
+            Assert.Equal(1, focus.GetProperty("unavailableWithRawCamCarFrames").GetInt32());
+            Assert.Equal(1, focus.GetProperty("unavailableOffTrackFrames").GetInt32());
+            Assert.Equal(1, focus.GetProperty("unavailableGarageFrames").GetInt32());
+            Assert.Equal(1, focus.GetProperty("unavailableReasonCounts").GetProperty("cam_car_idx_invalid").GetInt32());
+
+            var eventKinds = document.RootElement
+                .GetProperty("eventSamples")
+                .EnumerateArray()
+                .Select(item => item.GetProperty("kind").GetString())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            Assert.Contains("focus.unavailable", eventKinds);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void CompleteCollection_SummarizesPitServiceSignalsAcrossNonPlayerFocus()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "tmr-overlay-live-overlay-diagnostics-test", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var storage = CreateStorage(root);
+            var captureDirectory = Path.Combine(storage.CaptureRoot, "capture-diagnostics");
+            Directory.CreateDirectory(captureDirectory);
+            var recorder = new LiveOverlayDiagnosticsRecorder(
+                new LiveOverlayDiagnosticsOptions
+                {
+                    Enabled = true,
+                    MinimumFrameSpacingSeconds = 0.1d,
+                    MaxSampleFramesPerSession = 10,
+                    MaxEventExamplesPerSession = 20
+                },
+                storage,
+                new AppEventRecorder(storage),
+                NullLogger<LiveOverlayDiagnosticsRecorder>.Instance);
+            var context = CreateContext();
+            var startedAtUtc = DateTimeOffset.Parse("2026-05-02T12:00:00Z");
+            recorder.StartCollection("capture-diagnostics", startedAtUtc);
+
+            recorder.RecordFrame(CreateSnapshot(
+                context,
+                CreateSample(
+                    startedAtUtc,
+                    sessionTime: 0d,
+                    focusCarIdx: 12,
+                    carLeftRight: 0,
+                    focusF2TimeSeconds: 700d,
+                    classPosition: 2,
+                    observedPosition: 25,
+                    observedClassPosition: 10,
+                    observedLapDistPct: 0.5d,
+                    pitServiceFlags: 0x10,
+                    pitServiceFuelLiters: 25d,
+                    fastRepairUsed: 0,
+                    teamFastRepairsUsed: 0),
+                sequence: 1));
+            recorder.RecordFrame(CreateSnapshot(
+                context,
+                CreateSample(
+                    startedAtUtc.AddSeconds(1),
+                    sessionTime: 1d,
+                    focusCarIdx: 12,
+                    carLeftRight: 0,
+                    focusF2TimeSeconds: 701d,
+                    classPosition: 2,
+                    observedPosition: 25,
+                    observedClassPosition: 10,
+                    observedLapDistPct: 0.5d,
+                    pitServiceFlags: 0x1f,
+                    pitServiceFuelLiters: 45d,
+                    fastRepairUsed: 0,
+                    teamFastRepairsUsed: 0),
+                sequence: 2));
+
+            var path = recorder.CompleteCollection(startedAtUtc.AddSeconds(2), captureDirectory);
+
+            using var document = JsonDocument.Parse(File.ReadAllText(path!));
+            var fuel = document.RootElement.GetProperty("fuel");
+            Assert.Equal(2, fuel.GetProperty("pitServiceSignalFrames").GetInt32());
+            Assert.Equal(2, fuel.GetProperty("pitServiceRequestFrames").GetInt32());
+            Assert.Equal(1, fuel.GetProperty("pitServiceChangeFrames").GetInt32());
+            Assert.Equal(2, fuel.GetProperty("pitServiceNonPlayerFocusFrames").GetInt32());
+            Assert.Equal(2, fuel.GetProperty("fuelLocalStrategyUnavailableFrames").GetInt32());
+            Assert.Equal(2, fuel.GetProperty("pitServiceLocalStrategyUnavailableFrames").GetInt32());
+            Assert.Equal(2, fuel.GetProperty("fuelLocalStrategyUnavailableReasonCounts").GetProperty("focus_on_another_car").GetInt32());
+            Assert.Equal(2, fuel.GetProperty("pitServiceLocalStrategyUnavailableReasonCounts").GetProperty("focus_on_another_car").GetInt32());
+
+            var eventKinds = document.RootElement
+                .GetProperty("eventSamples")
+                .EnumerateArray()
+                .Select(item => item.GetProperty("kind").GetString())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            Assert.Contains("pit-service.changed", eventKinds);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void CompleteCollection_SummarizesRelativeLapRelationshipProbe()
     {
         var root = Path.Combine(Path.GetTempPath(), "tmr-overlay-live-overlay-diagnostics-test", Guid.NewGuid().ToString("N"));
@@ -534,7 +692,7 @@ public sealed class LiveOverlayDiagnosticsRecorderTests
     private static HistoricalTelemetrySample CreateSample(
         DateTimeOffset capturedAtUtc,
         double sessionTime,
-        int focusCarIdx,
+        int? focusCarIdx,
         int carLeftRight,
         double focusF2TimeSeconds,
         int classPosition,
@@ -543,16 +701,29 @@ public sealed class LiveOverlayDiagnosticsRecorderTests
         double observedLapDistPct,
         double focusLapDistPct = 0.5d,
         int focusLapCompleted = 108,
-        IReadOnlyList<HistoricalCarProximity>? nearbyCars = null)
+        IReadOnlyList<HistoricalCarProximity>? nearbyCars = null,
+        int? rawCamCarIdx = null,
+        string? focusUnavailableReason = null,
+        bool isOnTrack = true,
+        bool isInGarage = false,
+        bool? isGarageVisible = null,
+        bool onPitRoad = false,
+        int? pitServiceStatus = null,
+        int? pitServiceFlags = null,
+        double? pitServiceFuelLiters = null,
+        double? pitRepairLeftSeconds = null,
+        double? pitOptRepairLeftSeconds = null,
+        int? fastRepairUsed = null,
+        int? teamFastRepairsUsed = null)
     {
         return new HistoricalTelemetrySample(
             CapturedAtUtc: capturedAtUtc,
             SessionTime: sessionTime,
             SessionTick: (int)sessionTime + 1,
             SessionInfoUpdate: 1,
-            IsOnTrack: true,
-            IsInGarage: false,
-            OnPitRoad: false,
+            IsOnTrack: isOnTrack,
+            IsInGarage: isInGarage,
+            OnPitRoad: onPitRoad,
             PitstopActive: false,
             PlayerCarInPitStall: false,
             FuelLevelLiters: 0d,
@@ -569,8 +740,11 @@ public sealed class LiveOverlayDiagnosticsRecorderTests
             TrackWetness: 1,
             WeatherDeclaredWet: false,
             PlayerTireCompound: 0,
+            IsGarageVisible: isGarageVisible,
             PlayerCarIdx: 10,
+            RawCamCarIdx: rawCamCarIdx,
             FocusCarIdx: focusCarIdx,
+            FocusUnavailableReason: focusUnavailableReason,
             FocusLapCompleted: focusLapCompleted,
             FocusLapDistPct: focusLapDistPct,
             FocusF2TimeSeconds: focusF2TimeSeconds,
@@ -617,6 +791,13 @@ public sealed class LiveOverlayDiagnosticsRecorderTests
             ],
             NearbyCars: nearbyCars,
             TeamOnPitRoad: false,
+            PitServiceStatus: pitServiceStatus,
+            PitServiceFlags: pitServiceFlags,
+            PitServiceFuelLiters: pitServiceFuelLiters,
+            PitRepairLeftSeconds: pitRepairLeftSeconds,
+            PitOptRepairLeftSeconds: pitOptRepairLeftSeconds,
+            FastRepairUsed: fastRepairUsed,
+            TeamFastRepairsUsed: teamFastRepairsUsed,
             DriversSoFar: 1,
             LapDeltaToBestLapSeconds: -0.2d,
             LapDeltaToBestLapRate: 0.01d,

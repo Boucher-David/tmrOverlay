@@ -235,6 +235,49 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
                 return;
             }
 
+            var localContext = LiveLocalStrategyContext.ForFuelCalculator(live, now);
+            if (!localContext.IsAvailable)
+            {
+                var waitingViewModel = FuelCalculatorViewModel.Waiting(localContext.StatusText);
+                var waitingUiChanged = false;
+                var waitingApplyStarted = Stopwatch.GetTimestamp();
+                var waitingApplySucceeded = false;
+                try
+                {
+                    waitingUiChanged |= OverlayChrome.ApplyChromeState(
+                        this,
+                        _titleLabel,
+                        _statusLabel,
+                        _sourceLabel,
+                        ChromeStateFor(waitingViewModel, OverlayChromeTone.Waiting, live, _settings, showSource),
+                        titleWidth: 150);
+                    waitingUiChanged |= OverlayChrome.SetTextIfChanged(_overviewValueLabel, waitingViewModel.Overview);
+                    waitingUiChanged |= ApplyAdviceColumnVisibility(showAdvice);
+                    waitingUiChanged |= UpdateVisibleRows(0, showAdvice);
+                    waitingApplySucceeded = true;
+                }
+                finally
+                {
+                    _performanceState.RecordOperation(
+                        AppPerformanceMetricIds.OverlayFuelApplyUi,
+                        waitingApplyStarted,
+                        waitingApplySucceeded);
+                }
+
+                _lastRefreshSequence = live.Sequence;
+                _lastRefreshShowAdvice = showAdvice;
+                _lastRefreshShowSource = showSource;
+                _performanceState.RecordOverlayRefreshDecision(
+                    FuelCalculatorOverlayDefinition.Definition.Id,
+                    now,
+                    previousSequence,
+                    live.Sequence,
+                    live.LastUpdatedAtUtc,
+                    applied: waitingUiChanged);
+                succeeded = true;
+                return;
+            }
+
             SessionHistoryLookupResult history;
             var historyStarted = Stopwatch.GetTimestamp();
             var historySucceeded = false;
@@ -288,7 +331,13 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
             var applySucceeded = false;
             try
             {
-                uiChanged |= OverlayChrome.ApplyChromeState(this, _titleLabel, _statusLabel, _sourceLabel, ChromeStateFor(viewModel, strategy, live, _settings, showSource), titleWidth: 150);
+                uiChanged |= OverlayChrome.ApplyChromeState(
+                    this,
+                    _titleLabel,
+                    _statusLabel,
+                    _sourceLabel,
+                    ChromeStateFor(viewModel, ChromeTone(strategy), live, _settings, showSource),
+                    titleWidth: 150);
                 uiChanged |= OverlayChrome.SetTextIfChanged(_overviewValueLabel, viewModel.Overview);
                 uiChanged |= ApplyAdviceColumnVisibility(showAdvice);
                 applySucceeded = true;
@@ -437,7 +486,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
 
     private static OverlayChromeState ChromeStateFor(
         FuelCalculatorViewModel viewModel,
-        FuelStrategySnapshot strategy,
+        OverlayChromeTone tone,
         LiveTelemetrySnapshot live,
         OverlaySettings settings,
         bool showSource)
@@ -449,7 +498,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
         return new OverlayChromeState(
             "Fuel Calculator",
             showStatus ? viewModel.Status : string.Empty,
-            ChromeTone(strategy),
+            tone,
             viewModel.Source,
             footerMode);
     }

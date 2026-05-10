@@ -1,5 +1,6 @@
 using System.Globalization;
 using TmrOverlay.App.Overlays.SimpleTelemetry;
+using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Telemetry.Live;
 
 namespace TmrOverlay.App.Overlays.PitService;
@@ -38,6 +39,13 @@ internal static class PitServiceOverlayViewModel
             return SimpleTelemetryOverlayViewModel.Waiting("Pit Service", waitingStatus);
         }
 
+        var localContext = LiveLocalStrategyContext.ForPitService(snapshot, now);
+        if (!localContext.IsAvailable)
+        {
+            changeTracker?.Reset();
+            return SimpleTelemetryOverlayViewModel.Waiting("Pit Service", localContext.StatusText);
+        }
+
         var pit = snapshot.Models.FuelPit;
         if (!pit.HasData)
         {
@@ -73,9 +81,14 @@ internal static class PitServiceOverlayViewModel
         return new SimpleTelemetryOverlayViewModel(
             Title: "Pit Service",
             Status: status,
-            Source: "source: pit service telemetry",
+            Source: BuildSource(),
             Tone: tone,
             Rows: rows);
+    }
+
+    private static string BuildSource()
+    {
+        return "source: player/team pit service telemetry";
     }
 
     private static string BuildStatus(LiveFuelPitModel pit, PitReleaseState release)

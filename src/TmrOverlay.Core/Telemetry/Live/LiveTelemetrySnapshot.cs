@@ -631,99 +631,174 @@ internal sealed record LiveLeaderGapSnapshot(
 
     private static int? FocusCarIdx(HistoricalTelemetrySample sample)
     {
-        return sample.FocusCarIdx ?? sample.PlayerCarIdx;
+        return sample.FocusCarIdx;
     }
 
     private static int? FocusPosition(HistoricalTelemetrySample sample)
     {
+        if (!HasFocus(sample))
+        {
+            return null;
+        }
+
         if (HasExplicitNonPlayerFocus(sample))
         {
             return sample.FocusPosition;
         }
 
-        return sample.FocusPosition ?? sample.TeamPosition;
+        return FocusUsesPlayerLocalFallback(sample)
+            ? sample.FocusPosition ?? sample.TeamPosition
+            : sample.FocusPosition;
     }
 
     private static int? FocusClassPosition(HistoricalTelemetrySample sample)
     {
+        if (!HasFocus(sample))
+        {
+            return null;
+        }
+
         if (HasExplicitNonPlayerFocus(sample))
         {
             return sample.FocusClassPosition;
         }
 
-        return sample.FocusClassPosition ?? sample.TeamClassPosition;
+        return FocusUsesPlayerLocalFallback(sample)
+            ? sample.FocusClassPosition ?? sample.TeamClassPosition
+            : sample.FocusClassPosition;
     }
 
     private static int? FocusCarClass(HistoricalTelemetrySample sample)
     {
+        if (!HasFocus(sample))
+        {
+            return null;
+        }
+
         if (HasExplicitNonPlayerFocus(sample))
         {
             return sample.FocusCarClass;
         }
 
-        return sample.FocusCarClass ?? sample.TeamCarClass;
+        return FocusUsesPlayerLocalFallback(sample)
+            ? sample.FocusCarClass ?? sample.TeamCarClass
+            : sample.FocusCarClass;
     }
 
     private static double? FocusF2TimeSecondsForGap(HistoricalTelemetrySample sample)
     {
+        if (!HasFocus(sample))
+        {
+            return null;
+        }
+
         if (HasExplicitNonPlayerFocus(sample))
         {
             return sample.FocusF2TimeSeconds;
         }
 
-        return sample.FocusF2TimeSeconds ?? sample.TeamF2TimeSeconds;
+        return FocusUsesPlayerLocalFallback(sample)
+            ? sample.FocusF2TimeSeconds ?? sample.TeamF2TimeSeconds
+            : sample.FocusF2TimeSeconds;
     }
 
     private static double? FocusProgress(HistoricalTelemetrySample sample)
     {
+        if (!HasFocus(sample))
+        {
+            return null;
+        }
+
         if (HasExplicitNonPlayerFocus(sample))
         {
             return Progress(sample.FocusLapCompleted, sample.FocusLapDistPct);
         }
 
-        return Progress(sample.FocusLapCompleted, sample.FocusLapDistPct)
-            ?? Progress(sample.TeamLapCompleted, sample.TeamLapDistPct)
-            ?? Progress(sample.LapCompleted, sample.LapDistPct);
+        return FocusUsesPlayerLocalFallback(sample)
+            ? Progress(sample.FocusLapCompleted, sample.FocusLapDistPct)
+                ?? Progress(sample.TeamLapCompleted, sample.TeamLapDistPct)
+                ?? Progress(sample.LapCompleted, sample.LapDistPct)
+            : Progress(sample.FocusLapCompleted, sample.FocusLapDistPct);
     }
 
     private static int? FocusClassLeaderCarIdx(HistoricalTelemetrySample sample)
     {
+        if (!HasFocus(sample))
+        {
+            return null;
+        }
+
         if (HasExplicitNonPlayerFocus(sample))
         {
             return sample.FocusClassLeaderCarIdx;
         }
 
-        return sample.FocusClassLeaderCarIdx ?? sample.ClassLeaderCarIdx;
+        return FocusUsesPlayerLocalFallback(sample)
+            ? sample.FocusClassLeaderCarIdx ?? sample.ClassLeaderCarIdx
+            : sample.FocusClassLeaderCarIdx;
     }
 
     private static int? FocusClassLeaderLapCompleted(HistoricalTelemetrySample sample)
     {
+        if (!HasFocus(sample))
+        {
+            return null;
+        }
+
         if (HasExplicitNonPlayerFocus(sample))
         {
             return sample.FocusClassLeaderLapCompleted;
         }
 
-        return sample.FocusClassLeaderLapCompleted ?? sample.ClassLeaderLapCompleted;
+        return FocusUsesPlayerLocalFallback(sample)
+            ? sample.FocusClassLeaderLapCompleted ?? sample.ClassLeaderLapCompleted
+            : sample.FocusClassLeaderLapCompleted;
     }
 
     private static double? FocusClassLeaderLapDistPct(HistoricalTelemetrySample sample)
     {
+        if (!HasFocus(sample))
+        {
+            return null;
+        }
+
         if (HasExplicitNonPlayerFocus(sample))
         {
             return sample.FocusClassLeaderLapDistPct;
         }
 
-        return sample.FocusClassLeaderLapDistPct ?? sample.ClassLeaderLapDistPct;
+        return FocusUsesPlayerLocalFallback(sample)
+            ? sample.FocusClassLeaderLapDistPct ?? sample.ClassLeaderLapDistPct
+            : sample.FocusClassLeaderLapDistPct;
     }
 
     private static double? FocusClassLeaderF2TimeSeconds(HistoricalTelemetrySample sample)
     {
+        if (!HasFocus(sample))
+        {
+            return null;
+        }
+
         if (HasExplicitNonPlayerFocus(sample))
         {
             return sample.FocusClassLeaderF2TimeSeconds;
         }
 
-        return sample.FocusClassLeaderF2TimeSeconds ?? sample.ClassLeaderF2TimeSeconds;
+        return FocusUsesPlayerLocalFallback(sample)
+            ? sample.FocusClassLeaderF2TimeSeconds ?? sample.ClassLeaderF2TimeSeconds
+            : sample.FocusClassLeaderF2TimeSeconds;
+    }
+
+    private static bool HasFocus(HistoricalTelemetrySample sample)
+    {
+        return sample.FocusCarIdx is not null;
+    }
+
+    private static bool FocusUsesPlayerLocalFallback(HistoricalTelemetrySample sample)
+    {
+        return sample.FocusCarIdx is not null
+            && sample.PlayerCarIdx is not null
+            && sample.FocusCarIdx == sample.PlayerCarIdx;
     }
 
     private static bool HasExplicitNonPlayerFocus(HistoricalTelemetrySample sample)

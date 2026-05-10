@@ -108,6 +108,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private readonly List<DesignV2InputPoint> _inputTrace = [];
     private readonly List<StreamChatMessage> _chatMessages = [];
     private readonly Dictionary<int, double> _smoothedTrackMarkerProgress = new();
+    private readonly Button? _closeButton;
     private DesignV2OverlayModel _model;
     private TrackMapDocument? _trackMap;
     private string? _trackMapIdentityKey;
@@ -182,6 +183,13 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             RefreshOverlay();
         };
         _refreshTimer.Start();
+
+        if (_kind == DesignV2LiveOverlayKind.StreamChat)
+        {
+            _closeButton = CreateStreamChatCloseButton();
+            Controls.Add(_closeButton);
+            LayoutStreamChatCloseButton();
+        }
     }
 
     public void SetSettingsPreviewVisible(bool previewVisible)
@@ -195,7 +203,9 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         Invalidate();
     }
 
-    public bool IsInputTransparentOverlay => _kind == DesignV2LiveOverlayKind.Flags;
+    public override bool IsIntrinsicallyInputTransparentOverlay => IsInputTransparentKind(_kind);
+
+    public bool IsInputTransparentOverlay => IsIntrinsicallyInputTransparentOverlay;
 
     public string DiagnosticKind => KindName(_kind);
 
@@ -215,10 +225,35 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             _disposed = true;
             _refreshTimer.Stop();
             _refreshTimer.Dispose();
+            _closeButton?.Dispose();
             StopChatConnection();
         }
 
         base.Dispose(disposing);
+    }
+
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+        LayoutStreamChatCloseButton();
+    }
+
+    protected override bool UseInputTransparentExtendedWindowStyle => _kind != DesignV2LiveOverlayKind.StreamChat;
+
+    protected override bool ShouldReceiveInputWhileTransparent(Point clientPoint)
+    {
+        return IsStreamChatCloseButtonHit(clientPoint);
+    }
+
+    protected override void OnMouseUp(MouseEventArgs e)
+    {
+        if (e.Button == MouseButtons.Left && IsStreamChatCloseButtonHit(e.Location))
+        {
+            DisableOverlayAndClose();
+            return;
+        }
+
+        base.OnMouseUp(e);
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -277,7 +312,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         {
             DesignV2LiveOverlayKind.Standings => BuildStandingsModel(snapshot, now),
             DesignV2LiveOverlayKind.Relative => BuildRelativeModel(snapshot, now),
-            DesignV2LiveOverlayKind.FuelCalculator => BuildFuelModel(snapshot),
+            DesignV2LiveOverlayKind.FuelCalculator => BuildFuelModel(snapshot, now),
             DesignV2LiveOverlayKind.SessionWeather => FromSimple(SessionWeatherOverlayViewModel.From(snapshot, now, _unitSystem)),
             DesignV2LiveOverlayKind.PitService => FromSimple(PitServiceOverlayViewModel.From(snapshot, now, _unitSystem)),
             DesignV2LiveOverlayKind.InputState => BuildInputModel(snapshot, now),
@@ -386,8 +421,19 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             .ToArray();
     }
 
-    private DesignV2OverlayModel BuildFuelModel(LiveTelemetrySnapshot snapshot)
+    private DesignV2OverlayModel BuildFuelModel(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
     {
+        var localContext = LiveLocalStrategyContext.ForFuelCalculator(snapshot, now);
+        if (!localContext.IsAvailable)
+        {
+            return new DesignV2OverlayModel(
+                "Fuel Calculator",
+                localContext.StatusText,
+                "source: waiting",
+                DesignV2Evidence.Unavailable,
+                new DesignV2MetricRowsBody([]));
+        }
+
         var history = LookupHistory(snapshot.Combo);
         var strategy = FuelStrategyCalculator.From(snapshot, history);
         var viewModel = FuelCalculatorViewModel.From(
@@ -487,7 +533,9 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     {
         var availability = OverlayAvailabilityEvaluator.FromSnapshot(snapshot, now);
         var gap = TmrOverlay.App.Overlays.GapToLeader.GapToLeaderLiveModelAdapter.Select(snapshot);
-        if (gap.HasData && gap.ClassLeaderGap.Seconds is { } seconds && IsFinite(seconds))
+        if (gap.HasData
+            && TmrOverlay.App.Overlays.GapToLeader.GapToLeaderLiveModelAdapter.SelectFocusedTrendPointSeconds(snapshot, gap) is { } seconds
+            && IsFinite(seconds))
         {
             _gapPoints.Add(seconds);
             if (_gapPoints.Count > 120)
@@ -1092,10 +1140,8 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             .ToDictionary(group => group.Key, group => group.First());
         var referenceCarIdx = snapshot.Models.Scoring.ReferenceCarIdx
             ?? snapshot.Models.Timing.FocusCarIdx
-            ?? snapshot.Models.Timing.PlayerCarIdx
             ?? snapshot.Models.Spatial.ReferenceCarIdx
-            ?? snapshot.LatestSample?.FocusCarIdx
-            ?? snapshot.LatestSample?.PlayerCarIdx;
+            ?? snapshot.LatestSample?.FocusCarIdx;
 
         foreach (var row in snapshot.Models.Timing.OverallRows.Concat(snapshot.Models.Timing.ClassRows))
         {
@@ -1108,10 +1154,8 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
             scoringByCarIdx.TryGetValue(row.CarIdx, out var scoringRow);
             var isFocus = row.IsFocus
-                || row.IsPlayer
                 || row.CarIdx == referenceCarIdx
-                || scoringRow?.IsFocus == true
-                || scoringRow?.IsPlayer == true;
+                || scoringRow?.IsFocus == true;
             var marker = new DesignV2TrackMapMarker(
                 row.CarIdx,
                 NormalizeProgress(lapDistPct),
@@ -1131,10 +1175,10 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             AddStartingGridMarkers(markers, snapshot.Models.Scoring.Rows, referenceCarIdx);
         }
 
-        var focusProgress = snapshot.Models.Spatial.ReferenceLapDistPct
-            ?? MarkerProgress(snapshot.LatestSample);
-        var focusMarkerCarIdx = referenceCarIdx ?? -1;
-        if (focusProgress is { } progress && IsValidProgress(progress))
+        var focusProgress = MarkerProgress(snapshot.LatestSample);
+        if (referenceCarIdx is { } focusMarkerCarIdx
+            && focusProgress is { } progress
+            && IsValidProgress(progress))
         {
             markers[focusMarkerCarIdx] = new DesignV2TrackMapMarker(
                 focusMarkerCarIdx,
@@ -1160,7 +1204,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         for (var index = 0; index < rows.Length; index++)
         {
             var row = rows[index];
-            var isFocus = row.IsFocus || row.IsPlayer || row.CarIdx == referenceCarIdx;
+            var isFocus = row.IsFocus || row.CarIdx == referenceCarIdx;
             markers[row.CarIdx] = new DesignV2TrackMapMarker(
                 row.CarIdx,
                 rows.Length <= 1 ? 0d : NormalizeProgress(index / (double)rows.Length),
@@ -1173,10 +1217,8 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private static string? PositionLabel(LiveTimingRow row, LiveScoringRow? scoringRow, int? referenceCarIdx)
     {
         if (!row.IsFocus
-            && !row.IsPlayer
             && row.CarIdx != referenceCarIdx
-            && scoringRow?.IsFocus != true
-            && scoringRow?.IsPlayer != true)
+            && scoringRow?.IsFocus != true)
         {
             return null;
         }
@@ -1206,27 +1248,20 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             return PositionLabel(scoringRow);
         }
 
-        var row = snapshot.Models.Timing.FocusRow
-            ?? snapshot.Models.Timing.PlayerRow;
-        return row is not null
-            ? PositionLabel(row)
-            : FocusPositionLabel(snapshot.LatestSample);
+        return PositionLabel(snapshot.Models.Timing.FocusRow)
+            ?? FocusPositionLabel(snapshot.LatestSample);
     }
 
     private static string? FocusPositionLabel(HistoricalTelemetrySample? sample)
     {
         var position = sample?.FocusClassPosition
-            ?? sample?.TeamClassPosition
-            ?? sample?.FocusPosition
-            ?? sample?.TeamPosition;
+            ?? sample?.FocusPosition;
         return position is > 0 ? position.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
     }
 
     private static double? MarkerProgress(HistoricalTelemetrySample? sample)
     {
-        var progress = sample?.FocusLapDistPct
-            ?? sample?.TeamLapDistPct
-            ?? sample?.LapDistPct;
+        var progress = sample?.FocusLapDistPct;
         return progress is { } value && IsValidProgress(value)
             ? NormalizeProgress(value)
             : null;
@@ -1294,7 +1329,14 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         using var titleFont = FontOf(14, FontStyle.Bold);
         using var statusFont = FontOf(11, FontStyle.Bold);
         DrawText(graphics, model.Title, titleFont, TextPrimary, new RectangleF(outer.Left + 14, header.Top + 10, Math.Min(230, outer.Width * 0.55f), 18));
-        DrawText(graphics, model.Status, statusFont, EvidenceColor(model.Evidence), new RectangleF(outer.Left + 230, header.Top + 10, outer.Width - 244, 18), ContentAlignment.MiddleRight);
+        var closeButtonSpace = _closeButton is not null ? 34 : 0;
+        DrawText(
+            graphics,
+            model.Status,
+            statusFont,
+            EvidenceColor(model.Evidence),
+            new RectangleF(outer.Left + 230, header.Top + 10, Math.Max(1, outer.Width - 244 - closeButtonSpace), 18),
+            ContentAlignment.MiddleRight);
 
         var body = new RectangleF(
             outer.Left + PaddingSize,
@@ -2623,6 +2665,47 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         }
 
         return "CLEAR";
+    }
+
+    internal static bool IsInputTransparentKind(DesignV2LiveOverlayKind kind)
+    {
+        return kind is DesignV2LiveOverlayKind.Flags or DesignV2LiveOverlayKind.StreamChat;
+    }
+
+    private Button CreateStreamChatCloseButton()
+    {
+        var button = new Button
+        {
+            Text = "X",
+            FlatStyle = FlatStyle.Flat,
+            TabStop = false,
+            Width = 22,
+            Height = 22,
+            BackColor = TitleBar,
+            ForeColor = TextPrimary,
+            Cursor = Cursors.Hand
+        };
+        button.FlatAppearance.BorderColor = Border;
+        button.FlatAppearance.BorderSize = 1;
+        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(74, 40, 48, 62);
+        button.FlatAppearance.MouseDownBackColor = Color.FromArgb(96, 60, 34, 44);
+        button.Click += (_, _) => DisableOverlayAndClose();
+        return button;
+    }
+
+    private void LayoutStreamChatCloseButton()
+    {
+        if (_closeButton is null)
+        {
+            return;
+        }
+
+        _closeButton.Location = new Point(Math.Max(4, ClientSize.Width - _closeButton.Width - 10), 9);
+    }
+
+    private bool IsStreamChatCloseButtonHit(Point clientPoint)
+    {
+        return _closeButton is not null && _closeButton.Bounds.Contains(clientPoint);
     }
 
     private static bool HasTrackMapHighlight(LiveTrackSectorSegment sector)
