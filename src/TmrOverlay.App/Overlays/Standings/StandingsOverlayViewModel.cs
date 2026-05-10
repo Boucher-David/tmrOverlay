@@ -121,7 +121,7 @@ internal sealed record StandingsOverlayViewModel(
         var visibleGroups = orderedGroups
             .Where(group => groupLimits.ContainsKey(group))
             .ToArray();
-        var includeHeaders = showClassSeparators && orderedGroups.Length > 1;
+        var includeHeaders = showClassSeparators && orderedGroups.Count > 1;
         var rows = new List<StandingsOverlayRowViewModel>();
         var timingByCarIdx = snapshot.Models.Timing.OverallRows
             .Concat(snapshot.Models.Timing.ClassRows)
@@ -160,7 +160,7 @@ internal sealed record StandingsOverlayViewModel(
         var otherGroups = orderedGroups
             .Where(group => showClassSeparators && !ReferenceEquals(group, primaryGroup) && otherClassRowsPerClass > 0)
             .ToArray();
-        var includeHeaders = showClassSeparators && (otherGroups.Length > 0 || orderedGroups.Length > 1);
+        var includeHeaders = showClassSeparators && (otherGroups.Length > 0 || orderedGroups.Count > 1);
         var reservedOtherRows = otherGroups.Sum(_ => includeHeaders ? 1 + otherClassRowsPerClass : otherClassRowsPerClass);
         var minimumPrimaryRows = Math.Min(maximumRows, includeHeaders ? 2 : 1);
         limits[primaryGroup] = Math.Clamp(maximumRows - reservedOtherRows, minimumPrimaryRows, maximumRows);

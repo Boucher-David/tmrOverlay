@@ -7,6 +7,7 @@ using TmrOverlay.App.Overlays.Abstractions;
 using TmrOverlay.App.Overlays.Content;
 using TmrOverlay.App.Overlays.Flags;
 using TmrOverlay.App.Overlays.FuelCalculator;
+using TmrOverlay.App.Overlays.GapToLeader;
 using TmrOverlay.App.Overlays.InputState;
 using TmrOverlay.App.Overlays.PitService;
 using TmrOverlay.App.Overlays.Relative;
@@ -391,7 +392,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private DesignV2OverlayModel BuildGapModel(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
     {
         var availability = OverlayAvailabilityEvaluator.FromSnapshot(snapshot, now);
-        var gap = GapToLeaderLiveModelAdapter.Select(snapshot);
+        var gap = TmrOverlay.App.Overlays.GapToLeader.GapToLeaderLiveModelAdapter.Select(snapshot);
         if (gap.HasData && gap.ClassLeaderGap.Seconds is { } seconds && IsFinite(seconds))
         {
             _gapPoints.Add(seconds);
@@ -448,11 +449,30 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private DesignV2OverlayModel BuildStreamChatModel()
     {
         var provider = _settings.GetStringOption(OverlayOptionKeys.StreamChatProvider, "none").Trim().ToLowerInvariant();
-        var rows = provider switch
+        DesignV2MetricRow[] rows = provider switch
         {
-            "twitch" => [new DesignV2MetricRow("Twitch", string.IsNullOrWhiteSpace(_settings.GetStringOption(OverlayOptionKeys.StreamChatTwitchChannel)) ? "add channel in settings" : $"#{_settings.GetStringOption(OverlayOptionKeys.StreamChatTwitchChannel)}", DesignV2Evidence.Partial)],
-            "streamlabs" => [new DesignV2MetricRow("Streamlabs", string.IsNullOrWhiteSpace(_settings.GetStringOption(OverlayOptionKeys.StreamChatStreamlabsUrl)) ? "add URL in settings" : "browser source configured", DesignV2Evidence.Partial)],
-            _ => [new DesignV2MetricRow("Provider", "choose Twitch or Streamlabs", DesignV2Evidence.Unavailable)]
+            "twitch" => new[]
+            {
+                new DesignV2MetricRow(
+                    "Twitch",
+                    string.IsNullOrWhiteSpace(_settings.GetStringOption(OverlayOptionKeys.StreamChatTwitchChannel))
+                        ? "add channel in settings"
+                        : $"#{_settings.GetStringOption(OverlayOptionKeys.StreamChatTwitchChannel)}",
+                    DesignV2Evidence.Partial)
+            },
+            "streamlabs" => new[]
+            {
+                new DesignV2MetricRow(
+                    "Streamlabs",
+                    string.IsNullOrWhiteSpace(_settings.GetStringOption(OverlayOptionKeys.StreamChatStreamlabsUrl))
+                        ? "add URL in settings"
+                        : "browser source configured",
+                    DesignV2Evidence.Partial)
+            },
+            _ => new[]
+            {
+                new DesignV2MetricRow("Provider", "choose Twitch or Streamlabs", DesignV2Evidence.Unavailable)
+            }
         };
         return new DesignV2OverlayModel(
             "Stream Chat",

@@ -607,6 +607,12 @@ internal sealed class OverlayManager : IDisposable
 
     private void ApplyOverlaySettingsCore()
     {
+        var appSettings = _settings;
+        if (appSettings is null)
+        {
+            return;
+        }
+
         var started = System.Diagnostics.Stopwatch.GetTimestamp();
         var succeeded = false;
         Form? activeSettingsForm = null;
@@ -623,7 +629,7 @@ internal sealed class OverlayManager : IDisposable
             var currentSession = CurrentSessionKind(liveSnapshot);
             foreach (var registration in ManagedOverlayRegistrations)
             {
-                var settings = _settings.GetOrAddOverlay(
+                var settings = appSettings.GetOrAddOverlay(
                     registration.Definition.Id,
                     registration.Definition.DefaultWidth,
                     registration.Definition.DefaultHeight,
