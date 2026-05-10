@@ -2,6 +2,8 @@
 
 This is the human-readable review file for how each overlay decides what to show. It is intentionally written for teammates reviewing behavior, not for C# implementation details.
 
+For visual decision paths, see [Overlay Flow Diagrams](overlay-flow-diagrams.md).
+
 ## Global Rules
 
 All managed native overlays use the same outer visibility rules:

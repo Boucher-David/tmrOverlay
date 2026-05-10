@@ -7,6 +7,7 @@ They should be updated whenever overlay behavior, telemetry derivation, analysis
 ## Overlay Logic
 
 - [Overlay Behavior Reference](overlay-behavior-reference.md)
+- [Overlay Flow Diagrams](overlay-flow-diagrams.md)
 - [Status Overlay Logic](status-overlay-logic.md)
 - [Settings And Overlay Manager Logic](settings-overlay-logic.md)
 - [Fuel Calculator Logic](fuel-calculator-logic.md)

@@ -167,6 +167,7 @@ Those snapshots include telemetry throughput, iRacing network/system values, ove
 - [docs/update-strategy.md](docs/update-strategy.md) - Velopack release-channel plan and follow-up work.
 - [docs/overlay-logic.md](docs/overlay-logic.md) - index of overlay behavior notes.
 - [docs/overlay-behavior-reference.md](docs/overlay-behavior-reference.md) - plain-English behavior reference for each overlay.
+- [docs/overlay-flow-diagrams.md](docs/overlay-flow-diagrams.md) - Mermaid flow diagrams for overlay decision paths.
 - [docs/capture-format.md](docs/capture-format.md) - raw capture file format.
 - [docs/history-data-evolution.md](docs/history-data-evolution.md) - durable user-history compatibility rules.
 - [docs/repo-surface.md](docs/repo-surface.md) - what belongs in source, docs, validation artifacts, runtime data, and release packages.
