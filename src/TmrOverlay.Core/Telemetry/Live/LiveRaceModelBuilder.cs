@@ -1336,13 +1336,15 @@ internal static class LiveRaceModelBuilder
         var leadersByClass = rows
             .Where(row => row.CarClass is not null && ValidNonNegative(row.F2TimeSeconds) is not null)
             .GroupBy(row => row.CarClass!.Value)
+            .Select(group => new
+            {
+                CarClass = group.Key,
+                Leader = SelectDerivedClassLeader(group)
+            })
+            .Where(item => item.Leader is not null)
             .ToDictionary(
-                group => group.Key,
-                group => group
-                    .OrderBy(row => row.ClassPosition == 1 ? 0 : 1)
-                    .ThenBy(row => row.ClassPosition ?? int.MaxValue)
-                    .ThenBy(row => row.F2TimeSeconds ?? double.MaxValue)
-                    .First());
+                item => item.CarClass,
+                item => item.Leader!);
 
         return rows
             .Select(row =>
@@ -1379,6 +1381,27 @@ internal static class LiveRaceModelBuilder
                 return updated;
             })
             .ToArray();
+    }
+
+    private static LiveTimingRow? SelectDerivedClassLeader(IEnumerable<LiveTimingRow> rows)
+    {
+        var candidates = rows
+            .Where(row => ValidNonNegative(row.F2TimeSeconds) is not null)
+            .ToArray();
+        var explicitLeader = candidates
+            .Where(row => row.IsClassLeader || row.ClassPosition == 1)
+            .OrderBy(row => row.ClassPosition == 1 ? 0 : 1)
+            .ThenBy(row => row.F2TimeSeconds ?? double.MaxValue)
+            .FirstOrDefault();
+
+        if (explicitLeader is not null)
+        {
+            return explicitLeader;
+        }
+
+        return candidates.Length > 1
+            ? candidates.OrderBy(row => row.F2TimeSeconds ?? double.MaxValue).First()
+            : null;
     }
 
     private static LiveSignalEvidence BuildLeaderGapEvidence(

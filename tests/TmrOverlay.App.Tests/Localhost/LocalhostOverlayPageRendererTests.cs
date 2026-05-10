@@ -88,7 +88,7 @@ public sealed class BrowserOverlayPageRendererTests
         {
             Assert.Contains("fetchOverlayModel('pit-service')", html);
             Assert.Contains("pitServiceDisplayModel", html);
-            Assert.Contains("metric highlight", html);
+            Assert.Contains(".metric.highlight", html);
         }
         if (expectedId == "input-state")
         {
