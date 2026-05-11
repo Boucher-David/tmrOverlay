@@ -189,6 +189,7 @@ public sealed class RelativeOverlayViewModelTests
                 Scoring = new LiveScoringModel(
                     HasData: true,
                     Quality: LiveModelQuality.Reliable,
+                    Source: LiveScoringSource.SessionResults,
                     ReferenceCarIdx: 10,
                     ReferenceCarClass: 4098,
                     ClassGroups: [],
@@ -292,6 +293,74 @@ public sealed class RelativeOverlayViewModelTests
         Assert.Equal("live relative - 0 cars", viewModel.Status);
     }
 
+    [Fact]
+    public void From_DoesNotSuppressNonPlayerFocusPositionFromLocalGarageState()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var reference = TimingRow(
+            12,
+            "AI Focus",
+            classPosition: 4,
+            overallPosition: 8,
+            isPlayer: false,
+            isFocus: true);
+        var snapshot = Snapshot(now) with
+        {
+            Models = Snapshot(now).Models with
+            {
+                DriverDirectory = LiveDriverDirectoryModel.Empty with
+                {
+                    HasData = true,
+                    Quality = LiveModelQuality.Reliable,
+                    PlayerCarIdx = 10,
+                    FocusCarIdx = 12,
+                    ReferenceCarClass = 4098,
+                    PlayerDriver = Driver(10, "Local Player", "10"),
+                    FocusDriver = Driver(12, "AI Focus", "12"),
+                    Drivers = [Driver(10, "Local Player", "10"), Driver(12, "AI Focus", "12")]
+                },
+                Timing = LiveTimingModel.Empty with
+                {
+                    HasData = true,
+                    Quality = LiveModelQuality.Reliable,
+                    PlayerCarIdx = 10,
+                    FocusCarIdx = 12,
+                    FocusRow = reference,
+                    OverallRows = [reference],
+                    ClassRows = [reference]
+                },
+                Relative = LiveRelativeModel.Empty with
+                {
+                    HasData = false,
+                    ReferenceCarIdx = 12
+                },
+                RaceEvents = new LiveRaceEventModel(
+                    HasData: true,
+                    Quality: LiveModelQuality.Reliable,
+                    IsOnTrack: false,
+                    IsInGarage: true,
+                    IsGarageVisible: true,
+                    OnPitRoad: false,
+                    Lap: 0,
+                    LapCompleted: 0,
+                    LapDistPct: 0d,
+                    DriversSoFar: null,
+                    DriverChangeLapStatus: null)
+            }
+        };
+
+        var viewModel = RelativeOverlayViewModel.From(
+            snapshot,
+            now,
+            carsAhead: 5,
+            carsBehind: 5);
+
+        var referenceRow = Assert.Single(viewModel.Rows);
+        Assert.True(referenceRow.IsReference);
+        Assert.Equal("4", referenceRow.Position);
+        Assert.Equal("4 - 0 cars", viewModel.Status);
+    }
+
     private static LiveTelemetrySnapshot Snapshot(DateTimeOffset now, params LiveRelativeRow[] rows)
     {
         var reference = TimingRow(10, "Reference Driver", classPosition: 6, isPlayer: true, isFocus: true);
@@ -340,6 +409,7 @@ public sealed class RelativeOverlayViewModelTests
                 Scoring = new LiveScoringModel(
                     HasData: true,
                     Quality: LiveModelQuality.Reliable,
+                    Source: LiveScoringSource.SessionResults,
                     ReferenceCarIdx: 10,
                     ReferenceCarClass: 4098,
                     ClassGroups: [],

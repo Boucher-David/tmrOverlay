@@ -215,6 +215,7 @@ public sealed class StandingsOverlayViewModelTests
             Scoring = new LiveScoringModel(
                 HasData: true,
                 Quality: LiveModelQuality.Reliable,
+                Source: LiveScoringSource.SessionResults,
                 ReferenceCarIdx: 3,
                 ReferenceCarClass: 4098,
                 ClassGroups:
@@ -291,6 +292,7 @@ public sealed class StandingsOverlayViewModelTests
             Scoring = new LiveScoringModel(
                 HasData: true,
                 Quality: LiveModelQuality.Reliable,
+                Source: LiveScoringSource.SessionResults,
                 ReferenceCarIdx: 10,
                 ReferenceCarClass: 4098,
                 ClassGroups:
@@ -337,6 +339,50 @@ public sealed class StandingsOverlayViewModelTests
     }
 
     [Fact]
+    public void From_ExpandsScoringRowsToShowAllClassHeadersAndConfiguredOtherClassRows()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var classGroups = new[]
+        {
+            ScoringGroup(5000, "GT3", 10, firstOverallPosition: 1, isReferenceClass: true),
+            ScoringGroup(5001, "Cup", 20, firstOverallPosition: 4),
+            ScoringGroup(5002, "GT4", 30, firstOverallPosition: 7),
+            ScoringGroup(5003, "TCR", 40, firstOverallPosition: 10),
+            ScoringGroup(5004, "M2", 50, firstOverallPosition: 13)
+        };
+        var allRows = classGroups
+            .SelectMany(group => group.Rows)
+            .OrderBy(row => row.OverallPosition)
+            .ToArray();
+        var snapshot = Snapshot(now, LiveRaceModels.Empty with
+        {
+            Scoring = new LiveScoringModel(
+                HasData: true,
+                Quality: LiveModelQuality.Reliable,
+                Source: LiveScoringSource.SessionResults,
+                ReferenceCarIdx: 10,
+                ReferenceCarClass: 5000,
+                ClassGroups: classGroups,
+                Rows: allRows)
+        });
+
+        var viewModel = StandingsOverlayViewModel.From(
+            snapshot,
+            now,
+            maximumRows: 8,
+            otherClassRowsPerClass: 1);
+
+        Assert.Equal(12, viewModel.Rows.Count);
+        Assert.Equal(
+            new[] { "GT3", "Cup", "GT4", "TCR", "M2" },
+            viewModel.Rows.Where(row => row.IsClassHeader).Select(row => row.Driver));
+        Assert.Equal(7, viewModel.Rows.Count(row => !row.IsClassHeader));
+        Assert.Contains(viewModel.Rows, row => row.CarNumber == "#11");
+        Assert.Contains(viewModel.Rows, row => row.CarNumber == "#12");
+        Assert.True(viewModel.Rows.Single(row => row.CarNumber == "#10").IsReference);
+    }
+
+    [Fact]
     public void From_UsesCurrentReferenceCarClassForPrimaryMulticlassWindow()
     {
         var now = DateTimeOffset.UtcNow;
@@ -360,6 +406,7 @@ public sealed class StandingsOverlayViewModelTests
             Scoring = new LiveScoringModel(
                 HasData: true,
                 Quality: LiveModelQuality.Reliable,
+                Source: LiveScoringSource.SessionResults,
                 ReferenceCarIdx: 21,
                 ReferenceCarClass: 4000,
                 ClassGroups:
@@ -412,6 +459,7 @@ public sealed class StandingsOverlayViewModelTests
             Scoring = new LiveScoringModel(
                 HasData: true,
                 Quality: LiveModelQuality.Reliable,
+                Source: LiveScoringSource.SessionResults,
                 ReferenceCarIdx: 7,
                 ReferenceCarClass: 4098,
                 ClassGroups:
@@ -453,6 +501,7 @@ public sealed class StandingsOverlayViewModelTests
             Scoring = new LiveScoringModel(
                 HasData: true,
                 Quality: LiveModelQuality.Reliable,
+                Source: LiveScoringSource.SessionResults,
                 ReferenceCarIdx: 1,
                 ReferenceCarClass: 4098,
                 ClassGroups:
@@ -498,6 +547,7 @@ public sealed class StandingsOverlayViewModelTests
             Scoring = new LiveScoringModel(
                 HasData: true,
                 Quality: LiveModelQuality.Reliable,
+                Source: LiveScoringSource.SessionResults,
                 ReferenceCarIdx: 10,
                 ReferenceCarClass: 4098,
                 ClassGroups:
@@ -552,6 +602,7 @@ public sealed class StandingsOverlayViewModelTests
             Scoring = new LiveScoringModel(
                 HasData: true,
                 Quality: LiveModelQuality.Reliable,
+                Source: LiveScoringSource.SessionResults,
                 ReferenceCarIdx: 10,
                 ReferenceCarClass: 4098,
                 ClassGroups:
@@ -641,6 +692,7 @@ public sealed class StandingsOverlayViewModelTests
             Scoring = new LiveScoringModel(
                 HasData: true,
                 Quality: LiveModelQuality.Reliable,
+                Source: LiveScoringSource.SessionResults,
                 ReferenceCarIdx: 10,
                 ReferenceCarClass: 4098,
                 ClassGroups:
@@ -768,5 +820,32 @@ public sealed class StandingsOverlayViewModelTests
             LastLapTimeSeconds: lastLapTimeSeconds,
             BestLapTimeSeconds: bestLapTimeSeconds,
             ReasonOut: null);
+    }
+
+    private static LiveScoringClassGroup ScoringGroup(
+        int carClass,
+        string className,
+        int firstCarIdx,
+        int firstOverallPosition,
+        bool isReferenceClass = false)
+    {
+        var rows = Enumerable.Range(0, 3)
+            .Select(index => ScoringRow(
+                firstCarIdx + index,
+                overallPosition: firstOverallPosition + index,
+                classPosition: index + 1,
+                carNumber: $"{firstCarIdx + index}",
+                driverName: $"{className} Driver {index + 1}",
+                carClass: carClass,
+                className: className,
+                isFocus: isReferenceClass && index == 0))
+            .ToArray();
+        return new LiveScoringClassGroup(
+            CarClass: carClass,
+            ClassName: className,
+            CarClassColorHex: "#33CEFF",
+            IsReferenceClass: isReferenceClass,
+            RowCount: rows.Length,
+            Rows: rows);
     }
 }

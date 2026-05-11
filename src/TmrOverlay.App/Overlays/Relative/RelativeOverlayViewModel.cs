@@ -246,16 +246,37 @@ internal sealed record RelativeOverlayViewModel(
         LiveTimingRow? timing)
     {
         var raceEvents = snapshot.Models.RaceEvents;
-        if (raceEvents.HasData && (!raceEvents.IsOnTrack || raceEvents.IsInGarage))
+        var referenceUsesLocalPlayer = ReferenceUsesLocalPlayer(snapshot, timing);
+        if (referenceUsesLocalPlayer && raceEvents.HasData && (!raceEvents.IsOnTrack || raceEvents.IsInGarage))
         {
             return true;
         }
 
-        var pitRoadLike = timing?.OnPitRoad == true || raceEvents is { HasData: true, OnPitRoad: true };
-        return pitRoadLike
-            && raceEvents.HasData
+        if (timing?.OnPitRoad == true
+            && (timing.LapCompleted ?? 0) <= 0
+            && (timing.LapDistPct ?? 0d) <= 0.001d)
+        {
+            return true;
+        }
+
+        return referenceUsesLocalPlayer
+            && raceEvents is { HasData: true, OnPitRoad: true }
             && raceEvents.LapCompleted <= 0
             && raceEvents.LapDistPct <= 0.001d;
+    }
+
+    private static bool ReferenceUsesLocalPlayer(LiveTelemetrySnapshot snapshot, LiveTimingRow? timing)
+    {
+        var focusCarIdx = snapshot.Models.Relative.ReferenceCarIdx
+            ?? timing?.CarIdx
+            ?? snapshot.Models.Timing.FocusRow?.CarIdx
+            ?? snapshot.Models.Timing.FocusCarIdx
+            ?? snapshot.Models.DriverDirectory.FocusCarIdx;
+        var playerCarIdx = snapshot.Models.DriverDirectory.PlayerCarIdx
+            ?? snapshot.LatestSample?.PlayerCarIdx;
+        return focusCarIdx is not null
+            && playerCarIdx is not null
+            && focusCarIdx == playerCarIdx;
     }
 
     private static string? FirstNonEmpty(params string?[] values)

@@ -35,6 +35,8 @@ It treats snapshots older than 1.5 seconds as stale and shows a waiting state in
 
 Relative does not promote `PlayerCarIdx` to the reference row when `CamCarIdx`/focus is unavailable. If the focus car is missing, the overlay waits with `waiting for focus-relative telemetry` instead of showing a player-centered view the user did not ask for. When focus is the player/team car, model-v2 can still use team/local timing fields to fill missing focused-car details because those fields describe the same car.
 
+Local off-track, garage, and pit-context suppression only applies when the relative reference is the local player/team car. If the current focus is a non-player AI/spectated car and live relative/timing evidence exists for that focus, the local player's garage or off-track state does not suppress the whole Relative overlay.
+
 Cars ahead and behind are sorted by the best available absolute relative value:
 
 1. Relative seconds.

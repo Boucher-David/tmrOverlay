@@ -557,7 +557,7 @@ internal sealed record LiveLeaderGapSnapshot(
 
     private static double? CalculateClassGapSeconds(double? carF2TimeSeconds, double? classLeaderF2TimeSeconds)
     {
-        return ValidGapSeconds(carF2TimeSeconds) is { } carF2
+        return ValidPositiveGapSeconds(carF2TimeSeconds) is { } carF2
             && classLeaderF2TimeSeconds is { } leaderF2
             && carF2 >= leaderF2
             ? carF2 - leaderF2
@@ -602,10 +602,9 @@ internal sealed record LiveLeaderGapSnapshot(
                 Source: "position");
         }
 
-        if (ValidGapSeconds(referenceF2TimeSeconds) is { } referenceF2)
+        if (ValidPositiveGapSeconds(referenceF2TimeSeconds) is { } referenceF2)
         {
-            var leaderF2 = ValidGapSeconds(leaderF2TimeSeconds) ?? 0d;
-            if (referenceF2 >= leaderF2)
+            if (ValidGapSeconds(leaderF2TimeSeconds) is { } leaderF2 && referenceF2 >= leaderF2)
             {
                 return new LiveGapValue(
                     HasData: true,
@@ -822,6 +821,13 @@ internal sealed record LiveLeaderGapSnapshot(
     private static double? ValidGapSeconds(double? seconds)
     {
         return seconds is { } value && IsFinite(value) && value >= 0d && value < 86400d
+            ? value
+            : null;
+    }
+
+    private static double? ValidPositiveGapSeconds(double? seconds)
+    {
+        return seconds is { } value && IsFinite(value) && value > 0d && value < 86400d
             ? value
             : null;
     }

@@ -8,6 +8,9 @@ internal sealed record StandingsOverlayViewModel(
     string Source,
     IReadOnlyList<StandingsOverlayRowViewModel> Rows)
 {
+    public const int DefaultMaximumRows = 14;
+    public const int MaximumRenderedRows = 64;
+
     public static StandingsOverlayViewModel From(
         LiveTelemetrySnapshot snapshot,
         DateTimeOffset now,
@@ -41,13 +44,15 @@ internal sealed record StandingsOverlayViewModel(
         }
 
         var requiresValidLap = RequiresValidLapBeforeRendering(snapshot);
+        var requestedMaximumRows = Math.Clamp(maximumRows, 1, MaximumRenderedRows);
+        var requestedOtherClassRows = Math.Clamp(otherClassRowsPerClass, 0, 6);
         if (scoring.HasData)
         {
             var scoringRows = ScoringRows(
                 snapshot,
                 referenceCarIdx,
-                Math.Clamp(maximumRows, 1, 20),
-                Math.Clamp(otherClassRowsPerClass, 0, 6),
+                requestedMaximumRows,
+                requestedOtherClassRows,
                 showClassSeparators,
                 requiresValidLap);
             if (scoringRows.Length == 0)
@@ -66,7 +71,7 @@ internal sealed record StandingsOverlayViewModel(
                 : $"{shownCars}/{scoringRowCount} rows";
             return new StandingsOverlayViewModel(
                 scoringStatus,
-                SourceText(snapshot.Models.Coverage),
+                SourceText(scoring, snapshot.Models.Coverage),
                 scoringRows);
         }
 
@@ -86,7 +91,7 @@ internal sealed record StandingsOverlayViewModel(
         var candidateRows = SelectRowsAroundReference(
                 orderedCandidateRows,
                 referenceCarIdx,
-                Math.Clamp(maximumRows, 1, 20),
+                requestedMaximumRows,
                 row => row.CarIdx)
             .Select(row => ToRow(row, referenceCarIdx))
             .ToArray();
@@ -147,7 +152,18 @@ internal sealed record StandingsOverlayViewModel(
             .ToArray();
         var primaryGroup = PrimaryGroup(orderedGroups, referenceCarIdx)
             ?? orderedGroups.First();
-        var groupLimits = BuildGroupLimits(orderedGroups, primaryGroup, maximumRows, otherClassRowsPerClass, showClassSeparators);
+        var expandedMaximumRows = ExpandRowBudgetForClassGroups(
+            orderedGroups,
+            maximumRows,
+            otherClassRowsPerClass,
+            showClassSeparators);
+        var rowBudget = expandedMaximumRows;
+        var groupLimits = BuildGroupLimits(
+            orderedGroups,
+            primaryGroup,
+            rowBudget,
+            otherClassRowsPerClass,
+            showClassSeparators);
         var visibleGroups = orderedGroups
             .Where(group => groupLimits.ContainsKey(group))
             .ToArray();
@@ -160,7 +176,7 @@ internal sealed record StandingsOverlayViewModel(
 
         foreach (var group in visibleGroups)
         {
-            if (rows.Count >= maximumRows)
+            if (rows.Count >= rowBudget)
             {
                 break;
             }
@@ -171,13 +187,31 @@ internal sealed record StandingsOverlayViewModel(
                 timingByCarIdx,
                 referenceCarIdx,
                 ClassEstimatedLaps(group, snapshot),
-                maximumRows,
-                Math.Min(maximumRows - rows.Count, groupLimits[group]),
+                rowBudget,
+                Math.Min(rowBudget - rows.Count, groupLimits[group]),
                 ReferenceEquals(group, primaryGroup),
                 includeHeaders);
         }
 
         return rows.ToArray();
+    }
+
+    internal static int ExpandRowBudgetForClassGroups(
+        IReadOnlyList<LiveScoringClassGroup> orderedGroups,
+        int requestedMaximumRows,
+        int otherClassRowsPerClass,
+        bool showClassSeparators)
+    {
+        var baseRows = Math.Clamp(requestedMaximumRows, 1, MaximumRenderedRows);
+        if (!showClassSeparators || orderedGroups.Count <= 1)
+        {
+            return baseRows;
+        }
+
+        var otherGroupCount = Math.Max(0, orderedGroups.Count - 1);
+        var otherGroupRows = otherGroupCount * (1 + Math.Clamp(otherClassRowsPerClass, 0, 6));
+        var classHeaderRows = orderedGroups.Count;
+        return Math.Clamp(baseRows + classHeaderRows + otherGroupRows, 1, MaximumRenderedRows);
     }
 
     private static Dictionary<LiveScoringClassGroup, int> BuildGroupLimits(
@@ -189,7 +223,7 @@ internal sealed record StandingsOverlayViewModel(
     {
         var limits = new Dictionary<LiveScoringClassGroup, int>();
         var otherGroups = orderedGroups
-            .Where(group => showClassSeparators && !ReferenceEquals(group, primaryGroup) && otherClassRowsPerClass > 0)
+            .Where(group => showClassSeparators && !ReferenceEquals(group, primaryGroup))
             .ToArray();
         var includeHeaders = showClassSeparators && (otherGroups.Length > 0 || orderedGroups.Count > 1);
         var reservedOtherRows = otherGroups.Sum(_ => includeHeaders ? 1 + otherClassRowsPerClass : otherClassRowsPerClass);
@@ -475,6 +509,18 @@ internal sealed record StandingsOverlayViewModel(
         return coverage.HasFullLiveScoring
             ? "source: scoring snapshot + live timing"
             : "source: scoring snapshot (partial live)";
+    }
+
+    private static string SourceText(LiveScoringModel scoring, LiveCoverageModel coverage)
+    {
+        if (scoring.Source == LiveScoringSource.StartingGrid)
+        {
+            return coverage.LiveScoringRowCount > 0
+                ? "source: starting grid + live timing"
+                : "source: starting grid";
+        }
+
+        return SourceText(coverage);
     }
 
     private static string SourceText(LiveTimingModel timing)

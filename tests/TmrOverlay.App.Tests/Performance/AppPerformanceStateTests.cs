@@ -155,6 +155,9 @@ public sealed class AppPerformanceStateTests
             inputTransparent: false,
             noActivate: false,
             settingsOverlayActive: false,
+            settingsWindowVisible: false,
+            intersectsSettingsWindow: false,
+            settingsWindowInputProtected: false,
             x: 10,
             y: 20,
             width: 780,
@@ -166,6 +169,41 @@ public sealed class AppPerformanceStateTests
         Assert.Contains(snapshot.OverlayUpdates, metric =>
             metric.Id == "overlay.standings.window.input_intercept_risk" && metric.Last == 1d);
         var window = Assert.Single(snapshot.OverlayWindows);
+        Assert.True(window.InputInterceptRisk);
+    }
+
+    [Fact]
+    public void OverlayWindowState_FlagsTopMostNoActivateOverlayRiskWhileSettingsVisible()
+    {
+        var state = new AppPerformanceState();
+        var timestamp = DateTimeOffset.Parse("2026-05-09T12:00:00Z");
+
+        state.RecordOverlayWindowState(
+            "relative",
+            timestamp,
+            actualVisible: true,
+            topMost: true,
+            alwaysOnTopSetting: true,
+            inputTransparent: false,
+            noActivate: true,
+            settingsOverlayActive: false,
+            settingsWindowVisible: true,
+            intersectsSettingsWindow: false,
+            settingsWindowInputProtected: false,
+            x: 822,
+            y: 18,
+            width: 438,
+            height: 360,
+            opacity: 0.88d);
+
+        var snapshot = state.Snapshot();
+
+        Assert.Contains(snapshot.OverlayUpdates, metric =>
+            metric.Id == "overlay.relative.window.settings_window_visible" && metric.Last == 1d);
+        Assert.Contains(snapshot.OverlayUpdates, metric =>
+            metric.Id == "overlay.relative.window.input_intercept_risk" && metric.Last == 1d);
+        var window = Assert.Single(snapshot.OverlayWindows);
+        Assert.True(window.SettingsWindowVisible);
         Assert.True(window.InputInterceptRisk);
     }
 }
