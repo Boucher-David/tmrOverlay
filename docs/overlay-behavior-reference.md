@@ -12,8 +12,9 @@ All managed native overlays use the same outer visibility rules:
 2. An overlay is eligible to show when its setting is enabled and its session filter allows the current session kind.
 3. The General-tab Show Preview mode supplies deterministic Practice, Qualifying, or Race telemetry only. It does not enable hidden overlays, bypass session filters, move windows, change opacity, change topmost state, or force Stream Chat open.
 4. Race-data overlays fade out when live telemetry is disconnected, not collecting, or stale. Status and Stream Chat are not race-data overlays for this fade policy.
-5. Settings preview controls can show an overlay for configuration review, but that is treated as a settings preview, not a normal runtime visibility decision.
-6. Browser-source pages read the same normalized overlay models where practical. The browser review server uses deterministic fixtures and is a development/review surface, not the production iRacing runtime.
+5. Local-only overlays also require their declared live context before their native windows are shown. Radar and Inputs require local player in-car focus; Fuel Calculator and Pit Service require local player focus plus active in-car or pit context.
+6. Settings preview controls can show an overlay for configuration review, but that is treated as a settings preview, not a normal runtime visibility decision.
+7. Browser-source pages read the same normalized overlay models where practical. The browser review server uses deterministic fixtures and is a development/review surface, not the production iRacing runtime.
 
 ## Settings
 
@@ -93,7 +94,7 @@ Inputs:
 
 Behavior:
 
-- Waits for a local active driver/team context. Focus on another car, unavailable focus, missing player car, garage/setup context, and no active local/pit context show `waiting for local fuel context`.
+- Requires a local active driver/team context. In native overlay mode, focus on another car, unavailable focus, missing player car, garage/setup context, and no active local/pit context keep the enabled window hidden; browser/model callers show `waiting for local fuel context`.
 - Shows planned race laps, stint count, and final stint target when those are known.
 - Otherwise shows current fuel, race laps remaining, and additional fuel needed.
 - Displays a strategy row when changing fuel rhythm avoids extra stops.
@@ -239,7 +240,7 @@ Inputs:
 
 Behavior:
 
-- Waits for fresh telemetry, local active driver/team context, and pit-service data. Focus on another car, unavailable focus, missing player car, garage/setup context, and no active local/pit context show `waiting for local pit-service context`.
+- Requires fresh telemetry, local active driver/team context, and pit-service data. In native overlay mode, focus on another car, unavailable focus, missing player car, garage/setup context, and no active local/pit context keep the enabled window hidden; browser/model callers show `waiting for local pit-service context`.
 - Still renders during the local pit window: on pit road, in the pit stall, or while service is active.
 - Shows current service status, fuel add/target, tire selections, fast repair, pit-road/stall state, and service completion context when available.
 - Uses warning/info/success tones for service state rather than treating all pit messages equally.
@@ -262,7 +263,7 @@ Inputs:
 
 Behavior:
 
-- Waits for fresh telemetry, then waits for the player car and car telemetry.
+- Waits for fresh telemetry, then requires the focused local player in-car context and local car telemetry.
 - Shows speed, gear/RPM, pedals, steering, warnings, electrical state, cooling, and oil/fuel pressure.
 - Converts speed, temperature, and pressure by unit system.
 - Treats engine warnings as warning-tone rows.

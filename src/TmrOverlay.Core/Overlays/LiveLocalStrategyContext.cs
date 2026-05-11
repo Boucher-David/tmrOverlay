@@ -11,6 +11,8 @@ internal static class LiveLocalStrategyContext
 {
     public const string FuelWaitingStatus = "waiting for local fuel context";
     public const string PitServiceWaitingStatus = "waiting for local pit-service context";
+    public const string LocalInCarWaitingStatus = "waiting for local in-car context";
+    public const string LocalInCarOrPitWaitingStatus = "waiting for local in-car or pit context";
 
     public static LiveLocalStrategyContextSnapshot ForFuelCalculator(
         LiveTelemetrySnapshot snapshot,
@@ -23,13 +25,39 @@ internal static class LiveLocalStrategyContext
         LiveTelemetrySnapshot snapshot,
         DateTimeOffset now)
     {
-        return Evaluate(snapshot, now, PitServiceWaitingStatus);
+        return Evaluate(snapshot, now, PitServiceWaitingStatus, allowPitContext: true);
+    }
+
+    public static LiveLocalStrategyContextSnapshot ForRequirement(
+        LiveTelemetrySnapshot snapshot,
+        DateTimeOffset now,
+        OverlayContextRequirement requirement)
+    {
+        return requirement switch
+        {
+            OverlayContextRequirement.AnyTelemetry => new LiveLocalStrategyContextSnapshot(
+                IsAvailable: true,
+                Reason: "not_required",
+                StatusText: "live"),
+            OverlayContextRequirement.LocalPlayerInCar => Evaluate(
+                snapshot,
+                now,
+                LocalInCarWaitingStatus,
+                allowPitContext: false),
+            OverlayContextRequirement.LocalPlayerInCarOrPit => Evaluate(
+                snapshot,
+                now,
+                LocalInCarOrPitWaitingStatus,
+                allowPitContext: true),
+            _ => Unavailable("unknown_context_requirement", LocalInCarWaitingStatus)
+        };
     }
 
     private static LiveLocalStrategyContextSnapshot Evaluate(
         LiveTelemetrySnapshot snapshot,
         DateTimeOffset now,
-        string localWaitingStatus)
+        string localWaitingStatus,
+        bool allowPitContext = true)
     {
         var telemetryAvailability = OverlayAvailabilityEvaluator.FromSnapshot(snapshot, now);
         if (!telemetryAvailability.IsAvailable)
@@ -63,7 +91,7 @@ internal static class LiveLocalStrategyContext
             return Unavailable("garage", localWaitingStatus);
         }
 
-        if (!IsLocalActiveOrPitContext(snapshot))
+        if (!IsLocalActiveContext(snapshot, allowPitContext))
         {
             return Unavailable("not_in_car", localWaitingStatus);
         }
@@ -83,13 +111,18 @@ internal static class LiveLocalStrategyContext
             || sample?.IsGarageVisible == true;
     }
 
-    private static bool IsLocalActiveOrPitContext(LiveTelemetrySnapshot snapshot)
+    private static bool IsLocalActiveContext(LiveTelemetrySnapshot snapshot, bool allowPitContext)
     {
         var race = snapshot.Models.RaceEvents;
         var sample = snapshot.LatestSample;
         if ((race.HasData && race.IsOnTrack) || sample?.IsOnTrack == true)
         {
             return true;
+        }
+
+        if (!allowPitContext)
+        {
+            return false;
         }
 
         var pit = snapshot.Models.FuelPit;

@@ -7,7 +7,18 @@ using TmrOverlay.Core.AppInfo;
 using TmrOverlay.App.Installation;
 using TmrOverlay.App.Localhost;
 using TmrOverlay.App.Overlays.BrowserSources;
+using TmrOverlay.App.Overlays.CarRadar;
+using TmrOverlay.App.Overlays.Flags;
+using TmrOverlay.App.Overlays.FuelCalculator;
+using TmrOverlay.App.Overlays.GapToLeader;
 using TmrOverlay.App.Overlays.GarageCover;
+using TmrOverlay.App.Overlays.InputState;
+using TmrOverlay.App.Overlays.PitService;
+using TmrOverlay.App.Overlays.Relative;
+using TmrOverlay.App.Overlays.SessionWeather;
+using TmrOverlay.App.Overlays.Standings;
+using TmrOverlay.App.Overlays.StreamChat;
+using TmrOverlay.App.Overlays.TrackMap;
 using TmrOverlay.App.Performance;
 using TmrOverlay.App.Settings;
 using TmrOverlay.App.Storage;
@@ -33,6 +44,7 @@ internal sealed class DiagnosticsBundleService
     private const int MaxRecentOverlayDiagnosticsFiles = 10;
     private const int MaxRecentTrackMapReports = 10;
     private const int MaxBundleNameSegmentLength = 48;
+    private const int MaxLiveTelemetryCarExamples = 20;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -150,6 +162,7 @@ internal sealed class DiagnosticsBundleService
                 AddTextEntry(archive, "metadata/installer-cleanup.json", JsonSerializer.Serialize(InstallerCleanup.LegacyInstallerCleanupSnapshot(), JsonOptions));
                 AddTextEntry(archive, "metadata/track-maps.json", JsonSerializer.Serialize(_trackMapStore.DiagnosticsSnapshot(), JsonOptions));
                 AddTextEntry(archive, "metadata/garage-cover.json", JsonSerializer.Serialize(GarageCoverDiagnostics(), JsonOptions));
+                AddTextEntry(archive, "metadata/live-telemetry-synthesis.json", JsonSerializer.Serialize(LiveTelemetrySynthesis(), JsonOptions));
                 metadataSucceeded = true;
             }
             finally
@@ -825,6 +838,261 @@ internal sealed class DiagnosticsBundleService
                 Error = exception.Message
             };
         }
+    }
+
+    private object LiveTelemetrySynthesis()
+    {
+        try
+        {
+            var snapshot = _liveTelemetrySource.Snapshot();
+            var now = DateTimeOffset.UtcNow;
+            var availability = OverlayAvailabilityEvaluator.FromSnapshot(snapshot, now);
+            var sample = snapshot.LatestSample;
+            IReadOnlyList<HistoricalCarProximity> allCars = sample?.AllCars ?? [];
+            var resolvedPlayerCarIdx = snapshot.Models.DriverDirectory.PlayerCarIdx ?? sample?.PlayerCarIdx;
+            var resolvedFocusCarIdx = snapshot.Models.DriverDirectory.FocusCarIdx ?? sample?.FocusCarIdx;
+            var focusCar = resolvedFocusCarIdx is { } focusCarIdx
+                ? allCars.FirstOrDefault(car => car.CarIdx == focusCarIdx)
+                : null;
+            var playerCar = resolvedPlayerCarIdx is { } playerCarIdx
+                ? allCars.FirstOrDefault(car => car.CarIdx == playerCarIdx)
+                : null;
+            var settingsSnapshot = _settingsStore.Load();
+            var focusContext = new
+            {
+                PlayerCarIdx = resolvedPlayerCarIdx,
+                RawCamCarIdx = sample?.RawCamCarIdx,
+                FocusCarIdx = resolvedFocusCarIdx,
+                LatestSampleFocusCarIdx = sample?.FocusCarIdx,
+                FocusUnavailableReason = sample?.FocusUnavailableReason,
+                FocusDiffersFromPlayer = resolvedPlayerCarIdx is { } playerIdx
+                    && resolvedFocusCarIdx is { } focusIdx
+                    && playerIdx != focusIdx,
+                IsOnTrack = sample?.IsOnTrack,
+                IsInGarage = sample?.IsInGarage,
+                IsGarageVisible = sample?.IsGarageVisible,
+                IsReplayPlaying = sample?.IsReplayPlaying,
+                OnPitRoad = sample?.OnPitRoad,
+                PlayerCarInPitStall = sample?.PlayerCarInPitStall,
+                SessionState = sample?.SessionState,
+                SessionStateLabel = SessionStateLabel(sample?.SessionState),
+                Availability = availability
+            };
+
+            var carFieldCoverage = BuildCarFieldCoverage(allCars);
+            var overlays = ManagedOverlayDefinitions()
+                .Select(definition =>
+                {
+                    var settings = settingsSnapshot.GetOrAddOverlay(
+                        definition.Id,
+                        definition.DefaultWidth,
+                        definition.DefaultHeight,
+                        0,
+                        0,
+                        defaultEnabled: false);
+                    var sessionAllowed = OverlayAvailabilityEvaluator.IsAllowedForSession(settings, availability.SessionKind);
+                    var context = LiveLocalStrategyContext.ForRequirement(snapshot, now, definition.ContextRequirement);
+                    return new
+                    {
+                        definition.Id,
+                        definition.DisplayName,
+                        ContextRequirement = definition.ContextRequirement.ToString(),
+                        settings.Enabled,
+                        SessionAllowed = sessionAllowed,
+                        ContextAvailable = context.IsAvailable,
+                        ContextReason = context.Reason,
+                        DesiredVisible = settings.Enabled && sessionAllowed && context.IsAvailable
+                    };
+                })
+                .OrderBy(overlay => overlay.Id, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            return new
+            {
+                GeneratedAtUtc = now,
+                Snapshot = new
+                {
+                    snapshot.IsConnected,
+                    snapshot.IsCollecting,
+                    snapshot.SourceId,
+                    snapshot.StartedAtUtc,
+                    snapshot.LastUpdatedAtUtc,
+                    snapshot.Sequence,
+                    TelemetryAgeSeconds = availability.TelemetryAgeSeconds,
+                    SessionKind = availability.SessionKind?.ToString(),
+                    snapshot.Combo,
+                    Session = snapshot.Models.Session
+                },
+                Focus = focusContext,
+                SessionPhase = new
+                {
+                    SessionState = sample?.SessionState,
+                    Label = SessionStateLabel(sample?.SessionState),
+                    IsReplayPlaying = sample?.IsReplayPlaying,
+                    SessionTime = sample?.SessionTime,
+                    StartupOrPreGreenNote = "SessionState 1/2/3 and early SessionState 4 frames can have progress/timing arrays before official positions become valid."
+                },
+                FieldSemantics = new
+                {
+                    OfficialPosition = "CarIdxPosition > 0",
+                    OfficialClassPosition = "CarIdxClassPosition > 0",
+                    LapDistanceProgress = "CarIdxLapCompleted >= 0 and CarIdxLapDistPct >= 0",
+                    EstimatedTime = "CarIdxEstTime >= 0; positive counts exclude zero placeholders",
+                    F2Time = "CarIdxF2Time >= 0; positive counts exclude zero placeholders",
+                    CarClass = "CarIdxClass > 0",
+                    TrackSurface = "CarIdxTrackSurface >= 0",
+                    SentinelNote = "-1 and 0 are not valid official positions; gridding/startup/replay contexts can still have class and progress before official order is populated."
+                },
+                CarFieldCoverage = carFieldCoverage,
+                FocusCar = CarSnapshot(focusCar),
+                PlayerCar = CarSnapshot(playerCar),
+                TimingModel = new
+                {
+                    snapshot.Models.Timing.HasData,
+                    snapshot.Models.Timing.Quality,
+                    OverallRowCount = snapshot.Models.Timing.OverallRows.Count,
+                    ClassRowCount = snapshot.Models.Timing.ClassRows.Count,
+                    snapshot.Models.Coverage
+                },
+                RelativeModel = new
+                {
+                    snapshot.Models.Relative.HasData,
+                    snapshot.Models.Relative.Quality,
+                    snapshot.Models.Relative.ReferenceCarIdx,
+                    RowCount = snapshot.Models.Relative.Rows.Count
+                },
+                ScoringModel = new
+                {
+                    snapshot.Models.Scoring.HasData,
+                    snapshot.Models.Scoring.Quality,
+                    snapshot.Models.Scoring.ReferenceCarIdx,
+                    RowCount = snapshot.Models.Scoring.Rows.Count,
+                    ClassGroupCount = snapshot.Models.Scoring.ClassGroups.Count
+                },
+                LocalContexts = new
+                {
+                    FuelCalculator = LiveLocalStrategyContext.ForFuelCalculator(snapshot, now),
+                    PitService = LiveLocalStrategyContext.ForPitService(snapshot, now),
+                    LocalInCar = LiveLocalStrategyContext.ForRequirement(snapshot, now, OverlayContextRequirement.LocalPlayerInCar)
+                },
+                Overlays = overlays,
+                Cars = allCars
+                    .OrderByDescending(HasOfficialPosition)
+                    .ThenByDescending(HasProgress)
+                    .ThenBy(car => car.Position is > 0 ? car.Position.Value : int.MaxValue)
+                    .ThenBy(car => car.CarIdx)
+                    .Take(MaxLiveTelemetryCarExamples)
+                    .Select(CarSnapshot)
+                    .ToArray()
+            };
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Failed to collect live telemetry synthesis metadata.");
+            return new
+            {
+                GeneratedAtUtc = DateTimeOffset.UtcNow,
+                Error = exception.Message
+            };
+        }
+    }
+
+    private static object BuildCarFieldCoverage(IReadOnlyList<HistoricalCarProximity> cars)
+    {
+        return new
+        {
+            RowCount = cars.Count,
+            OfficialPositionValidCount = cars.Count(HasOfficialPosition),
+            OfficialClassPositionValidCount = cars.Count(car => car.ClassPosition is > 0),
+            LapDistanceProgressValidCount = cars.Count(HasProgress),
+            EstimatedTimeNonNegativeCount = cars.Count(car => car.EstimatedTimeSeconds is >= 0d),
+            EstimatedTimePositiveCount = cars.Count(car => car.EstimatedTimeSeconds is > 0d),
+            F2TimeNonNegativeCount = cars.Count(car => car.F2TimeSeconds is >= 0d),
+            F2TimePositiveCount = cars.Count(car => car.F2TimeSeconds is > 0d),
+            CarClassValidCount = cars.Count(car => car.CarClass is > 0),
+            TrackSurfaceValidCount = cars.Count(car => car.TrackSurface is >= 0),
+            OnPitRoadKnownCount = cars.Count(car => car.OnPitRoad is not null),
+            FullOfficialTimingCount = cars.Count(car =>
+                HasOfficialPosition(car)
+                && car.ClassPosition is > 0
+                && car.CarClass is > 0
+                && car.F2TimeSeconds is >= 0d),
+            FullProgressTimingCount = cars.Count(car =>
+                HasProgress(car)
+                && car.CarClass is > 0
+                && car.EstimatedTimeSeconds is >= 0d)
+        };
+    }
+
+    private static object? CarSnapshot(HistoricalCarProximity? car)
+    {
+        return car is null
+            ? null
+            : new
+            {
+                car.CarIdx,
+                car.Position,
+                car.ClassPosition,
+                car.CarClass,
+                car.LapCompleted,
+                car.LapDistPct,
+                car.EstimatedTimeSeconds,
+                car.F2TimeSeconds,
+                car.TrackSurface,
+                car.OnPitRoad,
+                HasOfficialPosition = HasOfficialPosition(car),
+                HasProgress = HasProgress(car)
+            };
+    }
+
+    private static bool HasOfficialPosition(HistoricalCarProximity car)
+    {
+        return car.Position is > 0;
+    }
+
+    private static bool HasProgress(HistoricalCarProximity car)
+    {
+        return car.LapCompleted >= 0
+            && IsFinite(car.LapDistPct)
+            && car.LapDistPct >= 0d;
+    }
+
+    private static bool IsFinite(double value)
+    {
+        return !double.IsNaN(value) && !double.IsInfinity(value);
+    }
+
+    private static string SessionStateLabel(int? sessionState)
+    {
+        return sessionState switch
+        {
+            1 => "get-in-car",
+            2 => "warmup",
+            3 => "parade-laps",
+            4 => "racing",
+            5 => "checkered",
+            6 => "cool-down",
+            _ => "unknown"
+        };
+    }
+
+    private static IReadOnlyList<OverlayDefinition> ManagedOverlayDefinitions()
+    {
+        return
+        [
+            StandingsOverlayDefinition.Definition,
+            FuelCalculatorOverlayDefinition.Definition,
+            RelativeOverlayDefinition.Definition,
+            TrackMapOverlayDefinition.Definition,
+            StreamChatOverlayDefinition.Definition,
+            GarageCoverOverlayDefinition.Definition,
+            FlagsOverlayDefinition.Definition,
+            SessionWeatherOverlayDefinition.Definition,
+            PitServiceOverlayDefinition.Definition,
+            InputStateOverlayDefinition.Definition,
+            CarRadarOverlayDefinition.Definition,
+            GapToLeaderOverlayDefinition.Definition
+        ];
     }
 
     private static object UiFreezeWatch(AppPerformanceSnapshot performance)

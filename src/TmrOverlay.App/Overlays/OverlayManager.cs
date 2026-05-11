@@ -648,8 +648,10 @@ internal sealed class OverlayManager : IDisposable
                 var settingsPreview = _radarSettingsPreviewVisible
                     && string.Equals(registration.Definition.Id, CarRadarOverlayDefinition.Definition.Id, StringComparison.Ordinal);
                 var sessionAllowed = IsAllowedForSession(registration.Definition, settings, currentSession);
-                var shouldShow = settingsPreview || (settings.Enabled && sessionAllowed);
                 var overlayLiveTelemetryAvailable = liveTelemetryAvailable || settingsPreview;
+                var contextAvailability = EvaluateOverlayContext(registration.Definition, liveSnapshot);
+                var contextAllowed = settingsPreview || contextAvailability.IsAvailable;
+                var shouldShow = settingsPreview || (settings.Enabled && sessionAllowed && contextAllowed);
 
                 if (string.Equals(registration.Definition.Id, FlagsOverlayDefinition.Definition.Id, StringComparison.Ordinal))
                 {
@@ -677,7 +679,8 @@ internal sealed class OverlayManager : IDisposable
                         sessionAllowed,
                         settingsPreview,
                         desiredVisible: false,
-                        liveTelemetryAvailable: overlayLiveTelemetryAvailable);
+                        liveTelemetryAvailable: overlayLiveTelemetryAvailable,
+                        contextAvailability);
                     continue;
                 }
 
@@ -724,7 +727,8 @@ internal sealed class OverlayManager : IDisposable
                     sessionAllowed,
                     settingsPreview,
                     desiredVisible: true,
-                    liveTelemetryAvailable: overlayLiveTelemetryAvailable);
+                    liveTelemetryAvailable: overlayLiveTelemetryAvailable,
+                    contextAvailability);
             }
 
             if (keepSettingsActive && activeSettingsForm is not null && !activeSettingsForm.IsDisposed)
@@ -971,6 +975,16 @@ internal sealed class OverlayManager : IDisposable
         return OverlayAvailabilityEvaluator.FromSnapshot(snapshot, DateTimeOffset.UtcNow).IsAvailable;
     }
 
+    private static LiveLocalStrategyContextSnapshot EvaluateOverlayContext(
+        OverlayDefinition definition,
+        LiveTelemetrySnapshot snapshot)
+    {
+        return LiveLocalStrategyContext.ForRequirement(
+            snapshot,
+            DateTimeOffset.UtcNow,
+            definition.ContextRequirement);
+    }
+
     private bool ApplyLiveTelemetryFade(
         OverlayDefinition definition,
         Form form,
@@ -998,7 +1012,8 @@ internal sealed class OverlayManager : IDisposable
         bool sessionAllowed,
         bool settingsPreview,
         bool desiredVisible,
-        bool liveTelemetryAvailable)
+        bool liveTelemetryAvailable,
+        LiveLocalStrategyContextSnapshot? contextAvailability = null)
     {
         var hasForm = _forms.TryGetValue(definition.Id, out var form) && !form.IsDisposed;
         var actualVisible = hasForm && form!.Visible;
@@ -1019,6 +1034,7 @@ internal sealed class OverlayManager : IDisposable
             actualVisible,
             hasForm,
             liveTelemetryAvailable,
+            contextAvailability?.IsAvailable ?? true,
             fadeAlpha,
             definition.FadeWhenLiveTelemetryUnavailable,
             pauseEligible);
@@ -1041,6 +1057,9 @@ internal sealed class OverlayManager : IDisposable
             desiredVisible,
             actualVisible,
             liveTelemetryAvailable,
+            definition.ContextRequirement.ToString(),
+            contextAvailability?.IsAvailable ?? true,
+            contextAvailability?.Reason ?? "not_required",
             _settingsOverlayActive,
             settingsWindowVisible,
             settingsWindowInputProtected,

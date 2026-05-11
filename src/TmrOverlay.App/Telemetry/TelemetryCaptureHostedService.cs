@@ -1502,6 +1502,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 SolarAltitudeRadians: ReadNullableFiniteDouble(sdk, "SolarAltitude"),
                 SolarAzimuthRadians: ReadNullableFiniteDouble(sdk, "SolarAzimuth"),
                 IsGarageVisible: ReadNullableBoolean(sdk, "IsGarageVisible"),
+                IsReplayPlaying: ReadNullableBoolean(sdk, "IsReplayPlaying"),
                 SessionTimeRemain: ReadNullableDouble(sdk, "SessionTimeRemain"),
                 SessionTimeTotal: ReadNullableDouble(sdk, "SessionTimeTotal"),
                 SessionLapsRemainEx: ReadInt32(sdk, "SessionLapsRemainEx"),

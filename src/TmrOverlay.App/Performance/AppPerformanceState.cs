@@ -202,6 +202,7 @@ internal sealed class AppPerformanceState
         bool actualVisible,
         bool hasForm,
         bool liveTelemetryAvailable,
+        bool contextAvailable,
         double fadeAlpha,
         bool fadesWhenLiveTelemetryUnavailable,
         bool pauseEligible)
@@ -227,6 +228,7 @@ internal sealed class AppPerformanceState
                 actualVisible,
                 hasForm,
                 liveTelemetryAvailable,
+                contextAvailable,
                 fadedUnavailable,
                 pauseEligible);
             _lastOverlayLifecycleStates.TryGetValue(overlayId, out var previous);
@@ -238,10 +240,12 @@ internal sealed class AppPerformanceState
             RecordOverlayUpdateValue($"{prefix}.actual_visible", actualVisible ? 1d : 0d, timestampUtc);
             RecordOverlayUpdateValue($"{prefix}.has_form", hasForm ? 1d : 0d, timestampUtc);
             RecordOverlayUpdateValue($"{prefix}.live_available", liveTelemetryAvailable ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.context_available", contextAvailable ? 1d : 0d, timestampUtc);
             RecordOverlayUpdateValue($"{prefix}.fade_alpha", clampedFadeAlpha, timestampUtc);
             RecordOverlayUpdateValue($"{prefix}.faded_unavailable", fadedUnavailable ? 1d : 0d, timestampUtc);
             RecordOverlayUpdateValue($"{prefix}.hidden_by_settings", !settingsPreview && !enabled ? 1d : 0d, timestampUtc);
             RecordOverlayUpdateValue($"{prefix}.hidden_by_session", !settingsPreview && enabled && !sessionAllowed ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.hidden_by_context", !settingsPreview && enabled && sessionAllowed && !contextAvailable ? 1d : 0d, timestampUtc);
             RecordOverlayUpdateValue($"{prefix}.hidden_or_faded", !actualVisible || fadedUnavailable ? 1d : 0d, timestampUtc);
             RecordOverlayUpdateValue($"{prefix}.pause_eligible", pauseEligible ? 1d : 0d, timestampUtc);
             RecordOverlayUpdateValue($"{prefix}.transition", previous is not null && !previous.Equals(current) ? 1d : 0d, timestampUtc);
@@ -706,6 +710,7 @@ internal sealed class AppPerformanceState
         bool ActualVisible,
         bool HasForm,
         bool LiveTelemetryAvailable,
+        bool ContextAvailable,
         bool FadedUnavailable,
         bool PauseEligible);
 

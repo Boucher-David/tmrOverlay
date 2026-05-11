@@ -99,8 +99,6 @@ internal sealed class StreamChatForm : PersistentOverlayForm
 
     public override bool IsIntrinsicallyInputTransparentOverlay => true;
 
-    protected override bool UseInputTransparentExtendedWindowStyle => false;
-
     protected override bool ShouldReceiveInputWhileTransparent(Point clientPoint)
     {
         return IsCloseButtonHit(clientPoint);

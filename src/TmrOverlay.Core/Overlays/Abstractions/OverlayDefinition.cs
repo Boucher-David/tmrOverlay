@@ -1,5 +1,12 @@
 namespace TmrOverlay.Core.Overlays;
 
+internal enum OverlayContextRequirement
+{
+    AnyTelemetry,
+    LocalPlayerInCar,
+    LocalPlayerInCarOrPit
+}
+
 internal sealed record OverlayDefinition(
     string Id,
     string DisplayName,
@@ -9,7 +16,8 @@ internal sealed record OverlayDefinition(
     bool ShowSessionFilters = true,
     bool ShowScaleControl = true,
     bool ShowOpacityControl = true,
-    bool FadeWhenLiveTelemetryUnavailable = false)
+    bool FadeWhenLiveTelemetryUnavailable = false,
+    OverlayContextRequirement ContextRequirement = OverlayContextRequirement.AnyTelemetry)
 {
     public IReadOnlyList<OverlaySettingsOptionDescriptor> SettingsOptions { get; } = Options ?? [];
 }

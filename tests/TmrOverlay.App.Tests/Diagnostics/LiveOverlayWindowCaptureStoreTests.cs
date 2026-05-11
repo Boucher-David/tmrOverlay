@@ -40,6 +40,9 @@ public sealed class LiveOverlayWindowCaptureStoreTests
                 desiredVisible: true,
                 actualVisible: false,
                 liveTelemetryAvailable: true,
+                contextRequirement: definition.ContextRequirement.ToString(),
+                contextAvailable: true,
+                contextReason: "not_required",
                 settingsOverlayActive: false,
                 settingsWindowVisible: true,
                 settingsWindowInputProtected: false,
@@ -72,6 +75,9 @@ public sealed class LiveOverlayWindowCaptureStoreTests
             Assert.Equal(definition.DefaultHeight, overlay.DefaultHeight);
             Assert.False(overlay.ScreenshotRepresentsCurrentState);
             Assert.Null(overlay.ScreenshotAgeSeconds);
+            Assert.Equal("AnyTelemetry", overlay.ContextRequirement);
+            Assert.True(overlay.ContextAvailable);
+            Assert.Equal("not_required", overlay.ContextReason);
 
             var json = JsonSerializer.Serialize(manifest, new JsonSerializerOptions
             {

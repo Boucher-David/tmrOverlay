@@ -39,7 +39,7 @@ Each refresh:
 1. Reads the latest `LiveTelemetrySnapshot`.
 2. Skips the expensive path when the live snapshot sequence and relevant display options are unchanged.
 3. Verifies the local active driver/team strategy context through `LiveLocalStrategyContext`.
-4. Shows `waiting for local fuel context` without doing history or strategy work when focus is unavailable, focus is another car, the player car is unavailable, the user is in garage/setup context, or there is no active local/pit context.
+4. Native overlay management hides the window before refresh when focus is unavailable, focus is another car, the player car is unavailable, the user is in garage/setup context, or there is no active local/pit context. Browser/model callers still receive a waiting state for the same condition instead of strategy rows.
 5. Looks up exact combo history with a 30 second cache.
 6. Builds a `FuelStrategySnapshot`.
 7. Converts the snapshot to display text and rows.
@@ -99,7 +99,7 @@ Data review note from the May 2026 capture analysis:
 - Some frames expose positive `FuelUsePerHour` while `FuelLevel` is zero or unavailable. That must not become a measured fuel baseline.
 - Future live fuel work should prefer a rolling measured fuel-level delta over valid green-flag distance/time, using the instantaneous burn channel as an activity/diagnostic signal or short-term hint only after smoothing and confidence checks.
 
-For V1, the fuel calculator is local active driver/team context only. It does not display modeled strategy while the camera is focused on another car, while focus is unavailable, or while garage/setup context is active, even if historical data exists. Once local context is valid, history can still fill burn-rate/stint modeling gaps when live scalar fuel or live burn is unavailable, and the source text labels that as historical/model rather than live measured fuel.
+For V1, the fuel calculator is local active driver/team context only. It does not display modeled strategy while the camera is focused on another car, while focus is unavailable, or while garage/setup context is active, even if historical data exists. In native overlay mode, that means the enabled overlay remains hidden until context is valid. Once local context is valid, history can still fill burn-rate/stint modeling gaps when live scalar fuel or live burn is unavailable, and the source text labels that as historical/model rather than live measured fuel.
 
 ## History Lookup
 

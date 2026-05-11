@@ -50,7 +50,7 @@ The live model carries additional atmospheric fields such as pressure and solar 
 
 ## Pit Service
 
-`Pit Service` reads `LiveFuelPitModel` and is read-only in this branch. Product-wise it belongs with Fuel, not Input / Car State: for V1 it is a local active driver/team context overlay. It waits when the camera focus is unavailable, focused on another car, in garage/setup context, or otherwise lacks a valid local player car. It still renders while the local car is on pit road, in the pit stall, or service is active because that is the primary moment for this overlay.
+`Pit Service` reads `LiveFuelPitModel` and is read-only in this branch. Product-wise it belongs with Fuel, not Input / Car State: for V1 it is a local active driver/team context overlay. Native overlay management hides the window when the camera focus is unavailable, focused on another car, in garage/setup context, or otherwise lacks a valid local player car; browser/model callers still receive a waiting state for the same condition. It still renders while the local car is on pit road, in the pit stall, or service is active because that is the primary moment for this overlay.
 
 It displays:
 

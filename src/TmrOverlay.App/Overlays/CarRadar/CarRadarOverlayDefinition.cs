@@ -17,5 +17,6 @@ internal static class CarRadarOverlayDefinition
                 defaultValue: true)
         ],
         ShowOpacityControl: false,
-        FadeWhenLiveTelemetryUnavailable: true);
+        FadeWhenLiveTelemetryUnavailable: true,
+        ContextRequirement: OverlayContextRequirement.LocalPlayerInCar);
 }
