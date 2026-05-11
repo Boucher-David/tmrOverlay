@@ -84,7 +84,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     Start["Fresh live snapshot"] --> Local{"Local active driver/team context?"}
-    Local -- no --> Waiting["Waiting for local fuel context"]
+    Local -- no --> Hidden["Native window hidden; browser/model waits"]
     Local -- yes --> Fuel{"Fuel and race context usable?"}
     Fuel -- no --> WaitingFuel["Show waiting/current fuel fallback"]
     Fuel -- yes --> History["Load user/baseline history for combo"]
@@ -180,7 +180,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     Start["Fresh live snapshot"] --> Local{"Local active driver/team context?"}
-    Local -- no --> WaitingLocal["Waiting for local pit-service context"]
+    Local -- no --> Hidden["Native window hidden; browser/model waits"]
     Local -- yes --> Pit{"Pit-service model usable?"}
     Pit -- no --> Waiting["Waiting for pit service data"]
     Pit -- yes --> Status["Resolve current service status"]
@@ -200,8 +200,10 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    Start["Fresh live snapshot"] --> Player{"Player car and car telemetry known?"}
-    Player -- no --> Waiting["Waiting for player in car"]
+    Start["Fresh live snapshot"] --> Local{"Focused local player in-car context?"}
+    Local -- no --> Hidden["Native window hidden; browser/model waits"]
+    Local -- yes --> Player{"Car telemetry known?"}
+    Player -- no --> Waiting["Waiting for car telemetry"]
     Player -- yes --> Inputs["Read pedals, steering, gear, RPM, speed"]
     Inputs --> Mechanical["Read cooling, pressure, electrical, warnings"]
     Mechanical --> Units["Convert speed, temp, pressure units"]

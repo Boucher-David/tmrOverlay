@@ -9,5 +9,6 @@ internal static class PitServiceOverlayDefinition
         DisplayName: "Pit Service",
         DefaultWidth: 420,
         DefaultHeight: 330,
-        FadeWhenLiveTelemetryUnavailable: true);
+        FadeWhenLiveTelemetryUnavailable: true,
+        ContextRequirement: OverlayContextRequirement.LocalPlayerInCarOrPit);
 }

@@ -238,8 +238,6 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         LayoutStreamChatCloseButton();
     }
 
-    protected override bool UseInputTransparentExtendedWindowStyle => _kind != DesignV2LiveOverlayKind.StreamChat;
-
     protected override bool ShouldReceiveInputWhileTransparent(Point clientPoint)
     {
         return IsStreamChatCloseButtonHit(clientPoint);

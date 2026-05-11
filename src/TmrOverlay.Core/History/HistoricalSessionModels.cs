@@ -615,6 +615,7 @@ internal sealed record HistoricalTelemetrySample(
     double? OilTempC = null,
     double? OilPressureBar = null,
     bool? BrakeAbsActive = null,
+    bool? IsReplayPlaying = null,
     IReadOnlyList<HistoricalCarProximity>? AllCars = null);
 
 internal sealed record HistoricalCarProximity(

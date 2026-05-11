@@ -149,7 +149,7 @@ The settings Support tab and tray menu can create diagnostics bundles under:
 %LOCALAPPDATA%\TmrOverlay\diagnostics
 ```
 
-Bundles include app/storage metadata, telemetry state, release update state, localhost request state, track-map inventory metadata, performance snapshots, recent logs/events, runtime state, settings, latest capture metadata and compact sidecars, recent history summaries, and advanced collection artifacts when present.
+Bundles include app/storage metadata, telemetry state, release update state, localhost request state, track-map inventory metadata, live telemetry synthesis, performance snapshots, recent logs/events, runtime state, settings, latest capture metadata and compact sidecars, recent history summaries, and advanced collection artifacts when present.
 
 If the Settings UI is frozen and a bundle cannot be created, collect `%LOCALAPPDATA%\TmrOverlay\logs` and the latest `%LOCALAPPDATA%\TmrOverlay\captures` folder from the diagnostic patch build.
 
@@ -159,7 +159,7 @@ Performance diagnostics are always on and write periodic JSONL snapshots under:
 %LOCALAPPDATA%\TmrOverlay\logs\performance
 ```
 
-Those snapshots include telemetry throughput, iRacing network/system values, overlay refresh timings, timer cadence and late-tick summaries, lifecycle visibility/fade states, overlay window/input-intercept state, settings save/apply queue metrics, skipped unchanged-sequence updates, paint samples, localhost activity, process memory, GDI/USER handle counts, and GC counts. Diagnostics bundles also include `metadata/ui-freeze-watch.json` for focused Settings/Flags freeze triage, `metadata/browser-overlays.json` for the localhost route catalog, `metadata/shared-settings-contract.json` plus the shared contract/schema files for settings-token parity triage, `live-overlays/manifest.json`, optional live-window overlay crops when enabled, and `metadata/installer-cleanup.json` for stale legacy shortcut/package cleanup triage.
+Those snapshots include telemetry throughput, iRacing network/system values, overlay refresh timings, timer cadence and late-tick summaries, lifecycle visibility/fade states, overlay window/input-intercept state, settings save/apply queue metrics, skipped unchanged-sequence updates, paint samples, localhost activity, process memory, GDI/USER handle counts, and GC counts. Diagnostics bundles also include `metadata/ui-freeze-watch.json` for focused Settings/Flags freeze triage, `metadata/live-telemetry-synthesis.json` for current focus/session/field-coverage and local-overlay context decisions, `metadata/browser-overlays.json` for the localhost route catalog, `metadata/shared-settings-contract.json` plus the shared contract/schema files for settings-token parity triage, `live-overlays/manifest.json`, optional live-window overlay crops when enabled, and `metadata/installer-cleanup.json` for stale legacy shortcut/package cleanup triage.
 
 ## Documentation
 

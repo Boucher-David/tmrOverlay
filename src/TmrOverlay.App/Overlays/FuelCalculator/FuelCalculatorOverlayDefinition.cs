@@ -20,5 +20,6 @@ internal static class FuelCalculatorOverlayDefinition
                 "Show source row",
                 defaultValue: true)
         ],
-        FadeWhenLiveTelemetryUnavailable: true);
+        FadeWhenLiveTelemetryUnavailable: true,
+        ContextRequirement: OverlayContextRequirement.LocalPlayerInCarOrPit);
 }

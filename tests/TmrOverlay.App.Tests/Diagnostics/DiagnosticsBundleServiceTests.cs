@@ -11,6 +11,7 @@ using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
 using TmrOverlay.App.TrackMaps;
 using TmrOverlay.App.Updates;
+using TmrOverlay.Core.History;
 using TmrOverlay.Core.Telemetry.Live;
 using Xunit;
 
@@ -159,13 +160,76 @@ public sealed class DiagnosticsBundleServiceTests
                 IsConnected = true,
                 IsCollecting = true,
                 LastUpdatedAtUtc = DateTimeOffset.UtcNow,
+                LatestSample = new HistoricalTelemetrySample(
+                    CapturedAtUtc: DateTimeOffset.UtcNow,
+                    SessionTime: 22.5d,
+                    SessionTick: 12,
+                    SessionInfoUpdate: 3,
+                    IsOnTrack: false,
+                    IsInGarage: false,
+                    OnPitRoad: true,
+                    PitstopActive: false,
+                    PlayerCarInPitStall: false,
+                    FuelLevelLiters: 42d,
+                    FuelLevelPercent: 0.5d,
+                    FuelUsePerHourKg: 0d,
+                    SpeedMetersPerSecond: 0d,
+                    Lap: 0,
+                    LapCompleted: 0,
+                    LapDistPct: 0.05d,
+                    LapLastLapTimeSeconds: null,
+                    LapBestLapTimeSeconds: null,
+                    AirTempC: 20d,
+                    TrackTempCrewC: 30d,
+                    TrackWetness: 0,
+                    WeatherDeclaredWet: false,
+                    PlayerTireCompound: 0,
+                    IsGarageVisible: true,
+                    SessionState: 3,
+                    PlayerCarIdx: 10,
+                    RawCamCarIdx: 42,
+                    FocusCarIdx: 42,
+                    IsReplayPlaying: false,
+                    AllCars:
+                    [
+                        new HistoricalCarProximity(
+                            CarIdx: 10,
+                            LapCompleted: 0,
+                            LapDistPct: 0.04d,
+                            F2TimeSeconds: 2.1d,
+                            EstimatedTimeSeconds: 22.1d,
+                            Position: 3,
+                            ClassPosition: 1,
+                            CarClass: 12,
+                            TrackSurface: 3,
+                            OnPitRoad: true),
+                        new HistoricalCarProximity(
+                            CarIdx: 42,
+                            LapCompleted: 0,
+                            LapDistPct: 0.05d,
+                            F2TimeSeconds: -1d,
+                            EstimatedTimeSeconds: 23.4d,
+                            Position: 0,
+                            ClassPosition: 0,
+                            CarClass: 12,
+                            TrackSurface: 3,
+                            OnPitRoad: false)
+                    ]),
                 Models = LiveRaceModels.Empty with
                 {
+                    DriverDirectory = LiveDriverDirectoryModel.Empty with
+                    {
+                        HasData = true,
+                        Quality = LiveModelQuality.Reliable,
+                        PlayerCarIdx = 10,
+                        FocusCarIdx = 42
+                    },
                     RaceEvents = LiveRaceEventModel.Empty with
                     {
                         HasData = true,
                         Quality = LiveModelQuality.Reliable,
-                        IsGarageVisible = true
+                        IsGarageVisible = true,
+                        OnPitRoad = true
                     }
                 }
             });
@@ -204,6 +268,7 @@ public sealed class DiagnosticsBundleServiceTests
             Assert.Contains("metadata/installer-cleanup.json", entryNames);
             Assert.Contains("metadata/track-maps.json", entryNames);
             Assert.Contains("metadata/garage-cover.json", entryNames);
+            Assert.Contains("metadata/live-telemetry-synthesis.json", entryNames);
             Assert.Contains("metadata/performance.json", entryNames);
             Assert.Contains("metadata/ui-freeze-watch.json", entryNames);
             Assert.Contains("live-overlays/manifest.json", entryNames);
@@ -340,6 +405,28 @@ public sealed class DiagnosticsBundleServiceTests
             {
                 var trackMapsJson = JsonNode.Parse(trackMapsReader.ReadToEnd());
                 Assert.Equal(storage.TrackMapRoot, (string?)trackMapsJson?["userRoot"]);
+            }
+
+            var liveTelemetrySynthesisEntry = archive.GetEntry("metadata/live-telemetry-synthesis.json");
+            Assert.NotNull(liveTelemetrySynthesisEntry);
+            using (var liveTelemetrySynthesisReader = new StreamReader(liveTelemetrySynthesisEntry.Open()))
+            {
+                var liveTelemetrySynthesisJson = JsonNode.Parse(liveTelemetrySynthesisReader.ReadToEnd());
+                Assert.Equal(42, ((int?)liveTelemetrySynthesisJson?["focus"]?["rawCamCarIdx"]) ?? -1);
+                Assert.Equal(42, ((int?)liveTelemetrySynthesisJson?["focus"]?["focusCarIdx"]) ?? -1);
+                Assert.True(((bool?)liveTelemetrySynthesisJson?["focus"]?["focusDiffersFromPlayer"]) == true);
+                Assert.Equal("parade-laps", (string?)liveTelemetrySynthesisJson?["sessionPhase"]?["label"]);
+                Assert.Equal(2, ((int?)liveTelemetrySynthesisJson?["carFieldCoverage"]?["rowCount"]) ?? -1);
+                Assert.Equal(1, ((int?)liveTelemetrySynthesisJson?["carFieldCoverage"]?["officialPositionValidCount"]) ?? -1);
+                Assert.Contains(
+                    "gridding/startup/replay",
+                    (string?)liveTelemetrySynthesisJson?["fieldSemantics"]?["sentinelNote"]);
+                var overlayDecisions = Assert.IsType<JsonArray>(liveTelemetrySynthesisJson?["overlays"]);
+                Assert.Contains(overlayDecisions, overlay =>
+                    string.Equals((string?)overlay?["id"], "pit-service", StringComparison.Ordinal)
+                    && string.Equals((string?)overlay?["contextRequirement"], "LocalPlayerInCarOrPit", StringComparison.Ordinal)
+                    && ((bool?)overlay?["contextAvailable"]) == false
+                    && string.Equals((string?)overlay?["contextReason"], "focus_on_another_car", StringComparison.Ordinal));
             }
 
             var settingsEntry = archive.GetEntry("settings/settings.json");

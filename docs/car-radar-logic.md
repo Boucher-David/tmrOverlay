@@ -14,7 +14,7 @@ Implementation files:
 
 The radar is a live proximity overlay. It is not a historical or replay overlay.
 
-The production radar is local-player in-car only. It builds proximity only when a valid local player car exists, that car is on track, not in the garage or pit context, and the active camera focus is either the local player car or unknown. When the camera is explicitly focused on another car, the production radar is hidden instead of trying to reinterpret local side telemetry for that watched car.
+The production radar is local-player in-car only. The native overlay window is eligible to show only when a valid local player car exists, that car is on track, not in the garage or pit context, and the active camera focus resolves to the local player car. When focus is unavailable or explicitly another car, the production radar is hidden instead of trying to reinterpret local side telemetry for that watched car.
 
 It renders from `LiveTelemetrySnapshot.Models.Spatial`, which is populated from the local-only live proximity model. It uses fresh live telemetry only:
 
@@ -48,7 +48,7 @@ Stale snapshots are treated as unavailable so old traffic does not remain painte
    - Require the local player/team car to be on track.
    - Require a valid local `PlayerCarIdx`.
    - Hide the radar while the user is in garage/replay/off-track context.
-   - Hide the radar when `CamCarIdx`/focus is explicitly another car.
+   - Hide the radar when `CamCarIdx`/focus is unavailable or explicitly another car.
 2. Determine local-car lap distance:
    - Use `FocusLapDistPct` only when focus is local or not explicitly non-player.
    - Fall back to team/player lap distance.

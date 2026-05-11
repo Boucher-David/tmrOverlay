@@ -111,6 +111,7 @@ public sealed class AppPerformanceStateTests
             actualVisible: false,
             hasForm: true,
             liveTelemetryAvailable: true,
+            contextAvailable: true,
             fadeAlpha: 1d,
             fadesWhenLiveTelemetryUnavailable: true,
             pauseEligible: true);
@@ -132,6 +133,7 @@ public sealed class AppPerformanceStateTests
         Assert.Contains(snapshot.OverlayUpdates, metric => metric.Id == "overlay.timer.active_count" && metric.Last == 1d);
         Assert.Contains(snapshot.OverlayUpdates, metric => metric.Id == "overlay.timer.cadence.50ms.active_count" && metric.Last == 1d);
         Assert.Contains(snapshot.OverlayUpdates, metric => metric.Id == "overlay.track_map.lifecycle.hidden_by_session" && metric.Last == 1d);
+        Assert.Contains(snapshot.OverlayUpdates, metric => metric.Id == "overlay.track_map.lifecycle.context_available" && metric.Last == 1d);
         Assert.Contains(snapshot.OverlayUpdates, metric => metric.Id == "overlay.track_map.lifecycle.pause_eligible" && metric.Last == 1d);
         Assert.Contains(snapshot.OverlayUpdates, metric => metric.Id == "overlay.track_map.paint.sample" && metric.Count == 1);
         Assert.Contains(snapshot.OverlayUpdates, metric => metric.Id == "localhost.idle_no_recent_requests" && metric.Last == 1d);

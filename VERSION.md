@@ -9,57 +9,55 @@ TmrOverlay uses SemVer-style annotated Git tags for product milestones:
 
 ## Current Branch Target
 
-### v0.18.7 - V1 Candidate Focus And Diagnostics Hardening
+### v0.18.8 - V1 Candidate Context Diagnostics Hardening
 
 Planned branch name:
 
 ```text
-v0.18.7_stream-chat-debugging
+v0.18.8-diagnostics-context-gating
 ```
 
 Planned scope:
 
-- Ship the next V1-candidate hardening patch on top of `v0.18.6`.
-- Stop Stream Chat from blocking the Settings/app UI by keeping it no-activate/input-safe and adding an explicit close escape hatch.
-- Make `CamCarIdx`/focus the reference for live visual overlays: Standings, Relative, Track Map, and Focused Gap Trend should not silently promote `PlayerCarIdx` when focus is unavailable.
-- Keep local-player exceptions explicit: Radar remains local in-car only, and Fuel Calculator/Pit Service are local active driver/team context only for V1.
-- Expand diagnostics so focus-unavailable, raw `CamCarIdx`, session context, Fuel/Pit local-strategy suppression, pit-service signal changes, UI freeze/watch state, and browser/session-preview metadata can be reviewed from one support bundle.
-- Remove committed generated diagnostics bundle artifacts and ignore future root `car-track-date-uniquifier/` diagnostics folders.
-- Keep browser review/browser-source validation first class while avoiding Playwright runs that launch the user's Chrome app during local Mac validation.
+- Ship a focused V1-candidate patch on top of tagged `v0.18.7`.
+- Keep Stream Chat no-activate/click-through in native and Design V2 windows so it cannot block the Settings/app UI, while preserving the close escape hatch.
+- Gate local-only V1 overlays through descriptor-level context requirements: Radar and Inputs require local player in-car context; Fuel Calculator and Pit Service require local player focus plus in-car or pit context.
+- Leave Standings, Relative, Gap To Leader, and Track Map behavior unchanged until diagnostics or long captures prove the exact pre-green/on-green data source strategy.
+- Add always-bundled live telemetry synthesis metadata so support bundles show current focus, `CamCarIdx`, session phase, official-position coverage, progress/timing coverage, local-context decisions, and overlay visibility decisions without raw telemetry payloads.
+- Keep root diagnostics bundle artifacts ignored and remove local root zip bundles before pushing.
 - Treat remaining V1 work as validation, installer/update polish, first-run/user docs, privacy/defaults review, and Windows-native behavior checks rather than core overlay-logic rewrites.
 
 Technical implementation checklist:
 
-1. Bump shared .NET product/version metadata to `0.18.7`.
-2. Harden Stream Chat no-activate/input behavior and keep the close button available when the overlay misbehaves.
-3. Refactor Standings, Relative, Track Map, and Focused Gap Trend to use focus semantics without `PlayerCarIdx` fallback.
-4. Gate Fuel Calculator and Pit Service behind `LiveLocalStrategyContext` for V1 while leaving future teammate/spotter strategy stitching for V2.
-5. Update live overlay diagnostics and diagnostics bundle cleanup/ignore behavior.
-6. Patch overlay logic docs, flow diagrams, and behavior references to match the new focus/local-strategy contract.
-7. Validate local static checks, browser unit tests, screenshot expectations, mac harness build/test, and git hygiene; use Windows CI or a Windows machine for the full .NET build/test and Windows screenshot pass.
+1. Bump shared .NET product/version metadata to `0.18.8`.
+2. Harden Stream Chat click-through behavior in both native and Design V2 implementations.
+3. Add descriptor-driven context requirements and use them in `OverlayManager` visibility/lifecycle decisions.
+4. Record context requirement, availability, and reason in live overlay window diagnostics and performance lifecycle metrics.
+5. Add `metadata/live-telemetry-synthesis.json` to diagnostics bundles with focus/session/coverage/overlay-decision evidence.
+6. Patch overlay logic, diagnostics, and settings docs to match the local-context contract.
+7. Validate local static checks and git hygiene; use Windows CI or a Windows machine for the full .NET build/test and Windows click-through behavior pass.
 
 Likely squash title:
 
 ```text
-[v0.18.7] Harden focus semantics and diagnostics for V1 validation
+[v0.18.8] Gate local overlays and expand live diagnostics
 ```
 
 Likely squash body:
 
 ```text
-- Bumped shared .NET product/version metadata to 0.18.7.
-- Hardened Stream Chat window behavior with no-activate/input safeguards, diagnostics, and a close escape hatch so it cannot brick the Settings/app UI during validation.
-- Made `CamCarIdx`/focus the explicit reference for Standings, Relative, Track Map, and Focused Gap Trend, with diagnostics for unavailable focus instead of silently falling back to `PlayerCarIdx`.
-- Kept local-only product decisions explicit: Radar stays local in-car only, while Fuel Calculator and Pit Service now wait for local active driver/team context in V1.
-- Expanded live overlay diagnostics and support bundle metadata for focus context, Fuel/Pit suppression reasons, pit-service signal changes, UI freeze/watch state, browser routes, session preview, and current overlay assumptions.
-- Removed a committed generated diagnostics bundle and ignored future root `car-track-date-uniquifier/` diagnostics folders so local bundles do not pollute the branch.
-- Updated overlay logic docs, flow diagrams, and behavior references to make the focus/local-strategy contract reviewable.
-- Validated browser unit tests, mac harness build/test, screenshot artifacts, git hygiene, and local C# compile-shape checks; Windows .NET build/test and WinForms screenshot validation remain CI/Windows-machine gates.
+- Bumped shared .NET product/version metadata to 0.18.8.
+- Hardened Stream Chat click-through behavior in both native and Design V2 windows while preserving the close escape hatch.
+- Added descriptor-level overlay context requirements and hid local-only overlays when the current live focus is not the local player context they require.
+- Recorded context availability/reason in overlay lifecycle metrics and live-window diagnostics.
+- Added always-bundled live telemetry synthesis metadata for focus context, session phase, field coverage, local-context decisions, and overlay visibility decisions.
+- Updated overlay/diagnostics docs and removed local root diagnostics zip artifacts.
+- Validated local static checks and git hygiene; Windows .NET build/test and real WinForms click-through validation remain CI/Windows-machine gates.
 ```
 
 ## Next Planned Milestone
 
-### v0.18.8 - V1 Candidate Readiness
+### v0.18.9 - V1 Candidate Readiness
 
 Likely scope:
 
@@ -74,6 +72,17 @@ Likely scope:
 - Keep V1.x performance and heavier analysis work out of this milestone unless validation finds a release-blocking regression. Use the V1.x roadmap for overlay lifecycle/timer efficiency, rendering/cache performance, capture replay, and larger post-race analysis products after the candidate is stable.
 
 ## Merged Mainline Milestones
+
+### v0.18.7 - V1 Candidate Focus And Diagnostics Hardening
+
+Commit: `bb17917`
+
+Summary:
+
+- Bumped shared .NET product/version metadata to 0.18.7.
+- Hardened focus semantics and diagnostics after V1-candidate Windows testing.
+- Expanded browser validation, diagnostics bundle metadata, and local review tooling while preserving Windows as the production runtime.
+- Kept remaining V1 work focused on validation, installer/update polish, first-run/user docs, privacy/defaults review, and Windows-native behavior checks.
 
 ### v0.18.4 - Harden Installer Cleanup And Windows Validation Fixes
 
