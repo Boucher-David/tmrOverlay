@@ -564,6 +564,11 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             return;
         }
 
+        if (_pendingSaveApplyRequestCount > 0)
+        {
+            FlushPendingSaveAndApply();
+        }
+
         _applicationExitRequested = true;
         _requestApplicationExit();
     }

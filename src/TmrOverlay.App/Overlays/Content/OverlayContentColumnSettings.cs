@@ -44,7 +44,8 @@ internal sealed record OverlayContentColumnDefinition(
     int MinimumWidth,
     int MaximumWidth,
     string? WidthOptionKey = null,
-    OverlayContentColumnAlignment Alignment = OverlayContentColumnAlignment.Right)
+    OverlayContentColumnAlignment Alignment = OverlayContentColumnAlignment.Right,
+    string? SettingsLabel = null)
 {
     public string EnabledKey(string overlayId)
     {
@@ -65,6 +66,7 @@ internal sealed record OverlayContentColumnDefinition(
 internal sealed record OverlayContentColumnState(
     string Id,
     string Label,
+    string SettingsLabel,
     string DataKey,
     bool Enabled,
     int Order,
@@ -115,12 +117,12 @@ internal static class OverlayContentColumnSettings
         FallbackColumnId: StandingsDriverColumnId,
         Columns:
     [
-        new(StandingsClassPositionColumnId, "CLS", DataClassPosition, true, 1, 35, 30, 110, OverlayOptionKeys.StandingsColumnClassWidth),
-        new(StandingsCarNumberColumnId, "CAR", DataCarNumber, true, 2, 50, 42, 130, OverlayOptionKeys.StandingsColumnCarWidth),
+        new(StandingsClassPositionColumnId, "CLS", DataClassPosition, true, 1, 35, 30, 110, OverlayOptionKeys.StandingsColumnClassWidth, SettingsLabel: "Class position"),
+        new(StandingsCarNumberColumnId, "CAR", DataCarNumber, true, 2, 50, 42, 130, OverlayOptionKeys.StandingsColumnCarWidth, SettingsLabel: "Car number"),
         new(StandingsDriverColumnId, "Driver", DataDriver, true, 3, 250, 180, 520, OverlayOptionKeys.StandingsColumnDriverWidth, Alignment: OverlayContentColumnAlignment.Left),
-        new(StandingsGapColumnId, "GAP", DataGap, true, 4, 60, 50, 160, OverlayOptionKeys.StandingsColumnGapWidth),
-        new(StandingsIntervalColumnId, "INT", DataInterval, true, 5, 60, 50, 160, OverlayOptionKeys.StandingsColumnIntervalWidth),
-        new(StandingsPitColumnId, "PIT", DataPit, true, 6, 30, 24, 90, OverlayOptionKeys.StandingsColumnPitWidth)
+        new(StandingsGapColumnId, "GAP", DataGap, true, 4, 60, 50, 160, OverlayOptionKeys.StandingsColumnGapWidth, SettingsLabel: "Class gap"),
+        new(StandingsIntervalColumnId, "INT", DataInterval, true, 5, 60, 50, 160, OverlayOptionKeys.StandingsColumnIntervalWidth, SettingsLabel: "Focus interval"),
+        new(StandingsPitColumnId, "PIT", DataPit, true, 6, 30, 24, 90, OverlayOptionKeys.StandingsColumnPitWidth, SettingsLabel: "Pit status")
     ],
         Blocks:
     [
@@ -145,10 +147,10 @@ internal static class OverlayContentColumnSettings
         FallbackColumnId: RelativeDriverColumnId,
         Columns:
     [
-        new(RelativePositionColumnId, "Pos", DataRelativePosition, true, 1, 38, 32, 100),
+        new(RelativePositionColumnId, "Pos", DataRelativePosition, true, 1, 38, 32, 100, SettingsLabel: "Relative position"),
         new(RelativeDriverColumnId, "Driver", DataDriver, true, 2, 250, 180, 520, Alignment: OverlayContentColumnAlignment.Left),
         new(RelativeGapColumnId, "Gap", DataGap, true, 3, 70, 60, 160),
-        new(RelativePitColumnId, "Pit", DataPit, false, 4, 30, 24, 90)
+        new(RelativePitColumnId, "Pit", DataPit, false, 4, 30, 24, 90, SettingsLabel: "Pit status")
     ]);
 
     public static OverlayContentDefinition InputState { get; } = new(
@@ -326,6 +328,7 @@ internal static class OverlayContentColumnSettings
         return new OverlayContentColumnState(
             Id: definition.Id,
             Label: definition.Label,
+            SettingsLabel: HumanLabel(definition),
             DataKey: definition.DataKey,
             Enabled: settings.GetBooleanOption(definition.EnabledKey(settings.Id), definition.DefaultEnabled),
             Order: settings.GetIntegerOption(
@@ -358,6 +361,7 @@ internal static class OverlayContentColumnSettings
         return new OverlayContentColumnState(
             Id: definition.Id,
             Label: definition.Label,
+            SettingsLabel: HumanLabel(definition),
             DataKey: definition.DataKey,
             Enabled: definition.DefaultEnabled,
             Order: definition.DefaultOrder,
@@ -365,6 +369,13 @@ internal static class OverlayContentColumnSettings
             MinimumWidth: definition.MinimumWidth,
             MaximumWidth: definition.MaximumWidth,
             Alignment: definition.Alignment);
+    }
+
+    private static string HumanLabel(OverlayContentColumnDefinition definition)
+    {
+        return string.IsNullOrWhiteSpace(definition.SettingsLabel)
+            ? definition.Label
+            : definition.SettingsLabel;
     }
 
     private static string BrowserAlignment(OverlayContentColumnAlignment alignment)

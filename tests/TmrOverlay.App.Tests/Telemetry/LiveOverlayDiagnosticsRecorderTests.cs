@@ -181,6 +181,86 @@ public sealed class LiveOverlayDiagnosticsRecorderTests
     }
 
     [Fact]
+    public void CompleteCollection_SummarizesScoringSourceAndCoverage()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "tmr-overlay-live-overlay-diagnostics-test", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var storage = CreateStorage(root);
+            var captureDirectory = Path.Combine(storage.CaptureRoot, "capture-diagnostics");
+            Directory.CreateDirectory(captureDirectory);
+            var recorder = new LiveOverlayDiagnosticsRecorder(
+                new LiveOverlayDiagnosticsOptions
+                {
+                    Enabled = true,
+                    MinimumFrameSpacingSeconds = 0.1d,
+                    MaxSampleFramesPerSession = 10,
+                    MaxEventExamplesPerSession = 20
+                },
+                storage,
+                new AppEventRecorder(storage),
+                NullLogger<LiveOverlayDiagnosticsRecorder>.Instance);
+            var context = CreateRaceGridContext();
+            var startedAtUtc = DateTimeOffset.Parse("2026-05-02T12:00:00Z");
+            recorder.StartCollection("capture-diagnostics", startedAtUtc);
+
+            recorder.RecordFrame(CreateSnapshot(
+                context,
+                CreateSample(
+                    startedAtUtc,
+                    sessionTime: 0d,
+                    focusCarIdx: 10,
+                    carLeftRight: 0,
+                    focusF2TimeSeconds: 0d,
+                    classPosition: 0,
+                    observedPosition: 0,
+                    observedClassPosition: 0,
+                    observedLapDistPct: 0.02d,
+                    focusLapDistPct: 0.02d,
+                    focusLapCompleted: 0,
+                    nearbyCars:
+                    [
+                        new HistoricalCarProximity(
+                            CarIdx: 11,
+                            LapCompleted: 0,
+                            LapDistPct: 0.03d,
+                            F2TimeSeconds: 0d,
+                            EstimatedTimeSeconds: 0d,
+                            Position: 0,
+                            ClassPosition: 0,
+                            CarClass: 4098,
+                            TrackSurface: 3,
+                            OnPitRoad: false)
+                    ]),
+                sequence: 1));
+
+            var path = recorder.CompleteCollection(startedAtUtc.AddSeconds(1), captureDirectory);
+
+            using var document = JsonDocument.Parse(File.ReadAllText(path!));
+            var scoring = document.RootElement.GetProperty("scoring");
+            Assert.Equal(1, scoring.GetProperty("framesWithData").GetInt32());
+            Assert.Equal(1, scoring.GetProperty("startingGridFrames").GetInt32());
+            Assert.Equal(2, scoring.GetProperty("maxRows").GetInt32());
+            Assert.Equal(1, scoring.GetProperty("maxClassGroups").GetInt32());
+            Assert.Equal(2, scoring.GetProperty("maxCoverageResultRows").GetInt32());
+            Assert.True(scoring.GetProperty("maxCoverageLiveTimingRows").GetInt32() >= 1);
+            Assert.Equal(1, scoring.GetProperty("sourceCounts").GetProperty("StartingGrid").GetInt32());
+
+            var sample = document.RootElement.GetProperty("sampleFrames").EnumerateArray().Single();
+            Assert.Equal("StartingGrid", sample.GetProperty("scoringSource").GetString());
+            Assert.Equal(2, sample.GetProperty("scoringRowCount").GetInt32());
+            Assert.True(sample.GetProperty("coverageLiveTimingRowCount").GetInt32() >= 1);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void CompleteCollection_SummarizesPitServiceSignalsAcrossNonPlayerFocus()
     {
         var root = Path.Combine(Path.GetTempPath(), "tmr-overlay-live-overlay-diagnostics-test", Guid.NewGuid().ToString("N"));
@@ -859,6 +939,67 @@ public sealed class LiveOverlayDiagnosticsRecorderTests
                 {
                     SectorNum = 2,
                     SectorStartPct = 0.75d
+                }
+            ]
+        };
+    }
+
+    private static HistoricalSessionContext CreateRaceGridContext()
+    {
+        return new HistoricalSessionContext
+        {
+            Car = new HistoricalCarIdentity
+            {
+                CarId = 156,
+                CarScreenName = "Mercedes-AMG GT3 2020",
+                CarClassId = 4098,
+                DriverCarFuelKgPerLiter = 0.75d,
+                DriverCarEstLapTimeSeconds = 90d
+            },
+            Track = new HistoricalTrackIdentity
+            {
+                TrackId = 1,
+                TrackDisplayName = "Test Circuit",
+                TrackLengthKm = 5.1d
+            },
+            Session = new HistoricalSessionIdentity
+            {
+                SessionType = "Race",
+                EventType = "Race"
+            },
+            Conditions = new HistoricalSessionInfoConditions(),
+            Drivers =
+            [
+                new HistoricalSessionDriver
+                {
+                    CarIdx = 10,
+                    UserName = "Player",
+                    CarNumber = "10",
+                    CarClassId = 4098,
+                    CarClassShortName = "GT3"
+                },
+                new HistoricalSessionDriver
+                {
+                    CarIdx = 11,
+                    UserName = "Grid Leader",
+                    CarNumber = "11",
+                    CarClassId = 4098,
+                    CarClassShortName = "GT3"
+                }
+            ],
+            StartingGridPositions =
+            [
+                new HistoricalSessionResultPosition
+                {
+                    Position = 0,
+                    ClassPosition = 0,
+                    CarIdx = 11
+                },
+                new HistoricalSessionResultPosition
+                {
+                    Position = 1,
+                    ClassPosition = 1,
+                    CarIdx = 10
                 }
             ]
         };

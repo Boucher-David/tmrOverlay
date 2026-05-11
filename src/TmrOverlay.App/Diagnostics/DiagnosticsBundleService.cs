@@ -965,9 +965,19 @@ internal sealed class DiagnosticsBundleService
                 {
                     snapshot.Models.Scoring.HasData,
                     snapshot.Models.Scoring.Quality,
+                    snapshot.Models.Scoring.Source,
                     snapshot.Models.Scoring.ReferenceCarIdx,
                     RowCount = snapshot.Models.Scoring.Rows.Count,
-                    ClassGroupCount = snapshot.Models.Scoring.ClassGroups.Count
+                    ClassGroupCount = snapshot.Models.Scoring.ClassGroups.Count,
+                    ClassGroups = snapshot.Models.Scoring.ClassGroups
+                        .Select(group => new
+                        {
+                            group.CarClass,
+                            group.ClassName,
+                            group.RowCount,
+                            group.IsReferenceClass
+                        })
+                        .ToArray()
                 },
                 LocalContexts = new
                 {

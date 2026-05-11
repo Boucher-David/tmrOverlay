@@ -19,7 +19,7 @@ This does not change:
 - existing capture synthesis artifacts
 - existing overlay-specific snapshot properties
 
-Relative and Car Radar are additive on top of those compatibility rules: Relative reads `LiveTelemetrySnapshot.Models.Relative`, Car Radar reads `LiveTelemetrySnapshot.Models.Spatial` for local in-car radar, Fuel reads `LiveTelemetrySnapshot.Models.FuelPit` plus shared race progress, and Gap To Leader reads model-v2 timing/race-progress first while retaining legacy leader-gap fallback for older snapshot shapes.
+Relative and Car Radar are additive on top of those compatibility rules: Relative reads `LiveTelemetrySnapshot.Models.Relative`, Car Radar reads `LiveTelemetrySnapshot.Models.Spatial` for local in-car radar, Fuel reads `LiveTelemetrySnapshot.Models.FuelPit` plus shared race progress, and Gap To Leader reads model-v2 timing/race-progress first while retaining legacy leader-gap fallback for older snapshot shapes. Gap/relative timing code treats zero placeholder F2/estimated-time arrays as unavailable until positive timing evidence appears.
 
 Older data collected on Windows remains readable because the new models are derived from the normalized `HistoricalTelemetrySample` already produced by the collector. The builder tolerates missing timing, driver, weather, pit, and proximity fields by marking the affected model as `Unavailable` or `Partial` instead of throwing.
 
@@ -32,7 +32,7 @@ Status / Diagnostics V2 is the app-health companion to the live overlay model. `
 - `LiveSessionModel`: session clock, lap limits, session labels, track/car display labels, and missing live session signals.
 - `LiveDriverDirectoryModel`: session-info driver identity keyed by `CarIdx`, plus player/focus references.
 - `LiveCoverageModel`: roster, scoring-result, live-position, live-timing, live-spatial, and live-proximity row counts so consumers can distinguish full live coverage from partial iRacing-transmitted rows.
-- `LiveScoringModel`: scoring-snapshot rows parsed from session YAML `ResultsPositions`, grouped by class and enriched with driver identity, class labels/colors, lap totals, and best/last lap values.
+- `LiveScoringModel`: scoring rows parsed from session YAML `ResultsPositions` or race starting-grid rows, grouped by class and enriched with driver identity, grounded class labels/colors, lap totals, and best/last lap values. Race sessions hold the starting grid until official position/class-position/progress coverage becomes meaningful, then stop using grid as a stale fallback.
 - `LiveTimingModel`: reusable overall/class rows with live position, class, lap progress, timing, gap, pit, and driver identity fields.
 - `LiveRaceProgressModel`: shared strategy/reference race progress, leader progress, lap gaps, live race pace, and legacy race-laps-remaining estimates.
 - `LiveRaceProjectionModel`: stateful rolling race-distance projection derived from clean leader/class/team lap windows. It estimates timed-race laps remaining for overall leader, reference class, and team strategy consumers while rejecting non-racing states, caution/yellow windows, pit-road team laps, obvious best-lap outliers, and rolling pace outliers.
@@ -72,7 +72,7 @@ Current default columns cover:
 - best lap
 - pit state
 
-The registry keeps timing display keys stable so table semantics can be validated without copying formatter logic. Standings and Relative now have shared content-column settings on top of those data concepts, with overlay-owned option keys so user choices stay independent.
+The registry keeps timing display keys stable so table semantics can be validated without copying formatter logic. Standings and Relative now have shared content-column settings on top of those data concepts, with overlay-owned option keys so user choices stay independent. Content definitions keep compact overlay table headers separate from settings-facing labels, so settings can say `Class position` while the overlay still renders `CLS`.
 
 ## Parity Mode
 

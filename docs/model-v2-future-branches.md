@@ -1,10 +1,66 @@
 # Model V2 Future Branch Notes
 
-This investigation branch should stay focused on evidence and passive tooling, with one production simplification: radar proximity is now local in-car only. The branch adds model-v2 contracts, parity artifacts, IBT local-car analysis, raw-capture assumption analysis, and live overlay diagnostics.
+This file is the durable handoff record for model-v2 app theory, telemetry-source decisions, and future product branches. Read the current-state sections first. Older roadmap sections below are preserved as planning history and should not be treated as open work unless the current-state notes still call them out.
 
-Relative now consumes `LiveTelemetrySnapshot.Models.Relative` directly, and Car Radar consumes `LiveTelemetrySnapshot.Models.Spatial` for the simplified local in-car radar contract. Fuel and gap still read the legacy fuel/gap slices, while the rest of the `LiveTelemetrySnapshot.Models` layer and diagnostics artifacts remain review inputs for the next implementation branches.
+## Current State As Of 2026-05-11
 
-## This Branch Scope
+The model-v2 layer is no longer just passive evidence. Core overlays are already normalized live-model consumers across Standings, Relative, local Radar, Flags, Session / Weather, Pit Service, Input / Car State, Fuel, Gap To Leader, and Track Map. Some overlays still use adapter or compatibility slices where that keeps behavior stable, but new reusable telemetry fields should land in Core/live models first, then map into overlay view models.
+
+Current production shape:
+
+- Windows tray app remains the production/iRacing runtime.
+- Settings is the real startup/app surface and owns overlay visibility, scale/custom size, content/header/footer options, session filters, shared font/units, browser-source routes, support capture, and diagnostics.
+- Tracked mac harness remains the mock-telemetry parity/review surface.
+- Supported V1-candidate overlay family includes Standings, Relative, Gap To Leader, Fuel Calculator, Session / Weather, Pit Service, Track Map, Stream Chat, Input / Car State, Car Radar, Flags, and Garage Cover, with local OBS/browser-source routes where supported.
+- Local-only overlays are intentionally context-gated: Radar and Inputs require local player in-car context; Fuel Calculator and Pit Service require local player focus plus in-car or pit context.
+- Standings, Relative, Gap To Leader, and Track Map must remain usable in non-local focus/spectated contexts. Their data-source decisions should come from scoring/timing/focus arrays, not local-player-only scalar context.
+
+Current evidence/tooling shape:
+
+- Raw capture remains opt-in and writes `capture-manifest.json`, `telemetry-schema.json`, `telemetry.bin`, `latest-session.yaml`, and optional `session-info/` snapshots.
+- Compact sidecars and tools are additive: `capture-synthesis.json`, `live-model-parity.json`, `live-overlay-diagnostics.json`, `ibt-analysis/*.json`, `tools/analysis/analyze_capture_assumptions.py`, and compact fixture corpora under `fixtures/telemetry-analysis/`.
+- `live_model_v2_promotion_candidate` is still an evidence/review signal, not an automatic cutover trigger.
+
+## Active Hot Start Notes
+
+- 2026-05-11: Added `skills/tmr-overlay-hot-start/SKILL.md` so future sessions read this file and `VERSION.md` before implementation instead of relying on chat memory.
+- 2026-05-11: Current telemetry investigation uses two uploaded v0.18.8 captures: AI multi-session Practice/Lone Qualify/Race at Oran Park and open player Practice at Spa, plus local four-hour and 24-hour endurance captures. Raw captures/zips stay local; compact redacted fixture corpus belongs under `fixtures/telemetry-analysis/`.
+- 2026-05-11: Source-selection pass landed from the compact corpus: Standings keeps race starting grid until meaningful official race coverage appears, Practice/Qualifying/Test still wait for valid laps, Relative only applies local garage/off-track suppression when the reference is local, and Gap/Relative timing require positive F2/estimated-time evidence instead of all-zero placeholders.
+- 2026-05-11: AI race class names can have blank `CarClassShortName`; the accepted grounded fallback derives names from session-info car names/paths when possible, such as common `GT3`/`GT4`/`TCR` tokens or a single-car class screen name.
+- 2026-05-11: Diagnostics for UI unclickable/freeze reports point to visible topmost overlay windows with `inputTransparent=false` and `noActivate=true`; these can intercept mouse input over Settings without taking focus. Patched Settings-visible protection so managed overlays become click-through/non-topmost while Settings is open, widened the diagnostics risk metric, gated Radar settings preview by its Visible toggle, and flushed pending settings saves before app exit to reduce restart/toggle mismatch risk.
+
+## Current v0.18.9 Branch Focus
+
+The next useful model-v2 work is evidence-backed hardening, not a broad overlay rewrite:
+
+- Keep the compact tracked "full-picture" live telemetry fixture corpus current as representative real states are collected. Keep it redacted and compact: no raw `telemetry.bin`, no source `.ibt`, no private chat/settings values, and no full-session payloads.
+- Include labeled states for pre-grid/gridding, green start, green plus delay, normal race running, spectating another car, local player in-car, pit road/stall/service, garage/setup visible, replay if observed, multiclass coverage, and degraded/missing focus or official-position fields.
+- Use the corpus to validate AI/spectated Standings, Relative, and Gap To Leader behavior after implementation changes instead of relying on hypothetical fallback data.
+- Preserve the current valid-lap gate for Standings in Practice/Qualifying/Test.
+- Keep broad validation, screenshot regeneration, installer/update polish, first-run docs, privacy/defaults review, and Windows-native behavior checks as V1-candidate readiness work.
+
+Current source-selection guardrails:
+
+- Standings, Relative, Gap To Leader, and Track Map source behavior should stay grounded in diagnostics, fixture corpus states, and SDK field availability. Do not add a rendering fallback unless the source field is observed and meaningful in the relevant session state.
+- Do not fall back to hypothetical data just to render something. Rendering should be grounded in fields that are actually present and meaningful for that session state.
+- Treat field location as session-dependent: AI/spectated race states may expose usable scoring/timing/focus arrays even when local-player scalar context is absent or misleading.
+- Preserve player-only session behavior while adding AI/spectated support. The same source-selection rules must account for local-player focus, non-player camera focus, team handoff, pit/service, and early-green degraded timing.
+- Race gaps need positive/meaningful timing evidence; a green session with all-zero `CarIdxF2Time` or missing official positions should remain a waiting/degraded state for Gap To Leader.
+
+V1-candidate readiness discussion moved out of `VERSION.md`:
+
+- Treat the fundamental overlay logic as ready for V1-candidate validation once fixture-backed source selection lands. Overlay behavior should then be stable enough that adding a straightforward content field, such as a Standings `Team name` column, is a descriptor/model wiring change instead of a table-behavior rewrite.
+- New reusable telemetry fields should be consumed and normalized in Core/live models first, then mapped into overlay columns or rows; Standings/Relative should not own root data extraction for shared fields.
+- Lock the V1 product scope: decide the final overlay list, make sure experimental/future surfaces are not exposed as normal user-facing tabs, keep browser review dev-only, and decide whether the mac harness remains tracked secondary scaffolding or moves to a deprecation branch.
+- Prove installer/update polish: MSI install, upgrade, rollback, Velopack update checks, release notes, checksums, and the acceptable stance on unsigned SmartScreen warnings for V1.
+- Add the minimum user-facing first-run docs: starting the app, enabling overlays, configuring OBS browser-source URLs, Stream Chat setup, Garage Cover setup, diagnostics bundle creation, and raw capture being opt-in.
+- Complete an explicit privacy/defaults pass: logged fields, diagnostics bundle contents, redactions, retention defaults, app-data locations, and confirmation that raw `telemetry.bin` and source `.ibt` payloads stay out of support bundles.
+- Freeze durable settings/history schema unless a V1-blocking bug requires a change. Any schema change now needs version constants, migrations or compatible readers, docs, fixtures, and compatibility tests in the same pass.
+- Run a native Windows behavior sweep because browser review cannot prove focus, topmost, click-through, no-activate behavior, Stream Chat window behavior, iRacing SDK capture, installer/update behavior, or WinForms screenshot output.
+- Harden the support posture so one teammate diagnostics bundle is enough to answer version, settings, update state, overlay visibility, browser routes, runtime errors, recent telemetry state, and recent performance/freeze state without raw payloads.
+- Keep V1.x performance and heavier analysis work out of this milestone unless validation finds a release-blocking regression. Use the V1.x roadmap for overlay lifecycle/timer efficiency, rendering/cache performance, capture replay, and larger post-race analysis products after the candidate is stable.
+
+## Historical Branch Scope
 
 - Keep raw capture and advanced diagnostics bounded with failure isolation. For tester builds, raw capture should stay opt-in; compact model parity, live overlay diagnostics, and edge-case clips can run by default when a branch is explicitly collecting evidence.
 - Preserve compatibility with already collected raw captures and synthesized data. New sidecars are additive; older captures remain readable.
@@ -17,23 +73,23 @@ Relative now consumes `LiveTelemetrySnapshot.Models.Relative` directly, and Car 
 
 ## Product Milestone Framing
 
-V1.0 should be a polished core desktop overlay app, not the finish line for every endurance-analysis idea. The V1.0-ready surface should be:
+V1.0 should be a polished core desktop overlay app, not the finish line for every endurance-analysis idea. The V1.0-candidate surface is now mostly product hardening around the current overlay suite rather than new model-v2 surface area:
 
 - Settings as the real app entry point, with support/diagnostics and release/update awareness.
 - Standings.
 - Relative.
 - Local in-car radar/blindspot.
 - Flags.
-- Optional Track Map, session/weather, or pit-service snapshots only if they stay telemetry-first, low-noise, and clearly explain unavailable/placeholder states.
+- Gap To Leader, Fuel Calculator, Session / Weather, Pit Service, Track Map, Stream Chat, Input / Car State, and Garage Cover where current contracts remain telemetry-first, low-noise, and context-gated.
 - Localhost browser-source routes as local OBS/capture support, not as the teammate-to-teammate Overlay Bridge.
 
 Heavy analysis products should move to V1.x, where they can build on stable core telemetry contracts and teammate evidence without blocking the first product milestone. Scenario-based layout profiles and engineer/operator mode are large enough to be V2.0 product modes, and VR is a later V2.N platform item because it is a separate renderer with different performance, UX, and comfort constraints.
 
-The remaining model-v2 candidates from the v0.13 review should also be treated as V1.N foundations unless teammate testing proves one must move earlier: Driver Role / Focus V2, Race Events / Penalties V2, Pit / Service Strategy V2, Track Asset / Map Quality V2, and Post-Race / Session Summary V2. They are good model contracts, but each needs either broader product design, more telemetry proof, or replay-backed validation before becoming V1.0 surface area.
+Remaining model-v2/future-branch candidates should be treated as V1.N foundations unless teammate testing proves one must move earlier: Driver Role / Focus V2, Race Events / Penalties V2, Pit / Service Strategy V2, Track Asset / Map Quality V2, Post-Race / Session Summary V2, player comparison/stat tracking, and broader analysis work. They are good model contracts, but each needs either broader product design, more telemetry proof, official/user-authorized data access, or replay-backed validation before becoming default V1.0 surface area.
 
-## Suggested V0.X Roadmap To V1.0
+## Historical V0.X Roadmap Snapshot
 
-Treat these as branch-size product bets, not fixed promises. If teammate testing exposes a painful install, support, or telemetry issue, pull that forward even if the nominal version order says otherwise.
+The v0.11 through v0.18 plans below are preserved as planning history. Many items have shipped or changed shape; use `VERSION.md` for authoritative milestone summaries and use the current-state section above for what is true now.
 
 ### v0.11.0 - Standings, Track Maps, Localhost Browser Sources, And Live Polish
 
@@ -170,6 +226,16 @@ Likely scope:
 - Start with scoring-snapshot ordering and completed-lap position movement, matching the v0.13 decision to avoid live/proximity compression when iRacing is not transmitting the full field.
 - Keep the first version conservative: position, class/overall marker, driver or car label, gap/interval summary, pit/lap-state hints, local-car emphasis, and optional class filtering.
 - Use screenshot/replay validation against large multiclass fields before adding animation, streamer-specific styling, or richer broadcast controls.
+
+### V1.x Feature Addition - Player Comparison And Stat Tracking
+
+Goal: explore a future player comparison/stat tracking tool or overlay without pulling it into the current V1-candidate source-selection hardening.
+
+Initial product signals:
+
+- Team request: compare players and track stats as a future overlay/tool family.
+- Reddit signal from `/r/iRacing/comments/1t9m2zy/proper_iracing_companion_app/`: users asked for progression tracking, car/track stats, buddy/rival comparison, fastest-lap counts, filtered series standings against drivers with enough weeks, SR split by off-track vs contact incidents, and race history against other drivers.
+- API/privacy posture matters: avoid a scraped public driver database; prefer user-authorized iRacing API/OAuth-style access and active-membership-aware data boundaries.
 
 ### v1.1 - Analysis Evidence Loop And Capture Replay
 

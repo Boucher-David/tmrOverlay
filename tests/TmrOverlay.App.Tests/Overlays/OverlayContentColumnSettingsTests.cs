@@ -86,6 +86,50 @@ public sealed class OverlayContentColumnSettingsTests
     }
 
     [Fact]
+    public void ContentColumnsKeepCompactOverlayHeadersAndHumanSettingsLabels()
+    {
+        var settings = new ApplicationSettings();
+        var standings = settings.GetOrAddOverlay("standings", 780, 520);
+        var relative = settings.GetOrAddOverlay("relative", 520, 360);
+
+        var standingsColumns = OverlayContentColumnSettings.ColumnsFor(standings, OverlayContentColumnSettings.Standings);
+        var relativeColumns = OverlayContentColumnSettings.ColumnsFor(relative, OverlayContentColumnSettings.Relative);
+        var standingsBrowserColumns = OverlayContentColumnSettings.BrowserColumnsFor(standings, OverlayContentColumnSettings.Standings);
+
+        Assert.Contains(standingsColumns, column =>
+            column.Id == OverlayContentColumnSettings.StandingsClassPositionColumnId
+            && column.Label == "CLS"
+            && column.SettingsLabel == "Class position");
+        Assert.Contains(standingsColumns, column =>
+            column.Id == OverlayContentColumnSettings.StandingsCarNumberColumnId
+            && column.Label == "CAR"
+            && column.SettingsLabel == "Car number");
+        Assert.Contains(standingsColumns, column =>
+            column.Id == OverlayContentColumnSettings.StandingsGapColumnId
+            && column.Label == "GAP"
+            && column.SettingsLabel == "Class gap");
+        Assert.Contains(standingsColumns, column =>
+            column.Id == OverlayContentColumnSettings.StandingsIntervalColumnId
+            && column.Label == "INT"
+            && column.SettingsLabel == "Focus interval");
+        Assert.Contains(standingsColumns, column =>
+            column.Id == OverlayContentColumnSettings.StandingsPitColumnId
+            && column.Label == "PIT"
+            && column.SettingsLabel == "Pit status");
+        Assert.Contains(relativeColumns, column =>
+            column.Id == OverlayContentColumnSettings.RelativePositionColumnId
+            && column.Label == "Pos"
+            && column.SettingsLabel == "Relative position");
+        Assert.Contains(relativeColumns, column =>
+            column.Id == OverlayContentColumnSettings.RelativePitColumnId
+            && column.Label == "Pit"
+            && column.SettingsLabel == "Pit status");
+        Assert.Contains(standingsBrowserColumns, column =>
+            column.Id == OverlayContentColumnSettings.StandingsClassPositionColumnId
+            && column.Label == "CLS");
+    }
+
+    [Fact]
     public void OverlayManagerScaledOverlaySize_AppliesScaleAfterColumnDrivenBaseWidth()
     {
         var method = typeof(OverlayManager).GetMethod(

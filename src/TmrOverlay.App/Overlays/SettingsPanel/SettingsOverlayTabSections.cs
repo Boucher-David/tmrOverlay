@@ -323,7 +323,7 @@ internal static class SettingsOverlayTabSections
             handle.MouseDown += (_, _) => handle.DoDragDrop(columnDefinition.Id, DragDropEffects.Move);
             row.Controls.Add(handle);
 
-            row.Controls.Add(SettingsUi.CreateLabel(columnDefinition.Label, 84, 5, 190));
+            row.Controls.Add(SettingsUi.CreateLabel(ColumnSettingsLabel(columnDefinition), 84, 5, 190));
 
             var enabled = SettingsUi.CreateCheckBox(
                 string.Empty,
@@ -489,6 +489,13 @@ internal static class SettingsOverlayTabSections
         }
 
         return rowTop;
+    }
+
+    private static string ColumnSettingsLabel(OverlayContentColumnDefinition definition)
+    {
+        return string.IsNullOrWhiteSpace(definition.SettingsLabel)
+            ? definition.Label
+            : definition.SettingsLabel;
     }
 
     private static void ApplyContentColumnRowStyle(Panel row, bool enabled)

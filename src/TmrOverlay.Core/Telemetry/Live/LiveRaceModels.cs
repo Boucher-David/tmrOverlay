@@ -174,9 +174,17 @@ internal sealed record LiveCoverageModel(
         LiveProximityRowCount: 0);
 }
 
+internal enum LiveScoringSource
+{
+    None = 0,
+    StartingGrid = 1,
+    SessionResults = 2
+}
+
 internal sealed record LiveScoringModel(
     bool HasData,
     LiveModelQuality Quality,
+    LiveScoringSource Source,
     int? ReferenceCarIdx,
     int? ReferenceCarClass,
     IReadOnlyList<LiveScoringClassGroup> ClassGroups,
@@ -185,6 +193,7 @@ internal sealed record LiveScoringModel(
     public static LiveScoringModel Empty { get; } = new(
         HasData: false,
         Quality: LiveModelQuality.Unavailable,
+        Source: LiveScoringSource.None,
         ReferenceCarIdx: null,
         ReferenceCarClass: null,
         ClassGroups: [],

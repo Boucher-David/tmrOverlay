@@ -32,6 +32,7 @@ internal sealed class LiveOverlayDiagnosticsRecorder
     private readonly Dictionary<string, int> _focusUnavailableReasonCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _focusUnavailableSessionKindCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _focusUnavailableSessionStateCounts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _scoringSourceCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _gapClassSourceCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _gapClassEvidenceCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _gapOverallEvidenceCounts = new(StringComparer.OrdinalIgnoreCase);
@@ -81,6 +82,15 @@ internal sealed class LiveOverlayDiagnosticsRecorder
     private int _focusUnavailableOffTrackFrames;
     private int _focusUnavailableGarageFrames;
     private int _focusUnavailablePitContextFrames;
+    private int _scoringFramesWithData;
+    private int _scoringStartingGridFrames;
+    private int _scoringSessionResultsFrames;
+    private int _maxScoringRows;
+    private int _maxScoringClassGroups;
+    private int _maxCoverageResultRows;
+    private int _maxCoverageLiveScoringRows;
+    private int _maxCoverageLiveTimingRows;
+    private int _maxCoverageLiveSpatialRows;
     private int _radarFramesWithData;
     private int _radarNonPlayerFocusFrames;
     private int _radarLocalSuppressedNonPlayerFocusFrames;
@@ -204,6 +214,15 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             _focusUnavailableOffTrackFrames = 0;
             _focusUnavailableGarageFrames = 0;
             _focusUnavailablePitContextFrames = 0;
+            _scoringFramesWithData = 0;
+            _scoringStartingGridFrames = 0;
+            _scoringSessionResultsFrames = 0;
+            _maxScoringRows = 0;
+            _maxScoringClassGroups = 0;
+            _maxCoverageResultRows = 0;
+            _maxCoverageLiveScoringRows = 0;
+            _maxCoverageLiveTimingRows = 0;
+            _maxCoverageLiveSpatialRows = 0;
             _radarFramesWithData = 0;
             _radarNonPlayerFocusFrames = 0;
             _radarLocalSuppressedNonPlayerFocusFrames = 0;
@@ -273,6 +292,7 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             _focusUnavailableReasonCounts.Clear();
             _focusUnavailableSessionKindCounts.Clear();
             _focusUnavailableSessionStateCounts.Clear();
+            _scoringSourceCounts.Clear();
             _gapClassSourceCounts.Clear();
             _gapClassEvidenceCounts.Clear();
             _gapOverallEvidenceCounts.Clear();
@@ -319,6 +339,7 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             _frameCount++;
             RecordSession(snapshot);
             RecordFocus(snapshot, capturedAtUtc);
+            RecordScoringCoverage(snapshot);
             RecordGap(snapshot, capturedAtUtc);
             RecordRadar(snapshot, capturedAtUtc);
             RecordFuel(snapshot, capturedAtUtc);
@@ -377,6 +398,17 @@ internal sealed class LiveOverlayDiagnosticsRecorder
                         UnavailableReasonCounts: Sorted(_focusUnavailableReasonCounts),
                         UnavailableSessionKindCounts: Sorted(_focusUnavailableSessionKindCounts),
                         UnavailableSessionStateCounts: Sorted(_focusUnavailableSessionStateCounts)),
+                    Scoring: new ScoringOverlayDiagnosticsSummary(
+                        FramesWithData: _scoringFramesWithData,
+                        StartingGridFrames: _scoringStartingGridFrames,
+                        SessionResultsFrames: _scoringSessionResultsFrames,
+                        MaxRows: _maxScoringRows,
+                        MaxClassGroups: _maxScoringClassGroups,
+                        MaxCoverageResultRows: _maxCoverageResultRows,
+                        MaxCoverageLiveScoringRows: _maxCoverageLiveScoringRows,
+                        MaxCoverageLiveTimingRows: _maxCoverageLiveTimingRows,
+                        MaxCoverageLiveSpatialRows: _maxCoverageLiveSpatialRows,
+                        SourceCounts: Sorted(_scoringSourceCounts)),
                     Gap: new GapOverlayDiagnosticsSummary(
                         FramesWithData: _gapFramesWithData,
                         NonRaceFramesWithData: _gapNonRaceFramesWithData,
@@ -561,6 +593,33 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             FocusUnavailableDetail(snapshot, reason),
             snapshot,
             capturedAtUtc);
+    }
+
+    private void RecordScoringCoverage(LiveTelemetrySnapshot snapshot)
+    {
+        var scoring = snapshot.Models.Scoring;
+        var coverage = snapshot.Models.Coverage;
+        Increment(_scoringSourceCounts, scoring.Source.ToString());
+        if (scoring.HasData)
+        {
+            _scoringFramesWithData++;
+        }
+
+        if (scoring.Source == LiveScoringSource.StartingGrid)
+        {
+            _scoringStartingGridFrames++;
+        }
+        else if (scoring.Source == LiveScoringSource.SessionResults)
+        {
+            _scoringSessionResultsFrames++;
+        }
+
+        _maxScoringRows = Math.Max(_maxScoringRows, scoring.Rows.Count);
+        _maxScoringClassGroups = Math.Max(_maxScoringClassGroups, scoring.ClassGroups.Count);
+        _maxCoverageResultRows = Math.Max(_maxCoverageResultRows, coverage.ResultRowCount);
+        _maxCoverageLiveScoringRows = Math.Max(_maxCoverageLiveScoringRows, coverage.LiveScoringRowCount);
+        _maxCoverageLiveTimingRows = Math.Max(_maxCoverageLiveTimingRows, coverage.LiveTimingRowCount);
+        _maxCoverageLiveSpatialRows = Math.Max(_maxCoverageLiveSpatialRows, coverage.LiveSpatialRowCount);
     }
 
     private void RecordGap(LiveTelemetrySnapshot snapshot, DateTimeOffset capturedAtUtc)
@@ -1649,6 +1708,13 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             FocusCarIdx: focusCarIdx,
             FocusUnavailableReason: FocusUnavailableReason(snapshot),
             FocusKind: FocusKind(playerCarIdx, focusCarIdx),
+            ScoringSource: snapshot.Models.Scoring.Source.ToString(),
+            ScoringRowCount: snapshot.Models.Scoring.Rows.Count,
+            ScoringClassGroupCount: snapshot.Models.Scoring.ClassGroups.Count,
+            CoverageResultRowCount: snapshot.Models.Coverage.ResultRowCount,
+            CoverageLiveScoringRowCount: snapshot.Models.Coverage.LiveScoringRowCount,
+            CoverageLiveTimingRowCount: snapshot.Models.Coverage.LiveTimingRowCount,
+            CoverageLiveSpatialRowCount: snapshot.Models.Coverage.LiveSpatialRowCount,
             ClassGapSeconds: Round(snapshot.LeaderGap.ClassLeaderGap.Seconds),
             ClassGapLaps: Round(snapshot.LeaderGap.ClassLeaderGap.Laps),
             ClassGapSource: snapshot.LeaderGap.ClassLeaderGap.Source,
@@ -1722,6 +1788,13 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             FocusCarIdx: focusCarIdx,
             FocusUnavailableReason: FocusUnavailableReason(snapshot),
             FocusKind: FocusKind(playerCarIdx, focusCarIdx),
+            ScoringSource: snapshot.Models.Scoring.Source.ToString(),
+            ScoringRowCount: snapshot.Models.Scoring.Rows.Count,
+            ScoringClassGroupCount: snapshot.Models.Scoring.ClassGroups.Count,
+            CoverageResultRowCount: snapshot.Models.Coverage.ResultRowCount,
+            CoverageLiveScoringRowCount: snapshot.Models.Coverage.LiveScoringRowCount,
+            CoverageLiveTimingRowCount: snapshot.Models.Coverage.LiveTimingRowCount,
+            CoverageLiveSpatialRowCount: snapshot.Models.Coverage.LiveSpatialRowCount,
             RawCarLeftRight: snapshot.LatestSample?.CarLeftRight,
             RawNearbyCarCount: snapshot.LatestSample?.NearbyCars?.Count ?? 0,
             HasRadarData: snapshot.Proximity.HasData,
@@ -2188,6 +2261,7 @@ internal sealed record LiveOverlayDiagnosticsArtifact(
     LiveOverlayDiagnosticsArtifactOptions Options,
     LiveOverlayDiagnosticsTotals Totals,
     FocusContextDiagnosticsSummary Focus,
+    ScoringOverlayDiagnosticsSummary Scoring,
     GapOverlayDiagnosticsSummary Gap,
     RadarOverlayDiagnosticsSummary Radar,
     FuelOverlayDiagnosticsSummary Fuel,
@@ -2226,6 +2300,18 @@ internal sealed record FocusContextDiagnosticsSummary(
     IReadOnlyDictionary<string, int> UnavailableReasonCounts,
     IReadOnlyDictionary<string, int> UnavailableSessionKindCounts,
     IReadOnlyDictionary<string, int> UnavailableSessionStateCounts);
+
+internal sealed record ScoringOverlayDiagnosticsSummary(
+    int FramesWithData,
+    int StartingGridFrames,
+    int SessionResultsFrames,
+    int MaxRows,
+    int MaxClassGroups,
+    int MaxCoverageResultRows,
+    int MaxCoverageLiveScoringRows,
+    int MaxCoverageLiveTimingRows,
+    int MaxCoverageLiveSpatialRows,
+    IReadOnlyDictionary<string, int> SourceCounts);
 
 internal sealed record GapOverlayDiagnosticsSummary(
     int FramesWithData,
@@ -2351,6 +2437,13 @@ internal sealed record LiveOverlayDiagnosticsFrameSample(
     int? FocusCarIdx,
     string FocusUnavailableReason,
     string FocusKind,
+    string ScoringSource,
+    int ScoringRowCount,
+    int ScoringClassGroupCount,
+    int CoverageResultRowCount,
+    int CoverageLiveScoringRowCount,
+    int CoverageLiveTimingRowCount,
+    int CoverageLiveSpatialRowCount,
     double? ClassGapSeconds,
     double? ClassGapLaps,
     string ClassGapSource,
@@ -2381,6 +2474,13 @@ internal sealed record LiveOverlayDiagnosticsEventSample(
     int? FocusCarIdx,
     string FocusUnavailableReason,
     string FocusKind,
+    string ScoringSource,
+    int ScoringRowCount,
+    int ScoringClassGroupCount,
+    int CoverageResultRowCount,
+    int CoverageLiveScoringRowCount,
+    int CoverageLiveTimingRowCount,
+    int CoverageLiveSpatialRowCount,
     int? RawCarLeftRight,
     int RawNearbyCarCount,
     bool HasRadarData,

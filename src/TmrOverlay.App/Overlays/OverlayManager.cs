@@ -645,7 +645,8 @@ internal sealed class OverlayManager : IDisposable
                     registration.DefaultX,
                     registration.DefaultY,
                     defaultEnabled: false);
-                var settingsPreview = _radarSettingsPreviewVisible
+                var settingsPreview = settings.Enabled
+                    && _radarSettingsPreviewVisible
                     && string.Equals(registration.Definition.Id, CarRadarOverlayDefinition.Definition.Id, StringComparison.Ordinal);
                 var sessionAllowed = IsAllowedForSession(registration.Definition, settings, currentSession);
                 var overlayLiveTelemetryAvailable = liveTelemetryAvailable || settingsPreview;
@@ -670,6 +671,12 @@ internal sealed class OverlayManager : IDisposable
                     if (_forms.TryGetValue(registration.Definition.Id, out var hiddenForm))
                     {
                         ApplyRadarSettingsPreview(hiddenForm, previewVisible: false);
+                        ApplySettingsWindowInputProtection(hiddenForm);
+                        if (hiddenForm.TopMost)
+                        {
+                            hiddenForm.TopMost = false;
+                        }
+
                         hiddenForm.Hide();
                     }
 
@@ -1044,7 +1051,11 @@ internal sealed class OverlayManager : IDisposable
         var isInputTransparent = form is FlagsOverlayForm
             || form is PersistentOverlayForm { IsEffectivelyInputTransparent: true };
         var noActivate = form is PersistentOverlayForm;
-        var settingsWindowVisible = TryGetVisibleSettingsForm(out _);
+        var settingsWindowVisible = TryGetVisibleSettingsForm(out var settingsForm);
+        var intersectsSettingsWindow = hasForm
+            && actualVisible
+            && settingsWindowVisible
+            && form!.Bounds.IntersectsWith(settingsForm.Bounds);
         var settingsWindowInputProtected = hasForm && ShouldProtectSettingsWindowInput(form!);
         var nativeDiagnostics = NativeOverlayDiagnostics(hasForm ? form : null);
         _liveOverlayWindowCaptureStore.RecordOverlayWindow(
@@ -1056,12 +1067,14 @@ internal sealed class OverlayManager : IDisposable
             settingsPreview,
             desiredVisible,
             actualVisible,
+            hasForm && form!.TopMost,
             liveTelemetryAvailable,
             definition.ContextRequirement.ToString(),
             contextAvailability?.IsAvailable ?? true,
             contextAvailability?.Reason ?? "not_required",
             _settingsOverlayActive,
             settingsWindowVisible,
+            intersectsSettingsWindow,
             settingsWindowInputProtected,
             isInputTransparent,
             noActivate,
@@ -1078,6 +1091,9 @@ internal sealed class OverlayManager : IDisposable
             isInputTransparent,
             noActivate,
             _settingsOverlayActive,
+            settingsWindowVisible,
+            intersectsSettingsWindow,
+            settingsWindowInputProtected,
             bounds.X,
             bounds.Y,
             bounds.Width,
@@ -1260,6 +1276,12 @@ internal sealed class OverlayManager : IDisposable
                     hiddenDesignV2.SetFlagsManagedState(false, _settingsOverlayActive);
                 }
 
+                ApplySettingsWindowInputProtection(hiddenForm);
+                if (hiddenForm.TopMost)
+                {
+                    hiddenForm.TopMost = false;
+                }
+
                 hiddenForm.Hide();
             }
 
@@ -1420,7 +1442,7 @@ internal sealed class OverlayManager : IDisposable
             return false;
         }
 
-        return _settingsOverlayActive || (form.Visible && form.Bounds.IntersectsWith(settingsForm.Bounds));
+        return true;
     }
 
     private bool TryGetVisibleSettingsForm(out Form settingsForm)

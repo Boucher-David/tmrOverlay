@@ -78,6 +78,7 @@ For model-v2 class leader gaps, the first valid rule wins:
 5. Otherwise unavailable.
 
 Valid second gaps must be finite, non-negative, and less than 86400.
+Race timing evidence must also be meaningful: all-zero `CarIdxF2Time`/estimated-time frames from early green or degraded AI/spectated states are not treated as reliable class-gap evidence. Positive F2 timing is required for derived class-gap and focus-delta calculations except for an explicit leader/reference zero row.
 
 Data review note from the May 2026 capture analysis:
 

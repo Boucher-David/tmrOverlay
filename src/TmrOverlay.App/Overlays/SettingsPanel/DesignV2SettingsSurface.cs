@@ -1496,7 +1496,7 @@ internal sealed class DesignV2SettingsSurface : Control
     private IReadOnlyList<ContentMatrixRow> ColumnContentRows(OverlaySettings settings, OverlayContentDefinition contentDefinition)
     {
         return OverlayContentColumnSettings.ColumnsFor(settings, contentDefinition)
-            .Select(column => new ContentMatrixRow(column.Label, column.Enabled))
+            .Select(column => new ContentMatrixRow(column.SettingsLabel, column.Enabled))
             .ToArray();
     }
 

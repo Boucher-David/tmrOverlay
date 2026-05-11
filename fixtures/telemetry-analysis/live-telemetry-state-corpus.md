@@ -1,0 +1,30 @@
+# Live Telemetry State Corpus
+
+Compact redacted states derived from local raw captures for Standings, Relative, and Gap To Leader source-selection work.
+
+## States
+
+| ID | Capture | Session | Phase | Focus | Standings | Relative | Gap | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| ai-practice-no-valid-lap | capture-20260511-001730-564 | Practice | green | player | none; rows 0; valid 0; render False | waiting; fallback rows 0 | unavailable:gap_signals_missing; data False | Standings should wait here because practice/qualifying/test requires a valid lap. |
+| ai-qualifying-valid-lap-gated | capture-20260511-001730-564 | Lone Qualify | post-green | non-player | session-results; rows 41; valid 38; render True | model-v2-timing-fallback; fallback rows 60 | reliable:position; data True | Practice/qualifying standings can render because selected scoring rows include valid lap times. Relative depends on model-v2 timing fallback rather than local proximity in this state. |
+| ai-race-pre-green | capture-20260511-001730-564 | Race | pre-green | non-player | starting-grid; rows 41; valid 38; render True | model-v2-timing-fallback; fallback rows 63 | unavailable:gap_signals_missing; data False | AI race state does not have usable local-player context; Standings/Relative/Gap must use focus/timing/scoring arrays. Relative depends on model-v2 timing fallback rather than local proximity in this state. Race pre-green may expose grid/scoring before live race gaps are meaningful. |
+| ai-race-green-non-player-focus | capture-20260511-001730-564 | Race | green | non-player | session-results; rows 40; valid 40; render True | model-v2-timing-fallback; fallback rows 63 | reliable:CarIdxF2Time; data True | AI race state does not have usable local-player context; Standings/Relative/Gap must use focus/timing/scoring arrays. Relative depends on model-v2 timing fallback rather than local proximity in this state. |
+| open-practice-non-player-focus | capture-20260511-002956-343 | Practice | green | non-player | session-results; rows 14; valid 14; render True | model-v2-timing-fallback; fallback rows 63 | reliable:CarIdxF2Time; data True | Practice/qualifying standings can render because selected scoring rows include valid lap times. Relative depends on model-v2 timing fallback rather than local proximity in this state. |
+| open-practice-player-focus | capture-20260511-002956-343 | Practice | green | player | none; rows 0; valid 0; render False | waiting; fallback rows 0 | unavailable:gap_signals_missing; data False | Standings should wait here because practice/qualifying/test requires a valid lap. |
+
+## Missing Targets
+
+- `ai-race-green-player-focus` - AI race green with player focus
+- `endurance-4h-race-running` - Four-hour capture normal race running
+- `endurance-4h-pit-or-garage` - Four-hour capture pit/garage/service context
+- `endurance-24h-race-running` - 24-hour fragment normal race running
+- `endurance-24h-pit-or-garage` - 24-hour fragment pit/garage/service context
+- `degraded-focus-unavailable` - Degraded state with missing focus car
+
+## Source Captures
+
+| Capture | Category | Frames | Dropped | Session Snapshots | Sample Stride |
+| --- | --- | ---: | ---: | ---: | ---: |
+| capture-20260511-001730-564 | ai-multisession-spectated | 35370 | 0 | 51 | 60 |
+| capture-20260511-002956-343 | open-player-practice | 6375 | 0 | 11 | 60 |

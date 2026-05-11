@@ -5,6 +5,7 @@
 The recorder does not change overlay output. It watches normalized live snapshots and writes bounded summaries for:
 
 - gap semantics: race vs non-race frames, class-gap source counts, large gaps, gap jumps, class row availability, and pit context
+- scoring/source coverage: scoring source counts (`None`, `StartingGrid`, `SessionResults`), max scoring row/class-group counts, and max result/live-scoring/live-timing/live-spatial coverage counts
 - focus context: unavailable focus frames, raw `CamCarIdx`, reason counts, session kind/state counts, on-track/garage/pit context, and bounded `focus.unavailable` examples
 - radar semantics: focus kind, local-only suppression, pit/garage unavailability, local progress gaps, side-signal frames, side signal without placement candidates, timing-only vs spatial placement coverage, nearby-car counts, and multiclass approach frames
 - fuel and pit-service semantics: valid level frames, instantaneous burn frames, burn-without-level frames, team timing without local fuel, pit context, driver-control changes, pit-service signal/request/change frames, whether those pit-service signals occur while focus is on another car or the user is off track, and local-strategy suppression reasons for the V1 Fuel/Pit overlays
@@ -35,7 +36,7 @@ The mac harness mirrors this path under `~/Library/Application Support/TmrOverla
 - Disabled by default for normal builds; enable it with `LiveOverlayDiagnostics:Enabled=true` or a `TMR_LiveOverlayDiagnostics__Enabled=true` override when a session should write this observer artifact.
 - Bounded by sampled frame and event caps.
 - Event examples are exact-duplicate suppressed and capped per kind before the global cap, so a stable condition such as a multi-lap class gap cannot crowd out unrelated radar/fuel/position examples.
-- Frame and event examples include session state, on-track/garage/pit context, raw `CamCarIdx`, focus-unavailable reason, player car index, and focus car index so startup/degraded telemetry can be separated from real focus bugs.
+- Frame and event examples include session state, on-track/garage/pit context, raw `CamCarIdx`, focus-unavailable reason, player car index, focus car index, scoring source, scoring row/class-group counts, and coverage row counts so startup/degraded telemetry can be separated from real focus or source-selection bugs.
 - Radar event examples include the focus kind, raw `CarLeftRight`, raw nearby-car count, whether the production radar had data, and nearby/timing/spatial row counts. This lets suppressed spectator/teammate focus and other partial radar cases be reviewed from the capture without making them normal overlay UI.
 - Relative lap relationship examples are probe-only. They use raw nearby `CarIdxLapCompleted` and `CarIdxLapDistPct` against the current focus progress to help decide a later Relative V2.5 color treatment; current overlays do not consume these counts.
 - Sector timing interval examples are derived diagnostics only for future timing-table work. They can use valid `LapDistPct` when lap counters are unavailable, but large reset-style progress jumps are counted as discontinuities instead of completed sectors. Track Map sector highlight state is now a production model-v2 contract under `LiveTelemetrySnapshot.Models.TrackMap`.
