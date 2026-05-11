@@ -1,3 +1,4 @@
+using TmrOverlay.App.Overlays.Standings;
 using TmrOverlay.Core.History;
 using TmrOverlay.Core.Telemetry.Live;
 using Xunit;
@@ -694,6 +695,222 @@ DriverInfo:
     }
 
     [Fact]
+    public void RecordFrame_HoldsRaceStartingGridUntilLiveScoringCoverageIsMeaningful()
+    {
+        var store = new LiveTelemetryStore();
+        store.ApplySessionInfo("""
+WeekendInfo:
+ TrackDisplayName: Test Circuit
+ TrackLength: 5.100
+ EventType: Race
+SessionInfo:
+ CurrentSessionNum: 0
+ Sessions:
+ - SessionNum: 0
+   SessionType: Race
+   SessionName: Race
+DriverInfo:
+ DriverCarIdx: 10
+ Drivers:
+ - CarIdx: 10
+   UserName: Reference Driver
+   CarNumber: 10
+   CarClassID: 4098
+   CarClassShortName: GT3
+ - CarIdx: 11
+   UserName: Grid Leader
+   CarNumber: 11
+   CarClassID: 4098
+   CarClassShortName: GT3
+ - CarIdx: 12
+   UserName: Live Leader
+   CarNumber: 12
+   CarClassID: 4098
+   CarClassShortName: GT3
+QualifyResultsInfo:
+ Results:
+ - Position: 0
+   ClassPosition: 0
+   CarIdx: 11
+ - Position: 1
+   ClassPosition: 1
+   CarIdx: 10
+ - Position: 2
+   ClassPosition: 2
+   CarIdx: 12
+""");
+        var now = DateTimeOffset.UtcNow;
+
+        store.RecordFrame(CreateSample(
+            capturedAtUtc: now,
+            sessionTime: 56.9d,
+            sessionState: 4,
+            playerCarIdx: 10,
+            focusCarIdx: 10,
+            allCars:
+            [
+                Car(11, position: 0, classPosition: 0, lapDistPct: 0.10d, f2TimeSeconds: 0d),
+                Car(10, position: 0, classPosition: 0, lapDistPct: 0.09d, f2TimeSeconds: 0d),
+                Car(12, position: 0, classPosition: 0, lapDistPct: 0.11d, f2TimeSeconds: 0d)
+            ]));
+
+        var gridSnapshot = store.Snapshot();
+        Assert.True(gridSnapshot.Models.Scoring.HasData);
+        Assert.Equal(LiveScoringSource.StartingGrid, gridSnapshot.Models.Scoring.Source);
+        Assert.Equal(new[] { 11, 10, 12 }, gridSnapshot.Models.Scoring.Rows.Select(row => row.CarIdx));
+        Assert.Equal("source: starting grid", StandingsOverlayViewModel.From(gridSnapshot, now).Source);
+
+        store.RecordFrame(CreateSample(
+            capturedAtUtc: now.AddSeconds(2),
+            sessionTime: 58.7d,
+            sessionState: 4,
+            playerCarIdx: 10,
+            focusCarIdx: 10,
+            allCars:
+            [
+                Car(12, position: 1, classPosition: 1, lapDistPct: 0.14d, f2TimeSeconds: 0d),
+                Car(10, position: 2, classPosition: 2, lapDistPct: 0.13d, f2TimeSeconds: 1.7d),
+                Car(11, position: 3, classPosition: 3, lapDistPct: 0.12d, f2TimeSeconds: 2.8d)
+            ]));
+
+        var liveSnapshot = store.Snapshot();
+        Assert.False(liveSnapshot.Models.Scoring.HasData);
+        Assert.Equal(LiveScoringSource.None, liveSnapshot.Models.Scoring.Source);
+
+        var liveViewModel = StandingsOverlayViewModel.From(liveSnapshot, now.AddSeconds(2), maximumRows: 3);
+        Assert.Equal("source: live timing telemetry", liveViewModel.Source);
+        Assert.Equal(new[] { "#12", "#10", "#11" }, liveViewModel.Rows.Select(row => row.CarNumber));
+    }
+
+    [Fact]
+    public void RecordFrame_DerivesBlankAiClassNamesFromCarNames()
+    {
+        var store = new LiveTelemetryStore();
+        store.ApplySessionInfo("""
+WeekendInfo:
+ TrackDisplayName: Test Circuit
+ TrackLength: 5.100
+ EventType: Race
+SessionInfo:
+ CurrentSessionNum: 0
+ Sessions:
+ - SessionNum: 0
+   SessionType: Race
+   SessionName: Race
+DriverInfo:
+ DriverCarIdx: 10
+ Drivers:
+ - CarIdx: 10
+   UserName: GT3 Reference
+   CarNumber: 10
+   CarClassID: 4098
+   CarClassShortName:
+   CarClassColor: 0xffda59
+   CarScreenNameShort: BMW M4 GT3
+   CarScreenName: BMW M4 GT3
+   CarPath: bmwm4gt3
+ - CarIdx: 11
+   UserName: GT3 Other
+   CarNumber: 11
+   CarClassID: 4098
+   CarClassShortName:
+   CarClassColor: 0xffda59
+   CarScreenNameShort: Ferrari 296 GT3
+   CarScreenName: Ferrari 296 GT3
+   CarPath: ferrari296gt3
+ - CarIdx: 20
+   UserName: TCR Reference
+   CarNumber: 20
+   CarClassID: 4101
+   CarClassShortName:
+   CarClassColor: 0xae6bff
+   CarScreenNameShort: Honda Civic Type R TCR
+   CarScreenName: Honda Civic Type R TCR
+   CarPath: hondacivictyper
+ - CarIdx: 21
+   UserName: TCR Other
+   CarNumber: 21
+   CarClassID: 4101
+   CarClassShortName:
+   CarClassColor: 0xae6bff
+   CarScreenNameShort: Hyundai Elantra N TCR
+   CarScreenName: Hyundai Elantra N TCR
+   CarPath: hyundaielantrantcr
+ - CarIdx: 30
+   UserName: M2 Single
+   CarNumber: 30
+   CarClassID: 4102
+   CarClassShortName:
+   CarClassColor: 0x53ff77
+   CarScreenNameShort: BMW M2 CS Racing
+   CarScreenName: BMW M2 CS Racing
+   CarPath: bmwm2csracing
+QualifyResultsInfo:
+ Results:
+ - Position: 0
+   ClassPosition: 0
+   CarIdx: 10
+ - Position: 1
+   ClassPosition: 1
+   CarIdx: 11
+ - Position: 2
+   ClassPosition: 0
+   CarIdx: 20
+ - Position: 3
+   ClassPosition: 1
+   CarIdx: 21
+ - Position: 4
+   ClassPosition: 0
+   CarIdx: 30
+""");
+
+        store.RecordFrame(CreateSample(
+            sessionState: 3,
+            playerCarIdx: 10,
+            focusCarIdx: 10,
+            focusCarClass: 4098,
+            teamCarClass: 4098));
+
+        var models = store.Snapshot().Models;
+
+        Assert.Equal("GT3", models.DriverDirectory.Drivers.Single(driver => driver.CarIdx == 10).CarClassName);
+        Assert.Equal("TCR", models.DriverDirectory.Drivers.Single(driver => driver.CarIdx == 20).CarClassName);
+        Assert.Equal("BMW M2 CS Racing", models.DriverDirectory.Drivers.Single(driver => driver.CarIdx == 30).CarClassName);
+        Assert.Contains(models.Scoring.ClassGroups, group => group.CarClass == 4098 && group.ClassName == "GT3");
+        Assert.Contains(models.Scoring.ClassGroups, group => group.CarClass == 4101 && group.ClassName == "TCR");
+        Assert.Contains(models.Scoring.ClassGroups, group => group.CarClass == 4102 && group.ClassName == "BMW M2 CS Racing");
+    }
+
+    [Fact]
+    public void RecordFrame_DoesNotTreatAllZeroF2TimingAsReliableRaceGap()
+    {
+        var store = new LiveTelemetryStore();
+
+        store.RecordFrame(CreateSample(
+            sessionState: 4,
+            playerCarIdx: 10,
+            focusCarIdx: 10,
+            focusLapDistPct: null,
+            focusEstimatedTimeSeconds: 0d,
+            teamEstimatedTimeSeconds: 0d,
+            teamPosition: 2,
+            teamClassPosition: 2,
+            classLeaderCarIdx: 11,
+            classLeaderF2TimeSeconds: 0d,
+            focusClassCars:
+            [
+                Car(11, position: 1, classPosition: 1, lapDistPct: 0.20d, f2TimeSeconds: 0d),
+                Car(10, position: 2, classPosition: 2, lapDistPct: 0.19d, f2TimeSeconds: 0d)
+            ]));
+
+        var models = store.Snapshot().Models;
+
+        Assert.False(models.Timing.ClassLeaderGapEvidence.IsUsable);
+        Assert.Equal("gap_signals_missing", models.Timing.ClassLeaderGapEvidence.MissingReason);
+        Assert.Null(models.Timing.FocusRow?.GapSecondsToClassLeader);
+    }
+
+    [Fact]
     public void RecordFrame_MarksTimingOnlyRowsAsUnavailableForSpatialAndRadarPlacement()
     {
         var store = new LiveTelemetryStore();
@@ -1169,6 +1386,7 @@ DriverInfo:
         int? sessionState = null,
         IReadOnlyList<HistoricalCarProximity>? focusClassCars = null,
         IReadOnlyList<HistoricalCarProximity>? nearbyCars = null,
+        IReadOnlyList<HistoricalCarProximity>? allCars = null,
         int? carLeftRight = null,
         bool? isGarageVisible = null,
         double? lapDeltaToSessionBestLapSeconds = null,
@@ -1230,7 +1448,28 @@ DriverInfo:
             LeaderLastLapTimeSeconds: leaderLastLapTimeSeconds,
             FocusClassCars: focusClassCars,
             NearbyCars: nearbyCars,
+            AllCars: allCars,
             LapDeltaToSessionBestLapSeconds: lapDeltaToSessionBestLapSeconds,
             LapDeltaToSessionBestLapOk: lapDeltaToSessionBestLapOk);
+    }
+
+    private static HistoricalCarProximity Car(
+        int carIdx,
+        int position,
+        int classPosition,
+        double lapDistPct,
+        double f2TimeSeconds)
+    {
+        return new HistoricalCarProximity(
+            CarIdx: carIdx,
+            LapCompleted: 0,
+            LapDistPct: lapDistPct,
+            F2TimeSeconds: f2TimeSeconds,
+            EstimatedTimeSeconds: f2TimeSeconds,
+            Position: position,
+            ClassPosition: classPosition,
+            CarClass: 4098,
+            TrackSurface: 3,
+            OnPitRoad: false);
     }
 }

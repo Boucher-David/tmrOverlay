@@ -39,12 +39,14 @@ public sealed class LiveOverlayWindowCaptureStoreTests
                 settingsPreview: false,
                 desiredVisible: true,
                 actualVisible: false,
+                topMost: false,
                 liveTelemetryAvailable: true,
                 contextRequirement: definition.ContextRequirement.ToString(),
                 contextAvailable: true,
                 contextReason: "not_required",
                 settingsOverlayActive: false,
                 settingsWindowVisible: true,
+                settingsWindowIntersects: false,
                 settingsWindowInputProtected: false,
                 inputTransparent: false,
                 noActivate: false,
@@ -78,6 +80,11 @@ public sealed class LiveOverlayWindowCaptureStoreTests
             Assert.Equal("AnyTelemetry", overlay.ContextRequirement);
             Assert.True(overlay.ContextAvailable);
             Assert.Equal("not_required", overlay.ContextReason);
+            Assert.True(overlay.SettingsWindowVisible);
+            Assert.False(overlay.SettingsWindowIntersects);
+            Assert.False(overlay.SettingsWindowInputProtected);
+            Assert.False(overlay.TopMost);
+            Assert.False(overlay.InputInterceptRisk);
 
             var json = JsonSerializer.Serialize(manifest, new JsonSerializerOptions
             {

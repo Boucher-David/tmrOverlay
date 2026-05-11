@@ -44,12 +44,14 @@ internal sealed class LiveOverlayWindowCaptureStore
         bool settingsPreview,
         bool desiredVisible,
         bool actualVisible,
+        bool topMost,
         bool liveTelemetryAvailable,
         string contextRequirement,
         bool contextAvailable,
         string contextReason,
         bool settingsOverlayActive,
         bool settingsWindowVisible,
+        bool settingsWindowIntersects,
         bool settingsWindowInputProtected,
         bool inputTransparent,
         bool noActivate,
@@ -61,6 +63,13 @@ internal sealed class LiveOverlayWindowCaptureStore
         var capturedAtUtc = DateTimeOffset.UtcNow;
         var bounds = form?.Bounds ?? new Rectangle(settings.X, settings.Y, settings.Width, settings.Height);
         var opacity = Math.Round(form?.Opacity ?? settings.Opacity, 3);
+        var inputInterceptRisk = actualVisible
+            && !inputTransparent
+            && (settingsOverlayActive
+                || settingsWindowInputProtected
+                || settingsWindowIntersects
+                || (settingsWindowVisible && topMost && noActivate)
+                || opacity <= 0.01d);
         var browserRecommendedSize = BrowserOverlayRecommendedSize.For(definition, settings);
         var hasBrowserPage = BrowserOverlayCatalog.TryGetPageByOverlayId(definition.Id, out var browserPage);
         LiveOverlayWindowState? previous;
@@ -127,9 +136,12 @@ internal sealed class LiveOverlayWindowCaptureStore
                 ContextReason: contextReason,
                 SettingsOverlayActive: settingsOverlayActive,
                 SettingsWindowVisible: settingsWindowVisible,
+                SettingsWindowIntersects: settingsWindowIntersects,
                 SettingsWindowInputProtected: settingsWindowInputProtected,
                 InputTransparent: inputTransparent,
                 NoActivate: noActivate,
+                TopMost: topMost,
+                InputInterceptRisk: inputInterceptRisk,
                 AlwaysOnTopSetting: settings.AlwaysOnTop,
                 DefaultWidth: definition.DefaultWidth,
                 DefaultHeight: definition.DefaultHeight,
@@ -391,9 +403,12 @@ internal sealed record LiveOverlayWindowState(
     string ContextReason,
     bool SettingsOverlayActive,
     bool SettingsWindowVisible,
+    bool SettingsWindowIntersects,
     bool SettingsWindowInputProtected,
     bool InputTransparent,
     bool NoActivate,
+    bool TopMost,
+    bool InputInterceptRisk,
     bool AlwaysOnTopSetting,
     int DefaultWidth,
     int DefaultHeight,

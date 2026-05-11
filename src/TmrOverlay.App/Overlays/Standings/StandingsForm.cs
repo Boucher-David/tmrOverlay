@@ -14,7 +14,8 @@ namespace TmrOverlay.App.Overlays.Standings;
 
 internal sealed class StandingsForm : PersistentOverlayForm
 {
-    private const int MaximumRows = 14;
+    private const int MaximumRows = StandingsOverlayViewModel.DefaultMaximumRows;
+    private const int AllocatedRows = StandingsOverlayViewModel.MaximumRenderedRows;
     private const int MinimumTableHeight = 390;
     private const int RefreshIntervalMilliseconds = 500;
     private static readonly int MaximumColumns = OverlayContentColumnSettings.Standings.Columns.Count;
@@ -38,11 +39,12 @@ internal sealed class StandingsForm : PersistentOverlayForm
     private readonly OverlayTableLayoutPanel _table;
     private readonly Label _sourceLabel;
     private readonly Label[] _headerLabels = new Label[MaximumColumns];
-    private readonly Label[,] _rowLabels = new Label[MaximumRows, MaximumColumns];
+    private readonly Label[,] _rowLabels = new Label[AllocatedRows, MaximumColumns];
     private readonly System.Windows.Forms.Timer _refreshTimer;
     private readonly OverlaySettings _settings;
     private long? _lastRefreshSequence;
     private string? _lastSettingsSignature;
+    private int _activeRowCapacity;
     private string? _overlayError;
     private string? _lastLoggedError;
     private DateTimeOffset? _lastLoggedErrorAtUtc;
@@ -76,7 +78,7 @@ internal sealed class StandingsForm : PersistentOverlayForm
         {
             ColumnCount = MaximumColumns,
             Location = OverlayChrome.TableLocation(),
-            RowCount = MaximumRows + 1,
+            RowCount = AllocatedRows + 1,
             Size = OverlayChrome.TableSize(ClientSize.Width, ClientSize.Height, minimumWidth: TableMinimumWidth(), minimumHeight: MinimumTableHeight)
         };
 
@@ -86,10 +88,11 @@ internal sealed class StandingsForm : PersistentOverlayForm
             _table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, column < initialColumns.Count ? initialColumns[column].Width : 0));
         }
 
-        for (var row = 0; row <= MaximumRows; row++)
+        for (var row = 0; row <= AllocatedRows; row++)
         {
-            _table.RowStyles.Add(new RowStyle(SizeType.Percent, 100f / (MaximumRows + 1)));
+            _table.RowStyles.Add(new RowStyle(SizeType.Absolute, 0));
         }
+        ApplyActiveRowCapacity(_activeRowCapacity);
 
         for (var column = 0; column < MaximumColumns; column++)
         {
@@ -104,7 +107,7 @@ internal sealed class StandingsForm : PersistentOverlayForm
             _table.Controls.Add(_headerLabels[column], column, 0);
         }
 
-        for (var row = 0; row < MaximumRows; row++)
+        for (var row = 0; row < AllocatedRows; row++)
         {
             for (var column = 0; column < MaximumColumns; column++)
             {
@@ -174,6 +177,13 @@ internal sealed class StandingsForm : PersistentOverlayForm
         }
 
         base.Dispose(disposing);
+    }
+
+    protected override Size GetPersistedOverlaySize()
+    {
+        return new Size(
+            _settings.Width > 0 ? _settings.Width : StandingsOverlayDefinition.Definition.DefaultWidth,
+            _settings.Height > 0 ? _settings.Height : StandingsOverlayDefinition.Definition.DefaultHeight);
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -263,7 +273,9 @@ internal sealed class StandingsForm : PersistentOverlayForm
             try
             {
                 _overlayError = null;
-                uiChanged = ApplyViewModel(viewModel, snapshot);
+                var layoutChanged = EnsureClientHeightForRows(viewModel.Rows.Count);
+                layoutChanged |= ApplyActiveRowCapacity(viewModel.Rows.Count);
+                uiChanged = layoutChanged | ApplyViewModel(viewModel, snapshot);
                 _lastRefreshSequence = snapshot.Sequence;
                 _lastSettingsSignature = settingsSignature;
                 applySucceeded = true;
@@ -312,13 +324,13 @@ internal sealed class StandingsForm : PersistentOverlayForm
             changed |= ApplyLayoutSizes();
             changed |= OverlayChrome.ApplyChromeState(this, _titleLabel, _statusLabel, _sourceLabel, ChromeStateFor(viewModel, snapshot, _settings), titleWidth: 160);
 
-            var populatedRows = Math.Min(MaximumRows, viewModel.Rows.Count);
+            var populatedRows = Math.Min(AllocatedRows, viewModel.Rows.Count);
             for (var row = 0; row < populatedRows; row++)
             {
                 changed |= ApplyRow(row, viewModel.Rows[row], columns);
             }
 
-            for (var row = populatedRows; row < MaximumRows; row++)
+            for (var row = populatedRows; row < AllocatedRows; row++)
             {
                 changed |= ClearRow(row);
             }
@@ -328,6 +340,67 @@ internal sealed class StandingsForm : PersistentOverlayForm
         {
             _table.ResumeLayout(performLayout: false);
             ResumeLayout(performLayout: false);
+        }
+
+        return changed;
+    }
+
+    private bool EnsureClientHeightForRows(int rowCount)
+    {
+        var targetHeight = TargetClientHeightForRows(rowCount);
+        if (ClientSize.Height == targetHeight)
+        {
+            return false;
+        }
+
+        ClientSize = new Size(ClientSize.Width, targetHeight);
+        return true;
+    }
+
+    private int TargetClientHeightForRows(int rowCount)
+    {
+        var persistedHeight = _settings.Height > 0
+            ? _settings.Height
+            : StandingsOverlayDefinition.Definition.DefaultHeight;
+        var visibleRows = Math.Clamp(Math.Max(1, rowCount), 1, AllocatedRows);
+        if (visibleRows <= MaximumRows)
+        {
+            return persistedHeight;
+        }
+
+        return persistedHeight
+            + ((visibleRows - MaximumRows) * OverlayTheme.Layout.OverlayTableRowHeight);
+    }
+
+    private bool ApplyActiveRowCapacity(int rowCount)
+    {
+        var nextCapacity = Math.Clamp(Math.Max(1, rowCount), 1, AllocatedRows);
+        if (_activeRowCapacity == nextCapacity && _table.RowStyles.Count > nextCapacity)
+        {
+            return false;
+        }
+
+        _activeRowCapacity = nextCapacity;
+        var activeRowsIncludingHeader = nextCapacity + 1;
+        var activePercent = 100f / activeRowsIncludingHeader;
+        var changed = false;
+        for (var index = 0; index < _table.RowStyles.Count; index++)
+        {
+            var style = _table.RowStyles[index];
+            var active = index <= nextCapacity;
+            var nextType = active ? SizeType.Percent : SizeType.Absolute;
+            var nextHeight = active ? activePercent : 0f;
+            if (style.SizeType != nextType)
+            {
+                style.SizeType = nextType;
+                changed = true;
+            }
+
+            if (Math.Abs(style.Height - nextHeight) > 0.001f)
+            {
+                style.Height = nextHeight;
+                changed = true;
+            }
         }
 
         return changed;
@@ -386,7 +459,7 @@ internal sealed class StandingsForm : PersistentOverlayForm
                 changed |= ApplyColumnPadding(_headerLabels[column], columnState);
             }
 
-            for (var row = 0; row < MaximumRows; row++)
+            for (var row = 0; row < AllocatedRows; row++)
             {
                 changed |= OverlayChrome.SetVisibleIfChanged(_rowLabels[row, column], columnState is not null);
                 if (columnState is not null)
@@ -433,9 +506,9 @@ internal sealed class StandingsForm : PersistentOverlayForm
 
     private Label[] RowLabels()
     {
-        var labels = new Label[MaximumRows * MaximumColumns];
+        var labels = new Label[AllocatedRows * MaximumColumns];
         var labelIndex = 0;
-        for (var row = 0; row < MaximumRows; row++)
+        for (var row = 0; row < AllocatedRows; row++)
         {
             for (var column = 0; column < MaximumColumns; column++)
             {
@@ -601,7 +674,7 @@ internal sealed class StandingsForm : PersistentOverlayForm
             _sourceLabel,
             OverlayChromeState.Error("Standings", "overlay error", $"source: error ({message})"),
             titleWidth: 160);
-        for (var row = 0; row < MaximumRows; row++)
+        for (var row = 0; row < AllocatedRows; row++)
         {
             ClearRow(row);
         }

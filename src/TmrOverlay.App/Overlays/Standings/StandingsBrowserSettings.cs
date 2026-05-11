@@ -10,7 +10,7 @@ internal sealed record StandingsBrowserSettings(
     int OtherClassRowsPerClass,
     IReadOnlyList<OverlayContentBrowserColumn> Columns)
 {
-    private const int DefaultMaximumRows = 14;
+    private const int DefaultMaximumRows = StandingsOverlayViewModel.DefaultMaximumRows;
 
     public static StandingsBrowserSettings Default { get; } = new(
         MaximumRows: DefaultMaximumRows,

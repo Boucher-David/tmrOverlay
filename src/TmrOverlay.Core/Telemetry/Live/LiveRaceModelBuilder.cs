@@ -16,7 +16,7 @@ internal static class LiveRaceModelBuilder
         var session = BuildSession(context, sample);
         var drivers = BuildDriverDirectory(context, sample);
         var timing = BuildTiming(context, sample, leaderGap, drivers);
-        var scoring = BuildScoring(context, sample, drivers);
+        var scoring = BuildScoring(context, sample, drivers, timing);
         var spatial = BuildSpatial(context, sample, proximity);
         var coverage = BuildCoverage(context, scoring, timing, spatial, proximity);
         var raceProgress = BuildRaceProgress(context, sample, session);
@@ -271,9 +271,10 @@ internal static class LiveRaceModelBuilder
         HistoricalSessionContext context,
         HistoricalTelemetrySample sample)
     {
+        var classNamesByClassId = BuildClassNamesByClassId(context.Drivers);
         var drivers = context.Drivers
             .Where(driver => driver.CarIdx is not null)
-            .Select(ToLiveDriver)
+            .Select(driver => ToLiveDriver(driver, classNamesByClassId))
             .OrderBy(driver => driver.CarIdx)
             .ToArray();
         var playerCarIdx = sample.PlayerCarIdx;
@@ -331,10 +332,11 @@ internal static class LiveRaceModelBuilder
     private static LiveScoringModel BuildScoring(
         HistoricalSessionContext context,
         HistoricalTelemetrySample sample,
-        LiveDriverDirectoryModel driverDirectory)
+        LiveDriverDirectoryModel driverDirectory,
+        LiveTimingModel timing)
     {
-        var results = SelectScoringResults(context, sample);
-        if (results.Length == 0)
+        var selection = SelectScoringResults(context, sample, timing);
+        if (selection.Results.Length == 0)
         {
             return LiveScoringModel.Empty with
             {
@@ -343,12 +345,12 @@ internal static class LiveRaceModelBuilder
             };
         }
 
-        var zeroBasedOverall = results.Any(result => result.Position == 0);
-        var zeroBasedClass = results.Any(result => result.ClassPosition == 0);
+        var zeroBasedOverall = selection.Results.Any(result => result.Position == 0);
+        var zeroBasedClass = selection.Results.Any(result => result.ClassPosition == 0);
         var referenceCarIdx = FocusCarIdx(sample);
         var referenceClass = ReferenceCarClass(sample);
         var driversByCarIdx = driverDirectory.Drivers.ToDictionary(driver => driver.CarIdx);
-        var rows = results
+        var rows = selection.Results
             .Select(result => ToScoringRow(
                 result,
                 driversByCarIdx,
@@ -372,26 +374,28 @@ internal static class LiveRaceModelBuilder
         return new LiveScoringModel(
             HasData: rows.Length > 0,
             Quality: LiveModelQuality.Reliable,
+            Source: selection.Source,
             ReferenceCarIdx: referenceCarIdx,
             ReferenceCarClass: referenceClass,
             ClassGroups: classGroups,
             Rows: rows);
     }
 
-    private static HistoricalSessionResultPosition[] SelectScoringResults(
+    private static ScoringResultSelection SelectScoringResults(
         HistoricalSessionContext context,
-        HistoricalTelemetrySample sample)
+        HistoricalTelemetrySample sample,
+        LiveTimingModel timing)
     {
         var sessionResults = NormalizeResultSet(context.ResultPositions);
         var startingGrid = NormalizeResultSet(context.StartingGridPositions);
-        if (ShouldUseStartingGrid(context, sample, startingGrid))
+        if (ShouldUseStartingGrid(context, sample, timing, startingGrid))
         {
-            return startingGrid;
+            return new ScoringResultSelection(LiveScoringSource.StartingGrid, startingGrid);
         }
 
         return sessionResults.Length > 0
-            ? sessionResults
-            : startingGrid;
+            ? new ScoringResultSelection(LiveScoringSource.SessionResults, sessionResults)
+            : new ScoringResultSelection(LiveScoringSource.None, []);
     }
 
     private static HistoricalSessionResultPosition[] NormalizeResultSet(
@@ -407,6 +411,7 @@ internal static class LiveRaceModelBuilder
     private static bool ShouldUseStartingGrid(
         HistoricalSessionContext context,
         HistoricalTelemetrySample sample,
+        LiveTimingModel timing,
         IReadOnlyList<HistoricalSessionResultPosition> startingGrid)
     {
         if (startingGrid.Count == 0 || !IsRaceSession(context))
@@ -416,12 +421,49 @@ internal static class LiveRaceModelBuilder
 
         if (sample.SessionState is { } sessionState)
         {
-            return sessionState < 4;
+            return sessionState < 4 || !HasMeaningfulRaceScoringCoverage(context, timing, startingGrid.Count);
         }
 
         return sample.LapCompleted <= 0
             && sample.LapDistPct >= 0d
             && sample.LapDistPct < 0.08d;
+    }
+
+    private static bool HasMeaningfulRaceScoringCoverage(
+        HistoricalSessionContext context,
+        LiveTimingModel timing,
+        int startingGridRowCount)
+    {
+        var rows = timing.OverallRows
+            .GroupBy(row => row.CarIdx)
+            .Select(group => group.First())
+            .ToArray();
+        if (rows.Length == 0)
+        {
+            return false;
+        }
+
+        var officialPositionCount = rows.Count(row => row.OverallPosition is > 0);
+        var officialClassPositionCount = rows.Count(row => row.ClassPosition is > 0);
+        var progressCount = rows.Count(row => row.ProgressLaps is not null);
+        if (officialPositionCount == 0 || officialClassPositionCount == 0 || progressCount == 0)
+        {
+            return false;
+        }
+
+        var expectedRows = startingGridRowCount > 0
+            ? startingGridRowCount
+            : context.Drivers.Count(IsRaceRosterDriver);
+        var targetRows = expectedRows > 0
+            ? Math.Min(expectedRows, rows.Length)
+            : rows.Length;
+        var requiredRows = targetRows <= 3
+            ? targetRows
+            : Math.Max(3, (int)Math.Ceiling(targetRows * 0.5d));
+
+        return officialPositionCount >= requiredRows
+            && officialClassPositionCount >= requiredRows
+            && progressCount >= requiredRows;
     }
 
     private static bool IsRaceSession(HistoricalSessionContext context)
@@ -758,7 +800,9 @@ internal static class LiveRaceModelBuilder
         if (rows.Count == 0)
         {
             rows.AddRange(timing.OverallRows
-                .Where(row => !row.IsFocus && row.DeltaSecondsToFocus is not null)
+                .Where(row => !row.IsFocus
+                    && row.DeltaSecondsToFocus is not null
+                    && row.GapEvidence.IsUsable)
                 .Select(row => new LiveRelativeRow(
                     CarIdx: row.CarIdx,
                     Quality: LiveModelQuality.Inferred,
@@ -1334,7 +1378,7 @@ internal static class LiveRaceModelBuilder
     {
         var focusF2 = rows.FirstOrDefault(row => row.IsFocus)?.F2TimeSeconds;
         var leadersByClass = rows
-            .Where(row => row.CarClass is not null && ValidNonNegative(row.F2TimeSeconds) is not null)
+            .Where(row => row.CarClass is not null && HasUsableF2ForClassGap(row))
             .GroupBy(row => row.CarClass!.Value)
             .Select(group => new
             {
@@ -1352,6 +1396,7 @@ internal static class LiveRaceModelBuilder
                 var updated = row;
                 if (row.CarClass is { } carClass
                     && leadersByClass.TryGetValue(carClass, out var leader)
+                    && HasUsableF2ForClassGap(row)
                     && ValidNonNegative(row.F2TimeSeconds) is { } rowF2
                     && ValidNonNegative(leader.F2TimeSeconds) is { } leaderF2
                     && rowF2 >= leaderF2)
@@ -1370,7 +1415,7 @@ internal static class LiveRaceModelBuilder
                 }
 
                 if (ValidNonNegative(focusF2) is { } focus
-                    && ValidNonNegative(row.F2TimeSeconds) is { } current)
+                    && ValidPositive(row.F2TimeSeconds) is { } current)
                 {
                     updated = updated with
                     {
@@ -1386,7 +1431,7 @@ internal static class LiveRaceModelBuilder
     private static LiveTimingRow? SelectDerivedClassLeader(IEnumerable<LiveTimingRow> rows)
     {
         var candidates = rows
-            .Where(row => ValidNonNegative(row.F2TimeSeconds) is not null)
+            .Where(HasUsableF2ForClassGap)
             .ToArray();
         var explicitLeader = candidates
             .Where(row => row.IsClassLeader || row.ClassPosition == 1)
@@ -1404,6 +1449,13 @@ internal static class LiveRaceModelBuilder
             : null;
     }
 
+    private static bool HasUsableF2ForClassGap(LiveTimingRow row)
+    {
+        return ValidPositive(row.F2TimeSeconds) is not null
+            || ((row.IsClassLeader || row.ClassPosition == 1)
+                && ValidNonNegative(row.F2TimeSeconds) is not null);
+    }
+
     private static LiveSignalEvidence BuildLeaderGapEvidence(
         string source,
         int? position,
@@ -1419,7 +1471,7 @@ internal static class LiveRaceModelBuilder
             return LiveSignalEvidence.Reliable("position");
         }
 
-        if (ValidNonNegative(referenceF2TimeSeconds) is not null)
+        if (ValidPositive(referenceF2TimeSeconds) is not null)
         {
             return ValidNonNegative(leaderF2TimeSeconds) is not null
                 ? LiveSignalEvidence.Reliable("CarIdxF2Time")
@@ -1516,8 +1568,8 @@ internal static class LiveRaceModelBuilder
     {
         return overallPosition is > 0
             || classPosition is > 0
-            || ValidNonNegative(f2TimeSeconds) is not null
-            || ValidNonNegative(estimatedTimeSeconds) is not null
+            || ValidPositive(f2TimeSeconds) is not null
+            || ValidPositive(estimatedTimeSeconds) is not null
             || ValidPositive(lastLapTimeSeconds) is not null
             || ValidPositive(bestLapTimeSeconds) is not null;
     }
@@ -1604,8 +1656,111 @@ internal static class LiveRaceModelBuilder
                 .Distinct(StringComparer.OrdinalIgnoreCase));
     }
 
-    private static LiveDriverIdentity ToLiveDriver(HistoricalSessionDriver driver)
+    private static IReadOnlyDictionary<int, string> BuildClassNamesByClassId(
+        IReadOnlyList<HistoricalSessionDriver> drivers)
     {
+        return drivers
+            .Where(driver => driver.CarClassId is not null)
+            .GroupBy(driver => driver.CarClassId!.Value)
+            .Select(group => new
+            {
+                CarClassId = group.Key,
+                ClassName = SelectClassName(group)
+            })
+            .Where(item => !string.IsNullOrWhiteSpace(item.ClassName))
+            .ToDictionary(item => item.CarClassId, item => item.ClassName!);
+    }
+
+    private static string? SelectClassName(IEnumerable<HistoricalSessionDriver> drivers)
+    {
+        var driverRows = drivers.ToArray();
+        var explicitName = FirstNonEmpty(driverRows.Select(driver => driver.CarClassShortName));
+        if (!string.IsNullOrWhiteSpace(explicitName))
+        {
+            return explicitName;
+        }
+
+        var carNames = driverRows
+            .Select(driver => FirstNonEmpty(driver.CarScreenNameShort, driver.CarScreenName, driver.CarPath))
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (carNames.Length == 1)
+        {
+            return carNames[0];
+        }
+
+        return SelectCommonClassToken(carNames);
+    }
+
+    private static string? SelectCommonClassToken(IReadOnlyList<string> carNames)
+    {
+        if (carNames.Count == 0)
+        {
+            return null;
+        }
+
+        var commonTokens = TokenizeCarName(carNames[0])
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var carName in carNames.Skip(1))
+        {
+            commonTokens.IntersectWith(TokenizeCarName(carName));
+        }
+
+        return commonTokens
+            .Where(IsLikelyClassToken)
+            .OrderByDescending(token => token.Any(char.IsDigit))
+            .ThenBy(token => token.Length)
+            .FirstOrDefault();
+    }
+
+    private static IEnumerable<string> TokenizeCarName(string carName)
+    {
+        var token = new List<char>();
+        foreach (var character in carName)
+        {
+            if (char.IsLetterOrDigit(character))
+            {
+                token.Add(character);
+                continue;
+            }
+
+            if (token.Count > 0)
+            {
+                yield return new string(token.ToArray()).ToUpperInvariant();
+                token.Clear();
+            }
+        }
+
+        if (token.Count > 0)
+        {
+            yield return new string(token.ToArray()).ToUpperInvariant();
+        }
+    }
+
+    private static bool IsLikelyClassToken(string token)
+    {
+        return token.Length >= 2
+            && !token.All(character => char.IsDigit(character))
+            && (token.Any(character => char.IsDigit(character))
+                || string.Equals(token, "TCR", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(token, "GTP", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(token, "CUP", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static LiveDriverIdentity ToLiveDriver(
+        HistoricalSessionDriver driver,
+        IReadOnlyDictionary<int, string> classNamesByClassId)
+    {
+        var carClassName = driver.CarClassShortName;
+        if (string.IsNullOrWhiteSpace(carClassName)
+            && driver.CarClassId is { } carClassId
+            && classNamesByClassId.TryGetValue(carClassId, out var derivedClassName))
+        {
+            carClassName = derivedClassName;
+        }
+
         return new LiveDriverIdentity(
             CarIdx: driver.CarIdx!.Value,
             DriverName: driver.UserName,
@@ -1616,7 +1771,7 @@ internal static class LiveRaceModelBuilder
             TeamName: driver.TeamName,
             CarNumber: driver.CarNumber,
             CarClassId: driver.CarClassId,
-            CarClassName: driver.CarClassShortName,
+            CarClassName: carClassName,
             CarClassColorHex: driver.CarClassColorHex,
             IsSpectator: driver.IsSpectator);
     }
@@ -2100,6 +2255,10 @@ internal static class LiveRaceModelBuilder
             _ => $"skies {skies.ToString(CultureInfo.InvariantCulture)}"
         };
     }
+
+    private sealed record ScoringResultSelection(
+        LiveScoringSource Source,
+        HistoricalSessionResultPosition[] Results);
 
     private sealed record RaceProgressMetric(double? Value, string Source);
 

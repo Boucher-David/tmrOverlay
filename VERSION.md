@@ -7,51 +7,61 @@ TmrOverlay uses SemVer-style annotated Git tags for product milestones:
 - Patch versions are reserved for hardening, diagnostics, and compatibility work inside the same product shape.
 - The checked-in build version should move with the branch that introduces the next milestone.
 
+## Active Context Pointer
+
+Use `docs/model-v2-future-branches.md` for session-handoff notes, current model-v2 app theory, and future-product signals. Keep this file focused on version history and milestone/release planning.
+
 ## Current Branch Target
 
-### v0.18.8 - V1 Candidate Context Diagnostics Hardening
+### v0.18.8 - AI Source Selection And Diagnostics Hardening
 
 Planned branch name:
 
 ```text
-v0.18.8-diagnostics-context-gating
+v0.18.8-ai-source-selection-diagnostics
 ```
 
 Planned scope:
 
 - Ship a focused V1-candidate patch on top of tagged `v0.18.7`.
-- Keep Stream Chat no-activate/click-through in native and Design V2 windows so it cannot block the Settings/app UI, while preserving the close escape hatch.
-- Gate local-only V1 overlays through descriptor-level context requirements: Radar and Inputs require local player in-car context; Fuel Calculator and Pit Service require local player focus plus in-car or pit context.
-- Leave Standings, Relative, Gap To Leader, and Track Map behavior unchanged until diagnostics or long captures prove the exact pre-green/on-green data source strategy.
-- Add always-bundled live telemetry synthesis metadata so support bundles show current focus, `CamCarIdx`, session phase, official-position coverage, progress/timing coverage, local-context decisions, and overlay visibility decisions without raw telemetry payloads.
-- Keep root diagnostics bundle artifacts ignored and remove local root zip bundles before pushing.
-- Treat remaining V1 work as validation, installer/update polish, first-run/user docs, privacy/defaults review, and Windows-native behavior checks rather than core overlay-logic rewrites.
+- Ground Standings, Relative, and Gap To Leader source selection in observed SDK/capture fields from AI, spectated, player-only, four-hour, and 24-hour telemetry states.
+- Keep Standings on race starting grid order until meaningful official race coverage appears, while Practice/Qualifying/Test still wait for valid laps.
+- Tighten Relative and Gap timing so local-player-only context and all-zero timing placeholders do not suppress or fabricate AI/spectated rows.
+- Expand multiclass Standings rendering so class headers remain visible for every available class, with the user's other-class row count applied on top.
+- Derive AI class labels from grounded session-info car names/paths when `CarClassShortName` is blank.
+- Harden Settings-window interaction diagnostics: while Settings is visible, managed overlay windows should be click-through and non-topmost; diagnostics should flag visible topmost no-activate overlays that could intercept input; pending visibility saves should flush before app exit.
+- Keep advanced/raw diagnostic capture user-initiated and production-ready by default; add compact scoring/source coverage to support diagnostics without raw payloads.
+- Keep root diagnostics bundles and raw capture folders ignored/untracked before pushing.
 
 Technical implementation checklist:
 
 1. Bump shared .NET product/version metadata to `0.18.8`.
-2. Harden Stream Chat click-through behavior in both native and Design V2 implementations.
-3. Add descriptor-driven context requirements and use them in `OverlayManager` visibility/lifecycle decisions.
-4. Record context requirement, availability, and reason in live overlay window diagnostics and performance lifecycle metrics.
-5. Add `metadata/live-telemetry-synthesis.json` to diagnostics bundles with focus/session/coverage/overlay-decision evidence.
-6. Patch overlay logic, diagnostics, and settings docs to match the local-context contract.
-7. Validate local static checks and git hygiene; use Windows CI or a Windows machine for the full .NET build/test and Windows click-through behavior pass.
+2. Patch scoring/timing source selection for AI/spectated race states while preserving player-only behavior.
+3. Patch Standings rendering and row budgeting for multiclass class headers and dynamic native height.
+4. Add grounded AI class-name fallback parsing from richer session-info driver metadata.
+5. Harden Settings-visible overlay window behavior, visibility save flushes, and input-intercept diagnostics.
+6. Add scoring/source coverage fields to diagnostics bundles and live overlay diagnostics.
+7. Add compact fixture-corpus tooling/docs and a hot-start skill/context note path for future sessions.
+8. Patch overlay logic, diagnostics, fixture, and settings docs to match the new contracts.
+9. Validate local static checks and git hygiene; use Windows CI or a Windows machine for the full .NET build/test and Windows click-through behavior pass.
 
 Likely squash title:
 
 ```text
-[v0.18.8] Gate local overlays and expand live diagnostics
+[v0.18.8] Ground AI overlay source selection
 ```
 
 Likely squash body:
 
 ```text
 - Bumped shared .NET product/version metadata to 0.18.8.
-- Hardened Stream Chat click-through behavior in both native and Design V2 windows while preserving the close escape hatch.
-- Added descriptor-level overlay context requirements and hid local-only overlays when the current live focus is not the local player context they require.
-- Recorded context availability/reason in overlay lifecycle metrics and live-window diagnostics.
-- Added always-bundled live telemetry synthesis metadata for focus context, session phase, field coverage, local-context decisions, and overlay visibility decisions.
-- Updated overlay/diagnostics docs and removed local root diagnostics zip artifacts.
+- Added scoring-source selection that keeps race grid order until meaningful official race coverage appears, while preserving valid-lap gating for Practice/Qualifying/Test.
+- Tightened Standings, Relative, and Gap To Leader data use for AI/spectated sessions so local-player-only context and all-zero timing placeholders do not suppress or fabricate rows.
+- Expanded multiclass Standings rendering for all class headers plus configured other-class samples, with dynamic native height and compact overlay headers kept separate from human Settings labels.
+- Added grounded AI class-name fallback parsing from session-info car names/paths when iRacing leaves `CarClassShortName` blank.
+- Protected Settings interaction from visible topmost no-activate overlays, widened input-intercept diagnostics, flushed pending Settings saves before exit, and kept forced/raw diagnostics user-initiated.
+- Added compact fixture-corpus extraction/docs, scoring/source diagnostic coverage, and hot-start branch notes for future sessions.
+- Updated overlay/diagnostics/settings docs and kept raw captures/root diagnostics artifacts untracked.
 - Validated local static checks and git hygiene; Windows .NET build/test and real WinForms click-through validation remain CI/Windows-machine gates.
 ```
 
@@ -61,15 +71,9 @@ Likely squash body:
 
 Likely scope:
 
-- Treat the fundamental overlay logic as ready for V1-candidate validation. Overlay behavior should now be stable enough that adding a straightforward content field, such as a Standings `Team name` column, is a small descriptor/model wiring change instead of a table-behavior rewrite. New reusable telemetry fields should be consumed and normalized in the Core/live model first, then mapped into overlay columns or rows; Standings/Relative should not own root data extraction for shared fields.
-- Lock the V1 product scope: decide the final overlay list, make sure experimental/future surfaces are not exposed as normal user-facing tabs, keep browser review dev-only, and decide whether the mac harness remains tracked secondary scaffolding or moves to a deprecation branch.
-- Prove installer/update polish: MSI install, upgrade, rollback, Velopack update checks, release notes, checksums, and the acceptable stance on unsigned SmartScreen warnings for V1.
-- Add the minimum user-facing first-run docs: starting the app, enabling overlays, configuring OBS browser-source URLs, Stream Chat setup, Garage Cover setup, diagnostics bundle creation, and raw capture being opt-in.
-- Complete an explicit privacy/defaults pass: logged fields, diagnostics bundle contents, redactions, retention defaults, app-data locations, and confirmation that raw `telemetry.bin` and source `.ibt` payloads stay out of support bundles.
-- Freeze durable settings/history schema unless a V1-blocking bug requires a change. Any schema change now needs version constants, migrations or compatible readers, docs, fixtures, and compatibility tests in the same pass.
-- Run a native Windows behavior sweep because browser review cannot prove focus, topmost, click-through, no-activate behavior, Stream Chat window behavior, iRacing SDK capture, installer/update behavior, or WinForms screenshot output.
-- Harden the support posture so one teammate diagnostics bundle is enough to answer version, settings, update state, overlay visibility, browser routes, runtime errors, recent telemetry state, and recent performance/freeze state without raw payloads.
-- Keep V1.x performance and heavier analysis work out of this milestone unless validation finds a release-blocking regression. Use the V1.x roadmap for overlay lifecycle/timer efficiency, rendering/cache performance, capture replay, and larger post-race analysis products after the candidate is stable.
+- Finalize V1-candidate overlay behavior from the compact telemetry fixture corpus and teammate diagnostics evidence.
+- Complete release-readiness checks: product-scope lock, installer/update polish, first-run docs, privacy/defaults review, schema freeze, Windows-native behavior validation, and support-bundle hardening.
+- Keep branch theory, fixture-corpus decisions, and future-product discussion in `docs/model-v2-future-branches.md`.
 
 ## Merged Mainline Milestones
 

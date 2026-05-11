@@ -210,6 +210,12 @@ internal sealed class HistoricalSessionDriver
 
     public string? CarNumber { get; init; }
 
+    public string? CarPath { get; init; }
+
+    public string? CarScreenName { get; init; }
+
+    public string? CarScreenNameShort { get; init; }
+
     public int? CarClassId { get; init; }
 
     public string? CarClassShortName { get; init; }

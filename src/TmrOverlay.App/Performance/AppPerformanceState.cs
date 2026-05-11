@@ -271,6 +271,9 @@ internal sealed class AppPerformanceState
         bool inputTransparent,
         bool noActivate,
         bool settingsOverlayActive,
+        bool settingsWindowVisible,
+        bool intersectsSettingsWindow,
+        bool settingsWindowInputProtected,
         int x,
         int y,
         int width,
@@ -289,13 +292,20 @@ internal sealed class AppPerformanceState
             var clampedOpacity = Math.Clamp(opacity, 0d, 1d);
             var inputInterceptRisk = actualVisible
                 && !inputTransparent
-                && (settingsOverlayActive || clampedOpacity <= 0.01d);
+                && (settingsOverlayActive
+                    || settingsWindowInputProtected
+                    || intersectsSettingsWindow
+                    || (settingsWindowVisible && topMost && noActivate)
+                    || clampedOpacity <= 0.01d);
             RecordOverlayUpdateValue($"{prefix}.visible", actualVisible ? 1d : 0d, timestampUtc);
             RecordOverlayUpdateValue($"{prefix}.top_most", topMost ? 1d : 0d, timestampUtc);
             RecordOverlayUpdateValue($"{prefix}.always_on_top_setting", alwaysOnTopSetting ? 1d : 0d, timestampUtc);
             RecordOverlayUpdateValue($"{prefix}.input_transparent", inputTransparent ? 1d : 0d, timestampUtc);
             RecordOverlayUpdateValue($"{prefix}.no_activate", noActivate ? 1d : 0d, timestampUtc);
             RecordOverlayUpdateValue($"{prefix}.settings_overlay_active", settingsOverlayActive ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.settings_window_visible", settingsWindowVisible ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.settings_window_intersects", intersectsSettingsWindow ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.settings_window_input_protected", settingsWindowInputProtected ? 1d : 0d, timestampUtc);
             RecordOverlayUpdateValue($"{prefix}.input_intercept_risk", inputInterceptRisk ? 1d : 0d, timestampUtc);
             RecordOverlayUpdateValue($"{prefix}.opacity", clampedOpacity, timestampUtc);
             RecordOverlayUpdateValue($"{prefix}.x", x, timestampUtc);
@@ -312,6 +322,9 @@ internal sealed class AppPerformanceState
                 InputTransparent: inputTransparent,
                 NoActivate: noActivate,
                 SettingsOverlayActive: settingsOverlayActive,
+                SettingsWindowVisible: settingsWindowVisible,
+                SettingsWindowIntersects: intersectsSettingsWindow,
+                SettingsWindowInputProtected: settingsWindowInputProtected,
                 InputInterceptRisk: inputInterceptRisk,
                 X: x,
                 Y: y,
@@ -881,6 +894,9 @@ internal sealed record OverlayWindowDiagnosticSnapshot(
     bool InputTransparent,
     bool NoActivate,
     bool SettingsOverlayActive,
+    bool SettingsWindowVisible,
+    bool SettingsWindowIntersects,
+    bool SettingsWindowInputProtected,
     bool InputInterceptRisk,
     int X,
     int Y,

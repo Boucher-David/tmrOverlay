@@ -232,6 +232,18 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         base.Dispose(disposing);
     }
 
+    protected override Size GetPersistedOverlaySize()
+    {
+        if (_kind == DesignV2LiveOverlayKind.Standings)
+        {
+            return new Size(
+                _settings.Width > 0 ? _settings.Width : _definition.DefaultWidth,
+                _settings.Height > 0 ? _settings.Height : _definition.DefaultHeight);
+        }
+
+        return base.GetPersistedOverlaySize();
+    }
+
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
@@ -330,11 +342,24 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         var otherRows = OverlayContentColumnSettings.Standings.Blocks is { Count: > 0 } otherBlocks
             ? OverlayContentColumnSettings.BlockCount(_settings, otherBlocks[0])
             : 2;
-        var visibleRows = Math.Max(1, (ClientSize.Height - HeaderHeight - FooterHeight - BodyGap - 36) / (RowHeight + RowGap));
+        var visibleRows = StandingsVisibleRowsForHeight(ClientSize.Height);
+        if (snapshot.Models.Scoring.HasData)
+        {
+            var requiredRows = StandingsOverlayViewModel.ExpandRowBudgetForClassGroups(
+                snapshot.Models.Scoring.ClassGroups,
+                visibleRows,
+                otherRows,
+                showClassSeparators);
+            if (EnsureClientHeightForStandingsRows(requiredRows))
+            {
+                visibleRows = StandingsVisibleRowsForHeight(ClientSize.Height);
+            }
+        }
+
         var viewModel = StandingsOverlayViewModel.From(
             snapshot,
             now,
-            maximumRows: Math.Clamp(visibleRows, 1, 20),
+            maximumRows: Math.Clamp(visibleRows, 1, StandingsOverlayViewModel.MaximumRenderedRows),
             otherClassRowsPerClass: otherRows,
             showClassSeparators: showClassSeparators);
         var columns = OverlayContentColumnSettings.VisibleColumnsFor(_settings, OverlayContentColumnSettings.Standings)
@@ -354,6 +379,44 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             viewModel.Source,
             rows.Length == 0 ? DesignV2Evidence.Unavailable : DesignV2Evidence.Measured,
             new DesignV2TableBody(columns, rows));
+    }
+
+    private bool EnsureClientHeightForStandingsRows(int rowCount)
+    {
+        var targetHeight = TargetClientHeightForStandingsRows(rowCount);
+        if (ClientSize.Height == targetHeight)
+        {
+            return false;
+        }
+
+        ClientSize = new Size(ClientSize.Width, targetHeight);
+        return true;
+    }
+
+    private int TargetClientHeightForStandingsRows(int rowCount)
+    {
+        var persistedHeight = _settings.Height > 0
+            ? _settings.Height
+            : _definition.DefaultHeight;
+        var visibleRows = Math.Clamp(
+            Math.Max(1, rowCount),
+            1,
+            StandingsOverlayViewModel.MaximumRenderedRows);
+        var persistedVisibleRows = StandingsVisibleRowsForHeight(persistedHeight);
+        if (visibleRows <= persistedVisibleRows)
+        {
+            return persistedHeight;
+        }
+
+        return Math.Max(
+            persistedHeight,
+            HeaderHeight + FooterHeight + BodyGap + 1 + RowHeight + (visibleRows * (RowHeight + RowGap)));
+    }
+
+    private static int StandingsVisibleRowsForHeight(int clientHeight)
+    {
+        var bodyHeight = clientHeight - HeaderHeight - FooterHeight - BodyGap - 1;
+        return Math.Max(1, (bodyHeight - RowHeight) / (RowHeight + RowGap));
     }
 
     private IReadOnlyList<string> ValuesForStandingsRow(StandingsOverlayRowViewModel row)

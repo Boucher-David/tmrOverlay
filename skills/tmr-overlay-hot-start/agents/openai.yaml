@@ -1,0 +1,4 @@
+interface:
+  display_name: "TMR Overlay Hot Start"
+  short_description: "Recover repo context from model-v2 notes and VERSION.md"
+  default_prompt: "Read docs/model-v2-future-branches.md and VERSION.md to regain tmrOverlay context, then update model-v2 notes with durable decisions."
