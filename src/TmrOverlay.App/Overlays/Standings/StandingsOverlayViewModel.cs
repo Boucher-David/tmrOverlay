@@ -34,7 +34,8 @@ internal sealed record StandingsOverlayViewModel(
             return Waiting("waiting for standings");
         }
 
-        var referenceCarIdx = scoring.ReferenceCarIdx
+        var referenceCarIdx = snapshot.Models.Reference.FocusCarIdx
+            ?? scoring.ReferenceCarIdx
             ?? timing.FocusRow?.CarIdx
             ?? timing.FocusCarIdx
             ?? snapshot.Models.DriverDirectory.FocusCarIdx;

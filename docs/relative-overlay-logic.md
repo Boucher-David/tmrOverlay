@@ -17,6 +17,7 @@ The mac harness mirrors the surface in `local-mac/TmrOverlayMac/Sources/TmrOverl
 
 The Windows overlay reads:
 
+- `LiveTelemetrySnapshot.Models.Reference` for normalized focus/player/reference facts.
 - `LiveTelemetrySnapshot.Models.Relative` for relative rows and reference car index.
 - `LiveTelemetrySnapshot.Models.Timing` for the reference row position/class context and pit-road status.
 - `LiveTelemetrySnapshot.Models.Scoring` for scoring-only enrichment of rows that already exist in relative telemetry.
@@ -31,7 +32,7 @@ It treats snapshots older than 1.5 seconds as stale and shows a waiting state in
 
 1. Cars ahead from `LiveRelativeRow.IsAhead`.
 2. Cars behind from `LiveRelativeRow.IsBehind`.
-3. One reference row from `Relative.ReferenceCarIdx`, then timing focus references.
+3. One reference row from the normalized reference model, then `Relative.ReferenceCarIdx` and timing focus references.
 
 Relative does not promote `PlayerCarIdx` to the reference row when `CamCarIdx`/focus is unavailable. If the focus car is missing, the overlay waits with `waiting for focus-relative telemetry` instead of showing a player-centered view the user did not ask for. When focus is the player/team car, model-v2 can still use team/local timing fields to fill missing focused-car details because those fields describe the same car.
 
@@ -61,7 +62,7 @@ Rows show:
 - `#<car number> <full driver name>` when a car number is known.
 - `0.000` for the reference gap.
 - `-<value>` for cars ahead and `+<value>` for cars behind, regardless of whether the source row came from proximity or timing fallback.
-- Seconds first, then meters, then lap fraction.
+- Seconds first, then physical distance when available. Lap-fraction-only rows render unavailable instead of showing `L` units in the Relative overlay.
 - Optional pit column when enabled in Content settings.
 
 Relative uses the shared content-column manager. Columns have Relative-owned option keys, remain in one ordered list even when disabled, expose pixel widths, and drive both native/browser rendering plus the OBS size recommendation. The default content keeps the table compact: position, full driver name, and gap are visible; pit is available but disabled by default.
@@ -70,7 +71,7 @@ Normal rows are quiet. Reference rows are visually emphasized; pit rows remain v
 
 Relative seconds come from live proximity timing when available. If proximity has only lap-distance placement, the model-v2 relative row can infer a display seconds gap from live lap-distance delta multiplied by the current local/focus lap-time signal. Radar does not consume that inferred seconds value; it remains stricter and uses only live proximity seconds or physical distance for proximity placement.
 
-Race `SessionState == 3` can use model-v2 timing fallback from positive `CarIdxEstTime` plus valid `CarIdxLapDistPct` so Relative can update during the pre-green roll to the line. This fallback is not created from grid rows alone. It also remains useful when the local player tows, because iRacing itself continues showing estimated relative gaps from the towed position.
+Race `SessionState == 3` can use model-v2 timing fallback from positive `CarIdxEstTime` plus valid `CarIdxLapDistPct` so Relative can update during the pre-green roll to the line. This fallback is not created from grid rows alone. It also remains useful when the local player tows or sits in pit lane with valid timing/progress facts, because iRacing itself continues showing estimated relative gaps in those contexts. Radar remains stricter and still requires local in-car spatial context.
 
 ## Source And Status Text
 

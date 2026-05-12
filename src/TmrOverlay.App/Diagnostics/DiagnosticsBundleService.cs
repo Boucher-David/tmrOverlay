@@ -872,8 +872,13 @@ internal sealed class DiagnosticsBundleService
             var availability = OverlayAvailabilityEvaluator.FromSnapshot(snapshot, now);
             var sample = snapshot.LatestSample;
             IReadOnlyList<HistoricalCarProximity> allCars = sample?.AllCars ?? [];
-            var resolvedPlayerCarIdx = snapshot.Models.DriverDirectory.PlayerCarIdx ?? sample?.PlayerCarIdx;
-            var resolvedFocusCarIdx = snapshot.Models.DriverDirectory.FocusCarIdx ?? sample?.FocusCarIdx;
+            var reference = snapshot.Models.Reference;
+            var resolvedPlayerCarIdx = reference.PlayerCarIdx
+                ?? snapshot.Models.DriverDirectory.PlayerCarIdx
+                ?? sample?.PlayerCarIdx;
+            var resolvedFocusCarIdx = reference.FocusCarIdx
+                ?? snapshot.Models.DriverDirectory.FocusCarIdx
+                ?? sample?.FocusCarIdx;
             var focusCar = resolvedFocusCarIdx is { } focusCarIdx
                 ? allCars.FirstOrDefault(car => car.CarIdx == focusCarIdx)
                 : null;
@@ -887,16 +892,18 @@ internal sealed class DiagnosticsBundleService
                 RawCamCarIdx = sample?.RawCamCarIdx,
                 FocusCarIdx = resolvedFocusCarIdx,
                 LatestSampleFocusCarIdx = sample?.FocusCarIdx,
-                FocusUnavailableReason = sample?.FocusUnavailableReason,
-                FocusDiffersFromPlayer = resolvedPlayerCarIdx is { } playerIdx
-                    && resolvedFocusCarIdx is { } focusIdx
-                    && playerIdx != focusIdx,
-                IsOnTrack = sample?.IsOnTrack,
-                IsInGarage = sample?.IsInGarage,
+                FocusUnavailableReason = reference.FocusUnavailableReason ?? sample?.FocusUnavailableReason,
+                FocusDiffersFromPlayer = reference.HasData
+                    ? reference.HasExplicitNonPlayerFocus
+                    : resolvedPlayerCarIdx is { } playerIdx
+                        && resolvedFocusCarIdx is { } focusIdx
+                        && playerIdx != focusIdx,
+                IsOnTrack = reference.HasData ? reference.IsOnTrack : sample?.IsOnTrack,
+                IsInGarage = reference.HasData ? reference.IsInGarage : sample?.IsInGarage,
                 IsGarageVisible = sample?.IsGarageVisible,
                 IsReplayPlaying = sample?.IsReplayPlaying,
-                OnPitRoad = sample?.OnPitRoad,
-                PlayerCarInPitStall = sample?.PlayerCarInPitStall,
+                OnPitRoad = reference.OnPitRoad ?? sample?.OnPitRoad,
+                PlayerCarInPitStall = reference.HasData ? reference.PlayerCarInPitStall : sample?.PlayerCarInPitStall,
                 SessionState = sample?.SessionState,
                 SessionStateLabel = SessionStateLabel(sample?.SessionState),
                 Availability = availability

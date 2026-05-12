@@ -1600,6 +1600,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 Throttle: ReadNullableFiniteDouble(sdk, "Throttle"),
                 Brake: ReadNullableFiniteDouble(sdk, "Brake"),
                 Clutch: ReadNullableFiniteDouble(sdk, "Clutch"),
+                ClutchRaw: ReadNullableFiniteDouble(sdk, "ClutchRaw"),
                 SteeringWheelAngle: ReadNullableFiniteDouble(sdk, "SteeringWheelAngle"),
                 BrakeAbsActive: ReadNullableBoolean(sdk, "BrakeABSactive"),
                 EngineWarnings: ReadNullableInt32(sdk, "EngineWarnings"),

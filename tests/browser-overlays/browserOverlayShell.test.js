@@ -51,10 +51,11 @@ describe('browser overlay shell', () => {
     expect(currentOverlay.document.querySelector('.overlay').style.opacity).toBe('0');
     expect(currentOverlay.dom.window.TmrBrowserModel.referenceCarIdx({
       models: {
+        reference: { focusCarIdx: 9 },
         scoring: { referenceCarIdx: 4 },
         relative: { referenceCarIdx: 7 }
       }
-    }, { preferRelative: true })).toBe(7);
+    }, { preferRelative: true })).toBe(9);
   });
 });
 

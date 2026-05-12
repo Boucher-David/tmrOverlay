@@ -95,11 +95,6 @@ def valid_lap_dist_pct(value: Any) -> float | None:
     return max(0.0, min(1.0, number)) if number >= 0.0 else None
 
 
-def valid_positive_seconds(value: Any) -> float | None:
-    seconds = valid_non_negative(value)
-    return seconds if seconds is not None and seconds > 0.0 else None
-
-
 def car_number(value: Any, car_idx: int) -> str:
     text = str(value or "").strip().lstrip("#")
     return f"#{text}" if text else f"#{car_idx}"
@@ -599,9 +594,8 @@ def class_gap_and_interval(
     leader = next((candidate for candidate in ordered if (candidate.get("classPosition") or (timing_rows.get(candidate["carIdx"]) or {}).get("classPosition")) == 1), None)
     leader = leader or ordered[0] if ordered else None
     previous = previous_class_row(row["carIdx"], ordered)
-    lap_seconds = estimated_lap_time_seconds(row, timing, group_rows, timing_rows, session_data, drivers)
-    gap = derived_seconds_behind(timing, timing_rows.get(leader["carIdx"]) if leader else None, is_race, lap_seconds)
-    interval = derived_seconds_behind(timing, timing_rows.get(previous["carIdx"]) if previous else None, is_race, lap_seconds)
+    gap = derived_seconds_behind(timing, timing_rows.get(leader["carIdx"]) if leader else None, is_race)
+    interval = derived_seconds_behind(timing, timing_rows.get(previous["carIdx"]) if previous else None, is_race)
     return gap, interval
 
 
@@ -616,7 +610,6 @@ def derived_seconds_behind(
     timing: dict[str, Any] | None,
     reference_ahead: dict[str, Any] | None,
     is_race: bool,
-    lap_seconds: float | None,
 ) -> float | None:
     if not timing or not reference_ahead:
         return None
@@ -625,9 +618,6 @@ def derived_seconds_behind(
     reference_f2 = usable_f2_for_timing(reference_ahead, is_race)
     if timing_f2 is not None and reference_f2 is not None and timing_f2 >= reference_f2:
         return timing_f2 - reference_f2
-
-    if is_race:
-        return estimated_seconds_behind(timing, reference_ahead, lap_seconds)
 
     return None
 
@@ -651,69 +641,6 @@ def is_race_f2_placeholder(f2: float | None, overall_position: Any) -> bool:
     if f2 is None or not finite(f2) or not isinstance(overall_position, int) or overall_position <= 1:
         return False
     return abs(float(f2) - ((overall_position - 1) / 1000.0)) <= 0.00002
-
-
-def estimated_seconds_behind(
-    timing: dict[str, Any],
-    reference_ahead: dict[str, Any],
-    lap_seconds: float | None,
-) -> float | None:
-    if is_pit_road_like(timing) or is_pit_road_like(reference_ahead):
-        return None
-
-    row_estimated = valid_positive_seconds(timing.get("estimatedTimeSeconds"))
-    reference_estimated = valid_positive_seconds(reference_ahead.get("estimatedTimeSeconds"))
-    if row_estimated is None or reference_estimated is None or lap_seconds is None:
-        return None
-
-    delta = reference_estimated - row_estimated
-    if delta < -lap_seconds / 2.0:
-        delta += lap_seconds
-    elif delta > lap_seconds / 2.0:
-        delta -= lap_seconds
-
-    return max(0.0, delta) if delta >= -0.05 else None
-
-
-def is_pit_road_like(timing: dict[str, Any]) -> bool:
-    return timing.get("onPitRoad") is True or timing.get("trackSurface") in {0, 1}
-
-
-def estimated_lap_time_seconds(
-    row: dict[str, Any],
-    timing: dict[str, Any],
-    group_rows: list[dict[str, Any]],
-    timing_rows: dict[int, dict[str, Any]],
-    session_data: dict[str, Any] | None,
-    drivers: dict[int, dict[str, Any]],
-) -> float | None:
-    candidates: list[Any] = [
-        timing.get("lastLapTimeSeconds"),
-        timing.get("bestLapTimeSeconds"),
-    ]
-    for candidate in group_rows:
-        candidate_timing = timing_rows.get(candidate["carIdx"]) or {}
-        candidates.extend([candidate_timing.get("lastLapTimeSeconds"), candidate_timing.get("bestLapTimeSeconds")])
-
-    driver = drivers.get(row["carIdx"])
-    if driver:
-        source_driver = source_driver_by_idx(session_data, row["carIdx"])
-        if source_driver:
-            candidates.append(source_driver.get("CarClassEstLapTime"))
-    candidates.append(((session_data or {}).get("DriverInfo") or {}).get("DriverCarEstLapTime"))
-
-    for value in candidates:
-        lap_seconds = valid_lap_time(value)
-        if lap_seconds is not None:
-            return lap_seconds
-    return None
-
-
-def source_driver_by_idx(session_data: dict[str, Any] | None, car_idx: int) -> dict[str, Any] | None:
-    for driver in (((session_data or {}).get("DriverInfo") or {}).get("Drivers") or []):
-        if driver.get("CarIdx") == car_idx:
-            return driver
-    return None
 
 
 def header_row(title: str, detail: str, color: str | None) -> dict[str, Any]:

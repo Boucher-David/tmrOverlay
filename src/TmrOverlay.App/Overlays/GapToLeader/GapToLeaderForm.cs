@@ -579,6 +579,12 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
 
     private static bool ReferenceUsesPlayerCar(LiveTelemetrySnapshot snapshot)
     {
+        var reference = snapshot.Models.Reference;
+        if (reference.HasData)
+        {
+            return reference.FocusIsPlayer;
+        }
+
         var directory = snapshot.Models.DriverDirectory;
         return directory.FocusCarIdx is not null
             && directory.PlayerCarIdx is not null
@@ -1832,6 +1838,12 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
 
     private static bool ReferenceUsesTeamClass(LiveTelemetrySnapshot snapshot)
     {
+        var reference = snapshot.Models.Reference;
+        if (reference.HasData && reference.ReferenceCarClass is not null && reference.PlayerCarClass is not null)
+        {
+            return reference.ReferenceCarClass == reference.PlayerCarClass;
+        }
+
         var directory = snapshot.Models.DriverDirectory;
         if (directory.FocusCarIdx is null)
         {
@@ -1848,20 +1860,22 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
     private static ReferenceContext? SelectReferenceContext(LiveTelemetrySnapshot snapshot)
     {
         var directory = snapshot.Models.DriverDirectory;
-        if (!directory.HasData)
+        var reference = snapshot.Models.Reference;
+        if (!directory.HasData && !reference.HasData)
         {
             return null;
         }
 
-        var referenceCarIdx = directory.FocusCarIdx;
+        var referenceCarIdx = reference.FocusCarIdx ?? directory.FocusCarIdx;
         if (referenceCarIdx is null)
         {
             return null;
         }
 
-        var referenceClass = ReferenceUsesPlayerCar(snapshot)
-            ? directory.FocusDriver?.CarClassId ?? directory.PlayerDriver?.CarClassId ?? directory.ReferenceCarClass
-            : directory.FocusDriver?.CarClassId ?? directory.ReferenceCarClass;
+        var referenceClass = reference.ReferenceCarClass
+            ?? (ReferenceUsesPlayerCar(snapshot)
+                ? directory.FocusDriver?.CarClassId ?? directory.PlayerDriver?.CarClassId ?? directory.ReferenceCarClass
+                : directory.FocusDriver?.CarClassId ?? directory.ReferenceCarClass);
         return new ReferenceContext(referenceCarIdx, referenceClass);
     }
 

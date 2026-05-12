@@ -35,6 +35,7 @@ Snapshots are ignored when no new sequence exists.
 
 Gap V2 reads promoted model state first:
 
+- `LiveReferenceModel` supplies the normalized focus/player/reference identity so Gap To Leader follows the same focus facts as Standings, Relative, Track Map, and diagnostics before applying graph-specific reference selection.
 - `LiveTimingModel` supplies focus/class rows, class leader identity, gap evidence, class positions, deltas to the focused car, and same-class rows for graphing.
 - `LiveRaceProgressModel` supplies reference/leader lap-progress gaps and race-progress fallback when second-based timing evidence is partial or unavailable.
 - `LiveWeatherModel`, `LiveRaceEventModel`, `LiveDriverDirectoryModel`, and `LiveFuelPitModel.Fuel` supply the supporting graph context previously read directly from the latest sample.
@@ -49,8 +50,8 @@ The graph input contains:
 
 Reference car:
 
-- Prefer `CamCarIdx` when the camera focus car is valid.
-- Do not fall back to `PlayerCarIdx` when focus is unavailable.
+- Prefer the normalized reference car from `LiveReferenceModel`, which uses `CamCarIdx` when the camera focus car is valid.
+- Do not fall back to `PlayerCarIdx` when focus is unavailable; local-player fallback remains an overlay-specific rule for local-only contexts, not the shared reference model.
 - Fuel and Pit Service use local player/team telemetry only after `LiveLocalStrategyContext` confirms the focus is the player car. Compact history and strategy history remain player/team scoped, but Fuel/Pit do not display that strategy surface while the user is focused on another car.
 
 Reference progress:
@@ -211,6 +212,8 @@ Y-axis maximum is based on visible points in the current X-axis domain.
 3. Round up to a nice ceiling.
 
 The current same-lap reference baseline is always drawn at the top. When that reference is the class leader, the Y-axis label still reads `Leader`; when the focused car is lapped, the label uses the nearest eligible position context instead of pretending the out-of-reach leader is still a comparable zero line.
+
+The browser-source graph uses the same orientation: the zero/reference line is the top of the plot and larger positive gaps draw downward. Browser validation rejects invalid, negative, and outlier gap points before drawing so a placeholder sample cannot invert the chart or drag the leader baseline to the bottom.
 
 ## Drawing Order
 

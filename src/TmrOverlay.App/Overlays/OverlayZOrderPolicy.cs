@@ -9,14 +9,6 @@ internal static class OverlayZOrderPolicy
         return settingsWindowFocused;
     }
 
-    public static bool ShouldAutoHideSettingsWindow(
-        bool settingsWindowVisible,
-        bool settingsWindowActive,
-        bool settingsWindowEnabled)
-    {
-        return settingsWindowVisible && !settingsWindowActive && settingsWindowEnabled;
-    }
-
     public static bool ShouldManagedOverlayBeTopMost(OverlaySettings settings)
     {
         return settings.AlwaysOnTop;

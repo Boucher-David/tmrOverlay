@@ -61,7 +61,8 @@ internal sealed record RelativeOverlayViewModel(
 
     private static RelativeOverlayRowViewModel? ReferenceRow(LiveTelemetrySnapshot snapshot)
     {
-        var referenceCarIdx = snapshot.Models.Relative.ReferenceCarIdx
+        var referenceCarIdx = snapshot.Models.Reference.FocusCarIdx
+            ?? snapshot.Models.Relative.ReferenceCarIdx
             ?? snapshot.Models.Timing.FocusRow?.CarIdx
             ?? snapshot.Models.Timing.FocusCarIdx
             ?? snapshot.Models.DriverDirectory.FocusCarIdx;
@@ -133,7 +134,8 @@ internal sealed record RelativeOverlayViewModel(
         int shownRows,
         int availableRows)
     {
-        var referenceCarIdx = snapshot.Models.Relative.ReferenceCarIdx
+        var referenceCarIdx = snapshot.Models.Reference.FocusCarIdx
+            ?? snapshot.Models.Relative.ReferenceCarIdx
             ?? snapshot.Models.Timing.FocusRow?.CarIdx
             ?? snapshot.Models.Timing.FocusCarIdx
             ?? snapshot.Models.DriverDirectory.FocusCarIdx;
@@ -228,11 +230,6 @@ internal sealed record RelativeOverlayViewModel(
             return $"{sign}{Math.Abs(meters).ToString("0", CultureInfo.InvariantCulture)}m";
         }
 
-        if (row.RelativeLaps is { } laps && IsFinite(laps))
-        {
-            return $"{sign}{Math.Abs(laps).ToString("0.000", CultureInfo.InvariantCulture)}L";
-        }
-
         return "--";
     }
 
@@ -246,7 +243,15 @@ internal sealed record RelativeOverlayViewModel(
         LiveTimingRow? timing)
     {
         var raceEvents = snapshot.Models.RaceEvents;
+        var reference = snapshot.Models.Reference;
         var referenceUsesLocalPlayer = ReferenceUsesLocalPlayer(snapshot, timing);
+        if (referenceUsesLocalPlayer
+            && reference.HasData
+            && (!reference.IsOnTrack || reference.IsInGarage))
+        {
+            return true;
+        }
+
         if (referenceUsesLocalPlayer && raceEvents.HasData && (!raceEvents.IsOnTrack || raceEvents.IsInGarage))
         {
             return true;
@@ -260,13 +265,23 @@ internal sealed record RelativeOverlayViewModel(
         }
 
         return referenceUsesLocalPlayer
-            && raceEvents is { HasData: true, OnPitRoad: true }
-            && raceEvents.LapCompleted <= 0
-            && raceEvents.LapDistPct <= 0.001d;
+            && ((reference.HasData
+                    && reference.OnPitRoad == true
+                    && (reference.LapCompleted ?? 0) <= 0
+                    && (reference.LapDistPct ?? 0d) <= 0.001d)
+                || (raceEvents is { HasData: true, OnPitRoad: true }
+                    && raceEvents.LapCompleted <= 0
+                    && raceEvents.LapDistPct <= 0.001d));
     }
 
     private static bool ReferenceUsesLocalPlayer(LiveTelemetrySnapshot snapshot, LiveTimingRow? timing)
     {
+        var reference = snapshot.Models.Reference;
+        if (reference.HasData)
+        {
+            return reference.FocusIsPlayer;
+        }
+
         var focusCarIdx = snapshot.Models.Relative.ReferenceCarIdx
             ?? timing?.CarIdx
             ?? snapshot.Models.Timing.FocusRow?.CarIdx

@@ -798,7 +798,8 @@ internal sealed class TrackMapForm : PersistentOverlayForm
         var scoringByCarIdx = snapshot.Models.Scoring.Rows
             .GroupBy(row => row.CarIdx)
             .ToDictionary(group => group.Key, group => group.First());
-        var referenceCarIdx = snapshot.Models.Scoring.ReferenceCarIdx
+        var referenceCarIdx = snapshot.Models.Reference.FocusCarIdx
+            ?? snapshot.Models.Scoring.ReferenceCarIdx
             ?? snapshot.Models.Timing.FocusCarIdx
             ?? snapshot.Models.Spatial.ReferenceCarIdx
             ?? snapshot.LatestSample?.FocusCarIdx;

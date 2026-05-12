@@ -279,8 +279,7 @@ internal sealed class StandingsForm : PersistentOverlayForm
             try
             {
                 _overlayError = null;
-                var layoutChanged = EnsureClientHeightForRows(viewModel.Rows.Count);
-                layoutChanged |= ApplyActiveRowCapacity(viewModel.Rows.Count);
+                var layoutChanged = ApplyActiveRowCapacity(viewModel.Rows.Count);
                 uiChanged = layoutChanged | ApplyViewModel(viewModel, snapshot);
                 _lastRefreshSequence = snapshot.Sequence;
                 _lastSettingsSignature = settingsSignature;
@@ -356,33 +355,6 @@ internal sealed class StandingsForm : PersistentOverlayForm
         }
 
         return changed;
-    }
-
-    private bool EnsureClientHeightForRows(int rowCount)
-    {
-        var targetHeight = TargetClientHeightForRows(rowCount);
-        if (ClientSize.Height == targetHeight)
-        {
-            return false;
-        }
-
-        ClientSize = new Size(ClientSize.Width, targetHeight);
-        return true;
-    }
-
-    private int TargetClientHeightForRows(int rowCount)
-    {
-        var persistedHeight = _settings.Height > 0
-            ? _settings.Height
-            : StandingsOverlayDefinition.Definition.DefaultHeight;
-        var visibleRows = Math.Clamp(Math.Max(1, rowCount), 1, AllocatedRows);
-        if (visibleRows <= MaximumRows)
-        {
-            return persistedHeight;
-        }
-
-        return persistedHeight
-            + ((visibleRows - MaximumRows) * OverlayTheme.Layout.OverlayTableRowHeight);
     }
 
     private bool ApplyActiveRowCapacity(int rowCount)

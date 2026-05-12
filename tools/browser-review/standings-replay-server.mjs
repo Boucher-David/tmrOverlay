@@ -207,6 +207,20 @@ function liveSnapshot(frame, index) {
     proximity: {},
     leaderGap: {},
     models: {
+      reference: {
+        hasData: Number.isFinite(frame.camCarIdx),
+        quality: 'inferred',
+        playerCarIdx: Number.isFinite(frame.playerCarIdx) ? frame.playerCarIdx : null,
+        focusCarIdx: Number.isFinite(frame.camCarIdx) ? frame.camCarIdx : null,
+        focusIsPlayer: Number.isFinite(frame.camCarIdx) && Number.isFinite(frame.playerCarIdx) && frame.camCarIdx === frame.playerCarIdx,
+        hasExplicitNonPlayerFocus: Number.isFinite(frame.camCarIdx) && Number.isFinite(frame.playerCarIdx) && frame.camCarIdx !== frame.playerCarIdx,
+        referenceCarClass: null,
+        lapDistPct: lapProgress,
+        onPitRoad,
+        isOnTrack: !isPreGreen || !onPitRoad,
+        isInGarage: false,
+        playerCarInPitStall: false
+      },
       session: {
         hasData: true,
         quality: 'reliable',
