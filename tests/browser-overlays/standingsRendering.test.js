@@ -50,6 +50,18 @@ describe('standings browser rendering', () => {
     expect(currentOverlay.document.body.textContent).not.toMatch(/\d(?:\.\d+)?L\b/i);
   });
 
+  it('negative control fails if lap-distance fallback is expected', async () => {
+    currentOverlay = await renderBrowserOverlay('standings', {
+      live: freshLiveSnapshot({}),
+      model: placeholderF2StandingsDisplayModel()
+    });
+
+    expect(
+      currentOverlay.document.body.textContent,
+      'NEGATIVE CONTROL: lap fallback should fail'
+    ).toContain('+0.002L');
+  });
+
 });
 
 function standingsDisplayModel() {

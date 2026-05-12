@@ -178,6 +178,46 @@ public sealed class StandingsOverlayViewModelTests
     }
 
     [Fact]
+    public void NegativeControl_StandingsLapDistanceFallbackWouldFail()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var leader = TimingRow(
+            carIdx: 11,
+            driverName: "Class Leader",
+            carNumber: "11",
+            classPosition: 1,
+            gapSeconds: null,
+            deltaSeconds: null,
+            isLeader: true);
+        var reference = TimingRow(
+            carIdx: 10,
+            driverName: "Reference Driver",
+            carNumber: "10",
+            classPosition: 2,
+            gapSeconds: null,
+            deltaSeconds: null,
+            gapLaps: 0.002d,
+            isFocus: true);
+        var snapshot = Snapshot(now, LiveRaceModels.Empty with
+        {
+            Timing = LiveTimingModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                FocusCarIdx = 10,
+                FocusRow = reference,
+                ClassRows = [leader, reference]
+            }
+        });
+
+        var viewModel = StandingsOverlayViewModel.From(snapshot, now, maximumRows: 2);
+
+        Assert.True(
+            string.Equals("+0.002L", viewModel.Rows[1].Gap, StringComparison.Ordinal),
+            $"NEGATIVE CONTROL: lap fallback should fail; actual '{viewModel.Rows[1].Gap}'");
+    }
+
+    [Fact]
     public void From_DoesNotShowAnonymousTimingRowsInSoloSessions()
     {
         var now = DateTimeOffset.UtcNow;
