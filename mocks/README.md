@@ -10,16 +10,14 @@ mocks/
   car-radar/
   gap-to-leader/
   settings-overlay/
-  application-redesign/
   design-v2/
-  standings/
   relative/
   track-map/
-  competition-distance-graph/
-  weather/
+  application-redesign/
+  overlay-catalog/
 ```
 
-These files are review artifacts, not publish output. Generated mac-harness screenshots are the tracked source of truth for current runtime overlay review. CI also generates Windows-rendered WinForms screenshots from deterministic fixtures and uploads them as workflow artifacts for parity review, including the Design V2 settings app tabs; those OS-specific artifacts should not be committed under `mocks/`. The `relative/` folder is the production Relative overlay preview set; `design-v2/` is a separate generated mac-harness proving ground for future shared overlay primitives and component-level token review. Its default direction is telemetry-first overlays, including standings, relative, local blindspot/radar, laptime, stint log, and flag-style surfaces, with source/evidence chrome reserved for stale, unavailable, modeled, or derived values. Keep any future exploratory static design mock clearly labeled and separate from generated validation artifacts.
+These files are review artifacts, not publish output. Generated mac-harness screenshots are the tracked source of truth for current runtime overlay review. CI also generates Windows-rendered WinForms screenshots from deterministic fixtures and uploads them as workflow artifacts for parity review, including the Design V2 settings app tabs; those OS-specific artifacts should not be committed under `mocks/`. The `relative/` folder is the production Relative overlay preview set; `design-v2/` is a separate generated mac-harness proving ground for future shared overlay primitives and component-level token review. Its default direction is telemetry-first overlays, including standings, relative, local blindspot/radar, laptime, stint log, and flag-style surfaces, with source/evidence chrome reserved for stale, unavailable, modeled, or derived values. `application-redesign/` and `overlay-catalog/` are older static exploratory references, not current runtime screenshot contracts. Keep any future exploratory static design mock clearly labeled and separate from generated validation artifacts.
 
 Design mocks should change how the product looks, not silently change what the product contains. By default, keep mock content aligned with the current production contract: visible fields, ordering, source labels, content settings, row counts, OBS/browser parity, and degraded/waiting states should match the current overlay behavior. If a mock intentionally proposes different content, call that out in the mock notes and keep it separate from pure visual-theme review.
 
