@@ -57,6 +57,7 @@ Likely squash body:
 - Added `metadata/window-z-order.json` diagnostics with current foreground HWND, recent foreground-window changes, and top-level desktop window topmost/z-order state.
 - Fixed Input / Car State steering conversion from iRacing radians to displayed degrees, smoothed native/browser/mac input traces, and guarded browser/native wheel rendering against bottom clipping.
 - Updated README, overlay/input/diagnostics/settings docs, and current-state notes to match the new z-order and diagnostics contracts.
+- Updated the Windows screenshot tool wiring for the foreground-window diagnostics dependency.
 - Validated local static checks, browser JS syntax, mac harness build, screenshot expectations, and git hygiene; Windows .NET build/test and real WinForms z-order/click-through validation remain CI/Windows-machine gates.
 ```
 

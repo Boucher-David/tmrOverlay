@@ -435,6 +435,7 @@ internal static class Program
             performanceState,
             new AppPerformanceSnapshotRecorder(storage),
             new LiveOverlayWindowCaptureStore(storage),
+            new ForegroundWindowTracker(),
             releaseUpdates,
             NullLogger<DiagnosticsBundleService>.Instance);
         var settings = CreateApplicationSettings();
