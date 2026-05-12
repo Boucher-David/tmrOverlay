@@ -1738,8 +1738,31 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             rect.Bottom - (float)Math.Clamp(select(point), 0d, 1d) * rect.Height)).ToArray();
         if (points.Length > 1)
         {
-            graphics.DrawLines(pen, points);
+            using var path = SmoothInputTracePath(points);
+            graphics.DrawPath(pen, path);
         }
+    }
+
+    private static GraphicsPath SmoothInputTracePath(IReadOnlyList<PointF> points)
+    {
+        var path = new GraphicsPath();
+        path.StartFigure();
+        for (var index = 0; index < points.Count - 1; index++)
+        {
+            var p0 = index == 0 ? points[index] : points[index - 1];
+            var p1 = points[index];
+            var p2 = points[index + 1];
+            var p3 = index + 2 < points.Count ? points[index + 2] : p2;
+            var control1 = new PointF(
+                p1.X + (p2.X - p0.X) / 6f,
+                p1.Y + (p2.Y - p0.Y) / 6f);
+            var control2 = new PointF(
+                p2.X - (p3.X - p1.X) / 6f,
+                p2.Y - (p3.Y - p1.Y) / 6f);
+            path.AddBezier(p1, control1, control2, p2);
+        }
+
+        return path;
     }
 
     private static void DrawInputAbsTrace(Graphics graphics, IReadOnlyList<DesignV2InputPoint> trace, RectangleF rect)
@@ -1837,19 +1860,28 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         DrawText(graphics, value, valueFont, TextPrimary, new RectangleF(rect.Left + 50, rect.Top, rect.Width - 50, 18), ContentAlignment.MiddleRight);
     }
 
-    private void DrawInputWheel(Graphics graphics, double? angleDegrees, RectangleF rect)
+    private void DrawInputWheel(Graphics graphics, double? angleRadians, RectangleF rect)
     {
         using var labelFont = FontOf(8.5f, FontStyle.Bold);
         using var valueFont = FontOf(10.5f, FontStyle.Bold);
         DrawText(graphics, "WHEEL", labelFont, TextMuted, new RectangleF(rect.Left, rect.Top, 54, 14));
-        DrawText(graphics, FormatSteering(angleDegrees), valueFont, TextPrimary, new RectangleF(rect.Left + 58, rect.Top - 1, rect.Width - 58, 16), ContentAlignment.MiddleRight);
+        DrawText(graphics, FormatSteering(angleRadians), valueFont, TextPrimary, new RectangleF(rect.Left + 58, rect.Top - 1, rect.Width - 58, 16), ContentAlignment.MiddleRight);
 
-        var diameter = Math.Min(rect.Width, Math.Max(10, rect.Height - 18));
-        var wheel = new RectangleF(rect.Left + (rect.Width - diameter) / 2f, rect.Top + 18, diameter, diameter);
+        var wheelSlot = new RectangleF(
+            rect.Left + 2,
+            rect.Top + 20,
+            Math.Max(1, rect.Width - 4),
+            Math.Max(1, rect.Height - 22));
+        var diameter = Math.Max(8, Math.Min(wheelSlot.Width, wheelSlot.Height) - 4);
+        var wheel = new RectangleF(
+            wheelSlot.Left + (wheelSlot.Width - diameter) / 2f,
+            wheelSlot.Top + (wheelSlot.Height - diameter) / 2f,
+            diameter,
+            diameter);
         using var ringPen = new Pen(TextSecondary, 3.4f);
         graphics.DrawEllipse(ringPen, wheel);
         var center = new PointF(wheel.Left + wheel.Width / 2f, wheel.Top + wheel.Height / 2f);
-        var angle = (float)((angleDegrees ?? 0d) * 2.1d * Math.PI / 180d);
+        var angle = (float)(angleRadians ?? 0d);
         using var spokePen = new Pen(Cyan, 3f)
         {
             StartCap = LineCap.Round,
@@ -2913,10 +2945,10 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         };
     }
 
-    private static string FormatSteering(double? angleDegrees)
+    private static string FormatSteering(double? angleRadians)
     {
-        return angleDegrees is { } value && IsFinite(value)
-            ? $"{value:+0;-0;0} deg"
+        return angleRadians is { } value && IsFinite(value)
+            ? $"{(value * 180d / Math.PI).ToString("+0;-0;0", System.Globalization.CultureInfo.InvariantCulture)} deg"
             : "--";
     }
 

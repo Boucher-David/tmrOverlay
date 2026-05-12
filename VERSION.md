@@ -13,61 +13,57 @@ Use `docs/model-v2-future-branches.md` for session-handoff notes, current model-
 
 ## Current Branch Target
 
-### v0.18.9 - AI Source Selection And Diagnostics Hardening
+### v0.18.10 - Overlay Z-Order And Input Diagnostics Hardening
 
 Planned branch name:
 
 ```text
-v0.18.9-ai-source-selection-diagnostics
+v0.18.10-overlay-z-order-input-diagnostics
 ```
 
 Planned scope:
 
-- Ship a focused V1-candidate patch on top of tagged `v0.18.7`.
-- Ground Standings, Relative, and Gap To Leader source selection in observed SDK/capture fields from AI, spectated, player-only, four-hour, and 24-hour telemetry states.
-- Keep Standings on race starting grid order until meaningful official race coverage appears, while Practice/Qualifying/Test still wait for valid laps.
-- Tighten Relative and Gap timing so local-player-only context and all-zero timing placeholders do not suppress or fabricate AI/spectated rows.
-- Expand multiclass Standings rendering so class headers remain visible for every available class, with the user's other-class row count applied on top.
-- Derive AI class labels from grounded session-info car names/paths when `CarClassShortName` is blank.
-- Harden Settings-window interaction diagnostics: while Settings is visible, managed overlay windows should be click-through and non-topmost; diagnostics should flag visible topmost no-activate overlays that could intercept input; pending visibility saves should flush before app exit.
-- Keep advanced/raw diagnostic capture user-initiated and production-ready by default; add compact scoring/source coverage to support diagnostics without raw payloads.
+- Ship a focused V1-candidate hardening patch for Windows overlay z-order/focus triage and Input / Car State rendering.
+- Keep product overlays topmost according to their saved setting so they do not drop behind iRacing when Settings is not foreground.
+- Temporarily promote the Settings window above product overlays only while Settings is active, then return it to the normal window band when focus returns to iRacing or another app.
+- Preserve Stream Chat and other click-through/no-activate overlay protections so overlays do not steal simulator input.
+- Add diagnostics bundle evidence for desktop HWND z-order, topmost state, current foreground window, and recent foreground-window changes.
+- Correct Input / Car State steering units from iRacing radians to displayed degrees and smooth the input graph trace for readability.
 - Keep root diagnostics bundles and raw capture folders ignored/untracked before pushing.
 
 Technical implementation checklist:
 
-1. Bump shared .NET product/version metadata to `0.18.9`.
-2. Patch scoring/timing source selection for AI/spectated race states while preserving player-only behavior.
-3. Patch Standings rendering and row budgeting for multiclass class headers and dynamic native height.
-4. Add grounded AI class-name fallback parsing from richer session-info driver metadata.
-5. Harden Settings-visible overlay window behavior, visibility save flushes, and input-intercept diagnostics.
-6. Add scoring/source coverage fields to diagnostics bundles and live overlay diagnostics.
-7. Add compact fixture-corpus tooling/docs and a hot-start skill/context note path for future sessions.
-8. Patch overlay logic, diagnostics, fixture, and settings docs to match the new contracts.
-9. Validate local static checks and git hygiene; use Windows CI or a Windows machine for the full .NET build/test and Windows click-through behavior pass.
+1. Bump shared .NET product/version metadata to `0.18.10`.
+2. Patch overlay manager z-order behavior so product overlays remain topmost while Settings is only temporarily topmost when foreground.
+3. Preserve input transparency/no-activate behavior for Stream Chat and transparent overlay surfaces.
+4. Add Windows HWND z-order and foreground-window diagnostics to support bundles, with bounded foreground-change history.
+5. Patch native/browser Input / Car State steering conversion, trace smoothing, and wheel clipping guardrails.
+6. Mirror applicable input trace smoothing in the tracked mac harness.
+7. Patch overlay/input/diagnostics/settings docs and current-state notes to match the new contracts.
+8. Validate local static checks and git hygiene; use Windows CI or a Windows machine for the full .NET build/test and real WinForms z-order/click-through behavior pass.
 
 Likely squash title:
 
 ```text
-[v0.18.9] Ground AI overlay source selection
+[v0.18.10] Harden overlay z-order and input diagnostics
 ```
 
 Likely squash body:
 
 ```text
-- Bumped shared .NET product/version metadata to 0.18.9.
-- Added scoring-source selection that keeps race grid order until meaningful official race coverage appears, while preserving valid-lap gating for Practice/Qualifying/Test.
-- Tightened Standings, Relative, and Gap To Leader data use for AI/spectated sessions so local-player-only context and all-zero timing placeholders do not suppress or fabricate rows.
-- Expanded multiclass Standings rendering for all class headers plus configured other-class samples, with dynamic native height and compact overlay headers kept separate from human Settings labels.
-- Added grounded AI class-name fallback parsing from session-info car names/paths when iRacing leaves `CarClassShortName` blank.
-- Protected Settings interaction from visible topmost no-activate overlays, widened input-intercept diagnostics, flushed pending Settings saves before exit, and kept forced/raw diagnostics user-initiated.
-- Added compact fixture-corpus extraction/docs, scoring/source diagnostic coverage, and hot-start branch notes for future sessions.
-- Updated overlay/diagnostics/settings docs and kept raw captures/root diagnostics artifacts untracked.
-- Validated local static checks and git hygiene; Windows .NET build/test and real WinForms click-through validation remain CI/Windows-machine gates.
+- Bumped shared .NET product/version metadata to 0.18.10.
+- Kept product overlays in their saved topmost band while making Settings temporarily topmost only while active, so overlays can stay above iRacing after focus returns to the sim.
+- Preserved Stream Chat and transparent overlay click-through/no-activate behavior while avoiding the previous Settings z-order demotion path.
+- Added `metadata/window-z-order.json` diagnostics with current foreground HWND, recent foreground-window changes, and top-level desktop window topmost/z-order state.
+- Fixed Input / Car State steering conversion from iRacing radians to displayed degrees, smoothed native/browser/mac input traces, and guarded browser/native wheel rendering against bottom clipping.
+- Updated README, overlay/input/diagnostics/settings docs, and current-state notes to match the new z-order and diagnostics contracts.
+- Updated the Windows screenshot tool wiring for the foreground-window diagnostics dependency.
+- Validated local static checks, browser JS syntax, mac harness build, screenshot expectations, and git hygiene; Windows .NET build/test and real WinForms z-order/click-through validation remain CI/Windows-machine gates.
 ```
 
 ## Next Planned Milestone
 
-### v0.18.10 - V1 Candidate Readiness
+### v0.18.11 - V1 Candidate Readiness
 
 Likely scope:
 

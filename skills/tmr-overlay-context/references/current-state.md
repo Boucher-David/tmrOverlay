@@ -65,7 +65,7 @@ Last updated: 2026-05-10
   - the settings window is recentered whenever it opens and does not persist user-dragged placement between runs
   - opens on startup and can be reopened from the tray menu
   - acts as the main UI; clicking its `X` or otherwise closing it through the user close path exits the application instead of hiding the app to the tray
-  - uses normal desktop z-order, taskbar, and Alt+Tab behavior instead of the product overlays' tool-window/always-on-top behavior
+  - uses normal desktop/taskbar/Alt+Tab behavior by default, but temporarily promotes itself above product overlays while active so Settings remains clickable; product overlays keep their own always-on-top setting and remain click-through/no-activate where appropriate
   - sidebar tabs include General, user-facing overlay tabs ordered by common race workflow, and Support last
   - General exposes a metric/imperial unit selector; user-facing font selection stays hidden while cross-platform screenshot parity remains a theme-level concern
   - General includes a native Show Preview control for Practice, Qualifying, and Race; it swaps overlay/browser-source reads to deterministic session fixtures while leaving normal overlay enabled state, session filters, positions, scale, opacity, topmost, and Stream Chat configuration untouched

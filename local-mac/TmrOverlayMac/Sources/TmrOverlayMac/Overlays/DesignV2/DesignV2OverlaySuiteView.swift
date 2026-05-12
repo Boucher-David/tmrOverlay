@@ -620,20 +620,52 @@ final class DesignV2OverlaySuiteView: NSView {
         }
 
         let maximumIndex = max(1, trace.count - 1)
-        let path = NSBezierPath()
-        for (index, point) in trace.enumerated() {
+        let points = trace.enumerated().map { index, point in
             let value = min(max(select(point), 0), 1)
-            let graphPoint = NSPoint(
+            return NSPoint(
                 x: rect.minX + CGFloat(index) / CGFloat(maximumIndex) * rect.width,
                 y: rect.maxY - CGFloat(value) * rect.height
             )
-            index == 0 ? path.move(to: graphPoint) : path.line(to: graphPoint)
         }
+        let path = smoothInputTracePath(points)
         color.setStroke()
         path.lineWidth = 2
         path.lineJoinStyle = .round
         path.lineCapStyle = .round
         path.stroke()
+    }
+
+    private func smoothInputTracePath(_ points: [NSPoint]) -> NSBezierPath {
+        let path = NSBezierPath()
+        guard let first = points.first else {
+            return path
+        }
+
+        path.move(to: first)
+        guard points.count > 2 else {
+            for point in points.dropFirst() {
+                path.line(to: point)
+            }
+            return path
+        }
+
+        for index in 0..<(points.count - 1) {
+            let p0 = index == 0 ? points[index] : points[index - 1]
+            let p1 = points[index]
+            let p2 = points[index + 1]
+            let p3 = index + 2 < points.count ? points[index + 2] : p2
+            let c1 = NSPoint(
+                x: p1.x + (p2.x - p0.x) / 6,
+                y: p1.y + (p2.y - p0.y) / 6
+            )
+            let c2 = NSPoint(
+                x: p2.x - (p3.x - p1.x) / 6,
+                y: p2.y - (p3.y - p1.y) / 6
+            )
+            path.curve(to: p2, controlPoint1: c1, controlPoint2: c2)
+        }
+
+        return path
     }
 
     private func drawInputWaitingTrace(in rect: NSRect, color: NSColor) {

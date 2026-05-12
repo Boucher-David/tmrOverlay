@@ -64,6 +64,7 @@ internal sealed class DiagnosticsBundleService
     private readonly AppPerformanceState _performanceState;
     private readonly AppPerformanceSnapshotRecorder _performanceRecorder;
     private readonly LiveOverlayWindowCaptureStore _liveOverlayWindowCaptureStore;
+    private readonly ForegroundWindowTracker _foregroundWindowTracker;
     private readonly ReleaseUpdateService _releaseUpdates;
     private readonly ILogger<DiagnosticsBundleService> _logger;
     private readonly object _sync = new();
@@ -87,6 +88,7 @@ internal sealed class DiagnosticsBundleService
         AppPerformanceState performanceState,
         AppPerformanceSnapshotRecorder performanceRecorder,
         LiveOverlayWindowCaptureStore liveOverlayWindowCaptureStore,
+        ForegroundWindowTracker foregroundWindowTracker,
         ReleaseUpdateService releaseUpdates,
         ILogger<DiagnosticsBundleService> logger)
     {
@@ -102,6 +104,7 @@ internal sealed class DiagnosticsBundleService
         _performanceState = performanceState;
         _performanceRecorder = performanceRecorder;
         _liveOverlayWindowCaptureStore = liveOverlayWindowCaptureStore;
+        _foregroundWindowTracker = foregroundWindowTracker;
         _releaseUpdates = releaseUpdates;
         _logger = logger;
     }
@@ -323,6 +326,26 @@ internal sealed class DiagnosticsBundleService
                     AppPerformanceMetricIds.DiagnosticsBundleLiveOverlayWindows,
                     liveOverlayWindowsStarted,
                     liveOverlayWindowsSucceeded);
+            }
+
+            var windowZOrderStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+            var windowZOrderSucceeded = false;
+            try
+            {
+                AddTextEntry(
+                    archive,
+                    "metadata/window-z-order.json",
+                    JsonSerializer.Serialize(
+                        WindowsTopLevelWindowDiagnostics.Capture(_foregroundWindowTracker.SnapshotHistory()),
+                        JsonOptions));
+                windowZOrderSucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.DiagnosticsBundleWindowZOrder,
+                    windowZOrderStarted,
+                    windowZOrderSucceeded);
             }
 
             var historyStarted = System.Diagnostics.Stopwatch.GetTimestamp();
