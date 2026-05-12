@@ -278,7 +278,7 @@ Last updated: 2026-05-10
 
 - `docs/repo-surface.md`
   - separates customer/tester-facing material, product source, internal development assets, and ignored local runtime data
-  - records cleanup candidates such as local `artifacts/`, root `tmroverlay-diagnostics-*` folders/zips, ignored raw captures, and the tracked legacy raw capture that should eventually be replaced with compact fixtures
+  - records cleanup candidates such as local `artifacts/`, root `tmroverlay-diagnostics-*` folders/zips, and ignored raw captures that should be moved to external storage or replaced with compact fixtures when analysis is complete
 
 - `src/TmrOverlay.App/Retention/`
   - removes old capture directories and diagnostics bundles in background startup cleanup
