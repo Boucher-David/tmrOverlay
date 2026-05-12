@@ -131,6 +131,53 @@ public sealed class StandingsOverlayViewModelTests
     }
 
     [Fact]
+    public void From_DoesNotShowLapDistanceFallbackForStandingsGap()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var leader = TimingRow(
+            carIdx: 11,
+            driverName: "Class Leader",
+            carNumber: "11",
+            classPosition: 1,
+            gapSeconds: null,
+            deltaSeconds: null,
+            isLeader: true);
+        var reference = TimingRow(
+            carIdx: 10,
+            driverName: "Reference Driver",
+            carNumber: "10",
+            classPosition: 2,
+            gapSeconds: null,
+            deltaSeconds: null,
+            gapLaps: 0.03d,
+            isFocus: true);
+        var chase = TimingRow(
+            carIdx: 12,
+            driverName: "Chase Driver",
+            carNumber: "12",
+            classPosition: 3,
+            gapSeconds: null,
+            deltaSeconds: null,
+            gapLaps: 0.05d);
+        var snapshot = Snapshot(now, LiveRaceModels.Empty with
+        {
+            Timing = LiveTimingModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                FocusCarIdx = 10,
+                FocusRow = reference,
+                ClassRows = [leader, reference, chase]
+            }
+        });
+
+        var viewModel = StandingsOverlayViewModel.From(snapshot, now, maximumRows: 3);
+
+        Assert.Equal(new[] { "Leader", "--", "--" }, viewModel.Rows.Select(row => row.Gap));
+        Assert.Equal(new[] { "0.0", "--", "--" }, viewModel.Rows.Select(row => row.Interval));
+    }
+
+    [Fact]
     public void From_DoesNotShowAnonymousTimingRowsInSoloSessions()
     {
         var now = DateTimeOffset.UtcNow;
@@ -913,6 +960,7 @@ public sealed class StandingsOverlayViewModelTests
         bool isLeader = false,
         bool isFocus = false,
         bool onPitRoad = false,
+        double? gapLaps = null,
         double? bestLapTimeSeconds = null,
         double? lastLapTimeSeconds = null)
     {
@@ -947,7 +995,7 @@ public sealed class StandingsOverlayViewModelTests
             LastLapTimeSeconds: lastLapTimeSeconds,
             BestLapTimeSeconds: bestLapTimeSeconds,
             GapSecondsToClassLeader: gapSeconds,
-            GapLapsToClassLeader: null,
+            GapLapsToClassLeader: gapLaps,
             IntervalSecondsToPreviousClassRow: deltaSeconds,
             DeltaSecondsToFocus: deltaSeconds,
             TrackSurface: null,

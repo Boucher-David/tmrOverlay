@@ -285,31 +285,14 @@ final class StandingsOverlayView: NSView {
     }
 
     private func formatGap(_ car: LiveClassGapCar) -> String {
-        if car.isClassLeader {
-            return "Leader"
-        }
-
-        if let seconds = car.gapSecondsToClassLeader, seconds.isFinite {
-            return String(format: "+%.1f", seconds)
-        }
-
-        if let laps = car.gapLapsToClassLeader, laps.isFinite {
-            return String(format: "+%.1fL", laps)
-        }
-
-        return "--"
+        StandingsDisplayFormatting.gap(
+            isClassLeader: car.isClassLeader,
+            seconds: car.gapSecondsToClassLeader,
+            laps: car.gapLapsToClassLeader)
     }
 
     private func formatInterval(_ delta: Double?, referenceGap: Double, isReference: Bool) -> String {
-        if isReference {
-            return "0.0"
-        }
-
-        guard let delta, delta.isFinite else {
-            return "--"
-        }
-
-        return delta > 0 ? String(format: "+%.1f", delta) : String(format: "%.1f", delta)
+        StandingsDisplayFormatting.interval(delta, referenceGap: referenceGap, isReference: isReference)
     }
 
     private func pitStatus(car: LiveClassGapCar, snapshot: LiveTelemetrySnapshot) -> String {

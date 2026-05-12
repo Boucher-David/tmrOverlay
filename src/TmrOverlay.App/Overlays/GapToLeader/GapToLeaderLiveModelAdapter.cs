@@ -219,7 +219,7 @@ internal static class GapToLeaderLiveModelAdapter
 
     private static double ChartLapReferenceSeconds(double? lapReferenceSeconds)
     {
-        return IsValidLapReference(lapReferenceSeconds) ? lapReferenceSeconds.Value : 60d;
+        return lapReferenceSeconds is { } seconds && IsValidLapReference(seconds) ? seconds : 60d;
     }
 
     private static bool ReferenceUsesPlayerCar(LiveTelemetrySnapshot snapshot)

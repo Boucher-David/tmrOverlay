@@ -226,9 +226,14 @@ function validateModel(overlayId, response) {
     const source = String(model.source || '').toLowerCase();
     const isPreGreen = Number.isFinite(sessionState) && sessionState < 4;
     const isGrid = source.includes('starting grid');
+    const timingValues = tableValuesForKeys(model, ['gap', 'interval']);
+    const lapDistanceValue = timingValues.find((value) => /\d(?:\.\d+)?L$/i.test(value));
+    if (lapDistanceValue) {
+      failures.push(`standings rendered lap-distance gap value "${lapDistanceValue}"`);
+    }
     if (isPreGreen || isGrid) {
-      for (const value of tableValuesForKeys(model, ['gap', 'interval'])) {
-        if (/^\+\d/.test(value) || /\d(?:\.\d+)?L$/i.test(value)) {
+      for (const value of timingValues) {
+        if (/^\+\d/.test(value)) {
           failures.push(`standings rendered unstable ${isPreGreen ? 'pre-green' : 'grid'} gap value "${value}"`);
           break;
         }

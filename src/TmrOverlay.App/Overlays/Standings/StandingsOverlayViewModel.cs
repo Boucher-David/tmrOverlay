@@ -356,9 +356,10 @@ internal sealed record StandingsOverlayViewModel(
         if (!IsRacePreGreen(snapshot)
             && snapshot.Models.Session.SessionTimeRemainSeconds is { } remaining
             && remaining > 0d
-            && IsUsableLapTime(pace))
+            && pace is { } paceSeconds
+            && IsUsableLapTime(paceSeconds))
         {
-            return $"~{Math.Ceiling(remaining / pace.Value + 1d):0} laps";
+            return $"~{Math.Ceiling(remaining / paceSeconds + 1d):0} laps";
         }
 
         if (snapshot.Models.RaceProgress.RaceLapsRemaining is { } laps
@@ -596,11 +597,6 @@ internal sealed record StandingsOverlayViewModel(
         if (row.GapSecondsToClassLeader is { } seconds && IsFinite(seconds))
         {
             return $"+{seconds:0.0}";
-        }
-
-        if (row.GapLapsToClassLeader is { } laps && IsFinite(laps))
-        {
-            return $"+{laps:0.0}L";
         }
 
         return "--";

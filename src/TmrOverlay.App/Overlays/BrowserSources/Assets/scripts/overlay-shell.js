@@ -230,7 +230,6 @@
         const sign = direction === 'ahead' ? '-' : '+';
         if (Number.isFinite(row?.relativeSeconds)) return `${sign}${Math.abs(row.relativeSeconds).toFixed(3)}`;
         if (Number.isFinite(row?.relativeMeters)) return `${sign}${Math.abs(row.relativeMeters).toFixed(0)}m`;
-        if (Number.isFinite(row?.relativeLaps)) return `${sign}${Math.abs(row.relativeLaps).toFixed(3)}L`;
         return '--';
       },
       hasUsableGap(row) {

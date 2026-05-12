@@ -858,9 +858,9 @@ internal sealed class TrackMapForm : PersistentOverlayForm
         return PositionLabel(scoringRow) ?? PositionLabel(row);
     }
 
-    private static string? PositionLabel(LiveTimingRow row)
+    private static string? PositionLabel(LiveTimingRow? row)
     {
-        var position = row.ClassPosition ?? row.OverallPosition;
+        var position = row?.ClassPosition ?? row?.OverallPosition;
         return position is > 0 ? $"P{position.Value}" : null;
     }
 

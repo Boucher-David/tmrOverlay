@@ -1288,9 +1288,9 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         return PositionLabel(scoringRow) ?? PositionLabel(row);
     }
 
-    private static string? PositionLabel(LiveTimingRow row)
+    private static string? PositionLabel(LiveTimingRow? row)
     {
-        var position = row.ClassPosition ?? row.OverallPosition;
+        var position = row?.ClassPosition ?? row?.OverallPosition;
         return position is > 0 ? position.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
     }
 
