@@ -111,17 +111,18 @@ internal static class FlagsOverlayViewModel
         var progress = snapshot.Models.RaceProgress;
         var projection = snapshot.Models.RaceProjection;
         var activeFlags = FormatFlags(flags);
-        var sessionState = FormatSessionState(session.SessionState);
+        var sessionState = FormatSessionState(session);
         var tone = ToneFor(flags, session.SessionState);
         var status = flags is null
             ? sessionState
             : PrimaryFlagLabel(flags.Value) ?? sessionState;
+        var timeLabel = IsRacePreGreen(session) ? "Countdown" : "Time left";
         var rows = new[]
         {
             new SimpleTelemetryRowViewModel("State", sessionState, tone),
             new SimpleTelemetryRowViewModel("Flags", activeFlags, tone),
             new SimpleTelemetryRowViewModel("Raw", FormatRawFlags(flags)),
-            new SimpleTelemetryRowViewModel("Time left", SimpleTelemetryOverlayViewModel.FormatDuration(session.SessionTimeRemainSeconds, compact: true)),
+            new SimpleTelemetryRowViewModel(timeLabel, SimpleTelemetryOverlayViewModel.FormatDuration(session.SessionTimeRemainSeconds, compact: true)),
             new SimpleTelemetryRowViewModel("Laps left", FormatLaps(session, progress, projection))
         };
 
@@ -133,9 +134,24 @@ internal static class FlagsOverlayViewModel
             Rows: rows);
     }
 
-    private static string FormatSessionState(int? state)
+    private static string FormatSessionState(LiveSessionModel session)
     {
-        return state switch
+        if (IsRaceSession(session))
+        {
+            return session.SessionState switch
+            {
+                1 => "race grid (1)",
+                2 => "grid countdown (2)",
+                3 => "parade laps (3)",
+                4 => "racing (4)",
+                5 => "checkered (5)",
+                6 => "cool down (6)",
+                null => "--",
+                _ => $"state {session.SessionState.Value.ToString(CultureInfo.InvariantCulture)}"
+            };
+        }
+
+        return session.SessionState switch
         {
             0 => "invalid (0)",
             1 => "get in car (1)",
@@ -145,8 +161,25 @@ internal static class FlagsOverlayViewModel
             5 => "checkered (5)",
             6 => "cool down (6)",
             null => "--",
-            _ => $"state {state.Value.ToString(CultureInfo.InvariantCulture)}"
+            _ => $"state {session.SessionState.Value.ToString(CultureInfo.InvariantCulture)}"
         };
+    }
+
+    private static bool IsRacePreGreen(LiveSessionModel session)
+    {
+        return session.SessionState is >= 1 and <= 3 && IsRaceSession(session);
+    }
+
+    private static bool IsRaceSession(LiveSessionModel session)
+    {
+        return ContainsRace(session.SessionType)
+            || ContainsRace(session.SessionName)
+            || ContainsRace(session.EventType);
+    }
+
+    private static bool ContainsRace(string? value)
+    {
+        return value?.IndexOf("race", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static string FormatFlags(int? flags)

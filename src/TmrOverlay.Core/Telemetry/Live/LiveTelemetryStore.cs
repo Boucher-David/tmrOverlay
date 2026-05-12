@@ -175,9 +175,11 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
 
         if (sample.SessionState is null or >= 4)
         {
+            _griddedCarIdxs.Clear();
             return;
         }
 
+        _griddedCarIdxs.Clear();
         AddGriddedCar(sample.PlayerCarIdx, sample.PlayerTrackSurface, sample.TeamOnPitRoad ?? sample.OnPitRoad);
         AddGriddedCar(sample.FocusCarIdx ?? sample.RawCamCarIdx, sample.FocusTrackSurface, sample.FocusOnPitRoad);
         AddGriddedCars(sample.FocusClassCars);

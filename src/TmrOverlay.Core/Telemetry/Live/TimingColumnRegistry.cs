@@ -79,7 +79,9 @@ internal static class TimingColumnRegistry
             Alignment: LiveTimingColumnAlignment.Right,
             DefaultVisible: true,
             DefaultOrder: 70,
-            FormatValue: row => FormatSignedSeconds(row.DeltaSecondsToFocus)),
+            FormatValue: row => row.IsClassLeader || row.ClassPosition == 1
+                ? "0.000"
+                : FormatPositiveSeconds(row.IntervalSecondsToPreviousClassRow)),
         new LiveTimingColumnDescriptor(
             Key: LastLap,
             Label: "Last",
@@ -158,6 +160,16 @@ internal static class TimingColumnRegistry
             < 0d => $"-{FormatSeconds(Math.Abs(value.Value))}",
             _ => "0.000"
         };
+    }
+
+    private static string FormatPositiveSeconds(double? value)
+    {
+        if (value is null || !IsFinite(value.Value))
+        {
+            return string.Empty;
+        }
+
+        return $"+{FormatSeconds(Math.Max(0d, value.Value))}";
     }
 
     private static string FormatSeconds(double seconds)

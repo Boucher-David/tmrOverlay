@@ -148,8 +148,7 @@ private final class RaceStartCaptureReader {
         let capturedCars = capturedCars(payload: payload, playerCarIdx: playerCarIdx)
         let playerCar = capturedCars.first { $0.carIdx == playerCarIdx }
         let sessionTime = doubleValue("SessionTime", payload: payload) ?? 0
-        let sessionTimeRemain = doubleValue("SessionTimeRemain", payload: payload)
-            ?? max(0, FourHourRacePreview.sessionLengthSeconds - sessionTime)
+        let sessionTimeRemain = doubleValue("SessionTimeRemain", payload: payload) ?? -1
         let sessionTimeTotal = sessionTimeRemain > 0 ? max(sessionTime + sessionTimeRemain, FourHourRacePreview.sessionLengthSeconds) : FourHourRacePreview.sessionLengthSeconds
         let estimatedLapSeconds = playerCar?.carClass.flatMap { sessionInfo.driversByCarIdx[playerCarIdx]?.estimatedLapSeconds ?? sessionInfo.estimatedLapSeconds(forClassId: $0) }
             ?? FourHourRacePreview.medianLapSeconds

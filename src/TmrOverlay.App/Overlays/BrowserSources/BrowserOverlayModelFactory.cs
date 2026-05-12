@@ -57,21 +57,33 @@ internal sealed class BrowserOverlayModelFactory
         }
         else if (string.Equals(overlayId, SessionWeatherOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
+            var viewModel = _sessionWeatherBuilder(snapshot, now, unitSystem);
+            var overlay = FindOverlay(settings, SessionWeatherOverlayDefinition.Definition.Id);
+            var headerItems = HeaderItems(overlay, snapshot, viewModel.Status);
             model = FromSimple(
                 SessionWeatherOverlayDefinition.Definition.Id,
-                _sessionWeatherBuilder(snapshot, now, unitSystem));
+                viewModel,
+                headerItems);
         }
         else if (string.Equals(overlayId, PitServiceOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
+            var viewModel = _pitServiceBuilder(snapshot, now, unitSystem);
+            var overlay = FindOverlay(settings, PitServiceOverlayDefinition.Definition.Id);
+            var headerItems = HeaderItems(overlay, snapshot, viewModel.Status);
             model = FromSimple(
                 PitServiceOverlayDefinition.Definition.Id,
-                _pitServiceBuilder(snapshot, now, unitSystem));
+                viewModel,
+                headerItems);
         }
         else if (string.Equals(overlayId, InputStateOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
+            var viewModel = InputStateOverlayViewModel.From(snapshot, now, unitSystem);
+            var overlay = FindOverlay(settings, InputStateOverlayDefinition.Definition.Id);
+            var headerItems = HeaderItems(overlay, snapshot, viewModel.Status);
             model = FromSimple(
                 InputStateOverlayDefinition.Definition.Id,
-                InputStateOverlayViewModel.From(snapshot, now, unitSystem));
+                viewModel,
+                headerItems);
         }
         else if (string.Equals(overlayId, GapToLeaderOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
@@ -240,19 +252,22 @@ internal sealed class BrowserOverlayModelFactory
 
     private static BrowserOverlayDisplayModel FromSimple(
         string overlayId,
-        SimpleTelemetryOverlayViewModel viewModel)
+        SimpleTelemetryOverlayViewModel viewModel,
+        IReadOnlyList<BrowserOverlayHeaderItem>? headerItems = null)
     {
+        headerItems ??= [];
         return BrowserOverlayDisplayModel.MetricRows(
             overlayId,
             viewModel.Title,
-            viewModel.Status,
+            BrowserStatus(headerItems, viewModel.Status),
             viewModel.Source,
             viewModel.Rows
                 .Select(row => new BrowserOverlayMetricRow(
                     row.Label,
                     row.Value,
                     ToneName(row.Tone)))
-                .ToArray());
+                .ToArray(),
+            headerItems);
     }
 
     private BrowserOverlayDisplayModel BuildGapToLeader(LiveTelemetrySnapshot snapshot, ApplicationSettings settings)

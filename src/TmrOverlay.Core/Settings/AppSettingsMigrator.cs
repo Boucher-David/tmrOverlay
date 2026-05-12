@@ -263,7 +263,13 @@ internal static class AppSettingsMigrator
 
     private static bool SupportsSharedChromeSettings(string overlayId)
     {
-        return overlayId.Trim().ToLowerInvariant() is "standings" or "relative" or "fuel-calculator" or "gap-to-leader";
+        return overlayId.Trim().ToLowerInvariant() is
+            "standings"
+            or "relative"
+            or "fuel-calculator"
+            or "gap-to-leader"
+            or "session-weather"
+            or "pit-service";
     }
 
     private static bool IsSharedChromeOption(string key)

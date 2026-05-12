@@ -8,7 +8,8 @@
     "test:browser:unit": "vitest run",
     "test:browser:playwright": "playwright test",
     "test:browser:install": "playwright install chromium",
-    "review:browser": "node tools/browser-review/server.mjs"
+    "review:browser": "node tools/browser-review/server.mjs",
+    "validate:browser:race-start": "node tools/browser-review/validate-race-start-replay.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",

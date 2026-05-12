@@ -2769,7 +2769,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     internal static bool IsInputTransparentKind(DesignV2LiveOverlayKind kind)
     {
-        return kind is DesignV2LiveOverlayKind.Flags or DesignV2LiveOverlayKind.StreamChat;
+        return kind is DesignV2LiveOverlayKind.StreamChat;
     }
 
     private Button CreateStreamChatCloseButton()

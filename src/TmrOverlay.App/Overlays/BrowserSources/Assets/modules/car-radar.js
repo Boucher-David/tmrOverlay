@@ -32,7 +32,7 @@ function ensureRadarStyle() {
       border: 2px solid var(--tmr-cyan);
       border-radius: 50%;
       background: var(--tmr-surface);
-      overflow: hidden;
+      overflow: visible;
       box-shadow: 0 0 26px rgba(var(--tmr-cyan-rgb), 0.16);
     }
 
@@ -68,7 +68,6 @@ function ensureRadarStyle() {
       width: 1px;
     }
 
-    .radar-title,
     .radar-status,
     .radar-multiclass-label {
       position: absolute;
@@ -78,18 +77,13 @@ function ensureRadarStyle() {
       white-space: nowrap;
     }
 
-    .radar-title {
-      left: 20px;
-      top: 18px;
-      color: var(--tmr-text);
-      font-size: 12px;
-    }
-
     .radar-status {
-      right: 20px;
-      top: 18px;
+      left: 0;
+      right: 0;
+      top: -19px;
       color: var(--tmr-error);
       font-size: 10px;
+      text-align: center;
     }
 
     .radar-multiclass-label {
@@ -147,7 +141,6 @@ function radarMarkup(spatial, cars) {
     : null;
   return `
     <div class="radar-v2">
-      <div class="radar-title">CAR RADAR</div>
       <div class="radar-status">${escapeHtml(radarStatusText(spatial))}</div>
       <div class="radar-axis radar-axis-x"></div>
       <div class="radar-axis radar-axis-y"></div>

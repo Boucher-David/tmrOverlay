@@ -88,6 +88,18 @@ def valid_timing_seconds(value: Any) -> float | None:
     return seconds if seconds is not None and seconds > 0.05 else None
 
 
+def valid_lap_dist_pct(value: Any) -> float | None:
+    if not finite(value):
+        return None
+    number = float(value)
+    return max(0.0, min(1.0, number)) if number >= 0.0 else None
+
+
+def valid_positive_seconds(value: Any) -> float | None:
+    seconds = valid_non_negative(value)
+    return seconds if seconds is not None and seconds > 0.0 else None
+
+
 def car_number(value: Any, car_idx: int) -> str:
     text = str(value or "").strip().lstrip("#")
     return f"#{text}" if text else f"#{car_idx}"
@@ -239,6 +251,8 @@ def timing_lookup(values: dict[str, list[Any]], gridded_car_idxs: set[int] | Non
             "overallPosition": car.position,
             "classPosition": car.class_position,
             "carClass": car.car_class,
+            "lapCompleted": car.lap_completed,
+            "lapDistPct": valid_lap_dist_pct(car.lap_dist_pct),
             "f2TimeSeconds": car.f2_time,
             "estimatedTimeSeconds": car.estimated_time,
             "lastLapTimeSeconds": valid_lap_time(car.last_lap_time),
@@ -267,6 +281,7 @@ def update_gridded_cars(
     session_data: dict[str, Any],
     gridded_car_idxs: set[int],
 ) -> None:
+    gridded_car_idxs.clear()
     selected = current_session(session_data)
     session_kind = classify_session_kind(str((selected or {}).get("SessionType") or (selected or {}).get("SessionName") or ""))
     session_state = raw.get("SessionState")
@@ -343,7 +358,11 @@ def scoring_display_rows(
         if include_headers:
             first_driver = drivers.get(rows[0]["carIdx"])
             display_rows.append(header_row(class_label(first_driver, key), f"{len(rows)} cars", class_color(first_driver)))
-        for row in select_around_reference(rows, ref_idx if is_primary else None, group_limit):
+        use_live_order = session_kind == "race" and isinstance(raw.get("SessionState"), int) and raw["SessionState"] >= 4
+        ordered_rows = order_scoring_rows_for_display(rows, timing_rows, session_data, session_kind, raw.get("SessionState"), drivers) if use_live_order else rows
+        live_positions = {candidate["carIdx"]: index + 1 for index, candidate in enumerate(ordered_rows)} if use_live_order else {}
+        live_intervals = live_intervals_for_ordered_rows(ordered_rows, timing_rows, session_data, session_kind, raw.get("SessionState"), drivers) if use_live_order else {}
+        for row in select_around_reference(ordered_rows, ref_idx if is_primary else None, group_limit):
             timing = timing_rows.get(row["carIdx"])
             display_rows.append(
                 car_display_row(
@@ -353,6 +372,11 @@ def scoring_display_rows(
                     rows,
                     timing_rows,
                     drivers,
+                    session_data=session_data,
+                    session_kind=session_kind,
+                    session_state=raw.get("SessionState") if isinstance(raw.get("SessionState"), int) else None,
+                    class_position_override=live_positions.get(row["carIdx"]),
+                    interval_override=live_intervals.get(row["carIdx"]),
                     is_pending_grid=(
                         selected_source.startswith("starting-grid")
                         and isinstance(raw.get("SessionState"), int)
@@ -390,6 +414,9 @@ def timing_display_rows(
     if ref_idx is None:
         return "waiting for focus car", "source: waiting", []
     drivers = driver_directory(session_data)
+    selected = current_session(session_data)
+    session_kind = classify_session_kind(str((selected or {}).get("SessionType") or (selected or {}).get("SessionName") or ""))
+    session_state = raw.get("SessionState") if isinstance(raw.get("SessionState"), int) else None
     rows = sorted(
         timing_rows.values(),
         key=lambda row: (
@@ -399,7 +426,19 @@ def timing_display_rows(
         ),
     )
     rows = select_around_reference(rows, ref_idx, maximum_rows)
-    display_rows = [car_display_row(timing, timing, ref_idx, rows, timing_rows, drivers) for timing in rows]
+    display_rows = [
+        car_display_row(
+            timing,
+            timing,
+            ref_idx,
+            rows,
+            timing_rows,
+            drivers,
+            session_data=session_data,
+            session_kind=session_kind,
+            session_state=session_state)
+        for timing in rows
+    ]
     reference = next((row for row in display_rows if row.get("isReference")), None)
     status_prefix = reference["cells"][0] if reference and reference.get("cells") else None
     status = f"{status_prefix} - {len(display_rows)} rows" if status_prefix and status_prefix != "--" else f"{len(display_rows)} rows"
@@ -407,7 +446,7 @@ def timing_display_rows(
 
 
 def select_around_reference(rows: list[dict[str, Any]], ref_idx: int | None, limit: int) -> list[dict[str, Any]]:
-    ordered = sorted(rows, key=lambda row: (row.get("classPosition") or 999, row.get("overallPosition") or 999, row["carIdx"]))
+    ordered = list(rows)
     if limit <= 0 or len(ordered) <= limit:
         return ordered[: max(0, limit)]
     if ref_idx is None:
@@ -427,6 +466,11 @@ def car_display_row(
     group_rows: list[dict[str, Any]],
     timing_rows: dict[int, dict[str, Any]],
     drivers: dict[int, dict[str, Any]],
+    session_data: dict[str, Any] | None = None,
+    session_kind: str | None = None,
+    session_state: int | None = None,
+    class_position_override: int | None = None,
+    interval_override: str | None = None,
     is_pending_grid: bool = False,
 ) -> dict[str, Any]:
     car_idx = row["carIdx"]
@@ -434,14 +478,22 @@ def car_display_row(
     driver = drivers.get(car_idx)
     ref_timing = timing_rows.get(ref_idx) if ref_idx is not None else None
     class_position = row.get("classPosition") or timing.get("classPosition")
-    f2 = valid_timing_seconds(timing.get("f2TimeSeconds"))
-    leader_f2 = class_leader_f2(row, group_rows, timing_rows)
-    gap = "Leader" if class_position == 1 else signed_seconds(f2 - leader_f2 if f2 is not None and leader_f2 is not None else None)
-    ref_f2 = valid_timing_seconds((ref_timing or {}).get("f2TimeSeconds"))
-    interval = "0.0" if ref_idx == car_idx else signed_seconds(f2 - ref_f2 if f2 is not None and ref_f2 is not None else None)
+    gap_seconds, interval_seconds = class_gap_and_interval(
+        row,
+        timing,
+        group_rows,
+        timing_rows,
+        session_data,
+        session_kind,
+        session_state,
+        drivers,
+    )
+    display_class_position = class_position_override or class_position
+    gap = "Leader" if display_class_position == 1 else signed_seconds(gap_seconds)
+    interval = interval_override or ("0.0" if display_class_position == 1 else signed_seconds(interval_seconds))
     return {
         "cells": [
-            str(class_position) if class_position else "--",
+            str(display_class_position) if display_class_position else "--",
             car_number((driver or {}).get("carNumber"), car_idx),
             driver_name(driver, car_idx),
             gap,
@@ -459,16 +511,214 @@ def car_display_row(
     }
 
 
-def class_leader_f2(row: dict[str, Any], group_rows: Iterable[dict[str, Any]], timing_rows: dict[int, dict[str, Any]]) -> float | None:
-    leader = next((candidate for candidate in group_rows if candidate.get("classPosition") == 1), None)
-    if leader is not None:
-        return valid_timing_seconds((timing_rows.get(leader["carIdx"]) or {}).get("f2TimeSeconds"))
-    values = [
-        valid_timing_seconds((timing_rows.get(candidate["carIdx"]) or {}).get("f2TimeSeconds"))
-        for candidate in group_rows
+def order_scoring_rows_for_display(
+    group_rows: list[dict[str, Any]],
+    timing_rows: dict[int, dict[str, Any]],
+    session_data: dict[str, Any] | None,
+    session_kind: str | None,
+    session_state: int | None,
+    drivers: dict[int, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    gaps = {
+        row["carIdx"]: class_gap_and_interval(
+            row,
+            timing_rows.get(row["carIdx"]) or {},
+            group_rows,
+            timing_rows,
+            session_data,
+            session_kind,
+            session_state,
+            drivers,
+        )[0]
+        for row in group_rows
+    }
+    if sum(1 for gap in gaps.values() if gap is not None and finite(gap) and gap >= 0.0) < 2:
+        return group_rows
+    return sorted(
+        group_rows,
+        key=lambda row: (
+            gaps.get(row["carIdx"]) if gaps.get(row["carIdx"]) is not None else math.inf,
+            row.get("classPosition") or (timing_rows.get(row["carIdx"]) or {}).get("classPosition") or 999,
+            row.get("overallPosition") or (timing_rows.get(row["carIdx"]) or {}).get("overallPosition") or 999,
+            row["carIdx"],
+        ),
+    )
+
+
+def live_intervals_for_ordered_rows(
+    ordered_rows: list[dict[str, Any]],
+    timing_rows: dict[int, dict[str, Any]],
+    session_data: dict[str, Any] | None,
+    session_kind: str | None,
+    session_state: int | None,
+    drivers: dict[int, dict[str, Any]],
+) -> dict[int, str]:
+    intervals: dict[int, str] = {}
+    previous_gap: float | None = None
+    for row in ordered_rows:
+        gap = class_gap_and_interval(
+            row,
+            timing_rows.get(row["carIdx"]) or {},
+            ordered_rows,
+            timing_rows,
+            session_data,
+            session_kind,
+            session_state,
+            drivers,
+        )[0]
+        if gap is None or not finite(gap) or gap < 0.0:
+            intervals[row["carIdx"]] = "--"
+            continue
+        intervals[row["carIdx"]] = "0.0" if previous_gap is None else f"+{max(0.0, gap - previous_gap):.1f}"
+        previous_gap = gap
+    return intervals
+
+
+def class_gap_and_interval(
+    row: dict[str, Any],
+    timing: dict[str, Any],
+    group_rows: list[dict[str, Any]],
+    timing_rows: dict[int, dict[str, Any]],
+    session_data: dict[str, Any] | None,
+    session_kind: str | None,
+    session_state: int | None,
+    drivers: dict[int, dict[str, Any]],
+) -> tuple[float | None, float | None]:
+    class_position = row.get("classPosition") or timing.get("classPosition")
+    if class_position == 1:
+        return 0.0, None
+
+    is_race = session_kind == "race"
+    allow_timing = not is_race or (isinstance(session_state, int) and session_state >= 4)
+    if not allow_timing:
+        return None, None
+
+    ordered = sorted(
+        group_rows,
+        key=lambda candidate: (
+            candidate.get("classPosition") or (timing_rows.get(candidate["carIdx"]) or {}).get("classPosition") or 999,
+            candidate.get("overallPosition") or (timing_rows.get(candidate["carIdx"]) or {}).get("overallPosition") or 999,
+            candidate["carIdx"],
+        ),
+    )
+    leader = next((candidate for candidate in ordered if (candidate.get("classPosition") or (timing_rows.get(candidate["carIdx"]) or {}).get("classPosition")) == 1), None)
+    leader = leader or ordered[0] if ordered else None
+    previous = previous_class_row(row["carIdx"], ordered)
+    lap_seconds = estimated_lap_time_seconds(row, timing, group_rows, timing_rows, session_data, drivers)
+    gap = derived_seconds_behind(timing, timing_rows.get(leader["carIdx"]) if leader else None, is_race, lap_seconds)
+    interval = derived_seconds_behind(timing, timing_rows.get(previous["carIdx"]) if previous else None, is_race, lap_seconds)
+    return gap, interval
+
+
+def previous_class_row(car_idx: int, ordered_rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    for index, candidate in enumerate(ordered_rows):
+        if candidate["carIdx"] == car_idx:
+            return ordered_rows[index - 1] if index > 0 else None
+    return None
+
+
+def derived_seconds_behind(
+    timing: dict[str, Any] | None,
+    reference_ahead: dict[str, Any] | None,
+    is_race: bool,
+    lap_seconds: float | None,
+) -> float | None:
+    if not timing or not reference_ahead:
+        return None
+
+    timing_f2 = usable_f2_for_timing(timing, is_race)
+    reference_f2 = usable_f2_for_timing(reference_ahead, is_race)
+    if timing_f2 is not None and reference_f2 is not None and timing_f2 >= reference_f2:
+        return timing_f2 - reference_f2
+
+    if is_race:
+        return estimated_seconds_behind(timing, reference_ahead, lap_seconds)
+
+    return None
+
+
+def usable_f2_for_timing(timing: dict[str, Any], is_race: bool) -> float | None:
+    f2 = valid_non_negative(timing.get("f2TimeSeconds"))
+    if f2 is None:
+        return None
+    overall_position = timing.get("overallPosition")
+    class_position = timing.get("classPosition")
+    if not is_race:
+        if f2 == 0.0 and class_position == 1:
+            return 0.0
+        return valid_timing_seconds(f2)
+    if f2 == 0.0:
+        return 0.0 if overall_position == 1 or class_position == 1 else None
+    return None if is_race_f2_placeholder(f2, overall_position) else f2
+
+
+def is_race_f2_placeholder(f2: float | None, overall_position: Any) -> bool:
+    if f2 is None or not finite(f2) or not isinstance(overall_position, int) or overall_position <= 1:
+        return False
+    return abs(float(f2) - ((overall_position - 1) / 1000.0)) <= 0.00002
+
+
+def estimated_seconds_behind(
+    timing: dict[str, Any],
+    reference_ahead: dict[str, Any],
+    lap_seconds: float | None,
+) -> float | None:
+    if is_pit_road_like(timing) or is_pit_road_like(reference_ahead):
+        return None
+
+    row_estimated = valid_positive_seconds(timing.get("estimatedTimeSeconds"))
+    reference_estimated = valid_positive_seconds(reference_ahead.get("estimatedTimeSeconds"))
+    if row_estimated is None or reference_estimated is None or lap_seconds is None:
+        return None
+
+    delta = reference_estimated - row_estimated
+    if delta < -lap_seconds / 2.0:
+        delta += lap_seconds
+    elif delta > lap_seconds / 2.0:
+        delta -= lap_seconds
+
+    return max(0.0, delta) if delta >= -0.05 else None
+
+
+def is_pit_road_like(timing: dict[str, Any]) -> bool:
+    return timing.get("onPitRoad") is True or timing.get("trackSurface") in {0, 1}
+
+
+def estimated_lap_time_seconds(
+    row: dict[str, Any],
+    timing: dict[str, Any],
+    group_rows: list[dict[str, Any]],
+    timing_rows: dict[int, dict[str, Any]],
+    session_data: dict[str, Any] | None,
+    drivers: dict[int, dict[str, Any]],
+) -> float | None:
+    candidates: list[Any] = [
+        timing.get("lastLapTimeSeconds"),
+        timing.get("bestLapTimeSeconds"),
     ]
-    values = [value for value in values if value is not None]
-    return min(values) if values else None
+    for candidate in group_rows:
+        candidate_timing = timing_rows.get(candidate["carIdx"]) or {}
+        candidates.extend([candidate_timing.get("lastLapTimeSeconds"), candidate_timing.get("bestLapTimeSeconds")])
+
+    driver = drivers.get(row["carIdx"])
+    if driver:
+        source_driver = source_driver_by_idx(session_data, row["carIdx"])
+        if source_driver:
+            candidates.append(source_driver.get("CarClassEstLapTime"))
+    candidates.append(((session_data or {}).get("DriverInfo") or {}).get("DriverCarEstLapTime"))
+
+    for value in candidates:
+        lap_seconds = valid_lap_time(value)
+        if lap_seconds is not None:
+            return lap_seconds
+    return None
+
+
+def source_driver_by_idx(session_data: dict[str, Any] | None, car_idx: int) -> dict[str, Any] | None:
+    for driver in (((session_data or {}).get("DriverInfo") or {}).get("Drivers") or []):
+        if driver.get("CarIdx") == car_idx:
+            return driver
+    return None
 
 
 def header_row(title: str, detail: str, color: str | None) -> dict[str, Any]:
@@ -563,13 +813,14 @@ def export_capture(args: argparse.Namespace) -> dict[str, Any]:
     telemetry_path = capture_dir / str(manifest.get("telemetryFile") or "telemetry.bin")
     frames = []
     gridded_car_idxs: set[int] = set()
-    for requested_index in frame_indexes(frame_count, args.max_frames, args.stride, args.start_frame):
+    requested_indexes = frame_indexes(frame_count, args.max_frames, args.stride, args.start_frame)
+    for replay_index, requested_index in enumerate(requested_indexes):
         frame = read_capture_frame(telemetry_path, buffer_length, requested_index)
         if frame is None:
             continue
         header, payload = frame
         session_data = session_info_for_update(header["sessionInfoUpdate"], updates, snapshots, latest)
-        frames.append(build_frame(
+        replay_frame = build_frame(
             capture_dir,
             manifest,
             schema,
@@ -578,7 +829,20 @@ def export_capture(args: argparse.Namespace) -> dict[str, Any]:
             session_data,
             args.other_class_rows,
             args.maximum_rows,
-            gridded_car_idxs))
+            gridded_car_idxs)
+        if args.start_relative_seconds is not None and args.step_seconds is not None:
+            replay_frame["raceStartRelativeSeconds"] = args.start_relative_seconds + replay_index * args.step_seconds
+        frames.append(replay_frame)
+    alignment = None
+    if args.start_relative_seconds is not None and args.step_seconds is not None and frames:
+        alignment = {
+            "startFrameIndex": requested_indexes[0] if requested_indexes else None,
+            "sourceStrideFrames": args.stride,
+            "startRelativeSeconds": args.start_relative_seconds,
+            "endRelativeSeconds": frames[-1].get("raceStartRelativeSeconds"),
+            "stepSeconds": args.step_seconds,
+            "selectedFrameCount": len(frames),
+        }
     return {
         "schemaVersion": 1,
         "kind": "standings-browser-replay",
@@ -590,6 +854,7 @@ def export_capture(args: argparse.Namespace) -> dict[str, Any]:
             "sampledFrameCount": len(frames),
             "startedAtUtc": manifest.get("startedAtUtc"),
             "finishedAtUtc": manifest.get("finishedAtUtc"),
+            "alignment": alignment,
         },
         "frames": frames,
     }
@@ -604,6 +869,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--start-frame", type=int, default=1, help="1-based raw frame to start from.")
     parser.add_argument("--maximum-rows", type=int, default=14, help="Primary standings row budget.")
     parser.add_argument("--other-class-rows", type=int, default=2, help="Other-class rows per class.")
+    parser.add_argument("--start-relative-seconds", type=float, default=None, help="Relative race-start seconds assigned to the first exported frame.")
+    parser.add_argument("--step-seconds", type=float, default=None, help="Relative seconds added per exported frame.")
     return parser.parse_args()
 
 

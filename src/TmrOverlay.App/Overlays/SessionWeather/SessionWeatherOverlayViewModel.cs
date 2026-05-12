@@ -116,7 +116,22 @@ internal static class SessionWeatherOverlayViewModel
             return "--";
         }
 
-        return $"{elapsed} elapsed | {remain} left";
+        return IsRacePreGreen(session)
+            ? $"{elapsed} elapsed | {remain} countdown"
+            : $"{elapsed} elapsed | {remain} left";
+    }
+
+    private static bool IsRacePreGreen(LiveSessionModel session)
+    {
+        return session.SessionState is >= 1 and <= 3
+            && (ContainsRace(session.SessionType)
+                || ContainsRace(session.SessionName)
+                || ContainsRace(session.EventType));
+    }
+
+    private static bool ContainsRace(string? value)
+    {
+        return value?.IndexOf("race", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static string FormatLaps(

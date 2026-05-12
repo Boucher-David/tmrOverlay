@@ -1748,7 +1748,13 @@ internal sealed class DesignV2SettingsSurface : Control
 
     private static bool SupportsSharedChromeSettings(string overlayId)
     {
-        return overlayId is "standings" or "relative" or "fuel-calculator" or "gap-to-leader";
+        return overlayId is
+            "standings"
+            or "relative"
+            or "fuel-calculator"
+            or "gap-to-leader"
+            or "session-weather"
+            or "pit-service";
     }
 
     private static int ScaleDimension(int defaultDimension, double scale)

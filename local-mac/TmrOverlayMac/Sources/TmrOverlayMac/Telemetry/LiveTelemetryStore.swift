@@ -495,6 +495,7 @@ struct LiveLeaderGapSnapshot {
 
         let overall = makeGap(
             position: frame.teamPosition,
+            f2Position: frame.teamPosition,
             leaderCarIdx: 1,
             referenceCarIdx: FourHourRacePreview.teamCarIdx,
             referenceF2TimeSeconds: frame.teamF2TimeSeconds,
@@ -502,6 +503,7 @@ struct LiveLeaderGapSnapshot {
         )
         let classGap = makeGap(
             position: frame.teamClassPosition,
+            f2Position: frame.teamPosition,
             leaderCarIdx: FourHourRacePreview.classLeaderCarIdx,
             referenceCarIdx: FourHourRacePreview.teamCarIdx,
             referenceF2TimeSeconds: frame.teamF2TimeSeconds,
@@ -523,6 +525,7 @@ struct LiveLeaderGapSnapshot {
 
     private static func makeGap(
         position: Int?,
+        f2Position: Int?,
         leaderCarIdx: Int?,
         referenceCarIdx: Int,
         referenceF2TimeSeconds: Double?,
@@ -532,7 +535,10 @@ struct LiveLeaderGapSnapshot {
             return LiveGapValue(hasData: true, isLeader: true, seconds: 0, laps: 0, source: "position")
         }
 
-        if let referenceF2TimeSeconds, referenceF2TimeSeconds.isFinite, referenceF2TimeSeconds >= 0 {
+        if let referenceF2TimeSeconds,
+           referenceF2TimeSeconds.isFinite,
+           referenceF2TimeSeconds >= 0,
+           !isRaceF2Placeholder(referenceF2TimeSeconds, position: f2Position) {
             let leaderF2 = leaderF2TimeSeconds ?? 0
             return LiveGapValue(
                 hasData: true,
@@ -544,6 +550,14 @@ struct LiveLeaderGapSnapshot {
         }
 
         return .unavailable
+    }
+
+    private static func isRaceF2Placeholder(_ f2TimeSeconds: Double, position: Int?) -> Bool {
+        guard let position, position > 1, f2TimeSeconds.isFinite, f2TimeSeconds >= 0 else {
+            return false
+        }
+
+        return abs(f2TimeSeconds - (Double(position - 1) / 1000.0)) <= 0.00002
     }
 
     private static func makeClassCars(frame: MockLiveTelemetryFrame, referenceClassGap: LiveGapValue) -> [LiveClassGapCar] {

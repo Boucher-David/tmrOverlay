@@ -501,6 +501,7 @@ public sealed class RelativeOverlayViewModelTests
             BestLapTimeSeconds: null,
             GapSecondsToClassLeader: null,
             GapLapsToClassLeader: null,
+            IntervalSecondsToPreviousClassRow: null,
             DeltaSecondsToFocus: null,
             TrackSurface: null,
             OnPitRoad: onPitRoad);

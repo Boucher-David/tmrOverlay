@@ -1048,8 +1048,7 @@ internal sealed class OverlayManager : IDisposable
         var bounds = hasForm
             ? form!.Bounds
             : new Rectangle(settings.X, settings.Y, settings.Width, settings.Height);
-        var isInputTransparent = form is FlagsOverlayForm
-            || form is PersistentOverlayForm { IsEffectivelyInputTransparent: true };
+        var isInputTransparent = form is PersistentOverlayForm { IsEffectivelyInputTransparent: true };
         var noActivate = form is PersistentOverlayForm;
         var settingsWindowVisible = TryGetVisibleSettingsForm(out var settingsForm);
         var intersectsSettingsWindow = hasForm

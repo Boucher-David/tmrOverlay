@@ -19,6 +19,8 @@ public sealed class LiveTelemetryStateCorpusTests
             "ai-practice-no-valid-lap",
             "ai-qualifying-valid-lap-gated",
             "ai-race-pre-green",
+            "endurance-4h-race-pre-countdown",
+            "endurance-4h-race-pre-grid-no-countdown",
             "ai-race-green-non-player-focus",
             "open-practice-non-player-focus",
             "open-practice-player-focus",
@@ -60,6 +62,16 @@ public sealed class LiveTelemetryStateCorpusTests
         AssertStandings(aiRacePreGreen, "starting-grid", rows: 41, validRows: 38, renders: true);
         AssertRelative(aiRacePreGreen, "model-v2-timing-fallback");
         AssertGapData(aiRacePreGreen, expected: false);
+
+        var endurance4hRacePreCountdown = StateById(corpus, "endurance-4h-race-pre-countdown");
+        AssertStandings(endurance4hRacePreCountdown, "starting-grid", rows: 60, validRows: 41, renders: true);
+        AssertRelative(endurance4hRacePreCountdown, "live-proximity");
+        AssertGapData(endurance4hRacePreCountdown, expected: false);
+
+        var endurance4hRacePreGridNoCountdown = StateById(corpus, "endurance-4h-race-pre-grid-no-countdown");
+        AssertStandings(endurance4hRacePreGridNoCountdown, "starting-grid", rows: 60, validRows: 41, renders: true);
+        AssertRelative(endurance4hRacePreGridNoCountdown, "live-proximity");
+        AssertGapData(endurance4hRacePreGridNoCountdown, expected: false);
 
         var aiRaceGreen = StateById(corpus, "ai-race-green-non-player-focus");
         Assert.Equal("non-player", RequiredString(RequiredObject(aiRaceGreen["labelBasis"]), "focusRelation"));

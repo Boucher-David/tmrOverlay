@@ -14,10 +14,6 @@ namespace TmrOverlay.App.Overlays.Flags;
 
 internal sealed class FlagsOverlayForm : PersistentOverlayForm
 {
-    private const int WsExTransparent = 0x00000020;
-    private const int WsExNoActivate = 0x08000000;
-    private const int WmNcHitTest = 0x0084;
-    private const int HtTransparent = -1;
     private static readonly Color TransparentColor = Color.FromArgb(1, 2, 3);
     private static readonly Color PoleColor = Color.FromArgb(225, 214, 220, 226);
     private static readonly Color PoleShadowColor = Color.FromArgb(120, 0, 0, 0);
@@ -119,29 +115,6 @@ internal sealed class FlagsOverlayForm : PersistentOverlayForm
         }
 
         base.Dispose(disposing);
-    }
-
-    protected override bool ShowWithoutActivation => true;
-
-    protected override CreateParams CreateParams
-    {
-        get
-        {
-            var createParams = base.CreateParams;
-            createParams.ExStyle |= WsExTransparent | WsExNoActivate;
-            return createParams;
-        }
-    }
-
-    protected override void WndProc(ref Message m)
-    {
-        if (m.Msg == WmNcHitTest)
-        {
-            m.Result = new IntPtr(HtTransparent);
-            return;
-        }
-
-        base.WndProc(ref m);
     }
 
     protected override void OnPaint(PaintEventArgs e)

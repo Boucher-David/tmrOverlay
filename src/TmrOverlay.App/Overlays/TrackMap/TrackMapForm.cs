@@ -829,11 +829,6 @@ internal sealed class TrackMapForm : PersistentOverlayForm
             }
         }
 
-        if (markers.Count == 0 && snapshot.Models.Scoring.Rows.Count > 0)
-        {
-            AddStartingGridMarkers(markers, snapshot.Models.Scoring.Rows, referenceCarIdx);
-        }
-
         var focusProgress = MarkerProgress(snapshot.LatestSample);
         if (referenceCarIdx is { } focusMarkerCarIdx
             && focusProgress is { } progress
@@ -848,40 +843,6 @@ internal sealed class TrackMapForm : PersistentOverlayForm
         }
 
         return markers.Values.ToArray();
-    }
-
-    private static void AddStartingGridMarkers(
-        Dictionary<int, TrackMapMarker> markers,
-        IReadOnlyList<LiveScoringRow> scoringRows,
-        int? referenceCarIdx)
-    {
-        var rows = scoringRows
-            .OrderBy(row => row.OverallPosition ?? int.MaxValue)
-            .ThenBy(row => row.ClassPosition ?? int.MaxValue)
-            .ThenBy(row => row.CarIdx)
-            .ToArray();
-        if (rows.Length == 0)
-        {
-            return;
-        }
-
-        for (var index = 0; index < rows.Length; index++)
-        {
-            var row = rows[index];
-            var isFocus = row.IsFocus
-                || row.CarIdx == referenceCarIdx;
-            markers[row.CarIdx] = new TrackMapMarker(
-                row.CarIdx,
-                GridProgress(index, rows.Length),
-                isFocus,
-                MarkerColor(row.CarClassColorHex, isFocus),
-                isFocus ? PositionLabel(row) : null);
-        }
-    }
-
-    private static double GridProgress(int index, int count)
-    {
-        return count <= 1 ? 0d : NormalizeProgress(index / (double)count);
     }
 
     private static string? PositionLabel(LiveTimingRow row, LiveScoringRow? scoringRow, int? referenceCarIdx)

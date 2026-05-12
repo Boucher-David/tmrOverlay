@@ -195,7 +195,8 @@ internal sealed record StandingsOverlayViewModel(
                 Math.Min(rowBudget - rows.Count, groupLimits[group]),
                 ReferenceEquals(group, primaryGroup),
                 includeHeaders,
-                showPendingGridRows);
+                showPendingGridRows,
+                UseLiveTimingOrder(snapshot));
         }
 
         return rows.ToArray();
@@ -282,7 +283,8 @@ internal sealed record StandingsOverlayViewModel(
         int groupLimit,
         bool useReferenceWindow,
         bool includeHeader,
-        bool showPendingGridRows)
+        bool showPendingGridRows,
+        bool useLiveTimingOrder)
     {
         if (groupLimit <= 0 || rows.Count >= maximumRows)
         {
@@ -295,8 +297,17 @@ internal sealed record StandingsOverlayViewModel(
             groupLimit--;
         }
 
+        var orderedRows = OrderScoringRowsForDisplay(group.Rows, timingByCarIdx, useLiveTimingOrder);
+        var liveClassPositionByCarIdx = useLiveTimingOrder
+            ? orderedRows
+                .Select((row, index) => new { row.CarIdx, Position = index + 1 })
+                .ToDictionary(item => item.CarIdx, item => item.Position)
+            : new Dictionary<int, int>();
+        var liveIntervalByCarIdx = useLiveTimingOrder
+            ? LiveIntervalsForOrderedRows(orderedRows, timingByCarIdx)
+            : new Dictionary<int, string>();
         foreach (var scoringRow in SelectRowsAroundReference(
-            group.Rows,
+            orderedRows,
             useReferenceWindow ? referenceCarIdx : null,
             Math.Max(0, groupLimit),
             row => row.CarIdx))
@@ -307,8 +318,82 @@ internal sealed record StandingsOverlayViewModel(
             }
 
             timingByCarIdx.TryGetValue(scoringRow.CarIdx, out var timingRow);
-            rows.Add(ToRow(scoringRow, timingRow, referenceCarIdx, showPendingGridRows));
+            liveClassPositionByCarIdx.TryGetValue(scoringRow.CarIdx, out var liveClassPosition);
+            liveIntervalByCarIdx.TryGetValue(scoringRow.CarIdx, out var liveInterval);
+            rows.Add(ToRow(
+                scoringRow,
+                timingRow,
+                referenceCarIdx,
+                showPendingGridRows,
+                liveClassPosition == 0 ? null : liveClassPosition,
+                liveInterval));
         }
+    }
+
+    private static IReadOnlyList<LiveScoringRow> OrderScoringRowsForDisplay(
+        IReadOnlyList<LiveScoringRow> rows,
+        IReadOnlyDictionary<int, LiveTimingRow> timingByCarIdx,
+        bool useLiveTimingOrder)
+    {
+        if (!useLiveTimingOrder)
+        {
+            return rows;
+        }
+
+        var rowsWithGap = rows.Count(row =>
+            timingByCarIdx.TryGetValue(row.CarIdx, out var timing)
+            && timing.GapEvidence.IsUsable
+            && timing.GapSecondsToClassLeader is { } gap
+            && IsFinite(gap)
+            && gap >= 0d);
+        if (rowsWithGap < 2)
+        {
+            return rows;
+        }
+
+        return rows
+            .OrderBy(row => LiveTimingGapSortValue(row, timingByCarIdx) ?? double.MaxValue)
+            .ThenBy(row => row.ClassPosition ?? int.MaxValue)
+            .ThenBy(row => row.OverallPosition ?? int.MaxValue)
+            .ThenBy(row => row.CarIdx)
+            .ToArray();
+    }
+
+    private static Dictionary<int, string> LiveIntervalsForOrderedRows(
+        IReadOnlyList<LiveScoringRow> orderedRows,
+        IReadOnlyDictionary<int, LiveTimingRow> timingByCarIdx)
+    {
+        var intervals = new Dictionary<int, string>();
+        double? previousGap = null;
+        foreach (var row in orderedRows)
+        {
+            var currentGap = LiveTimingGapSortValue(row, timingByCarIdx);
+            if (currentGap is null)
+            {
+                intervals[row.CarIdx] = "--";
+                continue;
+            }
+
+            intervals[row.CarIdx] = previousGap is null
+                ? "0.0"
+                : $"+{Math.Max(0d, currentGap.Value - previousGap.Value):0.0}";
+            previousGap = currentGap;
+        }
+
+        return intervals;
+    }
+
+    private static double? LiveTimingGapSortValue(
+        LiveScoringRow row,
+        IReadOnlyDictionary<int, LiveTimingRow> timingByCarIdx)
+    {
+        return timingByCarIdx.TryGetValue(row.CarIdx, out var timing)
+            && timing.GapEvidence.IsUsable
+            && timing.GapSecondsToClassLeader is { } gap
+            && IsFinite(gap)
+            && gap >= 0d
+            ? gap
+            : null;
     }
 
     private static StandingsOverlayRowViewModel ClassHeaderRow(LiveScoringClassGroup group, string classEstimatedLaps)
@@ -347,7 +432,8 @@ internal sealed record StandingsOverlayViewModel(
             pace = snapshot.Models.RaceProgress.RacePaceSeconds;
         }
 
-        if (snapshot.Models.Session.SessionTimeRemainSeconds is { } remaining
+        if (!IsRacePreGreen(snapshot)
+            && snapshot.Models.Session.SessionTimeRemainSeconds is { } remaining
             && remaining > 0d
             && IsUsableLapTime(pace))
         {
@@ -382,6 +468,12 @@ internal sealed record StandingsOverlayViewModel(
     {
         return OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot) == OverlaySessionKind.Race
             && snapshot.Models.Session.SessionState is > 0 and < 4;
+    }
+
+    private static bool UseLiveTimingOrder(LiveTelemetrySnapshot snapshot)
+    {
+        return OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot) == OverlaySessionKind.Race
+            && snapshot.Models.Session.SessionState is null or >= 4;
     }
 
     private static bool HasValidLap(LiveScoringRow row)
@@ -502,19 +594,23 @@ internal sealed record StandingsOverlayViewModel(
         LiveScoringRow scoringRow,
         LiveTimingRow? timingRow,
         int? referenceCarIdx,
-        bool showPendingGridRows)
+        bool showPendingGridRows,
+        int? classPositionOverride = null,
+        string? intervalOverride = null)
     {
         var isReference = referenceCarIdx is not null && scoringRow.CarIdx == referenceCarIdx;
         var hasTakenGrid = scoringRow.HasTakenGrid || timingRow?.HasTakenGrid == true;
         return new StandingsOverlayRowViewModel(
-            ClassPosition: scoringRow.ClassPosition is { } classPosition ? $"{classPosition}" : "--",
+            ClassPosition: classPositionOverride is { } liveClassPosition
+                ? $"{liveClassPosition}"
+                : scoringRow.ClassPosition is { } classPosition ? $"{classPosition}" : "--",
             CarNumber: FormatCarNumber(scoringRow),
             Driver: DriverName(scoringRow.DriverName, scoringRow.TeamName, scoringRow.CarIdx),
             Gap: FormatGap(scoringRow, timingRow),
-            Interval: timingRow is not null ? FormatInterval(timingRow, isReference) : "--",
+            Interval: intervalOverride ?? (timingRow is not null ? FormatInterval(timingRow, isReference) : "--"),
             Pit: timingRow?.OnPitRoad == true ? "IN" : string.Empty,
             IsReference: isReference,
-            IsLeader: scoringRow.ClassPosition == 1,
+            IsLeader: (classPositionOverride ?? scoringRow.ClassPosition) == 1,
             IsClassHeader: false,
             IsPartial: timingRow is null || !timingRow.HasTiming,
             CarClassColorHex: scoringRow.CarClassColorHex,
@@ -592,11 +688,6 @@ internal sealed record StandingsOverlayViewModel(
             return $"+{laps:0.0}L";
         }
 
-        if (row.F2TimeSeconds is { } f2 && IsFinite(f2) && f2 > 0d)
-        {
-            return $"{f2:0.0}";
-        }
-
         return "--";
     }
 
@@ -612,14 +703,14 @@ internal sealed record StandingsOverlayViewModel(
 
     private static string FormatInterval(LiveTimingRow row, bool isReference)
     {
-        if (isReference)
+        if (row.ClassPosition == 1 || row.IsClassLeader)
         {
             return "0.0";
         }
 
-        if (row.DeltaSecondsToFocus is { } delta && IsFinite(delta))
+        if (row.IntervalSecondsToPreviousClassRow is { } delta && IsFinite(delta))
         {
-            return delta > 0d ? $"+{delta:0.0}" : $"{delta:0.0}";
+            return $"+{Math.Max(0d, delta):0.0}";
         }
 
         return "--";

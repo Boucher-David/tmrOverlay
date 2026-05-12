@@ -212,6 +212,7 @@ public sealed class GapToLeaderLiveModelAdapterTests
             BestLapTimeSeconds: null,
             GapSecondsToClassLeader: gapSeconds,
             GapLapsToClassLeader: null,
+            IntervalSecondsToPreviousClassRow: null,
             DeltaSecondsToFocus: deltaSeconds,
             TrackSurface: null,
             OnPitRoad: false);

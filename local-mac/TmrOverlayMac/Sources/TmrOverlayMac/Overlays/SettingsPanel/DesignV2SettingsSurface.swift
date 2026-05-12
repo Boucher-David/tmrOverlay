@@ -164,7 +164,7 @@ enum DesignV2SettingsOverlaySpecs {
     }
 
     static func supportsSharedChromeSettings(_ overlayId: String) -> Bool {
-        ["standings", "relative", "fuel-calculator", "gap-to-leader"].contains(overlayId)
+        ["standings", "relative", "fuel-calculator", "gap-to-leader", "session-weather", "pit-service"].contains(overlayId)
     }
 
     static func regions(for overlayId: String) -> [DesignV2SettingsRegion] {

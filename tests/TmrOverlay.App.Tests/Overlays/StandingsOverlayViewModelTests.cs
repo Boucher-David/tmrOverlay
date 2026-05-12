@@ -64,7 +64,7 @@ public sealed class StandingsOverlayViewModelTests
             carNumber: "44",
             classPosition: 3,
             gapSeconds: 12.4d,
-            deltaSeconds: 0d,
+            deltaSeconds: 12.4d,
             isFocus: true,
             onPitRoad: true);
         var leader = TimingRow(
@@ -73,7 +73,7 @@ public sealed class StandingsOverlayViewModelTests
             carNumber: "1",
             classPosition: 1,
             gapSeconds: 0d,
-            deltaSeconds: -12.4d,
+            deltaSeconds: null,
             isLeader: true);
         var trailing = TimingRow(
             carIdx: 12,
@@ -113,13 +113,13 @@ public sealed class StandingsOverlayViewModelTests
                 Assert.True(row.IsLeader);
                 Assert.Equal("1", row.ClassPosition);
                 Assert.Equal("Leader", row.Gap);
-                Assert.Equal("-12.4", row.Interval);
+                Assert.Equal("0.0", row.Interval);
             },
             row =>
             {
                 Assert.True(row.IsReference);
                 Assert.Equal("#44", row.CarNumber);
-                Assert.Equal("0.0", row.Interval);
+                Assert.Equal("+12.4", row.Interval);
                 Assert.Equal("IN", row.Pit);
             },
             row =>
@@ -824,6 +824,85 @@ public sealed class StandingsOverlayViewModelTests
         Assert.DoesNotContain(viewModel.Rows, row => row.IsClassHeader);
     }
 
+    [Fact]
+    public void From_RaceGreenScoringRowsCanUseLiveTimingOrderForGapAndInterval()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var scoringRows = new[]
+        {
+            ScoringRow(1, overallPosition: 1, classPosition: 1, carNumber: "1", driverName: "Leader"),
+            ScoringRow(2, overallPosition: 2, classPosition: 2, carNumber: "2", driverName: "Second On Scoring"),
+            ScoringRow(3, overallPosition: 3, classPosition: 3, carNumber: "3", driverName: "Live Second", isFocus: true)
+        };
+        var leader = TimingRow(
+            carIdx: 1,
+            driverName: "Leader",
+            carNumber: "1",
+            classPosition: 1,
+            gapSeconds: 0d,
+            deltaSeconds: null,
+            isLeader: true);
+        var staleSecond = TimingRow(
+            carIdx: 2,
+            driverName: "Second On Scoring",
+            carNumber: "2",
+            classPosition: 2,
+            gapSeconds: 4d,
+            deltaSeconds: null);
+        var liveSecond = TimingRow(
+            carIdx: 3,
+            driverName: "Live Second",
+            carNumber: "3",
+            classPosition: 3,
+            gapSeconds: 1d,
+            deltaSeconds: null,
+            isFocus: true);
+        var snapshot = Snapshot(now, LiveRaceModels.Empty with
+        {
+            Session = LiveSessionModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                SessionType = "Race",
+                SessionState = 4
+            },
+            Timing = LiveTimingModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                FocusCarIdx = 3,
+                FocusRow = liveSecond,
+                OverallRows = [leader, staleSecond, liveSecond],
+                ClassRows = [leader, staleSecond, liveSecond]
+            },
+            Scoring = new LiveScoringModel(
+                HasData: true,
+                Quality: LiveModelQuality.Reliable,
+                Source: LiveScoringSource.SessionResults,
+                ReferenceCarIdx: 3,
+                ReferenceCarClass: 4098,
+                ClassGroups:
+                [
+                    new LiveScoringClassGroup(
+                        CarClass: 4098,
+                        ClassName: "GT3",
+                        CarClassColorHex: "#FFDA59",
+                        IsReferenceClass: true,
+                        RowCount: scoringRows.Length,
+                        Rows: scoringRows)
+                ],
+                Rows: scoringRows)
+        });
+
+        var viewModel = StandingsOverlayViewModel.From(snapshot, now, maximumRows: 3);
+
+        Assert.Equal("2 - 3/3 rows", viewModel.Status);
+        Assert.Equal(new[] { "#1", "#3", "#2" }, viewModel.Rows.Select(row => row.CarNumber));
+        Assert.Equal(new[] { "1", "2", "3" }, viewModel.Rows.Select(row => row.ClassPosition));
+        Assert.Equal(new[] { "Leader", "+1.0", "+4.0" }, viewModel.Rows.Select(row => row.Gap));
+        Assert.Equal(new[] { "0.0", "+1.0", "+3.0" }, viewModel.Rows.Select(row => row.Interval));
+    }
+
     private static LiveTimingRow TimingRow(
         int carIdx,
         string driverName,
@@ -869,6 +948,7 @@ public sealed class StandingsOverlayViewModelTests
             BestLapTimeSeconds: bestLapTimeSeconds,
             GapSecondsToClassLeader: gapSeconds,
             GapLapsToClassLeader: null,
+            IntervalSecondsToPreviousClassRow: deltaSeconds,
             DeltaSecondsToFocus: deltaSeconds,
             TrackSurface: null,
             OnPitRoad: onPitRoad);
