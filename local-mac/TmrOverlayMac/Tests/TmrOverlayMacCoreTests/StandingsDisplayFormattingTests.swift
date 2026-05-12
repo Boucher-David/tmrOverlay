@@ -30,12 +30,4 @@ final class StandingsDisplayFormattingTests: XCTestCase {
         )
     }
 
-    func testNegativeControlStandingsLapDistanceFallbackWouldFail() {
-        XCTAssertEqual(
-            StandingsDisplayFormatting.gap(isClassLeader: false, seconds: nil, laps: 0.002),
-            "+0.002L",
-            "NEGATIVE CONTROL: lap fallback should fail"
-        )
-    }
-
 }
