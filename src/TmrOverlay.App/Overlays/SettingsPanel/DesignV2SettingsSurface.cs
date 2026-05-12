@@ -401,10 +401,10 @@ internal sealed class DesignV2SettingsSurface : Control
                 BuildOverlayContentControls(definition, settings);
                 break;
             case SettingsRegion.Header:
-                BuildChromeControls(settings, HeaderChromeKeys);
+                BuildChromeControls(settings, HeaderChromeRows);
                 break;
             case SettingsRegion.Footer:
-                BuildChromeControls(settings, FooterChromeKeys);
+                BuildChromeControls(settings, FooterChromeRows);
                 break;
         }
     }
@@ -717,26 +717,31 @@ internal sealed class DesignV2SettingsSurface : Control
         }
     }
 
-    private void BuildChromeControls(OverlaySettings settings, IReadOnlyList<string> keys)
+    private void BuildChromeControls(OverlaySettings settings, IReadOnlyList<SettingsOverlayTabSections.OverlayChromeSettingsRow> rows)
     {
         if (!SupportsSharedChromeSettings(settings.Id))
         {
             return;
         }
 
-        for (var index = 0; index < keys.Count; index++)
+        for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
         {
-            var key = keys[index];
-            AddDynamic(new V2CheckControl(
-                new Rectangle(454 + index * 116, 370, 38, 22),
-                string.Empty,
-                settings.GetBooleanOption(key, true),
-                isOn =>
-                {
-                    settings.SetBooleanOption(key, isOn);
-                    _callbacks.SaveAndApply();
-                    Invalidate();
-                }));
+            var row = rows[rowIndex];
+            var keys = new[] { row.TestKey, row.PracticeKey, row.QualifyingKey, row.RaceKey };
+            for (var index = 0; index < keys.Length; index++)
+            {
+                var key = keys[index];
+                AddDynamic(new V2CheckControl(
+                    new Rectangle(454 + index * 116, 370 + rowIndex * 48, 38, 22),
+                    string.Empty,
+                    settings.GetBooleanOption(key, true),
+                    isOn =>
+                    {
+                        settings.SetBooleanOption(key, isOn);
+                        _callbacks.SaveAndApply();
+                        Invalidate();
+                    }));
+            }
         }
     }
 
@@ -1021,10 +1026,10 @@ internal sealed class DesignV2SettingsSurface : Control
                 DrawOverlayContentPage(graphics, definition, settings);
                 break;
             case SettingsRegion.Header:
-                DrawChromePage(graphics, definition, settings, "Header", "Status");
+                DrawChromePage(graphics, definition, settings, "Header", HeaderChromeRows);
                 break;
             case SettingsRegion.Footer:
-                DrawChromePage(graphics, definition, settings, "Footer", "Source");
+                DrawChromePage(graphics, definition, settings, "Footer", FooterChromeRows);
                 break;
         }
     }
@@ -1180,9 +1185,14 @@ internal sealed class DesignV2SettingsSurface : Control
         DrawText(graphics, "OBS browser source", new Rectangle(328, 560, 120, 18), 13f, FontStyle.Regular, TextSecondary);
     }
 
-    private void DrawChromePage(Graphics graphics, OverlayDefinition definition, OverlaySettings settings, string title, string itemLabel)
+    private void DrawChromePage(
+        Graphics graphics,
+        OverlayDefinition definition,
+        OverlaySettings settings,
+        string title,
+        IReadOnlyList<SettingsOverlayTabSections.OverlayChromeSettingsRow> rows)
     {
-        DrawPanel(graphics, new Rectangle(306, 272, 834, 188), title);
+        DrawPanel(graphics, new Rectangle(306, 272, 834, rows.Count > 1 ? 232 : 188), title);
         if (!SupportsSharedChromeSettings(definition.Id))
         {
             DrawText(graphics, $"No {title.ToLowerInvariant()} controls yet.", new Rectangle(328, 334, 420, 18), 13f, FontStyle.Regular, TextSecondary);
@@ -1196,10 +1206,13 @@ internal sealed class DesignV2SettingsSurface : Control
             DrawText(graphics, SessionLabels[index], new Rectangle(454 + index * 116, 330, 104, 16), 10f, FontStyle.Bold, TextMuted);
         }
 
-        var rowBounds = new Rectangle(328, 360, 768, 44);
-        FillRounded(graphics, rowBounds, 8, Rgba(17, 28, 55, 200));
-        StrokeRounded(graphics, rowBounds, 8, BorderDim, 1f);
-        DrawText(graphics, itemLabel, new Rectangle(346, 373, 110, 18), 13f, FontStyle.Regular, TextSecondary);
+        for (var index = 0; index < rows.Count; index++)
+        {
+            var rowBounds = new Rectangle(328, 360 + index * 48, 768, 44);
+            FillRounded(graphics, rowBounds, 8, Rgba(17, 28, 55, 200));
+            StrokeRounded(graphics, rowBounds, 8, BorderDim, 1f);
+            DrawText(graphics, rows[index].Label, new Rectangle(346, rowBounds.Top + 13, 130, 18), 13f, FontStyle.Regular, TextSecondary);
+        }
     }
 
     private void DrawContentMatrix(
@@ -1735,7 +1748,13 @@ internal sealed class DesignV2SettingsSurface : Control
 
     private static bool SupportsSharedChromeSettings(string overlayId)
     {
-        return overlayId is "standings" or "relative" or "fuel-calculator" or "gap-to-leader";
+        return overlayId is
+            "standings"
+            or "relative"
+            or "fuel-calculator"
+            or "gap-to-leader"
+            or "session-weather"
+            or "pit-service";
     }
 
     private static int ScaleDimension(int defaultDimension, double scale)
@@ -1810,20 +1829,30 @@ internal sealed class DesignV2SettingsSurface : Control
 
     private static readonly string[] SessionLabels = ["Test", "Practice", "Qualifying", "Race"];
 
-    private static readonly string[] HeaderChromeKeys =
+    private static readonly SettingsOverlayTabSections.OverlayChromeSettingsRow[] HeaderChromeRows =
     [
-        OverlayOptionKeys.ChromeHeaderStatusTest,
-        OverlayOptionKeys.ChromeHeaderStatusPractice,
-        OverlayOptionKeys.ChromeHeaderStatusQualifying,
-        OverlayOptionKeys.ChromeHeaderStatusRace
+        new(
+            "Status",
+            OverlayOptionKeys.ChromeHeaderStatusTest,
+            OverlayOptionKeys.ChromeHeaderStatusPractice,
+            OverlayOptionKeys.ChromeHeaderStatusQualifying,
+            OverlayOptionKeys.ChromeHeaderStatusRace),
+        new(
+            "Time remaining",
+            OverlayOptionKeys.ChromeHeaderTimeRemainingTest,
+            OverlayOptionKeys.ChromeHeaderTimeRemainingPractice,
+            OverlayOptionKeys.ChromeHeaderTimeRemainingQualifying,
+            OverlayOptionKeys.ChromeHeaderTimeRemainingRace)
     ];
 
-    private static readonly string[] FooterChromeKeys =
+    private static readonly SettingsOverlayTabSections.OverlayChromeSettingsRow[] FooterChromeRows =
     [
-        OverlayOptionKeys.ChromeFooterSourceTest,
-        OverlayOptionKeys.ChromeFooterSourcePractice,
-        OverlayOptionKeys.ChromeFooterSourceQualifying,
-        OverlayOptionKeys.ChromeFooterSourceRace
+        new(
+            "Source",
+            OverlayOptionKeys.ChromeFooterSourceTest,
+            OverlayOptionKeys.ChromeFooterSourcePractice,
+            OverlayOptionKeys.ChromeFooterSourceQualifying,
+            OverlayOptionKeys.ChromeFooterSourceRace)
     ];
 
     private enum SettingsRegion

@@ -2,7 +2,7 @@
   "$schema": "./tmr-overlay-contract.schema.json",
   "contractVersion": 1,
   "settings": {
-    "settingsVersion": 9,
+    "settingsVersion": 10,
     "general": {
       "fontFamily": "Segoe UI",
       "unitSystem": "Metric"

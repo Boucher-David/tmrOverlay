@@ -227,7 +227,8 @@ internal sealed record LiveScoringRow(
     int? LapsComplete,
     double? LastLapTimeSeconds,
     double? BestLapTimeSeconds,
-    string? ReasonOut);
+    string? ReasonOut,
+    bool HasTakenGrid = false);
 
 internal sealed record LiveTimingModel(
     bool HasData,
@@ -290,9 +291,11 @@ internal sealed record LiveTimingRow(
     double? BestLapTimeSeconds,
     double? GapSecondsToClassLeader,
     double? GapLapsToClassLeader,
+    double? IntervalSecondsToPreviousClassRow,
     double? DeltaSecondsToFocus,
     int? TrackSurface,
-    bool? OnPitRoad);
+    bool? OnPitRoad,
+    bool HasTakenGrid = false);
 
 internal sealed record LiveRaceProgressModel(
     bool HasData,

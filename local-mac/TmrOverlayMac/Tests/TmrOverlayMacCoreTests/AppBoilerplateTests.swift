@@ -93,7 +93,7 @@ final class AppBoilerplateTests: XCTestCase {
     func testSharedContractDrivesStreamChatDefaultsAndDesignTokens() {
         XCTAssertEqual(StreamChatProviderOptions.defaultProvider, "twitch")
         XCTAssertEqual(StreamChatProviderOptions.defaultTwitchChannel, "techmatesracing")
-        XCTAssertEqual(SharedOverlayContract.current.settingsVersion, 9)
+        XCTAssertEqual(SharedOverlayContract.current.settingsVersion, 10)
         XCTAssertEqual(SharedOverlayContract.current.designV2ColorHex("cyan", fallback: ""), "#00E8FF")
     }
 

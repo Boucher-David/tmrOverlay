@@ -31,7 +31,7 @@ internal static class GapToLeaderLiveModelAdapter
         return new LiveLeaderGapSnapshot(
             HasData: classGap.HasData
                 || overallGap.HasData
-                || classCars.Any(car => car.IsReferenceCar || (!car.IsClassLeader && HasChartGap(car))),
+                || classCars.Any(car => !car.IsClassLeader && HasChartGap(car)),
             ReferenceOverallPosition: focusRow?.OverallPosition ?? progress.ReferenceOverallPosition,
             ReferenceClassPosition: focusRow?.ClassPosition ?? progress.ReferenceClassPosition,
             OverallLeaderCarIdx: timing.OverallLeaderCarIdx,

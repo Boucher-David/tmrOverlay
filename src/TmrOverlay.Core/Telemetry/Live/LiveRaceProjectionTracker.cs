@@ -82,8 +82,9 @@ internal sealed class LiveRaceProjectionTracker
             raceProgress.ClassLeaderProgressLaps,
             overallLeaderPace.Value,
             overallLeaderPace.Source);
-        var finishLap = EstimateFinishLap(session, raceProgress, overallLeaderPace.Value, lapEstimate.LapsRemaining);
+        var finishLap = EstimateFinishLap(context, session, raceProgress, overallLeaderPace.Value, lapEstimate.LapsRemaining);
         var classProjections = BuildClassProjections(
+            context,
             models,
             referenceClassPace,
             overallLeaderPace,
@@ -140,6 +141,7 @@ internal sealed class LiveRaceProjectionTracker
     }
 
     private IEnumerable<LiveClassRaceProjection> BuildClassProjections(
+        HistoricalSessionContext context,
         LiveRaceModels models,
         PaceSelection referenceClassPace,
         PaceSelection overallLeaderPace,
@@ -161,6 +163,7 @@ internal sealed class LiveRaceProjectionTracker
                 ? models.RaceProgress.ClassLeaderProgressLaps
                 : null;
             var lapsRemaining = EstimateClassLapsRemaining(
+                context,
                 models.Session,
                 classProgress,
                 pace.Value);
@@ -201,6 +204,7 @@ internal sealed class LiveRaceProjectionTracker
     }
 
     private static RaceLapEstimate EstimateClassLapsRemaining(
+        HistoricalSessionContext context,
         LiveSessionModel session,
         double? classLeaderProgress,
         double? paceSeconds)
@@ -210,7 +214,8 @@ internal sealed class LiveRaceProjectionTracker
             return new RaceLapEstimate(0d, "session ended");
         }
 
-        if (session.SessionTimeRemainSeconds is { } remaining
+        if (!IsRacePreGreen(context, session)
+            && session.SessionTimeRemainSeconds is { } remaining
             && remaining > 0d
             && LiveRaceProgressProjector.ValidLapTime(paceSeconds) is { } pace)
         {
@@ -230,6 +235,7 @@ internal sealed class LiveRaceProjectionTracker
     }
 
     private static double? EstimateFinishLap(
+        HistoricalSessionContext context,
         LiveSessionModel session,
         LiveRaceProgressModel raceProgress,
         double? racePaceSeconds,
@@ -247,7 +253,8 @@ internal sealed class LiveRaceProjectionTracker
             return lapTotal;
         }
 
-        if (raceProgress.OverallLeaderProgressLaps is { } leaderProgress
+        if (!IsRacePreGreen(context, session)
+            && raceProgress.OverallLeaderProgressLaps is { } leaderProgress
             && session.SessionTimeRemainSeconds is { } remainingSeconds
             && remainingSeconds > 0d
             && LiveRaceProgressProjector.ValidLapTime(racePaceSeconds) is { } racePace)
@@ -287,6 +294,19 @@ internal sealed class LiveRaceProjectionTracker
             | randomWavingFlag
             | cautionFlag
             | wavingCautionFlag)) != 0;
+    }
+
+    private static bool IsRacePreGreen(HistoricalSessionContext context, LiveSessionModel session)
+    {
+        return session.SessionState is >= 1 and <= 3
+            && (ContainsRace(context.Session.SessionType)
+                || ContainsRace(context.Session.SessionName)
+                || ContainsRace(context.Session.EventType));
+    }
+
+    private static bool ContainsRace(string? value)
+    {
+        return value?.IndexOf("race", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static int? FocusClassLeaderCarIdx(HistoricalTelemetrySample sample)

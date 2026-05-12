@@ -368,23 +368,6 @@ function trackMapMarkers(live, fallbackFocusPct) {
     }
   }
 
-  if (markers.size === 0 && (scoring.rows || []).length) {
-    const gridRows = [...(scoring.rows || [])].sort((left, right) =>
-      (left.overallPosition ?? 999999) - (right.overallPosition ?? 999999)
-      || (left.classPosition ?? 999999) - (right.classPosition ?? 999999)
-      || left.carIdx - right.carIdx);
-    gridRows.forEach((row, index) => {
-      const isFocus = Boolean(row.isFocus || row.carIdx === referenceCarIdx);
-      markers.set(row.carIdx, {
-        carIdx: row.carIdx,
-        lapDistPct: gridRows.length <= 1 ? 0 : normalizeProgress(index / gridRows.length),
-        isFocus,
-        color: isFocus ? 'var(--tmr-cyan)' : markerColor(row.carClassColorHex),
-        positionLabel: isFocus ? trackMapModel.positionLabel(row) : null
-      });
-    });
-  }
-
   const focusCarIdx = referenceCarIdx ?? -1;
   if (Number.isFinite(focusCarIdx) && Number.isFinite(fallbackFocusPct) && fallbackFocusPct >= 0) {
     markers.set(focusCarIdx, {

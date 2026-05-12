@@ -127,6 +127,39 @@ public sealed class LiveTelemetryStoreTests
     }
 
     [Fact]
+    public void RecordFrame_DoesNotTreatRacePreGreenCountdownAsRaceTimeRemaining()
+    {
+        var store = new LiveTelemetryStore();
+        store.ApplySessionInfo("""
+WeekendInfo:
+ EventType: Race
+SessionInfo:
+ CurrentSessionNum: 2
+ Sessions:
+ - SessionNum: 2
+   SessionType: Race
+   SessionName: RACE
+   SessionTime: 14400 sec
+   SessionLaps: unlimited
+DriverInfo:
+ DriverCarIdx: 10
+""");
+
+        store.RecordFrame(CreateSample(
+            playerCarIdx: 10,
+            teamLapCompleted: 0,
+            teamLapDistPct: 0.0d,
+            sessionState: 1,
+            sessionTimeRemain: 109d,
+            teamLastLapTimeSeconds: 100d));
+
+        var progress = store.Snapshot().Models.RaceProgress;
+
+        Assert.Equal(144d, progress.RaceLapsRemaining);
+        Assert.Equal("scheduled time", progress.RaceLapsRemainingSource);
+    }
+
+    [Fact]
     public void RecordFrame_PublishesRollingRaceProjectionAfterCleanLeaderWindow()
     {
         var store = new LiveTelemetryStore();
@@ -783,6 +816,438 @@ QualifyResultsInfo:
     }
 
     [Fact]
+    public void RecordFrame_UsesEstimatedTimingForRacePreGreenRelativeWithoutReorderingStandingsGrid()
+    {
+        var store = new LiveTelemetryStore();
+        store.ApplySessionInfo("""
+WeekendInfo:
+ TrackDisplayName: Test Circuit
+ TrackLength: 5.100
+ EventType: Race
+SessionInfo:
+ CurrentSessionNum: 0
+ Sessions:
+ - SessionNum: 0
+   SessionType: Race
+   SessionName: Race
+DriverInfo:
+ DriverCarIdx: 10
+ Drivers:
+ - CarIdx: 10
+   UserName: Reference Driver
+   CarNumber: 10
+   CarClassID: 4098
+   CarClassShortName: GT3
+ - CarIdx: 11
+   UserName: Grid Leader
+   CarNumber: 11
+   CarClassID: 4098
+   CarClassShortName: GT3
+ - CarIdx: 12
+   UserName: Grid Chase
+   CarNumber: 12
+   CarClassID: 4098
+   CarClassShortName: GT3
+QualifyResultsInfo:
+ Results:
+ - Position: 0
+   ClassPosition: 0
+   CarIdx: 11
+ - Position: 1
+   ClassPosition: 1
+   CarIdx: 10
+ - Position: 2
+   ClassPosition: 2
+   CarIdx: 12
+""");
+        var now = DateTimeOffset.UtcNow;
+
+        store.RecordFrame(CreateSample(
+            capturedAtUtc: now,
+            sessionTime: 118.4d,
+            sessionState: 3,
+            playerCarIdx: 10,
+            focusCarIdx: 10,
+            teamCarClass: 4098,
+            teamLapDistPct: 0.50d,
+            teamEstimatedTimeSeconds: 50d,
+            allCars:
+            [
+                Car(11, position: 0, classPosition: 0, lapDistPct: 0.53d, f2TimeSeconds: 0d, estimatedTimeSeconds: 53d),
+                Car(10, position: 0, classPosition: 0, lapDistPct: 0.50d, f2TimeSeconds: 0d, estimatedTimeSeconds: 50d),
+                Car(12, position: 0, classPosition: 0, lapDistPct: 0.48d, f2TimeSeconds: 0d, estimatedTimeSeconds: 48d)
+            ]));
+
+        var snapshot = store.Snapshot();
+        var models = snapshot.Models;
+
+        Assert.Equal(LiveScoringSource.StartingGrid, models.Scoring.Source);
+        Assert.Equal(new[] { 11, 10, 12 }, models.Scoring.Rows.Select(row => row.CarIdx));
+
+        var leader = Assert.Single(models.Timing.OverallRows, row => row.CarIdx == 11);
+        var reference = Assert.Single(models.Timing.OverallRows, row => row.CarIdx == 10);
+        var trailing = Assert.Single(models.Timing.OverallRows, row => row.CarIdx == 12);
+        Assert.Null(leader.GapSecondsToClassLeader);
+        Assert.Null(leader.DeltaSecondsToFocus);
+        Assert.Null(reference.GapSecondsToClassLeader);
+        Assert.Equal(0d, reference.DeltaSecondsToFocus);
+        Assert.Null(trailing.GapSecondsToClassLeader);
+        Assert.Null(trailing.DeltaSecondsToFocus);
+
+        var standings = StandingsOverlayViewModel.From(snapshot, now, maximumRows: 3);
+        Assert.Equal("source: starting grid", standings.Source);
+        Assert.Equal(new[] { "#11", "#10", "#12" }, standings.Rows.Select(row => row.CarNumber));
+        Assert.Equal(new[] { "--", "--", "--" }, standings.Rows.Select(row => row.Interval));
+        Assert.Equal(new[] { "Leader", "--", "--" }, standings.Rows.Select(row => row.Gap));
+
+        Assert.Contains(models.Relative.Rows, row =>
+            row.CarIdx == 11
+            && row.IsAhead
+            && row.RelativeSeconds == 3d
+            && row.TimingEvidence.IsUsable);
+        Assert.Contains(models.Relative.Rows, row =>
+            row.CarIdx == 12
+            && row.IsBehind
+            && row.RelativeSeconds == -2d
+            && row.TimingEvidence.IsUsable);
+    }
+
+    [Fact]
+    public void RecordFrame_DoesNotUseEstimatedTimingForRacePreGreenStateTwo()
+    {
+        var store = new LiveTelemetryStore();
+        store.ApplySessionInfo("""
+WeekendInfo:
+ EventType: Race
+SessionInfo:
+ CurrentSessionNum: 0
+ Sessions:
+ - SessionNum: 0
+   SessionType: Race
+   SessionName: Race
+DriverInfo:
+ DriverCarIdx: 10
+ Drivers:
+ - CarIdx: 10
+   UserName: Reference Driver
+   CarNumber: 10
+   CarClassID: 4098
+ - CarIdx: 11
+   UserName: Grid Leader
+   CarNumber: 11
+   CarClassID: 4098
+QualifyResultsInfo:
+ Results:
+ - Position: 0
+   ClassPosition: 0
+   CarIdx: 11
+ - Position: 1
+   ClassPosition: 1
+   CarIdx: 10
+""");
+
+        store.RecordFrame(CreateSample(
+            sessionState: 2,
+            playerCarIdx: 10,
+            focusCarIdx: 10,
+            teamCarClass: 4098,
+            teamLapDistPct: 0.50d,
+            teamEstimatedTimeSeconds: 50d,
+            allCars:
+            [
+                Car(11, position: 0, classPosition: 0, lapDistPct: 0.53d, f2TimeSeconds: 0d, estimatedTimeSeconds: 53d),
+                Car(10, position: 0, classPosition: 0, lapDistPct: 0.50d, f2TimeSeconds: 0d, estimatedTimeSeconds: 50d)
+            ]));
+
+        var models = store.Snapshot().Models;
+
+        Assert.Null(models.Timing.FocusRow?.GapSecondsToClassLeader);
+        var focusDelta = models.Timing.FocusRow?.DeltaSecondsToFocus;
+        Assert.NotNull(focusDelta);
+        Assert.Equal(0d, focusDelta.Value, precision: 6);
+        Assert.Empty(models.Relative.Rows);
+    }
+
+    [Fact]
+    public void RecordFrame_KeepsSpatialProgressWhenLapDistanceExistsBeforeCompletedLapCount()
+    {
+        var store = new LiveTelemetryStore();
+        store.ApplySessionInfo("""
+WeekendInfo:
+ EventType: Race
+ TrackDisplayName: Test Circuit
+ TrackLength: 5.100
+SessionInfo:
+ CurrentSessionNum: 0
+ Sessions:
+ - SessionNum: 0
+   SessionType: Race
+   SessionName: Race
+DriverInfo:
+ DriverCarIdx: 10
+ Drivers:
+ - CarIdx: 10
+   UserName: Reference Driver
+   CarNumber: 10
+   CarClassID: 4098
+ - CarIdx: 11
+   UserName: Grid Car
+   CarNumber: 11
+   CarClassID: 4098
+""");
+
+        store.RecordFrame(CreateSample(
+            sessionState: 3,
+            playerCarIdx: 10,
+            focusCarIdx: 10,
+            teamCarClass: 4098,
+            teamLapCompleted: -1,
+            teamLapDistPct: 0.50d,
+            teamEstimatedTimeSeconds: 50d,
+            allCars:
+            [
+                Car(11, position: 0, classPosition: 0, lapCompleted: -1, lapDistPct: 0.53d, f2TimeSeconds: 0d, estimatedTimeSeconds: 53d, trackSurface: 3)
+            ]));
+
+        var models = store.Snapshot().Models;
+        var player = Assert.Single(models.Timing.OverallRows, row => row.CarIdx == 10);
+        var other = Assert.Single(models.Timing.OverallRows, row => row.CarIdx == 11);
+
+        Assert.True(player.HasSpatialProgress);
+        Assert.True(other.HasSpatialProgress);
+        Assert.True(other.CanUseForRadarPlacement);
+        Assert.Null(other.ProgressLaps);
+        Assert.Equal(0.53d, other.LapDistPct);
+    }
+
+    [Fact]
+    public void RecordFrame_DerivesRaceGreenGapAndIntervalFromEstimatedTimingWhenF2IsPlaceholder()
+    {
+        var store = new LiveTelemetryStore();
+        store.ApplySessionInfo("""
+WeekendInfo:
+ EventType: Race
+ TrackDisplayName: Test Circuit
+ TrackLength: 5.100
+SessionInfo:
+ CurrentSessionNum: 0
+ Sessions:
+ - SessionNum: 0
+   SessionType: Race
+   SessionName: Race
+DriverInfo:
+ DriverCarIdx: 10
+ Drivers:
+ - CarIdx: 10
+   UserName: Reference Driver
+   CarNumber: 10
+   CarClassID: 4098
+ - CarIdx: 11
+   UserName: Class Leader
+   CarNumber: 11
+   CarClassID: 4098
+ - CarIdx: 12
+   UserName: Chase Driver
+   CarNumber: 12
+   CarClassID: 4098
+""");
+
+        store.RecordFrame(CreateSample(
+            sessionState: 4,
+            playerCarIdx: 10,
+            focusCarIdx: 10,
+            teamPosition: 2,
+            teamClassPosition: 2,
+            teamCarClass: 4098,
+            teamLapDistPct: 0.50d,
+            teamF2TimeSeconds: 0.001d,
+            teamEstimatedTimeSeconds: 50d,
+            teamLastLapTimeSeconds: 90d,
+            classLeaderCarIdx: 11,
+            classLeaderLapDistPct: 0.53d,
+            classLeaderF2TimeSeconds: 0d,
+            allCars:
+            [
+                Car(11, position: 1, classPosition: 1, lapDistPct: 0.53d, f2TimeSeconds: 0d, estimatedTimeSeconds: 53d),
+                Car(10, position: 2, classPosition: 2, lapDistPct: 0.50d, f2TimeSeconds: 0.001d, estimatedTimeSeconds: 50d),
+                Car(12, position: 3, classPosition: 3, lapDistPct: 0.48d, f2TimeSeconds: 0.002d, estimatedTimeSeconds: 48d)
+            ]));
+
+        var models = store.Snapshot().Models;
+        var leader = Assert.Single(models.Timing.OverallRows, row => row.CarIdx == 11);
+        var reference = Assert.Single(models.Timing.OverallRows, row => row.CarIdx == 10);
+        var chase = Assert.Single(models.Timing.OverallRows, row => row.CarIdx == 12);
+
+        Assert.Equal(0d, leader.GapSecondsToClassLeader);
+        Assert.Null(leader.IntervalSecondsToPreviousClassRow);
+        Assert.Equal(3d, reference.GapSecondsToClassLeader!.Value, precision: 3);
+        Assert.Equal(3d, reference.IntervalSecondsToPreviousClassRow!.Value, precision: 3);
+        Assert.Equal("CarIdxEstTime+wrap", reference.GapEvidence.Source);
+        Assert.Equal(5d, chase.GapSecondsToClassLeader!.Value, precision: 3);
+        Assert.Equal(2d, chase.IntervalSecondsToPreviousClassRow!.Value, precision: 3);
+
+        var standings = StandingsOverlayViewModel.From(store.Snapshot(), DateTimeOffset.UtcNow, maximumRows: 3);
+        Assert.Equal(new[] { "Leader", "+3.0", "+5.0" }, standings.Rows.Select(row => row.Gap));
+        Assert.Equal(new[] { "0.0", "+3.0", "+2.0" }, standings.Rows.Select(row => row.Interval));
+    }
+
+    [Fact]
+    public void RecordFrame_DerivesRaceGreenGapAndIntervalAcrossStartFinishWrap()
+    {
+        var store = new LiveTelemetryStore();
+        store.ApplySessionInfo("""
+WeekendInfo:
+ EventType: Race
+ TrackDisplayName: Test Circuit
+ TrackLength: 5.100
+SessionInfo:
+ CurrentSessionNum: 0
+ Sessions:
+ - SessionNum: 0
+   SessionType: Race
+   SessionName: Race
+DriverInfo:
+ DriverCarIdx: 10
+ Drivers:
+ - CarIdx: 10
+   UserName: Reference Driver
+   CarNumber: 10
+   CarClassID: 4098
+ - CarIdx: 11
+   UserName: Class Leader
+   CarNumber: 11
+   CarClassID: 4098
+ - CarIdx: 12
+   UserName: Chase Driver
+   CarNumber: 12
+   CarClassID: 4098
+""");
+
+        store.RecordFrame(CreateSample(
+            sessionState: 4,
+            playerCarIdx: 10,
+            focusCarIdx: 10,
+            teamPosition: 2,
+            teamClassPosition: 2,
+            teamCarClass: 4098,
+            teamLapDistPct: 0.99d,
+            teamF2TimeSeconds: 0.001d,
+            teamEstimatedTimeSeconds: 89d,
+            teamLastLapTimeSeconds: 90d,
+            classLeaderCarIdx: 11,
+            classLeaderLapDistPct: 0.01d,
+            classLeaderF2TimeSeconds: 0d,
+            allCars:
+            [
+                Car(11, position: 1, classPosition: 1, lapDistPct: 0.01d, f2TimeSeconds: 0d, estimatedTimeSeconds: 4d),
+                Car(10, position: 2, classPosition: 2, lapDistPct: 0.99d, f2TimeSeconds: 0.001d, estimatedTimeSeconds: 89d),
+                Car(12, position: 3, classPosition: 3, lapDistPct: 0.97d, f2TimeSeconds: 0.002d, estimatedTimeSeconds: 87d)
+            ]));
+
+        var reference = Assert.Single(store.Snapshot().Models.Timing.OverallRows, row => row.CarIdx == 10);
+        var chase = Assert.Single(store.Snapshot().Models.Timing.OverallRows, row => row.CarIdx == 12);
+
+        Assert.Equal(5d, reference.GapSecondsToClassLeader!.Value, precision: 3);
+        Assert.Equal(5d, reference.IntervalSecondsToPreviousClassRow!.Value, precision: 3);
+        Assert.Equal(7d, chase.GapSecondsToClassLeader!.Value, precision: 3);
+        Assert.Equal(2d, chase.IntervalSecondsToPreviousClassRow!.Value, precision: 3);
+    }
+
+    [Fact]
+    public void RecordFrame_KeepsEstimatedRelativeRowsWhenPlayerTowedDuringRacePreGreenStateThree()
+    {
+        var store = new LiveTelemetryStore();
+        store.ApplySessionInfo("""
+WeekendInfo:
+ EventType: Race
+SessionInfo:
+ CurrentSessionNum: 0
+ Sessions:
+ - SessionNum: 0
+   SessionType: Race
+   SessionName: Race
+DriverInfo:
+ DriverCarIdx: 10
+ Drivers:
+ - CarIdx: 10
+   UserName: Reference Driver
+   CarNumber: 10
+   CarClassID: 4098
+ - CarIdx: 11
+   UserName: Grid Leader
+   CarNumber: 11
+   CarClassID: 4098
+QualifyResultsInfo:
+ Results:
+ - Position: 0
+   ClassPosition: 0
+   CarIdx: 11
+ - Position: 1
+   ClassPosition: 1
+   CarIdx: 10
+""");
+
+        store.RecordFrame(CreateSample(
+            sessionState: 3,
+            playerCarIdx: 10,
+            focusCarIdx: 10,
+            focusLapDistPct: 0.50d,
+            focusEstimatedTimeSeconds: 50d,
+            teamCarClass: 4098,
+            teamLapCompleted: -1,
+            teamLapDistPct: 0.50d,
+            teamEstimatedTimeSeconds: 50d,
+            allCars:
+            [
+                Car(11, position: 0, classPosition: 0, lapDistPct: 0.53d, f2TimeSeconds: 0d, estimatedTimeSeconds: 53d),
+                Car(10, position: 0, classPosition: 0, lapDistPct: 0.50d, f2TimeSeconds: 0d, estimatedTimeSeconds: 50d)
+            ],
+            onPitRoad: false,
+            playerCarInPitStall: false,
+            teamOnPitRoad: false,
+            playerTrackSurface: 3));
+
+        store.RecordFrame(CreateSample(
+            sessionState: 3,
+            playerCarIdx: 10,
+            focusCarIdx: 10,
+            focusLapDistPct: 0.012d,
+            focusEstimatedTimeSeconds: 4.6d,
+            teamCarClass: 4098,
+            teamLapCompleted: -1,
+            teamLapDistPct: 0.012d,
+            teamEstimatedTimeSeconds: 4.6d,
+            allCars:
+            [
+                Car(11, position: 0, classPosition: 0, lapDistPct: 0.53d, f2TimeSeconds: 0d, estimatedTimeSeconds: 53d),
+                Car(10, position: 0, classPosition: 0, lapDistPct: 0.012d, f2TimeSeconds: 0d, estimatedTimeSeconds: 4.6d)
+            ],
+            onPitRoad: true,
+            playerCarInPitStall: true,
+            teamOnPitRoad: true,
+            playerTrackSurface: 1));
+
+        var snapshot = store.Snapshot();
+        var models = snapshot.Models;
+
+        Assert.Equal(LiveScoringSource.StartingGrid, models.Scoring.Source);
+        Assert.Null(models.Timing.FocusRow?.GapSecondsToClassLeader);
+        Assert.False(models.Timing.FocusRow?.HasTakenGrid == true);
+        var focusDelta = models.Timing.FocusRow?.DeltaSecondsToFocus;
+        Assert.NotNull(focusDelta);
+        Assert.Equal(0d, focusDelta.Value, precision: 6);
+        var relativeRow = Assert.Single(models.Relative.Rows);
+        Assert.Equal(11, relativeRow.CarIdx);
+        Assert.True(relativeRow.IsBehind);
+        Assert.Equal(-41.6d, relativeRow.RelativeSeconds!.Value, precision: 3);
+        var standings = StandingsOverlayViewModel.From(snapshot, DateTimeOffset.UtcNow);
+        Assert.Equal("source: starting grid", standings.Source);
+        var playerRow = Assert.Single(standings.Rows, row => row.IsReference);
+        Assert.Equal("IN", playerRow.Pit);
+        Assert.True(playerRow.IsPendingGrid);
+    }
+
+    [Fact]
     public void RecordFrame_DerivesBlankAiClassNamesFromCarNames()
     {
         var store = new LiveTelemetryStore();
@@ -1164,6 +1629,7 @@ QualifyResultsInfo:
             BestLapTimeSeconds: null,
             GapSecondsToClassLeader: 0d,
             GapLapsToClassLeader: null,
+            IntervalSecondsToPreviousClassRow: null,
             DeltaSecondsToFocus: 0d,
             TrackSurface: 3,
             OnPitRoad: false);
@@ -1348,6 +1814,7 @@ QualifyResultsInfo:
             BestLapTimeSeconds: 89d,
             GapSecondsToClassLeader: 5.1234d,
             GapLapsToClassLeader: null,
+            IntervalSecondsToPreviousClassRow: null,
             DeltaSecondsToFocus: 0d,
             TrackSurface: 3,
             OnPitRoad: false);
@@ -1393,6 +1860,10 @@ QualifyResultsInfo:
         bool? isGarageVisible = null,
         double? lapDeltaToSessionBestLapSeconds = null,
         bool? lapDeltaToSessionBestLapOk = null,
+        bool onPitRoad = false,
+        bool playerCarInPitStall = false,
+        bool? teamOnPitRoad = null,
+        int? playerTrackSurface = null,
         bool focusUnavailable = false)
     {
         var resolvedFocusCarIdx = focusUnavailable ? null : focusCarIdx ?? playerCarIdx;
@@ -1403,9 +1874,9 @@ QualifyResultsInfo:
             SessionInfoUpdate: 1,
             IsOnTrack: true,
             IsInGarage: false,
-            OnPitRoad: false,
+            OnPitRoad: onPitRoad,
             PitstopActive: false,
-            PlayerCarInPitStall: false,
+            PlayerCarInPitStall: playerCarInPitStall,
             FuelLevelLiters: fuelLevelLiters,
             FuelLevelPercent: fuelLevelPercent,
             FuelUsePerHourKg: fuelUsePerHourKg,
@@ -1445,6 +1916,8 @@ QualifyResultsInfo:
             FocusClassLeaderLapDistPct: classLeaderLapDistPct,
             FocusClassLeaderF2TimeSeconds: classLeaderF2TimeSeconds,
             FocusClassLeaderLastLapTimeSeconds: classLeaderLastLapTimeSeconds,
+            TeamOnPitRoad: teamOnPitRoad,
+            PlayerTrackSurface: playerTrackSurface,
             LeaderCarIdx: leaderCarIdx,
             LeaderLapCompleted: leaderLapCompleted,
             LeaderLapDistPct: leaderLapDistPct,
@@ -1461,18 +1934,22 @@ QualifyResultsInfo:
         int position,
         int classPosition,
         double lapDistPct,
-        double f2TimeSeconds)
+        double f2TimeSeconds,
+        int lapCompleted = 0,
+        double? estimatedTimeSeconds = null,
+        int? trackSurface = 3,
+        bool? onPitRoad = false)
     {
         return new HistoricalCarProximity(
             CarIdx: carIdx,
-            LapCompleted: 0,
+            LapCompleted: lapCompleted,
             LapDistPct: lapDistPct,
             F2TimeSeconds: f2TimeSeconds,
-            EstimatedTimeSeconds: f2TimeSeconds,
+            EstimatedTimeSeconds: estimatedTimeSeconds ?? f2TimeSeconds,
             Position: position,
             ClassPosition: classPosition,
             CarClass: 4098,
-            TrackSurface: 3,
-            OnPitRoad: false);
+            TrackSurface: trackSurface,
+            OnPitRoad: onPitRoad);
     }
 }

@@ -24,6 +24,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
     private readonly OverlaySettings _settings;
     private readonly Label _titleLabel;
     private readonly Label _statusLabel;
+    private readonly Label _timeRemainingLabel;
     private readonly OverlayTableLayoutPanel _table;
     private readonly Label _overviewValueLabel;
     private readonly Label _sourceLabel;
@@ -42,6 +43,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
     private long? _lastRefreshSequence;
     private bool? _lastRefreshShowAdvice;
     private bool? _lastRefreshShowSource;
+    private string? _lastRefreshChromeSettings;
 
     private bool ShowAdvice => _settings.GetBooleanOption(OverlayOptionKeys.FuelAdvice, defaultValue: true);
 
@@ -75,6 +77,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
 
         _titleLabel = OverlayChrome.CreateTitleLabel(_fontFamily, "Fuel Calculator", width: 150);
         _statusLabel = OverlayChrome.CreateStatusLabel(_fontFamily, titleWidth: 150, clientWidth: ClientSize.Width, minimumWidth: 120);
+        _timeRemainingLabel = OverlayChrome.CreateTimeRemainingLabel(_fontFamily, titleWidth: 150, clientWidth: ClientSize.Width);
 
         _table = new OverlayTableLayoutPanel
         {
@@ -115,12 +118,14 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
 
         Controls.Add(_titleLabel);
         Controls.Add(_statusLabel);
+        Controls.Add(_timeRemainingLabel);
         Controls.Add(_table);
         Controls.Add(_sourceLabel);
 
         RegisterDragSurfaces(
             _titleLabel,
             _statusLabel,
+            _timeRemainingLabel,
             _table,
             _overviewValueLabel,
             _sourceLabel);
@@ -147,13 +152,15 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
-        if (_statusLabel is null || _table is null || _sourceLabel is null)
+        if (_statusLabel is null || _timeRemainingLabel is null || _table is null || _sourceLabel is null)
         {
             return;
         }
 
         _statusLabel.Location = OverlayChrome.StatusLocation(titleWidth: 150);
         _statusLabel.Size = OverlayChrome.StatusSize(ClientSize.Width, titleWidth: 150, minimumWidth: 120);
+        _timeRemainingLabel.Location = OverlayChrome.HeaderTimeRemainingLocation(ClientSize.Width, titleWidth: 150);
+        _timeRemainingLabel.Size = new Size(OverlayChrome.HeaderTimeRemainingWidth(ClientSize.Width, titleWidth: 150), OverlayTheme.Layout.OverlayStatusHeight);
         _table.Location = OverlayChrome.TableLocation();
         _table.Size = OverlayChrome.TableSize(ClientSize.Width, ClientSize.Height, minimumWidth: 250, minimumHeight: NormalMinimumTableHeight);
         _sourceLabel.Location = OverlayChrome.SourceLocation(ClientSize.Height);
@@ -169,6 +176,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
             _table.Dispose();
             _titleLabel.Dispose();
             _statusLabel.Dispose();
+            _timeRemainingLabel.Dispose();
             _sourceLabel.Dispose();
         }
 
@@ -222,7 +230,8 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
             var previousSequence = _lastRefreshSequence;
             if (previousSequence == live.Sequence
                 && _lastRefreshShowAdvice == showAdvice
-                && _lastRefreshShowSource == showSource)
+                && _lastRefreshShowSource == showSource
+                && string.Equals(_lastRefreshChromeSettings, OverlayChromeSettings.SettingsSignature(_settings), StringComparison.Ordinal))
             {
                 _performanceState.RecordOverlayRefreshDecision(
                     FuelCalculatorOverlayDefinition.Definition.Id,
@@ -250,7 +259,8 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
                         _statusLabel,
                         _sourceLabel,
                         ChromeStateFor(waitingViewModel, OverlayChromeTone.Waiting, live, _settings, showSource),
-                        titleWidth: 150);
+                        titleWidth: 150,
+                        timeRemainingLabel: _timeRemainingLabel);
                     waitingUiChanged |= OverlayChrome.SetTextIfChanged(_overviewValueLabel, waitingViewModel.Overview);
                     waitingUiChanged |= ApplyAdviceColumnVisibility(showAdvice);
                     waitingUiChanged |= UpdateVisibleRows(0, showAdvice);
@@ -267,6 +277,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
                 _lastRefreshSequence = live.Sequence;
                 _lastRefreshShowAdvice = showAdvice;
                 _lastRefreshShowSource = showSource;
+                _lastRefreshChromeSettings = OverlayChromeSettings.SettingsSignature(_settings);
                 _performanceState.RecordOverlayRefreshDecision(
                     FuelCalculatorOverlayDefinition.Definition.Id,
                     now,
@@ -337,7 +348,8 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
                     _statusLabel,
                     _sourceLabel,
                     ChromeStateFor(viewModel, ChromeTone(strategy), live, _settings, showSource),
-                    titleWidth: 150);
+                    titleWidth: 150,
+                    timeRemainingLabel: _timeRemainingLabel);
                 uiChanged |= OverlayChrome.SetTextIfChanged(_overviewValueLabel, viewModel.Overview);
                 uiChanged |= ApplyAdviceColumnVisibility(showAdvice);
                 applySucceeded = true;
@@ -392,6 +404,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
             _lastRefreshSequence = live.Sequence;
             _lastRefreshShowAdvice = showAdvice;
             _lastRefreshShowSource = showSource;
+            _lastRefreshChromeSettings = OverlayChromeSettings.SettingsSignature(_settings);
             _performanceState.RecordOverlayRefreshDecision(
                 FuelCalculatorOverlayDefinition.Definition.Id,
                 now,
@@ -492,6 +505,9 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
         bool showSource)
     {
         var showStatus = OverlayChromeSettings.ShowHeaderStatus(settings, live);
+        var timeRemaining = OverlayChromeSettings.ShowHeaderTimeRemaining(settings, live)
+            ? OverlayHeaderTimeFormatter.FormatTimeRemaining(live)
+            : string.Empty;
         var footerMode = showSource && OverlayChromeSettings.ShowFooterSource(settings, live)
             ? OverlayChromeFooterMode.Always
             : OverlayChromeFooterMode.Never;
@@ -500,7 +516,8 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
             showStatus ? viewModel.Status : string.Empty,
             tone,
             viewModel.Source,
-            footerMode);
+            footerMode,
+            TimeRemaining: timeRemaining);
     }
 
     private static OverlayChromeTone ChromeTone(FuelStrategySnapshot strategy)

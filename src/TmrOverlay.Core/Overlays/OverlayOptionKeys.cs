@@ -10,6 +10,10 @@ internal static class OverlayOptionKeys
     public const string ChromeHeaderStatusPractice = "chrome.header.status.practice";
     public const string ChromeHeaderStatusQualifying = "chrome.header.status.qualifying";
     public const string ChromeHeaderStatusRace = "chrome.header.status.race";
+    public const string ChromeHeaderTimeRemainingTest = "chrome.header.time-remaining.test";
+    public const string ChromeHeaderTimeRemainingPractice = "chrome.header.time-remaining.practice";
+    public const string ChromeHeaderTimeRemainingQualifying = "chrome.header.time-remaining.qualifying";
+    public const string ChromeHeaderTimeRemainingRace = "chrome.header.time-remaining.race";
     public const string ChromeFooterSourceTest = "chrome.footer.source.test";
     public const string ChromeFooterSourcePractice = "chrome.footer.source.practice";
     public const string ChromeFooterSourceQualifying = "chrome.footer.source.qualifying";

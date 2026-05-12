@@ -27,6 +27,7 @@ internal sealed class SimpleTelemetryOverlayForm : PersistentOverlayForm
     private readonly Func<LiveTelemetrySnapshot, DateTimeOffset, string, SimpleTelemetryOverlayViewModel> _buildViewModel;
     private readonly Label _titleLabel;
     private readonly Label _statusLabel;
+    private readonly Label _timeRemainingLabel;
     private readonly OverlayTableLayoutPanel _table;
     private readonly Label _sourceLabel;
     private readonly Label[] _labelCells = new Label[MaximumRows];
@@ -67,6 +68,7 @@ internal sealed class SimpleTelemetryOverlayForm : PersistentOverlayForm
 
         _titleLabel = OverlayChrome.CreateTitleLabel(_fontFamily, _definition.DisplayName, width: 190);
         _statusLabel = OverlayChrome.CreateStatusLabel(_fontFamily, titleWidth: 190, clientWidth: ClientSize.Width, minimumWidth: 100);
+        _timeRemainingLabel = OverlayChrome.CreateTimeRemainingLabel(_fontFamily, titleWidth: 190, clientWidth: ClientSize.Width);
 
         _table = new OverlayTableLayoutPanel
         {
@@ -91,11 +93,12 @@ internal sealed class SimpleTelemetryOverlayForm : PersistentOverlayForm
 
         Controls.Add(_titleLabel);
         Controls.Add(_statusLabel);
+        Controls.Add(_timeRemainingLabel);
         Controls.Add(_table);
         Controls.Add(_sourceLabel);
         ApplySourceFooterLayout(showSourceFooter: false);
 
-        RegisterDragSurfaces(_titleLabel, _statusLabel, _table, _sourceLabel);
+        RegisterDragSurfaces(_titleLabel, _statusLabel, _timeRemainingLabel, _table, _sourceLabel);
         RegisterDragSurfaces(_labelCells.Concat(_valueCells).ToArray());
 
         _refreshTimer = new System.Windows.Forms.Timer
@@ -119,13 +122,15 @@ internal sealed class SimpleTelemetryOverlayForm : PersistentOverlayForm
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
-        if (_statusLabel is null || _table is null || _sourceLabel is null)
+        if (_statusLabel is null || _timeRemainingLabel is null || _table is null || _sourceLabel is null)
         {
             return;
         }
 
         _statusLabel.Location = OverlayChrome.StatusLocation(titleWidth: 190);
         _statusLabel.Size = OverlayChrome.StatusSize(ClientSize.Width, titleWidth: 190, minimumWidth: 100);
+        _timeRemainingLabel.Location = OverlayChrome.HeaderTimeRemainingLocation(ClientSize.Width, titleWidth: 190);
+        _timeRemainingLabel.Size = new Size(OverlayChrome.HeaderTimeRemainingWidth(ClientSize.Width, titleWidth: 190), OverlayTheme.Layout.OverlayStatusHeight);
         ApplySourceFooterLayout(_showSourceFooter);
     }
 
@@ -138,6 +143,7 @@ internal sealed class SimpleTelemetryOverlayForm : PersistentOverlayForm
             _table.Dispose();
             _titleLabel.Dispose();
             _statusLabel.Dispose();
+            _timeRemainingLabel.Dispose();
             _sourceLabel.Dispose();
         }
 
@@ -204,7 +210,7 @@ internal sealed class SimpleTelemetryOverlayForm : PersistentOverlayForm
             try
             {
                 _overlayError = null;
-                uiChanged |= ApplyChromeState(ChromeStateFor(viewModel, footerMode: OverlayChromeFooterMode.Never));
+                uiChanged |= ApplyChromeState(ChromeStateFor(viewModel, snapshot, footerMode: OverlayChromeFooterMode.Never));
                 uiChanged |= ApplyRows(viewModel);
                 applySucceeded = true;
             }
@@ -378,7 +384,14 @@ internal sealed class SimpleTelemetryOverlayForm : PersistentOverlayForm
 
     private bool ApplyChromeState(OverlayChromeState state)
     {
-        var changed = OverlayChrome.ApplyChromeState(this, _titleLabel, _statusLabel, _sourceLabel, state, titleWidth: 190);
+        var changed = OverlayChrome.ApplyChromeState(
+            this,
+            _titleLabel,
+            _statusLabel,
+            _sourceLabel,
+            state,
+            titleWidth: 190,
+            timeRemainingLabel: _timeRemainingLabel);
         changed |= ApplySourceFooterLayout(OverlayChrome.ShouldShowFooterSource(state, ClientSize.Width));
         return changed;
     }
@@ -401,14 +414,21 @@ internal sealed class SimpleTelemetryOverlayForm : PersistentOverlayForm
         return changed;
     }
 
-    private static OverlayChromeState ChromeStateFor(SimpleTelemetryOverlayViewModel viewModel, OverlayChromeFooterMode footerMode)
+    private OverlayChromeState ChromeStateFor(
+        SimpleTelemetryOverlayViewModel viewModel,
+        LiveTelemetrySnapshot snapshot,
+        OverlayChromeFooterMode footerMode)
     {
+        var timeRemaining = OverlayChromeSettings.ShowHeaderTimeRemaining(_settings, snapshot)
+            ? OverlayHeaderTimeFormatter.FormatTimeRemaining(snapshot)
+            : null;
         return new OverlayChromeState(
             viewModel.Title,
             viewModel.Status,
             ChromeTone(viewModel.Tone),
             viewModel.Source,
-            footerMode);
+            footerMode,
+            TimeRemaining: timeRemaining);
     }
 
     private static OverlayChromeTone ChromeTone(SimpleTelemetryTone tone)

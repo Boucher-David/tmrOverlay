@@ -23,6 +23,7 @@ import yaml
 
 CAPTURE_HEADER_BYTES = 32
 FRAME_HEADER = struct.Struct("<qiiidi")
+MAX_INDEXED_SESSION_SNAPSHOTS = 200
 
 DEFAULT_CAPTURE_DIRS = [
     Path("capture-20260511-001730-564"),
@@ -230,17 +231,20 @@ def load_yaml(path: Path) -> dict[str, Any]:
         return {}
 
 
-def load_session_snapshots(capture_dir: Path) -> tuple[list[int], dict[int, dict[str, Any]], dict[str, Any]]:
-    snapshots: dict[int, dict[str, Any]] = {}
+def load_session_snapshots(capture_dir: Path) -> tuple[list[int], dict[int, dict[str, Any] | Path], dict[str, Any]]:
+    snapshots: dict[int, dict[str, Any] | Path] = {}
+    latest = load_yaml(capture_dir / "latest-session.yaml")
     session_dir = capture_dir / "session-info"
     if session_dir.exists():
-        for path in sorted(session_dir.glob("session-*.yaml")):
+        paths = sorted(session_dir.glob("session-*.yaml"))
+        if len(paths) > MAX_INDEXED_SESSION_SNAPSHOTS:
+            return [], snapshots, latest
+        for path in paths:
             try:
                 update = int(path.stem.split("-")[-1])
             except ValueError:
                 continue
-            snapshots[update] = load_yaml(path)
-    latest = load_yaml(capture_dir / "latest-session.yaml")
+            snapshots[update] = path
     if not snapshots and latest:
         snapshots[0] = latest
     return sorted(snapshots), snapshots, latest
@@ -249,15 +253,22 @@ def load_session_snapshots(capture_dir: Path) -> tuple[list[int], dict[int, dict
 def session_info_for_update(
     update: int,
     updates: list[int],
-    snapshots: dict[int, dict[str, Any]],
+    snapshots: dict[int, dict[str, Any] | Path],
     latest: dict[str, Any],
 ) -> dict[str, Any]:
+    selected_update: int | None = None
     if update in snapshots:
-        return snapshots[update]
-    if updates:
+        selected_update = update
+    elif updates:
         index = bisect.bisect_right(updates, update) - 1
         if index >= 0:
-            return snapshots[updates[index]]
+            selected_update = updates[index]
+    if selected_update is not None:
+        selected = snapshots[selected_update]
+        if isinstance(selected, Path):
+            selected = load_yaml(selected)
+            snapshots[selected_update] = selected
+        return selected
     return latest
 
 
@@ -716,6 +727,50 @@ def gap_evidence(
     }
 
 
+def session_clock_summary(raw: dict[str, Any], session_kind: str | None, phase: str) -> dict[str, Any]:
+    session_time = valid_non_negative(raw.get("SessionTime"))
+    session_time_remain = valid_non_negative(raw.get("SessionTimeRemain"))
+    session_time_total = valid_positive(raw.get("SessionTimeTotal"))
+    is_race_pre_green = session_kind == "race" and phase == "pre-green"
+    pre_green_countdown = session_time_remain if is_race_pre_green and session_time_remain is not None else None
+
+    if pre_green_countdown is not None:
+        interpretation = "pre-green-countdown"
+    elif is_race_pre_green:
+        interpretation = "pre-green-no-countdown"
+    elif session_time_remain is not None:
+        interpretation = "session-remaining"
+    else:
+        interpretation = "unavailable"
+
+    return {
+        "sessionState": raw.get("SessionState"),
+        "sessionPhase": phase,
+        "sessionTimeSeconds": compact_number(session_time, 3),
+        "sessionTimeRemainSeconds": compact_number(session_time_remain, 3),
+        "sessionTimeTotalSeconds": compact_number(session_time_total, 3),
+        "sessionTimeRemainInterpretation": interpretation,
+        "preGreenCountdownSeconds": compact_number(pre_green_countdown, 3),
+        "shouldInferPreGreenCountdown": False,
+    }
+
+
+def session_clock_notes(session_kind: str | None, phase: str, session_clock: dict[str, Any]) -> list[str]:
+    if session_kind != "race" or phase != "pre-green":
+        return []
+
+    if session_clock.get("preGreenCountdownSeconds") is not None:
+        return [
+            "Race pre-green countdown is exposed through positive SessionTimeRemain in this SessionState phase.",
+            "SessionState is a phase within the active SessionNum, not practice/qualifying/race session selection.",
+        ]
+
+    return [
+        "SessionTimeRemain can return -1 during later grid/pace pre-green phases; do not infer a countdown from SessionTimeTotal minus SessionTime.",
+        "SessionState is a phase within the active SessionNum, not practice/qualifying/race session selection.",
+    ]
+
+
 def infer_notes(
     category: str,
     session_kind: str | None,
@@ -724,6 +779,7 @@ def infer_notes(
     local: dict[str, Any],
     relative: dict[str, Any],
     context: dict[str, Any],
+    session_clock: dict[str, Any],
 ) -> list[str]:
     notes: list[str] = []
     if session_kind in ("practice", "qualifying", "test") and scoring["requiresValidLapBeforeRendering"]:
@@ -739,6 +795,7 @@ def infer_notes(
         notes.append("Session YAML current session does not match telemetry SessionNum at this frame; session selection must be explicit.")
     if phase == "pre-green" and session_kind == "race":
         notes.append("Race pre-green may expose grid/scoring before live race gaps are meaningful.")
+        notes.extend(session_clock_notes(session_kind, phase, session_clock))
     return notes
 
 
@@ -790,6 +847,7 @@ def build_state(
             else "waiting"
         ),
     }
+    session_clock = session_clock_summary(raw, session_kind, phase)
     scoring = {
         "selectedSource": selected_source,
         "selectedRowCount": len(scoring_rows),
@@ -863,6 +921,7 @@ def build_state(
             "standings": scoring,
             "relative": relative,
             "gapToLeader": gap,
+            "sessionClock": session_clock,
             "timing": {
                 "overallRowCount": len(timing_rows),
                 "classRowCount": len(class_rows),
@@ -871,7 +930,7 @@ def build_state(
             },
         },
     }
-    state["notes"] = infer_notes(category, session_kind, phase, scoring, local, relative, context)
+    state["notes"] = infer_notes(category, session_kind, phase, scoring, local, relative, context, session_clock)
     return state
 
 
@@ -959,6 +1018,25 @@ def target_definitions() -> list[Target]:
         fuel = state["rawScalars"].get("PitSvFuel") or 0
         return coverage_score(state) + repair + fuel
 
+    def pre_green_countdown_seconds(state: dict[str, Any]) -> float | None:
+        value = state["modelInputs"].get("sessionClock", {}).get("preGreenCountdownSeconds")
+        return float(value) if is_finite(value) else None
+
+    def has_pre_green_countdown(state: dict[str, Any]) -> bool:
+        return pre_green_countdown_seconds(state) is not None
+
+    def lacks_pre_green_countdown(state: dict[str, Any]) -> bool:
+        return state["modelInputs"].get("sessionClock", {}).get("sessionTimeRemainInterpretation") == "pre-green-no-countdown"
+
+    def countdown_score(target_seconds: float) -> Callable[[dict[str, Any]], float]:
+        def score(state: dict[str, Any]) -> float:
+            value = pre_green_countdown_seconds(state)
+            if value is None:
+                return -1_000_000
+            return 10_000 - abs(value - target_seconds) + coverage_score(state) / 10_000
+
+        return score
+
     return [
         Target(
             "ai-practice-no-valid-lap",
@@ -976,6 +1054,18 @@ def target_definitions() -> list[Target]:
             "ai-race-pre-green",
             "AI race pre-green/grid state",
             all_of(cat("ai-multisession-spectated"), kind("race"), phase("pre-green")),
+            coverage_score,
+        ),
+        Target(
+            "endurance-4h-race-pre-countdown",
+            "Four-hour race pre-grid countdown from SessionTimeRemain",
+            all_of(cat("endurance-4h-team-race"), kind("race"), phase("pre-green"), has_pre_green_countdown),
+            countdown_score(60),
+        ),
+        Target(
+            "endurance-4h-race-pre-grid-no-countdown",
+            "Four-hour later pre-green grid phase without countdown",
+            all_of(cat("endurance-4h-team-race"), kind("race"), phase("pre-green"), lacks_pre_green_countdown),
             coverage_score,
         ),
         Target(
@@ -1133,6 +1223,56 @@ def build_corpus(capture_dirs: list[Path], short_stride: int, long_stride: int) 
     }
 
 
+def merge_existing_corpus(existing: dict[str, Any], current: dict[str, Any]) -> dict[str, Any]:
+    targets = target_definitions()
+    states_by_id = {str(state.get("id")): normalize_corpus_state(state) for state in existing.get("states", []) if state.get("id")}
+    states_by_id.update({str(state.get("id")): normalize_corpus_state(state) for state in current.get("states", []) if state.get("id")})
+    sources_by_id = {
+        str(source.get("captureId")): source
+        for source in existing.get("sources", [])
+        if source.get("captureId")
+    }
+    sources_by_id.update(
+        {
+            str(source.get("captureId")): source
+            for source in current.get("sources", [])
+            if source.get("captureId")
+        }
+    )
+    ordered_states = [states_by_id[target.target_id] for target in targets if target.target_id in states_by_id]
+    missing = [
+        {"id": target.target_id, "title": target.title}
+        for target in targets
+        if target.target_id not in states_by_id
+    ]
+    return {
+        **current,
+        "sources": list(sources_by_id.values()),
+        "states": ordered_states,
+        "missingTargets": missing,
+    }
+
+
+def normalize_corpus_state(state: dict[str, Any]) -> dict[str, Any]:
+    raw = state.get("rawScalars")
+    label = state.get("labelBasis")
+    model_inputs = state.get("modelInputs")
+    if not isinstance(raw, dict) or not isinstance(label, dict) or not isinstance(model_inputs, dict):
+        return state
+
+    session_kind = label.get("sessionKind")
+    phase = str(label.get("sessionPhase") or "unknown")
+    session_clock = session_clock_summary(raw, session_kind, phase)
+    model_inputs["sessionClock"] = session_clock
+
+    notes = list(state.get("notes") or [])
+    for note in session_clock_notes(session_kind, phase, session_clock):
+        if note not in notes:
+            notes.append(note)
+    state["notes"] = notes
+    return state
+
+
 def write_markdown(path: Path, corpus: dict[str, Any]) -> None:
     lines = [
         "# Live Telemetry State Corpus",
@@ -1141,22 +1281,30 @@ def write_markdown(path: Path, corpus: dict[str, Any]) -> None:
         "",
         "## States",
         "",
-        "| ID | Capture | Session | Phase | Focus | Standings | Relative | Gap | Notes |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| ID | Capture | Session | Phase | Clock | Focus | Standings | Relative | Gap | Notes |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for state in corpus["states"]:
         standings = state["modelInputs"]["standings"]
         relative = state["modelInputs"]["relative"]
         gap = state["modelInputs"]["gapToLeader"]
+        clock = state["modelInputs"].get("sessionClock", {})
         label = state["labelBasis"]
         context = state["context"]
         notes = " ".join(state.get("notes") or [])
+        if clock.get("preGreenCountdownSeconds") is not None:
+            clock_text = f"pre-green countdown {clock['preGreenCountdownSeconds']}s"
+        elif clock.get("sessionTimeRemainSeconds") is not None:
+            clock_text = f"session remain {clock['sessionTimeRemainSeconds']}s"
+        else:
+            clock_text = str(clock.get("sessionTimeRemainInterpretation") or "--")
         lines.append(
-            "| {id} | {capture} | {session} | {phase} | {focus} | {standings} | {relative} | {gap} | {notes} |".format(
+            "| {id} | {capture} | {session} | {phase} | {clock} | {focus} | {standings} | {relative} | {gap} | {notes} |".format(
                 id=state["id"],
                 capture=state["captureId"],
                 session=context.get("selectedSessionType") or label.get("sessionKind") or "--",
                 phase=label.get("sessionPhase") or "--",
+                clock=clock_text,
                 focus=label.get("focusRelation") or "--",
                 standings=(
                     f"{standings['selectedSource']}; rows {standings['selectedRowCount']}; "
@@ -1217,6 +1365,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--short-stride", type=int, default=1, help="Frame stride for short captures.")
     parser.add_argument("--long-stride", type=int, default=60, help="Frame stride for long captures.")
+    parser.add_argument(
+        "--replace-existing",
+        action="store_true",
+        help="Replace the output corpus instead of preserving existing target states from unavailable captures.",
+    )
     return parser.parse_args()
 
 
@@ -1224,6 +1377,8 @@ def main() -> int:
     args = parse_args()
     capture_dirs = [Path(value) for value in args.captures]
     corpus = build_corpus(capture_dirs, max(1, args.short_stride), max(1, args.long_stride))
+    if args.output.exists() and not args.replace_existing:
+        corpus = merge_existing_corpus(read_json(args.output), corpus)
     write_json(args.output, corpus)
     write_markdown(args.markdown_output, corpus)
     print(f"Wrote {len(corpus['states'])} states to {args.output}")

@@ -231,6 +231,10 @@ enum FuelStrategyCalculator {
             return 0
         }
 
+        if frame.sessionState >= 1 && frame.sessionState <= 3 {
+            return nil
+        }
+
         guard let lapTimeSeconds, lapTimeSeconds > 0 else {
             return nil
         }

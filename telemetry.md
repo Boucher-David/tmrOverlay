@@ -105,6 +105,18 @@ Session-level data explains what is happening in the current iRacing session and
 - `IsReplayPlaying`
 - `SessionInfoUpdate`
 
+### Race-start phase and countdown semantics
+
+`SessionNum` selects the active session entry from session YAML, such as practice, qualifying, or race. `SessionState` is a phase inside that active session; values below `4` can occur while the active `SessionNum` is already a race. Do not interpret `SessionState` values `1`, `2`, or `3` as practice/qualifying/race session types.
+
+Observed race-start captures show that the common pre-race UI countdown is sometimes exposed through `SessionTimeRemain`, but only during an early pre-green race phase. In the four-hour race-start capture, the active session was `Race`/`RACE` with `SessionNum = 2`; while `SessionState = 1`, `SessionTimeRemain` counted down from about 109 seconds to 9 seconds. After the state advanced to `2` and then `3`, the race was still pre-green, but `SessionTimeRemain` returned `-1.0`. After green, `SessionTimeRemain` became the race clock once the sim began publishing normal remaining-session time.
+
+Telemetry consumers should therefore treat positive `SessionTimeRemain` during a race pre-green phase as a real pre-race countdown, but they must not infer a countdown from `SessionTimeTotal - SessionTime` when `SessionTimeRemain` is negative. Later grid/pace pre-green phases can have no exposed countdown even though the race has not started. This matters for any future session timer, flags, race-start, Standings, Relative, Gap To Leader, or fuel/strategy behavior that wants to distinguish gridding from live race timing.
+
+Observed race-start and endurance captures also show that scoring/results data and live timing data become available at different points. Race pre-green states (`SessionState` values below `4`) can have usable starting-grid rows before any `CarIdxPosition`, `CarIdxClassPosition`, or positive `CarIdxF2Time` data exists. After green (`SessionState == 4`), official position rows can appear before F2 race gap timing is available; the May 12, 2026 uploaded capture had current race results and position/class-position rows after green, but `CarIdxF2Time` remained non-positive for sampled cars, so live gap and interval values could not be computed. The longer four-hour and 24-hour race captures later showed the normal running-race shape: current race results, broad position/class-position coverage, and positive F2 timing for most cars.
+
+`CarIdxEstTime` may be populated before green and in early green frames where `CarIdxF2Time` is still zero. Treat it as track-position estimation unless a consumer has a separate confidence rule. Relative can use positive `CarIdxEstTime` plus valid `CarIdxLapDistPct` during race `SessionState == 3` to keep showing estimated ahead/behind rows, including after a local tow to pit lane. Standings remains more conservative for now: pre-green race rows keep starting-grid order and do not show estimated class gap or focus interval cells. The compact comparison lives in `fixtures/telemetry-analysis/session-state-signal-availability.md`.
+
 ### Useful analysis questions
 
 - Was the sim connected and streaming valid data?

@@ -61,6 +61,68 @@ test.describe('browser overlay Playwright integration', () => {
     expect(requests).toContain('/api/stream-chat');
   });
 
+  test('keeps input graph smoothing inside each trace segment', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__tmrBezierCalls = [];
+      const originalMoveTo = CanvasRenderingContext2D.prototype.moveTo;
+      const originalLineTo = CanvasRenderingContext2D.prototype.lineTo;
+      const originalBezierCurveTo = CanvasRenderingContext2D.prototype.bezierCurveTo;
+      CanvasRenderingContext2D.prototype.moveTo = function patchedMoveTo(x, y) {
+        this.__tmrCurrentPoint = { x, y };
+        return originalMoveTo.call(this, x, y);
+      };
+      CanvasRenderingContext2D.prototype.lineTo = function patchedLineTo(x, y) {
+        this.__tmrCurrentPoint = { x, y };
+        return originalLineTo.call(this, x, y);
+      };
+      CanvasRenderingContext2D.prototype.bezierCurveTo = function patchedBezierCurveTo(c1x, c1y, c2x, c2y, x, y) {
+        window.__tmrBezierCalls.push({
+          startY: this.__tmrCurrentPoint?.y,
+          c1y,
+          c2y,
+          endY: y
+        });
+        this.__tmrCurrentPoint = { x, y };
+        return originalBezierCurveTo.call(this, c1x, c1y, c2x, c2y, x, y);
+      };
+    });
+
+    await installBrowserOverlayRoutes(page, 'input-state', {
+      live: [0.12, 1, 1, 0.12, 0.88, 0, 0, 0.88].map((throttle, index) =>
+        inputStateLiveSnapshot(index, throttle)),
+      settings: {
+        showThrottle: true,
+        showBrake: true,
+        showClutch: true,
+        showSteering: false,
+        showGear: false,
+        showSpeed: false
+      }
+    });
+
+    await page.setViewportSize({ width: 460, height: 220 });
+    await page.goto('http://localhost:8765/overlays/input-state');
+    await expect(page.locator('.input-graph')).toBeVisible();
+    await expect.poll(
+      async () => page.evaluate(() => window.__tmrBezierCalls?.length ?? 0),
+      { timeout: 3500 }
+    ).toBeGreaterThanOrEqual(12);
+
+    const violations = await page.evaluate(() => {
+      const tolerance = 0.001;
+      return (window.__tmrBezierCalls || []).filter((call) => {
+        if (!Number.isFinite(call.startY) || !Number.isFinite(call.endY)) {
+          return false;
+        }
+
+        const min = Math.min(call.startY, call.endY) - tolerance;
+        const max = Math.max(call.startY, call.endY) + tolerance;
+        return call.c1y < min || call.c1y > max || call.c2y < min || call.c2y > max;
+      });
+    });
+    expect(violations).toEqual([]);
+  });
+
   test('renders General settings preview controls without forcing hidden overlays', async ({ page }) => {
     await page.route('**/*', async (route) => {
       const url = new URL(route.request().url());
@@ -148,6 +210,7 @@ test.describe('browser overlay Playwright integration', () => {
 
 async function installBrowserOverlayRoutes(page, overlayId, fixture) {
   const requests = [];
+  let liveFrameIndex = 0;
   await page.route('**/*', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -165,7 +228,13 @@ async function installBrowserOverlayRoutes(page, overlayId, fixture) {
       return;
     }
 
-    const payload = browserOverlayApiResponse(overlayId, url.pathname, fixture);
+    const payload = browserOverlayApiResponse(overlayId, url.pathname, {
+      ...fixture,
+      live: resolveLiveFixture(fixture.live, url.pathname, liveFrameIndex)
+    });
+    if (url.pathname === '/api/snapshot') {
+      liveFrameIndex += 1;
+    }
     if (payload) {
       await route.fulfill({
         status: 200,
@@ -188,6 +257,42 @@ async function installBrowserOverlayRoutes(page, overlayId, fixture) {
   });
 
   return requests;
+}
+
+function resolveLiveFixture(live, path, frameIndex) {
+  if (path !== '/api/snapshot') {
+    return Array.isArray(live) ? live[0] : typeof live === 'function' ? live(0) : live;
+  }
+
+  if (Array.isArray(live)) {
+    return live[Math.min(frameIndex, live.length - 1)];
+  }
+
+  return typeof live === 'function' ? live(frameIndex) : live;
+}
+
+function inputStateLiveSnapshot(index, throttle) {
+  return {
+    ...freshLiveSnapshot({
+      raceEvents: {
+        hasData: true,
+        isOnTrack: true,
+        isInGarage: false
+      },
+      inputs: {
+        hasData: true,
+        quality: 'raw',
+        throttle,
+        brake: 1,
+        clutch: 0,
+        steeringWheelAngle: 0,
+        gear: 3,
+        speedMetersPerSecond: 60,
+        brakeAbsActive: false
+      }
+    }),
+    sequence: 100 + index
+  };
 }
 
 function standingsDisplayModel() {

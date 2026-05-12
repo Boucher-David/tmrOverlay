@@ -11,6 +11,13 @@ namespace TmrOverlay.App.Overlays.SettingsPanel;
 
 internal static class SettingsOverlayTabSections
 {
+    public sealed record OverlayChromeSettingsRow(
+        string Label,
+        string TestKey,
+        string PracticeKey,
+        string QualifyingKey,
+        string RaceKey);
+
     private sealed record BrowserSizeReadoutBinding(
         OverlayDefinition Definition,
         OverlaySettings Settings);
@@ -186,11 +193,7 @@ internal static class SettingsOverlayTabSections
         Control parent,
         OverlaySettings settings,
         string title,
-        string itemLabel,
-        string testKey,
-        string practiceKey,
-        string qualifyingKey,
-        string raceKey,
+        IReadOnlyList<OverlayChromeSettingsRow> rows,
         Action saveAndApply)
     {
         parent.Controls.Add(SettingsUi.CreateSectionLabel(title, 18, 18, 500));
@@ -200,11 +203,16 @@ internal static class SettingsOverlayTabSections
         parent.Controls.Add(SettingsUi.CreateLabel("Qualifying", 416, 62, 120));
         parent.Controls.Add(SettingsUi.CreateLabel("Race", 548, 62, 90));
 
-        parent.Controls.Add(SettingsUi.CreateLabel(itemLabel, 22, 104, 150));
-        AddChromeSessionCheckBox(parent, settings, testKey, 196, 100, saveAndApply);
-        AddChromeSessionCheckBox(parent, settings, practiceKey, 296, 100, saveAndApply);
-        AddChromeSessionCheckBox(parent, settings, qualifyingKey, 416, 100, saveAndApply);
-        AddChromeSessionCheckBox(parent, settings, raceKey, 548, 100, saveAndApply);
+        for (var index = 0; index < rows.Count; index++)
+        {
+            var row = rows[index];
+            var rowTop = 100 + index * 38;
+            parent.Controls.Add(SettingsUi.CreateLabel(row.Label, 22, rowTop + 4, 150));
+            AddChromeSessionCheckBox(parent, settings, row.TestKey, 196, rowTop, saveAndApply);
+            AddChromeSessionCheckBox(parent, settings, row.PracticeKey, 296, rowTop, saveAndApply);
+            AddChromeSessionCheckBox(parent, settings, row.QualifyingKey, 416, rowTop, saveAndApply);
+            AddChromeSessionCheckBox(parent, settings, row.RaceKey, 548, rowTop, saveAndApply);
+        }
     }
 
     public static void AddLocalhostOptions(

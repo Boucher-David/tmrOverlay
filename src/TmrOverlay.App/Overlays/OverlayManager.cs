@@ -1048,8 +1048,7 @@ internal sealed class OverlayManager : IDisposable
         var bounds = hasForm
             ? form!.Bounds
             : new Rectangle(settings.X, settings.Y, settings.Width, settings.Height);
-        var isInputTransparent = form is FlagsOverlayForm
-            || form is PersistentOverlayForm { IsEffectivelyInputTransparent: true };
+        var isInputTransparent = form is PersistentOverlayForm { IsEffectivelyInputTransparent: true };
         var noActivate = form is PersistentOverlayForm;
         var settingsWindowVisible = TryGetVisibleSettingsForm(out var settingsForm);
         var intersectsSettingsWindow = hasForm
@@ -1382,8 +1381,20 @@ internal sealed class OverlayManager : IDisposable
         form.Deactivate += (_, _) =>
         {
             _settingsOverlayActive = false;
+            AutoHideSettingsOverlay(form);
             ApplyEmergencyOverlayZOrder();
         };
+    }
+
+    private static void AutoHideSettingsOverlay(Form form)
+    {
+        if (OverlayZOrderPolicy.ShouldAutoHideSettingsWindow(
+            form.Visible,
+            settingsWindowActive: false,
+            form.Enabled))
+        {
+            form.Hide();
+        }
     }
 
     private void ApplyManagedOverlayTopMost(OverlayDefinition definition)
@@ -1413,7 +1424,7 @@ internal sealed class OverlayManager : IDisposable
 
     private void ApplyOverlayTopMost(OverlaySettings settings, Form form)
     {
-        var shouldBeTopMost = settings.AlwaysOnTop;
+        var shouldBeTopMost = OverlayZOrderPolicy.ShouldManagedOverlayBeTopMost(settings);
         if (form.TopMost != shouldBeTopMost)
         {
             form.TopMost = shouldBeTopMost;
@@ -1422,9 +1433,10 @@ internal sealed class OverlayManager : IDisposable
 
     private void ApplySettingsWindowTopMost(Form settingsForm)
     {
-        if (settingsForm.TopMost != _settingsOverlayActive)
+        var shouldBeTopMost = OverlayZOrderPolicy.ShouldSettingsWindowBeTopMost(_settingsOverlayActive);
+        if (settingsForm.TopMost != shouldBeTopMost)
         {
-            settingsForm.TopMost = _settingsOverlayActive;
+            settingsForm.TopMost = shouldBeTopMost;
         }
 
         if (_settingsOverlayActive)
@@ -1438,19 +1450,29 @@ internal sealed class OverlayManager : IDisposable
         if (form is PersistentOverlayForm persistent)
         {
             var intrinsicallyTransparent = persistent.IsIntrinsicallyInputTransparentOverlay;
+            var settingsWindowVisible = TryGetVisibleSettingsForm(out var settingsForm);
+            var isSettingsWindow = ReferenceEquals(form, settingsForm);
+            var settingsWindowActive = settingsWindowVisible && _settingsOverlayActive;
+            var intersectsSettingsWindow = settingsWindowVisible
+                && !isSettingsWindow
+                && form.Bounds.IntersectsWith(settingsForm.Bounds);
             persistent.SetInputTransparentOverride(
-                intrinsicallyTransparent || forceInputTransparent || ShouldProtectSettingsWindowInput(form));
+                OverlayZOrderPolicy.ShouldOverlayBeInputTransparent(
+                    intrinsicallyTransparent,
+                    forceInputTransparent,
+                    settingsWindowActive,
+                    isSettingsWindow,
+                    intersectsSettingsWindow));
         }
     }
 
     private bool ShouldProtectSettingsWindowInput(Form form)
     {
-        if (!TryGetVisibleSettingsForm(out var settingsForm) || ReferenceEquals(form, settingsForm))
-        {
-            return false;
-        }
-
-        return true;
+        var settingsWindowVisible = TryGetVisibleSettingsForm(out var settingsForm);
+        return OverlayZOrderPolicy.ShouldProtectSettingsWindowInput(
+            settingsWindowVisible && _settingsOverlayActive,
+            ReferenceEquals(form, settingsForm),
+            settingsWindowVisible && form.Bounds.IntersectsWith(settingsForm.Bounds));
     }
 
     private bool TryGetVisibleSettingsForm(out Form settingsForm)

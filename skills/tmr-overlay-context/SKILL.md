@@ -13,13 +13,15 @@ Use this repo-local skill when the task is about continuing or extending `tmrOve
 
 1. Read `AGENTS.md` first if it is not already in context.
 2. Read `references/current-state.md`.
-3. If the task is about fuel, strategy, stint logic, or telemetry interpretation, read `references/fuel-overlay-context.md`.
-4. If the task is about overlay features, layout, UI direction, or screenshot review, read `references/overlay-research.md`.
-5. Inspect git status before editing because this repo may accumulate ongoing local changes.
-6. Treat fixtures as contracts: assert visible data, assert absent data, and isolate waiting/unavailable/error states from local user history or cached telemetry unless the scenario explicitly tests those paths.
-7. When implementation behavior, calculations, defaults, source labels, fixture data, or validation semantics change, update the affected build test assertions and test fixtures in the same pass. Treat stale passing or failing assertions as stale references, not as a separate cleanup task.
-8. Before branch-complete handoff, use `skills/tmr-overlay-validation/SKILL.md` to make docs/screenshots current, inspect branch commits, sanitize the first commit or planned squash text, update `VERSION.md`, align build version metadata, and tag only the release point.
-9. If you change product direction, validation assumptions, capture format, or analysis assumptions, make sure the relevant reference/docs file is updated during the branch-complete sweep so future sessions inherit the new context. Raw capture format changes still need same-pass docs per `AGENTS.md`.
+3. If the task is about SDK field semantics, `SessionState`, `SessionNum`, `SessionFlags`, `CarIdx*` timing/position/progress arrays, live source selection, or telemetry-backed overlay behavior, read `references/iracing-sdk-telemetry-interpretation.md`.
+4. If the task is about fuel, strategy, stint logic, or telemetry interpretation, read `references/fuel-overlay-context.md`.
+5. If the task is about overlay features, layout, UI direction, or screenshot review, read `references/overlay-research.md`.
+6. Inspect git status before editing because this repo may accumulate ongoing local changes.
+7. Treat fixtures as contracts: assert visible data, assert absent data, and isolate waiting/unavailable/error states from local user history or cached telemetry unless the scenario explicitly tests those paths.
+8. Before designing or changing telemetry-backed overlay behavior, consult the compact corpora under `fixtures/telemetry-analysis/` as pre-feature evidence. Start by comparing current local raw-capture `telemetry-schema.json` outputs with the tracked SDK availability corpus via `python3 tools/analysis/check_sdk_schema_against_corpus.py` when captures are available. Prefer known captured SDK fields, session states, and observed source behavior over guessed availability. If the existing corpus does not cover the feature or edge case, add a compact redacted corpus expansion or an explicit missing-target note instead of inventing fallback semantics from theory alone. If the schema check reports SDK fields or declared shapes that are new to the tracked corpus, update `sdk-field-availability-corpus.json`/`.md` or record the gap so new iRacing features remain visible for product planning.
+9. When implementation behavior, calculations, defaults, source labels, fixture data, or validation semantics change, update the affected build test assertions and test fixtures in the same pass. Treat stale passing or failing assertions as stale references, not as a separate cleanup task.
+10. Before branch-complete handoff, use `skills/tmr-overlay-validation/SKILL.md` to make docs/screenshots current, inspect branch commits, sanitize the first commit or planned squash text, update `VERSION.md`, align build version metadata, and tag only the release point.
+11. If you change product direction, validation assumptions, capture format, or analysis assumptions, make sure the relevant reference/docs file is updated during the branch-complete sweep so future sessions inherit the new context. Raw capture format changes still need same-pass docs per `AGENTS.md`.
 
 ## Primary Files
 

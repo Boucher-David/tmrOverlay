@@ -550,7 +550,7 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
     }
 
     private func supportsSharedChromeSettings(_ overlayId: String) -> Bool {
-        ["standings", "relative", "fuel-calculator", "gap-to-leader"].contains(overlayId)
+        ["standings", "relative", "fuel-calculator", "gap-to-leader", "session-weather", "pit-service"].contains(overlayId)
     }
 
     private func suppressHeaderFooterTabs(_ overlayId: String) -> Bool {

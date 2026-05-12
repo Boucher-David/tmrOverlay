@@ -5,7 +5,8 @@ internal sealed record OverlayChromeState(
     string Status,
     OverlayChromeTone Tone,
     string? Source,
-    OverlayChromeFooterMode FooterMode)
+    OverlayChromeFooterMode FooterMode,
+    string? TimeRemaining = null)
 {
     public bool ShowFooter => FooterMode switch
     {
@@ -15,6 +16,8 @@ internal sealed record OverlayChromeState(
     };
 
     public bool ShowStatus => !string.IsNullOrWhiteSpace(Status);
+
+    public bool ShowTimeRemaining => !string.IsNullOrWhiteSpace(TimeRemaining);
 
     public static OverlayChromeState Normal(string title, string status, string? source, OverlayChromeFooterMode footerMode = OverlayChromeFooterMode.Always)
     {

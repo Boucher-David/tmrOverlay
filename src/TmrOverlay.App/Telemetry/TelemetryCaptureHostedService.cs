@@ -977,14 +977,17 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
 
             var lapCompleted = ReadInt32ArrayElement(sdk, "CarIdxLapCompleted", carIdx);
             var lapDistPct = ReadDoubleArrayElement(sdk, "CarIdxLapDistPct", carIdx);
-            if (lapCompleted is null || lapDistPct is null || lapCompleted < 0 || lapDistPct < 0d)
+            if (lapDistPct is null
+                || double.IsNaN(lapDistPct.Value)
+                || double.IsInfinity(lapDistPct.Value)
+                || lapDistPct < 0d)
             {
                 continue;
             }
 
             cars.Add(new HistoricalCarProximity(
                 CarIdx: carIdx,
-                LapCompleted: lapCompleted.Value,
+                LapCompleted: lapCompleted is >= 0 ? lapCompleted.Value : -1,
                 LapDistPct: Math.Clamp(lapDistPct.Value, 0d, 1d),
                 F2TimeSeconds: ReadNullableDoubleArrayElement(sdk, "CarIdxF2Time", carIdx),
                 EstimatedTimeSeconds: ReadNullableDoubleArrayElement(sdk, "CarIdxEstTime", carIdx),

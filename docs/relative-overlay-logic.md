@@ -70,6 +70,8 @@ Normal rows are quiet. Reference rows are visually emphasized; pit rows remain v
 
 Relative seconds come from live proximity timing when available. If proximity has only lap-distance placement, the model-v2 relative row can infer a display seconds gap from live lap-distance delta multiplied by the current local/focus lap-time signal. Radar does not consume that inferred seconds value; it remains stricter and uses only live proximity seconds or physical distance for proximity placement.
 
+Race `SessionState == 3` can use model-v2 timing fallback from positive `CarIdxEstTime` plus valid `CarIdxLapDistPct` so Relative can update during the pre-green roll to the line. This fallback is not created from grid rows alone. It also remains useful when the local player tows, because iRacing itself continues showing estimated relative gaps from the towed position.
+
 ## Source And Status Text
 
 Status shows the reference position and visible car count, such as `6 - 10 cars`. If more relative rows are available than the configured window shows, it uses `shown/available`, such as `6 - 10/14 cars`.

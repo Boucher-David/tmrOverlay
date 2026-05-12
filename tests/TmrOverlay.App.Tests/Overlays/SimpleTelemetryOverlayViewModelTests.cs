@@ -36,6 +36,31 @@ public sealed class SimpleTelemetryOverlayViewModelTests
     }
 
     [Fact]
+    public void Flags_FromTelemetry_LabelsRacePreGreenCountdown()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = Snapshot(now, LiveRaceModels.Empty with
+        {
+            Session = LiveSessionModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                SessionType = "Race",
+                SessionState = 2,
+                SessionFlags = 0,
+                SessionTimeRemainSeconds = 92d
+            }
+        });
+
+        var viewModel = FlagsOverlayViewModel.From(snapshot, now, "Metric");
+
+        Assert.Equal("none", viewModel.Status);
+        Assert.Contains(viewModel.Rows, row => row.Label == "State" && row.Value == "grid countdown (2)");
+        Assert.Contains(viewModel.Rows, row => row.Label == "Countdown" && row.Value == "1:32");
+        Assert.DoesNotContain(viewModel.Rows, row => row.Label == "Time left");
+    }
+
+    [Fact]
     public void Flags_ForDisplay_IgnoresBackgroundOnlyFlags()
     {
         var now = DateTimeOffset.UtcNow;
@@ -219,6 +244,33 @@ public sealed class SimpleTelemetryOverlayViewModelTests
         Assert.Contains(viewModel.Rows, row => row.Label == "Temps" && row.Value.Contains("70 F", StringComparison.Ordinal));
         Assert.Contains(viewModel.Rows, row => row.Label == "Surface" && row.Value.Contains("rubber moderate usage", StringComparison.Ordinal));
         Assert.Contains(viewModel.Rows, row => row.Label == "Wind" && row.Value.Contains("S", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void SessionWeather_FromTelemetry_FormatsRacePreGreenClockAsCountdown()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = Snapshot(now, LiveRaceModels.Empty with
+        {
+            Session = LiveSessionModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                SessionType = "Race",
+                SessionState = 3,
+                SessionTimeSeconds = 120d,
+                SessionTimeRemainSeconds = 88d
+            },
+            Weather = LiveWeatherModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable
+            }
+        });
+
+        var viewModel = SessionWeatherOverlayViewModel.From(snapshot, now, "Metric");
+
+        Assert.Contains(viewModel.Rows, row => row.Label == "Clock" && row.Value.Contains("countdown", StringComparison.Ordinal));
     }
 
     [Fact]

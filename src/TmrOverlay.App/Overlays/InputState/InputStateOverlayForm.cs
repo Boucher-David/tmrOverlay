@@ -755,14 +755,21 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
             var p3 = index + 2 < points.Count ? points[index + 2] : p2;
             var control1 = new PointF(
                 p1.X + (p2.X - p0.X) / 6f,
-                p1.Y + (p2.Y - p0.Y) / 6f);
+                ClampSmoothTraceControlY(p1.Y + (p2.Y - p0.Y) / 6f, p1.Y, p2.Y));
             var control2 = new PointF(
                 p2.X - (p3.X - p1.X) / 6f,
-                p2.Y - (p3.Y - p1.Y) / 6f);
+                ClampSmoothTraceControlY(p2.Y - (p3.Y - p1.Y) / 6f, p1.Y, p2.Y));
             path.AddBezier(p1, control1, control2, p2);
         }
 
         return path;
+    }
+
+    private static float ClampSmoothTraceControlY(float value, float segmentStartY, float segmentEndY)
+    {
+        var min = Math.Min(segmentStartY, segmentEndY);
+        var max = Math.Max(segmentStartY, segmentEndY);
+        return Math.Clamp(value, min, max);
     }
 
     private void DrawLegend(Graphics graphics, Rectangle graph, Font font)

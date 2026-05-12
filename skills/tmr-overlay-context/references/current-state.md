@@ -40,7 +40,7 @@ Last updated: 2026-05-10
 
 - `src/TmrOverlay.App/Overlays/`
   - overlay modules are separated by type
-  - `Abstractions/` contains Windows overlay form helpers such as `PersistentOverlayForm`, which centralizes frame setup, drag handling, and per-overlay settings persistence; shared table/chrome helpers keep dense readout overlays aligned on header/status/source labels, table borders, cell labels, row sizing, and change-detection setters, with `OverlayChromeState` carrying the common title/status/tone/source/footer contract for normal in-car overlays
+  - `Abstractions/` contains Windows overlay form helpers such as `PersistentOverlayForm`, which centralizes frame setup, drag handling, and per-overlay settings persistence; shared table/chrome helpers keep dense readout overlays aligned on header/status/time-remaining/source labels, table borders, cell labels, row sizing, and change-detection setters, with `OverlayChromeState` carrying the common title/status/tone/source/footer/time-remaining contract for normal in-car overlays
   - `Styling/OverlayTheme.cs` contains human-editable shared Windows overlay colors, font helpers, and common layout tokens; data-visualization-specific colors can remain near their drawing code
   - shared durable-settings defaults and Design V2 role colors live in `shared/tmr-overlay-contract.json` with `shared/tmr-overlay-contract.schema.json`; Windows, browser rendering, and the tracked mac harness read this contract before user-local overrides
   - optional `overlay-theme.json` under the app settings root can override Windows shared font/color tokens without recompiling

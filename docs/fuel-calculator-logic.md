@@ -178,7 +178,7 @@ Selection order:
 3. If `SessionLapsTotal` is valid:
    - If team/player progress exists, return `SessionLapsTotal - progress`.
    - Otherwise return `SessionLapsTotal`.
-4. If timed race remaining seconds and race pace exist:
+4. If timed race remaining seconds and race pace exist, and the active race is not in a pre-green `SessionState`:
    - If leader progress exists:
      - `finishLap = ceil(leaderProgress + timeRemaining / racePaceSeconds)`
      - `lapsRemaining = finishLap - teamOrLeaderProgress`
@@ -190,6 +190,10 @@ Selection order:
 7. Otherwise unavailable.
 
 Progress prefers team car progress, then player progress, then `RaceLaps`.
+
+Positive `SessionTimeRemain` during race pre-green can be the grid countdown rather than race time remaining, so fuel strategy skips that live-clock branch for race `SessionState` values `1`, `2`, and `3`. In that phase it falls back to scheduled race laps/time until green/running telemetry exposes normal remaining-race time.
+
+Fuel level and burn telemetry still remain live during gridding, pacing, and early green. When a car reaches the grid and the engine is on, it can already consume fuel before green, including during `SessionState` `2`, `3`, and early `4`. The projection should keep using current fuel level/burn evidence while avoiding the pre-green countdown as the race-duration input.
 
 Fuel reuses the shared projector with its selected race pace. That allows the live model to provide the normal estimate while still allowing Fuel to substitute a better history-derived lap time when live leader/team pace is unavailable.
 

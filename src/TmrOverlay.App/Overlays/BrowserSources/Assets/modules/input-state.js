@@ -368,14 +368,20 @@ function drawSmoothTracePath(ctx, points) {
     const p3 = index + 2 < points.length ? points[index + 2] : p2;
     const control1 = {
       x: p1.x + (p2.x - p0.x) / 6,
-      y: p1.y + (p2.y - p0.y) / 6
+      y: clampSmoothTraceControlY(p1.y + (p2.y - p0.y) / 6, p1.y, p2.y)
     };
     const control2 = {
       x: p2.x - (p3.x - p1.x) / 6,
-      y: p2.y - (p3.y - p1.y) / 6
+      y: clampSmoothTraceControlY(p2.y - (p3.y - p1.y) / 6, p1.y, p2.y)
     };
     ctx.bezierCurveTo(control1.x, control1.y, control2.x, control2.y, p2.x, p2.y);
   }
+}
+
+function clampSmoothTraceControlY(value, segmentStartY, segmentEndY) {
+  const min = Math.min(segmentStartY, segmentEndY);
+  const max = Math.max(segmentStartY, segmentEndY);
+  return Math.max(min, Math.min(max, value));
 }
 
 function drawAbsSegments(ctx, width, height) {

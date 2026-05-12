@@ -429,7 +429,9 @@ internal sealed record LiveLeaderGapSnapshot(
             position: FocusPosition(sample),
             leaderCarIdx: sample.LeaderCarIdx,
             referenceCarIdx: focusCarIdx,
-            referenceF2TimeSeconds: allowLiveGapSignals ? FocusF2TimeSecondsForGap(sample) : null,
+            referenceF2TimeSeconds: allowLiveGapSignals
+                ? UsableF2TimeForGap(FocusF2TimeSecondsForGap(sample), FocusPosition(sample))
+                : null,
             leaderF2TimeSeconds: allowLiveGapSignals ? sample.LeaderF2TimeSeconds : null,
             referenceProgress: allowLiveGapSignals ? focusProgress : null,
             leaderProgress: allowLiveGapSignals ? Progress(sample.LeaderLapCompleted, sample.LeaderLapDistPct) : null);
@@ -437,7 +439,9 @@ internal sealed record LiveLeaderGapSnapshot(
             position: FocusClassPosition(sample),
             leaderCarIdx: focusClassLeaderCarIdx,
             referenceCarIdx: focusCarIdx,
-            referenceF2TimeSeconds: allowLiveGapSignals ? FocusF2TimeSecondsForGap(sample) : null,
+            referenceF2TimeSeconds: allowLiveGapSignals
+                ? UsableF2TimeForGap(FocusF2TimeSecondsForGap(sample), FocusPosition(sample))
+                : null,
             leaderF2TimeSeconds: allowLiveGapSignals ? FocusClassLeaderF2TimeSeconds(sample) : null,
             referenceProgress: allowLiveGapSignals ? focusProgress : null,
             leaderProgress: allowLiveGapSignals ? focusClassLeaderProgress : null);
@@ -510,7 +514,7 @@ internal sealed record LiveLeaderGapSnapshot(
             }
 
             var gapSeconds = allowLiveGapSignals
-                ? CalculateClassGapSeconds(car.F2TimeSeconds, classLeaderF2)
+                ? CalculateClassGapSeconds(UsableF2TimeForGap(car.F2TimeSeconds, car.Position), classLeaderF2)
                 : null;
             var gapLaps = gapSeconds is null && allowLiveGapSignals && classLeaderProgress is not null
                 ? CalculateClassGapLaps(car.LapCompleted, car.LapDistPct, classLeaderProgress.Value)
@@ -562,6 +566,24 @@ internal sealed record LiveLeaderGapSnapshot(
             && carF2 >= leaderF2
             ? carF2 - leaderF2
             : null;
+    }
+
+    private static double? UsableF2TimeForGap(double? f2TimeSeconds, int? overallPosition)
+    {
+        return IsRaceF2Placeholder(f2TimeSeconds, overallPosition) ? null : f2TimeSeconds;
+    }
+
+    private static bool IsRaceF2Placeholder(double? f2TimeSeconds, int? overallPosition)
+    {
+        if (overallPosition is not > 1
+            || f2TimeSeconds is not { } f2
+            || !IsFinite(f2)
+            || f2 < 0d)
+        {
+            return false;
+        }
+
+        return Math.Abs(f2 - ((overallPosition.Value - 1) / 1000d)) <= 0.00002d;
     }
 
     private static double? CalculateClassGapLaps(int lapCompleted, double lapDistPct, double classLeaderProgress)

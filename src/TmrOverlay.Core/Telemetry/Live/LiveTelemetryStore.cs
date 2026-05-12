@@ -7,14 +7,17 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
     private const double CloseRadarRangeSeconds = 2d;
     private const double MulticlassWarningRangeSeconds = 5d;
     private const double MinimumClosingRateSecondsPerSecond = 0.15d;
+    private const int OnTrackSurface = 3;
 
     private readonly object _sync = new();
     private readonly Dictionary<int, ProximityHistory> _proximityHistory = [];
+    private readonly HashSet<int> _griddedCarIdxs = [];
     private readonly TrackMapSectorTracker _trackMapSectorTracker = new();
     private readonly LiveRaceProjectionTracker _raceProjectionTracker = new();
     private HistoricalSessionContext _context = HistoricalSessionContext.Empty;
     private LiveTelemetrySnapshot _snapshot = LiveTelemetrySnapshot.Empty;
     private int? _lastProximityReferenceCarIdx;
+    private int? _griddedSessionNum;
     private long _sequence;
 
     public LiveTelemetrySnapshot Snapshot()
@@ -46,6 +49,7 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
             {
                 _trackMapSectorTracker.Reset();
                 _raceProjectionTracker.Reset();
+                ResetGriddingTracker();
             }
 
             _snapshot = _snapshot with
@@ -68,6 +72,7 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
             _proximityHistory.Clear();
             _trackMapSectorTracker.Reset();
             _raceProjectionTracker.Reset();
+            ResetGriddingTracker();
             _lastProximityReferenceCarIdx = null;
             _snapshot = LiveTelemetrySnapshot.Empty with
             {
@@ -82,6 +87,13 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
         var context = SessionInfoSummaryParser.Parse(sessionInfoYaml);
         lock (_sync)
         {
+            var previousGriddingSessionNum = ActiveRaceSessionNum(_context);
+            var nextGriddingSessionNum = ActiveRaceSessionNum(context);
+            if (previousGriddingSessionNum != nextGriddingSessionNum)
+            {
+                ResetGriddingTracker();
+            }
+
             _context = context;
             _trackMapSectorTracker.Reset();
             _raceProjectionTracker.Reset();
@@ -112,7 +124,8 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
 
             var leaderGap = LiveLeaderGapSnapshot.From(sample);
             var trackMap = _trackMapSectorTracker.Update(_context, sample);
-            var models = LiveRaceModelBuilder.From(_context, sample, fuel, proximity, leaderGap, trackMap);
+            UpdateGriddingTracker(sample);
+            var models = LiveRaceModelBuilder.From(_context, sample, fuel, proximity, leaderGap, trackMap, _griddedCarIdxs);
             var raceProjection = _raceProjectionTracker.Update(_context, sample, models);
             models = models with
             {
@@ -137,6 +150,85 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
                 Models = models
             };
         }
+    }
+
+    private void ResetGriddingTracker()
+    {
+        _griddedCarIdxs.Clear();
+        _griddedSessionNum = null;
+    }
+
+    private void UpdateGriddingTracker(HistoricalTelemetrySample sample)
+    {
+        var raceSessionNum = ActiveRaceSessionNum(_context);
+        if (raceSessionNum is null)
+        {
+            ResetGriddingTracker();
+            return;
+        }
+
+        if (_griddedSessionNum != raceSessionNum)
+        {
+            _griddedCarIdxs.Clear();
+            _griddedSessionNum = raceSessionNum;
+        }
+
+        if (sample.SessionState is null or >= 4)
+        {
+            _griddedCarIdxs.Clear();
+            return;
+        }
+
+        _griddedCarIdxs.Clear();
+        AddGriddedCar(sample.PlayerCarIdx, sample.PlayerTrackSurface, sample.TeamOnPitRoad ?? sample.OnPitRoad);
+        AddGriddedCar(sample.FocusCarIdx ?? sample.RawCamCarIdx, sample.FocusTrackSurface, sample.FocusOnPitRoad);
+        AddGriddedCars(sample.FocusClassCars);
+        AddGriddedCars(sample.ClassCars);
+        AddGriddedCars(sample.NearbyCars);
+        AddGriddedCars(sample.AllCars);
+    }
+
+    private void AddGriddedCars(IReadOnlyList<HistoricalCarProximity>? cars)
+    {
+        if (cars is null)
+        {
+            return;
+        }
+
+        foreach (var car in cars)
+        {
+            AddGriddedCar(car.CarIdx, car.TrackSurface, car.OnPitRoad);
+        }
+    }
+
+    private void AddGriddedCar(int? carIdx, int? trackSurface, bool? onPitRoad)
+    {
+        if (carIdx is >= 0 && trackSurface == OnTrackSurface && onPitRoad != true)
+        {
+            _griddedCarIdxs.Add(carIdx.Value);
+        }
+    }
+
+    private static int? ActiveRaceSessionNum(HistoricalSessionContext context)
+    {
+        if (!IsRaceSession(context))
+        {
+            return null;
+        }
+
+        return context.Session.SessionNum ?? context.Session.CurrentSessionNum;
+    }
+
+    private static bool IsRaceSession(HistoricalSessionContext context)
+    {
+        return ContainsRace(context.Session.SessionType)
+            || ContainsRace(context.Session.SessionName)
+            || ContainsRace(context.Session.EventType);
+    }
+
+    private static bool ContainsRace(string? value)
+    {
+        return value?.IndexOf("race", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private void ResetProximityHistoryIfReferenceChanged(HistoricalTelemetrySample sample)

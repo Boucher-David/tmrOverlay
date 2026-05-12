@@ -25,6 +25,7 @@ internal sealed class RelativeForm : PersistentOverlayForm
     private readonly string _fontFamily;
     private readonly Label _titleLabel;
     private readonly Label _statusLabel;
+    private readonly Label _timeRemainingLabel;
     private readonly OverlayTableLayoutPanel _table;
     private readonly Label _sourceLabel;
     private readonly Label[,] _rowLabels = new Label[MaximumRows, MaximumColumns];
@@ -91,6 +92,7 @@ internal sealed class RelativeForm : PersistentOverlayForm
 
         _titleLabel = OverlayChrome.CreateTitleLabel(_fontFamily, "Relative", width: 150);
         _statusLabel = OverlayChrome.CreateStatusLabel(_fontFamily, titleWidth: 150, clientWidth: ClientSize.Width, minimumWidth: 120);
+        _timeRemainingLabel = OverlayChrome.CreateTimeRemainingLabel(_fontFamily, titleWidth: 150, clientWidth: ClientSize.Width);
 
         _table = new OverlayTableLayoutPanel
         {
@@ -119,10 +121,11 @@ internal sealed class RelativeForm : PersistentOverlayForm
 
         Controls.Add(_titleLabel);
         Controls.Add(_statusLabel);
+        Controls.Add(_timeRemainingLabel);
         Controls.Add(_table);
         Controls.Add(_sourceLabel);
 
-        RegisterDragSurfaces(_titleLabel, _statusLabel, _table, _sourceLabel);
+        RegisterDragSurfaces(_titleLabel, _statusLabel, _timeRemainingLabel, _table, _sourceLabel);
         RegisterDragSurfaces(RowLabels());
 
         _refreshTimer = new System.Windows.Forms.Timer
@@ -146,13 +149,15 @@ internal sealed class RelativeForm : PersistentOverlayForm
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
-        if (_statusLabel is null || _table is null || _sourceLabel is null)
+        if (_statusLabel is null || _timeRemainingLabel is null || _table is null || _sourceLabel is null)
         {
             return;
         }
 
         _statusLabel.Location = OverlayChrome.StatusLocation(titleWidth: 150);
         _statusLabel.Size = OverlayChrome.StatusSize(ClientSize.Width, titleWidth: 150, minimumWidth: 120);
+        _timeRemainingLabel.Location = OverlayChrome.HeaderTimeRemainingLocation(ClientSize.Width, titleWidth: 150);
+        _timeRemainingLabel.Size = new Size(OverlayChrome.HeaderTimeRemainingWidth(ClientSize.Width, titleWidth: 150), OverlayTheme.Layout.OverlayStatusHeight);
         _table.Location = OverlayChrome.TableLocation();
         _table.Size = OverlayChrome.TableSize(ClientSize.Width, ClientSize.Height, minimumWidth: TableMinimumWidth(), minimumHeight: NormalMinimumTableHeight);
         _sourceLabel.Location = OverlayChrome.SourceLocation(ClientSize.Height);
@@ -168,6 +173,7 @@ internal sealed class RelativeForm : PersistentOverlayForm
             _table.Dispose();
             _titleLabel.Dispose();
             _statusLabel.Dispose();
+            _timeRemainingLabel.Dispose();
             _sourceLabel.Dispose();
         }
 
@@ -261,7 +267,14 @@ internal sealed class RelativeForm : PersistentOverlayForm
             try
             {
                 _overlayError = null;
-                uiChanged |= OverlayChrome.ApplyChromeState(this, _titleLabel, _statusLabel, _sourceLabel, ChromeStateFor(viewModel, snapshot, _settings), titleWidth: 150);
+                uiChanged |= OverlayChrome.ApplyChromeState(
+                    this,
+                    _titleLabel,
+                    _statusLabel,
+                    _sourceLabel,
+                    ChromeStateFor(viewModel, snapshot, _settings),
+                    titleWidth: 150,
+                    timeRemainingLabel: _timeRemainingLabel);
                 uiChanged |= ApplyRows(viewModel);
                 applySucceeded = true;
             }
@@ -293,7 +306,8 @@ internal sealed class RelativeForm : PersistentOverlayForm
                 _statusLabel,
                 _sourceLabel,
                 OverlayChromeState.Error("Relative", "relative error", _overlayError),
-                titleWidth: 150);
+                titleWidth: 150,
+                timeRemainingLabel: _timeRemainingLabel);
         }
         finally
         {
@@ -541,6 +555,9 @@ internal sealed class RelativeForm : PersistentOverlayForm
             ? OverlayChromeTone.Waiting
             : OverlayChromeTone.Info;
         var showStatus = OverlayChromeSettings.ShowHeaderStatus(settings, snapshot);
+        var timeRemaining = OverlayChromeSettings.ShowHeaderTimeRemaining(settings, snapshot)
+            ? OverlayHeaderTimeFormatter.FormatTimeRemaining(snapshot)
+            : string.Empty;
         var footerMode = OverlayChromeSettings.ShowFooterSource(settings, snapshot)
             ? OverlayChromeFooterMode.Always
             : OverlayChromeFooterMode.Never;
@@ -549,7 +566,8 @@ internal sealed class RelativeForm : PersistentOverlayForm
             showStatus ? viewModel.Status : string.Empty,
             tone,
             viewModel.Source,
-            footerMode);
+            footerMode,
+            TimeRemaining: timeRemaining);
     }
 
     private Label[] RowLabels()
@@ -586,7 +604,8 @@ internal sealed class RelativeForm : PersistentOverlayForm
             OverlayContentColumnSettings.ColumnsFor(_settings, OverlayContentColumnSettings.Relative)
                 .Select(column => $"{column.Id}:{column.DataKey}:{column.Enabled}:{column.Order}:{column.Width}:{column.Alignment}")
                 .Prepend(CarsBehind.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                .Prepend(CarsAhead.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+                .Prepend(CarsAhead.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                .Prepend(OverlayChromeSettings.SettingsSignature(_settings)));
     }
 
     private static string ValueForColumn(RelativeOverlayRowViewModel row, OverlayContentColumnState column)

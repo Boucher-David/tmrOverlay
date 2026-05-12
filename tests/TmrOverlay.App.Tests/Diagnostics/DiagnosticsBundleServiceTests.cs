@@ -6,12 +6,14 @@ using TmrOverlay.App.Localhost;
 using Microsoft.Extensions.Logging.Abstractions;
 using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Settings;
+using TmrOverlay.App.Overlays.StreamChat;
 using TmrOverlay.App.Performance;
 using TmrOverlay.App.Storage;
 using TmrOverlay.App.Telemetry;
 using TmrOverlay.App.TrackMaps;
 using TmrOverlay.App.Updates;
 using TmrOverlay.Core.History;
+using TmrOverlay.Core.Settings;
 using TmrOverlay.Core.Telemetry.Live;
 using Xunit;
 
@@ -147,6 +149,41 @@ public sealed class DiagnosticsBundleServiceTests
             performance.RecordOperation("test.operation", TimeSpan.FromMilliseconds(3));
             var performanceRecorder = new AppPerformanceSnapshotRecorder(storage);
             performanceRecorder.Record(performance.Snapshot());
+            var liveOverlayWindowStore = new LiveOverlayWindowCaptureStore(storage);
+            var streamChatOverlay = new OverlaySettings
+            {
+                Id = StreamChatOverlayDefinition.Definition.Id,
+                Enabled = true,
+                AlwaysOnTop = true,
+                X = 1440,
+                Y = 80,
+                Width = StreamChatOverlayDefinition.Definition.DefaultWidth,
+                Height = StreamChatOverlayDefinition.Definition.DefaultHeight
+            };
+            liveOverlayWindowStore.RecordOverlayWindow(
+                StreamChatOverlayDefinition.Definition,
+                streamChatOverlay,
+                form: null,
+                enabled: true,
+                sessionAllowed: true,
+                settingsPreview: false,
+                desiredVisible: true,
+                actualVisible: true,
+                topMost: true,
+                liveTelemetryAvailable: true,
+                contextRequirement: StreamChatOverlayDefinition.Definition.ContextRequirement.ToString(),
+                contextAvailable: true,
+                contextReason: "not_required",
+                settingsOverlayActive: false,
+                settingsWindowVisible: false,
+                settingsWindowIntersects: false,
+                settingsWindowInputProtected: false,
+                inputTransparent: true,
+                noActivate: true,
+                implementation: "native-v2",
+                nativeFormType: "DesignV2LiveOverlayForm",
+                nativeRenderer: "DesignV2LiveOverlayForm",
+                nativeBodyKind: "stream-chat");
             var trackMapStore = new TrackMapStore(storage);
             var settingsStore = new AppSettingsStore(storage);
             var releaseUpdates = new ReleaseUpdateService(
@@ -245,7 +282,7 @@ public sealed class DiagnosticsBundleServiceTests
                 sessionPreview,
                 performance,
                 performanceRecorder,
-                new LiveOverlayWindowCaptureStore(storage),
+                liveOverlayWindowStore,
                 new ForegroundWindowTracker(),
                 releaseUpdates,
                 NullLogger<DiagnosticsBundleService>.Instance);
@@ -318,7 +355,14 @@ public sealed class DiagnosticsBundleServiceTests
             {
                 var liveOverlaysJson = JsonNode.Parse(liveOverlaysReader.ReadToEnd());
                 Assert.Equal("live-window-screen-crops", (string?)liveOverlaysJson?["captureKind"]);
-                Assert.Empty(Assert.IsType<JsonArray>(liveOverlaysJson?["overlays"]));
+                var overlay = Assert.Single(Assert.IsType<JsonArray>(liveOverlaysJson?["overlays"]));
+                Assert.Equal("stream-chat", (string?)overlay?["overlayId"]);
+                Assert.True(((bool?)overlay?["topMost"]) == true);
+                Assert.True(((bool?)overlay?["alwaysOnTopSetting"]) == true);
+                Assert.True(((bool?)overlay?["inputTransparent"]) == true);
+                Assert.True(((bool?)overlay?["noActivate"]) == true);
+                Assert.False(((bool?)overlay?["inputInterceptRisk"]) ?? true);
+                Assert.Equal("stream-chat", (string?)overlay?["nativeBodyKind"]);
             }
 
             var windowZOrderEntry = archive.GetEntry("metadata/window-z-order.json");
@@ -379,7 +423,7 @@ public sealed class DiagnosticsBundleServiceTests
             using (var sharedContractReader = new StreamReader(sharedContractEntry.Open()))
             {
                 var sharedContractJson = JsonNode.Parse(sharedContractReader.ReadToEnd());
-                Assert.Equal(9, ((int?)sharedContractJson?["settingsVersion"]) ?? -1);
+                Assert.Equal(10, ((int?)sharedContractJson?["settingsVersion"]) ?? -1);
                 Assert.Equal("twitch", (string?)sharedContractJson?["streamChatDefaultProvider"]);
                 Assert.Equal("techmatesracing", (string?)sharedContractJson?["streamChatDefaultTwitchChannel"]);
                 Assert.Equal("#00E8FF", (string?)sharedContractJson?["designV2Colors"]?["cyan"]);
