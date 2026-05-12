@@ -320,7 +320,7 @@ internal static class LiveRaceModelBuilder
         var estimatedTimeSeconds = FocusEstimatedTimeSeconds(sample);
         var lastLapTimeSeconds = FocusLastLapTimeSeconds(sample);
         var bestLapTimeSeconds = FocusBestLapTimeSeconds(sample);
-        var playerLapCompleted = playerCarIdx is null
+        int? playerLapCompleted = playerCarIdx is null
             ? null
             : sample.TeamLapCompleted ?? sample.LapCompleted;
         var playerLapDistPct = playerCarIdx is null
