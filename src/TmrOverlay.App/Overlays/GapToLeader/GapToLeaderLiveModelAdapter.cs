@@ -8,6 +8,7 @@ internal static class GapToLeaderLiveModelAdapter
     {
         var timing = snapshot.Models.Timing;
         var progress = snapshot.Models.RaceProgress;
+        var reference = snapshot.Models.Reference;
         if (!timing.HasData && !progress.HasData)
         {
             return snapshot.LeaderGap;
@@ -15,15 +16,15 @@ internal static class GapToLeaderLiveModelAdapter
 
         var focusRow = timing.FocusRow;
         var overallGap = BuildGap(
-            focusRow?.OverallPosition ?? progress.ReferenceOverallPosition,
+            focusRow?.OverallPosition ?? reference.OverallPosition ?? progress.ReferenceOverallPosition,
             timing.OverallLeaderCarIdx,
-            timing.FocusCarIdx,
+            reference.FocusCarIdx ?? timing.FocusCarIdx,
             referenceRow: null,
             progress.ReferenceOverallLeaderGapLaps);
         var classGap = BuildGap(
-            focusRow?.ClassPosition ?? progress.ReferenceClassPosition,
+            focusRow?.ClassPosition ?? reference.ClassPosition ?? progress.ReferenceClassPosition,
             timing.ClassLeaderCarIdx,
-            timing.FocusCarIdx,
+            reference.FocusCarIdx ?? timing.FocusCarIdx,
             focusRow,
             progress.ReferenceClassLeaderGapLaps);
         var classCars = BuildClassCars(timing, progress).ToArray();
@@ -32,8 +33,8 @@ internal static class GapToLeaderLiveModelAdapter
             HasData: classGap.HasData
                 || overallGap.HasData
                 || classCars.Any(car => !car.IsClassLeader && HasChartGap(car)),
-            ReferenceOverallPosition: focusRow?.OverallPosition ?? progress.ReferenceOverallPosition,
-            ReferenceClassPosition: focusRow?.ClassPosition ?? progress.ReferenceClassPosition,
+            ReferenceOverallPosition: focusRow?.OverallPosition ?? reference.OverallPosition ?? progress.ReferenceOverallPosition,
+            ReferenceClassPosition: focusRow?.ClassPosition ?? reference.ClassPosition ?? progress.ReferenceClassPosition,
             OverallLeaderCarIdx: timing.OverallLeaderCarIdx,
             ClassLeaderCarIdx: timing.ClassLeaderCarIdx,
             OverallLeaderGap: overallGap,
@@ -218,11 +219,17 @@ internal static class GapToLeaderLiveModelAdapter
 
     private static double ChartLapReferenceSeconds(double? lapReferenceSeconds)
     {
-        return IsValidLapReference(lapReferenceSeconds) ? lapReferenceSeconds.Value : 60d;
+        return lapReferenceSeconds is { } seconds && IsValidLapReference(seconds) ? seconds : 60d;
     }
 
     private static bool ReferenceUsesPlayerCar(LiveTelemetrySnapshot snapshot)
     {
+        var reference = snapshot.Models.Reference;
+        if (reference.HasData)
+        {
+            return reference.FocusIsPlayer;
+        }
+
         var directory = snapshot.Models.DriverDirectory;
         return directory.FocusCarIdx is not null
             && directory.PlayerCarIdx is not null
@@ -231,6 +238,20 @@ internal static class GapToLeaderLiveModelAdapter
 
     private static bool ReferenceUsesTeamClass(LiveTelemetrySnapshot snapshot)
     {
+        var reference = snapshot.Models.Reference;
+        if (reference.HasData && reference.FocusCarIdx is null)
+        {
+            return false;
+        }
+
+        if (reference.HasData
+            && reference.FocusIsPlayer
+            && reference.ReferenceCarClass is not null
+            && reference.PlayerCarClass is not null)
+        {
+            return reference.ReferenceCarClass == reference.PlayerCarClass;
+        }
+
         var directory = snapshot.Models.DriverDirectory;
         if (directory.FocusCarIdx is null)
         {

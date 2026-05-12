@@ -103,6 +103,67 @@ public sealed class LiveOverlayWindowCaptureStoreTests
         }
     }
 
+    [Fact]
+    public void Snapshot_DoesNotReportSettingsActiveWhenSettingsWindowIsHidden()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "tmr-overlay-live-window-capture-test", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var storage = CreateStorage(root);
+            var store = new LiveOverlayWindowCaptureStore(storage);
+            var definition = StandingsOverlayDefinition.Definition;
+            var settings = new OverlaySettings
+            {
+                Id = definition.Id,
+                Enabled = true,
+                X = 44,
+                Y = 55,
+                Width = 580,
+                Height = 340,
+                Scale = 1.25d,
+                Opacity = 1d
+            };
+
+            store.RecordOverlayWindow(
+                definition,
+                settings,
+                form: null,
+                enabled: true,
+                sessionAllowed: true,
+                settingsPreview: false,
+                desiredVisible: true,
+                actualVisible: true,
+                topMost: false,
+                liveTelemetryAvailable: true,
+                contextRequirement: definition.ContextRequirement.ToString(),
+                contextAvailable: true,
+                contextReason: "not_required",
+                settingsOverlayActive: true,
+                settingsWindowVisible: false,
+                settingsWindowIntersects: false,
+                settingsWindowInputProtected: false,
+                inputTransparent: false,
+                noActivate: false,
+                implementation: "native-v2",
+                nativeFormType: "StandingsForm",
+                nativeRenderer: "winforms",
+                nativeBodyKind: "table");
+
+            var overlay = Assert.Single(store.Snapshot().Overlays);
+
+            Assert.False(overlay.SettingsOverlayActive);
+            Assert.False(overlay.SettingsWindowVisible);
+            Assert.False(overlay.InputInterceptRisk);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
     private static AppStorageOptions CreateStorage(string root)
     {
         return new AppStorageOptions

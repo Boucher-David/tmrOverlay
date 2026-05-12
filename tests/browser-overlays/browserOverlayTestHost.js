@@ -26,6 +26,7 @@ export async function renderBrowserOverlay(name, { live, settings = {}, model = 
     runScripts: 'dangerously',
     url: `http://localhost:8765/overlays/${name}`,
     beforeParse(window) {
+      installCanvasMock(window);
       window.fetch = async (input) => {
         const path = new URL(String(input), window.location.href).pathname;
         fetchCalls.push(path);
@@ -74,6 +75,43 @@ export async function waitFor(assertion, timeoutMilliseconds = 1000) {
   }
 
   throw new Error('Timed out waiting for browser overlay condition.');
+}
+
+function installCanvasMock(window) {
+  const methods = [
+    'beginPath',
+    'bezierCurveTo',
+    'clearRect',
+    'clip',
+    'fill',
+    'fillRect',
+    'fillText',
+    'lineTo',
+    'moveTo',
+    'rect',
+    'restore',
+    'save',
+    'setTransform',
+    'stroke',
+    'strokeRect'
+  ];
+  const context = {
+    canvas: null,
+    measureText: (text) => ({ width: String(text || '').length * 7 }),
+    getImageData: () => ({ data: new Uint8ClampedArray([0, 0, 0, 255]) })
+  };
+  for (const method of methods) {
+    context[method] = () => {};
+  }
+
+  window.HTMLCanvasElement.prototype.getContext = function getContext(type) {
+    if (type !== '2d') {
+      return null;
+    }
+
+    context.canvas = this;
+    return context;
+  };
 }
 
 function jsonResponse(payload) {

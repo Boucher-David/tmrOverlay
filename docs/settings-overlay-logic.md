@@ -46,7 +46,7 @@ The settings window:
 - Enforces its default size as both the minimum and maximum.
 - Recenters every time it is opened.
 - Does not preserve user-dragged placement between runs.
-- Uses normal desktop/taskbar behavior by default. When the Settings window is active, it is temporarily promoted above product overlays so Settings remains clickable; after focus returns to iRacing or another app, Settings auto-hides and product overlays return to their saved topmost behavior.
+- Uses normal desktop/taskbar behavior by default. When the Settings window is active, it is temporarily promoted above product overlays so Settings remains clickable; after focus returns to iRacing or another app, Settings stays visible but drops out of the topmost layer, and product overlays return to their saved topmost behavior.
 - Activates after being shown.
 
 This differs from driving overlays, which persist placement through `PersistentOverlayForm`.

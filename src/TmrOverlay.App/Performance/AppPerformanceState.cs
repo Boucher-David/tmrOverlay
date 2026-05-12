@@ -290,9 +290,10 @@ internal sealed class AppPerformanceState
             var normalizedOverlayId = NormalizeMetricSegment(overlayId);
             var prefix = $"overlay.{normalizedOverlayId}.window";
             var clampedOpacity = Math.Clamp(opacity, 0d, 1d);
+            var effectiveSettingsOverlayActive = settingsOverlayActive && settingsWindowVisible;
             var inputInterceptRisk = actualVisible
                 && !inputTransparent
-                && (settingsOverlayActive
+                && (effectiveSettingsOverlayActive
                     || settingsWindowInputProtected
                     || intersectsSettingsWindow
                     || (settingsWindowVisible && topMost && noActivate)
@@ -302,7 +303,7 @@ internal sealed class AppPerformanceState
             RecordOverlayUpdateValue($"{prefix}.always_on_top_setting", alwaysOnTopSetting ? 1d : 0d, timestampUtc);
             RecordOverlayUpdateValue($"{prefix}.input_transparent", inputTransparent ? 1d : 0d, timestampUtc);
             RecordOverlayUpdateValue($"{prefix}.no_activate", noActivate ? 1d : 0d, timestampUtc);
-            RecordOverlayUpdateValue($"{prefix}.settings_overlay_active", settingsOverlayActive ? 1d : 0d, timestampUtc);
+            RecordOverlayUpdateValue($"{prefix}.settings_overlay_active", effectiveSettingsOverlayActive ? 1d : 0d, timestampUtc);
             RecordOverlayUpdateValue($"{prefix}.settings_window_visible", settingsWindowVisible ? 1d : 0d, timestampUtc);
             RecordOverlayUpdateValue($"{prefix}.settings_window_intersects", intersectsSettingsWindow ? 1d : 0d, timestampUtc);
             RecordOverlayUpdateValue($"{prefix}.settings_window_input_protected", settingsWindowInputProtected ? 1d : 0d, timestampUtc);
@@ -321,7 +322,7 @@ internal sealed class AppPerformanceState
                 AlwaysOnTopSetting: alwaysOnTopSetting,
                 InputTransparent: inputTransparent,
                 NoActivate: noActivate,
-                SettingsOverlayActive: settingsOverlayActive,
+                SettingsOverlayActive: effectiveSettingsOverlayActive,
                 SettingsWindowVisible: settingsWindowVisible,
                 SettingsWindowIntersects: intersectsSettingsWindow,
                 SettingsWindowInputProtected: settingsWindowInputProtected,

@@ -68,6 +68,7 @@ public sealed class SessionPreviewStateTests
         state.SetMode(OverlaySessionKind.Race);
         var snapshot = state.TryBuildSnapshot(now);
         Assert.NotNull(snapshot);
+        snapshot = snapshot!;
 
         Assert.Equal("nurburgring combinedshortb", snapshot.Context.Track.TrackName);
         Assert.Equal("Gesamtstrecke 24h", snapshot.Context.Track.TrackDisplayName);

@@ -32,6 +32,24 @@ describe('standings browser rendering', () => {
     expect(currentOverlay.document.getElementById('status').textContent).toBe('scoring | 5/5 live');
     expect(currentOverlay.document.body.textContent).not.toContain('Proto Two');
   });
+
+  it('renders placeholder-F2 race standings without lap-distance gap fallback', async () => {
+    currentOverlay = await renderBrowserOverlay('standings', {
+      live: freshLiveSnapshot({}),
+      model: placeholderF2StandingsDisplayModel()
+    });
+
+    const rows = [...currentOverlay.document.querySelectorAll('tbody tr')];
+    const rowText = rows.map(rowCells);
+
+    expect(rowText).toEqual([
+      '1 #11 Class Leader Leader 0.0',
+      '2 #10 Reference Driver -- --',
+      '3 #12 Chase Driver -- --'
+    ]);
+    expect(currentOverlay.document.body.textContent).not.toMatch(/\d(?:\.\d+)?L\b/i);
+  });
+
 });
 
 function standingsDisplayModel() {
@@ -41,14 +59,7 @@ function standingsDisplayModel() {
     status: 'scoring | 5/5 live',
     source: 'source: scoring snapshot + live timing',
     bodyKind: 'table',
-    columns: [
-      { id: 'standings.class-position', label: 'CLS', dataKey: 'class-position', width: 35, alignment: 'right' },
-      { id: 'standings.car-number', label: 'CAR', dataKey: 'car-number', width: 50, alignment: 'right' },
-      { id: 'standings.driver', label: 'Driver', dataKey: 'driver', width: 250, alignment: 'left' },
-      { id: 'standings.gap', label: 'GAP', dataKey: 'gap', width: 60, alignment: 'right' },
-      { id: 'standings.interval', label: 'INT', dataKey: 'interval', width: 60, alignment: 'right' },
-      { id: 'standings.pit', label: 'PIT', dataKey: 'pit', width: 30, alignment: 'right' }
-    ],
+    columns: standingsColumns(),
     rows: [
       headerRow('LMP2', '2 cars | ~10 laps', '#33CEFF'),
       carRow(['1', '#8', 'Proto One', 'Leader', '-45.0', '']),
@@ -59,6 +70,34 @@ function standingsDisplayModel() {
     ],
     metrics: []
   };
+}
+
+function placeholderF2StandingsDisplayModel() {
+  return {
+    overlayId: 'standings',
+    title: 'Standings',
+    status: '2 - 3 rows',
+    source: 'source: live timing telemetry',
+    bodyKind: 'table',
+    columns: standingsColumns(),
+    rows: [
+      carRow(['1', '#11', 'Class Leader', 'Leader', '0.0', '']),
+      carRow(['2', '#10', 'Reference Driver', '--', '--', ''], { isReference: true }),
+      carRow(['3', '#12', 'Chase Driver', '--', '--', ''])
+    ],
+    metrics: []
+  };
+}
+
+function standingsColumns() {
+  return [
+    { id: 'standings.class-position', label: 'CLS', dataKey: 'class-position', width: 35, alignment: 'right' },
+    { id: 'standings.car-number', label: 'CAR', dataKey: 'car-number', width: 50, alignment: 'right' },
+    { id: 'standings.driver', label: 'Driver', dataKey: 'driver', width: 250, alignment: 'left' },
+    { id: 'standings.gap', label: 'GAP', dataKey: 'gap', width: 60, alignment: 'right' },
+    { id: 'standings.interval', label: 'INT', dataKey: 'interval', width: 60, alignment: 'right' },
+    { id: 'standings.pit', label: 'PIT', dataKey: 'pit', width: 30, alignment: 'right' }
+  ];
 }
 
 function rowCells(row) {

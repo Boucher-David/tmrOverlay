@@ -1021,7 +1021,7 @@ DriverInfo:
     }
 
     [Fact]
-    public void RecordFrame_DerivesRaceGreenGapAndIntervalFromEstimatedTimingWhenF2IsPlaceholder()
+    public void RecordFrame_DoesNotDeriveStandingsGapAndIntervalFromEstimatedTimingWhenF2IsPlaceholder()
     {
         var store = new LiveTelemetryStore();
         store.ApplySessionInfo("""
@@ -1080,19 +1080,18 @@ DriverInfo:
 
         Assert.Equal(0d, leader.GapSecondsToClassLeader);
         Assert.Null(leader.IntervalSecondsToPreviousClassRow);
-        Assert.Equal(3d, reference.GapSecondsToClassLeader!.Value, precision: 3);
-        Assert.Equal(3d, reference.IntervalSecondsToPreviousClassRow!.Value, precision: 3);
-        Assert.Equal("CarIdxEstTime+wrap", reference.GapEvidence.Source);
-        Assert.Equal(5d, chase.GapSecondsToClassLeader!.Value, precision: 3);
-        Assert.Equal(2d, chase.IntervalSecondsToPreviousClassRow!.Value, precision: 3);
+        Assert.Null(reference.GapSecondsToClassLeader);
+        Assert.Null(reference.IntervalSecondsToPreviousClassRow);
+        Assert.Null(chase.GapSecondsToClassLeader);
+        Assert.Null(chase.IntervalSecondsToPreviousClassRow);
 
         var standings = StandingsOverlayViewModel.From(store.Snapshot(), DateTimeOffset.UtcNow, maximumRows: 3);
-        Assert.Equal(new[] { "Leader", "+3.0", "+5.0" }, standings.Rows.Select(row => row.Gap));
-        Assert.Equal(new[] { "0.0", "+3.0", "+2.0" }, standings.Rows.Select(row => row.Interval));
+        Assert.Equal(new[] { "Leader", "--", "--" }, standings.Rows.Select(row => row.Gap));
+        Assert.Equal(new[] { "0.0", "--", "--" }, standings.Rows.Select(row => row.Interval));
     }
 
     [Fact]
-    public void RecordFrame_DerivesRaceGreenGapAndIntervalAcrossStartFinishWrap()
+    public void RecordFrame_DoesNotDeriveStandingsGapAndIntervalAcrossStartFinishWrapFromEstimatedTiming()
     {
         var store = new LiveTelemetryStore();
         store.ApplySessionInfo("""
@@ -1147,10 +1146,10 @@ DriverInfo:
         var reference = Assert.Single(store.Snapshot().Models.Timing.OverallRows, row => row.CarIdx == 10);
         var chase = Assert.Single(store.Snapshot().Models.Timing.OverallRows, row => row.CarIdx == 12);
 
-        Assert.Equal(5d, reference.GapSecondsToClassLeader!.Value, precision: 3);
-        Assert.Equal(5d, reference.IntervalSecondsToPreviousClassRow!.Value, precision: 3);
-        Assert.Equal(7d, chase.GapSecondsToClassLeader!.Value, precision: 3);
-        Assert.Equal(2d, chase.IntervalSecondsToPreviousClassRow!.Value, precision: 3);
+        Assert.Null(reference.GapSecondsToClassLeader);
+        Assert.Null(reference.IntervalSecondsToPreviousClassRow);
+        Assert.Null(chase.GapSecondsToClassLeader);
+        Assert.Null(chase.IntervalSecondsToPreviousClassRow);
     }
 
     [Fact]
@@ -1531,6 +1530,23 @@ QualifyResultsInfo:
     }
 
     [Fact]
+    public void RecordFrame_UsesClutchRawWhenNormalizedClutchIsFlatZero()
+    {
+        var store = new LiveTelemetryStore();
+
+        store.RecordFrame(CreateSample(
+            playerCarIdx: 10,
+            brake: 1d,
+            clutch: 0d,
+            clutchRaw: 0.82d));
+
+        var inputs = store.Snapshot().Models.Inputs;
+
+        Assert.Equal(1d, inputs.Brake);
+        Assert.Equal(0.82d, inputs.Clutch);
+    }
+
+    [Fact]
     public void LiveModelParityAnalyzer_HasNoMismatchesForCurrentOverlayInputs()
     {
         var store = new LiveTelemetryStore();
@@ -1864,6 +1880,9 @@ QualifyResultsInfo:
         bool playerCarInPitStall = false,
         bool? teamOnPitRoad = null,
         int? playerTrackSurface = null,
+        double? brake = null,
+        double? clutch = null,
+        double? clutchRaw = null,
         bool focusUnavailable = false)
     {
         var resolvedFocusCarIdx = focusUnavailable ? null : focusCarIdx ?? playerCarIdx;
@@ -1925,6 +1944,9 @@ QualifyResultsInfo:
             FocusClassCars: focusClassCars,
             NearbyCars: nearbyCars,
             AllCars: allCars,
+            Brake: brake,
+            Clutch: clutch,
+            ClutchRaw: clutchRaw,
             LapDeltaToSessionBestLapSeconds: lapDeltaToSessionBestLapSeconds,
             LapDeltaToSessionBestLapOk: lapDeltaToSessionBestLapOk);
     }

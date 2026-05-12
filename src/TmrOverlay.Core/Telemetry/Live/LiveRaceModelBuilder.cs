@@ -21,6 +21,7 @@ internal static class LiveRaceModelBuilder
     {
         var session = BuildSession(context, sample);
         var drivers = BuildDriverDirectory(context, sample);
+        var reference = BuildReference(sample);
         var timing = BuildTiming(context, sample, leaderGap, drivers, griddedCarIdxs);
         var scoring = BuildScoring(context, sample, drivers, timing);
         var spatial = BuildSpatial(context, sample, proximity);
@@ -30,12 +31,13 @@ internal static class LiveRaceModelBuilder
         return new LiveRaceModels(
             Session: session,
             DriverDirectory: drivers,
+            Reference: reference,
             Coverage: coverage,
             Scoring: scoring,
             Timing: timing,
             RaceProgress: raceProgress,
             RaceProjection: LiveRaceProjectionModel.Empty,
-            Relative: BuildRelative(context, sample, proximity, timing),
+            Relative: BuildRelative(context, sample, proximity, timing, reference),
             Spatial: spatial,
             TrackMap: trackMap ?? BuildTrackMap(context),
             Weather: BuildWeather(context, sample),
@@ -299,6 +301,104 @@ internal static class LiveRaceModelBuilder
             PlayerDriver: playerCarIdx is { } playerIdx ? drivers.FirstOrDefault(driver => driver.CarIdx == playerIdx) : null,
             FocusDriver: focusCarIdx is { } focusIdx ? drivers.FirstOrDefault(driver => driver.CarIdx == focusIdx) : null,
             Drivers: drivers);
+    }
+
+    private static LiveReferenceModel BuildReference(HistoricalTelemetrySample sample)
+    {
+        var missing = new List<string>();
+        var playerCarIdx = sample.PlayerCarIdx;
+        var focusCarIdx = FocusCarIdx(sample);
+        var focusIsPlayer = focusCarIdx is not null
+            && playerCarIdx is not null
+            && focusCarIdx == playerCarIdx;
+        var hasExplicitNonPlayerFocus = HasExplicitNonPlayerFocus(sample);
+        var focusUsesPlayerLocalFallback = FocusUsesPlayerLocalFallback(sample);
+        var lapCompleted = FocusLapCompleted(sample);
+        var lapDistPct = FocusLapDistPct(sample);
+        var progress = Progress(lapCompleted, lapDistPct);
+        var f2TimeSeconds = FocusF2TimeSeconds(sample);
+        var estimatedTimeSeconds = FocusEstimatedTimeSeconds(sample);
+        var lastLapTimeSeconds = FocusLastLapTimeSeconds(sample);
+        var bestLapTimeSeconds = FocusBestLapTimeSeconds(sample);
+        int? playerLapCompleted = playerCarIdx is null
+            ? null
+            : sample.TeamLapCompleted ?? sample.LapCompleted;
+        var playerLapDistPct = playerCarIdx is null
+            ? null
+            : ValidLapDistPct(sample.TeamLapDistPct) ?? ValidLapDistPct(sample.LapDistPct);
+        var hasTimingReference = FocusPosition(sample) is not null
+            || FocusClassPosition(sample) is not null
+            || ValidNonNegative(f2TimeSeconds) is not null
+            || ValidPositive(estimatedTimeSeconds) is not null
+            || lastLapTimeSeconds is not null
+            || bestLapTimeSeconds is not null;
+        var hasTrackPlacement = lapDistPct is not null;
+
+        if (focusCarIdx is null)
+        {
+            missing.Add(sample.FocusUnavailableReason ?? "focus_car_missing");
+        }
+
+        if (ReferenceCarClass(sample) is null)
+        {
+            missing.Add("reference_class_missing");
+        }
+
+        if (!hasTimingReference)
+        {
+            missing.Add("focus_timing_missing");
+        }
+
+        if (!hasTrackPlacement)
+        {
+            missing.Add("focus_lap_progress_missing");
+        }
+
+        return new LiveReferenceModel(
+            HasData: focusCarIdx is not null || playerCarIdx is not null,
+            Quality: focusCarIdx is null
+                ? playerCarIdx is not null ? LiveModelQuality.Partial : LiveModelQuality.Unavailable
+                : hasTimingReference || hasTrackPlacement
+                    ? LiveModelQuality.Reliable
+                    : LiveModelQuality.Partial,
+            PlayerCarIdx: playerCarIdx,
+            FocusCarIdx: focusCarIdx,
+            FocusIsPlayer: focusIsPlayer,
+            HasExplicitNonPlayerFocus: hasExplicitNonPlayerFocus,
+            FocusUsesPlayerLocalFallback: focusUsesPlayerLocalFallback,
+            FocusUnavailableReason: sample.FocusUnavailableReason,
+            ReferenceCarClass: ReferenceCarClass(sample),
+            OverallPosition: FocusPosition(sample),
+            ClassPosition: FocusClassPosition(sample),
+            LapCompleted: lapCompleted,
+            LapDistPct: lapDistPct,
+            ProgressLaps: progress,
+            F2TimeSeconds: f2TimeSeconds,
+            EstimatedTimeSeconds: estimatedTimeSeconds,
+            LastLapTimeSeconds: lastLapTimeSeconds,
+            BestLapTimeSeconds: bestLapTimeSeconds,
+            TrackSurface: FocusTrackSurface(sample),
+            OnPitRoad: FocusOnPitRoad(sample),
+            PlayerCarClass: playerCarIdx is null ? null : sample.TeamCarClass,
+            PlayerLapCompleted: playerLapCompleted is >= 0 ? playerLapCompleted : null,
+            PlayerLapDistPct: playerLapDistPct,
+            PlayerProgressLaps: Progress(playerLapCompleted, playerLapDistPct),
+            PlayerF2TimeSeconds: playerCarIdx is null ? null : ValidNonNegative(sample.TeamF2TimeSeconds),
+            PlayerEstimatedTimeSeconds: playerCarIdx is null ? null : ValidNonNegative(sample.TeamEstimatedTimeSeconds),
+            PlayerTrackSurface: sample.PlayerTrackSurface,
+            PlayerOnPitRoad: playerCarIdx is null ? null : (sample.TeamOnPitRoad ?? sample.OnPitRoad),
+            IsOnTrack: sample.IsOnTrack,
+            IsInGarage: sample.IsInGarage,
+            PlayerCarInPitStall: sample.PlayerCarInPitStall,
+            HasTimingReference: hasTimingReference,
+            HasTrackPlacement: hasTrackPlacement,
+            TimingEvidence: hasTimingReference
+                ? LiveSignalEvidence.Reliable("reference-timing")
+                : LiveSignalEvidence.Unavailable("reference-timing", focusCarIdx is null ? "focus_car_missing" : "timing_fields_missing"),
+            SpatialEvidence: hasTrackPlacement
+                ? LiveSignalEvidence.Reliable("reference-lap-progress")
+                : LiveSignalEvidence.Unavailable("reference-lap-progress", focusCarIdx is null ? "focus_car_missing" : "lap_progress_missing"),
+            MissingSignals: missing);
     }
 
     private static LiveCoverageModel BuildCoverage(
@@ -630,7 +730,7 @@ internal static class LiveRaceModelBuilder
             estimatedTimeSeconds: FocusEstimatedTimeSeconds(sample),
             lastLapTimeSeconds: FocusLastLapTimeSeconds(sample),
             bestLapTimeSeconds: FocusBestLapTimeSeconds(sample),
-            trackSurface: sample.FocusTrackSurface,
+            trackSurface: FocusTrackSurface(sample),
             onPitRoad: FocusOnPitRoad(sample),
             griddedCarIdxs: griddedCarIdxs);
 
@@ -764,9 +864,10 @@ internal static class LiveRaceModelBuilder
         HistoricalSessionContext context,
         HistoricalTelemetrySample sample,
         LiveProximitySnapshot proximity,
-        LiveTimingModel timing)
+        LiveTimingModel timing,
+        LiveReferenceModel reference)
     {
-        var referenceClass = ReferenceCarClass(sample);
+        var referenceClass = reference.ReferenceCarClass;
         var timingByCarIdx = timing.OverallRows.ToDictionary(row => row.CarIdx);
         var rows = new List<LiveRelativeRow>();
 
@@ -807,7 +908,7 @@ internal static class LiveRaceModelBuilder
         {
             if (!IsPitRoadLike(car.TrackSurface, car.OnPitRoad)
                 || !timingByCarIdx.TryGetValue(car.CarIdx, out var timingRow)
-                || RelativeLapsFromLapDistance(car.LapDistPct, FocusLapDistPct(sample)) is not { } relativeLaps)
+                || RelativeLapsFromLapDistance(car.LapDistPct, reference.LapDistPct) is not { } relativeLaps)
             {
                 continue;
             }
@@ -861,7 +962,7 @@ internal static class LiveRaceModelBuilder
 
         if (rows.Count == 0 && AllowsEstimatedRelativeTiming(context, sample))
         {
-            rows.AddRange(BuildEstimatedRelativeRows(context, sample, timing, referenceClass));
+            rows.AddRange(BuildEstimatedRelativeRows(context, sample, timing, reference, referenceClass));
         }
 
         var orderedRows = rows
@@ -878,7 +979,7 @@ internal static class LiveRaceModelBuilder
         return new LiveRelativeModel(
             HasData: orderedRows.Length > 0,
             Quality: orderedRows.Length > 0 ? orderedRows.Max(row => row.Quality) : LiveModelQuality.Unavailable,
-            ReferenceCarIdx: FocusCarIdx(sample),
+            ReferenceCarIdx: reference.FocusCarIdx,
             Rows: orderedRows);
     }
 
@@ -886,15 +987,21 @@ internal static class LiveRaceModelBuilder
         HistoricalSessionContext context,
         HistoricalTelemetrySample sample,
         LiveTimingModel timing,
+        LiveReferenceModel reference,
         int? referenceClass)
     {
-        var focusCarIdx = FocusCarIdx(sample);
+        var focusCarIdx = reference.FocusCarIdx;
         var focusRow = timing.FocusRow
             ?? (focusCarIdx is { } carIdx
                 ? timing.OverallRows.FirstOrDefault(row => row.CarIdx == carIdx)
                     ?? timing.ClassRows.FirstOrDefault(row => row.CarIdx == carIdx)
                 : null);
-        if (focusRow is null || !CanUseEstimatedTiming(focusRow))
+        var referenceEstimatedTimeSeconds = ValidPositive(focusRow?.EstimatedTimeSeconds)
+            ?? ValidPositive(reference.EstimatedTimeSeconds);
+        var referenceLapDistPct = focusRow?.LapDistPct ?? reference.LapDistPct;
+        if (focusCarIdx is null
+            || referenceEstimatedTimeSeconds is null
+            || referenceLapDistPct is null)
         {
             return [];
         }
@@ -902,13 +1009,13 @@ internal static class LiveRaceModelBuilder
         var lapTimeSeconds = PreGreenEstimatedLapTimeSeconds(context, sample);
         var evidence = LiveSignalEvidence.Inferred("CarIdxEstTime+CarIdxLapDistPct");
         return timing.OverallRows
-            .Where(row => row.CarIdx != focusRow.CarIdx)
+            .Where(row => row.CarIdx != focusCarIdx)
             .Select(row =>
             {
                 if (row.LapDistPct is not { } rowLapDistPct
-                    || RelativeLapsFromLapDistance(rowLapDistPct, focusRow.LapDistPct) is not { } relativeLaps
+                    || RelativeLapsFromLapDistance(rowLapDistPct, referenceLapDistPct) is not { } relativeLaps
                     || Math.Abs(relativeLaps) <= 0.00001d
-                    || EstimatedRelativeSeconds(row, focusRow, lapTimeSeconds) is not { } relativeSeconds)
+                    || EstimatedRelativeSeconds(row, referenceEstimatedTimeSeconds, referenceLapDistPct, lapTimeSeconds) is not { } relativeSeconds)
                 {
                     return null;
                 }
@@ -1172,7 +1279,7 @@ internal static class LiveRaceModelBuilder
         var speed = IsFinite(sample.SpeedMetersPerSecond) ? sample.SpeedMetersPerSecond : (double?)null;
         var throttle = ValidUnitInterval(sample.Throttle);
         var brake = ValidUnitInterval(sample.Brake);
-        var clutch = ValidUnitInterval(sample.Clutch);
+        var clutch = SelectClutchInput(sample.Clutch, sample.ClutchRaw);
         var steering = sample.SteeringWheelAngle is { } steeringValue && IsFinite(steeringValue) ? steeringValue : (double?)null;
         var gear = sample.Gear is >= -1 and <= 20 ? sample.Gear : null;
         var rpm = ValidNonNegative(sample.Rpm);
@@ -1216,6 +1323,15 @@ internal static class LiveRaceModelBuilder
             FuelPressureBar: fuelPressure,
             OilTempC: oilTemp,
             OilPressureBar: oilPressure);
+    }
+
+    private static double? SelectClutchInput(double? normalizedClutch, double? rawClutch)
+    {
+        var raw = ValidUnitInterval(rawClutch);
+        var normalized = ValidUnitInterval(normalizedClutch);
+        return raw is > 0.001d
+            ? raw
+            : normalized ?? raw;
     }
 
     private static void AddKnownRow(
@@ -1526,7 +1642,6 @@ internal static class LiveRaceModelBuilder
     {
         var isRaceSession = IsRaceSession(context);
         var allowRaceTiming = !isRaceSession || AllowsLiveRaceGaps(sample);
-        var lapTimeSeconds = RaceEstimatedLapTimeSeconds(context, sample);
         var focusRow = rows.FirstOrDefault(row => row.IsFocus);
         var focusF2 = focusRow is null ? null : UsableF2ForTiming(focusRow, isRaceSession);
         var leadersByClass = rows
@@ -1574,8 +1689,7 @@ internal static class LiveRaceModelBuilder
                         updated,
                         classLeader,
                         isRaceSession,
-                        allowRaceTiming,
-                        lapTimeSeconds);
+                        allowRaceTiming);
                     if (gap is not null)
                     {
                         updated = updated with
@@ -1595,8 +1709,7 @@ internal static class LiveRaceModelBuilder
                         updated,
                         previousRow,
                         isRaceSession,
-                        allowRaceTiming,
-                        lapTimeSeconds);
+                        allowRaceTiming);
                     if (interval is not null)
                     {
                         updated = updated with
@@ -1624,15 +1737,16 @@ internal static class LiveRaceModelBuilder
 
     private static double? EstimatedRelativeSeconds(
         LiveTimingRow row,
-        LiveTimingRow reference,
+        double? referenceEstimatedTimeSeconds,
+        double? referenceLapDistPct,
         double? lapTimeSeconds)
     {
         var rowEstimated = ValidPositive(row.EstimatedTimeSeconds);
-        var referenceEstimated = ValidPositive(reference.EstimatedTimeSeconds);
+        var referenceEstimated = ValidPositive(referenceEstimatedTimeSeconds);
         if (rowEstimated is null
             || referenceEstimated is null
             || row.LapDistPct is not { } rowLapDistPct
-            || RelativeLapsFromLapDistance(rowLapDistPct, reference.LapDistPct) is not { } relativeLaps)
+            || RelativeLapsFromLapDistance(rowLapDistPct, referenceLapDistPct) is not { } relativeLaps)
         {
             return null;
         }
@@ -1653,12 +1767,6 @@ internal static class LiveRaceModelBuilder
         return IsPlausibleEstimatedTiming(delta, relativeLaps, lapTimeSeconds)
             ? delta
             : null;
-    }
-
-    private static bool CanUseEstimatedTiming(LiveTimingRow row)
-    {
-        return ValidPositive(row.EstimatedTimeSeconds) is not null
-            && row.LapDistPct is not null;
     }
 
     private static bool IsPlausibleEstimatedTiming(
@@ -1793,8 +1901,7 @@ internal static class LiveRaceModelBuilder
         LiveTimingRow row,
         LiveTimingRow classLeader,
         bool isRaceSession,
-        bool allowRaceTiming,
-        double? lapTimeSeconds)
+        bool allowRaceTiming)
     {
         if (row.CarIdx == classLeader.CarIdx || row.ClassPosition == 1)
         {
@@ -1809,13 +1916,6 @@ internal static class LiveRaceModelBuilder
             return new DerivedTimingSeconds(rowF2 - leaderF2, LiveSignalEvidence.Inferred("CarIdxF2Time"));
         }
 
-        if (isRaceSession
-            && allowRaceTiming
-            && EstimatedSecondsBehind(row, classLeader, lapTimeSeconds) is { } estimated)
-        {
-            return new DerivedTimingSeconds(estimated, LiveSignalEvidence.Inferred("CarIdxEstTime+wrap"));
-        }
-
         return null;
     }
 
@@ -1823,8 +1923,7 @@ internal static class LiveRaceModelBuilder
         LiveTimingRow row,
         LiveTimingRow previousRow,
         bool isRaceSession,
-        bool allowRaceTiming,
-        double? lapTimeSeconds)
+        bool allowRaceTiming)
     {
         if (allowRaceTiming
             && UsableF2ForTiming(row, isRaceSession) is { } rowF2
@@ -1832,13 +1931,6 @@ internal static class LiveRaceModelBuilder
             && rowF2 >= previousF2)
         {
             return new DerivedTimingSeconds(rowF2 - previousF2, LiveSignalEvidence.Inferred("CarIdxF2Time"));
-        }
-
-        if (isRaceSession
-            && allowRaceTiming
-            && EstimatedSecondsBehind(row, previousRow, lapTimeSeconds) is { } estimated)
-        {
-            return new DerivedTimingSeconds(estimated, LiveSignalEvidence.Inferred("CarIdxEstTime+wrap"));
         }
 
         return null;
@@ -1892,59 +1984,6 @@ internal static class LiveRaceModelBuilder
         }
 
         return Math.Abs(f2 - ((overallPosition.Value - 1) / 1000d)) <= 0.00002d;
-    }
-
-    private static double? EstimatedSecondsBehind(
-        LiveTimingRow row,
-        LiveTimingRow referenceAhead,
-        double? lapTimeSeconds)
-    {
-        if (IsPitRoadLike(row.TrackSurface, row.OnPitRoad)
-            || IsPitRoadLike(referenceAhead.TrackSurface, referenceAhead.OnPitRoad))
-        {
-            return null;
-        }
-
-        var rowEstimated = ValidPositive(row.EstimatedTimeSeconds);
-        var referenceEstimated = ValidPositive(referenceAhead.EstimatedTimeSeconds);
-        var lapSeconds = ValidPositive(lapTimeSeconds);
-        if (rowEstimated is null || referenceEstimated is null || lapSeconds is null)
-        {
-            return null;
-        }
-
-        var delta = referenceEstimated.Value - rowEstimated.Value;
-        if (delta < -lapSeconds.Value / 2d)
-        {
-            delta += lapSeconds.Value;
-        }
-        else if (delta > lapSeconds.Value / 2d)
-        {
-            delta -= lapSeconds.Value;
-        }
-
-        if (delta < -0.05d)
-        {
-            return null;
-        }
-
-        return Math.Max(0d, delta);
-    }
-
-    private static double? RaceEstimatedLapTimeSeconds(
-        HistoricalSessionContext context,
-        HistoricalTelemetrySample sample)
-    {
-        return FirstValue(
-            new[]
-            {
-                FocusLastLapTimeSeconds(sample),
-                FocusBestLapTimeSeconds(sample),
-                ValidPositive(sample.TeamLastLapTimeSeconds),
-                ValidPositive(sample.TeamBestLapTimeSeconds),
-                ValidPositive(context.Car.DriverCarEstLapTimeSeconds),
-                ValidPositive(context.Car.CarClassEstLapTimeSeconds)
-            });
     }
 
     private static LiveSignalEvidence BuildLeaderGapEvidence(
@@ -2463,6 +2502,23 @@ internal static class LiveRaceModelBuilder
         return FocusUsesPlayerLocalFallback(sample)
             ? sample.FocusOnPitRoad ?? sample.TeamOnPitRoad ?? sample.OnPitRoad
             : sample.FocusOnPitRoad;
+    }
+
+    private static int? FocusTrackSurface(HistoricalTelemetrySample sample)
+    {
+        if (!HasFocus(sample))
+        {
+            return null;
+        }
+
+        if (HasExplicitNonPlayerFocus(sample))
+        {
+            return sample.FocusTrackSurface;
+        }
+
+        return FocusUsesPlayerLocalFallback(sample)
+            ? sample.FocusTrackSurface ?? sample.PlayerTrackSurface
+            : sample.FocusTrackSurface;
     }
 
     private static int? FocusClassLeaderCarIdx(HistoricalTelemetrySample sample)

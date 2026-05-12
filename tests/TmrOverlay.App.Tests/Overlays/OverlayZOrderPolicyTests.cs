@@ -14,27 +14,6 @@ public sealed class OverlayZOrderPolicyTests
     }
 
     [Fact]
-    public void SettingsWindow_AutoHidesOnlyWhenEnabledVisibleAndInactive()
-    {
-        Assert.True(OverlayZOrderPolicy.ShouldAutoHideSettingsWindow(
-            settingsWindowVisible: true,
-            settingsWindowActive: false,
-            settingsWindowEnabled: true));
-        Assert.False(OverlayZOrderPolicy.ShouldAutoHideSettingsWindow(
-            settingsWindowVisible: true,
-            settingsWindowActive: true,
-            settingsWindowEnabled: true));
-        Assert.False(OverlayZOrderPolicy.ShouldAutoHideSettingsWindow(
-            settingsWindowVisible: false,
-            settingsWindowActive: false,
-            settingsWindowEnabled: true));
-        Assert.False(OverlayZOrderPolicy.ShouldAutoHideSettingsWindow(
-            settingsWindowVisible: true,
-            settingsWindowActive: false,
-            settingsWindowEnabled: false));
-    }
-
-    [Fact]
     public void ManagedOverlays_KeepTheirAlwaysOnTopLayerIndependentOfSettingsFocus()
     {
         Assert.True(OverlayZOrderPolicy.ShouldManagedOverlayBeTopMost(new OverlaySettings

@@ -1199,7 +1199,8 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         var scoringByCarIdx = snapshot.Models.Scoring.Rows
             .GroupBy(row => row.CarIdx)
             .ToDictionary(group => group.Key, group => group.First());
-        var referenceCarIdx = snapshot.Models.Scoring.ReferenceCarIdx
+        var referenceCarIdx = snapshot.Models.Reference.FocusCarIdx
+            ?? snapshot.Models.Scoring.ReferenceCarIdx
             ?? snapshot.Models.Timing.FocusCarIdx
             ?? snapshot.Models.Spatial.ReferenceCarIdx
             ?? snapshot.LatestSample?.FocusCarIdx;
@@ -1287,9 +1288,9 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         return PositionLabel(scoringRow) ?? PositionLabel(row);
     }
 
-    private static string? PositionLabel(LiveTimingRow row)
+    private static string? PositionLabel(LiveTimingRow? row)
     {
-        var position = row.ClassPosition ?? row.OverallPosition;
+        var position = row?.ClassPosition ?? row?.OverallPosition;
         return position is > 0 ? position.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
     }
 

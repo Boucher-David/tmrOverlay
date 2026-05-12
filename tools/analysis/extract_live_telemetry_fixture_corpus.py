@@ -402,24 +402,50 @@ def has_valid_lap(row: dict[str, Any]) -> bool:
     return row.get("lastLapTimeSeconds") is not None or row.get("bestLapTimeSeconds") is not None
 
 
-def selected_scoring_rows(data: dict[str, Any], raw: dict[str, Any], selected: dict[str, Any] | None) -> tuple[str, list[dict[str, Any]]]:
+def selected_scoring_rows(
+    data: dict[str, Any],
+    raw: dict[str, Any],
+    selected: dict[str, Any] | None,
+    cars: list["CarProgress"] | None = None,
+) -> tuple[str, list[dict[str, Any]]]:
     session_type = str((selected or {}).get("SessionType") or (selected or {}).get("SessionName") or "")
     starting_grid = qualify_results(data)
     if starting_grid and "race" in session_type.lower():
+        starting_grid_rows = normalize_result_rows(starting_grid)
         session_state = raw.get("SessionState")
-        if isinstance(session_state, int) and session_state < 4:
-            return "starting-grid", normalize_result_rows(starting_grid)
+        if isinstance(session_state, int):
+            if session_state < 4 or not has_meaningful_race_scoring_coverage(cars, len(starting_grid_rows)):
+                return "starting-grid", starting_grid_rows
         if session_state is None:
             lap_completed = raw.get("LapCompleted")
             lap_dist_pct = raw.get("LapDistPct")
             if isinstance(lap_completed, int) and lap_completed <= 0 and is_finite(lap_dist_pct) and 0 <= lap_dist_pct < 0.08:
-                return "starting-grid", normalize_result_rows(starting_grid)
+                return "starting-grid", starting_grid_rows
     selected_rows = normalize_result_rows(result_positions(selected))
     if selected_rows:
         return "session-results", selected_rows
     if starting_grid:
         return "starting-grid-fallback", normalize_result_rows(starting_grid)
     return "none", []
+
+
+def has_meaningful_race_scoring_coverage(cars: list["CarProgress"] | None, starting_grid_row_count: int) -> bool:
+    rows = cars or []
+    if not rows:
+        return False
+    official_position_count = sum(1 for car in rows if car.position is not None and car.position > 0)
+    official_class_position_count = sum(1 for car in rows if car.class_position is not None and car.class_position > 0)
+    progress_count = sum(1 for car in rows if car.progress_laps is not None)
+    if official_position_count == 0 or official_class_position_count == 0 or progress_count == 0:
+        return False
+    expected_rows = starting_grid_row_count if starting_grid_row_count > 0 else len(rows)
+    target_rows = min(expected_rows, len(rows)) if expected_rows > 0 else len(rows)
+    required_rows = target_rows if target_rows <= 3 else max(3, math.ceil(target_rows * 0.5))
+    return (
+        official_position_count >= required_rows
+        and official_class_position_count >= required_rows
+        and progress_count >= required_rows
+    )
 
 
 @dataclass
@@ -829,7 +855,7 @@ def build_state(
     local = local_context(raw, player, focus)
     timing_rows, class_rows = build_timing_rows(cars, player, focus, leader, focus_class_leader, reference_class)
     timing_fallback_rows = [row for row in timing_rows if not row.get("isFocus") and row.get("deltaSecondsToFocus") is not None]
-    selected_source, scoring_rows = selected_scoring_rows(session_data, raw, selected)
+    selected_source, scoring_rows = selected_scoring_rows(session_data, raw, selected, cars)
     requires_valid_lap = session_kind in ("practice", "qualifying", "test")
     valid_scoring_rows = [row for row in scoring_rows if has_valid_lap(row)]
     standings_would_render = len(valid_scoring_rows if requires_valid_lap else scoring_rows) > 0

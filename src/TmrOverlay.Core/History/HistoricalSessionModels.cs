@@ -613,6 +613,7 @@ internal sealed record HistoricalTelemetrySample(
     double? Throttle = null,
     double? Brake = null,
     double? Clutch = null,
+    double? ClutchRaw = null,
     double? SteeringWheelAngle = null,
     int? EngineWarnings = null,
     double? Voltage = null,

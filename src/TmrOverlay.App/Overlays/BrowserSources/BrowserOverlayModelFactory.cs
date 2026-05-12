@@ -276,7 +276,7 @@ internal sealed class BrowserOverlayModelFactory
         var gap = GapToLeaderLiveModelAdapter.Select(snapshot);
         if (gap.HasData
             && GapToLeaderLiveModelAdapter.SelectFocusedTrendPointSeconds(snapshot, gap) is { } seconds
-            && IsFinite(seconds))
+            && ShouldAcceptGapPoint(snapshot, seconds))
         {
             _gapPoints.Add(seconds);
             if (_gapPoints.Count > 120)
@@ -304,6 +304,24 @@ internal sealed class BrowserOverlayModelFactory
             Metrics: metrics,
             Points: _gapPoints.ToArray(),
             HeaderItems: headerItems);
+    }
+
+    private bool ShouldAcceptGapPoint(LiveTelemetrySnapshot snapshot, double seconds)
+    {
+        if (!IsFinite(seconds) || seconds < 0d)
+        {
+            return false;
+        }
+
+        if (_gapPoints.Count == 0)
+        {
+            return true;
+        }
+
+        var previous = _gapPoints[^1];
+        var lapReferenceSeconds = GapToLeaderLiveModelAdapter.SelectLapReferenceSeconds(snapshot);
+        var maximumJump = Math.Max(30d, Math.Min(180d, (lapReferenceSeconds ?? 90d) * 0.5d));
+        return Math.Abs(seconds - previous) <= maximumJump;
     }
 
     private SessionHistoryLookupResult LookupHistory(HistoricalComboIdentity combo)

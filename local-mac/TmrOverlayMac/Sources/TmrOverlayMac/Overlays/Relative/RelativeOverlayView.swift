@@ -410,16 +410,11 @@ final class RelativeOverlayView: NSView {
     }
 
     private func relativeGap(car: LiveProximityCar, direction: RelativeDirection) -> String {
-        let sign = direction == .ahead ? "-" : "+"
-        if let seconds = car.relativeSeconds, seconds.isFinite {
-            return String(format: "%@%.3f", sign, abs(seconds))
-        }
-
-        if let meters = car.relativeMeters, meters.isFinite {
-            return String(format: "%@%.0fm", sign, abs(meters))
-        }
-
-        return String(format: "%@%.3fL", sign, abs(car.relativeLaps))
+        RelativeDisplayFormatting.gap(
+            seconds: car.relativeSeconds,
+            meters: car.relativeMeters,
+            laps: car.relativeLaps,
+            direction: direction == .ahead ? .ahead : .behind)
     }
 
     private func sortKey(_ car: LiveProximityCar) -> Double {

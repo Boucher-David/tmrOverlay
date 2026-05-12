@@ -134,6 +134,7 @@
         return kind == null || kind === 'race';
       },
       referenceCarIdx(live, options = {}) {
+        const reference = live?.models?.reference || {};
         const scoring = browserModel.scoring(live);
         const timing = browserModel.timing(live);
         const directory = browserModel.driverDirectory(live);
@@ -141,6 +142,7 @@
         const spatial = browserModel.spatial(live);
         const latest = live?.latestSample || {};
         const candidates = [];
+        candidates.push(reference.focusCarIdx);
         if (options.preferRelative) candidates.push(relative.referenceCarIdx);
         if (options.preferSpatial) candidates.push(spatial.referenceCarIdx);
         candidates.push(
@@ -228,7 +230,6 @@
         const sign = direction === 'ahead' ? '-' : '+';
         if (Number.isFinite(row?.relativeSeconds)) return `${sign}${Math.abs(row.relativeSeconds).toFixed(3)}`;
         if (Number.isFinite(row?.relativeMeters)) return `${sign}${Math.abs(row.relativeMeters).toFixed(0)}m`;
-        if (Number.isFinite(row?.relativeLaps)) return `${sign}${Math.abs(row.relativeLaps).toFixed(3)}L`;
         return '--';
       },
       hasUsableGap(row) {
@@ -510,9 +511,7 @@
         width: Math.max(40, width - axisWidth - 4),
         height: Math.max(40, height - xAxisHeight)
       };
-      const min = Math.min(...values);
-      const max = Math.max(...values);
-      const span = Math.max(1, max - min);
+      const max = Math.max(1, ...values.map((value) => Math.max(0, value)));
       ctx.strokeStyle = themeRgba('--tmr-text-muted-rgb', 0.28, 'rgba(140, 174, 212, 0.28)');
       ctx.lineWidth = 1;
       for (let index = 1; index < 4; index += 1) {
@@ -527,13 +526,18 @@
       ctx.moveTo(plot.left, plot.top + plot.height);
       ctx.lineTo(plot.left + plot.width, plot.top + plot.height);
       ctx.stroke();
+      ctx.strokeStyle = themeRgba('--tmr-text-muted-rgb', 0.34, 'rgba(140, 174, 212, 0.34)');
+      ctx.beginPath();
+      ctx.moveTo(plot.left, plot.top);
+      ctx.lineTo(plot.left + plot.width, plot.top);
+      ctx.stroke();
 
       ctx.fillStyle = themeColor('--tmr-text-muted', '#8caed4');
       ctx.font = '10px "Segoe UI", Arial, sans-serif';
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'right';
-      ctx.fillText('leader', axisWidth - 8, plot.top + plot.height);
-      ctx.fillText(formatSignedGap(max), axisWidth - 8, plot.top + 7);
+      ctx.fillText('leader', axisWidth - 8, plot.top + 7);
+      ctx.fillText(formatSignedGap(max), axisWidth - 8, plot.top + plot.height - 7);
       ctx.textAlign = 'left';
       ctx.fillText('10m', plot.left, plot.top + plot.height + 12);
       ctx.textAlign = 'right';
@@ -546,9 +550,9 @@
       ctx.beginPath();
       values.forEach((value, index) => {
         const progress = index / Math.max(1, values.length - 1);
-        const normalized = (value - min) / span;
+        const normalized = Math.max(0, value) / max;
         const x = plot.left + progress * plot.width;
-        const y = plot.top + (1 - normalized) * plot.height;
+        const y = plot.top + normalized * plot.height;
         if (index === 0) {
           ctx.moveTo(x, y);
         } else {

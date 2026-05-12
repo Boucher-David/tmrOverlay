@@ -60,6 +60,10 @@ async function validateOverlayFrame(context, overlay, frameSeconds) {
     await page.waitForSelector('.overlay', { timeout: 5000 });
     await page.waitForTimeout(800);
 
+    const modelResponse = await page.evaluate(async (overlayId) => {
+      const response = await fetch(`/api/overlay-model/${encodeURIComponent(overlayId)}`);
+      return response.ok ? response.json() : { error: `${response.status} ${response.statusText}` };
+    }, overlay.page.id);
     const screenshotPath = join(outputDir, screenshotName(overlay.page.id, frameSeconds));
     await page.screenshot({ path: screenshotPath, fullPage: true });
     const screenshotArtifact = inspectScreenshotArtifact(screenshotPath);
@@ -123,6 +127,7 @@ async function validateOverlayFrame(context, overlay, frameSeconds) {
     });
     const canvasPixels = await canvasHasVisiblePixels(page);
     const failures = validateMetrics(overlay.page.id, metrics, canvasPixels)
+      .concat(validateModel(overlay.page.id, modelResponse))
       .concat(screenshotArtifact.failures)
       .concat(consoleErrors.map((error) => `console error: ${error}`))
       .concat(pageErrors.map((error) => `page error: ${error}`))
@@ -136,6 +141,7 @@ async function validateOverlayFrame(context, overlay, frameSeconds) {
       screenshotPath,
       screenshotArtifact,
       metrics,
+      model: summarizeModel(modelResponse),
       canvasPixels,
       failures
     };
@@ -206,6 +212,89 @@ function validateMetrics(overlayId, metrics, canvasPixels) {
   }
 
   return failures;
+}
+
+function validateModel(overlayId, response) {
+  const failures = [];
+  if (!response || response.error) {
+    return [`overlay model fetch failed: ${response?.error || 'missing response'}`];
+  }
+
+  const model = response.model || {};
+  if (overlayId === 'standings') {
+    const sessionState = response.replay?.sessionState;
+    const source = String(model.source || '').toLowerCase();
+    const isPreGreen = Number.isFinite(sessionState) && sessionState < 4;
+    const isGrid = source.includes('starting grid');
+    const timingValues = tableValuesForKeys(model, ['gap', 'interval']);
+    const lapDistanceValue = timingValues.find((value) => /\d(?:\.\d+)?L$/i.test(value));
+    if (lapDistanceValue) {
+      failures.push(`standings rendered lap-distance gap value "${lapDistanceValue}"`);
+    }
+    if (isPreGreen || isGrid) {
+      for (const value of timingValues) {
+        if (/^\+\d/.test(value)) {
+          failures.push(`standings rendered unstable ${isPreGreen ? 'pre-green' : 'grid'} gap value "${value}"`);
+          break;
+        }
+      }
+    }
+  }
+
+  if (overlayId === 'relative') {
+    for (const value of tableValuesForKeys(model, ['gap'])) {
+      if (/\d(?:\.\d+)?L$/i.test(value)) {
+        failures.push(`relative rendered lap-distance gap value "${value}"`);
+        break;
+      }
+    }
+  }
+
+  if (overlayId === 'gap-to-leader') {
+    const points = Array.isArray(model.points) ? model.points : [];
+    if (points.some((point) => !Number.isFinite(point) || point < 0)) {
+      failures.push('gap-to-leader model included invalid or negative graph points');
+    }
+    for (let index = 1; index < points.length; index += 1) {
+      if (Math.abs(points[index] - points[index - 1]) > 180) {
+        failures.push('gap-to-leader model included an implausible single-frame jump');
+        break;
+      }
+    }
+  }
+
+  return failures;
+}
+
+function tableValuesForKeys(model, keys) {
+  const columns = Array.isArray(model.columns) ? model.columns : [];
+  const wanted = new Set(keys.map((key) => key.toLowerCase()));
+  const indexes = columns
+    .map((column, index) => ({ column, index }))
+    .filter(({ column }) => {
+      const label = String(column?.label || '').toLowerCase();
+      const dataKey = String(column?.dataKey || '').toLowerCase();
+      return wanted.has(label) || wanted.has(dataKey);
+    })
+    .map(({ index }) => index);
+  if (indexes.length === 0) {
+    return [];
+  }
+
+  return (Array.isArray(model.rows) ? model.rows : [])
+    .filter((row) => row && row.isClassHeader !== true)
+    .flatMap((row) => indexes.map((index) => String(row.cells?.[index] ?? '').trim()))
+    .filter(Boolean);
+}
+
+function summarizeModel(response) {
+  const model = response?.model || {};
+  return {
+    source: model.source || null,
+    status: model.status || null,
+    rowCount: Array.isArray(model.rows) ? model.rows.length : 0,
+    pointCount: Array.isArray(model.points) ? model.points.length : 0
+  };
 }
 
 function summarizeScreenshotArtifacts(results) {

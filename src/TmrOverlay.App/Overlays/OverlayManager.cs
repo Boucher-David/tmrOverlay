@@ -624,6 +624,7 @@ internal sealed class OverlayManager : IDisposable
         var started = System.Diagnostics.Stopwatch.GetTimestamp();
         var succeeded = false;
         Form? activeSettingsForm = null;
+        ReconcileSettingsOverlayActiveWithVisibility();
         var keepSettingsActive = _settingsOverlayActive
             && _forms.TryGetValue(SettingsOverlayDefinition.Definition.Id, out activeSettingsForm)
             && activeSettingsForm.Visible
@@ -1359,9 +1360,21 @@ internal sealed class OverlayManager : IDisposable
             ApplyManagedOverlayTopMost(definition);
         }
 
-        if (TryGetVisibleSettingsForm(out var settingsForm))
+        if (!TryGetVisibleSettingsForm(out var settingsForm))
+        {
+            _settingsOverlayActive = false;
+        }
+        else
         {
             ApplySettingsWindowTopMost(settingsForm);
+        }
+    }
+
+    private void ReconcileSettingsOverlayActiveWithVisibility()
+    {
+        if (_settingsOverlayActive && !TryGetVisibleSettingsForm(out _))
+        {
+            _settingsOverlayActive = false;
         }
     }
 
@@ -1381,20 +1394,8 @@ internal sealed class OverlayManager : IDisposable
         form.Deactivate += (_, _) =>
         {
             _settingsOverlayActive = false;
-            AutoHideSettingsOverlay(form);
             ApplyEmergencyOverlayZOrder();
         };
-    }
-
-    private static void AutoHideSettingsOverlay(Form form)
-    {
-        if (OverlayZOrderPolicy.ShouldAutoHideSettingsWindow(
-            form.Visible,
-            settingsWindowActive: false,
-            form.Enabled))
-        {
-            form.Hide();
-        }
     }
 
     private void ApplyManagedOverlayTopMost(OverlayDefinition definition)

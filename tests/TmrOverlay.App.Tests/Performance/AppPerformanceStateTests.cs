@@ -206,4 +206,40 @@ public sealed class AppPerformanceStateTests
         Assert.True(window.SettingsWindowVisible);
         Assert.True(window.InputInterceptRisk);
     }
+
+    [Fact]
+    public void OverlayWindowState_DoesNotReportSettingsActiveWhenSettingsWindowIsHidden()
+    {
+        var state = new AppPerformanceState();
+        var timestamp = DateTimeOffset.Parse("2026-05-09T12:00:00Z");
+
+        state.RecordOverlayWindowState(
+            "relative",
+            timestamp,
+            actualVisible: true,
+            topMost: false,
+            alwaysOnTopSetting: false,
+            inputTransparent: false,
+            noActivate: false,
+            settingsOverlayActive: true,
+            settingsWindowVisible: false,
+            intersectsSettingsWindow: false,
+            settingsWindowInputProtected: false,
+            x: 822,
+            y: 18,
+            width: 438,
+            height: 360,
+            opacity: 1d);
+
+        var snapshot = state.Snapshot();
+
+        Assert.Contains(snapshot.OverlayUpdates, metric =>
+            metric.Id == "overlay.relative.window.settings_overlay_active" && metric.Last == 0d);
+        Assert.Contains(snapshot.OverlayUpdates, metric =>
+            metric.Id == "overlay.relative.window.input_intercept_risk" && metric.Last == 0d);
+        var window = Assert.Single(snapshot.OverlayWindows);
+        Assert.False(window.SettingsOverlayActive);
+        Assert.False(window.SettingsWindowVisible);
+        Assert.False(window.InputInterceptRisk);
+    }
 }

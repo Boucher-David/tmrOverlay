@@ -13,73 +13,63 @@ Use `docs/model-v2-future-branches.md` for session-handoff notes, current model-
 
 ## Current Branch Target
 
-### v0.18.11 - Race-Start Overlay And Persistence Hardening
+### v0.18.12 - Live Reference And Race-Start Overlay Hardening
 
 Planned branch name:
 
 ```text
-v0.18.11-telemetry-corpus-readiness
+live-reference-race-start-fixes
 ```
 
 Planned scope:
 
-- Make the redacted telemetry corpus the pre/post validation source for V1-candidate overlay behavior, including race start, early green, pit/tow, endurance, AI, and spectated contexts.
-- Preserve the compact live-state corpus as the behavior/source-selection fixture for Standings, Relative, and Gap To Leader.
-- Add a broader SDK field availability corpus so future features can discover known iRacing SDK fields, declared array/storage shape, primitive type bounds, observed ranges, and redacted identity shape without committing raw telemetry.
-- Add a schema-drift check for current local `telemetry-schema.json` outputs so new iRacing SDK fields become explicit corpus/product-planning inputs.
-- Stabilize race-start Standings and Relative behavior around `SessionNum`, race `SessionState`, starting-grid rows, official timing availability, pre-green estimated relative timing, and tow/gridding edge cases.
-- Prevent fuel/race-progress projections from treating race pre-green countdowns as remaining race time.
-- Add shared header time-remaining chrome across native/browser overlays while keeping header/footer options per overlay.
-- Preserve user settings and local app data on update while keeping uninstall cleanup destructive.
-- Fix Windows overlay input protection, movable overlay click-through, Settings focus auto-hide, and input graph trace bounds.
-- Keep raw captures, source `.ibt` payloads, full session YAML, and private driver/team identity values out of tracked fixtures and diagnostics bundle payloads.
+- Promote normalized live reference facts so Standings, Relative, Gap To Leader, Track Map, diagnostics, and browser validation agree on focus/player/reference identity before overlay-specific interpretation.
+- Keep Radar as the explicit local in-car spatial special case instead of generalizing its context handler into Relative or other timing overlays.
+- Keep Relative usable from pits when the focused/reference car has usable timing/progress evidence, but suppress lap-only display placeholders such as `0.002L`.
+- Keep Standings grounded in scoring/results order, prevent race `GAP`/`INT` cells from using estimated timing fallbacks, and stabilize row height while live row counts change.
+- Fix the Settings Alt+Tab regression by keeping Settings visible after focus loss while demoting it out of the topmost layer.
+- Add raw `ClutchRaw` capture and input-display fallback while preserving brake behavior for pit/engine-off captures.
+- Fix Gap To Leader orientation and invalid point filtering so the leader/reference baseline stays at the top and placeholder points cannot invert the graph.
+- Extend browser race-start validation to inspect overlay models as well as screenshot artifacts.
+- Keep uploaded raw captures, screenshots, and diagnostic bundles local unless they are deliberately promoted into compact redacted fixtures or review artifacts.
 
 Technical implementation checklist:
 
-1. Bump shared .NET product/version metadata to `0.18.11`.
-2. Extend `live-telemetry-state-corpus.json` with representative four-hour and 24-hour endurance states while preserving existing AI/open-practice states when local source captures are unavailable.
-3. Add `sdk-field-availability-corpus.json`/`.md` from local endurance captures, including declared SDK shape maximums and sampled observed ranges with identity values redacted.
-4. Add `check_sdk_schema_against_corpus.py` and skill guidance so telemetry work starts by checking current SDK schemas against the tracked corpus.
-5. Add corpus tests for source-selection expectations, SDK field coverage, declared shape versus observed range, and privacy posture.
-6. Extract z-order policy guardrails and assert Settings topmost, overlay topmost, Stream Chat click-through, and diagnostics topmost contracts.
-7. Add first-run/raw-capture defaults and durable settings schema compatibility tests.
-8. Update shared header/footer settings contracts, migration version, native/browser chrome rendering, and mac shared-contract fallback.
-9. Validate local static checks and git hygiene; use Windows CI or a Windows machine for the full .NET build/test and real WinForms z-order/click-through behavior pass.
+1. Bump shared .NET product/version metadata to `0.18.12`.
+2. Add `LiveReferenceModel` and route shared overlay consumers through it.
+3. Update Standings, Relative, Gap To Leader, Track Map, diagnostics, and browser replay tooling to consume normalized reference facts.
+4. Keep overlay-specific contexts local to overlays that need them, especially Radar local/in-car spatial gating.
+5. Add clutch raw capture/read models and use `ClutchRaw` as an input fallback when normalized clutch is flat zero.
+6. Update Settings z-order policy/tests/docs so focus loss demotes Settings instead of hiding it, and keep diagnostics from reporting Settings active while hidden.
+7. Extend browser race-start replay validation to fetch overlay models, assert live-model invariants, and preserve generated review artifacts.
+8. Validate local static checks, browser tests, screenshot expectations, and git hygiene; use Windows CI or a Windows machine for the full .NET build/test and real WinForms behavior pass.
 
 Likely squash title:
 
 ```text
-[v0.18.11] Stabilize race-start overlays and update persistence
+[v0.18.12] Harden live reference and race-start overlays
 ```
 
 Likely squash body:
 
 ```text
-- Bumped shared .NET product/version metadata to 0.18.11.
-- Extended the compact live telemetry state corpus to 12 redacted states across AI multi-session, open-player practice, four-hour endurance, and 24-hour endurance captures, preserving missing-target notes for remaining gaps and adding race-start signal-availability notes.
-- Added a redacted SDK field availability corpus covering 334 local endurance SDK variables with declared array/storage maximums, primitive type bounds, sampled observed ranges, source coverage, and identity shape counts.
-- Added a fast schema-drift check so new local iRacing SDK fields or declared shape changes are detected before telemetry-backed feature work.
-- Added corpus tests for source-selection behavior, SDK coverage, declared shape versus observed range, and raw/private payload exclusion.
-- Kept Standings on grounded scoring/start-finish ordering while enriching gap/interval cells from usable timing evidence, hid empty other-class sections, and dimmed cars that have not taken the grid.
-- Let Relative use estimated pre-green timing from observed `CarIdxEstTime`/lap-distance signals when telemetry supports it, including pit/tow edge cases.
-- Kept Gap To Leader waiting when only leader/reference placeholders exist, rejected all-zero race F2 placeholders, and allowed plausible wrap-aware estimated timing after green.
-- Preserved pending-grid styling when a player tows back to pits during race pre-green by preferring direct focus/player gridding telemetry over generic all-cars rows.
-- Kept Flags headline status at `none` when no flag bits are active while still rendering race pre-green countdown state and time rows.
-- Protected Fuel Calculator and race-progress projections from treating positive race pre-green `SessionTimeRemain` countdowns as remaining race time.
-- Added shared native/browser header time-remaining support with session-scoped settings options and updated the settings chrome controls.
-- Improved AI class-label derivation, standings browser replay tooling, telemetry corpus extraction, and whole-catalog race-start browser screenshot validation.
-- Preserved user settings and app data on update while keeping installed-build uninstall cleanup destructive.
-- Fixed Windows overlay input protection so movable overlays are not made click-through unless they overlap the active Settings window, and auto-hide Settings when focus moves to another app.
-- Clamped native/browser input graph curves inside the plot bounds.
-- Added z-order and Stream Chat guardrail tests plus support-bundle assertions for overlay topmost/input-transparent/no-activate diagnostics and window-z-order topmost serialization.
-- Added raw-capture opt-in/default privacy tests and durable app-settings schema compatibility coverage.
-- Updated telemetry-analysis README, repo skills, telemetry docs, overlay logic docs, release docs, and model-v2 future-branch notes so the corpus and race-start behavior are documented as current validation evidence.
-- Validated local Python tools, SDK schema drift check, screenshot expectations, C# compile-shape scanner, and git hygiene; Windows .NET build/test and real WinForms behavior validation remain CI/Windows-machine gates.
+- Bumped shared .NET product/version metadata to 0.18.12.
+- Added a normalized `LiveReferenceModel` and routed Standings, Relative, Gap To Leader, Track Map, diagnostics, and browser validation through shared focus/player/reference facts.
+- Kept Radar as an overlay-specific local in-car spatial context while allowing Relative to render from pits when reference timing/progress evidence exists.
+- Prevented Relative from showing lap-fraction placeholders, and kept Standings race `GAP`/`INT` cells unavailable until positive F2 or another explicit timing source exists.
+- Stabilized native Standings window height so live row-count changes do not resize the OS window.
+- Kept Settings visible after Alt+Tab/focus loss while demoting it from the topmost layer, and updated z-order policy tests/docs.
+- Normalized live-overlay and freeze-watch diagnostics so `settingsOverlayActive` cannot stay true after the Settings window is hidden.
+- Captured raw clutch telemetry and used `ClutchRaw` as the input-display fallback when normalized clutch remains flat zero.
+- Fixed Gap To Leader graph orientation and browser point filtering so the reference/leader baseline stays at the top and invalid points are ignored.
+- Extended browser race-start replay validation to inspect overlay models in addition to screenshot artifacts, aligned replay/corpus tooling with meaningful race-scoring coverage, and regenerated the May 12 race-start review artifacts.
+- Updated live-model, Relative, Standings, Gap To Leader, Settings, and future-branch docs for the normalized-reference model and race-start behavior.
+- Validated git hygiene, C# compile-shape scanning, browser unit tests, browser replay script syntax, Python compile checks, screenshot expectations, and May 12 browser race-start replay; Windows .NET build/test and real WinForms behavior validation remain CI/Windows-machine gates.
 ```
 
 ## Next Planned Milestone
 
-### v0.18.12 - V1 Candidate Polish
+### v0.18.13 - V1 Candidate Polish
 
 Likely scope:
 
@@ -88,6 +78,26 @@ Likely scope:
 - Keep branch theory, fixture-corpus decisions, and future-product discussion in `docs/model-v2-future-branches.md`.
 
 ## Merged Mainline Milestones
+
+### v0.18.11 - Race-Start Overlay And Persistence Hardening
+
+Commit: `9091545`
+
+Squash title:
+
+```text
+[v0.18.11] Add telemetry corpus readiness guardrails
+```
+
+Summary:
+
+- Bumped shared .NET product/version metadata to 0.18.11.
+- Extended compact live telemetry and SDK field availability corpora with redacted race-start, endurance, AI, open-practice, and SDK-shape evidence.
+- Added schema-drift and corpus validation so telemetry-backed overlay behavior starts from captured evidence.
+- Stabilized race-start Standings, Relative, Gap To Leader, Flags, Fuel, and shared header behavior around race `SessionNum`, `SessionState`, pre-green countdowns, and placeholder timing signals.
+- Preserved user settings and app data on update while keeping installed-build uninstall cleanup destructive.
+- Hardened overlay z-order/input protection, Stream Chat guardrails, diagnostics bundles, browser replay tooling, and screenshot validation.
+- Updated telemetry-analysis, release, overlay logic, and model-v2 docs for the corpus-backed source-selection workflow.
 
 ### v0.18.10 - Overlay Z-Order And Input Diagnostics Hardening
 
