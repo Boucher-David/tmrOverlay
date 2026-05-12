@@ -63,6 +63,8 @@ Likely squash body:
 - Kept Standings on grounded scoring/start-finish ordering while enriching gap/interval cells from usable timing evidence, hid empty other-class sections, and dimmed cars that have not taken the grid.
 - Let Relative use estimated pre-green timing from observed `CarIdxEstTime`/lap-distance signals when telemetry supports it, including pit/tow edge cases.
 - Kept Gap To Leader waiting when only leader/reference placeholders exist, rejected all-zero race F2 placeholders, and allowed plausible wrap-aware estimated timing after green.
+- Preserved pending-grid styling when a player tows back to pits during race pre-green by preferring direct focus/player gridding telemetry over generic all-cars rows.
+- Kept Flags headline status at `none` when no flag bits are active while still rendering race pre-green countdown state and time rows.
 - Protected Fuel Calculator and race-progress projections from treating positive race pre-green `SessionTimeRemain` countdowns as remaining race time.
 - Added shared native/browser header time-remaining support with session-scoped settings options and updated the settings chrome controls.
 - Improved AI class-label derivation, standings browser replay tooling, telemetry corpus extraction, and whole-catalog race-start browser screenshot validation.
