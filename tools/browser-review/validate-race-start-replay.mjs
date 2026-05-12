@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { chromium } from '@playwright/test';
 import { browserOverlayPages } from '../../tests/browser-overlays/browserOverlayAssets.js';
@@ -28,11 +28,13 @@ writeFileSync(reportPath, `${JSON.stringify({
   baseUrl,
   relativeSeconds,
   generatedAtUtc: new Date().toISOString(),
+  screenshotArtifacts: summarizeScreenshotArtifacts(results),
   results
 }, null, 2)}\n`);
 
 const failures = results.flatMap((result) => result.failures.map((failure) => `${result.overlayId}@${result.relativeSeconds}s: ${failure}`));
-console.log(`Validated ${results.length} overlay frames from ${baseUrl}`);
+const validScreenshotCount = results.filter((result) => result.screenshotArtifact?.isValid).length;
+console.log(`Validated ${results.length} overlay frames and ${validScreenshotCount} screenshots from ${baseUrl}`);
 console.log(`Screenshots/report: ${outputDir}`);
 if (failures.length > 0) {
   console.error(failures.join('\n'));
@@ -60,6 +62,7 @@ async function validateOverlayFrame(context, overlay, frameSeconds) {
 
     const screenshotPath = join(outputDir, screenshotName(overlay.page.id, frameSeconds));
     await page.screenshot({ path: screenshotPath, fullPage: true });
+    const screenshotArtifact = inspectScreenshotArtifact(screenshotPath);
 
     const metrics = await page.evaluate(() => {
       const overlay = document.querySelector('.overlay');
@@ -120,6 +123,7 @@ async function validateOverlayFrame(context, overlay, frameSeconds) {
     });
     const canvasPixels = await canvasHasVisiblePixels(page);
     const failures = validateMetrics(overlay.page.id, metrics, canvasPixels)
+      .concat(screenshotArtifact.failures)
       .concat(consoleErrors.map((error) => `console error: ${error}`))
       .concat(pageErrors.map((error) => `page error: ${error}`))
       .concat(failedRequests.map((request) => `request failed: ${request}`));
@@ -130,6 +134,7 @@ async function validateOverlayFrame(context, overlay, frameSeconds) {
       relativeSeconds: frameSeconds,
       url,
       screenshotPath,
+      screenshotArtifact,
       metrics,
       canvasPixels,
       failures
@@ -141,6 +146,7 @@ async function validateOverlayFrame(context, overlay, frameSeconds) {
       relativeSeconds: frameSeconds,
       url,
       screenshotPath: null,
+      screenshotArtifact: null,
       metrics: null,
       canvasPixels: [],
       failures: [error instanceof Error ? error.message : String(error)]
@@ -200,6 +206,78 @@ function validateMetrics(overlayId, metrics, canvasPixels) {
   }
 
   return failures;
+}
+
+function summarizeScreenshotArtifacts(results) {
+  const invalid = results.filter((result) => !result.screenshotArtifact?.isValid);
+  return {
+    expected: results.length,
+    valid: results.length - invalid.length,
+    invalid: invalid.length
+  };
+}
+
+function inspectScreenshotArtifact(screenshotPath) {
+  const failures = [];
+  if (!screenshotPath || !existsSync(screenshotPath)) {
+    return {
+      path: screenshotPath,
+      isValid: false,
+      exists: false,
+      byteLength: 0,
+      width: 0,
+      height: 0,
+      failures: ['screenshot artifact missing']
+    };
+  }
+
+  const stats = statSync(screenshotPath);
+  const data = readFileSync(screenshotPath);
+  const isPng = hasPngSignature(data);
+  const dimensions = isPng ? readPngDimensions(data) : { width: 0, height: 0 };
+
+  if (stats.size < 100) {
+    failures.push(`screenshot artifact too small (${stats.size} bytes)`);
+  }
+  if (!isPng) {
+    failures.push('screenshot artifact is not a PNG');
+  }
+  if (dimensions.width <= 0 || dimensions.height <= 0) {
+    failures.push(`screenshot artifact has invalid dimensions (${dimensions.width}x${dimensions.height})`);
+  }
+
+  return {
+    path: screenshotPath,
+    isValid: failures.length === 0,
+    exists: true,
+    byteLength: stats.size,
+    width: dimensions.width,
+    height: dimensions.height,
+    failures
+  };
+}
+
+function hasPngSignature(data) {
+  return data.length >= 24
+    && data[0] === 0x89
+    && data[1] === 0x50
+    && data[2] === 0x4e
+    && data[3] === 0x47
+    && data[4] === 0x0d
+    && data[5] === 0x0a
+    && data[6] === 0x1a
+    && data[7] === 0x0a;
+}
+
+function readPngDimensions(data) {
+  if (data.length < 24) {
+    return { width: 0, height: 0 };
+  }
+
+  return {
+    width: data.readUInt32BE(16),
+    height: data.readUInt32BE(20)
+  };
 }
 
 function isTextlessOverlay(overlayId) {
