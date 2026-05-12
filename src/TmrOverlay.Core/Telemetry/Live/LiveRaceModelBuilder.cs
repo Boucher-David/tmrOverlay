@@ -1464,11 +1464,25 @@ internal static class LiveRaceModelBuilder
 
     private static bool HasTakenGrid(IReadOnlyList<LiveTimingRow> rows)
     {
-        var authoritativeRows = rows
+        var directRows = rows
+            .Where(row => row.Source is "focus" or "player-team")
+            .ToArray();
+        if (directRows.Length > 0)
+        {
+            var directTrackRows = directRows
+                .Where(row => row.TrackSurface is not null || row.OnPitRoad == true)
+                .ToArray();
+            return directTrackRows.Length > 0
+                ? directTrackRows.Any(row => row.TrackSurface == OnTrackSurface && row.OnPitRoad != true)
+                : directRows.Any(row => row.HasTakenGrid);
+        }
+
+        var focusedRows = rows
             .Where(row => row.IsFocus || row.IsPlayer)
             .ToArray();
-        return authoritativeRows.Length > 0
-            ? authoritativeRows.Any(row => row.HasTakenGrid)
+
+        return focusedRows.Length > 0
+            ? focusedRows.Any(row => row.HasTakenGrid)
             : rows.Any(row => row.HasTakenGrid);
     }
 

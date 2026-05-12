@@ -1232,6 +1232,7 @@ QualifyResultsInfo:
 
         Assert.Equal(LiveScoringSource.StartingGrid, models.Scoring.Source);
         Assert.Null(models.Timing.FocusRow?.GapSecondsToClassLeader);
+        Assert.False(models.Timing.FocusRow?.HasTakenGrid == true);
         var focusDelta = models.Timing.FocusRow?.DeltaSecondsToFocus;
         Assert.NotNull(focusDelta);
         Assert.Equal(0d, focusDelta.Value, precision: 6);
