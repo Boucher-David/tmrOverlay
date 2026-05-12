@@ -167,17 +167,21 @@ function ensureInputStyle() {
     .input-wheel {
       display: grid;
       grid-template-columns: 1fr auto;
-      grid-template-rows: 14px minmax(32px, 1fr);
+      grid-template-rows: 14px minmax(0, 1fr);
       column-gap: 8px;
       align-items: center;
       min-height: 48px;
+      overflow: hidden;
     }
 
     .input-wheel svg {
       grid-column: 1 / -1;
+      grid-row: 2;
+      align-self: center;
       justify-self: center;
-      width: min(58px, 100%);
-      height: min(58px, 100%);
+      width: min(52px, 100%);
+      height: min(52px, 100%);
+      max-height: 100%;
     }
 
     .input-pedals {
@@ -270,15 +274,16 @@ function railPedal(label, value, color) {
     </div>`;
 }
 
-function renderWheel(angleDegrees) {
-  const angle = Number.isFinite(angleDegrees) ? angleDegrees : 0;
+function renderWheel(angleRadians) {
+  const angleDegrees = Number.isFinite(angleRadians) ? angleRadians * 180 / Math.PI : null;
+  const displayDegrees = Number.isFinite(angleDegrees) ? angleDegrees : 0;
   return `
     <div class="input-wheel">
       <div class="input-wheel-label">Wheel</div>
-      <div class="input-wheel-value">${Number.isFinite(angleDegrees) ? `${angleDegrees.toFixed(0)} deg` : '--'}</div>
+      <div class="input-wheel-value">${Number.isFinite(angleDegrees) ? `${formatSignedDegrees(angleDegrees)} deg` : '--'}</div>
       <svg viewBox="0 0 64 64" aria-hidden="true">
         <circle cx="32" cy="32" r="25" fill="none" stroke="var(--tmr-text-secondary)" stroke-width="4"></circle>
-        <g transform="rotate(${escapeAttribute(angle * 2.1)} 32 32)" stroke="var(--tmr-cyan)" stroke-width="3" stroke-linecap="round">
+        <g transform="rotate(${escapeAttribute(displayDegrees)} 32 32)" stroke="var(--tmr-cyan)" stroke-width="3" stroke-linecap="round">
           <line x1="32" y1="32" x2="32" y2="12"></line>
           <line x1="32" y1="32" x2="49" y2="43"></line>
           <line x1="32" y1="32" x2="15" y2="43"></line>
@@ -336,17 +341,41 @@ function drawTraceLine(ctx, width, height, key, color, lineWidth) {
   ctx.lineWidth = lineWidth;
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
+  const points = inputTrace.map((point, index) => ({
+    x: xForTracePoint(index, width),
+    y: yForTraceValue(point[key], height)
+  }));
+  ctx.save();
   ctx.beginPath();
-  inputTrace.forEach((point, index) => {
-    const x = xForTracePoint(index, width);
-    const y = yForTraceValue(point[key], height);
-    if (index === 0) {
-      ctx.moveTo(x, y);
-    } else {
-      ctx.lineTo(x, y);
-    }
-  });
+  ctx.rect(0, 0, width, height);
+  ctx.clip();
+  ctx.beginPath();
+  drawSmoothTracePath(ctx, points);
   ctx.stroke();
+  ctx.restore();
+}
+
+function drawSmoothTracePath(ctx, points) {
+  if (!Array.isArray(points) || points.length === 0) {
+    return;
+  }
+
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const p0 = index === 0 ? points[index] : points[index - 1];
+    const p1 = points[index];
+    const p2 = points[index + 1];
+    const p3 = index + 2 < points.length ? points[index + 2] : p2;
+    const control1 = {
+      x: p1.x + (p2.x - p0.x) / 6,
+      y: p1.y + (p2.y - p0.y) / 6
+    };
+    const control2 = {
+      x: p2.x - (p3.x - p1.x) / 6,
+      y: p2.y - (p3.y - p1.y) / 6
+    };
+    ctx.bezierCurveTo(control1.x, control1.y, control2.x, control2.y, p2.x, p2.y);
+  }
 }
 
 function drawAbsSegments(ctx, width, height) {
@@ -401,4 +430,13 @@ function clamp01(value) {
 
 function formatGear(value) {
   return value === -1 ? 'R' : value === 0 ? 'N' : Number.isFinite(value) ? String(value) : '--';
+}
+
+function formatSignedDegrees(value) {
+  const rounded = Math.round(value);
+  if (rounded === 0) {
+    return '0';
+  }
+
+  return rounded > 0 ? `+${rounded}` : String(rounded);
 }

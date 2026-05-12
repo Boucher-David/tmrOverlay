@@ -146,6 +146,7 @@ internal static class Program
                 services.AddSingleton<IbtTrackMapBuilder>();
                 services.AddSingleton<TrackMapStore>();
                 services.AddSingleton<LiveOverlayWindowCaptureStore>();
+                services.AddSingleton<ForegroundWindowTracker>();
                 services.AddSingleton<DiagnosticsBundleService>();
                 services.AddSingleton<TelemetryCaptureState>();
                 services.AddSingleton<TelemetryEdgeCaseRecorder>();
@@ -162,6 +163,7 @@ internal static class Program
                 services.AddSingleton<OverlayManager>();
                 services.AddSingleton<NotifyIconApplicationContext>();
                 services.AddHostedService<RuntimeStateService>();
+                services.AddHostedService(services => services.GetRequiredService<ForegroundWindowTracker>());
                 services.AddHostedService<HistoryMaintenanceService>();
                 services.AddHostedService<AppPerformanceHostedService>();
                 services.AddHostedService<RetentionHostedService>();

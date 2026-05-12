@@ -853,6 +853,7 @@ internal static class AppPerformanceMetricIds
     public const string DiagnosticsBundleEdgeCases = "diagnostics.bundle.edge_cases";
     public const string DiagnosticsBundleOverlayDiagnostics = "diagnostics.bundle.overlay_diagnostics";
     public const string DiagnosticsBundleLiveOverlayWindows = "diagnostics.bundle.live_overlay_windows";
+    public const string DiagnosticsBundleWindowZOrder = "diagnostics.bundle.window_z_order";
     public const string DiagnosticsBundleLatestCapture = "diagnostics.bundle.latest_capture";
     public const string DiagnosticsBundleHistory = "diagnostics.bundle.history";
 }

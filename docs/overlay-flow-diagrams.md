@@ -156,8 +156,8 @@ flowchart TD
     Flags --> Filter["Apply category settings"]
     Filter --> Any{"Any displayable flags?"}
     Any -- no --> Hidden
-    Any -- yes --> Settings{"Settings overlay active and protected?"}
-    Settings -- yes --> Suppress["Suppress to protect input/z-order"]
+    Any -- yes --> Settings{"Settings overlay active?"}
+    Settings -- yes --> Suppress["Suppress transparent flags while Settings is active"]
     Settings -- no --> Render["Render transparent click-through flags"]
 ```
 

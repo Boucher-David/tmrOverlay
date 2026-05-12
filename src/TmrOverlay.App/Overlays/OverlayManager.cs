@@ -1360,9 +1360,9 @@ internal sealed class OverlayManager : IDisposable
             ApplyManagedOverlayTopMost(definition);
         }
 
-        if (_settingsOverlayActive && TryGetVisibleSettingsForm(out var settingsForm))
+        if (TryGetVisibleSettingsForm(out var settingsForm))
         {
-            settingsForm.BringToFront();
+            ApplySettingsWindowTopMost(settingsForm);
         }
     }
 
@@ -1409,19 +1409,27 @@ internal sealed class OverlayManager : IDisposable
         {
             designV2.SetFlagsManagedState(true, _settingsOverlayActive);
         }
-
-        if (ShouldProtectSettingsWindowInput(form))
-        {
-            form.SendToBack();
-        }
     }
 
     private void ApplyOverlayTopMost(OverlaySettings settings, Form form)
     {
-        var shouldBeTopMost = !ShouldProtectSettingsWindowInput(form) && settings.AlwaysOnTop;
+        var shouldBeTopMost = settings.AlwaysOnTop;
         if (form.TopMost != shouldBeTopMost)
         {
             form.TopMost = shouldBeTopMost;
+        }
+    }
+
+    private void ApplySettingsWindowTopMost(Form settingsForm)
+    {
+        if (settingsForm.TopMost != _settingsOverlayActive)
+        {
+            settingsForm.TopMost = _settingsOverlayActive;
+        }
+
+        if (_settingsOverlayActive)
+        {
+            settingsForm.BringToFront();
         }
     }
 

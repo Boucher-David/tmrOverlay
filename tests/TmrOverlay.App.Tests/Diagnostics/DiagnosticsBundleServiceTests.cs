@@ -246,6 +246,7 @@ public sealed class DiagnosticsBundleServiceTests
                 performance,
                 performanceRecorder,
                 new LiveOverlayWindowCaptureStore(storage),
+                new ForegroundWindowTracker(),
                 releaseUpdates,
                 NullLogger<DiagnosticsBundleService>.Instance);
 
@@ -269,6 +270,7 @@ public sealed class DiagnosticsBundleServiceTests
             Assert.Contains("metadata/track-maps.json", entryNames);
             Assert.Contains("metadata/garage-cover.json", entryNames);
             Assert.Contains("metadata/live-telemetry-synthesis.json", entryNames);
+            Assert.Contains("metadata/window-z-order.json", entryNames);
             Assert.Contains("metadata/performance.json", entryNames);
             Assert.Contains("metadata/ui-freeze-watch.json", entryNames);
             Assert.Contains("live-overlays/manifest.json", entryNames);
@@ -317,6 +319,19 @@ public sealed class DiagnosticsBundleServiceTests
                 var liveOverlaysJson = JsonNode.Parse(liveOverlaysReader.ReadToEnd());
                 Assert.Equal("live-window-screen-crops", (string?)liveOverlaysJson?["captureKind"]);
                 Assert.Empty(Assert.IsType<JsonArray>(liveOverlaysJson?["overlays"]));
+            }
+
+            var windowZOrderEntry = archive.GetEntry("metadata/window-z-order.json");
+            Assert.NotNull(windowZOrderEntry);
+            using (var windowZOrderReader = new StreamReader(windowZOrderEntry.Open()))
+            {
+                var windowZOrderJson = JsonNode.Parse(windowZOrderReader.ReadToEnd());
+                Assert.NotNull(windowZOrderJson?["capturedAtUtc"]);
+                Assert.NotNull(windowZOrderJson?["available"]);
+                Assert.NotNull(windowZOrderJson?["foregroundHistory"]);
+                Assert.IsType<JsonArray>(windowZOrderJson?["foregroundHistory"]);
+                Assert.NotNull(windowZOrderJson?["windowCount"]);
+                Assert.IsType<JsonArray>(windowZOrderJson?["windows"]);
             }
 
             var localhostEntry = archive.GetEntry("metadata/localhost-overlays.json");
@@ -553,6 +568,7 @@ public sealed class DiagnosticsBundleServiceTests
                 performance,
                 performanceRecorder,
                 new LiveOverlayWindowCaptureStore(storage),
+                new ForegroundWindowTracker(),
                 releaseUpdates,
                 NullLogger<DiagnosticsBundleService>.Instance);
 
