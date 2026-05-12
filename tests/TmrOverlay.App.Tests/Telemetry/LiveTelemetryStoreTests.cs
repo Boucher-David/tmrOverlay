@@ -962,7 +962,9 @@ QualifyResultsInfo:
         var models = store.Snapshot().Models;
 
         Assert.Null(models.Timing.FocusRow?.GapSecondsToClassLeader);
-        Assert.Null(models.Timing.FocusRow?.DeltaSecondsToFocus);
+        var focusDelta = models.Timing.FocusRow?.DeltaSecondsToFocus;
+        Assert.NotNull(focusDelta);
+        Assert.Equal(0d, focusDelta.Value, precision: 6);
         Assert.Empty(models.Relative.Rows);
     }
 
