@@ -115,7 +115,7 @@ internal static class FlagsOverlayViewModel
         var tone = ToneFor(flags, session.SessionState);
         var status = flags is null
             ? sessionState
-            : PrimaryFlagLabel(flags.Value) ?? sessionState;
+            : PrimaryFlagLabel(flags.Value) ?? "none";
         var timeLabel = IsRacePreGreen(session) ? "Countdown" : "Time left";
         var rows = new[]
         {

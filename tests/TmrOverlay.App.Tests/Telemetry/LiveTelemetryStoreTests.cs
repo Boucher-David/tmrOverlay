@@ -890,7 +890,7 @@ QualifyResultsInfo:
         Assert.Null(leader.GapSecondsToClassLeader);
         Assert.Null(leader.DeltaSecondsToFocus);
         Assert.Null(reference.GapSecondsToClassLeader);
-        Assert.Null(reference.DeltaSecondsToFocus);
+        Assert.Equal(0d, reference.DeltaSecondsToFocus);
         Assert.Null(trailing.GapSecondsToClassLeader);
         Assert.Null(trailing.DeltaSecondsToFocus);
 
