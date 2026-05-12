@@ -23,6 +23,7 @@ import yaml
 
 CAPTURE_HEADER_BYTES = 32
 FRAME_HEADER = struct.Struct("<qiiidi")
+MAX_INDEXED_SESSION_SNAPSHOTS = 200
 
 DEFAULT_CAPTURE_DIRS = [
     Path("capture-20260511-001730-564"),
@@ -230,17 +231,20 @@ def load_yaml(path: Path) -> dict[str, Any]:
         return {}
 
 
-def load_session_snapshots(capture_dir: Path) -> tuple[list[int], dict[int, dict[str, Any]], dict[str, Any]]:
-    snapshots: dict[int, dict[str, Any]] = {}
+def load_session_snapshots(capture_dir: Path) -> tuple[list[int], dict[int, dict[str, Any] | Path], dict[str, Any]]:
+    snapshots: dict[int, dict[str, Any] | Path] = {}
+    latest = load_yaml(capture_dir / "latest-session.yaml")
     session_dir = capture_dir / "session-info"
     if session_dir.exists():
-        for path in sorted(session_dir.glob("session-*.yaml")):
+        paths = sorted(session_dir.glob("session-*.yaml"))
+        if len(paths) > MAX_INDEXED_SESSION_SNAPSHOTS:
+            return [], snapshots, latest
+        for path in paths:
             try:
                 update = int(path.stem.split("-")[-1])
             except ValueError:
                 continue
-            snapshots[update] = load_yaml(path)
-    latest = load_yaml(capture_dir / "latest-session.yaml")
+            snapshots[update] = path
     if not snapshots and latest:
         snapshots[0] = latest
     return sorted(snapshots), snapshots, latest
@@ -249,15 +253,22 @@ def load_session_snapshots(capture_dir: Path) -> tuple[list[int], dict[int, dict
 def session_info_for_update(
     update: int,
     updates: list[int],
-    snapshots: dict[int, dict[str, Any]],
+    snapshots: dict[int, dict[str, Any] | Path],
     latest: dict[str, Any],
 ) -> dict[str, Any]:
+    selected_update: int | None = None
     if update in snapshots:
-        return snapshots[update]
-    if updates:
+        selected_update = update
+    elif updates:
         index = bisect.bisect_right(updates, update) - 1
         if index >= 0:
-            return snapshots[updates[index]]
+            selected_update = updates[index]
+    if selected_update is not None:
+        selected = snapshots[selected_update]
+        if isinstance(selected, Path):
+            selected = load_yaml(selected)
+            snapshots[selected_update] = selected
+        return selected
     return latest
 
 
@@ -1133,6 +1144,36 @@ def build_corpus(capture_dirs: list[Path], short_stride: int, long_stride: int) 
     }
 
 
+def merge_existing_corpus(existing: dict[str, Any], current: dict[str, Any]) -> dict[str, Any]:
+    targets = target_definitions()
+    states_by_id = {str(state.get("id")): state for state in existing.get("states", []) if state.get("id")}
+    states_by_id.update({str(state.get("id")): state for state in current.get("states", []) if state.get("id")})
+    sources_by_id = {
+        str(source.get("captureId")): source
+        for source in existing.get("sources", [])
+        if source.get("captureId")
+    }
+    sources_by_id.update(
+        {
+            str(source.get("captureId")): source
+            for source in current.get("sources", [])
+            if source.get("captureId")
+        }
+    )
+    ordered_states = [states_by_id[target.target_id] for target in targets if target.target_id in states_by_id]
+    missing = [
+        {"id": target.target_id, "title": target.title}
+        for target in targets
+        if target.target_id not in states_by_id
+    ]
+    return {
+        **current,
+        "sources": list(sources_by_id.values()),
+        "states": ordered_states,
+        "missingTargets": missing,
+    }
+
+
 def write_markdown(path: Path, corpus: dict[str, Any]) -> None:
     lines = [
         "# Live Telemetry State Corpus",
@@ -1217,6 +1258,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--short-stride", type=int, default=1, help="Frame stride for short captures.")
     parser.add_argument("--long-stride", type=int, default=60, help="Frame stride for long captures.")
+    parser.add_argument(
+        "--replace-existing",
+        action="store_true",
+        help="Replace the output corpus instead of preserving existing target states from unavailable captures.",
+    )
     return parser.parse_args()
 
 
@@ -1224,6 +1270,8 @@ def main() -> int:
     args = parse_args()
     capture_dirs = [Path(value) for value in args.captures]
     corpus = build_corpus(capture_dirs, max(1, args.short_stride), max(1, args.long_stride))
+    if args.output.exists() and not args.replace_existing:
+        corpus = merge_existing_corpus(read_json(args.output), corpus)
     write_json(args.output, corpus)
     write_markdown(args.markdown_output, corpus)
     print(f"Wrote {len(corpus['states'])} states to {args.output}")

@@ -1413,7 +1413,7 @@ internal sealed class OverlayManager : IDisposable
 
     private void ApplyOverlayTopMost(OverlaySettings settings, Form form)
     {
-        var shouldBeTopMost = settings.AlwaysOnTop;
+        var shouldBeTopMost = OverlayZOrderPolicy.ShouldManagedOverlayBeTopMost(settings);
         if (form.TopMost != shouldBeTopMost)
         {
             form.TopMost = shouldBeTopMost;
@@ -1422,9 +1422,10 @@ internal sealed class OverlayManager : IDisposable
 
     private void ApplySettingsWindowTopMost(Form settingsForm)
     {
-        if (settingsForm.TopMost != _settingsOverlayActive)
+        var shouldBeTopMost = OverlayZOrderPolicy.ShouldSettingsWindowBeTopMost(_settingsOverlayActive);
+        if (settingsForm.TopMost != shouldBeTopMost)
         {
-            settingsForm.TopMost = _settingsOverlayActive;
+            settingsForm.TopMost = shouldBeTopMost;
         }
 
         if (_settingsOverlayActive)
@@ -1438,19 +1439,22 @@ internal sealed class OverlayManager : IDisposable
         if (form is PersistentOverlayForm persistent)
         {
             var intrinsicallyTransparent = persistent.IsIntrinsicallyInputTransparentOverlay;
+            var settingsWindowVisible = TryGetVisibleSettingsForm(out var settingsForm);
             persistent.SetInputTransparentOverride(
-                intrinsicallyTransparent || forceInputTransparent || ShouldProtectSettingsWindowInput(form));
+                OverlayZOrderPolicy.ShouldOverlayBeInputTransparent(
+                    intrinsicallyTransparent,
+                    forceInputTransparent,
+                    settingsWindowVisible,
+                    ReferenceEquals(form, settingsForm)));
         }
     }
 
     private bool ShouldProtectSettingsWindowInput(Form form)
     {
-        if (!TryGetVisibleSettingsForm(out var settingsForm) || ReferenceEquals(form, settingsForm))
-        {
-            return false;
-        }
-
-        return true;
+        var settingsWindowVisible = TryGetVisibleSettingsForm(out var settingsForm);
+        return OverlayZOrderPolicy.ShouldProtectSettingsWindowInput(
+            settingsWindowVisible,
+            ReferenceEquals(form, settingsForm));
     }
 
     private bool TryGetVisibleSettingsForm(out Form settingsForm)

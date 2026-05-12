@@ -13,65 +13,84 @@ Use `docs/model-v2-future-branches.md` for session-handoff notes, current model-
 
 ## Current Branch Target
 
-### v0.18.10 - Overlay Z-Order And Input Diagnostics Hardening
+### v0.18.11 - Telemetry Corpus Readiness Guardrails
 
 Planned branch name:
 
 ```text
-v0.18.10-overlay-z-order-input-diagnostics
+v0.18.11-telemetry-corpus-readiness
 ```
 
 Planned scope:
 
-- Ship a focused V1-candidate hardening patch for Windows overlay z-order/focus triage and Input / Car State rendering.
-- Keep product overlays topmost according to their saved setting so they do not drop behind iRacing when Settings is not foreground.
-- Temporarily promote the Settings window above product overlays only while Settings is active, then return it to the normal window band when focus returns to iRacing or another app.
-- Preserve Stream Chat and other click-through/no-activate overlay protections so overlays do not steal simulator input.
-- Add diagnostics bundle evidence for desktop HWND z-order, topmost state, current foreground window, and recent foreground-window changes.
-- Correct Input / Car State steering units from iRacing radians to displayed degrees and smooth the input graph trace for readability.
-- Keep root diagnostics bundles and raw capture folders ignored/untracked before pushing.
+- Make the redacted telemetry corpus the pre/post validation source for V1-candidate overlay behavior.
+- Preserve the compact live-state corpus as the behavior/source-selection fixture for Standings, Relative, and Gap To Leader.
+- Add a broader SDK field availability corpus so future features can discover known iRacing SDK fields, declared array/storage shape, primitive type bounds, observed ranges, and redacted identity shape without committing raw telemetry.
+- Add a schema-drift check for current local `telemetry-schema.json` outputs so new iRacing SDK fields become explicit corpus/product-planning inputs.
+- Harden support-bundle, Windows z-order, Stream Chat, first-run privacy/defaults, and durable settings schema guardrails around the v0.18.10 product behavior.
+- Keep raw captures, source `.ibt` payloads, full session YAML, and private driver/team identity values out of tracked fixtures and diagnostics bundle payloads.
 
 Technical implementation checklist:
 
-1. Bump shared .NET product/version metadata to `0.18.10`.
-2. Patch overlay manager z-order behavior so product overlays remain topmost while Settings is only temporarily topmost when foreground.
-3. Preserve input transparency/no-activate behavior for Stream Chat and transparent overlay surfaces.
-4. Add Windows HWND z-order and foreground-window diagnostics to support bundles, with bounded foreground-change history.
-5. Patch native/browser Input / Car State steering conversion, trace smoothing, and wheel clipping guardrails.
-6. Mirror applicable input trace smoothing in the tracked mac harness.
-7. Patch overlay/input/diagnostics/settings docs and current-state notes to match the new contracts.
+1. Bump shared .NET product/version metadata to `0.18.11`.
+2. Extend `live-telemetry-state-corpus.json` with representative four-hour and 24-hour endurance states while preserving existing AI/open-practice states when local source captures are unavailable.
+3. Add `sdk-field-availability-corpus.json`/`.md` from local endurance captures, including declared SDK shape maximums and sampled observed ranges with identity values redacted.
+4. Add `check_sdk_schema_against_corpus.py` and skill guidance so telemetry work starts by checking current SDK schemas against the tracked corpus.
+5. Add corpus tests for source-selection expectations, SDK field coverage, declared shape versus observed range, and privacy posture.
+6. Extract z-order policy guardrails and assert Settings topmost, overlay topmost, Stream Chat click-through, and diagnostics topmost contracts.
+7. Add first-run/raw-capture defaults and durable settings schema compatibility tests.
 8. Validate local static checks and git hygiene; use Windows CI or a Windows machine for the full .NET build/test and real WinForms z-order/click-through behavior pass.
 
 Likely squash title:
 
 ```text
-[v0.18.10] Harden overlay z-order and input diagnostics
+[v0.18.11] Add telemetry corpus readiness guardrails
 ```
 
 Likely squash body:
 
 ```text
+- Bumped shared .NET product/version metadata to 0.18.11.
+- Extended the compact live telemetry state corpus to 10 redacted states across AI multi-session, open-player practice, four-hour endurance, and 24-hour endurance captures, preserving missing-target notes for remaining gaps.
+- Added a redacted SDK field availability corpus covering 334 local endurance SDK variables with declared array/storage maximums, primitive type bounds, sampled observed ranges, source coverage, and identity shape counts.
+- Added a fast schema-drift check so new local iRacing SDK fields or declared shape changes are detected before telemetry-backed feature work.
+- Added corpus tests for source-selection behavior, SDK coverage, declared shape versus observed range, and raw/private payload exclusion.
+- Added z-order and Stream Chat guardrail tests plus support-bundle assertions for overlay topmost/input-transparent/no-activate diagnostics and window-z-order topmost serialization.
+- Added raw-capture opt-in/default privacy tests and a durable app-settings schema compatibility snapshot.
+- Updated telemetry-analysis README, repo skills, and model-v2 future-branch notes so the corpus is used as pre/post feature validation evidence.
+- Validated local Python tools, SDK schema drift check, screenshot expectations, C# compile-shape scanner, and git hygiene; Windows .NET build/test and real WinForms behavior validation remain CI/Windows-machine gates.
+```
+
+## Next Planned Milestone
+
+### v0.18.12 - V1 Candidate Polish
+
+Likely scope:
+
+- Use the telemetry and SDK corpora for overlay behavior validation as teammate test evidence arrives.
+- Continue release-readiness checks: product-scope lock, installer/update polish, first-run docs, Windows-native behavior validation, and support-bundle completeness.
+- Keep branch theory, fixture-corpus decisions, and future-product discussion in `docs/model-v2-future-branches.md`.
+
+## Merged Mainline Milestones
+
+### v0.18.10 - Overlay Z-Order And Input Diagnostics Hardening
+
+Commit: `9d1356e`
+
+Squash title:
+
+```text
+[v0.18.10] Harden overlay z-order and input diagnostics
+```
+
+Summary:
+
 - Bumped shared .NET product/version metadata to 0.18.10.
 - Kept product overlays in their saved topmost band while making Settings temporarily topmost only while active, so overlays can stay above iRacing after focus returns to the sim.
 - Preserved Stream Chat and transparent overlay click-through/no-activate behavior while avoiding the previous Settings z-order demotion path.
 - Added `metadata/window-z-order.json` diagnostics with current foreground HWND, recent foreground-window changes, and top-level desktop window topmost/z-order state.
 - Fixed Input / Car State steering conversion from iRacing radians to displayed degrees, smoothed native/browser/mac input traces, and guarded browser/native wheel rendering against bottom clipping.
-- Updated README, overlay/input/diagnostics/settings docs, and current-state notes to match the new z-order and diagnostics contracts.
-- Updated the Windows screenshot tool wiring for the foreground-window diagnostics dependency.
-- Validated local static checks, browser JS syntax, mac harness build, screenshot expectations, and git hygiene; Windows .NET build/test and real WinForms z-order/click-through validation remain CI/Windows-machine gates.
-```
-
-## Next Planned Milestone
-
-### v0.18.11 - V1 Candidate Readiness
-
-Likely scope:
-
-- Finalize V1-candidate overlay behavior from the compact telemetry fixture corpus and teammate diagnostics evidence.
-- Complete release-readiness checks: product-scope lock, installer/update polish, first-run docs, privacy/defaults review, schema freeze, Windows-native behavior validation, and support-bundle hardening.
-- Keep branch theory, fixture-corpus decisions, and future-product discussion in `docs/model-v2-future-branches.md`.
-
-## Merged Mainline Milestones
+- Updated docs and Windows screenshot tool wiring for the foreground-window diagnostics dependency.
 
 ### v0.18.7 - V1 Candidate Focus And Diagnostics Hardening
 

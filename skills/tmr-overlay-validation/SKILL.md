@@ -162,6 +162,7 @@ This live smoke test is the best check that one instance of each current overlay
 
 ## Change-Specific Checks
 
+- For telemetry-backed overlay behavior, use the corpora under `fixtures/telemetry-analysis/` as pre/post validation sources. Before the change, inspect the live-state and SDK availability corpora to confirm the fields and session states are known from captured evidence, and run `python3 tools/analysis/check_sdk_schema_against_corpus.py` when local captures are available to catch SDK fields or declared shapes that are new to the tracked corpus. After the change, add or update compact redacted corpus entries/tests so the behavior is validated against known information instead of guessed fallback data. Keep raw `telemetry.bin`, source `.ibt`, full session YAML, and private driver/team identity values out of tracked fixtures.
 - Keep public snapshot member names stable unless the requested change intentionally updates the contract.
 - If changing shared live models or normalized snapshot contracts, keep existing overlay-specific members additive/stable, add focused builder tests, and do not change durable history/raw-capture schemas unless explicitly required.
 - If changing raw capture format, verify `docs/capture-format.md`, `telemetry.md`, and `README.md` were updated in the same pass.
