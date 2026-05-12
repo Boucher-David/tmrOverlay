@@ -2,11 +2,9 @@
 
 Last updated: 2026-04-26
 
-## Current Analyzed Captures
+## Current Analyzed Evidence
 
-Short sample analyzed capture:
-
-- `captures/capture-20260426-032822-916`
+Legacy short wet-test sample, retained here only as a derived note after the raw capture was removed from git:
 
 High-level context:
 
@@ -45,7 +43,7 @@ Fuel-specific rough derivation from the sample:
   - about `126.1 min`
   - about `14.3 laps` using `DriverCarEstLapTime`
 
-Treat those full-tank estimates as low-confidence because the capture is short, partial-lap, wet, and includes pit-road time.
+Treat those full-tank estimates as low-confidence because the original capture was short, partial-lap, wet, and included pit-road time. Do not treat the raw sample as a repo fixture; future fuel validation should use compact tracked history/fixture data or ignored local captures.
 
 Long endurance capture:
 

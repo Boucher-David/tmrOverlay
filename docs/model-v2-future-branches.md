@@ -282,6 +282,7 @@ Likely scope:
 - Combine local measured fuel windows, team/focus progress, completed stint lengths, pit/service history, max-fuel constraints, and source labels.
 - Reject impossible stint rhythms when current-session evidence and history disagree.
 - Treat tire/repair/pit-service/setup-change evidence as input to strategy but avoid command-capable pit controls in this branch.
+- Treat incident-count increases as suspected-damage candidates only. Confirm later with repair timers, fast-repair counters, or pit-service evidence when available, and estimate pace loss from post-event clean laps while controlling for fuel, tire age/compound, wetness, traffic, pit-out laps, and driver. Gap To Leader can eventually show timeline markers and pace-loss context, while Fuel can consume the simplified repair/unscheduled-stop consequence.
 - Keep user-facing strategy recommendations conservative until enough teammate race data supports them.
 
 ### v1.3 - Gap, Sector, And Stint Analysis

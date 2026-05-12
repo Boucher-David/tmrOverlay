@@ -53,5 +53,5 @@ The release workflow should continue auditing publish output so these folders ca
 - `artifacts/` is generated build/screenshot output, including Windows screenshot parity artifacts, and can be deleted locally whenever those files are no longer being inspected.
 - Root diagnostics bundle folders or zip files, now named from car, track, and timestamp when session context is available, can be deleted locally after support review.
 - Ignored raw capture folders under `captures/`, especially `captures/IBT/` and large capture directories, should live outside git or in external storage once analysis is complete.
-- The tracked legacy raw capture under `captures/capture-20260426-032822-916/` is not customer-facing and still contains `telemetry.bin`. Replace any remaining references with compact fixtures under `fixtures/` before removing it from git in a dedicated cleanup branch.
+- Raw captures should not be tracked. Keep durable evidence in compact fixtures, history baselines, or behavior docs; keep raw `telemetry.bin`, source `.ibt`, and full session YAML in ignored local storage or external archives while they are still useful for analysis.
 - `mocks/overlay-catalog/` is exploratory reference material. Keep it under `mocks/` while useful, but do not treat it as product documentation.
