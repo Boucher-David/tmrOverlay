@@ -30,7 +30,7 @@
       "sessionInfoSnapshotCount": 2208,
       "appVersion": null,
       "informationalVersion": null,
-      "sampleStride": 120
+      "sampleStride": 60
     },
     {
       "captureId": "capture-20260502-143722-571",
@@ -40,7 +40,7 @@
       "sessionInfoSnapshotCount": 750,
       "appVersion": "1.0.0.0",
       "informationalVersion": "1.0.0+161c73bfa72d5519a6b8ad44b48c3e7f212d38b3",
-      "sampleStride": 120
+      "sampleStride": 60
     }
   ],
   "states": [
@@ -206,6 +206,16 @@
               "trackSurface": -1
             }
           ]
+        },
+        "sessionClock": {
+          "sessionState": 4,
+          "sessionPhase": "green",
+          "sessionTimeSeconds": 65.8,
+          "sessionTimeRemainSeconds": null,
+          "sessionTimeTotalSeconds": 600.0,
+          "sessionTimeRemainInterpretation": "unavailable",
+          "preGreenCountdownSeconds": null,
+          "shouldInferPreGreenCountdown": false
         }
       },
       "notes": [
@@ -606,6 +616,16 @@
               "trackSurface": -1
             }
           ]
+        },
+        "sessionClock": {
+          "sessionState": 6,
+          "sessionPhase": "post-green",
+          "sessionTimeSeconds": 190.733,
+          "sessionTimeRemainSeconds": 7.033,
+          "sessionTimeTotalSeconds": 86400.0,
+          "sessionTimeRemainInterpretation": "session-remaining",
+          "preGreenCountdownSeconds": null,
+          "shouldInferPreGreenCountdown": false
         }
       },
       "notes": [
@@ -956,12 +976,740 @@
               "trackSurface": -1
             }
           ]
+        },
+        "sessionClock": {
+          "sessionState": 1,
+          "sessionPhase": "pre-green",
+          "sessionTimeSeconds": 0.95,
+          "sessionTimeRemainSeconds": 299.067,
+          "sessionTimeTotalSeconds": 7200.0,
+          "sessionTimeRemainInterpretation": "pre-green-countdown",
+          "preGreenCountdownSeconds": 299.067,
+          "shouldInferPreGreenCountdown": false
         }
       },
       "notes": [
         "AI race state does not have usable local-player context; Standings/Relative/Gap must use focus/timing/scoring arrays.",
         "Relative depends on model-v2 timing fallback rather than local proximity in this state.",
-        "Race pre-green may expose grid/scoring before live race gaps are meaningful."
+        "Race pre-green may expose grid/scoring before live race gaps are meaningful.",
+        "Race pre-green countdown is exposed through positive SessionTimeRemain in this SessionState phase.",
+        "SessionState is a phase within the active SessionNum, not practice/qualifying/race session selection."
+      ]
+    },
+    {
+      "id": "endurance-4h-race-pre-countdown",
+      "title": "Four-hour race pre-grid countdown from SessionTimeRemain",
+      "captureId": "capture-20260426-130334-932",
+      "sourceCategory": "endurance-4h-team-race",
+      "labelBasis": {
+        "sessionKind": "race",
+        "sessionPhase": "pre-green",
+        "focusRelation": "player",
+        "pitOrGarageContext": false
+      },
+      "provenance": {
+        "frameIndex": 142980,
+        "capturedUnixMs": 1777210997952,
+        "sessionInfoUpdate": 352,
+        "sessionTimeSeconds": 59.25
+      },
+      "context": {
+        "trackDisplayName": "Gesamtstrecke VLN",
+        "trackConfigName": null,
+        "trackLengthKm": 24.1544,
+        "eventType": "Race",
+        "official": true,
+        "teamRacing": true,
+        "driverCarIdxFromSessionInfo": 15,
+        "currentSessionNumFromYaml": 2,
+        "rawSessionNumFromTelemetry": 2,
+        "selectedSessionNum": 2,
+        "selectedSessionType": "Race",
+        "selectedSessionName": "RACE",
+        "rawSessionType": "Race",
+        "rawSessionName": "RACE",
+        "sessionInfoMatchesTelemetry": true
+      },
+      "rosterSummary": {
+        "driverCount": 61,
+        "classCounts": {
+          "11": 1,
+          "4098": 49,
+          "4099": 11
+        }
+      },
+      "rawScalars": {
+        "SessionTime": 59.25,
+        "SessionTick": 199886,
+        "SessionNum": 2,
+        "SessionState": 1,
+        "SessionFlags": 268698112,
+        "SessionTimeRemain": 59.76667,
+        "SessionTimeTotal": 14400.0,
+        "SessionLapsRemainEx": 32767,
+        "SessionLapsTotal": 32767,
+        "RaceLaps": 0,
+        "PlayerCarIdx": 15,
+        "CamCarIdx": 15,
+        "IsOnTrack": true,
+        "IsInGarage": false,
+        "OnPitRoad": false,
+        "PitstopActive": false,
+        "PlayerCarInPitStall": false,
+        "PlayerTrackSurface": 3,
+        "CarLeftRight": 1,
+        "Speed": 0.00011,
+        "Lap": 0,
+        "LapCompleted": -1,
+        "LapDistPct": 0.86994,
+        "LapLastLapTime": 0.0,
+        "LapBestLapTime": 0.0,
+        "PitSvFlags": 127,
+        "PitSvFuel": 104.94,
+        "PitRepairLeft": 0.0,
+        "PitOptRepairLeft": 0.0
+      },
+      "focusContext": {
+        "playerCarIdx": 15,
+        "rawCamCarIdx": 15,
+        "focusCarIdx": 15,
+        "focusUnavailableReason": null,
+        "canUseLocalRadarContext": true,
+        "localRadarUnavailableBecausePitGarageOrOffTrack": false,
+        "localRadarAvailable": true,
+        "focusDiffersFromPlayer": false,
+        "focusCanRepresentLocal": true
+      },
+      "fieldCoverage": {
+        "allTimingCarCount": 64,
+        "positionCount": 0,
+        "classPositionCount": 0,
+        "lapProgressCount": 0,
+        "f2TimeNonNegativeCount": 64,
+        "f2TimePositiveCount": 0,
+        "estimatedTimeNonNegativeCount": 64,
+        "lastLapValidCount": 0,
+        "bestLapValidCount": 0
+      },
+      "referenceRows": {
+        "player": {
+          "carIdx": 15,
+          "carClass": 4098,
+          "f2TimeSeconds": 0.0,
+          "estimatedTimeSeconds": 417.24557,
+          "trackSurface": 3,
+          "onPitRoad": false
+        },
+        "focus": {
+          "carIdx": 15,
+          "carClass": 4098,
+          "f2TimeSeconds": 0.0,
+          "estimatedTimeSeconds": 417.24557,
+          "trackSurface": 3,
+          "onPitRoad": false
+        },
+        "overallLeader": null,
+        "playerClassLeader": null,
+        "focusClassLeader": null
+      },
+      "modelInputs": {
+        "standings": {
+          "selectedSource": "starting-grid",
+          "selectedRowCount": 60,
+          "selectedValidLapRowCount": 41,
+          "requiresValidLapBeforeRendering": false,
+          "standingsWouldRender": true,
+          "referenceCarInSelectedRows": true,
+          "rawSessionResultRowCount": 58,
+          "currentSessionResultRowCount": 58,
+          "qualifyResultRowCount": 60
+        },
+        "relative": {
+          "liveProximityRowCount": 63,
+          "sampleNearbyTimingRowCount": 63,
+          "timingFallbackRowCount": 63,
+          "timingFallbackAheadCount": 0,
+          "timingFallbackBehindCount": 0,
+          "relativeModelLikelySource": "live-proximity"
+        },
+        "gapToLeader": {
+          "allowsLiveRaceGaps": false,
+          "overallLeaderEvidence": "unavailable:gap_signals_missing",
+          "classLeaderEvidence": "unavailable:gap_signals_missing",
+          "gapOverlayWouldHaveData": false
+        },
+        "sessionClock": {
+          "sessionState": 1,
+          "sessionPhase": "pre-green",
+          "sessionTimeSeconds": 59.25,
+          "sessionTimeRemainSeconds": 59.767,
+          "sessionTimeTotalSeconds": 14400.0,
+          "sessionTimeRemainInterpretation": "pre-green-countdown",
+          "preGreenCountdownSeconds": 59.767,
+          "shouldInferPreGreenCountdown": false
+        },
+        "timing": {
+          "overallRowCount": 64,
+          "classRowCount": 53,
+          "referenceClass": 4098,
+          "sampleRows": [
+            {
+              "carIdx": 15,
+              "isPlayer": true,
+              "isFocus": true,
+              "isOverallLeader": false,
+              "isClassLeader": false,
+              "carClass": 4098,
+              "hasTiming": true,
+              "hasSpatialProgress": false,
+              "f2TimeSeconds": 0.0,
+              "estimatedTimeSeconds": 417.24557,
+              "deltaSecondsToFocus": 0.0,
+              "gapSecondsToClassLeader": 0.0,
+              "onPitRoad": false,
+              "trackSurface": 3
+            },
+            {
+              "carIdx": 0,
+              "isPlayer": false,
+              "isFocus": false,
+              "isOverallLeader": false,
+              "isClassLeader": true,
+              "carClass": 11,
+              "hasTiming": true,
+              "hasSpatialProgress": false,
+              "f2TimeSeconds": 0.0,
+              "estimatedTimeSeconds": 442.87555,
+              "deltaSecondsToFocus": 0.0,
+              "gapSecondsToClassLeader": 0.0,
+              "onPitRoad": false,
+              "trackSurface": 3
+            },
+            {
+              "carIdx": 1,
+              "isPlayer": false,
+              "isFocus": false,
+              "isOverallLeader": false,
+              "isClassLeader": false,
+              "carClass": 4098,
+              "hasTiming": true,
+              "hasSpatialProgress": false,
+              "f2TimeSeconds": 0.0,
+              "estimatedTimeSeconds": 0.0,
+              "deltaSecondsToFocus": 0.0,
+              "gapSecondsToClassLeader": 0.0,
+              "onPitRoad": false,
+              "trackSurface": -1
+            },
+            {
+              "carIdx": 2,
+              "isPlayer": false,
+              "isFocus": false,
+              "isOverallLeader": false,
+              "isClassLeader": false,
+              "carClass": 4098,
+              "hasTiming": true,
+              "hasSpatialProgress": false,
+              "f2TimeSeconds": 0.0,
+              "estimatedTimeSeconds": 416.51285,
+              "deltaSecondsToFocus": 0.0,
+              "gapSecondsToClassLeader": 0.0,
+              "onPitRoad": false,
+              "trackSurface": 3
+            },
+            {
+              "carIdx": 3,
+              "isPlayer": false,
+              "isFocus": false,
+              "isOverallLeader": false,
+              "isClassLeader": false,
+              "carClass": 4098,
+              "hasTiming": true,
+              "hasSpatialProgress": false,
+              "f2TimeSeconds": 0.0,
+              "estimatedTimeSeconds": 0.0,
+              "deltaSecondsToFocus": 0.0,
+              "gapSecondsToClassLeader": 0.0,
+              "onPitRoad": false,
+              "trackSurface": -1
+            },
+            {
+              "carIdx": 4,
+              "isPlayer": false,
+              "isFocus": false,
+              "isOverallLeader": false,
+              "isClassLeader": false,
+              "carClass": 4098,
+              "hasTiming": true,
+              "hasSpatialProgress": false,
+              "f2TimeSeconds": 0.0,
+              "estimatedTimeSeconds": 414.31732,
+              "deltaSecondsToFocus": 0.0,
+              "gapSecondsToClassLeader": 0.0,
+              "onPitRoad": false,
+              "trackSurface": 3
+            },
+            {
+              "carIdx": 5,
+              "isPlayer": false,
+              "isFocus": false,
+              "isOverallLeader": false,
+              "isClassLeader": false,
+              "carClass": 4098,
+              "hasTiming": true,
+              "hasSpatialProgress": false,
+              "f2TimeSeconds": 0.0,
+              "estimatedTimeSeconds": 0.0,
+              "deltaSecondsToFocus": 0.0,
+              "gapSecondsToClassLeader": 0.0,
+              "onPitRoad": false,
+              "trackSurface": -1
+            },
+            {
+              "carIdx": 6,
+              "isPlayer": false,
+              "isFocus": false,
+              "isOverallLeader": false,
+              "isClassLeader": false,
+              "carClass": 4098,
+              "hasTiming": true,
+              "hasSpatialProgress": false,
+              "f2TimeSeconds": 0.0,
+              "estimatedTimeSeconds": 417.72855,
+              "deltaSecondsToFocus": 0.0,
+              "gapSecondsToClassLeader": 0.0,
+              "onPitRoad": false,
+              "trackSurface": 3
+            },
+            {
+              "carIdx": 7,
+              "isPlayer": false,
+              "isFocus": false,
+              "isOverallLeader": false,
+              "isClassLeader": false,
+              "carClass": 4098,
+              "hasTiming": true,
+              "hasSpatialProgress": false,
+              "f2TimeSeconds": 0.0,
+              "estimatedTimeSeconds": 0.0,
+              "deltaSecondsToFocus": 0.0,
+              "gapSecondsToClassLeader": 0.0,
+              "onPitRoad": false,
+              "trackSurface": -1
+            },
+            {
+              "carIdx": 8,
+              "isPlayer": false,
+              "isFocus": false,
+              "isOverallLeader": false,
+              "isClassLeader": false,
+              "carClass": 4098,
+              "hasTiming": true,
+              "hasSpatialProgress": false,
+              "f2TimeSeconds": 0.0,
+              "estimatedTimeSeconds": 415.99826,
+              "deltaSecondsToFocus": 0.0,
+              "gapSecondsToClassLeader": 0.0,
+              "onPitRoad": false,
+              "trackSurface": 3
+            },
+            {
+              "carIdx": 9,
+              "isPlayer": false,
+              "isFocus": false,
+              "isOverallLeader": false,
+              "isClassLeader": false,
+              "carClass": 4098,
+              "hasTiming": true,
+              "hasSpatialProgress": false,
+              "f2TimeSeconds": 0.0,
+              "estimatedTimeSeconds": 0.0,
+              "deltaSecondsToFocus": 0.0,
+              "gapSecondsToClassLeader": 0.0,
+              "onPitRoad": false,
+              "trackSurface": -1
+            },
+            {
+              "carIdx": 10,
+              "isPlayer": false,
+              "isFocus": false,
+              "isOverallLeader": false,
+              "isClassLeader": false,
+              "carClass": 4098,
+              "hasTiming": true,
+              "hasSpatialProgress": false,
+              "f2TimeSeconds": 0.0,
+              "estimatedTimeSeconds": 414.9241,
+              "deltaSecondsToFocus": 0.0,
+              "gapSecondsToClassLeader": 0.0,
+              "onPitRoad": false,
+              "trackSurface": 3
+            }
+          ]
+        }
+      },
+      "notes": [
+        "Race pre-green may expose grid/scoring before live race gaps are meaningful.",
+        "Race pre-green countdown is exposed through positive SessionTimeRemain in this SessionState phase.",
+        "SessionState is a phase within the active SessionNum, not practice/qualifying/race session selection."
+      ]
+    },
+    {
+      "id": "endurance-4h-race-pre-grid-no-countdown",
+      "title": "Four-hour later pre-green grid phase without countdown",
+      "captureId": "capture-20260426-130334-932",
+      "sourceCategory": "endurance-4h-team-race",
+      "labelBasis": {
+        "sessionKind": "race",
+        "sessionPhase": "pre-green",
+        "focusRelation": "player",
+        "pitOrGarageContext": false
+      },
+      "provenance": {
+        "frameIndex": 146640,
+        "capturedUnixMs": 1777211058952,
+        "sessionInfoUpdate": 355,
+        "sessionTimeSeconds": 120.25
+      },
+      "context": {
+        "trackDisplayName": "Gesamtstrecke VLN",
+        "trackConfigName": null,
+        "trackLengthKm": 24.1544,
+        "eventType": "Race",
+        "official": true,
+        "teamRacing": true,
+        "driverCarIdxFromSessionInfo": 15,
+        "currentSessionNumFromYaml": 2,
+        "rawSessionNumFromTelemetry": 2,
+        "selectedSessionNum": 2,
+        "selectedSessionType": "Race",
+        "selectedSessionName": "RACE",
+        "rawSessionType": "Race",
+        "rawSessionName": "RACE",
+        "sessionInfoMatchesTelemetry": true
+      },
+      "rosterSummary": {
+        "driverCount": 61,
+        "classCounts": {
+          "11": 1,
+          "4098": 49,
+          "4099": 11
+        }
+      },
+      "rawScalars": {
+        "SessionTime": 120.25,
+        "SessionTick": 203546,
+        "SessionNum": 2,
+        "SessionState": 2,
+        "SessionFlags": 537133568,
+        "SessionTimeRemain": -1.0,
+        "SessionTimeTotal": 14400.0,
+        "SessionLapsRemainEx": 32767,
+        "SessionLapsTotal": 32767,
+        "RaceLaps": 0,
+        "PlayerCarIdx": 15,
+        "CamCarIdx": 15,
+        "IsOnTrack": true,
+        "IsInGarage": false,
+        "OnPitRoad": false,
+        "PitstopActive": false,
+        "PlayerCarInPitStall": false,
+        "PlayerTrackSurface": 3,
+        "CarLeftRight": 1,
+        "Speed": 5e-05,
+        "Lap": 0,
+        "LapCompleted": -1,
+        "LapDistPct": 0.86994,
+        "LapLastLapTime": 0.0,
+        "LapBestLapTime": 0.0,
+        "PitSvFlags": 127,
+        "PitSvFuel": 104.94,
+        "PitRepairLeft": 0.0,
+        "PitOptRepairLeft": 0.0
+      },
+      "focusContext": {
+        "playerCarIdx": 15,
+        "rawCamCarIdx": 15,
+        "focusCarIdx": 15,
+        "focusUnavailableReason": null,
+        "canUseLocalRadarContext": true,
+        "localRadarUnavailableBecausePitGarageOrOffTrack": false,
+        "localRadarAvailable": true,
+        "focusDiffersFromPlayer": false,
+        "focusCanRepresentLocal": true
+      },
+      "fieldCoverage": {
+        "allTimingCarCount": 64,
+        "positionCount": 0,
+        "classPositionCount": 0,
+        "lapProgressCount": 0,
+        "f2TimeNonNegativeCount": 64,
+        "f2TimePositiveCount": 0,
+        "estimatedTimeNonNegativeCount": 64,
+        "lastLapValidCount": 0,
+        "bestLapValidCount": 0
+      },
+      "referenceRows": {
+        "player": {
+          "carIdx": 15,
+          "carClass": 4098,
+          "f2TimeSeconds": 0.0,
+          "estimatedTimeSeconds": 417.24557,
+          "trackSurface": 3,
+          "onPitRoad": false
+        },
+        "focus": {
+          "carIdx": 15,
+          "carClass": 4098,
+          "f2TimeSeconds": 0.0,
+          "estimatedTimeSeconds": 417.24557,
+          "trackSurface": 3,
+          "onPitRoad": false
+        },
+        "overallLeader": null,
+        "playerClassLeader": null,
+        "focusClassLeader": null
+      },
+      "modelInputs": {
+        "standings": {
+          "selectedSource": "starting-grid",
+          "selectedRowCount": 60,
+          "selectedValidLapRowCount": 41,
+          "requiresValidLapBeforeRendering": false,
+          "standingsWouldRender": true,
+          "referenceCarInSelectedRows": true,
+          "rawSessionResultRowCount": 58,
+          "currentSessionResultRowCount": 58,
+          "qualifyResultRowCount": 60
+        },
+        "relative": {
+          "liveProximityRowCount": 63,
+          "sampleNearbyTimingRowCount": 63,
+          "timingFallbackRowCount": 63,
+          "timingFallbackAheadCount": 0,
+          "timingFallbackBehindCount": 0,
+          "relativeModelLikelySource": "live-proximity"
+        },
+        "gapToLeader": {
+          "allowsLiveRaceGaps": false,
+          "overallLeaderEvidence": "unavailable:gap_signals_missing",
+          "classLeaderEvidence": "unavailable:gap_signals_missing",
+          "gapOverlayWouldHaveData": false
+        },
+        "sessionClock": {
+          "sessionState": 2,
+          "sessionPhase": "pre-green",
+          "sessionTimeSeconds": 120.25,
+          "sessionTimeRemainSeconds": null,
+          "sessionTimeTotalSeconds": 14400.0,
+          "sessionTimeRemainInterpretation": "pre-green-no-countdown",
+          "preGreenCountdownSeconds": null,
+          "shouldInferPreGreenCountdown": false
+        },
+        "timing": {
+          "overallRowCount": 64,
+          "classRowCount": 53,
+          "referenceClass": 4098,
+          "sampleRows": [
+            {
+              "carIdx": 15,
+              "isPlayer": true,
+              "isFocus": true,
+              "isOverallLeader": false,
+              "isClassLeader": false,
+              "carClass": 4098,
+              "hasTiming": true,
+              "hasSpatialProgress": false,
+              "f2TimeSeconds": 0.0,
+              "estimatedTimeSeconds": 417.24557,
+              "deltaSecondsToFocus": 0.0,
+              "gapSecondsToClassLeader": 0.0,
+              "onPitRoad": false,
+              "trackSurface": 3
+            },
+            {
+              "carIdx": 0,
+              "isPlayer": false,
+              "isFocus": false,
+              "isOverallLeader": false,
+              "isClassLeader": true,
+              "carClass": 11,
+              "hasTiming": true,
+              "hasSpatialProgress": false,
+              "f2TimeSeconds": 0.0,
+              "estimatedTimeSeconds": 442.87555,
+              "deltaSecondsToFocus": 0.0,
+              "gapSecondsToClassLeader": 0.0,
+              "onPitRoad": false,
+              "trackSurface": 3
+            },
+            {
+              "carIdx": 1,
+              "isPlayer": false,
+              "isFocus": false,
+              "isOverallLeader": false,
+              "isClassLeader": false,
+              "carClass": 4098,
+              "hasTiming": true,
+              "hasSpatialProgress": false,
+              "f2TimeSeconds": 0.0,
+              "estimatedTimeSeconds": 416.63574,
+              "deltaSecondsToFocus": 0.0,
+              "gapSecondsToClassLeader": 0.0,
+              "onPitRoad": false,
+              "trackSurface": 3
+            },
+            {
+              "carIdx": 2,
+              "isPlayer": false,
+              "isFocus": false,
+              "isOverallLeader": false,
+              "isClassLeader": false,
+              "carClass": 4098,
+              "hasTiming": true,
+              "hasSpatialProgress": false,
+              "f2TimeSeconds": 0.0,
+              "estimatedTimeSeconds": 416.51285,
+              "deltaSecondsToFocus": 0.0,
+              "gapSecondsToClassLeader": 0.0,
+              "onPitRoad": false,
+              "trackSurface": 3
+            },
+            {
+              "carIdx": 3,
+              "isPlayer": false,
+              "isFocus": false,
+              "isOverallLeader": false,
+              "isClassLeader": false,
+              "carClass": 4098,
+              "hasTiming": true,
+              "hasSpatialProgress": false,
+              "f2TimeSeconds": 0.0,
+              "estimatedTimeSeconds": 418.56381,
+              "deltaSecondsToFocus": 0.0,
+              "gapSecondsToClassLeader": 0.0,
+              "onPitRoad": false,
+              "trackSurface": 3
+            },
+            {
+              "carIdx": 4,
+              "isPlayer": false,
+              "isFocus": false,
+              "isOverallLeader": false,
+              "isClassLeader": false,
+              "carClass": 4098,
+              "hasTiming": true,
+              "hasSpatialProgress": false,
+              "f2TimeSeconds": 0.0,
+              "estimatedTimeSeconds": 414.31732,
+              "deltaSecondsToFocus": 0.0,
+              "gapSecondsToClassLeader": 0.0,
+              "onPitRoad": false,
+              "trackSurface": 3
+            },
+            {
+              "carIdx": 5,
+              "isPlayer": false,
+              "isFocus": false,
+              "isOverallLeader": false,
+              "isClassLeader": false,
+              "carClass": 4098,
+              "hasTiming": true,
+              "hasSpatialProgress": false,
+              "f2TimeSeconds": 0.0,
+              "estimatedTimeSeconds": 416.38965,
+              "deltaSecondsToFocus": 0.0,
+              "gapSecondsToClassLeader": 0.0,
+              "onPitRoad": false,
+              "trackSurface": 3
+            },
+            {
+              "carIdx": 6,
+              "isPlayer": false,
+              "isFocus": false,
+              "isOverallLeader": false,
+              "isClassLeader": false,
+              "carClass": 4098,
+              "hasTiming": true,
+              "hasSpatialProgress": false,
+              "f2TimeSeconds": 0.0,
+              "estimatedTimeSeconds": 417.72855,
+              "deltaSecondsToFocus": 0.0,
+              "gapSecondsToClassLeader": 0.0,
+              "onPitRoad": false,
+              "trackSurface": 3
+            },
+            {
+              "carIdx": 7,
+              "isPlayer": false,
+              "isFocus": false,
+              "isOverallLeader": false,
+              "isClassLeader": false,
+              "carClass": 4098,
+              "hasTiming": true,
+              "hasSpatialProgress": false,
+              "f2TimeSeconds": 0.0,
+              "estimatedTimeSeconds": 415.28464,
+              "deltaSecondsToFocus": 0.0,
+              "gapSecondsToClassLeader": 0.0,
+              "onPitRoad": false,
+              "trackSurface": 3
+            },
+            {
+              "carIdx": 8,
+              "isPlayer": false,
+              "isFocus": false,
+              "isOverallLeader": false,
+              "isClassLeader": false,
+              "carClass": 4098,
+              "hasTiming": true,
+              "hasSpatialProgress": false,
+              "f2TimeSeconds": 0.0,
+              "estimatedTimeSeconds": 415.99826,
+              "deltaSecondsToFocus": 0.0,
+              "gapSecondsToClassLeader": 0.0,
+              "onPitRoad": false,
+              "trackSurface": 3
+            },
+            {
+              "carIdx": 9,
+              "isPlayer": false,
+              "isFocus": false,
+              "isOverallLeader": false,
+              "isClassLeader": false,
+              "carClass": 4098,
+              "hasTiming": true,
+              "hasSpatialProgress": false,
+              "f2TimeSeconds": 0.0,
+              "estimatedTimeSeconds": 417.84863,
+              "deltaSecondsToFocus": 0.0,
+              "gapSecondsToClassLeader": 0.0,
+              "onPitRoad": false,
+              "trackSurface": 3
+            },
+            {
+              "carIdx": 10,
+              "isPlayer": false,
+              "isFocus": false,
+              "isOverallLeader": false,
+              "isClassLeader": false,
+              "carClass": 4098,
+              "hasTiming": true,
+              "hasSpatialProgress": false,
+              "f2TimeSeconds": 0.0,
+              "estimatedTimeSeconds": 414.9241,
+              "deltaSecondsToFocus": 0.0,
+              "gapSecondsToClassLeader": 0.0,
+              "onPitRoad": false,
+              "trackSurface": 3
+            }
+          ]
+        }
+      },
+      "notes": [
+        "Race pre-green may expose grid/scoring before live race gaps are meaningful.",
+        "SessionTimeRemain can return -1 during later grid/pace pre-green phases; do not infer a countdown from SessionTimeTotal minus SessionTime.",
+        "SessionState is a phase within the active SessionNum, not practice/qualifying/race session selection."
       ]
     },
     {
@@ -1372,6 +2120,16 @@
               "trackSurface": -1
             }
           ]
+        },
+        "sessionClock": {
+          "sessionState": 4,
+          "sessionPhase": "green",
+          "sessionTimeSeconds": 153.967,
+          "sessionTimeRemainSeconds": 7102.9,
+          "sessionTimeTotalSeconds": 7200.0,
+          "sessionTimeRemainInterpretation": "session-remaining",
+          "preGreenCountdownSeconds": null,
+          "shouldInferPreGreenCountdown": false
         }
       },
       "notes": [
@@ -1782,6 +2540,16 @@
               "trackSurface": 3
             }
           ]
+        },
+        "sessionClock": {
+          "sessionState": 4,
+          "sessionPhase": "green",
+          "sessionTimeSeconds": 2277.933,
+          "sessionTimeRemainSeconds": 4922.083,
+          "sessionTimeTotalSeconds": 7200.0,
+          "sessionTimeRemainInterpretation": "session-remaining",
+          "preGreenCountdownSeconds": null,
+          "shouldInferPreGreenCountdown": false
         }
       },
       "notes": [
@@ -1947,6 +2715,16 @@
               "trackSurface": -1
             }
           ]
+        },
+        "sessionClock": {
+          "sessionState": 4,
+          "sessionPhase": "green",
+          "sessionTimeSeconds": 2134.917,
+          "sessionTimeRemainSeconds": null,
+          "sessionTimeTotalSeconds": 7200.0,
+          "sessionTimeRemainInterpretation": "unavailable",
+          "preGreenCountdownSeconds": null,
+          "shouldInferPreGreenCountdown": false
         }
       },
       "notes": [
@@ -2140,6 +2918,16 @@
           "overallLeaderEvidence": "reliable:CarIdxF2Time",
           "classLeaderEvidence": "reliable:CarIdxF2Time",
           "gapOverlayWouldHaveData": true
+        },
+        "sessionClock": {
+          "sessionState": 4,
+          "sessionPhase": "green",
+          "sessionTimeSeconds": 1000.25,
+          "sessionTimeRemainSeconds": 13665.55,
+          "sessionTimeTotalSeconds": 14400.0,
+          "sessionTimeRemainInterpretation": "session-remaining",
+          "preGreenCountdownSeconds": null,
+          "shouldInferPreGreenCountdown": false
         },
         "timing": {
           "overallRowCount": 64,
@@ -2572,6 +3360,16 @@
           "classLeaderEvidence": "reliable:CarIdxF2Time",
           "gapOverlayWouldHaveData": true
         },
+        "sessionClock": {
+          "sessionState": 4,
+          "sessionPhase": "green",
+          "sessionTimeSeconds": 3626.25,
+          "sessionTimeRemainSeconds": 11039.55,
+          "sessionTimeTotalSeconds": 14400.0,
+          "sessionTimeRemainInterpretation": "session-remaining",
+          "preGreenCountdownSeconds": null,
+          "shouldInferPreGreenCountdown": false
+        },
         "timing": {
           "overallRowCount": 64,
           "classRowCount": 53,
@@ -2824,10 +3622,10 @@
         "pitOrGarageContext": false
       },
       "provenance": {
-        "frameIndex": 720,
-        "capturedUnixMs": 1777732653727,
-        "sessionInfoUpdate": 12,
-        "sessionTimeSeconds": 57022.036
+        "frameIndex": 660,
+        "capturedUnixMs": 1777732652706,
+        "sessionInfoUpdate": 11,
+        "sessionTimeSeconds": 57021.053
       },
       "context": {
         "trackDisplayName": "Gesamtstrecke 24h",
@@ -2855,12 +3653,12 @@
         }
       },
       "rawScalars": {
-        "SessionTime": 57022.03594,
-        "SessionTick": 51181,
+        "SessionTime": 57021.0526,
+        "SessionTick": 51121,
         "SessionNum": 2,
         "SessionState": 4,
         "SessionFlags": 268697600,
-        "SessionTimeRemain": 29628.0974,
+        "SessionTimeRemain": 29629.08073,
         "SessionTimeTotal": 86400.0,
         "SessionLapsRemainEx": 32767,
         "SessionLapsTotal": 32767,
@@ -2874,7 +3672,7 @@
         "PlayerCarInPitStall": false,
         "PlayerTrackSurface": 3,
         "CarLeftRight": 1,
-        "Speed": 73.28743,
+        "Speed": 72.96895,
         "Lap": 0,
         "LapCompleted": 0,
         "LapDistPct": 0.0,
@@ -2900,12 +3698,12 @@
         "allTimingCarCount": 64,
         "positionCount": 57,
         "classPositionCount": 57,
-        "lapProgressCount": 33,
+        "lapProgressCount": 32,
         "f2TimeNonNegativeCount": 64,
         "f2TimePositiveCount": 55,
         "estimatedTimeNonNegativeCount": 64,
-        "lastLapValidCount": 32,
-        "bestLapValidCount": 33
+        "lastLapValidCount": 31,
+        "bestLapValidCount": 32
       },
       "referenceRows": {
         "player": {
@@ -2914,9 +3712,9 @@
           "classPosition": 22,
           "carClass": 4098,
           "lapCompleted": 108,
-          "lapDistPct": 0.94958,
+          "lapDistPct": 0.94667,
           "f2TimeSeconds": 2195.46289,
-          "estimatedTimeSeconds": 458.7207,
+          "estimatedTimeSeconds": 457.73898,
           "lastLapTimeSeconds": 501.35818,
           "bestLapTimeSeconds": 489.24579,
           "trackSurface": 3,
@@ -2928,9 +3726,9 @@
           "classPosition": 22,
           "carClass": 4098,
           "lapCompleted": 108,
-          "lapDistPct": 0.94958,
+          "lapDistPct": 0.94667,
           "f2TimeSeconds": 2195.46289,
-          "estimatedTimeSeconds": 458.7207,
+          "estimatedTimeSeconds": 457.73898,
           "lastLapTimeSeconds": 501.35818,
           "bestLapTimeSeconds": 489.24579,
           "trackSurface": 3,
@@ -2942,9 +3740,9 @@
           "classPosition": 1,
           "carClass": 4098,
           "lapCompleted": 113,
-          "lapDistPct": 0.35403,
+          "lapDistPct": 0.35114,
           "f2TimeSeconds": 0.0,
-          "estimatedTimeSeconds": 175.76761,
+          "estimatedTimeSeconds": 174.77905,
           "lastLapTimeSeconds": 492.4819,
           "bestLapTimeSeconds": 485.43161,
           "trackSurface": 3,
@@ -2956,9 +3754,9 @@
           "classPosition": 1,
           "carClass": 4098,
           "lapCompleted": 113,
-          "lapDistPct": 0.35403,
+          "lapDistPct": 0.35114,
           "f2TimeSeconds": 0.0,
-          "estimatedTimeSeconds": 175.76761,
+          "estimatedTimeSeconds": 174.77905,
           "lastLapTimeSeconds": 492.4819,
           "bestLapTimeSeconds": 485.43161,
           "trackSurface": 3,
@@ -2970,9 +3768,9 @@
           "classPosition": 1,
           "carClass": 4098,
           "lapCompleted": 113,
-          "lapDistPct": 0.35403,
+          "lapDistPct": 0.35114,
           "f2TimeSeconds": 0.0,
-          "estimatedTimeSeconds": 175.76761,
+          "estimatedTimeSeconds": 174.77905,
           "lastLapTimeSeconds": 492.4819,
           "bestLapTimeSeconds": 485.43161,
           "trackSurface": 3,
@@ -3005,6 +3803,16 @@
           "classLeaderEvidence": "reliable:CarIdxF2Time",
           "gapOverlayWouldHaveData": true
         },
+        "sessionClock": {
+          "sessionState": 4,
+          "sessionPhase": "green",
+          "sessionTimeSeconds": 57021.053,
+          "sessionTimeRemainSeconds": 29629.081,
+          "sessionTimeTotalSeconds": 86400.0,
+          "sessionTimeRemainInterpretation": "session-remaining",
+          "preGreenCountdownSeconds": null,
+          "shouldInferPreGreenCountdown": false
+        },
         "timing": {
           "overallRowCount": 64,
           "classRowCount": 52,
@@ -3021,9 +3829,9 @@
               "carClass": 4098,
               "hasTiming": true,
               "hasSpatialProgress": true,
-              "progressLaps": 108.94958,
+              "progressLaps": 108.94667,
               "f2TimeSeconds": 2195.46289,
-              "estimatedTimeSeconds": 458.7207,
+              "estimatedTimeSeconds": 457.73898,
               "deltaSecondsToFocus": 0.0,
               "gapSecondsToClassLeader": 2195.46289,
               "onPitRoad": false,
@@ -3040,9 +3848,9 @@
               "carClass": 4098,
               "hasTiming": true,
               "hasSpatialProgress": true,
-              "progressLaps": 113.35403,
+              "progressLaps": 113.35114,
               "f2TimeSeconds": 0.0,
-              "estimatedTimeSeconds": 175.76761,
+              "estimatedTimeSeconds": 174.77905,
               "deltaSecondsToFocus": -2195.46289,
               "gapSecondsToClassLeader": 0.0,
               "onPitRoad": false,
@@ -3059,9 +3867,9 @@
               "carClass": 4099,
               "hasTiming": true,
               "hasSpatialProgress": true,
-              "progressLaps": 109.04558,
+              "progressLaps": 109.04401,
               "f2TimeSeconds": 2204.04175,
-              "estimatedTimeSeconds": 25.15216,
+              "estimatedTimeSeconds": 24.24532,
               "deltaSecondsToFocus": 8.57886,
               "gapSecondsToClassLeader": 548.58179,
               "onPitRoad": false,
@@ -3078,9 +3886,9 @@
               "carClass": 4099,
               "hasTiming": true,
               "hasSpatialProgress": true,
-              "progressLaps": 108.98583,
+              "progressLaps": 108.98421,
               "f2TimeSeconds": 2229.27319,
-              "estimatedTimeSeconds": 482.20914,
+              "estimatedTimeSeconds": 481.22314,
               "deltaSecondsToFocus": 33.8103,
               "gapSecondsToClassLeader": 573.81323,
               "onPitRoad": false,
@@ -3115,9 +3923,9 @@
               "carClass": 4098,
               "hasTiming": true,
               "hasSpatialProgress": true,
-              "progressLaps": 109.31869,
+              "progressLaps": 109.31667,
               "f2TimeSeconds": 2066.104,
-              "estimatedTimeSeconds": 160.66522,
+              "estimatedTimeSeconds": 159.69685,
               "deltaSecondsToFocus": -129.35889,
               "gapSecondsToClassLeader": 2066.104,
               "onPitRoad": false,
@@ -3134,9 +3942,9 @@
               "carClass": 4099,
               "hasTiming": true,
               "hasSpatialProgress": true,
-              "progressLaps": 108.63126,
+              "progressLaps": 108.62981,
               "f2TimeSeconds": 2405.83008,
-              "estimatedTimeSeconds": 316.25793,
+              "estimatedTimeSeconds": 315.29196,
               "deltaSecondsToFocus": 210.36719,
               "gapSecondsToClassLeader": 750.37012,
               "onPitRoad": false,
@@ -3153,9 +3961,9 @@
               "carClass": 4099,
               "hasTiming": true,
               "hasSpatialProgress": true,
-              "progressLaps": 109.48997,
+              "progressLaps": 109.4885,
               "f2TimeSeconds": 1969.14087,
-              "estimatedTimeSeconds": 252.89482,
+              "estimatedTimeSeconds": 251.95653,
               "deltaSecondsToFocus": -226.32202,
               "gapSecondsToClassLeader": 313.68091,
               "onPitRoad": false,
@@ -3171,14 +3979,13 @@
               "classPosition": 23,
               "carClass": 4098,
               "hasTiming": true,
-              "hasSpatialProgress": true,
-              "progressLaps": 108.01124,
+              "hasSpatialProgress": false,
               "f2TimeSeconds": 2525.20581,
-              "estimatedTimeSeconds": 4.40226,
+              "estimatedTimeSeconds": 0.0,
               "deltaSecondsToFocus": 329.74292,
               "gapSecondsToClassLeader": 2525.20581,
-              "onPitRoad": true,
-              "trackSurface": 1
+              "onPitRoad": false,
+              "trackSurface": -1
             },
             {
               "carIdx": 11,
@@ -3191,9 +3998,9 @@
               "carClass": 4098,
               "hasTiming": true,
               "hasSpatialProgress": true,
-              "progressLaps": 110.05872,
+              "progressLaps": 110.057,
               "f2TimeSeconds": 1694.56799,
-              "estimatedTimeSeconds": 33.50436,
+              "estimatedTimeSeconds": 32.5542,
               "deltaSecondsToFocus": -500.8949,
               "gapSecondsToClassLeader": 1694.56799,
               "onPitRoad": false,
@@ -3210,9 +4017,9 @@
               "carClass": 4098,
               "hasTiming": true,
               "hasSpatialProgress": true,
-              "progressLaps": 110.10108,
+              "progressLaps": 110.0989,
               "f2TimeSeconds": 1671.43835,
-              "estimatedTimeSeconds": 56.12386,
+              "estimatedTimeSeconds": 55.14597,
               "deltaSecondsToFocus": -524.02454,
               "gapSecondsToClassLeader": 1671.43835,
               "onPitRoad": false,
@@ -3229,9 +4036,9 @@
               "carClass": 4099,
               "hasTiming": true,
               "hasSpatialProgress": true,
-              "progressLaps": 109.97695,
+              "progressLaps": 109.97501,
               "f2TimeSeconds": 1655.45996,
-              "estimatedTimeSeconds": 476.21021,
+              "estimatedTimeSeconds": 475.31909,
               "deltaSecondsToFocus": -540.00293,
               "gapSecondsToClassLeader": 0.0,
               "onPitRoad": false,
@@ -3436,6 +4243,16 @@
           "overallLeaderEvidence": "reliable:CarIdxF2Time",
           "classLeaderEvidence": "reliable:CarIdxF2Time",
           "gapOverlayWouldHaveData": true
+        },
+        "sessionClock": {
+          "sessionState": 4,
+          "sessionPhase": "green",
+          "sessionTimeSeconds": 59994.136,
+          "sessionTimeRemainSeconds": 26655.997,
+          "sessionTimeTotalSeconds": 86400.0,
+          "sessionTimeRemainInterpretation": "session-remaining",
+          "preGreenCountdownSeconds": null,
+          "shouldInferPreGreenCountdown": false
         },
         "timing": {
           "overallRowCount": 64,

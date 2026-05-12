@@ -107,12 +107,33 @@
       white-space: nowrap;
     }
 
+    .header-items {
+      display: flex;
+      align-items: baseline;
+      justify-content: flex-end;
+      gap: 12px;
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+
     .status {
       color: var(--tmr-text-secondary);
       font-size: 11px;
       font-weight: 700;
       text-align: right;
       white-space: nowrap;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .header-item {
+      color: var(--tmr-text);
+      font-size: 11px;
+      font-weight: 800;
+      text-align: right;
+      white-space: nowrap;
+      flex: 0 0 auto;
     }
 
     .content {
@@ -173,6 +194,11 @@
     tr.pit td {
       color: var(--tmr-text-muted);
       background: rgba(var(--tmr-amber-rgb), 0.10);
+    }
+
+    tr.pending-grid td {
+      color: var(--tmr-text-muted);
+      background: rgba(var(--tmr-text-muted-rgb), 0.08);
     }
 
     tr.class-header {

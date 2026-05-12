@@ -1382,8 +1382,20 @@ internal sealed class OverlayManager : IDisposable
         form.Deactivate += (_, _) =>
         {
             _settingsOverlayActive = false;
+            AutoHideSettingsOverlay(form);
             ApplyEmergencyOverlayZOrder();
         };
+    }
+
+    private static void AutoHideSettingsOverlay(Form form)
+    {
+        if (OverlayZOrderPolicy.ShouldAutoHideSettingsWindow(
+            form.Visible,
+            settingsWindowActive: false,
+            form.Enabled))
+        {
+            form.Hide();
+        }
     }
 
     private void ApplyManagedOverlayTopMost(OverlayDefinition definition)
@@ -1440,12 +1452,18 @@ internal sealed class OverlayManager : IDisposable
         {
             var intrinsicallyTransparent = persistent.IsIntrinsicallyInputTransparentOverlay;
             var settingsWindowVisible = TryGetVisibleSettingsForm(out var settingsForm);
+            var isSettingsWindow = ReferenceEquals(form, settingsForm);
+            var settingsWindowActive = settingsWindowVisible && _settingsOverlayActive;
+            var intersectsSettingsWindow = settingsWindowVisible
+                && !isSettingsWindow
+                && form.Bounds.IntersectsWith(settingsForm.Bounds);
             persistent.SetInputTransparentOverride(
                 OverlayZOrderPolicy.ShouldOverlayBeInputTransparent(
                     intrinsicallyTransparent,
                     forceInputTransparent,
-                    settingsWindowVisible,
-                    ReferenceEquals(form, settingsForm)));
+                    settingsWindowActive,
+                    isSettingsWindow,
+                    intersectsSettingsWindow));
         }
     }
 
@@ -1453,8 +1471,9 @@ internal sealed class OverlayManager : IDisposable
     {
         var settingsWindowVisible = TryGetVisibleSettingsForm(out var settingsForm);
         return OverlayZOrderPolicy.ShouldProtectSettingsWindowInput(
-            settingsWindowVisible,
-            ReferenceEquals(form, settingsForm));
+            settingsWindowVisible && _settingsOverlayActive,
+            ReferenceEquals(form, settingsForm),
+            settingsWindowVisible && form.Bounds.IntersectsWith(settingsForm.Bounds));
     }
 
     private bool TryGetVisibleSettingsForm(out Form settingsForm)

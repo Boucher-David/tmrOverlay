@@ -13,7 +13,7 @@ Use `docs/model-v2-future-branches.md` for session-handoff notes, current model-
 
 ## Current Branch Target
 
-### v0.18.11 - Telemetry Corpus Readiness Guardrails
+### v0.18.11 - Race-Start Overlay And Persistence Hardening
 
 Planned branch name:
 
@@ -23,11 +23,15 @@ v0.18.11-telemetry-corpus-readiness
 
 Planned scope:
 
-- Make the redacted telemetry corpus the pre/post validation source for V1-candidate overlay behavior.
+- Make the redacted telemetry corpus the pre/post validation source for V1-candidate overlay behavior, including race start, early green, pit/tow, endurance, AI, and spectated contexts.
 - Preserve the compact live-state corpus as the behavior/source-selection fixture for Standings, Relative, and Gap To Leader.
 - Add a broader SDK field availability corpus so future features can discover known iRacing SDK fields, declared array/storage shape, primitive type bounds, observed ranges, and redacted identity shape without committing raw telemetry.
 - Add a schema-drift check for current local `telemetry-schema.json` outputs so new iRacing SDK fields become explicit corpus/product-planning inputs.
-- Harden support-bundle, Windows z-order, Stream Chat, first-run privacy/defaults, and durable settings schema guardrails around the v0.18.10 product behavior.
+- Stabilize race-start Standings and Relative behavior around `SessionNum`, race `SessionState`, starting-grid rows, official timing availability, pre-green estimated relative timing, and tow/gridding edge cases.
+- Prevent fuel/race-progress projections from treating race pre-green countdowns as remaining race time.
+- Add shared header time-remaining chrome across native/browser overlays while keeping header/footer options per overlay.
+- Preserve user settings and local app data on update while keeping uninstall cleanup destructive.
+- Fix Windows overlay input protection, movable overlay click-through, Settings focus auto-hide, and input graph trace bounds.
 - Keep raw captures, source `.ibt` payloads, full session YAML, and private driver/team identity values out of tracked fixtures and diagnostics bundle payloads.
 
 Technical implementation checklist:
@@ -39,25 +43,34 @@ Technical implementation checklist:
 5. Add corpus tests for source-selection expectations, SDK field coverage, declared shape versus observed range, and privacy posture.
 6. Extract z-order policy guardrails and assert Settings topmost, overlay topmost, Stream Chat click-through, and diagnostics topmost contracts.
 7. Add first-run/raw-capture defaults and durable settings schema compatibility tests.
-8. Validate local static checks and git hygiene; use Windows CI or a Windows machine for the full .NET build/test and real WinForms z-order/click-through behavior pass.
+8. Update shared header/footer settings contracts, migration version, native/browser chrome rendering, and mac shared-contract fallback.
+9. Validate local static checks and git hygiene; use Windows CI or a Windows machine for the full .NET build/test and real WinForms z-order/click-through behavior pass.
 
 Likely squash title:
 
 ```text
-[v0.18.11] Add telemetry corpus readiness guardrails
+[v0.18.11] Stabilize race-start overlays and update persistence
 ```
 
 Likely squash body:
 
 ```text
 - Bumped shared .NET product/version metadata to 0.18.11.
-- Extended the compact live telemetry state corpus to 10 redacted states across AI multi-session, open-player practice, four-hour endurance, and 24-hour endurance captures, preserving missing-target notes for remaining gaps.
+- Extended the compact live telemetry state corpus to 10 redacted states across AI multi-session, open-player practice, four-hour endurance, and 24-hour endurance captures, preserving missing-target notes for remaining gaps and adding race-start signal-availability notes.
 - Added a redacted SDK field availability corpus covering 334 local endurance SDK variables with declared array/storage maximums, primitive type bounds, sampled observed ranges, source coverage, and identity shape counts.
 - Added a fast schema-drift check so new local iRacing SDK fields or declared shape changes are detected before telemetry-backed feature work.
 - Added corpus tests for source-selection behavior, SDK coverage, declared shape versus observed range, and raw/private payload exclusion.
+- Kept Standings on starting-grid ordering before green, hid empty other-class sections, dimmed cars that have not taken the grid, and withheld race gap/interval cells until positive timing evidence exists.
+- Let Relative use estimated pre-green timing from observed `CarIdxEstTime`/lap-distance signals when telemetry supports it, including pit/tow edge cases.
+- Protected Fuel Calculator and race-progress projections from treating positive race pre-green `SessionTimeRemain` countdowns as remaining race time.
+- Added shared native/browser header time-remaining support with session-scoped settings options and updated the settings chrome controls.
+- Improved AI class-label derivation, standings browser replay tooling, and telemetry corpus extraction.
+- Preserved user settings and app data on update while keeping installed-build uninstall cleanup destructive.
+- Fixed Windows overlay input protection so movable overlays are not made click-through unless they overlap the active Settings window, and auto-hide Settings when focus moves to another app.
+- Clamped native/browser input graph curves inside the plot bounds.
 - Added z-order and Stream Chat guardrail tests plus support-bundle assertions for overlay topmost/input-transparent/no-activate diagnostics and window-z-order topmost serialization.
-- Added raw-capture opt-in/default privacy tests and a durable app-settings schema compatibility snapshot.
-- Updated telemetry-analysis README, repo skills, and model-v2 future-branch notes so the corpus is used as pre/post feature validation evidence.
+- Added raw-capture opt-in/default privacy tests and durable app-settings schema compatibility coverage.
+- Updated telemetry-analysis README, repo skills, telemetry docs, overlay logic docs, release docs, and model-v2 future-branch notes so the corpus and race-start behavior are documented as current validation evidence.
 - Validated local Python tools, SDK schema drift check, screenshot expectations, C# compile-shape scanner, and git hygiene; Windows .NET build/test and real WinForms behavior validation remain CI/Windows-machine gates.
 ```
 

@@ -281,6 +281,132 @@ public sealed class AppSettingsStoreTests
     }
 
     [Fact]
+    public void Load_PreservesExistingUserStateDuringMigration()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "tmr-overlay-settings-test", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var storage = CreateStorage(root);
+            Directory.CreateDirectory(storage.SettingsRoot);
+            var settingsPath = Path.Combine(storage.SettingsRoot, "settings.json");
+            var garageCoverPath = Path.Combine(storage.AppDataRoot, "garage-cover", "cover.png");
+            File.WriteAllText(
+                settingsPath,
+                $$"""
+                {
+                  "settingsVersion": 8,
+                  "general": {
+                    "fontFamily": "Verdana",
+                    "unitSystem": "Imperial"
+                  },
+                  "overlays": [
+                    {
+                      "id": "standings",
+                      "enabled": false,
+                      "x": 144,
+                      "y": 288,
+                      "width": 780,
+                      "height": 520,
+                      "opacity": 0.72,
+                      "alwaysOnTop": false,
+                      "showInTest": false,
+                      "showInPractice": false,
+                      "showInQualifying": false,
+                      "showInRace": true,
+                      "screenId": "screen-2",
+                      "options": {
+                        "chrome.header.status.race": "false",
+                        "chrome.footer.source.race": "false",
+                        "standings.other-class-rows": "0"
+                      }
+                    },
+                    {
+                      "id": "track-map",
+                      "enabled": true,
+                      "options": {
+                        "track-map.build-from-telemetry": "true",
+                        "track-map.sector-boundaries.enabled": "false"
+                      }
+                    },
+                    {
+                      "id": "garage-cover",
+                      "enabled": true,
+                      "options": {
+                        "garage-cover.image-path": "{{garageCoverPath.Replace("\\", "\\\\")}}"
+                      }
+                    }
+                  ]
+                }
+                """);
+
+            var settings = new AppSettingsStore(storage).Load();
+
+            Assert.Equal(AppSettingsMigrator.CurrentVersion, settings.SettingsVersion);
+            Assert.Equal("Verdana", settings.General.FontFamily);
+            Assert.Equal("Imperial", settings.General.UnitSystem);
+
+            var standings = settings.Overlays.Single(overlay => overlay.Id == "standings");
+            Assert.False(standings.Enabled);
+            Assert.Equal(144, standings.X);
+            Assert.Equal(288, standings.Y);
+            Assert.Equal(780, standings.Width);
+            Assert.Equal(520, standings.Height);
+            Assert.Equal(0.72, standings.Opacity);
+            Assert.False(standings.AlwaysOnTop);
+            Assert.False(standings.ShowInTest);
+            Assert.False(standings.ShowInPractice);
+            Assert.False(standings.ShowInQualifying);
+            Assert.True(standings.ShowInRace);
+            Assert.Equal("screen-2", standings.ScreenId);
+            Assert.False(standings.GetBooleanOption(OverlayOptionKeys.ChromeHeaderStatusRace, defaultValue: true));
+            Assert.False(standings.GetBooleanOption(OverlayOptionKeys.ChromeFooterSourceRace, defaultValue: true));
+            Assert.True(standings.GetBooleanOption(OverlayOptionKeys.ChromeHeaderTimeRemainingRace, defaultValue: false));
+            Assert.Equal(0, standings.GetIntegerOption(OverlayOptionKeys.StandingsOtherClassRows, 2, 0, 6));
+
+            var trackMap = settings.Overlays.Single(overlay => overlay.Id == "track-map");
+            Assert.True(trackMap.Enabled);
+            Assert.True(trackMap.GetBooleanOption(OverlayOptionKeys.TrackMapBuildFromTelemetry, defaultValue: false));
+            Assert.False(trackMap.GetBooleanOption(OverlayOptionKeys.TrackMapSectorBoundariesEnabled, defaultValue: true));
+
+            var garageCover = settings.Overlays.Single(overlay => overlay.Id == "garage-cover");
+            Assert.True(garageCover.Enabled);
+            Assert.Equal(garageCoverPath, garageCover.GetStringOption(OverlayOptionKeys.GarageCoverImagePath));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void Load_DoesNotOverwriteUnreadableExistingSettings()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "tmr-overlay-settings-test", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var storage = CreateStorage(root);
+            Directory.CreateDirectory(storage.SettingsRoot);
+            var settingsPath = Path.Combine(storage.SettingsRoot, "settings.json");
+            const string unreadableSettings = "{ this is not json";
+            File.WriteAllText(settingsPath, unreadableSettings);
+
+            _ = new AppSettingsStore(storage).Load();
+
+            Assert.Equal(unreadableSettings, File.ReadAllText(settingsPath));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void GetOrAddOverlay_KeepsOverlaySettingsIndependentById()
     {
         var settings = new ApplicationSettings();

@@ -48,13 +48,16 @@ internal sealed record StandingsOverlayViewModel(
         var requestedOtherClassRows = Math.Clamp(otherClassRowsPerClass, 0, 6);
         if (scoring.HasData)
         {
+            var showPendingGridRows = scoring.Source == LiveScoringSource.StartingGrid
+                && IsRacePreGreen(snapshot);
             var scoringRows = ScoringRows(
                 snapshot,
                 referenceCarIdx,
                 requestedMaximumRows,
                 requestedOtherClassRows,
                 showClassSeparators,
-                requiresValidLap);
+                requiresValidLap,
+                showPendingGridRows);
             if (scoringRows.Length == 0)
             {
                 return Waiting(requiresValidLap ? "waiting for valid laps" : "waiting for scoring rows");
@@ -118,7 +121,8 @@ internal sealed record StandingsOverlayViewModel(
         int maximumRows,
         int otherClassRowsPerClass,
         bool showClassSeparators,
-        bool requiresValidLap)
+        bool requiresValidLap,
+        bool showPendingGridRows)
     {
         var scoring = snapshot.Models.Scoring;
         var groups = scoring.ClassGroups.Count > 0
@@ -190,7 +194,8 @@ internal sealed record StandingsOverlayViewModel(
                 rowBudget,
                 Math.Min(rowBudget - rows.Count, groupLimits[group]),
                 ReferenceEquals(group, primaryGroup),
-                includeHeaders);
+                includeHeaders,
+                showPendingGridRows);
         }
 
         return rows.ToArray();
@@ -203,13 +208,14 @@ internal sealed record StandingsOverlayViewModel(
         bool showClassSeparators)
     {
         var baseRows = Math.Clamp(requestedMaximumRows, 1, MaximumRenderedRows);
-        if (!showClassSeparators || orderedGroups.Count <= 1)
+        var visibleOtherClassRows = Math.Clamp(otherClassRowsPerClass, 0, 6);
+        if (!showClassSeparators || orderedGroups.Count <= 1 || visibleOtherClassRows == 0)
         {
             return baseRows;
         }
 
         var otherGroupCount = Math.Max(0, orderedGroups.Count - 1);
-        var otherGroupRows = otherGroupCount * (1 + Math.Clamp(otherClassRowsPerClass, 0, 6));
+        var otherGroupRows = otherGroupCount * (1 + visibleOtherClassRows);
         var classHeaderRows = orderedGroups.Count;
         return Math.Clamp(baseRows + classHeaderRows + otherGroupRows, 1, MaximumRenderedRows);
     }
@@ -222,17 +228,18 @@ internal sealed record StandingsOverlayViewModel(
         bool showClassSeparators)
     {
         var limits = new Dictionary<LiveScoringClassGroup, int>();
+        var visibleOtherClassRows = Math.Clamp(otherClassRowsPerClass, 0, 6);
         var otherGroups = orderedGroups
-            .Where(group => showClassSeparators && !ReferenceEquals(group, primaryGroup))
+            .Where(group => showClassSeparators && visibleOtherClassRows > 0 && !ReferenceEquals(group, primaryGroup))
             .ToArray();
-        var includeHeaders = showClassSeparators && (otherGroups.Length > 0 || orderedGroups.Count > 1);
-        var reservedOtherRows = otherGroups.Sum(_ => includeHeaders ? 1 + otherClassRowsPerClass : otherClassRowsPerClass);
+        var includeHeaders = showClassSeparators && otherGroups.Length > 0;
+        var reservedOtherRows = otherGroups.Sum(_ => includeHeaders ? 1 + visibleOtherClassRows : visibleOtherClassRows);
         var minimumPrimaryRows = Math.Min(maximumRows, includeHeaders ? 2 : 1);
         limits[primaryGroup] = Math.Clamp(maximumRows - reservedOtherRows, minimumPrimaryRows, maximumRows);
 
         foreach (var group in otherGroups)
         {
-            limits[group] = includeHeaders ? 1 + otherClassRowsPerClass : otherClassRowsPerClass;
+            limits[group] = includeHeaders ? 1 + visibleOtherClassRows : visibleOtherClassRows;
         }
 
         return limits;
@@ -274,7 +281,8 @@ internal sealed record StandingsOverlayViewModel(
         int maximumRows,
         int groupLimit,
         bool useReferenceWindow,
-        bool includeHeader)
+        bool includeHeader,
+        bool showPendingGridRows)
     {
         if (groupLimit <= 0 || rows.Count >= maximumRows)
         {
@@ -299,7 +307,7 @@ internal sealed record StandingsOverlayViewModel(
             }
 
             timingByCarIdx.TryGetValue(scoringRow.CarIdx, out var timingRow);
-            rows.Add(ToRow(scoringRow, timingRow, referenceCarIdx));
+            rows.Add(ToRow(scoringRow, timingRow, referenceCarIdx, showPendingGridRows));
         }
     }
 
@@ -368,6 +376,12 @@ internal sealed record StandingsOverlayViewModel(
             OverlaySessionKind.Test or
             OverlaySessionKind.Practice or
             OverlaySessionKind.Qualifying;
+    }
+
+    private static bool IsRacePreGreen(LiveTelemetrySnapshot snapshot)
+    {
+        return OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot) == OverlaySessionKind.Race
+            && snapshot.Models.Session.SessionState is > 0 and < 4;
     }
 
     private static bool HasValidLap(LiveScoringRow row)
@@ -487,9 +501,11 @@ internal sealed record StandingsOverlayViewModel(
     private static StandingsOverlayRowViewModel ToRow(
         LiveScoringRow scoringRow,
         LiveTimingRow? timingRow,
-        int? referenceCarIdx)
+        int? referenceCarIdx,
+        bool showPendingGridRows)
     {
         var isReference = referenceCarIdx is not null && scoringRow.CarIdx == referenceCarIdx;
+        var hasTakenGrid = scoringRow.HasTakenGrid || timingRow?.HasTakenGrid == true;
         return new StandingsOverlayRowViewModel(
             ClassPosition: scoringRow.ClassPosition is { } classPosition ? $"{classPosition}" : "--",
             CarNumber: FormatCarNumber(scoringRow),
@@ -501,7 +517,8 @@ internal sealed record StandingsOverlayViewModel(
             IsLeader: scoringRow.ClassPosition == 1,
             IsClassHeader: false,
             IsPartial: timingRow is null || !timingRow.HasTiming,
-            CarClassColorHex: scoringRow.CarClassColorHex);
+            CarClassColorHex: scoringRow.CarClassColorHex,
+            IsPendingGrid: showPendingGridRows && !hasTakenGrid);
     }
 
     private static string SourceText(LiveCoverageModel coverage)
@@ -575,7 +592,7 @@ internal sealed record StandingsOverlayViewModel(
             return $"+{laps:0.0}L";
         }
 
-        if (row.F2TimeSeconds is { } f2 && IsFinite(f2))
+        if (row.F2TimeSeconds is { } f2 && IsFinite(f2) && f2 > 0d)
         {
             return $"{f2:0.0}";
         }
@@ -640,4 +657,5 @@ internal sealed record StandingsOverlayRowViewModel(
     bool IsLeader,
     bool IsClassHeader,
     bool IsPartial,
-    string? CarClassColorHex);
+    string? CarClassColorHex,
+    bool IsPendingGrid = false);

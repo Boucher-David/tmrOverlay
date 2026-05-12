@@ -5,7 +5,7 @@ namespace TmrOverlay.Core.Settings;
 
 internal static class AppSettingsMigrator
 {
-    public const int CurrentVersion = 9;
+    public const int CurrentVersion = 10;
     private const string FlagsOverlayId = "flags";
     private const string FlagsPrimaryScreenDefaultId = "primary-screen-default";
     private const int FlagsDefaultWidth = 360;
@@ -32,6 +32,10 @@ internal static class AppSettingsMigrator
         OverlayOptionKeys.ChromeHeaderStatusPractice,
         OverlayOptionKeys.ChromeHeaderStatusQualifying,
         OverlayOptionKeys.ChromeHeaderStatusRace,
+        OverlayOptionKeys.ChromeHeaderTimeRemainingTest,
+        OverlayOptionKeys.ChromeHeaderTimeRemainingPractice,
+        OverlayOptionKeys.ChromeHeaderTimeRemainingQualifying,
+        OverlayOptionKeys.ChromeHeaderTimeRemainingRace,
         OverlayOptionKeys.ChromeFooterSourceTest,
         OverlayOptionKeys.ChromeFooterSourcePractice,
         OverlayOptionKeys.ChromeFooterSourceQualifying,
@@ -141,6 +145,10 @@ internal static class AppSettingsMigrator
             EnsureOption(overlay, OverlayOptionKeys.ChromeHeaderStatusPractice, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.ChromeHeaderStatusQualifying, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.ChromeHeaderStatusRace, defaultValue: true);
+            EnsureOption(overlay, OverlayOptionKeys.ChromeHeaderTimeRemainingTest, defaultValue: true);
+            EnsureOption(overlay, OverlayOptionKeys.ChromeHeaderTimeRemainingPractice, defaultValue: true);
+            EnsureOption(overlay, OverlayOptionKeys.ChromeHeaderTimeRemainingQualifying, defaultValue: true);
+            EnsureOption(overlay, OverlayOptionKeys.ChromeHeaderTimeRemainingRace, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.ChromeFooterSourceTest, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.ChromeFooterSourcePractice, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.ChromeFooterSourceQualifying, defaultValue: true);
@@ -265,6 +273,10 @@ internal static class AppSettingsMigrator
             or OverlayOptionKeys.ChromeHeaderStatusPractice
             or OverlayOptionKeys.ChromeHeaderStatusQualifying
             or OverlayOptionKeys.ChromeHeaderStatusRace
+            or OverlayOptionKeys.ChromeHeaderTimeRemainingTest
+            or OverlayOptionKeys.ChromeHeaderTimeRemainingPractice
+            or OverlayOptionKeys.ChromeHeaderTimeRemainingQualifying
+            or OverlayOptionKeys.ChromeHeaderTimeRemainingRace
             or OverlayOptionKeys.ChromeFooterSourceTest
             or OverlayOptionKeys.ChromeFooterSourcePractice
             or OverlayOptionKeys.ChromeFooterSourceQualifying

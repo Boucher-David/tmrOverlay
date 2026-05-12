@@ -1,4 +1,5 @@
 using TmrOverlay.App.History;
+using TmrOverlay.App.Overlays.Abstractions;
 using TmrOverlay.App.Overlays.Content;
 using TmrOverlay.App.Overlays.FuelCalculator;
 using TmrOverlay.App.Overlays.GapToLeader;
@@ -74,7 +75,7 @@ internal sealed class BrowserOverlayModelFactory
         }
         else if (string.Equals(overlayId, GapToLeaderOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
-            model = BuildGapToLeader(snapshot);
+            model = BuildGapToLeader(snapshot, settings);
         }
 
         if (model is null)
@@ -93,6 +94,7 @@ internal sealed class BrowserOverlayModelFactory
         DateTimeOffset now)
     {
         var browserSettings = StandingsBrowserSettings.From(settings);
+        var overlay = FindOverlay(settings, StandingsOverlayDefinition.Definition.Id);
         var viewModel = StandingsOverlayViewModel.From(
             snapshot,
             now,
@@ -108,18 +110,21 @@ internal sealed class BrowserOverlayModelFactory
                 IsClassHeader: row.IsClassHeader,
                 IsPit: !string.IsNullOrWhiteSpace(row.Pit),
                 IsPartial: row.IsPartial,
+                IsPendingGrid: row.IsPendingGrid,
                 CarClassColorHex: row.CarClassColorHex,
                 HeaderTitle: row.IsClassHeader ? row.Driver : null,
                 HeaderDetail: row.IsClassHeader ? ClassHeaderDetail(row.Gap, row.Interval) : null))
             .ToArray();
+        var headerItems = HeaderItems(overlay, snapshot, viewModel.Status);
 
         return BrowserOverlayDisplayModel.Table(
             StandingsOverlayDefinition.Definition.Id,
             StandingsOverlayDefinition.Definition.DisplayName,
-            viewModel.Status,
+            BrowserStatus(headerItems, viewModel.Status),
             viewModel.Source,
             browserSettings.Columns,
-            rows);
+            rows,
+            headerItems);
     }
 
     private static string StandingsCell(StandingsOverlayRowViewModel row, string dataKey)
@@ -142,6 +147,7 @@ internal sealed class BrowserOverlayModelFactory
         DateTimeOffset now)
     {
         var browserSettings = RelativeBrowserSettings.From(settings);
+        var overlay = FindOverlay(settings, RelativeOverlayDefinition.Definition.Id);
         var viewModel = RelativeOverlayViewModel.From(
             snapshot,
             now,
@@ -156,18 +162,21 @@ internal sealed class BrowserOverlayModelFactory
                 IsClassHeader: false,
                 IsPit: row.IsPit,
                 IsPartial: row.IsPartial,
+                IsPendingGrid: false,
                 CarClassColorHex: row.ClassColorHex,
                 HeaderTitle: null,
                 HeaderDetail: null))
             .ToArray();
+        var headerItems = HeaderItems(overlay, snapshot, viewModel.Status);
 
         return BrowserOverlayDisplayModel.Table(
             RelativeOverlayDefinition.Definition.Id,
             RelativeOverlayDefinition.Definition.DisplayName,
-            viewModel.Status,
+            BrowserStatus(headerItems, viewModel.Status),
             viewModel.Source,
             browserSettings.Columns,
-            rows);
+            rows,
+            headerItems);
     }
 
     private static string RelativeCell(RelativeOverlayRowViewModel row, string dataKey)
@@ -188,18 +197,20 @@ internal sealed class BrowserOverlayModelFactory
         string unitSystem,
         DateTimeOffset now)
     {
+        var overlay = FindOverlay(settings, FuelCalculatorOverlayDefinition.Definition.Id);
         var localContext = LiveLocalStrategyContext.ForFuelCalculator(snapshot, now);
         if (!localContext.IsAvailable)
         {
+            var waitingHeaderItems = HeaderItems(overlay, snapshot, localContext.StatusText);
             return BrowserOverlayDisplayModel.MetricRows(
                 FuelCalculatorOverlayDefinition.Definition.Id,
                 FuelCalculatorOverlayDefinition.Definition.DisplayName,
-                localContext.StatusText,
+                BrowserStatus(waitingHeaderItems, localContext.StatusText),
                 "source: waiting",
-                []);
+                [],
+                waitingHeaderItems);
         }
 
-        var overlay = FindOverlay(settings, FuelCalculatorOverlayDefinition.Definition.Id);
         var history = LookupHistory(snapshot.Combo);
         var strategy = FuelStrategyCalculator.From(snapshot, history);
         var viewModel = FuelCalculatorViewModel.From(
@@ -216,13 +227,15 @@ internal sealed class BrowserOverlayModelFactory
             row.Label,
             string.IsNullOrWhiteSpace(row.Advice) ? row.Value : $"{row.Value} | {row.Advice}",
             BrowserOverlayTone.Modeled)));
+        var headerItems = HeaderItems(overlay, snapshot, viewModel.Status);
 
         return BrowserOverlayDisplayModel.MetricRows(
             FuelCalculatorOverlayDefinition.Definition.Id,
             FuelCalculatorOverlayDefinition.Definition.DisplayName,
-            viewModel.Status,
+            BrowserStatus(headerItems, viewModel.Status),
             viewModel.Source,
-            metrics);
+            metrics,
+            headerItems);
     }
 
     private static BrowserOverlayDisplayModel FromSimple(
@@ -242,8 +255,9 @@ internal sealed class BrowserOverlayModelFactory
                 .ToArray());
     }
 
-    private BrowserOverlayDisplayModel BuildGapToLeader(LiveTelemetrySnapshot snapshot)
+    private BrowserOverlayDisplayModel BuildGapToLeader(LiveTelemetrySnapshot snapshot, ApplicationSettings settings)
     {
+        var overlay = FindOverlay(settings, GapToLeaderOverlayDefinition.Definition.Id);
         var gap = GapToLeaderLiveModelAdapter.Select(snapshot);
         if (gap.HasData
             && GapToLeaderLiveModelAdapter.SelectFocusedTrendPointSeconds(snapshot, gap) is { } seconds
@@ -262,16 +276,19 @@ internal sealed class BrowserOverlayModelFactory
             new BrowserOverlayMetricRow("Class leader", FormatGap(gap.ClassLeaderGap), BrowserOverlayTone.Live)
         };
 
+        var status = gap.HasData ? "live | race gap" : "waiting for timing";
+        var headerItems = HeaderItems(overlay, snapshot, status);
         return new BrowserOverlayDisplayModel(
             GapToLeaderOverlayDefinition.Definition.Id,
             GapToLeaderOverlayDefinition.Definition.DisplayName,
-            gap.HasData ? "live | race gap" : "waiting for timing",
+            BrowserStatus(headerItems, status),
             gap.HasData ? $"source: live gap telemetry | cars {gap.ClassCars.Count}" : "source: waiting",
             "graph",
             Columns: [],
             Rows: [],
             Metrics: metrics,
-            Points: _gapPoints.ToArray());
+            Points: _gapPoints.ToArray(),
+            HeaderItems: headerItems);
     }
 
     private SessionHistoryLookupResult LookupHistory(HistoricalComboIdentity combo)
@@ -304,6 +321,36 @@ internal sealed class BrowserOverlayModelFactory
         return string.Equals(settings.General.UnitSystem, "Imperial", StringComparison.OrdinalIgnoreCase)
             ? "Imperial"
             : "Metric";
+    }
+
+    private static IReadOnlyList<BrowserOverlayHeaderItem> HeaderItems(
+        OverlaySettings? overlay,
+        LiveTelemetrySnapshot snapshot,
+        string status)
+    {
+        var items = new List<BrowserOverlayHeaderItem>();
+        if (overlay is null || OverlayChromeSettings.ShowHeaderStatus(overlay, snapshot))
+        {
+            items.Add(new BrowserOverlayHeaderItem("status", status));
+        }
+
+        if (overlay is null || OverlayChromeSettings.ShowHeaderTimeRemaining(overlay, snapshot))
+        {
+            var timeRemaining = OverlayHeaderTimeFormatter.FormatTimeRemaining(snapshot);
+            if (!string.IsNullOrWhiteSpace(timeRemaining))
+            {
+                items.Add(new BrowserOverlayHeaderItem("timeRemaining", timeRemaining));
+            }
+        }
+
+        return items;
+    }
+
+    private static string BrowserStatus(IReadOnlyList<BrowserOverlayHeaderItem> headerItems, string fallback)
+    {
+        return headerItems.FirstOrDefault(item => string.Equals(item.Key, "status", StringComparison.OrdinalIgnoreCase))?.Value
+            ?? headerItems.FirstOrDefault()?.Value
+            ?? fallback;
     }
 
     private static string ClassHeaderDetail(params string[] parts)
@@ -374,7 +421,8 @@ internal sealed record BrowserOverlayDisplayModel(
     IReadOnlyList<OverlayContentBrowserColumn> Columns,
     IReadOnlyList<BrowserOverlayDisplayRow> Rows,
     IReadOnlyList<BrowserOverlayMetricRow> Metrics,
-    IReadOnlyList<double> Points)
+    IReadOnlyList<double> Points,
+    IReadOnlyList<BrowserOverlayHeaderItem> HeaderItems)
 {
     public static BrowserOverlayDisplayModel Table(
         string overlayId,
@@ -382,7 +430,8 @@ internal sealed record BrowserOverlayDisplayModel(
         string status,
         string source,
         IReadOnlyList<OverlayContentBrowserColumn> columns,
-        IReadOnlyList<BrowserOverlayDisplayRow> rows)
+        IReadOnlyList<BrowserOverlayDisplayRow> rows,
+        IReadOnlyList<BrowserOverlayHeaderItem>? headerItems = null)
     {
         return new BrowserOverlayDisplayModel(
             overlayId,
@@ -393,7 +442,8 @@ internal sealed record BrowserOverlayDisplayModel(
             columns,
             rows,
             [],
-            []);
+            [],
+            headerItems ?? []);
     }
 
     public static BrowserOverlayDisplayModel MetricRows(
@@ -401,7 +451,8 @@ internal sealed record BrowserOverlayDisplayModel(
         string title,
         string status,
         string source,
-        IReadOnlyList<BrowserOverlayMetricRow> metrics)
+        IReadOnlyList<BrowserOverlayMetricRow> metrics,
+        IReadOnlyList<BrowserOverlayHeaderItem>? headerItems = null)
     {
         return new BrowserOverlayDisplayModel(
             overlayId,
@@ -412,7 +463,8 @@ internal sealed record BrowserOverlayDisplayModel(
             [],
             [],
             metrics,
-            []);
+            [],
+            headerItems ?? []);
     }
 }
 
@@ -422,9 +474,14 @@ internal sealed record BrowserOverlayDisplayRow(
     bool IsClassHeader,
     bool IsPit,
     bool IsPartial,
+    bool IsPendingGrid,
     string? CarClassColorHex,
     string? HeaderTitle,
     string? HeaderDetail);
+
+internal sealed record BrowserOverlayHeaderItem(
+    string Key,
+    string Value);
 
 internal sealed record BrowserOverlayMetricRow(
     string Label,

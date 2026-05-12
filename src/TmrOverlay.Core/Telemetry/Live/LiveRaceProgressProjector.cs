@@ -37,7 +37,8 @@ internal static class LiveRaceProgressProjector
                 "session lap total");
         }
 
-        if (ValidPositive(session.SessionTimeRemainSeconds) is { } timeRemaining
+        if (!IsRacePreGreen(context, session)
+            && ValidPositive(session.SessionTimeRemainSeconds) is { } timeRemaining
             && ValidLapTime(racePaceSeconds) is { } racePace)
         {
             var leaderProgress = overallLeaderProgressLaps ?? classLeaderProgressLaps;
@@ -104,9 +105,22 @@ internal static class LiveRaceProgressProjector
             || session.SessionLapsRemain is >= UnlimitedLapsSentinel;
     }
 
+    private static bool IsRacePreGreen(HistoricalSessionContext context, LiveSessionModel session)
+    {
+        return session.SessionState is >= 1 and <= 3
+            && (ContainsRace(context.Session.SessionType)
+                || ContainsRace(context.Session.SessionName)
+                || ContainsRace(context.Session.EventType));
+    }
+
     private static bool ContainsUnlimited(string? value)
     {
         return value?.IndexOf("unlimited", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static bool ContainsRace(string? value)
+    {
+        return value?.IndexOf("race", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static double? ParseSeconds(string? value)

@@ -7,8 +7,12 @@ namespace TmrOverlay.App.Overlays.Abstractions;
 internal static class OverlayChrome
 {
     private const string HeaderStatusSlotKey = "header.status";
+    private const string HeaderTimeRemainingSlotKey = "header.time-remaining";
     private const string FooterSourceSlotKey = "footer.source";
     private const int HeaderStatusMinimumSlotWidth = 80;
+    private const int HeaderTimeRemainingMinimumSlotWidth = 66;
+    private const int HeaderTimeRemainingValueWidth = 56;
+    private const int HeaderSlotGap = 10;
     private const int FooterSourceMinimumSlotWidth = 120;
 
     public static Label CreateTitleLabel(string fontFamily, string text, int width)
@@ -26,14 +30,32 @@ internal static class OverlayChrome
 
     public static Label CreateStatusLabel(string fontFamily, int titleWidth, int clientWidth, int minimumWidth)
     {
+        return CreateHeaderValueLabel(
+            fontFamily,
+            "waiting",
+            StatusLocation(titleWidth),
+            StatusSize(clientWidth, titleWidth, minimumWidth));
+    }
+
+    public static Label CreateTimeRemainingLabel(string fontFamily, int titleWidth, int clientWidth)
+    {
+        return CreateHeaderValueLabel(
+            fontFamily,
+            string.Empty,
+            HeaderTimeRemainingLocation(clientWidth, titleWidth),
+            new Size(HeaderTimeRemainingWidth(clientWidth, titleWidth), OverlayTheme.Layout.OverlayStatusHeight));
+    }
+
+    private static Label CreateHeaderValueLabel(string fontFamily, string text, Point location, Size size)
+    {
         return new Label
         {
             AutoSize = false,
             ForeColor = OverlayTheme.Colors.TextSubtle,
             Font = OverlayTheme.Font(fontFamily, OverlayTheme.Typography.OverlayStatusSize),
-            Location = StatusLocation(titleWidth),
-            Size = StatusSize(clientWidth, titleWidth, minimumWidth),
-            Text = "waiting",
+            Location = location,
+            Size = size,
+            Text = text,
             TextAlign = ContentAlignment.MiddleRight
         };
     }
@@ -102,6 +124,19 @@ internal static class OverlayChrome
             OverlayTheme.Layout.OverlayStatusHeight);
     }
 
+    public static Point HeaderTimeRemainingLocation(int clientWidth, int titleWidth)
+    {
+        var statusLocation = StatusLocation(titleWidth);
+        return new Point(
+            statusLocation.X + Math.Max(0, HeaderStatusAvailableWidth(clientWidth, titleWidth) - HeaderTimeRemainingWidth(clientWidth, titleWidth)),
+            OverlayTheme.Layout.OverlayStatusTop);
+    }
+
+    public static int HeaderTimeRemainingWidth(int clientWidth, int titleWidth)
+    {
+        return Math.Min(HeaderTimeRemainingValueWidth, HeaderStatusAvailableWidth(clientWidth, titleWidth));
+    }
+
     public static Point TableLocation()
     {
         return new Point(OverlayTheme.Layout.OuterPadding, OverlayTheme.Layout.OverlayTableTop);
@@ -148,15 +183,30 @@ internal static class OverlayChrome
 
     public static bool ShouldShowHeaderStatus(OverlayChromeState state, int clientWidth, int titleWidth)
     {
+        return HeaderSlots(state, clientWidth, titleWidth).Contains(HeaderStatusSlotKey);
+    }
+
+    public static bool ShouldShowHeaderTimeRemaining(OverlayChromeState state, int clientWidth, int titleWidth)
+    {
+        return HeaderSlots(state, clientWidth, titleWidth).Contains(HeaderTimeRemainingSlotKey);
+    }
+
+    private static IReadOnlySet<string> HeaderSlots(OverlayChromeState state, int clientWidth, int titleWidth)
+    {
         return FitSlots(
             [
                 new OverlayChromeSlotRequest(
                     HeaderStatusSlotKey,
                     state.ShowStatus,
                     HeaderStatusMinimumSlotWidth,
-                    Priority: 0)
+                    Priority: 0),
+                new OverlayChromeSlotRequest(
+                    HeaderTimeRemainingSlotKey,
+                    state.ShowTimeRemaining,
+                    HeaderTimeRemainingMinimumSlotWidth,
+                    Priority: 1)
             ],
-            HeaderStatusAvailableWidth(clientWidth, titleWidth)).Contains(HeaderStatusSlotKey);
+            HeaderStatusAvailableWidth(clientWidth, titleWidth));
     }
 
     public static bool ShouldShowFooterSource(OverlayChromeState state, int clientWidth)
@@ -182,13 +232,16 @@ internal static class OverlayChrome
             .ThenByDescending(request => request.MinimumWidth))
         {
             var minimumWidth = Math.Max(0, request.MinimumWidth);
-            if (minimumWidth > remainingWidth)
+            var requiredWidth = selected.Count == 0
+                ? minimumWidth
+                : minimumWidth + HeaderSlotGap;
+            if (requiredWidth > remainingWidth)
             {
                 continue;
             }
 
             selected.Add(request.Key);
-            remainingWidth -= minimumWidth;
+            remainingWidth -= requiredWidth;
         }
 
         return selected;
@@ -245,18 +298,25 @@ internal static class OverlayChrome
         using var titleBrush = new SolidBrush(OverlayTheme.Colors.TextPrimary);
         using var statusBrush = new SolidBrush(StatusTextColor(state.Tone));
         graphics.DrawString(state.Title, titleFont, titleBrush, OverlayTheme.Layout.OuterPadding, OverlayTheme.Layout.OverlayTitleTop);
-        if (ShouldShowHeaderStatus(state, clientWidth, titleWidth))
+        var headerSlots = HeaderSlots(state, clientWidth, titleWidth);
+        if (headerSlots.Contains(HeaderStatusSlotKey))
         {
             DrawRightAligned(
                 graphics,
                 state.Status,
                 statusFont,
                 statusBrush,
-                new RectangleF(
-                    StatusLocation(titleWidth).X,
-                    OverlayTheme.Layout.OverlayStatusTop,
-                    HeaderStatusAvailableWidth(clientWidth, titleWidth),
-                    OverlayTheme.Layout.OverlayStatusHeight));
+                HeaderStatusRectangle(clientWidth, titleWidth, showTimeRemaining: headerSlots.Contains(HeaderTimeRemainingSlotKey)));
+        }
+
+        if (headerSlots.Contains(HeaderTimeRemainingSlotKey))
+        {
+            DrawRightAligned(
+                graphics,
+                state.TimeRemaining ?? string.Empty,
+                statusFont,
+                statusBrush,
+                HeaderTimeRemainingRectangle(clientWidth, titleWidth));
         }
     }
 
@@ -289,21 +349,79 @@ internal static class OverlayChrome
         Label statusLabel,
         Label sourceLabel,
         OverlayChromeState state,
-        int? titleWidth = null)
+        int? titleWidth = null,
+        Label? timeRemainingLabel = null)
     {
         var changed = false;
-        var showStatus = titleWidth is { } width
-            ? ShouldShowHeaderStatus(state, surface.ClientSize.Width, width)
-            : state.ShowStatus;
+        var showStatus = state.ShowStatus;
+        var showTimeRemaining = state.ShowTimeRemaining && timeRemainingLabel is not null;
+        if (titleWidth is { } width)
+        {
+            var headerSlots = HeaderSlots(state, surface.ClientSize.Width, width);
+            showStatus = headerSlots.Contains(HeaderStatusSlotKey);
+            showTimeRemaining = headerSlots.Contains(HeaderTimeRemainingSlotKey) && timeRemainingLabel is not null;
+            var statusBounds = HeaderStatusBounds(surface.ClientSize.Width, width, showTimeRemaining);
+            changed |= SetLocationIfChanged(statusLabel, statusBounds.Location);
+            changed |= SetSizeIfChanged(statusLabel, statusBounds.Size);
+            if (timeRemainingLabel is not null)
+            {
+                var timeRemainingBounds = HeaderTimeRemainingBounds(surface.ClientSize.Width, width);
+                changed |= SetLocationIfChanged(timeRemainingLabel, timeRemainingBounds.Location);
+                changed |= SetSizeIfChanged(timeRemainingLabel, timeRemainingBounds.Size);
+            }
+        }
+
         var showSource = ShouldShowFooterSource(state, surface.ClientSize.Width);
         changed |= SetTextIfChanged(titleLabel, state.Title);
         changed |= SetTextIfChanged(statusLabel, state.Status);
+        if (timeRemainingLabel is not null)
+        {
+            changed |= SetTextIfChanged(timeRemainingLabel, state.TimeRemaining);
+            changed |= SetVisibleIfChanged(timeRemainingLabel, showTimeRemaining);
+            changed |= SetForeColorIfChanged(timeRemainingLabel, StatusTextColor(state.Tone));
+        }
+
         changed |= SetTextIfChanged(sourceLabel, state.Source);
         changed |= SetVisibleIfChanged(statusLabel, showStatus);
         changed |= SetVisibleIfChanged(sourceLabel, showSource);
         changed |= SetBackColorIfChanged(surface, SurfaceBackColor(state.Tone));
         changed |= SetForeColorIfChanged(statusLabel, StatusTextColor(state.Tone));
         return changed;
+    }
+
+    private static RectangleF HeaderStatusRectangle(int clientWidth, int titleWidth, bool showTimeRemaining)
+    {
+        return HeaderStatusBounds(clientWidth, titleWidth, showTimeRemaining);
+    }
+
+    private static Rectangle HeaderStatusBounds(int clientWidth, int titleWidth, bool showTimeRemaining)
+    {
+        var location = StatusLocation(titleWidth);
+        var width = HeaderStatusAvailableWidth(clientWidth, titleWidth);
+        if (showTimeRemaining)
+        {
+            width = Math.Max(0, width - HeaderTimeRemainingWidth(clientWidth, titleWidth) - HeaderSlotGap);
+        }
+
+        return new Rectangle(
+            location.X,
+            OverlayTheme.Layout.OverlayStatusTop,
+            width,
+            OverlayTheme.Layout.OverlayStatusHeight);
+    }
+
+    private static RectangleF HeaderTimeRemainingRectangle(int clientWidth, int titleWidth)
+    {
+        return HeaderTimeRemainingBounds(clientWidth, titleWidth);
+    }
+
+    private static Rectangle HeaderTimeRemainingBounds(int clientWidth, int titleWidth)
+    {
+        return new Rectangle(
+            HeaderTimeRemainingLocation(clientWidth, titleWidth).X,
+            OverlayTheme.Layout.OverlayStatusTop,
+            HeaderTimeRemainingWidth(clientWidth, titleWidth),
+            OverlayTheme.Layout.OverlayStatusHeight);
     }
 
     public static Color SurfaceBackColor(OverlayChromeTone tone)
@@ -361,6 +479,17 @@ internal static class OverlayChrome
         }
 
         control.Size = size;
+        return true;
+    }
+
+    public static bool SetLocationIfChanged(Control control, Point location)
+    {
+        if (control.Location == location)
+        {
+            return false;
+        }
+
+        control.Location = location;
         return true;
     }
 

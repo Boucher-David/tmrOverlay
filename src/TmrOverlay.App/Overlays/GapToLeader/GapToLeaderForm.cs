@@ -49,6 +49,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
     private readonly string _fontFamily;
     private readonly Label _titleLabel;
     private readonly Label _statusLabel;
+    private readonly Label _timeRemainingLabel;
     private readonly Label _sourceLabel;
     // Overlay-local render buffer only. The gap overlay never persists this trace.
     private readonly Dictionary<int, List<GapTrendPoint>> _series = [];
@@ -96,13 +97,15 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
 
         _titleLabel = OverlayChrome.CreateTitleLabel(_fontFamily, "Class Gap Trend", width: 210);
         _statusLabel = OverlayChrome.CreateStatusLabel(_fontFamily, titleWidth: 210, clientWidth: ClientSize.Width, minimumWidth: 120);
+        _timeRemainingLabel = OverlayChrome.CreateTimeRemainingLabel(_fontFamily, titleWidth: 210, clientWidth: ClientSize.Width);
         _sourceLabel = OverlayChrome.CreateSourceLabel(_fontFamily, ClientSize.Width, ClientSize.Height, minimumWidth: 260);
 
         Controls.Add(_titleLabel);
         Controls.Add(_statusLabel);
+        Controls.Add(_timeRemainingLabel);
         Controls.Add(_sourceLabel);
 
-        RegisterDragSurfaces(_titleLabel, _statusLabel, _sourceLabel);
+        RegisterDragSurfaces(_titleLabel, _statusLabel, _timeRemainingLabel, _sourceLabel);
 
         _refreshTimer = new System.Windows.Forms.Timer
         {
@@ -125,13 +128,15 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
-        if (_statusLabel is null || _sourceLabel is null)
+        if (_statusLabel is null || _timeRemainingLabel is null || _sourceLabel is null)
         {
             return;
         }
 
         _statusLabel.Location = OverlayChrome.StatusLocation(titleWidth: 210);
         _statusLabel.Size = OverlayChrome.StatusSize(ClientSize.Width, titleWidth: 210, minimumWidth: 120);
+        _timeRemainingLabel.Location = OverlayChrome.HeaderTimeRemainingLocation(ClientSize.Width, titleWidth: 210);
+        _timeRemainingLabel.Size = new Size(OverlayChrome.HeaderTimeRemainingWidth(ClientSize.Width, titleWidth: 210), OverlayTheme.Layout.OverlayStatusHeight);
         _sourceLabel.Location = OverlayChrome.SourceLocation(ClientSize.Height);
         _sourceLabel.Size = OverlayChrome.SourceSize(ClientSize.Width, minimumWidth: 260);
     }
@@ -144,6 +149,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
             _refreshTimer.Dispose();
             _titleLabel.Dispose();
             _statusLabel.Dispose();
+            _timeRemainingLabel.Dispose();
             _sourceLabel.Dispose();
         }
 
@@ -288,7 +294,8 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
                 _statusLabel,
                 _sourceLabel,
                 ChromeStateFor(snapshot, _gap, selectedSeries.Count, trendDomain.DurationSeconds, gapScale),
-                titleWidth: 210);
+                titleWidth: 210,
+                timeRemainingLabel: _timeRemainingLabel);
             var sequenceChanged = previousSequence != snapshot.Sequence;
             _performanceState.RecordOverlayRefreshDecision(
                 GapToLeaderOverlayDefinition.Definition.Id,
@@ -314,7 +321,8 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
                 _statusLabel,
                 _sourceLabel,
                 OverlayChromeState.Error("Class Gap Trend", "graph error", TrimError(_overlayError)),
-                titleWidth: 210);
+                titleWidth: 210,
+                timeRemainingLabel: _timeRemainingLabel);
             Invalidate();
         }
         finally
@@ -1472,6 +1480,9 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         GapScale gapScale)
     {
         var showStatus = OverlayChromeSettings.ShowHeaderStatus(_settings, snapshot);
+        var timeRemaining = OverlayChromeSettings.ShowHeaderTimeRemaining(_settings, snapshot)
+            ? OverlayHeaderTimeFormatter.FormatTimeRemaining(snapshot)
+            : string.Empty;
         var footerMode = OverlayChromeSettings.ShowFooterSource(_settings, snapshot)
             ? OverlayChromeFooterMode.Always
             : OverlayChromeFooterMode.Never;
@@ -1487,7 +1498,8 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
             showStatus ? status : string.Empty,
             gap.HasData ? OverlayChromeTone.Info : OverlayChromeTone.Waiting,
             source,
-            footerMode);
+            footerMode,
+            TimeRemaining: timeRemaining);
     }
 
     private void DrawError(Graphics graphics, Rectangle graphBounds)

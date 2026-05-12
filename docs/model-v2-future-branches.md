@@ -30,10 +30,11 @@ Current evidence/tooling shape:
 - 2026-05-11: Diagnostics for UI unclickable/freeze reports point to visible topmost overlay windows with `inputTransparent=false` and `noActivate=true`; these can intercept mouse input over Settings without taking focus. Patched Settings-visible protection so managed overlays become click-through/non-topmost while Settings is open, widened the diagnostics risk metric, gated Radar settings preview by its Visible toggle, and flushed pending settings saves before app exit to reduce restart/toggle mismatch risk.
 - 2026-05-12: v0.18.10 tagged after overlay z-order/input diagnostics hardening. The compact live telemetry corpus now includes 10 tracked states across AI multi-session, open-player practice, four-hour endurance, and 24-hour endurance captures, including normal race-running and pit/service contexts. Remaining corpus gaps are AI race green with player focus and a degraded missing-focus state.
 - 2026-05-12: Added a redacted SDK field availability corpus with 334 fields from local four-hour and 24-hour endurance captures, including SDK-declared array/storage maximums, primitive type bounds, sampled observed ranges, and identity shape counts. New telemetry-backed work should first run `tools/analysis/check_sdk_schema_against_corpus.py` against available local raw-capture schemas so newly exposed iRacing SDK fields become corpus/product-planning inputs instead of invisible drift.
+- 2026-05-12: Race-start captures confirmed that active race `SessionNum` plus `SessionState` separates early pre-grid/countdown, gridding/pace, and green phases. Standings now stays on grounded starting-grid/scoring rows before green and dims rows for cars that have not taken the grid, while Relative can use observed estimated timing/lap-distance signals during race `SessionState == 3`, including tow/pit cases. Settings also now auto-hides on focus loss while update installs preserve existing app data.
 
 ## Current v0.18.11 Branch Focus
 
-The next useful model-v2 work is evidence-backed hardening, not a broad overlay rewrite:
+The current useful model-v2 work is evidence-backed hardening, not a broad overlay rewrite:
 
 - Keep the compact tracked "full-picture" live telemetry fixture corpus current as representative real states are collected. Keep it redacted and compact: no raw `telemetry.bin`, no source `.ibt`, no private chat/settings values, and no full-session payloads.
 - Keep the SDK field availability corpus current with local capture schemas before telemetry-backed feature work. If iRacing adds SDK fields or changes declared shape, update the corpus or document the gap before deciding overlay behavior from guesses.
@@ -49,6 +50,26 @@ Current source-selection guardrails:
 - Treat field location as session-dependent: AI/spectated race states may expose usable scoring/timing/focus arrays even when local-player scalar context is absent or misleading.
 - Preserve player-only session behavior while adding AI/spectated support. The same source-selection rules must account for local-player focus, non-player camera focus, team handoff, pit/service, and early-green degraded timing.
 - Race gaps need positive/meaningful timing evidence; a green session with all-zero `CarIdxF2Time` or missing official positions should remain a waiting/degraded state for Gap To Leader.
+- Race-start UI should distinguish scoring/order from timing. Starting-grid rows can render before green, but Standings gap/interval values need positive timing evidence; Relative may use estimated timing only where captured telemetry shows iRacing exposes usable focus-relative placement.
+
+## SessionState Overlay Follow-Up Sweep
+
+The race-start investigation mostly changed Standings and Relative, but the same `SessionNum`/`SessionState` learning should guide future overlay work:
+
+| Overlay | Current impact from race-start learning | Future investigation |
+| --- | --- | --- |
+| Standings | Directly changed. Race `SessionState` is treated as a phase inside the active race `SessionNum`; grid/scoring rows can render before green, cars not yet on the grid are dimmed, and `GAP`/`INT` cells wait for positive timing evidence. | Capture more `SessionState = 2` and early `4` examples across race types and classes to refine when official position/class-position coverage is trustworthy. |
+| Relative | Directly changed. Race `SessionState = 3` may use observed `CarIdxEstTime` plus valid lap-distance signals for focus-relative timing, including tow/pit edge cases. | Validate `SessionState = 2`, mid-race tow, pace/caution, and multiclass estimated-gap quality before broadening estimated timing further. |
+| Gap To Leader | Indirectly affected. It already requires positive timing/gap evidence, so pre-green and all-zero-F2 early-green states should remain waiting/degraded. | Find early-green captures where official positions exist but F2 stays zero, then decide whether any alternate leader-gap source is honest enough. |
+| Fuel Calculator | Affected through race progress. Positive race pre-green `SessionTimeRemain` is a grid countdown, not race time remaining, so strategy skips that live-clock branch until the race is running while still using live fuel level/burn evidence. | Validate timed-race projections around gridding, green, cautions, red/checkered states, and endurance team handoff. When a car hits the grid and the engine is on, it can consume fuel during `SessionState` `2`, `3`, and early `4`, so future checks should verify burn/current-fuel handling separately from remaining-race-time handling. |
+| Track Map | Indirectly affected. Lap-distance/progress can show cars before green, but grid/tow state changes whether a marker represents gridded, towed, or genuinely racing movement. | Investigate pre-green map markers for ungridded cars, gridded cars, pit/towed local cars, and formation-lap motion. |
+| Flags | Likely relevant as user context. Flags, session name, and future header content can explain pre-green versus green without labeling timing rows as estimated. | Build corpus coverage for flags across states `1`, `2`, `3`, `4`, countdown expiry, all-cars-gridded auto-advance, pace/yellow, and caution starts. |
+| Session / Weather | Header time remaining now uses `MM:SS` for race pre-green countdowns and `HH:MM` for normal session remaining time. | Validate session labels/countdowns across practice, qualifying, race transitions, and `SessionTimeRemain = -1` gaps. |
+| Pit Service | Tow/pit during grid is local context, but should not be confused with a normal race pit stop. | Validate tow-to-pits, pit stall, and service/tire/fuel flags during pre-green and early green. |
+| Input / Car State | Graph bounds were fixed; `SessionState` is mostly context for whether inputs are racing, gridding, towing, or stationary. | Capture inputs while gridding, towing, pit-stalled, and replaying to distinguish active driver control from stationary/towed states. |
+| Car Radar | Should stay local in-car. Pre-green grid proximity can be close but not necessarily a threat. | Decide whether radar should suppress or soften threat styling before green, especially during gridding and pace-line states. |
+| Stream Chat | No telemetry impact. | No `SessionState` work needed beyond preserving user settings through updates. |
+| Garage Cover | No direct race-start impact, but tow/garage distinctions matter for streamer privacy. | Validate Garage/setup-screen visibility during tow-to-pits and grid sessions so the cover does not flash incorrectly. |
 
 V1-candidate readiness discussion moved out of `VERSION.md`:
 

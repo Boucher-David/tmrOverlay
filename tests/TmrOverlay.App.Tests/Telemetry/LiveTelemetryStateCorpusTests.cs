@@ -14,25 +14,30 @@ public sealed class LiveTelemetryStateCorpusTests
         var states = RequiredArray(corpus["states"]);
         var ids = states.Select(state => RequiredString(RequiredObject(state), "id")).ToArray();
 
-        Assert.Equal(
-            [
-                "ai-practice-no-valid-lap",
-                "ai-qualifying-valid-lap-gated",
-                "ai-race-pre-green",
-                "ai-race-green-non-player-focus",
-                "open-practice-non-player-focus",
-                "open-practice-player-focus",
-                "endurance-4h-race-running",
-                "endurance-4h-pit-or-garage",
-                "endurance-24h-race-running",
-                "endurance-24h-pit-or-garage"
-            ],
-            ids);
+        string[] expectedIds =
+        [
+            "ai-practice-no-valid-lap",
+            "ai-qualifying-valid-lap-gated",
+            "ai-race-pre-green",
+            "ai-race-green-non-player-focus",
+            "open-practice-non-player-focus",
+            "open-practice-player-focus",
+            "endurance-4h-race-running",
+            "endurance-4h-pit-or-garage",
+            "endurance-24h-race-running",
+            "endurance-24h-pit-or-garage"
+        ];
+        Assert.True(
+            expectedIds.SequenceEqual(ids),
+            $"Expected state ids [{string.Join(", ", expectedIds)}], got [{string.Join(", ", ids)}].");
 
         var missing = RequiredArray(corpus["missingTargets"])
             .Select(target => RequiredString(RequiredObject(target), "id"))
             .ToArray();
-        Assert.Equal(["ai-race-green-player-focus", "degraded-focus-unavailable"], missing);
+        string[] expectedMissingTargets = ["ai-race-green-player-focus", "degraded-focus-unavailable"];
+        Assert.True(
+            expectedMissingTargets.SequenceEqual(missing),
+            $"Expected missing targets [{string.Join(", ", expectedMissingTargets)}], got [{string.Join(", ", missing)}].");
 
         var sources = RequiredArray(corpus["sources"]);
         Assert.Contains(sources, source => RequiredString(RequiredObject(source), "sourceCategory") == "ai-multisession-spectated");

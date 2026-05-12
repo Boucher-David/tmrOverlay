@@ -28,6 +28,8 @@ If local iRacing SDK output exposes fields or declared shapes that are not in th
   - Human-readable index for the compact state corpus.
 - `live-telemetry-state-corpus-sdk-coverage.md`
   - Notes which current app-read SDK variables are represented by the compact behavior corpus and which remain available only in broader SDK captures.
+- `session-state-signal-availability.md`
+  - Human-readable comparison of scoring/results, position, gap, interval, and timing signal availability by `SessionState` across the uploaded race-start capture and local endurance captures.
 - `sdk-field-availability-corpus.json`
   - Compact redacted SDK availability corpus derived from local four-hour and 24-hour endurance raw captures.
   - Preserves SDK variable names, types, units, descriptions, declared array/storage maximums, primitive type bounds, sampled observed ranges, and identity shape counts without committing raw telemetry frames or full session-info payloads.

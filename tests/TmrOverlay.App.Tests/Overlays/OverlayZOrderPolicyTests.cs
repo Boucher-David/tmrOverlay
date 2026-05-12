@@ -14,6 +14,27 @@ public sealed class OverlayZOrderPolicyTests
     }
 
     [Fact]
+    public void SettingsWindow_AutoHidesOnlyWhenEnabledVisibleAndInactive()
+    {
+        Assert.True(OverlayZOrderPolicy.ShouldAutoHideSettingsWindow(
+            settingsWindowVisible: true,
+            settingsWindowActive: false,
+            settingsWindowEnabled: true));
+        Assert.False(OverlayZOrderPolicy.ShouldAutoHideSettingsWindow(
+            settingsWindowVisible: true,
+            settingsWindowActive: true,
+            settingsWindowEnabled: true));
+        Assert.False(OverlayZOrderPolicy.ShouldAutoHideSettingsWindow(
+            settingsWindowVisible: false,
+            settingsWindowActive: false,
+            settingsWindowEnabled: true));
+        Assert.False(OverlayZOrderPolicy.ShouldAutoHideSettingsWindow(
+            settingsWindowVisible: true,
+            settingsWindowActive: false,
+            settingsWindowEnabled: false));
+    }
+
+    [Fact]
     public void ManagedOverlays_KeepTheirAlwaysOnTopLayerIndependentOfSettingsFocus()
     {
         Assert.True(OverlayZOrderPolicy.ShouldManagedOverlayBeTopMost(new OverlaySettings
@@ -29,17 +50,24 @@ public sealed class OverlayZOrderPolicyTests
     }
 
     [Fact]
-    public void SettingsWindowProtection_DoesNotMakeSettingsProtectItself()
+    public void SettingsWindowProtection_OnlyProtectsActiveIntersectingSettingsWindow()
     {
         Assert.False(OverlayZOrderPolicy.ShouldProtectSettingsWindowInput(
-            settingsWindowVisible: true,
-            isSettingsWindow: true));
+            settingsWindowActive: true,
+            isSettingsWindow: true,
+            intersectsSettingsWindow: true));
         Assert.True(OverlayZOrderPolicy.ShouldProtectSettingsWindowInput(
-            settingsWindowVisible: true,
-            isSettingsWindow: false));
+            settingsWindowActive: true,
+            isSettingsWindow: false,
+            intersectsSettingsWindow: true));
         Assert.False(OverlayZOrderPolicy.ShouldProtectSettingsWindowInput(
-            settingsWindowVisible: false,
-            isSettingsWindow: false));
+            settingsWindowActive: true,
+            isSettingsWindow: false,
+            intersectsSettingsWindow: false));
+        Assert.False(OverlayZOrderPolicy.ShouldProtectSettingsWindowInput(
+            settingsWindowActive: false,
+            isSettingsWindow: false,
+            intersectsSettingsWindow: true));
     }
 
     [Fact]
@@ -48,17 +76,32 @@ public sealed class OverlayZOrderPolicyTests
         Assert.True(OverlayZOrderPolicy.ShouldOverlayBeInputTransparent(
             intrinsicallyTransparent: true,
             forceInputTransparent: false,
-            settingsWindowVisible: false,
-            isSettingsWindow: false));
+            settingsWindowActive: false,
+            isSettingsWindow: false,
+            intersectsSettingsWindow: false));
         Assert.True(OverlayZOrderPolicy.ShouldOverlayBeInputTransparent(
             intrinsicallyTransparent: false,
-            forceInputTransparent: false,
-            settingsWindowVisible: true,
-            isSettingsWindow: false));
+            forceInputTransparent: true,
+            settingsWindowActive: false,
+            isSettingsWindow: false,
+            intersectsSettingsWindow: false));
         Assert.False(OverlayZOrderPolicy.ShouldOverlayBeInputTransparent(
             intrinsicallyTransparent: false,
             forceInputTransparent: false,
-            settingsWindowVisible: true,
-            isSettingsWindow: true));
+            settingsWindowActive: true,
+            isSettingsWindow: true,
+            intersectsSettingsWindow: true));
+        Assert.False(OverlayZOrderPolicy.ShouldOverlayBeInputTransparent(
+            intrinsicallyTransparent: false,
+            forceInputTransparent: false,
+            settingsWindowActive: true,
+            isSettingsWindow: false,
+            intersectsSettingsWindow: false));
+        Assert.True(OverlayZOrderPolicy.ShouldOverlayBeInputTransparent(
+            intrinsicallyTransparent: false,
+            forceInputTransparent: false,
+            settingsWindowActive: true,
+            isSettingsWindow: false,
+            intersectsSettingsWindow: true));
     }
 }

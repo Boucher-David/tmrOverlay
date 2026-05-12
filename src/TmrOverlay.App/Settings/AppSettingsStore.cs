@@ -30,6 +30,7 @@ internal sealed class AppSettingsStore
                 return _settings;
             }
 
+            var shouldPersistMigratedSettings = true;
             if (!File.Exists(_settingsPath))
             {
                 _settings = AppSettingsMigrator.Migrate(new ApplicationSettings());
@@ -45,10 +46,15 @@ internal sealed class AppSettingsStore
             catch
             {
                 _settings = new ApplicationSettings();
+                shouldPersistMigratedSettings = false;
             }
 
             _settings = AppSettingsMigrator.Migrate(_settings);
-            SaveCore(_settings);
+            if (shouldPersistMigratedSettings)
+            {
+                SaveCore(_settings);
+            }
+
             return _settings;
         }
     }

@@ -461,6 +461,8 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
     protected override bool UseToolWindowStyle => false;
 
+    protected override bool UseNoActivateStyle => false;
+
     protected override void PersistOverlayFrame()
     {
         // The settings window is an access point, not a trackside overlay. Keep it
@@ -1226,11 +1228,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
                 page,
                 settings,
                 "Header",
-                "Status",
-                OverlayOptionKeys.ChromeHeaderStatusTest,
-                OverlayOptionKeys.ChromeHeaderStatusPractice,
-                OverlayOptionKeys.ChromeHeaderStatusQualifying,
-                OverlayOptionKeys.ChromeHeaderStatusRace,
+                HeaderChromeRows,
                 SaveAndApply);
             return page;
         }
@@ -1249,11 +1247,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
                 page,
                 settings,
                 "Footer",
-                "Source",
-                OverlayOptionKeys.ChromeFooterSourceTest,
-                OverlayOptionKeys.ChromeFooterSourcePractice,
-                OverlayOptionKeys.ChromeFooterSourceQualifying,
-                OverlayOptionKeys.ChromeFooterSourceRace,
+                FooterChromeRows,
                 SaveAndApply);
             return page;
         }
@@ -1282,6 +1276,32 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     {
         return overlayId is "standings" or "relative" or "fuel-calculator" or "gap-to-leader";
     }
+
+    private static readonly SettingsOverlayTabSections.OverlayChromeSettingsRow[] HeaderChromeRows =
+    [
+        new(
+            "Status",
+            OverlayOptionKeys.ChromeHeaderStatusTest,
+            OverlayOptionKeys.ChromeHeaderStatusPractice,
+            OverlayOptionKeys.ChromeHeaderStatusQualifying,
+            OverlayOptionKeys.ChromeHeaderStatusRace),
+        new(
+            "Time remaining",
+            OverlayOptionKeys.ChromeHeaderTimeRemainingTest,
+            OverlayOptionKeys.ChromeHeaderTimeRemainingPractice,
+            OverlayOptionKeys.ChromeHeaderTimeRemainingQualifying,
+            OverlayOptionKeys.ChromeHeaderTimeRemainingRace)
+    ];
+
+    private static readonly SettingsOverlayTabSections.OverlayChromeSettingsRow[] FooterChromeRows =
+    [
+        new(
+            "Source",
+            OverlayOptionKeys.ChromeFooterSourceTest,
+            OverlayOptionKeys.ChromeFooterSourcePractice,
+            OverlayOptionKeys.ChromeFooterSourceQualifying,
+            OverlayOptionKeys.ChromeFooterSourceRace)
+    ];
 
     private static bool SuppressHeaderFooterTabs(string overlayId)
     {

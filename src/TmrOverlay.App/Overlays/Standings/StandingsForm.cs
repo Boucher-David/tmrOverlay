@@ -36,6 +36,7 @@ internal sealed class StandingsForm : PersistentOverlayForm
     private readonly string _fontFamily;
     private readonly Label _titleLabel;
     private readonly Label _statusLabel;
+    private readonly Label _timeRemainingLabel;
     private readonly OverlayTableLayoutPanel _table;
     private readonly Label _sourceLabel;
     private readonly Label[] _headerLabels = new Label[MaximumColumns];
@@ -73,6 +74,7 @@ internal sealed class StandingsForm : PersistentOverlayForm
 
         _titleLabel = OverlayChrome.CreateTitleLabel(_fontFamily, "Standings", width: 160);
         _statusLabel = OverlayChrome.CreateStatusLabel(_fontFamily, titleWidth: 160, clientWidth: ClientSize.Width, minimumWidth: 120);
+        _timeRemainingLabel = OverlayChrome.CreateTimeRemainingLabel(_fontFamily, titleWidth: 160, clientWidth: ClientSize.Width);
 
         _table = new OverlayTableLayoutPanel
         {
@@ -127,10 +129,11 @@ internal sealed class StandingsForm : PersistentOverlayForm
 
         Controls.Add(_titleLabel);
         Controls.Add(_statusLabel);
+        Controls.Add(_timeRemainingLabel);
         Controls.Add(_table);
         Controls.Add(_sourceLabel);
 
-        RegisterDragSurfaces(_titleLabel, _statusLabel, _table, _sourceLabel);
+        RegisterDragSurfaces(_titleLabel, _statusLabel, _timeRemainingLabel, _table, _sourceLabel);
         RegisterDragSurfaces(_headerLabels.Concat(RowLabels()).ToArray());
 
         _refreshTimer = new System.Windows.Forms.Timer
@@ -154,13 +157,15 @@ internal sealed class StandingsForm : PersistentOverlayForm
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
-        if (_statusLabel is null || _table is null || _sourceLabel is null)
+        if (_statusLabel is null || _timeRemainingLabel is null || _table is null || _sourceLabel is null)
         {
             return;
         }
 
         _statusLabel.Location = OverlayChrome.StatusLocation(titleWidth: 160);
         _statusLabel.Size = OverlayChrome.StatusSize(ClientSize.Width, titleWidth: 160, minimumWidth: 120);
+        _timeRemainingLabel.Location = OverlayChrome.HeaderTimeRemainingLocation(ClientSize.Width, titleWidth: 160);
+        _timeRemainingLabel.Size = new Size(OverlayChrome.HeaderTimeRemainingWidth(ClientSize.Width, titleWidth: 160), OverlayTheme.Layout.OverlayStatusHeight);
         ApplyLayoutSizes();
     }
 
@@ -173,6 +178,7 @@ internal sealed class StandingsForm : PersistentOverlayForm
             _table.Dispose();
             _titleLabel.Dispose();
             _statusLabel.Dispose();
+            _timeRemainingLabel.Dispose();
             _sourceLabel.Dispose();
         }
 
@@ -322,7 +328,14 @@ internal sealed class StandingsForm : PersistentOverlayForm
             var columns = DisplayColumns();
             changed |= ApplyColumns(columns);
             changed |= ApplyLayoutSizes();
-            changed |= OverlayChrome.ApplyChromeState(this, _titleLabel, _statusLabel, _sourceLabel, ChromeStateFor(viewModel, snapshot, _settings), titleWidth: 160);
+            changed |= OverlayChrome.ApplyChromeState(
+                this,
+                _titleLabel,
+                _statusLabel,
+                _sourceLabel,
+                ChromeStateFor(viewModel, snapshot, _settings),
+                titleWidth: 160,
+                timeRemainingLabel: _timeRemainingLabel);
 
             var populatedRows = Math.Min(AllocatedRows, viewModel.Rows.Count);
             for (var row = 0; row < populatedRows; row++)
@@ -574,7 +587,8 @@ internal sealed class StandingsForm : PersistentOverlayForm
             OverlayContentColumnSettings.ColumnsFor(_settings, OverlayContentColumnSettings.Standings)
                 .Select(column => $"{column.Id}:{column.DataKey}:{column.Enabled}:{column.Order}:{column.Width}:{column.Alignment}")
                 .Prepend(ClassSeparatorsEnabled() ? "true" : "false")
-                .Prepend(OtherClassRowsPerClass().ToString(CultureInfo.InvariantCulture)));
+                .Prepend(OtherClassRowsPerClass().ToString(CultureInfo.InvariantCulture))
+                .Prepend(OverlayChromeSettings.SettingsSignature(_settings)));
     }
 
     private static string ValueForColumn(StandingsOverlayRowViewModel row, OverlayContentColumnState column)
@@ -605,6 +619,11 @@ internal sealed class StandingsForm : PersistentOverlayForm
             return OverlayTheme.Colors.TextMuted;
         }
 
+        if (row.IsPendingGrid)
+        {
+            return OverlayTheme.Colors.TextMuted;
+        }
+
         if (string.Equals(column?.DataKey, OverlayContentColumnSettings.DataPit, StringComparison.Ordinal) && !string.IsNullOrEmpty(row.Pit))
         {
             return OverlayTheme.Colors.WarningIndicator;
@@ -629,7 +648,9 @@ internal sealed class StandingsForm : PersistentOverlayForm
     {
         if (!row.IsClassHeader)
         {
-            return OverlayTheme.Colors.PanelBackground;
+            return row.IsPendingGrid
+                ? Color.FromArgb(255, 20, 25, 28)
+                : OverlayTheme.Colors.PanelBackground;
         }
 
         if (OverlayClassColor.TryParse(row.CarClassColorHex) is not { } classColor)
@@ -673,7 +694,8 @@ internal sealed class StandingsForm : PersistentOverlayForm
             _statusLabel,
             _sourceLabel,
             OverlayChromeState.Error("Standings", "overlay error", $"source: error ({message})"),
-            titleWidth: 160);
+            titleWidth: 160,
+            timeRemainingLabel: _timeRemainingLabel);
         for (var row = 0; row < AllocatedRows; row++)
         {
             ClearRow(row);
@@ -691,6 +713,9 @@ internal sealed class StandingsForm : PersistentOverlayForm
         OverlaySettings settings)
     {
         var showStatus = OverlayChromeSettings.ShowHeaderStatus(settings, snapshot);
+        var timeRemaining = OverlayChromeSettings.ShowHeaderTimeRemaining(settings, snapshot)
+            ? OverlayHeaderTimeFormatter.FormatTimeRemaining(snapshot)
+            : string.Empty;
         var footerMode = OverlayChromeSettings.ShowFooterSource(settings, snapshot)
             ? OverlayChromeFooterMode.Always
             : OverlayChromeFooterMode.Never;
@@ -699,6 +724,7 @@ internal sealed class StandingsForm : PersistentOverlayForm
             showStatus ? viewModel.Status : string.Empty,
             viewModel.Rows.Count == 0 ? OverlayChromeTone.Waiting : OverlayChromeTone.Normal,
             viewModel.Source,
-            footerMode);
+            footerMode,
+            TimeRemaining: timeRemaining);
     }
 }

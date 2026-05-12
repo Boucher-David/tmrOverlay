@@ -423,7 +423,7 @@ public sealed class DiagnosticsBundleServiceTests
             using (var sharedContractReader = new StreamReader(sharedContractEntry.Open()))
             {
                 var sharedContractJson = JsonNode.Parse(sharedContractReader.ReadToEnd());
-                Assert.Equal(9, ((int?)sharedContractJson?["settingsVersion"]) ?? -1);
+                Assert.Equal(10, ((int?)sharedContractJson?["settingsVersion"]) ?? -1);
                 Assert.Equal("twitch", (string?)sharedContractJson?["streamChatDefaultProvider"]);
                 Assert.Equal("techmatesracing", (string?)sharedContractJson?["streamChatDefaultTwitchChannel"]);
                 Assert.Equal("#00E8FF", (string?)sharedContractJson?["designV2Colors"]?["cyan"]);

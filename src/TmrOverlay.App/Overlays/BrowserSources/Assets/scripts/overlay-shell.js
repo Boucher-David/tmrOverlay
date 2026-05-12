@@ -1,6 +1,7 @@
     const page = {{PAGE_JSON}};
     const overlayEl = document.querySelector('.overlay');
     const statusEl = document.getElementById('status');
+    const timeRemainingEl = document.getElementById('time-remaining');
     const contentEl = document.getElementById('content');
     let lastSequence = null;
     const browserOverlay = {
@@ -296,12 +297,20 @@
       const availability = telemetryAvailability(live);
       if (!availability.isAvailable) {
         statusEl.textContent = availability.status;
+        if (timeRemainingEl) {
+          timeRemainingEl.hidden = true;
+          timeRemainingEl.textContent = '';
+        }
         return;
       }
       const sequence = live.sequence ?? 0;
       const changed = sequence !== lastSequence;
       lastSequence = sequence;
       statusEl.textContent = detail || `${changed ? 'live' : 'steady'} | seq ${sequence}`;
+      if (timeRemainingEl) {
+        timeRemainingEl.hidden = true;
+        timeRemainingEl.textContent = '';
+      }
     }
 
     function rowsTable(headers, rows) {
@@ -320,6 +329,7 @@
         const classes = [
           row.isFocus || row.isReference || row.isReferenceCar ? 'focus' : '',
           (row.isPit || row.onPitRoad) && !(row.isFocus || row.isReference || row.isReferenceCar) ? 'pit' : '',
+          row.isPendingGrid ? 'pending-grid' : '',
           row.isPartial ? 'partial' : '',
           isClassHeaderRow(row) ? 'class-header' : ''
         ].filter(Boolean).join(' ');
@@ -433,7 +443,7 @@
     function renderOverlayModel(model) {
       if (!model) {
         contentEl.innerHTML = '<div class="empty">Waiting for overlay model.</div>';
-        statusEl.textContent = 'waiting for model';
+        renderHeaderItems(null, 'waiting for model');
         return;
       }
 
@@ -455,7 +465,19 @@
         contentEl.innerHTML = rowsTable(displayModelHeaders(model), rows);
       }
 
-      statusEl.textContent = model.status || 'live';
+      renderHeaderItems(model, model.status || 'live');
+    }
+
+    function renderHeaderItems(model, fallbackStatus) {
+      const items = Array.isArray(model?.headerItems) ? model.headerItems : [];
+      const statusItem = items.find((item) => String(item?.key || '').toLowerCase() === 'status');
+      const timeItem = items.find((item) => String(item?.key || '').toLowerCase() === 'timeremaining');
+      statusEl.textContent = statusItem?.value || fallbackStatus || '';
+      if (timeRemainingEl) {
+        const value = timeItem?.value || '';
+        timeRemainingEl.textContent = value;
+        timeRemainingEl.hidden = !value;
+      }
     }
 
     function drawOverlayGraph(canvas, points) {
@@ -574,6 +596,10 @@
       if (!module?.render) {
         contentEl.innerHTML = '<div class="empty">Unknown overlay route.</div>';
         statusEl.textContent = 'not configured';
+        if (timeRemainingEl) {
+          timeRemainingEl.hidden = true;
+          timeRemainingEl.textContent = '';
+        }
         return;
       }
 
@@ -610,6 +636,10 @@
         }
 
         statusEl.textContent = 'localhost offline';
+        if (timeRemainingEl) {
+          timeRemainingEl.hidden = true;
+          timeRemainingEl.textContent = '';
+        }
         contentEl.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
       }
     }
