@@ -63,9 +63,10 @@ internal sealed class LiveOverlayWindowCaptureStore
         var capturedAtUtc = DateTimeOffset.UtcNow;
         var bounds = form?.Bounds ?? new Rectangle(settings.X, settings.Y, settings.Width, settings.Height);
         var opacity = Math.Round(form?.Opacity ?? settings.Opacity, 3);
+        var effectiveSettingsOverlayActive = settingsOverlayActive && settingsWindowVisible;
         var inputInterceptRisk = actualVisible
             && !inputTransparent
-            && (settingsOverlayActive
+            && (effectiveSettingsOverlayActive
                 || settingsWindowInputProtected
                 || settingsWindowIntersects
                 || (settingsWindowVisible && topMost && noActivate)
@@ -81,7 +82,7 @@ internal sealed class LiveOverlayWindowCaptureStore
         var currentScreenshotSignature = CaptureSignature(
             bounds,
             opacity,
-            settingsOverlayActive,
+            effectiveSettingsOverlayActive,
             implementation,
             nativeFormType,
             nativeRenderer,
@@ -95,7 +96,7 @@ internal sealed class LiveOverlayWindowCaptureStore
                 opacity,
                 actualVisible,
                 captureAllowedByTelemetryState,
-                settingsOverlayActive,
+                effectiveSettingsOverlayActive,
                 capturedAtUtc,
                 previous,
                 currentScreenshotSignature)
@@ -134,7 +135,7 @@ internal sealed class LiveOverlayWindowCaptureStore
                 ContextRequirement: contextRequirement,
                 ContextAvailable: contextAvailable,
                 ContextReason: contextReason,
-                SettingsOverlayActive: settingsOverlayActive,
+                SettingsOverlayActive: effectiveSettingsOverlayActive,
                 SettingsWindowVisible: settingsWindowVisible,
                 SettingsWindowIntersects: settingsWindowIntersects,
                 SettingsWindowInputProtected: settingsWindowInputProtected,

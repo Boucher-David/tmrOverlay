@@ -624,6 +624,7 @@ internal sealed class OverlayManager : IDisposable
         var started = System.Diagnostics.Stopwatch.GetTimestamp();
         var succeeded = false;
         Form? activeSettingsForm = null;
+        ReconcileSettingsOverlayActiveWithVisibility();
         var keepSettingsActive = _settingsOverlayActive
             && _forms.TryGetValue(SettingsOverlayDefinition.Definition.Id, out activeSettingsForm)
             && activeSettingsForm.Visible
@@ -1366,6 +1367,14 @@ internal sealed class OverlayManager : IDisposable
         else
         {
             ApplySettingsWindowTopMost(settingsForm);
+        }
+    }
+
+    private void ReconcileSettingsOverlayActiveWithVisibility()
+    {
+        if (_settingsOverlayActive && !TryGetVisibleSettingsForm(out _))
+        {
+            _settingsOverlayActive = false;
         }
     }
 

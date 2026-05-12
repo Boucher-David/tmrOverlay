@@ -321,7 +321,7 @@ def scoring_display_rows(
 ) -> tuple[str, str, list[dict[str, Any]]]:
     selected = current_session(session_data)
     session_kind = classify_session_kind(str((selected or {}).get("SessionType") or (selected or {}).get("SessionName") or ""))
-    selected_source, scoring_rows = selected_scoring_rows(session_data, raw, selected)
+    selected_source, scoring_rows = selected_scoring_rows(session_data, raw, selected, all_timing_cars(values))
     timing_rows = timing_lookup(values, gridded_car_idxs)
     ref_idx = reference_car_idx(raw, timing_rows)
     drivers = driver_directory(session_data)

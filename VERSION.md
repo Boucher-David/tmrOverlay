@@ -40,7 +40,7 @@ Technical implementation checklist:
 3. Update Standings, Relative, Gap To Leader, Track Map, diagnostics, and browser replay tooling to consume normalized reference facts.
 4. Keep overlay-specific contexts local to overlays that need them, especially Radar local/in-car spatial gating.
 5. Add clutch raw capture/read models and use `ClutchRaw` as an input fallback when normalized clutch is flat zero.
-6. Update Settings z-order policy/tests/docs so focus loss demotes Settings instead of hiding it.
+6. Update Settings z-order policy/tests/docs so focus loss demotes Settings instead of hiding it, and keep diagnostics from reporting Settings active while hidden.
 7. Extend browser race-start replay validation to fetch overlay models, assert live-model invariants, and preserve generated review artifacts.
 8. Validate local static checks, browser tests, screenshot expectations, and git hygiene; use Windows CI or a Windows machine for the full .NET build/test and real WinForms behavior pass.
 
@@ -59,9 +59,10 @@ Likely squash body:
 - Prevented Relative from showing lap-fraction placeholders, and kept Standings race `GAP`/`INT` cells unavailable until positive F2 or another explicit timing source exists.
 - Stabilized native Standings window height so live row-count changes do not resize the OS window.
 - Kept Settings visible after Alt+Tab/focus loss while demoting it from the topmost layer, and updated z-order policy tests/docs.
+- Normalized live-overlay and freeze-watch diagnostics so `settingsOverlayActive` cannot stay true after the Settings window is hidden.
 - Captured raw clutch telemetry and used `ClutchRaw` as the input-display fallback when normalized clutch remains flat zero.
 - Fixed Gap To Leader graph orientation and browser point filtering so the reference/leader baseline stays at the top and invalid points are ignored.
-- Extended browser race-start replay validation to inspect overlay models in addition to screenshot artifacts, and regenerated the May 12 race-start review artifacts.
+- Extended browser race-start replay validation to inspect overlay models in addition to screenshot artifacts, aligned replay/corpus tooling with meaningful race-scoring coverage, and regenerated the May 12 race-start review artifacts.
 - Updated live-model, Relative, Standings, Gap To Leader, Settings, and future-branch docs for the normalized-reference model and race-start behavior.
 - Validated git hygiene, C# compile-shape scanning, browser unit tests, browser replay script syntax, Python compile checks, screenshot expectations, and May 12 browser race-start replay; Windows .NET build/test and real WinForms behavior validation remain CI/Windows-machine gates.
 ```
