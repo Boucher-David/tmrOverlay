@@ -1458,8 +1458,18 @@ internal static class LiveRaceModelBuilder
             SpatialEvidence = MergeEvidence(rows.Select(row => row.SpatialEvidence)),
             RadarPlacementEvidence = MergeEvidence(rows.Select(row => row.RadarPlacementEvidence)),
             GapEvidence = MergeEvidence(rows.Select(row => row.GapEvidence)),
-            HasTakenGrid = rows.Any(row => row.HasTakenGrid)
+            HasTakenGrid = HasTakenGrid(rows)
         };
+    }
+
+    private static bool HasTakenGrid(IReadOnlyList<LiveTimingRow> rows)
+    {
+        var authoritativeRows = rows
+            .Where(row => row.IsFocus || row.IsPlayer)
+            .ToArray();
+        return authoritativeRows.Length > 0
+            ? authoritativeRows.Any(row => row.HasTakenGrid)
+            : rows.Any(row => row.HasTakenGrid);
     }
 
     private static LiveTimingRow ApplyClassGap(

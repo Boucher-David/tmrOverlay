@@ -897,7 +897,7 @@ QualifyResultsInfo:
         var standings = StandingsOverlayViewModel.From(snapshot, now, maximumRows: 3);
         Assert.Equal("source: starting grid", standings.Source);
         Assert.Equal(new[] { "#11", "#10", "#12" }, standings.Rows.Select(row => row.CarNumber));
-        Assert.Equal(new[] { "0.0", "--", "--" }, standings.Rows.Select(row => row.Interval));
+        Assert.Equal(new[] { "--", "--", "--" }, standings.Rows.Select(row => row.Interval));
         Assert.Equal(new[] { "Leader", "--", "--" }, standings.Rows.Select(row => row.Gap));
 
         Assert.Contains(models.Relative.Rows, row =>
