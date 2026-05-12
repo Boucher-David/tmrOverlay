@@ -100,6 +100,50 @@ public sealed class GapToLeaderLiveModelAdapterTests
     }
 
     [Fact]
+    public void Select_WaitsWhenOnlyReferenceAndLeaderRowsExistWithoutGapEvidence()
+    {
+        var partialEvidence = LiveSignalEvidence.Partial("CarIdxF2Time", "leader_f2_time_missing");
+        var focus = TimingRow(
+            carIdx: 10,
+            isFocus: true,
+            classPosition: 2,
+            gapSeconds: null,
+            deltaSeconds: null,
+            gapEvidence: partialEvidence);
+        var leader = TimingRow(
+            carIdx: 2,
+            isClassLeader: true,
+            classPosition: 1,
+            gapSeconds: 0d,
+            deltaSeconds: null,
+            gapEvidence: LiveSignalEvidence.Reliable("class-leader-row"));
+        var snapshot = SnapshotWithModels(
+            legacyGapSeconds: 999d,
+            timing: LiveTimingModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Partial,
+                FocusCarIdx = 10,
+                ClassLeaderCarIdx = 2,
+                FocusRow = focus,
+                ClassRows = [leader, focus],
+                ClassLeaderGapEvidence = partialEvidence
+            },
+            progress: LiveRaceProgressModel.Empty with
+            {
+                HasData = true,
+                ReferenceClassPosition = 2
+            });
+
+        var gap = GapToLeaderLiveModelAdapter.Select(snapshot);
+
+        Assert.False(gap.HasData);
+        Assert.False(gap.ClassLeaderGap.HasData);
+        Assert.Null(GapToLeaderLiveModelAdapter.SelectFocusedTrendPointSeconds(snapshot, gap));
+        Assert.Contains(gap.ClassCars, car => car.CarIdx == 10 && car.IsReferenceCar);
+    }
+
+    [Fact]
     public void SelectFocusedTrendPointSeconds_ConvertsLivePlacementLapGapWithLapReference()
     {
         var partialEvidence = LiveSignalEvidence.Partial("CarIdxF2Time", "leader_f2_time_missing");

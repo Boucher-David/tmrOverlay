@@ -195,8 +195,7 @@ internal sealed record StandingsOverlayViewModel(
                 Math.Min(rowBudget - rows.Count, groupLimits[group]),
                 ReferenceEquals(group, primaryGroup),
                 includeHeaders,
-                showPendingGridRows,
-                UseLiveTimingOrder(snapshot));
+                showPendingGridRows);
         }
 
         return rows.ToArray();
@@ -283,8 +282,7 @@ internal sealed record StandingsOverlayViewModel(
         int groupLimit,
         bool useReferenceWindow,
         bool includeHeader,
-        bool showPendingGridRows,
-        bool useLiveTimingOrder)
+        bool showPendingGridRows)
     {
         if (groupLimit <= 0 || rows.Count >= maximumRows)
         {
@@ -297,15 +295,7 @@ internal sealed record StandingsOverlayViewModel(
             groupLimit--;
         }
 
-        var orderedRows = OrderScoringRowsForDisplay(group.Rows, timingByCarIdx, useLiveTimingOrder);
-        var liveClassPositionByCarIdx = useLiveTimingOrder
-            ? orderedRows
-                .Select((row, index) => new { row.CarIdx, Position = index + 1 })
-                .ToDictionary(item => item.CarIdx, item => item.Position)
-            : new Dictionary<int, int>();
-        var liveIntervalByCarIdx = useLiveTimingOrder
-            ? LiveIntervalsForOrderedRows(orderedRows, timingByCarIdx)
-            : new Dictionary<int, string>();
+        var orderedRows = group.Rows;
         foreach (var scoringRow in SelectRowsAroundReference(
             orderedRows,
             useReferenceWindow ? referenceCarIdx : null,
@@ -318,82 +308,12 @@ internal sealed record StandingsOverlayViewModel(
             }
 
             timingByCarIdx.TryGetValue(scoringRow.CarIdx, out var timingRow);
-            liveClassPositionByCarIdx.TryGetValue(scoringRow.CarIdx, out var liveClassPosition);
-            liveIntervalByCarIdx.TryGetValue(scoringRow.CarIdx, out var liveInterval);
             rows.Add(ToRow(
                 scoringRow,
                 timingRow,
                 referenceCarIdx,
-                showPendingGridRows,
-                liveClassPosition == 0 ? null : liveClassPosition,
-                liveInterval));
+                showPendingGridRows));
         }
-    }
-
-    private static IReadOnlyList<LiveScoringRow> OrderScoringRowsForDisplay(
-        IReadOnlyList<LiveScoringRow> rows,
-        IReadOnlyDictionary<int, LiveTimingRow> timingByCarIdx,
-        bool useLiveTimingOrder)
-    {
-        if (!useLiveTimingOrder)
-        {
-            return rows;
-        }
-
-        var rowsWithGap = rows.Count(row =>
-            timingByCarIdx.TryGetValue(row.CarIdx, out var timing)
-            && timing.GapEvidence.IsUsable
-            && timing.GapSecondsToClassLeader is { } gap
-            && IsFinite(gap)
-            && gap >= 0d);
-        if (rowsWithGap < 2)
-        {
-            return rows;
-        }
-
-        return rows
-            .OrderBy(row => LiveTimingGapSortValue(row, timingByCarIdx) ?? double.MaxValue)
-            .ThenBy(row => row.ClassPosition ?? int.MaxValue)
-            .ThenBy(row => row.OverallPosition ?? int.MaxValue)
-            .ThenBy(row => row.CarIdx)
-            .ToArray();
-    }
-
-    private static Dictionary<int, string> LiveIntervalsForOrderedRows(
-        IReadOnlyList<LiveScoringRow> orderedRows,
-        IReadOnlyDictionary<int, LiveTimingRow> timingByCarIdx)
-    {
-        var intervals = new Dictionary<int, string>();
-        double? previousGap = null;
-        foreach (var row in orderedRows)
-        {
-            var currentGap = LiveTimingGapSortValue(row, timingByCarIdx);
-            if (currentGap is null)
-            {
-                intervals[row.CarIdx] = "--";
-                continue;
-            }
-
-            intervals[row.CarIdx] = previousGap is null
-                ? "0.0"
-                : $"+{Math.Max(0d, currentGap.Value - previousGap.Value):0.0}";
-            previousGap = currentGap;
-        }
-
-        return intervals;
-    }
-
-    private static double? LiveTimingGapSortValue(
-        LiveScoringRow row,
-        IReadOnlyDictionary<int, LiveTimingRow> timingByCarIdx)
-    {
-        return timingByCarIdx.TryGetValue(row.CarIdx, out var timing)
-            && timing.GapEvidence.IsUsable
-            && timing.GapSecondsToClassLeader is { } gap
-            && IsFinite(gap)
-            && gap >= 0d
-            ? gap
-            : null;
     }
 
     private static StandingsOverlayRowViewModel ClassHeaderRow(LiveScoringClassGroup group, string classEstimatedLaps)
@@ -468,12 +388,6 @@ internal sealed record StandingsOverlayViewModel(
     {
         return OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot) == OverlaySessionKind.Race
             && snapshot.Models.Session.SessionState is > 0 and < 4;
-    }
-
-    private static bool UseLiveTimingOrder(LiveTelemetrySnapshot snapshot)
-    {
-        return OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot) == OverlaySessionKind.Race
-            && snapshot.Models.Session.SessionState is null or >= 4;
     }
 
     private static bool HasValidLap(LiveScoringRow row)

@@ -56,15 +56,16 @@ Likely squash body:
 
 ```text
 - Bumped shared .NET product/version metadata to 0.18.11.
-- Extended the compact live telemetry state corpus to 10 redacted states across AI multi-session, open-player practice, four-hour endurance, and 24-hour endurance captures, preserving missing-target notes for remaining gaps and adding race-start signal-availability notes.
+- Extended the compact live telemetry state corpus to 12 redacted states across AI multi-session, open-player practice, four-hour endurance, and 24-hour endurance captures, preserving missing-target notes for remaining gaps and adding race-start signal-availability notes.
 - Added a redacted SDK field availability corpus covering 334 local endurance SDK variables with declared array/storage maximums, primitive type bounds, sampled observed ranges, source coverage, and identity shape counts.
 - Added a fast schema-drift check so new local iRacing SDK fields or declared shape changes are detected before telemetry-backed feature work.
 - Added corpus tests for source-selection behavior, SDK coverage, declared shape versus observed range, and raw/private payload exclusion.
-- Kept Standings on starting-grid ordering before green, hid empty other-class sections, dimmed cars that have not taken the grid, and withheld race gap/interval cells until positive timing evidence exists.
+- Kept Standings on grounded scoring/start-finish ordering while enriching gap/interval cells from usable timing evidence, hid empty other-class sections, and dimmed cars that have not taken the grid.
 - Let Relative use estimated pre-green timing from observed `CarIdxEstTime`/lap-distance signals when telemetry supports it, including pit/tow edge cases.
+- Kept Gap To Leader waiting when only leader/reference placeholders exist, rejected all-zero race F2 placeholders, and allowed plausible wrap-aware estimated timing after green.
 - Protected Fuel Calculator and race-progress projections from treating positive race pre-green `SessionTimeRemain` countdowns as remaining race time.
 - Added shared native/browser header time-remaining support with session-scoped settings options and updated the settings chrome controls.
-- Improved AI class-label derivation, standings browser replay tooling, and telemetry corpus extraction.
+- Improved AI class-label derivation, standings browser replay tooling, telemetry corpus extraction, and whole-catalog race-start browser screenshot validation.
 - Preserved user settings and app data on update while keeping installed-build uninstall cleanup destructive.
 - Fixed Windows overlay input protection so movable overlays are not made click-through unless they overlap the active Settings window, and auto-hide Settings when focus moves to another app.
 - Clamped native/browser input graph curves inside the plot bounds.

@@ -825,7 +825,7 @@ public sealed class StandingsOverlayViewModelTests
     }
 
     [Fact]
-    public void From_RaceGreenScoringRowsCanUseLiveTimingOrderForGapAndInterval()
+    public void From_RaceGreenScoringRowsKeepScoringOrderWhileUsingLiveGapAndInterval()
     {
         var now = DateTimeOffset.UtcNow;
         var scoringRows = new[]
@@ -848,14 +848,14 @@ public sealed class StandingsOverlayViewModelTests
             carNumber: "2",
             classPosition: 2,
             gapSeconds: 4d,
-            deltaSeconds: null);
+            deltaSeconds: 4d);
         var liveSecond = TimingRow(
             carIdx: 3,
             driverName: "Live Second",
             carNumber: "3",
             classPosition: 3,
             gapSeconds: 1d,
-            deltaSeconds: null,
+            deltaSeconds: 1d,
             isFocus: true);
         var snapshot = Snapshot(now, LiveRaceModels.Empty with
         {
@@ -896,11 +896,11 @@ public sealed class StandingsOverlayViewModelTests
 
         var viewModel = StandingsOverlayViewModel.From(snapshot, now, maximumRows: 3);
 
-        Assert.Equal("2 - 3/3 rows", viewModel.Status);
-        Assert.Equal(new[] { "#1", "#3", "#2" }, viewModel.Rows.Select(row => row.CarNumber));
+        Assert.Equal("3 - 3/3 rows", viewModel.Status);
+        Assert.Equal(new[] { "#1", "#2", "#3" }, viewModel.Rows.Select(row => row.CarNumber));
         Assert.Equal(new[] { "1", "2", "3" }, viewModel.Rows.Select(row => row.ClassPosition));
-        Assert.Equal(new[] { "Leader", "+1.0", "+4.0" }, viewModel.Rows.Select(row => row.Gap));
-        Assert.Equal(new[] { "0.0", "+1.0", "+3.0" }, viewModel.Rows.Select(row => row.Interval));
+        Assert.Equal(new[] { "Leader", "+4.0", "+1.0" }, viewModel.Rows.Select(row => row.Gap));
+        Assert.Equal(new[] { "0.0", "+4.0", "+1.0" }, viewModel.Rows.Select(row => row.Interval));
     }
 
     private static LiveTimingRow TimingRow(

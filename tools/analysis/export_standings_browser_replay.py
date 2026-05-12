@@ -358,10 +358,7 @@ def scoring_display_rows(
         if include_headers:
             first_driver = drivers.get(rows[0]["carIdx"])
             display_rows.append(header_row(class_label(first_driver, key), f"{len(rows)} cars", class_color(first_driver)))
-        use_live_order = session_kind == "race" and isinstance(raw.get("SessionState"), int) and raw["SessionState"] >= 4
-        ordered_rows = order_scoring_rows_for_display(rows, timing_rows, session_data, session_kind, raw.get("SessionState"), drivers) if use_live_order else rows
-        live_positions = {candidate["carIdx"]: index + 1 for index, candidate in enumerate(ordered_rows)} if use_live_order else {}
-        live_intervals = live_intervals_for_ordered_rows(ordered_rows, timing_rows, session_data, session_kind, raw.get("SessionState"), drivers) if use_live_order else {}
+        ordered_rows = rows
         for row in select_around_reference(ordered_rows, ref_idx if is_primary else None, group_limit):
             timing = timing_rows.get(row["carIdx"])
             display_rows.append(
@@ -375,8 +372,6 @@ def scoring_display_rows(
                     session_data=session_data,
                     session_kind=session_kind,
                     session_state=raw.get("SessionState") if isinstance(raw.get("SessionState"), int) else None,
-                    class_position_override=live_positions.get(row["carIdx"]),
-                    interval_override=live_intervals.get(row["carIdx"]),
                     is_pending_grid=(
                         selected_source.startswith("starting-grid")
                         and isinstance(raw.get("SessionState"), int)
