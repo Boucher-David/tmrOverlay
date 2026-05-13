@@ -164,11 +164,17 @@ public sealed class OverlayInputTransparencyTests
             Points: [],
             Series: [],
             Weather: [],
+            LeaderChanges: [],
+            DriverChanges: [],
             StartSeconds: 0d,
             EndSeconds: 10d,
             MaxGapSeconds: 20d,
             LapReferenceSeconds: 60d,
-            SelectedSeriesCount: 0);
+            SelectedSeriesCount: 0,
+            TrendMetrics: [],
+            ActiveThreat: null,
+            ThreatCarIdx: null,
+            MetricDeadbandSeconds: 0.25d);
         var plot = new RectangleF(0, 10, 100, 200);
         var leaderPoint = new DesignV2GapTrendPoint(DateTimeOffset.UtcNow, 5d, 0d, 1, false, true, 1, false);
         var trailingPoint = leaderPoint with { GapSeconds = 20d, IsClassLeader = false, ClassPosition = 10 };

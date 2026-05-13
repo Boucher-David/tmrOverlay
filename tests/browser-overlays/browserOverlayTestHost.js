@@ -82,6 +82,8 @@ function installCanvasMock(window) {
     'beginPath',
     'bezierCurveTo',
     'clearRect',
+    'arc',
+    'closePath',
     'clip',
     'fill',
     'fillRect',
@@ -91,6 +93,7 @@ function installCanvasMock(window) {
     'rect',
     'restore',
     'save',
+    'setLineDash',
     'setTransform',
     'stroke',
     'strokeRect'

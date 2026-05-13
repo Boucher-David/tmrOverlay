@@ -620,14 +620,25 @@ internal sealed class DesignV2SettingsSurface : Control
                 break;
             case "gap-to-leader":
                 AddDynamic(new V2StepperControl(
-                    new Rectangle(454, 484, 220, 38),
+                    new Rectangle(454, 476, 220, 38),
                     settings.GetIntegerOption(OverlayOptionKeys.GapCarsAhead, defaultValue: 5, minimum: 0, maximum: 12),
                     0,
                     12,
-                    value => $"{value} each side",
+                    value => $"{value} ahead",
                     value =>
                     {
                         settings.SetIntegerOption(OverlayOptionKeys.GapCarsAhead, value, 0, 12);
+                        _callbacks.SaveAndApply();
+                        Invalidate();
+                    }));
+                AddDynamic(new V2StepperControl(
+                    new Rectangle(454, 514, 220, 38),
+                    settings.GetIntegerOption(OverlayOptionKeys.GapCarsBehind, defaultValue: 5, minimum: 0, maximum: 12),
+                    0,
+                    12,
+                    value => $"{value} behind",
+                    value =>
+                    {
                         settings.SetIntegerOption(OverlayOptionKeys.GapCarsBehind, value, 0, 12);
                         _callbacks.SaveAndApply();
                         Invalidate();
@@ -1108,8 +1119,9 @@ internal sealed class DesignV2SettingsSurface : Control
             case "gap-to-leader":
                 DrawContentMatrix(graphics, "Content Display", [new ContentMatrixRow("Class gap window", true)], new Rectangle(306, 272, 834, 126));
                 DrawPanel(graphics, new Rectangle(306, 426, 834, 126), "Class Gap Window");
-                DrawText(graphics, "Cars each side", new Rectangle(328, 498, 130, 18), 13f, FontStyle.Regular, TextSecondary);
-                DrawText(graphics, "Keeps the focused class gap trend bounded around the team car.", new Rectangle(328, 532, 560, 18), 12f, FontStyle.Regular, TextMuted);
+                DrawText(graphics, "Cars ahead", new Rectangle(328, 488, 130, 18), 13f, FontStyle.Regular, TextSecondary);
+                DrawText(graphics, "Cars behind", new Rectangle(328, 526, 130, 18), 13f, FontStyle.Regular, TextSecondary);
+                DrawText(graphics, "Keeps the focused class gap trend bounded around the team car.", new Rectangle(690, 506, 420, 18), 12f, FontStyle.Regular, TextMuted, alignment: StringAlignment.Far);
                 break;
             case "fuel-calculator":
                 DrawContentMatrix(

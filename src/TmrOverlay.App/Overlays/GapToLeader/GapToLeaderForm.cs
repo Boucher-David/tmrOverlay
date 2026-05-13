@@ -946,7 +946,9 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         var aheadRange = NiceCeiling(Math.Max(minimumRange, maxAheadSeconds * FocusScalePaddingMultiplier));
         var behindRange = NiceCeiling(Math.Max(minimumRange, maxBehindSeconds * FocusScalePaddingMultiplier));
         var localRange = Math.Max(aheadRange, behindRange);
-        if (!hasLocalComparison || leaderScaleMax < Math.Max(triggerGap, localRange * FocusScaleTriggerRatio))
+        var forceFocusScaleForLappedReference = ShouldForceFocusScaleForLappedReference(latestReferenceGap);
+        if (!forceFocusScaleForLappedReference
+            && (!hasLocalComparison || leaderScaleMax < Math.Max(triggerGap, localRange * FocusScaleTriggerRatio)))
         {
             return GapScale.Leader(leaderScaleMax);
         }
@@ -975,6 +977,13 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
             _lapReferenceSeconds is { } lapSeconds && IsValidLapReference(lapSeconds)
                 ? lapSeconds * FocusScaleMinimumRangeLaps
                 : 0d);
+    }
+
+    private bool ShouldForceFocusScaleForLappedReference(double latestReferenceGap)
+    {
+        return _lapReferenceSeconds is { } lapSeconds
+            && IsValidLapReference(lapSeconds)
+            && latestReferenceGap >= lapSeconds * SameLapReferenceBoundaryLaps;
     }
 
     private static PointF ToGraphPoint(

@@ -178,16 +178,72 @@ function browserScenarios() {
           bodyKind: 'graph',
           columns: [],
           rows: [],
-          metrics: [
-            metric('Class pos', '2', 'live'),
-            metric('Class leader', '+4.2', 'live')
-          ],
-          points: [8, 6, 4.2]
+          metrics: [],
+          points: [8, 6, 4.2],
+          graph: {
+            series: [
+              {
+                carIdx: 11,
+                isReference: false,
+                isClassLeader: true,
+                classPosition: 1,
+                alpha: 1,
+                isStickyExit: false,
+                isStale: false,
+                points: [
+                  { axisSeconds: 100, gapSeconds: 0, startsSegment: true },
+                  { axisSeconds: 104, gapSeconds: 0, startsSegment: false },
+                  { axisSeconds: 108, gapSeconds: 0, startsSegment: false }
+                ]
+              },
+              {
+                carIdx: 12,
+                isReference: true,
+                isClassLeader: false,
+                classPosition: 2,
+                alpha: 1,
+                isStickyExit: false,
+                isStale: false,
+                points: [
+                  { axisSeconds: 100, gapSeconds: 8, startsSegment: true },
+                  { axisSeconds: 104, gapSeconds: 6, startsSegment: false },
+                  { axisSeconds: 108, gapSeconds: 4.2, startsSegment: false }
+                ]
+              }
+            ],
+            weather: [
+              { axisSeconds: 100, condition: 'Dry' }
+            ],
+            leaderChanges: [],
+            driverChanges: [],
+            startSeconds: 100,
+            endSeconds: 120,
+            maxGapSeconds: 10,
+            lapReferenceSeconds: 80,
+            selectedSeriesCount: 2,
+            trendMetrics: [
+              { label: '5L', focusGapChangeSeconds: -1.4, chaser: { carIdx: 14, label: '#14', gainSeconds: 0.8 }, state: 'ready', stateLabel: null },
+              { label: '10L', focusGapChangeSeconds: null, chaser: null, state: 'warming', stateLabel: '0.7L' },
+              { label: 'stint', focusGapChangeSeconds: null, chaser: null, state: 'unavailable', stateLabel: null }
+            ],
+            activeThreat: { label: '5L', focusGapChangeSeconds: -1.4, chaser: { carIdx: 14, label: '#14', gainSeconds: 0.8 }, state: 'ready', stateLabel: null },
+            threatCarIdx: 14,
+            metricDeadbandSeconds: 0.25,
+            scale: {
+              maxGapSeconds: 10,
+              isFocusRelative: false,
+              aheadSeconds: 0,
+              behindSeconds: 0,
+              referencePoints: [],
+              latestReferenceGapSeconds: 0
+            }
+          }
         },
         waitForSelector: '.model-graph'
       }),
       assert: ({ document }) => {
         expect(document.querySelector('.model-graph')).not.toBeNull();
+        expect(metricText(document)).not.toContain('Class leader +4.2');
         expect(document.getElementById('status').textContent).toBe('live | race gap');
         expect(document.getElementById('source').textContent).toBe('source: live gap telemetry | cars 4');
       }

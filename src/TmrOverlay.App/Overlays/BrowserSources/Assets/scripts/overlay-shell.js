@@ -513,8 +513,11 @@
           : '';
         contentEl.innerHTML = summary + rowsTable(displayModelHeaders(model), rows);
       } else if (model.bodyKind === 'graph') {
-        contentEl.innerHTML = '<div class="model-graph-panel"><canvas class="model-graph" aria-label="Gap trend graph"></canvas></div>';
-        drawOverlayGraph(contentEl.querySelector('.model-graph'), Array.isArray(model.points) ? model.points : []);
+        const summary = metrics.length
+          ? `<div class="grid graph-metrics">${metrics.map(metricRow).join('')}</div>`
+          : '';
+        contentEl.innerHTML = `${summary}<div class="model-graph-panel"><canvas class="model-graph" aria-label="Gap trend graph"></canvas></div>`;
+        drawOverlayGraph(contentEl.querySelector('.model-graph'), model);
       } else if (model.bodyKind === 'metrics') {
         contentEl.innerHTML = metrics.length
           ? `<div class="grid">${metrics.map(metricRow).join('')}</div>`
@@ -552,7 +555,7 @@
       sourceEl.textContent = '';
     }
 
-    function drawOverlayGraph(canvas, points) {
+    function drawOverlayGraph(canvas, model) {
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
       const width = Math.max(1, rect.width);
@@ -564,6 +567,11 @@
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, width, height);
 
+      if (drawOverlayGapGraph(ctx, width, height, model?.graph)) {
+        return;
+      }
+
+      const points = Array.isArray(model?.points) ? model.points : [];
       const values = points.map(Number).filter(Number.isFinite);
       if (values.length < 2) {
         ctx.fillStyle = themeColor('--tmr-text-muted', '#8caed4');
@@ -576,11 +584,24 @@
 
       const axisWidth = 58;
       const xAxisHeight = 17;
+      const labelLaneWidth = 38;
+      const metricsWidth = gapMetricsTableWidth(width);
+      const plotHeight = Math.max(40, height - xAxisHeight);
+      const metricsRect = metricsWidth > 0
+        ? { left: width - metricsWidth, top: 0, width: metricsWidth, height: plotHeight }
+        : null;
+      const chartRight = metricsRect ? metricsRect.left - 10 : width - 4;
+      const labelLane = {
+        left: chartRight - labelLaneWidth,
+        top: 0,
+        width: labelLaneWidth,
+        height: plotHeight
+      };
       const plot = {
         left: axisWidth,
         top: 0,
-        width: Math.max(40, width - axisWidth - 4),
-        height: Math.max(40, height - xAxisHeight)
+        width: Math.max(40, labelLane.left - axisWidth),
+        height: plotHeight
       };
       const max = Math.max(1, ...values.map((value) => Math.max(0, value)));
       ctx.strokeStyle = themeRgba('--tmr-text-muted-rgb', 0.28, 'rgba(140, 174, 212, 0.28)');
@@ -631,6 +652,604 @@
         }
       });
       ctx.stroke();
+    }
+
+    function drawOverlayGapGraph(ctx, width, height, graph) {
+      const series = Array.isArray(graph?.series) ? graph.series : [];
+      const totalSeriesPoints = series.reduce((total, item) => total + (Array.isArray(item?.points) ? item.points.length : 0), 0);
+      if (totalSeriesPoints < 2) {
+        return false;
+      }
+
+      const axisWidth = 58;
+      const xAxisHeight = 17;
+      const labelLaneWidth = 38;
+      const metricsWidth = gapMetricsTableWidth(width);
+      const plotHeight = Math.max(40, height - xAxisHeight);
+      const metricsRect = metricsWidth > 0
+        ? { left: width - metricsWidth, top: 0, width: metricsWidth, height: plotHeight }
+        : null;
+      const chartRight = metricsRect ? metricsRect.left - 10 : width - 4;
+      const labelLane = {
+        left: chartRight - labelLaneWidth,
+        top: 0,
+        width: labelLaneWidth,
+        height: plotHeight
+      };
+      const plot = {
+        left: axisWidth,
+        top: 0,
+        width: Math.max(40, labelLane.left - axisWidth),
+        height: plotHeight
+      };
+      const scale = graph.scale || { isFocusRelative: false, maxGapSeconds: graph.maxGapSeconds };
+      const maxGapSeconds = Math.max(1, numberOr(scale.maxGapSeconds, graph.maxGapSeconds, 1));
+      drawGapWeatherBands(ctx, graph, plot);
+      drawGapLapIntervals(ctx, graph, plot);
+      drawGapGrid(ctx, graph, scale, plot, maxGapSeconds);
+      drawGapScaleLabels(ctx, graph, scale, plot, maxGapSeconds);
+      drawGapLeaderMarkers(ctx, graph, plot);
+
+      const labels = [];
+      const orderedSeries = [...series].sort((a, b) =>
+        Number(Boolean(a?.isClassLeader)) - Number(Boolean(b?.isClassLeader))
+        || Number(Boolean(a?.isReference)) - Number(Boolean(b?.isReference)));
+      orderedSeries.forEach((item, index) => {
+        if (scale?.isFocusRelative === true && item?.isClassLeader) return;
+
+        const color = graphSeriesColor(item, index, graph?.threatCarIdx);
+        const alpha = clamp01(numberOr(item?.alpha, 1)) * graphSeriesAlphaMultiplier(item, graph?.threatCarIdx);
+        const pointsForSeries = (Array.isArray(item?.points) ? item.points : [])
+          .filter((point) => Number.isFinite(point?.axisSeconds) && Number.isFinite(point?.gapSeconds))
+          .sort((a, b) => a.axisSeconds - b.axisSeconds);
+        if (pointsForSeries.length === 0) return;
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.lineWidth = item?.isReference ? 2.6 : item?.isClassLeader ? 1.8 : 1.25;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        if (item?.isStale || item?.isStickyExit) ctx.setLineDash([6, 4]);
+        drawGapSeriesSegments(ctx, graph, scale, plot, maxGapSeconds, pointsForSeries);
+        ctx.restore();
+
+        const latest = pointsForSeries[pointsForSeries.length - 1];
+        const latestPoint = gapPoint(graph, scale, plot, maxGapSeconds, latest.axisSeconds, latest.gapSeconds);
+        labels.push({
+          text: item?.isClassLeader ? 'P1' : Number.isFinite(item?.classPosition) ? `P${item.classPosition}` : `#${item?.carIdx ?? '--'}`,
+          point: latestPoint,
+          color,
+          isReference: Boolean(item?.isReference),
+          isClassLeader: Boolean(item?.isClassLeader)
+        });
+        if (item?.isStale) {
+          ctx.save();
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(latestPoint.x - 4, latestPoint.y - 4);
+          ctx.lineTo(latestPoint.x + 4, latestPoint.y + 4);
+          ctx.moveTo(latestPoint.x - 4, latestPoint.y + 4);
+          ctx.lineTo(latestPoint.x + 4, latestPoint.y - 4);
+          ctx.stroke();
+          ctx.restore();
+        }
+      });
+
+      drawGapThreatAnnotation(ctx, graph?.activeThreat, plot);
+      drawGapEndpointLabels(ctx, labels, plot, labelLane);
+      drawGapDriverMarkers(ctx, graph, scale, plot, maxGapSeconds);
+      if (metricsRect) drawGapFocusedMetricsTable(ctx, metricsRect, graph);
+      return true;
+    }
+
+    function drawGapSeriesSegments(ctx, graph, scale, plot, maxGapSeconds, points) {
+      let segment = [];
+      for (const point of points) {
+        if (point.startsSegment === true && segment.length > 0) {
+          drawGapSegment(ctx, segment);
+          segment = [];
+        }
+        segment.push(gapPoint(graph, scale, plot, maxGapSeconds, point.axisSeconds, point.gapSeconds));
+      }
+      drawGapSegment(ctx, segment);
+    }
+
+    function drawGapSegment(ctx, segment) {
+      if (segment.length === 0) return;
+      if (segment.length === 1) {
+        drawCanvasPoint(ctx, segment[0], 3.5);
+        return;
+      }
+      ctx.beginPath();
+      segment.forEach((point, index) => {
+        if (index === 0) ctx.moveTo(point.x, point.y);
+        else ctx.lineTo(point.x, point.y);
+      });
+      ctx.stroke();
+      drawCanvasPoint(ctx, segment[segment.length - 1], 3.5);
+    }
+
+    function drawCanvasPoint(ctx, point, radius) {
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function drawGapWeatherBands(ctx, graph, plot) {
+      const weather = Array.isArray(graph?.weather) ? graph.weather : [];
+      if (weather.length === 0) return;
+      const domain = graphDomain(graph);
+      weather.forEach((point, index) => {
+        const color = weatherColor(point?.condition);
+        if (!color) return;
+        const nextAxis = Number.isFinite(weather[index + 1]?.axisSeconds) ? weather[index + 1].axisSeconds : domain.end;
+        const start = Math.max(domain.start, numberOr(point?.axisSeconds, domain.start));
+        const end = Math.min(domain.end, nextAxis);
+        if (end <= start) return;
+        const x = axisToX(graph, plot, start);
+        const nextX = axisToX(graph, plot, end);
+        ctx.fillStyle = color;
+        ctx.fillRect(x, plot.top, Math.max(1, nextX - x), plot.height);
+        if (isDeclaredWet(point?.condition)) {
+          ctx.fillStyle = 'rgba(94, 190, 255, 0.17)';
+          ctx.fillRect(x, plot.top, Math.max(1, nextX - x), 4);
+        }
+      });
+    }
+
+    function drawGapLapIntervals(ctx, graph, plot) {
+      const lapSeconds = Number(graph?.lapReferenceSeconds);
+      if (!Number.isFinite(lapSeconds) || lapSeconds < 20) return;
+      const domain = graphDomain(graph);
+      const duration = domain.end - domain.start;
+      const interval = lapSeconds * 5;
+      if (duration < interval * 0.75) return;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.13)';
+      ctx.fillStyle = themeColor('--tmr-text-muted', '#8caed4');
+      ctx.font = '10px "Segoe UI", Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      for (let elapsed = interval; elapsed < duration; elapsed += interval) {
+        const x = plot.left + elapsed / duration * plot.width;
+        ctx.beginPath();
+        ctx.moveTo(x, plot.top);
+        ctx.lineTo(x, plot.top + plot.height);
+        ctx.stroke();
+        ctx.fillText(`${Math.round(elapsed / lapSeconds)}L`, x, plot.top + plot.height + 1);
+      }
+      ctx.restore();
+    }
+
+    function drawGapGrid(ctx, graph, scale, plot, maxGapSeconds) {
+      ctx.save();
+      ctx.strokeStyle = themeRgba('--tmr-text-muted-rgb', 0.24, 'rgba(140, 174, 212, 0.24)');
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(plot.left, plot.top);
+      ctx.lineTo(plot.left + plot.width, plot.top);
+      ctx.moveTo(plot.left, plot.top + plot.height);
+      ctx.lineTo(plot.left + plot.width, plot.top + plot.height);
+      ctx.stroke();
+      ctx.fillStyle = themeColor('--tmr-text-muted', '#8caed4');
+      ctx.font = '10px "Segoe UI", Arial, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+
+      if (scale?.isFocusRelative === true) {
+        const referenceY = focusReferenceY(plot);
+        ctx.strokeStyle = themeRgba('--tmr-green-rgb', 0.43, 'rgba(112, 224, 146, 0.43)');
+        ctx.beginPath();
+        ctx.moveTo(plot.left, referenceY);
+        ctx.lineTo(plot.left + plot.width, referenceY);
+        ctx.stroke();
+        ctx.fillStyle = themeColor('--tmr-green', '#70e092');
+        ctx.fillText('focus', plot.left - 8, referenceY);
+        ctx.fillStyle = themeColor('--tmr-text-muted', '#8caed4');
+
+        const aheadStep = niceGridStep(numberOr(scale.aheadSeconds, 1) / 2);
+        for (let value = aheadStep; value < numberOr(scale.aheadSeconds, 0); value += aheadStep) {
+          const y = gapDeltaToY(-value, scale, plot);
+          drawGridLineWithLabel(ctx, plot, y, formatDeltaSeconds(-value));
+        }
+        const behindStep = niceGridStep(numberOr(scale.behindSeconds, 1) / 2);
+        for (let value = behindStep; value < numberOr(scale.behindSeconds, 0); value += behindStep) {
+          const y = gapDeltaToY(value, scale, plot);
+          drawGridLineWithLabel(ctx, plot, y, formatDeltaSeconds(value));
+        }
+        ctx.restore();
+        return;
+      }
+
+      const step = niceGridStep(maxGapSeconds / 4);
+      for (let value = step; value < maxGapSeconds; value += step) {
+        drawGridLineWithLabel(ctx, plot, gapToY(value, maxGapSeconds, plot), formatSignedGap(value));
+      }
+      const lapSeconds = Number(graph?.lapReferenceSeconds);
+      if (Number.isFinite(lapSeconds) && lapSeconds >= 20 && maxGapSeconds >= lapSeconds * 0.85) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.58)';
+        ctx.fillStyle = themeColor('--tmr-text', '#ffffff');
+        for (let lap = 1; lap * lapSeconds < maxGapSeconds; lap += 1) {
+          drawGridLineWithLabel(ctx, plot, gapToY(lap * lapSeconds, maxGapSeconds, plot), `+${lap} lap`);
+        }
+      }
+      ctx.restore();
+    }
+
+    function drawGridLineWithLabel(ctx, plot, y, label) {
+      ctx.beginPath();
+      ctx.moveTo(plot.left, y);
+      ctx.lineTo(plot.left + plot.width, y);
+      ctx.stroke();
+      ctx.fillText(label, plot.left - 8, y);
+    }
+
+    function drawGapScaleLabels(ctx, graph, scale, plot, maxGapSeconds) {
+      ctx.save();
+      ctx.fillStyle = themeColor('--tmr-text-muted', '#8caed4');
+      ctx.font = '10px "Segoe UI", Arial, sans-serif';
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'right';
+      if (scale?.isFocusRelative === true) {
+        ctx.fillText('local', plot.left - 8, plot.top + 7);
+        ctx.fillText(formatDeltaSeconds(-numberOr(scale.aheadSeconds, 0)), plot.left - 8, plot.top + 18);
+        ctx.fillText(formatDeltaSeconds(numberOr(scale.behindSeconds, 0)), plot.left - 8, plot.top + plot.height - 8);
+      } else {
+        ctx.fillText('leader', plot.left - 8, plot.top + 7);
+        ctx.fillText(formatSignedGap(maxGapSeconds), plot.left - 8, plot.top + plot.height - 7);
+      }
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(formatTrendWindow(graphDomain(graph).end - graphDomain(graph).start), plot.left, plot.top + plot.height + 13);
+      ctx.textAlign = 'right';
+      ctx.fillText('now', plot.left + plot.width, plot.top + plot.height + 13);
+      ctx.restore();
+    }
+
+    function drawGapLeaderMarkers(ctx, graph, plot) {
+      const markers = Array.isArray(graph?.leaderChanges) ? graph.leaderChanges : [];
+      if (markers.length === 0) return;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+      ctx.fillStyle = themeColor('--tmr-text-muted', '#8caed4');
+      ctx.font = '700 10px "Segoe UI", Arial, sans-serif';
+      ctx.setLineDash([2, 4]);
+      for (const marker of markers) {
+        if (!Number.isFinite(marker?.axisSeconds)) continue;
+        const x = axisToX(graph, plot, marker.axisSeconds);
+        ctx.beginPath();
+        ctx.moveTo(x, plot.top);
+        ctx.lineTo(x, plot.top + plot.height);
+        ctx.stroke();
+        ctx.fillText('leader', x + 4, plot.top + 12);
+      }
+      ctx.restore();
+    }
+
+    function drawGapDriverMarkers(ctx, graph, scale, plot, maxGapSeconds) {
+      const markers = Array.isArray(graph?.driverChanges) ? graph.driverChanges : [];
+      if (markers.length === 0) return;
+      ctx.save();
+      ctx.font = '700 10px "Segoe UI", Arial, sans-serif';
+      for (const marker of markers) {
+        if (!Number.isFinite(marker?.axisSeconds) || !Number.isFinite(marker?.gapSeconds)) continue;
+        const point = gapPoint(graph, scale, plot, maxGapSeconds, marker.axisSeconds, marker.gapSeconds);
+        const color = marker.isReference ? themeColor('--tmr-green', '#70e092') : themeColor('--tmr-text-secondary', '#cdd8e4');
+        ctx.strokeStyle = color;
+        ctx.fillStyle = themeColor('--tmr-surface', '#121e2a');
+        ctx.lineWidth = marker.isReference ? 1.8 : 1.3;
+        ctx.beginPath();
+        ctx.moveTo(point.x, point.y - 9);
+        ctx.lineTo(point.x, point.y + 9);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = color;
+        ctx.fillText(String(marker.label || 'DR').slice(0, 3), point.x + 6, point.y - 8);
+      }
+      ctx.restore();
+    }
+
+    function gapMetricsTableWidth(width) {
+      const metricsWidth = 184;
+      const availableAfterTable = width - 58 - 38 - 10 - metricsWidth;
+      return availableAfterTable >= 300 ? metricsWidth : 0;
+    }
+
+    function drawGapThreatAnnotation(ctx, metric, plot) {
+      const chaser = metric?.chaser;
+      if (!chaser) return;
+      const text = `THREAT ${chaser.label || `#${chaser.carIdx ?? '--'}`} ${formatChangeSeconds(chaser.gainSeconds)} ${metric.label || ''}`;
+      ctx.save();
+      ctx.font = '700 8.5px "Segoe UI", Arial, sans-serif';
+      const textWidth = ctx.measureText(text).width;
+      const badgeHeight = 16;
+      const x = Math.min(Math.max(plot.left + 2, plot.left + plot.width / 2 - textWidth / 2), plot.left + plot.width - textWidth - 8);
+      const y = plot.top + plot.height - badgeHeight - 6;
+      ctx.fillStyle = 'rgba(18, 24, 28, 0.84)';
+      ctx.strokeStyle = colorWithAlpha(themeColor('--tmr-error', '#ec7063'), 0.38);
+      ctx.lineWidth = 1;
+      ctx.fillRect(x - 4, y - 1, textWidth + 8, badgeHeight);
+      ctx.strokeRect(x - 4, y - 1, textWidth + 8, badgeHeight);
+      ctx.fillStyle = themeColor('--tmr-error', '#ec7063');
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, x, y + badgeHeight / 2 - 0.5);
+      ctx.restore();
+    }
+
+    function drawGapFocusedMetricsTable(ctx, rect, graph) {
+      const metrics = Array.isArray(graph?.trendMetrics) ? graph.trendMetrics : [];
+      if (metrics.length === 0) return;
+      ctx.save();
+      ctx.fillStyle = 'rgba(18, 24, 28, 0.74)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+      ctx.fillRect(rect.left, rect.top, rect.width, rect.height);
+      ctx.strokeRect(rect.left, rect.top, rect.width, rect.height);
+
+      ctx.textBaseline = 'middle';
+      ctx.font = '700 10px "Segoe UI", Arial, sans-serif';
+      ctx.fillStyle = 'rgba(220, 230, 236, 0.92)';
+      ctx.fillText('TREND', rect.left + 8, rect.top + 11);
+      ctx.font = '400 8px "Segoe UI", Arial, sans-serif';
+      ctx.fillStyle = 'rgba(126, 144, 154, 0.9)';
+      ctx.fillText('win', rect.left + 8, rect.top + 26);
+      ctx.fillText('leader d', rect.left + 43, rect.top + 26);
+      ctx.fillText('threat', rect.left + 104, rect.top + 26);
+
+      ctx.font = '400 9px "Segoe UI", Arial, sans-serif';
+      metrics.slice(0, 3).forEach((metric, index) => {
+        const y = rect.top + 45 + index * 22;
+        ctx.fillStyle = 'rgba(205, 218, 228, 0.9)';
+        ctx.fillText(metric?.label || '--', rect.left + 8, y);
+        ctx.fillStyle = gapMetricValueColor(metric, numberOr(graph?.metricDeadbandSeconds, 0.25));
+        ctx.fillText(gapMetricValueText(metric), rect.left + 43, y);
+        ctx.fillStyle = gapMetricChaserColor(metric);
+        ctx.fillText(gapMetricChaserText(metric), rect.left + 104, y);
+      });
+      ctx.restore();
+    }
+
+    function gapMetricValueText(metric) {
+      const state = String(metric?.state || '').toLowerCase();
+      if (state === 'ready' && Number.isFinite(metric?.focusGapChangeSeconds)) return formatChangeSeconds(metric.focusGapChangeSeconds);
+      if (state === 'warming') return metric?.stateLabel || '--';
+      if (state === 'leaderchanged') return 'leader';
+      return '--';
+    }
+
+    function gapMetricValueColor(metric, deadbandSeconds) {
+      const state = String(metric?.state || '').toLowerCase();
+      const value = Number(metric?.focusGapChangeSeconds);
+      if (state !== 'ready' || !Number.isFinite(value)) {
+        return state === 'warming' || state === 'leaderchanged'
+          ? themeColor('--tmr-text-muted', '#8caed4')
+          : 'rgba(140, 174, 212, 0.72)';
+      }
+      if (Math.abs(value) < deadbandSeconds) return 'rgba(205, 218, 228, 0.88)';
+      return value > 0 ? themeColor('--tmr-error', '#ec7063') : themeColor('--tmr-green', '#70e092');
+    }
+
+    function gapMetricChaserText(metric) {
+      const state = String(metric?.state || '').toLowerCase();
+      if (state === 'ready' && metric?.chaser) {
+        return `${metric.chaser.label || `#${metric.chaser.carIdx ?? '--'}`} ${formatChangeSeconds(metric.chaser.gainSeconds)}`;
+      }
+      if (state === 'leaderchanged') return 'reset';
+      return '--';
+    }
+
+    function gapMetricChaserColor(metric) {
+      return String(metric?.state || '').toLowerCase() === 'ready' && metric?.chaser
+        ? themeColor('--tmr-error', '#ec7063')
+        : 'rgba(140, 174, 212, 0.72)';
+    }
+
+    function drawGapEndpointLabels(ctx, labels, plot, labelLane) {
+      if (!labels.length) return;
+      const labelHeight = 13;
+      const pinned = labels.filter((label) => shouldPinGapEndpointLabel(label, plot));
+      const floating = labels.filter((label) => !shouldPinGapEndpointLabel(label, plot));
+      floating
+        .sort((a, b) => gapEndpointLabelPriority(a) - gapEndpointLabelPriority(b) || a.point.y - b.point.y)
+        .forEach((label) => {
+          const y = clampGapEndpointLabelY(label.point.y - labelHeight / 2, plot, labelHeight);
+          drawGapEndpointLabel(ctx, label, y, plot, plot, false);
+        });
+
+      const bounds = labelLane || plot;
+      const ordered = pinned
+        .map((label) => ({ ...label, y: clampGapEndpointLabelY(label.point.y - labelHeight / 2, bounds, labelHeight) }))
+        .sort((a, b) => a.y - b.y || gapEndpointLabelPriority(a) - gapEndpointLabelPriority(b));
+      if (ordered.length === 0) return;
+      const minY = bounds.top + 1;
+      const maxY = bounds.top + bounds.height - labelHeight - 1;
+      for (let index = 0; index < ordered.length; index += 1) {
+        ordered[index].y = Math.max(minY, Math.min(maxY, ordered[index].y));
+        if (index > 0) {
+          ordered[index].y = Math.max(ordered[index].y, ordered[index - 1].y + labelHeight + 1);
+        }
+      }
+      if (ordered[ordered.length - 1].y > maxY) {
+        const shift = ordered[ordered.length - 1].y - maxY;
+        ordered.forEach((label) => { label.y = Math.max(minY, label.y - shift); });
+      }
+
+      ordered
+        .sort((a, b) => gapEndpointLabelPriority(a) - gapEndpointLabelPriority(b))
+        .forEach((label) => drawGapEndpointLabel(ctx, label, label.y, plot, bounds, true));
+    }
+
+    function drawGapEndpointLabel(ctx, label, y, plot, labelBounds, pinnedToLane) {
+      const labelHeight = 13;
+      ctx.save();
+      ctx.font = `${label.isReference ? '700 10px' : '700 9px'} "Segoe UI", Arial, sans-serif`;
+      ctx.textBaseline = 'middle';
+      const textWidth = ctx.measureText(label.text).width;
+      const x = pinnedToLane
+        ? Math.min(labelBounds.left + labelBounds.width - textWidth - 1, Math.max(labelBounds.left + 4, label.point.x + 8))
+        : Math.min(labelBounds.left + labelBounds.width - textWidth - 2, label.point.x + 6);
+      if (pinnedToLane || Math.abs(y + labelHeight / 2 - label.point.y) > 3) {
+        ctx.strokeStyle = colorWithAlpha(label.color, 0.32);
+        ctx.beginPath();
+        ctx.moveTo(label.point.x + 3, label.point.y);
+        ctx.lineTo(x - 2, y + labelHeight / 2);
+        ctx.stroke();
+      }
+      ctx.fillStyle = label.isReference ? 'rgba(18, 30, 42, 0.74)' : 'rgba(18, 30, 42, 0.59)';
+      ctx.fillRect(x - 2, y, textWidth + 4, labelHeight);
+      ctx.fillStyle = colorWithAlpha(label.color, label.isReference ? 1 : 0.78);
+      ctx.fillText(label.text, x, y + labelHeight / 2);
+      ctx.restore();
+    }
+
+    function shouldPinGapEndpointLabel(label, plot) {
+      return label.point.x >= plot.left + plot.width - 4;
+    }
+
+    function clampGapEndpointLabelY(y, bounds, labelHeight) {
+      return Math.max(bounds.top + 1, Math.min(bounds.top + bounds.height - labelHeight - 1, y));
+    }
+
+    function gapEndpointLabelPriority(label) {
+      if (label.isReference) return 2;
+      return label.isClassLeader ? 1 : 0;
+    }
+
+    function graphSeriesColor(series, index, threatCarIdx) {
+      if (Number.isFinite(threatCarIdx) && series?.carIdx === threatCarIdx) return themeColor('--tmr-error', '#ec7063');
+      if (series?.isReference) return themeColor('--tmr-cyan', '#00e8ff');
+      if (series?.isClassLeader) return themeColor('--tmr-text', '#ffffff');
+      const colors = [
+        themeColor('--tmr-amber', '#ffd15b'),
+        themeColor('--tmr-green', '#70e092'),
+        themeColor('--tmr-magenta', '#ff62d2')
+      ];
+      return colors[index % colors.length];
+    }
+
+    function graphSeriesAlphaMultiplier(series, threatCarIdx) {
+      return series?.isClassLeader || series?.isReference || (Number.isFinite(threatCarIdx) && series?.carIdx === threatCarIdx) ? 1 : 0.48;
+    }
+
+    function gapPoint(graph, scale, plot, maxGapSeconds, axisSeconds, gapSeconds) {
+      const x = axisToX(graph, plot, axisSeconds);
+      const y = scale?.isFocusRelative === true
+        ? gapDeltaToY(gapSeconds - referenceGapAt(scale.referencePoints || [], axisSeconds), scale, plot)
+        : gapToY(gapSeconds, maxGapSeconds, plot);
+      return { x, y };
+    }
+
+    function axisToX(graph, plot, axisSeconds) {
+      const domain = graphDomain(graph);
+      const ratio = (axisSeconds - domain.start) / Math.max(1, domain.end - domain.start);
+      return plot.left + Math.max(0, Math.min(1, ratio)) * plot.width;
+    }
+
+    function gapToY(gapSeconds, maxGapSeconds, plot) {
+      return plot.top + Math.max(0, Math.min(1, gapSeconds / Math.max(1, maxGapSeconds))) * plot.height;
+    }
+
+    function gapDeltaToY(deltaSeconds, scale, plot) {
+      const referenceY = focusReferenceY(plot);
+      if (deltaSeconds < 0) {
+        const ratio = Math.max(0, Math.min(1, Math.abs(deltaSeconds) / Math.max(1, numberOr(scale?.aheadSeconds, 1))));
+        return referenceY - ratio * Math.max(1, referenceY - (plot.top + 18));
+      }
+      const ratio = Math.max(0, Math.min(1, deltaSeconds / Math.max(1, numberOr(scale?.behindSeconds, 1))));
+      return referenceY + ratio * Math.max(1, plot.top + plot.height - 8 - referenceY);
+    }
+
+    function focusReferenceY(plot) {
+      return plot.top + plot.height * 0.56;
+    }
+
+    function referenceGapAt(points, axisSeconds) {
+      const ordered = (Array.isArray(points) ? points : [])
+        .filter((point) => Number.isFinite(point?.axisSeconds) && Number.isFinite(point?.gapSeconds))
+        .sort((a, b) => a.axisSeconds - b.axisSeconds);
+      if (ordered.length === 0) return 0;
+      if (axisSeconds <= ordered[0].axisSeconds) return ordered[0].gapSeconds;
+      const last = ordered[ordered.length - 1];
+      if (axisSeconds >= last.axisSeconds) return last.gapSeconds;
+      const afterIndex = ordered.findIndex((point) => point.axisSeconds >= axisSeconds);
+      const after = ordered[Math.max(0, afterIndex)];
+      const before = ordered[Math.max(0, afterIndex - 1)];
+      const span = after.axisSeconds - before.axisSeconds;
+      if (span <= 0.001) return before.gapSeconds;
+      const ratio = Math.max(0, Math.min(1, (axisSeconds - before.axisSeconds) / span));
+      return before.gapSeconds + (after.gapSeconds - before.gapSeconds) * ratio;
+    }
+
+    function graphDomain(graph) {
+      const start = numberOr(graph?.startSeconds, 0);
+      const end = Math.max(start + 1, numberOr(graph?.endSeconds, start + 1));
+      return { start, end };
+    }
+
+    function weatherColor(condition) {
+      if (condition === 2 || String(condition).toLowerCase() === 'damp') return 'rgba(75, 170, 205, 0.08)';
+      if (condition === 3 || String(condition).toLowerCase() === 'wet') return 'rgba(70, 135, 230, 0.13)';
+      if (isDeclaredWet(condition)) return 'rgba(78, 142, 238, 0.17)';
+      return null;
+    }
+
+    function isDeclaredWet(condition) {
+      return condition === 4 || String(condition).toLowerCase() === 'declaredwet' || String(condition).toLowerCase() === 'declared-wet';
+    }
+
+    function niceGridStep(value) {
+      if (!Number.isFinite(value) || value <= 0.25) return 0.25;
+      const magnitude = Math.pow(10, Math.floor(Math.log10(value)));
+      const normalized = value / magnitude;
+      for (const step of [1, 2, 2.5, 5, 10]) {
+        if (normalized <= step) return step * magnitude;
+      }
+      return 10 * magnitude;
+    }
+
+    function formatDeltaSeconds(value) {
+      if (!Number.isFinite(value)) return '--';
+      const sign = value > 0 ? '+' : value < 0 ? '-' : '';
+      const absolute = Math.abs(value);
+      if (absolute >= 60) {
+        const minutes = Math.floor(absolute / 60);
+        return `${sign}${minutes}:${(absolute % 60).toFixed(1).padStart(4, '0')}`;
+      }
+      return `${sign}${absolute.toFixed(1)}s`;
+    }
+
+    function formatChangeSeconds(value) {
+      if (!Number.isFinite(value)) return '--';
+      if (Math.abs(value) < 0.05) return '0.0';
+      return `${value > 0 ? '+' : ''}${value.toFixed(1)}`;
+    }
+
+    function formatTrendWindow(seconds) {
+      if (!Number.isFinite(seconds) || seconds <= 0) return '--';
+      return seconds >= 3600 ? `${(seconds / 3600).toFixed(seconds >= 36000 ? 0 : 1)}h` : `${Math.round(seconds / 60)}m`;
+    }
+
+    function numberOr(...values) {
+      for (const value of values) {
+        const number = Number(value);
+        if (Number.isFinite(number)) return number;
+      }
+      return 0;
+    }
+
+    function clamp01(value) {
+      return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
+    }
+
+    function colorWithAlpha(color, alpha) {
+      const parsed = parseHexColor(color);
+      if (parsed) return `rgba(${parsed.r}, ${parsed.g}, ${parsed.b}, ${alpha})`;
+      return color;
     }
 
     function formatSignedGap(value) {

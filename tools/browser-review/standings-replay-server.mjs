@@ -13,11 +13,21 @@ import {
 const replayPath = resolve(process.argv[2] || process.env.TMR_STANDINGS_REPLAY_JSON || '');
 const port = Number.parseInt(process.env.TMR_STANDINGS_REPLAY_PORT || '5187', 10);
 const frameMilliseconds = Number.parseInt(process.env.TMR_STANDINGS_REPLAY_FRAME_MS || '500', 10);
+const requestedReplayTimingMode = normalizeReplayTimingMode(process.env.TMR_STANDINGS_REPLAY_TIMING || 'source');
+const replaySpeedMultiplier = positiveNumber(process.env.TMR_STANDINGS_REPLAY_SPEED, 60);
 const relativeCarsEachSide = clampInteger(process.env.TMR_RELATIVE_CARS_EACH_SIDE, 3, 0, 8);
 const relativeShowPitColumn = parseBoolean(process.env.TMR_RELATIVE_SHOW_PIT_COLUMN, false);
 const relativeShowHeaderStatus = parseBoolean(process.env.TMR_RELATIVE_SHOW_HEADER_STATUS, true);
 const relativeShowHeaderTimeRemaining = parseBoolean(process.env.TMR_RELATIVE_SHOW_TIME_REMAINING, true);
 const relativeShowFooterSource = parseBoolean(process.env.TMR_RELATIVE_SHOW_FOOTER_SOURCE, true);
+const gapMissingSegmentThresholdSeconds = 10;
+const gapGraphTrendWindowSeconds = positiveNumber(process.env.TMR_GAP_GRAPH_WINDOW_SECONDS, 4 * 60 * 60);
+const gapGraphMaxContexts = clampInteger(process.env.TMR_GAP_GRAPH_MAX_CONTEXTS, 36000, 120, 60000);
+const gapCarsAhead = clampInteger(process.env.TMR_GAP_CARS_AHEAD, 5, 0, 12);
+const gapCarsBehind = clampInteger(process.env.TMR_GAP_CARS_BEHIND, 5, 0, 12);
+const gapShowHeaderStatus = parseBoolean(process.env.TMR_GAP_SHOW_HEADER_STATUS, true);
+const gapShowHeaderTimeRemaining = parseBoolean(process.env.TMR_GAP_SHOW_TIME_REMAINING, true);
+const gapShowFooterSource = parseBoolean(process.env.TMR_GAP_SHOW_FOOTER_SOURCE, true);
 const productionOverlayModelIds = new Set([
   'standings',
   'relative',
@@ -28,6 +38,7 @@ const productionOverlayModelIds = new Set([
   'gap-to-leader'
 ]);
 const replay = loadReplay(replayPath);
+const replayTiming = analyzeReplayTiming(replay);
 const startedAtMs = Date.now();
 
 const server = createServer((request, response) => {
@@ -85,6 +96,7 @@ const server = createServer((request, response) => {
         source: replay.source,
         frameCount: replay.frames.length,
         current: frameMetadata(frame, index),
+        timing: replayStatusTiming(frame, index),
         assetRoot: browserAssetRoot
       });
       return;
@@ -102,8 +114,10 @@ server.listen(port, '127.0.0.1', () => {
   console.log(`Replay status:         http://127.0.0.1:${port}/api/replay/status`);
   console.log(`Replay source:         ${replayPath}`);
   console.log(`Replay frames:         ${replay.frames.length}`);
-  console.log(`Frame interval:        ${frameMilliseconds}ms`);
+  console.log(`Replay timing:         ${replayStatusTiming().effectiveMode}${replayStatusTiming().effectiveMode === 'source-elapsed' ? ` @ ${replaySpeedMultiplier}x` : ` @ ${frameMilliseconds}ms/frame`}`);
+  console.log(`Source cadence:        ${formatCadenceSummary(replayTiming.sourceCadence)}`);
   console.log(`Relative rows:         ${relativeCarsEachSide * 2 + 1}`);
+  console.log(`Gap cars ahead/behind: ${gapCarsAhead}/${gapCarsBehind}`);
 });
 
 function loadReplay(path) {
@@ -121,6 +135,194 @@ function loadReplay(path) {
   return parsed;
 }
 
+function analyzeReplayTiming(replayDocument) {
+  const frames = replayDocument.frames || [];
+  const firstSessionTime = firstFinite(frames.map((frame) => frame.sessionTimeSeconds));
+  const firstCapturedUnixMs = firstFinite(frames.map((frame) => frame.capturedUnixMs));
+  let previous = null;
+  const sessionDeltas = [];
+  const capturedDeltas = [];
+  const frameIndexDeltas = [];
+  let hasNonMonotonicSessionTime = false;
+
+  frames.forEach((frame, index) => {
+    if (!Number.isFinite(frame.sourceElapsedSeconds)) {
+      if (Number.isFinite(frame.sessionTimeSeconds) && firstSessionTime !== null) {
+        frame.sourceElapsedSeconds = roundNumber(frame.sessionTimeSeconds - firstSessionTime);
+      } else if (Number.isFinite(frame.capturedUnixMs) && firstCapturedUnixMs !== null) {
+        frame.sourceElapsedSeconds = roundNumber((frame.capturedUnixMs - firstCapturedUnixMs) / 1000);
+      } else {
+        frame.sourceElapsedSeconds = roundNumber(index * Math.max(1, frameMilliseconds) / 1000);
+      }
+    }
+
+    if (previous) {
+      if (!Number.isFinite(frame.sourceSessionDeltaSeconds)
+        && Number.isFinite(frame.sessionTimeSeconds)
+        && Number.isFinite(previous.sessionTimeSeconds)) {
+        frame.sourceSessionDeltaSeconds = roundNumber(frame.sessionTimeSeconds - previous.sessionTimeSeconds);
+      }
+      if (!Number.isFinite(frame.sourceCapturedDeltaSeconds)
+        && Number.isFinite(frame.capturedUnixMs)
+        && Number.isFinite(previous.capturedUnixMs)) {
+        frame.sourceCapturedDeltaSeconds = roundNumber((frame.capturedUnixMs - previous.capturedUnixMs) / 1000);
+      }
+      if (!Number.isInteger(frame.sourceFrameDelta)
+        && Number.isInteger(frame.frameIndex)
+        && Number.isInteger(previous.frameIndex)) {
+        frame.sourceFrameDelta = frame.frameIndex - previous.frameIndex;
+      }
+    }
+
+    if (Number.isFinite(frame.sourceSessionDeltaSeconds)) {
+      if (frame.sourceSessionDeltaSeconds < 0) {
+        hasNonMonotonicSessionTime = true;
+      } else {
+        sessionDeltas.push(frame.sourceSessionDeltaSeconds);
+      }
+    }
+    if (Number.isFinite(frame.sourceCapturedDeltaSeconds) && frame.sourceCapturedDeltaSeconds >= 0) {
+      capturedDeltas.push(frame.sourceCapturedDeltaSeconds);
+    }
+    if (Number.isInteger(frame.sourceFrameDelta) && frame.sourceFrameDelta >= 0) {
+      frameIndexDeltas.push(frame.sourceFrameDelta);
+    }
+    previous = frame;
+  });
+
+  const timeline = frames
+    .map((frame, index) => ({ index, elapsed: finiteNumber(frame.sourceElapsedSeconds) }))
+    .filter((item) => Number.isFinite(item.elapsed));
+  const isTimelineMonotonic = timeline.every((item, index) => index === 0 || item.elapsed >= timeline[index - 1].elapsed);
+  const sourceDurationSeconds = timeline.length > 1
+    ? Math.max(0, timeline[timeline.length - 1].elapsed - timeline[0].elapsed)
+    : 0;
+  const exportedCadence = replayDocument.source?.cadence || {};
+  const computedCadence = {
+    basis: exportedCadence.basis || 'raw-capture frame header sessionTime',
+    selectedFrameCount: frames.length,
+    gapToLeaderMissingSegmentThresholdSeconds: gapMissingSegmentThresholdSeconds,
+    denseForGapToLeader: frames.length < 2 || (sessionDeltas.length > 0 && Math.max(...sessionDeltas) <= gapMissingSegmentThresholdSeconds),
+    hasNonMonotonicSessionTime,
+    sourceElapsedSeconds: summarizeNumbers(timeline.map((item) => item.elapsed)),
+    sourceSessionDeltaSeconds: summarizeNumbers(sessionDeltas),
+    sourceCapturedDeltaSeconds: summarizeNumbers(capturedDeltas),
+    sourceFrameDelta: summarizeNumbers(frameIndexDeltas, 0)
+  };
+
+  return {
+    timeline,
+    isTimelineMonotonic,
+    sourceDurationSeconds,
+    sourceCadence: mergeCadence(exportedCadence, computedCadence)
+  };
+}
+
+function effectiveReplayTimingMode() {
+  return requestedReplayTimingMode === 'source-elapsed'
+    && replayTiming.isTimelineMonotonic
+    && replayTiming.sourceDurationSeconds > 0
+    ? 'source-elapsed'
+    : 'fixed-frame';
+}
+
+function replayStatusTiming(frame = null, index = null) {
+  const effectiveMode = effectiveReplayTimingMode();
+  return {
+    requestedMode: requestedReplayTimingMode,
+    effectiveMode,
+    speedMultiplier: effectiveMode === 'source-elapsed' ? replaySpeedMultiplier : null,
+    fixedFrameMilliseconds: effectiveMode === 'fixed-frame' ? frameMilliseconds : null,
+    sourceDurationSeconds: roundNumber(replayTiming.sourceDurationSeconds),
+    sourceTimelineMonotonic: replayTiming.isTimelineMonotonic,
+    sourceCadence: replayTiming.sourceCadence,
+    current: frame && Number.isInteger(index)
+      ? {
+          index,
+          frameIndex: frame.frameIndex,
+          sourceElapsedSeconds: finiteNumber(frame.sourceElapsedSeconds),
+          sourceSessionDeltaSeconds: finiteNumber(frame.sourceSessionDeltaSeconds),
+          sourceFrameDelta: Number.isInteger(frame.sourceFrameDelta) ? frame.sourceFrameDelta : null
+        }
+      : null
+  };
+}
+
+function frameIndexForSourceElapsed(sourceElapsedSeconds) {
+  const timeline = replayTiming.timeline;
+  if (timeline.length === 0) {
+    return 0;
+  }
+
+  let low = 0;
+  let high = timeline.length - 1;
+  while (low < high) {
+    const middle = Math.floor((low + high + 1) / 2);
+    if (timeline[middle].elapsed <= sourceElapsedSeconds) {
+      low = middle;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return timeline[low].index;
+}
+
+function firstFrameIndexAtOrAfterSourceElapsed(sourceElapsedSeconds, maximumIndex) {
+  const timeline = replayTiming.timeline.filter((item) => item.index <= maximumIndex);
+  if (timeline.length === 0) {
+    return 0;
+  }
+
+  let low = 0;
+  let high = timeline.length - 1;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (timeline[middle].elapsed < sourceElapsedSeconds) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
+  }
+  return timeline[low].index;
+}
+
+function mergeCadence(exportedCadence, computedCadence) {
+  return {
+    ...computedCadence,
+    ...exportedCadence,
+    sourceElapsedSeconds: exportedCadence.sourceElapsedSeconds || computedCadence.sourceElapsedSeconds,
+    sourceSessionDeltaSeconds: exportedCadence.sourceSessionDeltaSeconds || computedCadence.sourceSessionDeltaSeconds,
+    sourceCapturedDeltaSeconds: exportedCadence.sourceCapturedDeltaSeconds || computedCadence.sourceCapturedDeltaSeconds,
+    sourceFrameDelta: exportedCadence.sourceFrameDelta || computedCadence.sourceFrameDelta,
+    denseForGapToLeader: typeof exportedCadence.denseForGapToLeader === 'boolean'
+      ? exportedCadence.denseForGapToLeader
+      : computedCadence.denseForGapToLeader
+  };
+}
+
+function summarizeNumbers(values, digits = 3) {
+  const numbers = values.filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
+  if (numbers.length === 0) {
+    return { count: 0, min: null, median: null, max: null };
+  }
+
+  const middle = Math.floor(numbers.length / 2);
+  const median = numbers.length % 2 === 0
+    ? (numbers[middle - 1] + numbers[middle]) / 2
+    : numbers[middle];
+  return {
+    count: numbers.length,
+    min: roundNumber(numbers[0], digits),
+    median: roundNumber(median, digits),
+    max: roundNumber(numbers[numbers.length - 1], digits)
+  };
+}
+
+function firstFinite(values) {
+  const value = values.find((candidate) => Number.isFinite(candidate));
+  return Number.isFinite(value) ? value : null;
+}
+
 function currentFrame(url = null, request = null) {
   const override = frameOverride(url, request);
   if (override !== null) {
@@ -128,9 +330,25 @@ function currentFrame(url = null, request = null) {
     return { index, frame: replay.frames[index] };
   }
 
+  if (effectiveReplayTimingMode() === 'source-elapsed') {
+    const index = currentSourceElapsedFrameIndex();
+    return { index, frame: replay.frames[index] };
+  }
+
   const elapsed = Math.max(0, Date.now() - startedAtMs);
   const index = Math.floor(elapsed / Math.max(1, frameMilliseconds)) % replay.frames.length;
   return { index, frame: replay.frames[index] };
+}
+
+function currentSourceElapsedFrameIndex() {
+  const duration = replayTiming.sourceDurationSeconds;
+  if (!Number.isFinite(duration) || duration <= 0) {
+    return Math.floor(Math.max(0, Date.now() - startedAtMs) / Math.max(1, frameMilliseconds)) % replay.frames.length;
+  }
+
+  const elapsedSeconds = (Math.max(0, Date.now() - startedAtMs) / 1000) * replaySpeedMultiplier;
+  const startElapsed = replayTiming.timeline[0]?.elapsed || 0;
+  return frameIndexForSourceElapsed(startElapsed + (elapsedSeconds % duration));
 }
 
 function frameOverride(url, request) {
@@ -170,11 +388,16 @@ function frameMetadata(frame, index) {
     captureId: frame.captureId,
     frameIndex: frame.frameIndex,
     sessionTimeSeconds: frame.sessionTimeSeconds,
+    sourceElapsedSeconds: finiteNumber(frame.sourceElapsedSeconds),
+    sourceSessionDeltaSeconds: finiteNumber(frame.sourceSessionDeltaSeconds),
+    sourceCapturedDeltaSeconds: finiteNumber(frame.sourceCapturedDeltaSeconds),
+    sourceFrameDelta: Number.isInteger(frame.sourceFrameDelta) ? frame.sourceFrameDelta : null,
     sessionInfoUpdate: frame.sessionInfoUpdate,
     sessionState: frame.sessionState,
     sessionPhase: frame.sessionPhase,
     camCarIdx: frame.camCarIdx,
-    playerCarIdx: frame.playerCarIdx
+    playerCarIdx: frame.playerCarIdx,
+    timing: replayStatusTiming(frame, index)
   };
 }
 
@@ -373,17 +596,21 @@ function displayModel(overlayId, frame, index) {
   }
 
   if (overlayId === 'gap-to-leader') {
+    const gapSettings = gapSettingsModel();
     return {
       overlayId,
       title: 'Gap To Leader',
-      status,
-      source: 'source: race-start replay',
+      status: isPreGreen ? 'waiting for timing' : 'live | race gap',
+      source: sourceFromSettings(gapSettings, 'source: race-start replay'),
       bodyKind: 'graph',
       columns: [],
       rows: [],
-      metrics: [],
+      metrics: [
+        { label: 'Class pos', value: isPreGreen ? '--' : '2', tone: 'live' },
+        { label: 'Class leader', value: isPreGreen ? '--' : '+30.0s', tone: 'live' }
+      ],
       points: isPreGreen ? [] : Array.from({ length: 24 }, (_, point) => 30 - point * 0.7 + Math.sin(point / 2) * 1.4),
-      headerItems
+      headerItems: replayHeaderItems(frame, isPreGreen ? 'waiting for timing' : 'live | race gap', gapSettings)
     };
   }
 
@@ -426,24 +653,11 @@ function captureDisplayModel(overlayId, frame, index) {
         'source: waiting');
     }
 
-    const fuel = models.fuelPit?.fuel || live.fuel || {};
-    return metricsModel(overlayId, 'Fuel Calculator', status, headerItems, [
-      ['Fuel', formatLiters(fuel.fuelLevelLiters), 'info'],
-      ['Fuel %', formatPercent(fuel.fuelLevelPercent), 'normal'],
-      ['Burn', formatFuelBurn(fuel.fuelUsePerHourKg), 'normal'],
-      ['Source', models.fuelPit?.hasData ? 'capture frame' : 'unavailable', models.fuelPit?.hasData ? 'success' : 'waiting']
-    ], 'source: capture-derived live replay');
+    return captureFuelModel(models, live, status, headerItems);
   }
 
   if (overlayId === 'session-weather') {
-    const session = models.session || {};
-    const weather = models.weather || {};
-    return metricsModel(overlayId, 'Session / Weather', status, headerItems, [
-      ['Session', session.sessionName || session.sessionType || '--', 'info'],
-      ['Track', formatTemp(weather.trackTempCrewC), 'normal'],
-      ['Air', formatTemp(weather.airTempC), 'normal'],
-      ['Wetness', trackWetnessLabel(weather.trackWetness, weather.weatherDeclaredWet), weather.weatherDeclaredWet ? 'warning' : 'success']
-    ], 'source: capture-derived live replay');
+    return captureSessionWeatherModel(models, status, headerItems);
   }
 
   if (overlayId === 'pit-service') {
@@ -458,29 +672,15 @@ function captureDisplayModel(overlayId, frame, index) {
         'source: waiting');
     }
 
-    const reference = models.reference || {};
-    const race = models.raceEvents || {};
-    return metricsModel(overlayId, 'Pit Service', status, headerItems, [
-      ['Box', reference.playerCarInPitStall ? 'In stall' : race.onPitRoad ? 'Pit road' : 'Closed', race.onPitRoad ? 'warning' : 'normal'],
-      ['Fuel Add', '--', 'normal'],
-      ['Tires', '--', 'normal'],
-      ['Repair', '--', 'normal']
-    ], 'source: capture-derived live replay');
+    return capturePitServiceModel(models, status, headerItems);
   }
 
   if (overlayId === 'gap-to-leader') {
-    return {
-      overlayId,
-      title: 'Gap To Leader',
-      status,
-      source: 'source: capture-derived live replay',
-      bodyKind: 'graph',
-      columns: [],
-      rows: [],
-      metrics: [],
-      points: gapTrendPoints(index),
-      headerItems
-    };
+    return captureGapToLeaderModel(models, frame, index);
+  }
+
+  if (overlayId === 'input-state') {
+    return captureInputStateModel(models, status, headerItems);
   }
 
   return tableModel(overlayId, browserOverlayPage(overlayId).title, status, headerItems, [], 'source: capture-derived live replay');
@@ -513,6 +713,77 @@ function localInCarOrPitContext(models, statusText) {
   }
 
   return { isAvailable: false, reason: 'not_in_car', statusText };
+}
+
+function captureFuelModel(models, live, status, headerItems) {
+  const fuel = models.fuelPit?.fuel || live.fuel || {};
+  const progress = models.raceProgress || {};
+  const source = models.fuelPit?.hasData ? 'source: capture-derived fuel telemetry' : 'source: waiting';
+  return metricsModel('fuel-calculator', 'Fuel Calculator', status, headerItems, [
+    ['Fuel', formatLiters(fuel.fuelLevelLiters), 'modeled'],
+    ['Fuel %', formatPercent(fuel.fuelLevelPercent), 'modeled'],
+    ['Burn', formatFuelBurn(fuel.fuelUsePerHourKg), 'modeled'],
+    ['Progress', formatProgressLaps(progress.referenceCarProgressLaps), 'normal']
+  ], source);
+}
+
+function captureSessionWeatherModel(models, fallbackStatus, headerItems) {
+  const session = models.session || {};
+  const weather = models.weather || {};
+  const hasWeather = weather.hasData === true;
+  const status = hasWetSurfaceSignal(weather)
+    ? weather.trackWetnessLabel || 'wet declared'
+    : session.sessionType || fallbackStatus || 'live session';
+  const source = hasWeather ? 'source: session + live weather telemetry' : 'source: session telemetry';
+  return metricsModel('session-weather', 'Session / Weather', status, headerItems, [
+    ['Session', joinAvailable(session.sessionType, session.sessionName, session.teamRacing === true ? 'team' : null), 'normal'],
+    ['Clock', formatSessionClock(session), 'normal'],
+    ['Laps', formatSessionLaps(session, models.raceProgress, models.raceProjection), 'normal'],
+    ['Track', joinAvailable(session.trackDisplayName, formatTrackLength(session.trackLengthKm)), 'normal'],
+    ['Temps', formatWeatherTemps(weather), 'normal'],
+    ['Surface', formatWeatherSurface(weather), hasWetSurfaceSignal(weather) ? 'info' : 'normal'],
+    ['Sky', formatWeatherSky(weather), 'normal'],
+    ['Wind', formatWindAtmosphere(weather), 'normal']
+  ], source);
+}
+
+function capturePitServiceModel(models, fallbackStatus, headerItems) {
+  const pit = models.fuelPit || {};
+  const release = pitReleaseState(pit);
+  const status = pitStatus(pit, release) || fallbackStatus || 'pit ready';
+  const tone = release.tone || (pit.onPitRoad || pit.pitstopActive || pit.playerCarInPitStall || pit.teamOnPitRoad ? 'info' : 'normal');
+  return metricsModel('pit-service', 'Pit Service', status, headerItems, [
+    ['Release', release.value, release.tone],
+    ['Location', pitLocation(pit), tone],
+    ['Service', pitService(pit), tone],
+    ['Pit status', pitServiceStatusText(pit.pitServiceStatus), tone],
+    ['Fuel request', formatLiters(pit.pitServiceFuelLiters), 'normal'],
+    ['Repair', pitRepair(pit), pitRepairTone(pit)],
+    ['Tires', pitTires(pit), 'normal'],
+    ['Fast repair', pitFastRepair(pit), 'normal']
+  ], 'source: player/team pit service telemetry');
+}
+
+function captureInputStateModel(models, fallbackStatus, headerItems) {
+  const inputs = models.inputs || {};
+  if (inputs.hasData !== true) {
+    return metricsModel('input-state', 'Inputs', 'waiting for car telemetry', captureHeaderItems(models, 'waiting for car telemetry'), [], 'source: waiting');
+  }
+
+  const status = Number.isInteger(inputs.engineWarnings) && inputs.engineWarnings > 0
+    ? 'engine warning'
+    : joinAvailable(formatGear(inputs.gear), formatRpm(inputs.rpm), inputs.brakeAbsActive === true ? 'ABS' : null);
+  const warningTone = Number.isInteger(inputs.engineWarnings) && inputs.engineWarnings > 0 ? 'warning' : 'normal';
+  return metricsModel('input-state', 'Inputs', status || fallbackStatus || 'live', headerItems, [
+    ['Speed', formatSpeed(inputs.speedMetersPerSecond), 'normal'],
+    ['Gear / RPM', joinAvailable(formatGear(inputs.gear), formatRpm(inputs.rpm)), 'normal'],
+    ['Pedals', formatPedals(inputs), 'normal'],
+    ['Steering', formatSteering(inputs.steeringWheelAngle), 'normal'],
+    ['Warnings', formatWarnings(inputs.engineWarnings), warningTone],
+    ['Electrical', formatVoltage(inputs.voltage), 'normal'],
+    ['Cooling', formatTemp(inputs.waterTempC), 'normal'],
+    ['Oil / Fuel', formatOilFuel(inputs), 'normal']
+  ], 'source: local car telemetry');
 }
 
 function captureHeaderItems(models, status, overlaySettings = null) {
@@ -732,25 +1003,775 @@ function positionLabel(row, fallbackRow = null) {
   return Number.isFinite(overallPosition) && overallPosition > 0 ? `${overallPosition}` : '--';
 }
 
+function captureGapToLeaderModel(models, frame, index) {
+  const gapSettings = gapSettingsModel();
+  const currentGap = focusedClassLeaderGap(models);
+  const status = currentGap?.hasData ? 'live | race gap' : 'waiting for timing';
+  const graph = captureGapGraph(index);
+  return {
+    overlayId: 'gap-to-leader',
+    title: 'Gap To Leader',
+    status,
+    source: sourceFromSettings(gapSettings, currentGap?.hasData
+      ? `source: live gap telemetry | cars ${currentGap.classCarCount}`
+      : 'source: waiting'),
+    bodyKind: 'graph',
+    columns: [],
+    rows: [],
+    metrics: [
+      { label: 'Class pos', value: formatPosition(currentGap?.classPosition), tone: 'live' },
+      { label: 'Class leader', value: formatGapValue(currentGap), tone: 'live' }
+    ],
+    points: gapTrendPoints(index),
+    graph,
+    headerItems: captureHeaderItems(models, status, gapSettings)
+  };
+}
+
+function captureGapGraph(index) {
+  const context = gapGraphContext(replay.frames[index]?.live?.models || {});
+  if (!context) {
+    return null;
+  }
+
+  const selectedCars = selectGapGraphCars(context);
+  const selectedIds = new Set(selectedCars.map((car) => car.carIdx));
+  if (selectedIds.size === 0) {
+    return null;
+  }
+
+  const frameContexts = gapGraphFrameContexts(index, context.focusClass);
+
+  if (frameContexts.length === 0) {
+    return null;
+  }
+
+  const startSeconds = frameContexts[0].context.axisSeconds;
+  const rawEndSeconds = frameContexts[frameContexts.length - 1].context.axisSeconds;
+  const lapReferenceSeconds = context.lapReferenceSeconds;
+  const minimumWindow = Math.max(120, isValidLapReference(lapReferenceSeconds) ? lapReferenceSeconds * 1.5 : 0);
+  const rightPadding = Math.max(20, isValidLapReference(lapReferenceSeconds) ? lapReferenceSeconds * 0.15 : 0);
+  const endSeconds = Math.max(rawEndSeconds, startSeconds + Math.max(minimumWindow, rawEndSeconds - startSeconds + rightPadding));
+  const weather = gapWeatherPoints(frameContexts, startSeconds, endSeconds);
+  const series = [...selectedIds].map((carIdx) => {
+    let previousAxis = null;
+    let previousContextPosition = null;
+    const points = [];
+    let latestRow = null;
+    frameContexts.forEach((item, contextPosition) => {
+      const row = item.context.rows.find((candidate) => candidate?.carIdx === carIdx);
+      if (!row) {
+        return;
+      }
+
+      const gapSeconds = gapSecondsForGraphRow(row, item.context.leader, item.context.lapReferenceSeconds);
+      if (!Number.isFinite(gapSeconds)) {
+        return;
+      }
+
+      const axisSeconds = item.context.axisSeconds;
+      const sourceGraphDeltaSeconds = previousAxis === null ? null : axisSeconds - previousAxis;
+      const segmentReason = gapSegmentReason(frameContexts, previousContextPosition, contextPosition, sourceGraphDeltaSeconds);
+      points.push({
+        timestampUtc: item.frame?.live?.lastUpdatedAtUtc || new Date().toISOString(),
+        axisSeconds,
+        gapSeconds,
+        carIdx,
+        sourceReplayIndex: item.index,
+        sourceFrameIndex: item.frame?.frameIndex ?? null,
+        sourceSessionDeltaSeconds: finiteNumber(item.frame?.sourceSessionDeltaSeconds),
+        sourceGraphDeltaSeconds: finiteNumber(sourceGraphDeltaSeconds),
+        isReference: row.carIdx === item.context.focusCarIdx,
+        isClassLeader: isClassLeaderRow(row, item.context.leader),
+        classPosition: toPositiveInteger(row.classPosition),
+        startsSegment: segmentReason !== 'continuous',
+        segmentReason
+      });
+      previousAxis = axisSeconds;
+      previousContextPosition = contextPosition;
+      latestRow = row;
+    });
+
+    const selected = selectedCars.find((car) => car.carIdx === carIdx);
+    return {
+      carIdx,
+      isReference: selected?.isReference === true || latestRow?.carIdx === context.focusCarIdx,
+      isClassLeader: selected?.isClassLeader === true || isClassLeaderRow(latestRow, context.leader),
+      classPosition: toPositiveInteger(selected?.classPosition ?? latestRow?.classPosition),
+      alpha: 1,
+      isStickyExit: false,
+      isStale: false,
+      points
+    };
+  }).filter((item) => item.points.length > 0);
+
+  if (series.reduce((total, item) => total + item.points.length, 0) < 2) {
+    return null;
+  }
+
+  const leaderChanges = gapLeaderChangeMarkers(frameContexts, startSeconds, endSeconds);
+  const scale = selectGapGraphScale(series, startSeconds, endSeconds, lapReferenceSeconds);
+  return {
+    series,
+    weather,
+    leaderChanges,
+    driverChanges: [],
+    startSeconds,
+    endSeconds,
+    maxGapSeconds: scale.maxGapSeconds,
+    lapReferenceSeconds,
+    selectedSeriesCount: series.length,
+    sourceCadence: graphSourceCadence(frameContexts),
+    scale
+  };
+}
+
+function gapGraphFrameContexts(index, focusClass) {
+  const currentElapsed = finiteNumber(replay.frames[index]?.sourceElapsedSeconds);
+  const startFrame = Number.isFinite(currentElapsed) && replayTiming.isTimelineMonotonic
+    ? firstFrameIndexAtOrAfterSourceElapsed(Math.max(0, currentElapsed - gapGraphTrendWindowSeconds), index)
+    : Math.max(0, index - gapGraphMaxContexts + 1);
+  const boundedStart = Math.max(0, Math.min(index, startFrame));
+  const frameCount = index - boundedStart + 1;
+  const step = Math.max(1, Math.ceil(frameCount / gapGraphMaxContexts));
+  const selectedIndexes = [];
+  for (let frameIndex = boundedStart; frameIndex <= index; frameIndex += step) {
+    selectedIndexes.push(frameIndex);
+  }
+  if (selectedIndexes[selectedIndexes.length - 1] !== index) {
+    selectedIndexes.push(index);
+  }
+
+  const frameContexts = [];
+  for (const frameIndex of selectedIndexes) {
+    const frame = replay.frames[frameIndex];
+    const frameContext = gapGraphContext(frame?.live?.models || {}, focusClass);
+    if (frameContext) {
+      frameContexts.push({ frame, index: frameIndex, context: frameContext });
+    }
+  }
+  return frameContexts;
+}
+
+function gapSegmentReason(frameContexts, previousContextPosition, contextPosition, sourceGraphDeltaSeconds) {
+  if (previousContextPosition === null || previousContextPosition === undefined) {
+    return 'first-point';
+  }
+
+  if (!Number.isFinite(sourceGraphDeltaSeconds) || sourceGraphDeltaSeconds <= gapMissingSegmentThresholdSeconds) {
+    return 'continuous';
+  }
+
+  return hasSourceCadenceGapBetween(frameContexts, previousContextPosition, contextPosition)
+    ? 'source-cadence-gap'
+    : 'data-unavailable';
+}
+
+function hasSourceCadenceGapBetween(frameContexts, previousContextPosition, contextPosition) {
+  for (let index = previousContextPosition + 1; index <= contextPosition; index += 1) {
+    const previousAxis = frameContexts[index - 1]?.context?.axisSeconds;
+    const axis = frameContexts[index]?.context?.axisSeconds;
+    if (Number.isFinite(previousAxis) && Number.isFinite(axis) && axis - previousAxis > gapMissingSegmentThresholdSeconds) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function graphSourceCadence(frameContexts) {
+  const deltas = [];
+  for (let index = 1; index < frameContexts.length; index += 1) {
+    const previousAxis = frameContexts[index - 1]?.context?.axisSeconds;
+    const axis = frameContexts[index]?.context?.axisSeconds;
+    if (Number.isFinite(previousAxis) && Number.isFinite(axis) && axis >= previousAxis) {
+      deltas.push(axis - previousAxis);
+    }
+  }
+  const summary = summarizeNumbers(deltas);
+  return {
+    basis: 'graph frame context axisSeconds',
+    contextCount: frameContexts.length,
+    gapToLeaderMissingSegmentThresholdSeconds: gapMissingSegmentThresholdSeconds,
+    denseForGapToLeader: frameContexts.length < 2 || (deltas.length > 0 && Math.max(...deltas) <= gapMissingSegmentThresholdSeconds),
+    sourceSessionDeltaSeconds: summary
+  };
+}
+
+function gapGraphContext(models, preferredClass = null) {
+  const timing = models?.timing || {};
+  const focusCarIdx = models?.reference?.focusCarIdx ?? timing.focusCarIdx;
+  const focus = timing.focusRow
+    || timing.playerRow
+    || (Array.isArray(timing.classRows) ? timing.classRows.find((row) => row?.carIdx === focusCarIdx) : null)
+    || (Array.isArray(timing.overallRows) ? timing.overallRows.find((row) => row?.carIdx === focusCarIdx) : null);
+  if (!focus) {
+    return null;
+  }
+
+  const focusClass = preferredClass ?? focus.carClass;
+  const classFocus = focusClass == null ? focus : { ...focus, carClass: focusClass };
+  const rows = classTimingRows(timing, classFocus);
+  if (rows.length === 0) {
+    return null;
+  }
+
+  const leader = rows.find((row) => toPositiveInteger(row?.classPosition) === 1)
+    || rows.find((row) => toPositiveInteger(row?.overallPosition) === 1)
+    || rows[0];
+  const lapReference = lapReferenceSeconds(rows);
+  const axisSeconds = Number.isFinite(models?.session?.sessionTimeSeconds)
+    ? models.session.sessionTimeSeconds
+    : Number.isFinite(models?.latestSample?.sessionTime)
+      ? models.latestSample.sessionTime
+      : Date.now() / 1000;
+  const focusGapSeconds = gapSecondsForGraphRow(focus, leader, lapReference);
+  return {
+    models,
+    timing,
+    focus,
+    focusCarIdx: focus.carIdx,
+    focusClass,
+    rows,
+    leader,
+    lapReferenceSeconds: lapReference,
+    focusGapSeconds,
+    axisSeconds
+  };
+}
+
+function selectGapGraphCars(context) {
+  const selected = new Map();
+  const add = (car) => {
+    if (car && Number.isFinite(car.carIdx) && !selected.has(car.carIdx)) {
+      selected.set(car.carIdx, car);
+    }
+  };
+  const candidates = context.rows
+    .map((row) => {
+      const gapSeconds = gapSecondsForGraphRow(row, context.leader, context.lapReferenceSeconds);
+      const deltaSeconds = Number.isFinite(gapSeconds) && Number.isFinite(context.focusGapSeconds)
+        ? gapSeconds - context.focusGapSeconds
+        : null;
+      return {
+        row,
+        carIdx: row.carIdx,
+        classPosition: toPositiveInteger(row.classPosition),
+        gapSeconds,
+        deltaSeconds,
+        isReference: row.carIdx === context.focusCarIdx,
+        isClassLeader: isClassLeaderRow(row, context.leader)
+      };
+    })
+    .filter((car) => Number.isFinite(car.carIdx) && Number.isFinite(car.gapSeconds));
+
+  candidates.filter((car) => car.isClassLeader || car.isReference).forEach(add);
+  candidates
+    .filter((car) => !car.isClassLeader && !car.isReference && car.deltaSeconds < 0 && isSameLapGapCandidate(car, context))
+    .sort((a, b) => b.deltaSeconds - a.deltaSeconds)
+    .slice(0, gapCarsAhead)
+    .forEach(add);
+  candidates
+    .filter((car) => !car.isClassLeader && !car.isReference && car.deltaSeconds > 0 && isSameLapGapCandidate(car, context))
+    .sort((a, b) => a.deltaSeconds - b.deltaSeconds)
+    .slice(0, gapCarsBehind)
+    .forEach(add);
+
+  if (selected.size <= 1) {
+    candidates
+      .sort((a, b) => a.gapSeconds - b.gapSeconds || (a.classPosition ?? Number.MAX_SAFE_INTEGER) - (b.classPosition ?? Number.MAX_SAFE_INTEGER))
+      .slice(0, 6)
+      .forEach(add);
+  }
+
+  return [...selected.values()].sort((a, b) => a.gapSeconds - b.gapSeconds || a.carIdx - b.carIdx);
+}
+
+function gapSecondsForGraphRow(row, leader, lapReferenceSeconds) {
+  if (!row || !leader) {
+    return null;
+  }
+
+  if (row.carIdx === leader.carIdx || toPositiveInteger(row.classPosition) === 1) {
+    return 0;
+  }
+
+  const gap = derivedClassGap(row, leader, lapReferenceSeconds);
+  if (!gap) {
+    return null;
+  }
+
+  if (Number.isFinite(gap.seconds)) {
+    return gap.seconds;
+  }
+
+  return Number.isFinite(gap.laps)
+    ? gap.laps * chartLapReferenceSeconds(lapReferenceSeconds)
+    : null;
+}
+
+function isSameLapGapCandidate(car, context) {
+  if (!Number.isFinite(car?.gapSeconds) || !Number.isFinite(context?.focusGapSeconds)) {
+    return false;
+  }
+
+  const lapReference = chartLapReferenceSeconds(context.lapReferenceSeconds);
+  return Math.abs((car.gapSeconds - context.focusGapSeconds) / lapReference) < 0.95;
+}
+
+function isClassLeaderRow(row, leader) {
+  return Boolean(row) && (row.carIdx === leader?.carIdx || toPositiveInteger(row.classPosition) === 1);
+}
+
+function gapWeatherPoints(frameContexts, startSeconds, endSeconds) {
+  const points = [];
+  for (const item of frameContexts) {
+    const condition = gapWeatherCondition(item.context.models);
+    if (points.length > 0 && points[points.length - 1].condition === condition) {
+      continue;
+    }
+
+    points.push({
+      axisSeconds: Math.max(startSeconds, Math.min(endSeconds, item.context.axisSeconds)),
+      condition
+    });
+  }
+  return points;
+}
+
+function gapWeatherCondition(models) {
+  const weather = models?.weather || {};
+  if (weather.weatherDeclaredWet === true) return 'DeclaredWet';
+  const wetness = Number(weather.trackWetness);
+  if (!Number.isFinite(wetness)) return 'Unknown';
+  if (wetness >= 4) return 'Wet';
+  if (wetness >= 2) return 'Damp';
+  return 'Dry';
+}
+
+function gapLeaderChangeMarkers(frameContexts, startSeconds, endSeconds) {
+  const markers = [];
+  let previousLeader = null;
+  for (const item of frameContexts) {
+    const leaderCarIdx = item.context.leader?.carIdx;
+    if (!Number.isFinite(leaderCarIdx)) {
+      continue;
+    }
+
+    if (previousLeader !== null && previousLeader !== leaderCarIdx) {
+      markers.push({
+        timestampUtc: item.frame?.live?.lastUpdatedAtUtc || new Date().toISOString(),
+        axisSeconds: Math.max(startSeconds, Math.min(endSeconds, item.context.axisSeconds)),
+        previousLeaderCarIdx: previousLeader,
+        newLeaderCarIdx: leaderCarIdx
+      });
+    }
+
+    previousLeader = leaderCarIdx;
+  }
+  return markers;
+}
+
+function selectGapGraphScale(series, startSeconds, endSeconds, lapReferenceSeconds) {
+  const allPoints = series.flatMap((item) => item.points || [])
+    .filter((point) => Number.isFinite(point.gapSeconds) && point.axisSeconds >= startSeconds && point.axisSeconds <= endSeconds);
+  const leaderMax = niceCeiling(Math.max(1, ...allPoints.map((point) => Math.max(0, point.gapSeconds))));
+  const referenceSeries = series.find((item) => item.isReference);
+  const referencePoints = (referenceSeries?.points || [])
+    .filter((point) => Number.isFinite(point.axisSeconds) && Number.isFinite(point.gapSeconds) && point.axisSeconds >= startSeconds && point.axisSeconds <= endSeconds)
+    .sort((a, b) => a.axisSeconds - b.axisSeconds);
+  if (referencePoints.length === 0) {
+    return gapLeaderScale(leaderMax);
+  }
+
+  const latestReferenceGap = referenceGapAt(referencePoints, endSeconds);
+  const triggerGap = Math.max(90, isValidLapReference(lapReferenceSeconds) ? lapReferenceSeconds * 0.5 : 0);
+  if (latestReferenceGap < triggerGap) {
+    return gapLeaderScale(leaderMax);
+  }
+
+  let maxAheadSeconds = 0;
+  let maxBehindSeconds = 0;
+  let hasLocalComparison = false;
+  for (const item of series.filter((candidate) => !candidate.isClassLeader)) {
+    for (const point of item.points || []) {
+      if (!Number.isFinite(point.axisSeconds) || !Number.isFinite(point.gapSeconds) || point.axisSeconds < startSeconds || point.axisSeconds > endSeconds) {
+        continue;
+      }
+
+      const delta = point.gapSeconds - referenceGapAt(referencePoints, point.axisSeconds);
+      hasLocalComparison ||= !item.isReference && Math.abs(delta) > 0.001;
+      if (delta < 0) {
+        maxAheadSeconds = Math.max(maxAheadSeconds, Math.abs(delta));
+      } else {
+        maxBehindSeconds = Math.max(maxBehindSeconds, delta);
+      }
+    }
+  }
+
+  const minimumRange = Math.max(20, isValidLapReference(lapReferenceSeconds) ? lapReferenceSeconds * 0.1 : 0);
+  const aheadSeconds = niceCeiling(Math.max(minimumRange, maxAheadSeconds * 1.18));
+  const behindSeconds = niceCeiling(Math.max(minimumRange, maxBehindSeconds * 1.18));
+  const localRange = Math.max(aheadSeconds, behindSeconds);
+  const forceFocusScaleForLappedReference = isValidLapReference(lapReferenceSeconds)
+    && latestReferenceGap >= lapReferenceSeconds * 0.95;
+  if (!forceFocusScaleForLappedReference
+    && (!hasLocalComparison || leaderMax < Math.max(triggerGap, localRange * 3))) {
+    return gapLeaderScale(leaderMax);
+  }
+
+  return {
+    maxGapSeconds: leaderMax,
+    isFocusRelative: true,
+    aheadSeconds,
+    behindSeconds,
+    referencePoints,
+    latestReferenceGapSeconds: latestReferenceGap
+  };
+}
+
+function gapLeaderScale(maxGapSeconds) {
+  return {
+    maxGapSeconds,
+    isFocusRelative: false,
+    aheadSeconds: 0,
+    behindSeconds: 0,
+    referencePoints: [],
+    latestReferenceGapSeconds: 0
+  };
+}
+
+function referenceGapAt(referencePoints, axisSeconds) {
+  const points = (Array.isArray(referencePoints) ? referencePoints : [])
+    .filter((point) => Number.isFinite(point?.axisSeconds) && Number.isFinite(point?.gapSeconds))
+    .sort((a, b) => a.axisSeconds - b.axisSeconds);
+  if (points.length === 0) {
+    return 0;
+  }
+
+  if (axisSeconds <= points[0].axisSeconds) {
+    return points[0].gapSeconds;
+  }
+
+  const last = points[points.length - 1];
+  if (axisSeconds >= last.axisSeconds) {
+    return last.gapSeconds;
+  }
+
+  const afterIndex = points.findIndex((point) => point.axisSeconds >= axisSeconds);
+  const after = points[Math.max(0, afterIndex)];
+  const before = points[Math.max(0, afterIndex - 1)];
+  const span = after.axisSeconds - before.axisSeconds;
+  if (span <= 0.001) {
+    return before.gapSeconds;
+  }
+
+  const ratio = Math.max(0, Math.min(1, (axisSeconds - before.axisSeconds) / span));
+  return before.gapSeconds + (after.gapSeconds - before.gapSeconds) * ratio;
+}
+
+function niceCeiling(value) {
+  if (!Number.isFinite(value) || value <= 1) {
+    return 1;
+  }
+
+  const magnitude = Math.pow(10, Math.floor(Math.log10(value)));
+  const normalized = value / magnitude;
+  for (const step of [1, 1.5, 2, 3, 5, 7.5, 10]) {
+    if (normalized <= step) {
+      return step * magnitude;
+    }
+  }
+
+  return 10 * magnitude;
+}
+
 function gapTrendPoints(index) {
   const values = [];
   const start = Math.max(0, index - 23);
   for (let frameIndex = start; frameIndex <= index; frameIndex += 1) {
     const frame = replay.frames[frameIndex];
-    const models = frame?.live?.models || {};
-    const focusCarIdx = models.reference?.focusCarIdx;
-    const focus = (models.timing?.classRows || models.timing?.overallRows || [])
-      .find((row) => row?.carIdx === focusCarIdx);
-    const gap = Number.isFinite(focus?.f2TimeSeconds)
-      ? focus.f2TimeSeconds
-      : Number.isFinite(focus?.estimatedTimeSeconds)
-        ? focus.estimatedTimeSeconds
-        : null;
-    if (Number.isFinite(gap) && gap >= 0) {
-      values.push(gap);
+    const gap = focusedClassLeaderGap(frame?.live?.models || {});
+    if (!gap?.hasData || !Number.isFinite(gap.trendSeconds) || gap.trendSeconds < 0) {
+      continue;
+    }
+
+    if (values.length === 0 || acceptsGapTrendPoint(values[values.length - 1], gap.trendSeconds, gap.lapReferenceSeconds)) {
+      values.push(gap.trendSeconds);
     }
   }
   return values;
+}
+
+function focusedClassLeaderGap(models) {
+  const timing = models?.timing || {};
+  const focusCarIdx = models?.reference?.focusCarIdx ?? timing.focusCarIdx;
+  const focus = timing.focusRow
+    || timing.playerRow
+    || (Array.isArray(timing.classRows) ? timing.classRows.find((row) => row?.carIdx === focusCarIdx) : null)
+    || (Array.isArray(timing.overallRows) ? timing.overallRows.find((row) => row?.carIdx === focusCarIdx) : null);
+  if (!focus) {
+    return null;
+  }
+
+  const rows = classTimingRows(timing, focus);
+  const leader = rows.find((row) => toPositiveInteger(row?.classPosition) === 1)
+    || rows.find((row) => toPositiveInteger(row?.overallPosition) === 1)
+    || rows[0];
+  const classPosition = toPositiveInteger(focus.classPosition);
+  if (classPosition === 1 || leader?.carIdx === focus.carIdx) {
+    return {
+      hasData: true,
+      classPosition,
+      seconds: 0,
+      laps: 0,
+      trendSeconds: 0,
+      lapReferenceSeconds: lapReferenceSeconds(rows),
+      classCarCount: rows.length
+    };
+  }
+
+  if (!leader || !isGreenRace(models)) {
+    return null;
+  }
+
+  const lapReference = lapReferenceSeconds(rows);
+  const gap = derivedClassGap(focus, leader, lapReference);
+  if (!gap) {
+    return null;
+  }
+
+  return {
+    hasData: true,
+    classPosition,
+    seconds: gap.seconds,
+    laps: gap.laps,
+    trendSeconds: Number.isFinite(gap.seconds) ? gap.seconds : (gap.laps || 0) * chartLapReferenceSeconds(lapReference),
+    lapReferenceSeconds: lapReference,
+    classCarCount: rows.length
+  };
+}
+
+function classTimingRows(timing, focus) {
+  const rows = Array.isArray(timing?.classRows) && timing.classRows.length > 0
+    ? timing.classRows
+    : Array.isArray(timing?.overallRows)
+      ? timing.overallRows
+      : [];
+  const focusClass = focus?.carClass;
+  return rows
+    .filter((row) => row && (focusClass == null || row.carClass == null || row.carClass === focusClass))
+    .sort((a, b) =>
+      (toPositiveInteger(a.classPosition) ?? Number.MAX_SAFE_INTEGER) - (toPositiveInteger(b.classPosition) ?? Number.MAX_SAFE_INTEGER)
+      || (toPositiveInteger(a.overallPosition) ?? Number.MAX_SAFE_INTEGER) - (toPositiveInteger(b.overallPosition) ?? Number.MAX_SAFE_INTEGER)
+      || (toPositiveInteger(a.carIdx) ?? Number.MAX_SAFE_INTEGER) - (toPositiveInteger(b.carIdx) ?? Number.MAX_SAFE_INTEGER));
+}
+
+function derivedClassGap(row, leader, lapReferenceSeconds) {
+  const lapGap = wholeLapGap(leader, row);
+  if (Number.isFinite(lapGap) && lapGap > 0) {
+    return { seconds: null, laps: lapGap };
+  }
+
+  const projected = estimatedSecondsBehind(row, leader, lapReferenceSeconds);
+  if (Number.isFinite(projected)) {
+    return { seconds: projected, laps: null };
+  }
+
+  const rowF2 = usableF2ForRace(row);
+  const leaderF2 = usableF2ForRace(leader);
+  if (Number.isFinite(rowF2) && Number.isFinite(leaderF2) && rowF2 >= leaderF2) {
+    return { seconds: rowF2 - leaderF2, laps: null };
+  }
+
+  return null;
+}
+
+function wholeLapGap(leader, row) {
+  const leaderLap = Number.isInteger(leader?.lapCompleted) ? leader.lapCompleted : null;
+  const rowLap = Number.isInteger(row?.lapCompleted) ? row.lapCompleted : null;
+  if (leaderLap == null || rowLap == null) {
+    return null;
+  }
+
+  const laps = leaderLap - rowLap;
+  return laps > 0 ? laps : null;
+}
+
+function estimatedSecondsBehind(row, leader, lapReferenceSeconds) {
+  if (Number.isInteger(row?.lapCompleted)
+    && Number.isInteger(leader?.lapCompleted)
+    && row.lapCompleted !== leader.lapCompleted) {
+    return null;
+  }
+
+  const rowEstimated = validTimingSeconds(row?.estimatedTimeSeconds);
+  const leaderEstimated = validTimingSeconds(leader?.estimatedTimeSeconds);
+  const rowLapDist = validLapDistPct(row?.lapDistPct);
+  const leaderLapDist = validLapDistPct(leader?.lapDistPct);
+  if (!Number.isFinite(rowEstimated)
+    || !Number.isFinite(leaderEstimated)
+    || !Number.isFinite(rowLapDist)
+    || !Number.isFinite(leaderLapDist)) {
+    return null;
+  }
+
+  let relativeLaps = rowLapDist - leaderLapDist;
+  if (relativeLaps > 0.5) {
+    relativeLaps -= 1;
+  } else if (relativeLaps < -0.5) {
+    relativeLaps += 1;
+  }
+
+  let seconds = rowEstimated - leaderEstimated;
+  if (Number.isFinite(lapReferenceSeconds)) {
+    if (seconds > lapReferenceSeconds / 2) {
+      seconds -= lapReferenceSeconds;
+    } else if (seconds < -lapReferenceSeconds / 2) {
+      seconds += lapReferenceSeconds;
+    }
+  }
+
+  if (!Number.isFinite(seconds) || seconds > 0) {
+    return null;
+  }
+
+  const timingSign = Math.sign(seconds);
+  const lapSign = Math.sign(relativeLaps);
+  if (timingSign !== 0 && lapSign !== 0 && timingSign !== lapSign) {
+    return null;
+  }
+
+  if (Number.isFinite(lapReferenceSeconds)) {
+    const lapBasedSeconds = Math.abs(relativeLaps * lapReferenceSeconds);
+    const maximumDelta = Math.max(5, Math.min(lapReferenceSeconds / 2, lapBasedSeconds + 10));
+    if (Math.abs(seconds) > maximumDelta) {
+      return null;
+    }
+  } else if (Math.abs(seconds) > 60) {
+    return null;
+  }
+
+  return Math.max(0, -seconds);
+}
+
+function usableF2ForRace(row) {
+  const f2 = validNonNegative(row?.f2TimeSeconds);
+  if (!Number.isFinite(f2)) {
+    return null;
+  }
+
+  const overallPosition = toPositiveInteger(row?.overallPosition);
+  const classPosition = toPositiveInteger(row?.classPosition);
+  if (f2 === 0) {
+    return overallPosition === 1 || classPosition === 1 ? 0 : null;
+  }
+
+  if (classPosition !== 1 && f2 < 0.1) {
+    return null;
+  }
+
+  if (overallPosition && overallPosition > 1 && Math.abs(f2 - ((overallPosition - 1) / 1000)) <= 0.00002) {
+    return null;
+  }
+
+  return f2;
+}
+
+function lapReferenceSeconds(rows) {
+  const samples = [];
+  for (const row of rows) {
+    for (const key of ['lastLapTimeSeconds', 'bestLapTimeSeconds']) {
+      const seconds = validTimingSeconds(row?.[key]);
+      if (Number.isFinite(seconds) && seconds >= 20 && seconds <= 300) {
+        samples.push(seconds);
+        break;
+      }
+    }
+  }
+
+  if (samples.length === 0) {
+    return null;
+  }
+
+  samples.sort((a, b) => a - b);
+  const middle = Math.floor(samples.length / 2);
+  return samples.length % 2 === 0
+    ? (samples[middle - 1] + samples[middle]) / 2
+    : samples[middle];
+}
+
+function acceptsGapTrendPoint(previous, next, lapReferenceSeconds) {
+  const maximumJump = Math.max(30, Math.min(180, chartLapReferenceSeconds(lapReferenceSeconds) * 0.5));
+  return Math.abs(next - previous) <= maximumJump;
+}
+
+function isGreenRace(models) {
+  const state = models?.session?.sessionState;
+  if (!Number.isFinite(state) || state < 4) {
+    return false;
+  }
+
+  const sessionText = String(models?.session?.sessionType || models?.session?.eventType || models?.session?.sessionName || '').toLowerCase();
+  return !/\b(practice|qualifying|qualify|test)\b/.test(sessionText) || /\brace\b/.test(sessionText);
+}
+
+function validTimingSeconds(value) {
+  return Number.isFinite(value) && value > 0.05 ? value : null;
+}
+
+function validNonNegative(value) {
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function validLapDistPct(value) {
+  return Number.isFinite(value) && value >= 0 ? Math.max(0, Math.min(1, value)) : null;
+}
+
+function chartLapReferenceSeconds(value) {
+  return Number.isFinite(value) && value > 20 && value < 1800 ? value : 60;
+}
+
+function isValidLapReference(value) {
+  return Number.isFinite(value) && value > 20 && value < 1800;
+}
+
+function toPositiveInteger(value) {
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function formatPosition(position) {
+  return Number.isInteger(position) && position > 0 ? String(position) : '--';
+}
+
+function formatGapValue(gap) {
+  if (!gap?.hasData) {
+    return '--';
+  }
+
+  if (gap.seconds === 0 || gap.laps === 0) {
+    return 'leader';
+  }
+
+  if (Number.isFinite(gap.seconds)) {
+    return formatGapSeconds(gap.seconds);
+  }
+
+  return Number.isFinite(gap.laps)
+    ? `+${gap.laps.toFixed(2)} lap`
+    : '--';
+}
+
+function formatGapSeconds(seconds) {
+  if (!Number.isFinite(seconds)) {
+    return '--';
+  }
+
+  if (seconds >= 60) {
+    const minutes = Math.floor(seconds / 60);
+    return `+${minutes}:${String((seconds % 60).toFixed(1)).padStart(4, '0')}`;
+  }
+
+  return `+${seconds.toFixed(1)}s`;
 }
 
 function displayDriver(row, scoringRow = null, driverRow = null) {
@@ -766,6 +1787,13 @@ function displayDriver(row, scoringRow = null, driverRow = null) {
 function formatSigned(value, digits = 1) {
   if (!Number.isFinite(value)) return '--';
   return `${value > 0 ? '+' : ''}${value.toFixed(digits)}`;
+}
+
+function joinAvailable(...values) {
+  const parts = values
+    .map((value) => String(value ?? '').trim())
+    .filter((value) => value && value !== '--');
+  return parts.length > 0 ? parts.join(' | ') : '--';
 }
 
 function formatLiters(value) {
@@ -784,10 +1812,296 @@ function formatTemp(value) {
   return Number.isFinite(value) ? `${Math.round(value)} C` : '--';
 }
 
+function formatSpeed(value) {
+  return Number.isFinite(value) ? `${Math.round(value * 3.6)} km/h` : '--';
+}
+
+function formatPressureBar(value) {
+  return Number.isFinite(value) ? `${value.toFixed(1)} bar` : '--';
+}
+
+function formatDurationCompact(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return '--';
+  const total = Math.floor(seconds);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const remainder = total % 60;
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`
+    : `${minutes}:${String(remainder).padStart(2, '0')}`;
+}
+
+function formatProgressLaps(value) {
+  return Number.isFinite(value) ? `${value.toFixed(2)} laps` : '--';
+}
+
+function formatTrackLength(value) {
+  return Number.isFinite(value) ? `${value.toFixed(2)} km` : null;
+}
+
 function trackWetnessLabel(value, declaredWet) {
   if (declaredWet === true) return 'Declared wet';
   if (!Number.isFinite(value)) return '--';
   return value <= 1 ? 'Dry' : value <= 3 ? 'Damp' : 'Wet';
+}
+
+function hasWetSurfaceSignal(weather) {
+  return weather?.weatherDeclaredWet === true || (Number.isFinite(weather?.trackWetness) && weather.trackWetness > 1);
+}
+
+function formatSessionClock(session) {
+  const elapsed = formatDurationCompact(session?.sessionTimeSeconds);
+  const remain = formatDurationCompact(session?.sessionTimeRemainSeconds);
+  if (elapsed === '--' && remain === '--') return '--';
+  const suffix = isRacePreGreenSession(session) ? 'countdown' : 'left';
+  return `${elapsed} elapsed | ${remain} ${suffix}`;
+}
+
+function isRacePreGreenSession(session) {
+  const state = session?.sessionState;
+  if (!Number.isFinite(state) || state < 1 || state > 3) return false;
+  const text = `${session?.sessionType || ''} ${session?.sessionName || ''} ${session?.eventType || ''}`.toLowerCase();
+  return text.includes('race');
+}
+
+function formatSessionLaps(session, raceProgress = {}, raceProjection = {}) {
+  const remain = formatLapCount(session?.sessionLapsRemainEx)
+    || formatEstimatedLapCount(raceProjection?.estimatedTeamLapsRemaining)
+    || formatEstimatedLapCount(raceProgress?.raceLapsRemaining);
+  const total = formatLapCount(session?.sessionLapsTotal)
+    || formatEstimatedLapCount(raceProjection?.estimatedFinishLap)
+    || formatLapCount(session?.raceLaps);
+  return `${remain || '--'} left | ${total || '--'} total`;
+}
+
+function formatLapCount(value) {
+  return Number.isFinite(value) && value > 0 && value <= 1000 ? String(Math.round(value)) : null;
+}
+
+function formatEstimatedLapCount(value) {
+  return Number.isFinite(value) && value >= 0 && value <= 1000 ? `${value.toFixed(value % 1 === 0 ? 0 : 1)} est` : null;
+}
+
+function formatWeatherTemps(weather) {
+  const air = formatTemp(weather?.airTempC);
+  const track = formatTemp(weather?.trackTempCrewC);
+  return air === '--' && track === '--' ? '--' : `air ${air} | track ${track}`;
+}
+
+function formatWeatherSurface(weather) {
+  const wetness = weather?.trackWetnessLabel || trackWetnessLabel(weather?.trackWetness, weather?.weatherDeclaredWet);
+  return joinAvailable(wetness, weather?.weatherDeclaredWet === true ? 'declared wet' : null, weather?.rubberState ? `rubber ${weather.rubberState}` : null);
+}
+
+function formatWeatherSky(weather) {
+  const precipitation = Number.isFinite(weather?.precipitationPercent)
+    ? `rain:${weather.precipitationPercent.toFixed(0)}%`
+    : null;
+  return joinAvailable(weather?.skiesLabel, weather?.weatherType, precipitation);
+}
+
+function formatWindAtmosphere(weather) {
+  const windSpeed = formatSpeed(weather?.windVelocityMetersPerSecond);
+  const windDirection = cardinalDirection(weather?.windDirectionRadians);
+  const wind = windSpeed === '--' && !windDirection ? null : joinAvailable(windDirection, windSpeed === '--' ? null : windSpeed);
+  const humidity = Number.isFinite(weather?.relativeHumidityPercent) ? `hum ${weather.relativeHumidityPercent.toFixed(0)}%` : null;
+  const fog = Number.isFinite(weather?.fogLevelPercent) ? `fog ${weather.fogLevelPercent.toFixed(0)}%` : null;
+  return joinAvailable(wind, humidity, fog);
+}
+
+function cardinalDirection(radians) {
+  if (!Number.isFinite(radians)) return null;
+  let degrees = radians * 180 / Math.PI;
+  degrees %= 360;
+  if (degrees < 0) degrees += 360;
+  const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  return directions[Math.round(degrees / 45) % directions.length];
+}
+
+function pitServiceStatusText(status) {
+  switch (status) {
+    case null:
+    case undefined:
+      return '--';
+    case 0:
+      return 'none';
+    case 1:
+      return 'in progress';
+    case 2:
+      return 'complete';
+    case 100:
+      return 'too far left';
+    case 101:
+      return 'too far right';
+    case 102:
+      return 'too far forward';
+    case 103:
+      return 'too far back';
+    case 104:
+      return 'bad angle';
+    case 105:
+      return 'cannot repair';
+    default:
+      return Number.isInteger(status) ? `status ${status}` : '--';
+  }
+}
+
+function pitReleaseState(pit) {
+  if (Number.isInteger(pit?.pitServiceStatus) && pit.pitServiceStatus >= 100) {
+    return { value: `RED - ${pitServiceStatusText(pit.pitServiceStatus)}`, tone: 'error' };
+  }
+  if (pit?.pitServiceStatus === 2) {
+    return { value: 'GREEN - go', tone: 'success' };
+  }
+  if (pit?.pitstopActive || pit?.playerCarInPitStall || pit?.pitServiceStatus === 1) {
+    return { value: 'RED - service active', tone: 'error' };
+  }
+  if (hasRequiredRepair(pit)) {
+    return { value: 'RED - required repair', tone: 'error' };
+  }
+  if (hasOptionalRepair(pit)) {
+    return { value: 'YELLOW - optional repair', tone: 'warning' };
+  }
+  return { value: 'GREEN - go', tone: 'success' };
+}
+
+function pitStatus(pit, release) {
+  if (Number.isInteger(pit?.pitServiceStatus) && pit.pitServiceStatus >= 100) return 'pit stall error';
+  if (release?.tone === 'success') return 'release ready';
+  if (release?.tone === 'warning') return 'optional repair';
+  if (release?.tone === 'error') return 'hold';
+  if (pit?.playerCarInPitStall) return 'in pit stall';
+  if (pit?.pitstopActive) return 'service active';
+  if (pit?.onPitRoad || pit?.teamOnPitRoad === true) return 'on pit road';
+  return hasRequestedService(pit) ? 'service requested' : 'pit ready';
+}
+
+function pitLocation(pit) {
+  if (pit?.playerCarInPitStall) return 'player in stall';
+  if (pit?.onPitRoad && pit?.teamOnPitRoad === true) return 'player/team on pit road';
+  if (pit?.onPitRoad) return 'player on pit road';
+  if (pit?.teamOnPitRoad === true) return 'team on pit road';
+  return 'off pit road';
+}
+
+function pitService(pit) {
+  let service = pitServiceFlags(pit?.pitServiceFlags);
+  if ((service === '--' || service === 'none') && Number.isFinite(pit?.pitServiceFuelLiters) && pit.pitServiceFuelLiters > 0) {
+    service = 'fuel';
+  }
+  if (pit?.pitServiceStatus === 1 || pit?.pitstopActive) {
+    return service === '--' || service === 'none' ? 'active' : `active | ${service}`;
+  }
+  if (hasRequestedService(pit)) {
+    return service === '--' || service === 'none' ? 'requested' : `requested | ${service}`;
+  }
+  return service;
+}
+
+function pitServiceFlags(flags) {
+  if (!Number.isInteger(flags)) return '--';
+  const active = [];
+  const tires = tireServiceCount(flags);
+  if (tires === 4) active.push('tires');
+  else if (tires > 0) active.push(`${tires} tires`);
+  if ((flags & 0x10) !== 0) active.push('fuel');
+  if ((flags & 0x20) !== 0) active.push('tearoff');
+  if ((flags & 0x40) !== 0) active.push('fast repair');
+  return active.length ? active.join(', ') : 'none';
+}
+
+function tireServiceCount(flags) {
+  return Number.isInteger(flags) ? countBits(flags & 0x0f) : 0;
+}
+
+function countBits(value) {
+  let count = 0;
+  let remaining = value;
+  while (remaining > 0) {
+    count += remaining & 1;
+    remaining >>= 1;
+  }
+  return count;
+}
+
+function pitRepair(pit) {
+  return joinAvailable(
+    Number.isFinite(pit?.pitRepairLeftSeconds) && pit.pitRepairLeftSeconds > 0 ? `${pit.pitRepairLeftSeconds.toFixed(0)}s required` : null,
+    Number.isFinite(pit?.pitOptRepairLeftSeconds) && pit.pitOptRepairLeftSeconds > 0 ? `${pit.pitOptRepairLeftSeconds.toFixed(0)}s optional` : null);
+}
+
+function pitRepairTone(pit) {
+  return hasRequiredRepair(pit) || hasOptionalRepair(pit) ? 'warning' : 'normal';
+}
+
+function pitTires(pit) {
+  const tires = tireServiceCount(pit?.pitServiceFlags);
+  const service = tires === 4 ? 'four tires' : tires > 0 ? `${tires} tires` : null;
+  const sets = Number.isInteger(pit?.tireSetsUsed) && pit.tireSetsUsed >= 0 ? `${pit.tireSetsUsed} sets used` : null;
+  return joinAvailable(service, sets);
+}
+
+function pitFastRepair(pit) {
+  const selected = Number.isInteger(pit?.pitServiceFlags) && (pit.pitServiceFlags & 0x40) !== 0 ? 'selected' : null;
+  const local = Number.isInteger(pit?.fastRepairUsed) && pit.fastRepairUsed >= 0 ? `local ${pit.fastRepairUsed}` : null;
+  const team = Number.isInteger(pit?.teamFastRepairsUsed) && pit.teamFastRepairsUsed >= 0 ? `team ${pit.teamFastRepairsUsed}` : null;
+  return joinAvailable(selected, local, team);
+}
+
+function hasRequiredRepair(pit) {
+  return Number.isFinite(pit?.pitRepairLeftSeconds) && pit.pitRepairLeftSeconds > 0;
+}
+
+function hasOptionalRepair(pit) {
+  return Number.isFinite(pit?.pitOptRepairLeftSeconds) && pit.pitOptRepairLeftSeconds > 0;
+}
+
+function hasRequestedService(pit) {
+  return Number.isInteger(pit?.pitServiceFlags)
+    || (Number.isFinite(pit?.pitServiceFuelLiters) && pit.pitServiceFuelLiters > 0)
+    || hasRequiredRepair(pit)
+    || hasOptionalRepair(pit);
+}
+
+function formatGear(gear) {
+  if (gear === -1) return 'R';
+  if (gear === 0) return 'N';
+  return Number.isInteger(gear) && gear > 0 ? String(gear) : '--';
+}
+
+function formatRpm(value) {
+  return Number.isFinite(value) ? `${value.toFixed(0)} rpm` : '--';
+}
+
+function formatPedals(inputs) {
+  if (inputs?.hasPedalInputs === false) return '--';
+  return joinAvailable(
+    `T ${formatPercent(inputs?.throttle)}`,
+    `B ${formatPercent(inputs?.brake)}${inputs?.brakeAbsActive === true ? ' ABS' : ''}`,
+    `C ${formatPercent(inputs?.clutch)}`);
+}
+
+function formatSteering(radians) {
+  return Number.isFinite(radians) ? `${(radians * 180 / Math.PI).toFixed(0)} deg` : '--';
+}
+
+function formatWarnings(value) {
+  if (!Number.isInteger(value)) return '--';
+  return value === 0 ? 'none' : `0x${value.toString(16).toUpperCase()}`;
+}
+
+function formatVoltage(value) {
+  return Number.isFinite(value) ? `${value.toFixed(1)} V` : '--';
+}
+
+function formatOilFuel(inputs) {
+  const oilTemp = formatTemp(inputs?.oilTempC);
+  const oilPressure = formatPressureBar(inputs?.oilPressureBar);
+  const fuelPressure = formatPressureBar(inputs?.fuelPressureBar);
+  return joinAvailable(
+    oilTemp === '--' ? null : `oil ${oilTemp}`,
+    oilPressure === '--' ? null : `oil ${oilPressure}`,
+    fuelPressure === '--' ? null : `fuel ${fuelPressure}`);
 }
 
 function formatDuration(seconds, phase) {
@@ -890,6 +2204,10 @@ function settings(overlayId, frame) {
     return relativeSettings();
   }
 
+  if (overlayId === 'gap-to-leader') {
+    return gapSettingsModel();
+  }
+
   if (overlayId === 'stream-chat') {
     return {
       provider: 'none',
@@ -941,6 +2259,16 @@ function relativeSettings() {
     showHeaderTimeRemaining: relativeShowHeaderTimeRemaining,
     showFooterSource: relativeShowFooterSource,
     columns: relativeColumns()
+  };
+}
+
+function gapSettingsModel() {
+  return {
+    carsAhead: gapCarsAhead,
+    carsBehind: gapCarsBehind,
+    showHeaderStatus: gapShowHeaderStatus,
+    showHeaderTimeRemaining: gapShowHeaderTimeRemaining,
+    showFooterSource: gapShowFooterSource
   };
 }
 
@@ -1113,6 +2441,41 @@ function parseDurationSeconds(value) {
 function normalizeProgress(value) {
   const normalized = value % 1;
   return normalized < 0 ? normalized + 1 : normalized;
+}
+
+function finiteNumber(value) {
+  return Number.isFinite(value) ? value : null;
+}
+
+function roundNumber(value, digits = 3) {
+  if (!Number.isFinite(value)) return null;
+  const factor = 10 ** digits;
+  const rounded = Math.round(value * factor) / factor;
+  return Object.is(rounded, -0) ? 0 : rounded;
+}
+
+function positiveNumber(value, fallback) {
+  const parsed = Number.parseFloat(String(value ?? ''));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function normalizeReplayTimingMode(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (['source', 'source-elapsed', 'elapsed'].includes(normalized)) {
+    return 'source-elapsed';
+  }
+  if (['fixed', 'fixed-frame', 'frame', 'compressed'].includes(normalized)) {
+    return 'fixed-frame';
+  }
+  return 'source-elapsed';
+}
+
+function formatCadenceSummary(cadence) {
+  const delta = cadence?.sourceSessionDeltaSeconds || {};
+  const max = Number.isFinite(delta.max) ? `${delta.max}s max` : 'max unknown';
+  const median = Number.isFinite(delta.median) ? `${delta.median}s median` : 'median unknown';
+  const dense = cadence?.denseForGapToLeader === true ? 'dense' : 'sparse';
+  return `${dense} (${median}, ${max}, threshold ${gapMissingSegmentThresholdSeconds}s)`;
 }
 
 function clamp(value, min, max) {

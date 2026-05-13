@@ -66,10 +66,43 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private const int VisibleChatMessageBudget = 36;
     private const int GapMaxTrendPointsPerCar = 36_000;
     private const int GapMaxWeatherPoints = 36_000;
+    private const int GapMaxDriverChangeMarkers = 64;
     private const double GapTrendWindowSeconds = 4d * 60d * 60d;
     private const double GapMinimumTrendDomainSeconds = 120d;
+    private const double GapMinimumTrendDomainLaps = 1.5d;
+    private const double GapTrendRightPaddingSeconds = 20d;
+    private const double GapTrendRightPaddingLaps = 0.15d;
     private const double GapMissingSegmentSeconds = 10d;
+    private const double GapMissingTelemetryGraceSeconds = 5d;
+    private const double GapEntryTailSeconds = 300d;
+    private const double GapEntryFadeSeconds = 45d;
     private const double GapDefaultLapReferenceSeconds = 60d;
+    private const double GapFilteredRangeMinimumSeconds = 15d;
+    private const double GapFilteredRangeMaximumSeconds = 90d;
+    private const double GapFilteredRangeLaps = 0.5d;
+    private const double GapFocusScaleMinimumReferenceGapSeconds = 90d;
+    private const double GapFocusScaleMinimumReferenceGapLaps = 0.5d;
+    private const double GapFocusScaleMinimumRangeSeconds = 20d;
+    private const double GapFocusScaleMinimumRangeLaps = 0.1d;
+    private const double GapFocusScalePaddingMultiplier = 1.18d;
+    private const double GapFocusScaleTriggerRatio = 3d;
+    private const double GapSameLapReferenceBoundaryLaps = 0.95d;
+    private const double GapMetricDeadbandMinimumSeconds = 0.25d;
+    private const double GapMetricDeadbandLapFraction = 0.0025d;
+    private const double GapThreatMinimumGainSeconds = 0.5d;
+    private const double GapThreatGainLapFraction = 0.005d;
+    private const double GapFuelStintResetMinimumLiters = 5d;
+    private const float GapEndpointLabelLaneWidth = 38f;
+    private const float GapEndpointLabelPinThreshold = 4f;
+    private const float GapEndpointLabelHeight = 13f;
+    private const float GapEndpointLabelGap = 1f;
+    private const float GapMetricsTableWidth = 184f;
+    private const float GapMetricsTableGap = 10f;
+    private const float GapMetricsMinimumPlotWidth = 300f;
+    private const float GapThreatBadgeHeight = 16f;
+    private const float GapFocusScaleReferenceRatio = 0.56f;
+    private const float GapFocusScaleTopPadding = 18f;
+    private const float GapFocusScaleBottomPadding = 8f;
     private const double FocusedCarLengthMeters = 4.746d;
     private const double RadarRangeMeters = FocusedCarLengthMeters * 6d;
 
@@ -120,6 +153,10 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private readonly List<double> _gapPoints = [];
     private readonly Dictionary<int, List<DesignV2GapTrendPoint>> _gapSeries = [];
     private readonly List<DesignV2GapWeatherPoint> _gapWeather = [];
+    private readonly List<DesignV2GapDriverChangeMarker> _gapDriverChangeMarkers = [];
+    private readonly List<DesignV2GapLeaderChangeMarker> _gapLeaderChangeMarkers = [];
+    private readonly Dictionary<int, DesignV2GapCarRenderState> _gapCarRenderStates = [];
+    private readonly Dictionary<int, DesignV2GapDriverIdentity> _gapDriverIdentities = [];
     private readonly List<DesignV2InputPoint> _inputTrace = [];
     private readonly List<StreamChatMessage> _chatMessages = [];
     private readonly Dictionary<int, double> _smoothedTrackMarkerProgress = new();
@@ -142,7 +179,12 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private long? _lastGapSequence;
     private double? _latestGapAxisSeconds;
     private double? _gapTrendStartAxisSeconds;
+    private double? _lastGapLapReferenceSeconds;
+    private double? _currentGapFuelStintStartAxisSeconds;
+    private double? _lastGapFuelLevelLiters;
     private DesignV2GapReferenceContext? _lastGapReferenceContext;
+    private int? _lastGapDriversSoFar;
+    private int? _lastGapClassLeaderCarIdx;
     private bool _settingsPreviewVisible;
     private bool _flagsManagedEnabled = true;
     private bool _flagsSettingsOverlayActive;
@@ -515,7 +557,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             .ToArray();
         var rows = StableRelativeRows(viewModel, carsEachSide, carsEachSide)
             .Select(row => row is null
-                ? BlankTableRow(columns.Count)
+                ? BlankTableRow(columns.Length)
                 : new DesignV2TableRow(
                     ValuesForRelativeRow(row),
                     row.IsReference,
@@ -705,7 +747,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             }
         }
 
-        var selectedSeries = SelectGapSeries(gap);
+        var selectedSeries = SelectGapSeries();
         var graph = BuildGapGraphBody(selectedSeries, snapshot);
         if (!availability.IsAvailable)
         {
@@ -717,9 +759,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                 graph);
         }
 
-        var status = gap.HasData
-            ? $"{FormatPosition(gap.ReferenceClassPosition)} {FormatGap(gap.ClassLeaderGap)}"
-            : "waiting";
+        var status = gap.HasData ? "live | race gap" : "waiting";
         var footer = gap.HasData
             ? $"source: live gap telemetry | cars {selectedSeries.Count}/{gap.ClassCars.Count}"
             : "source: waiting";
@@ -750,12 +790,22 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         {
             _gapSeries.Clear();
             _gapWeather.Clear();
+            _gapDriverChangeMarkers.Clear();
+            _gapLeaderChangeMarkers.Clear();
+            _gapCarRenderStates.Clear();
+            _lastGapClassLeaderCarIdx = null;
+            _currentGapFuelStintStartAxisSeconds = null;
+            _lastGapFuelLevelLiters = null;
             _gapTrendStartAxisSeconds = axisSeconds;
         }
 
         _lastGapReferenceContext = context;
-        RecordGapWeather(snapshot, axisSeconds);
         var lapReferenceSeconds = TmrOverlay.App.Overlays.GapToLeader.GapToLeaderLiveModelAdapter.SelectLapReferenceSeconds(snapshot);
+        _lastGapLapReferenceSeconds = lapReferenceSeconds;
+        RecordGapFuelStint(snapshot, axisSeconds);
+        RecordGapWeather(snapshot, axisSeconds);
+        RecordGapDriverChangeMarkers(snapshot, gap, timestamp, axisSeconds, lapReferenceSeconds);
+        RecordGapLeaderChange(gap, timestamp, axisSeconds);
         foreach (var car in gap.ClassCars)
         {
             if (DesignV2GapSeconds(car, lapReferenceSeconds) is not { } gapSeconds)
@@ -794,6 +844,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             }
         }
 
+        UpdateGapCarRenderStates(gap, axisSeconds, lapReferenceSeconds);
         PruneGapSeries(axisSeconds);
     }
 
@@ -822,6 +873,30 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         }
     }
 
+    private void RecordGapFuelStint(LiveTelemetrySnapshot snapshot, double axisSeconds)
+    {
+        var fuelLevelLiters = FirstValidFuelLevel(
+            snapshot.Models.FuelPit.Fuel.FuelLevelLiters,
+            snapshot.Fuel.FuelLevelLiters,
+            snapshot.LatestSample?.FuelLevelLiters);
+        if (fuelLevelLiters is null)
+        {
+            return;
+        }
+
+        if (_currentGapFuelStintStartAxisSeconds is null)
+        {
+            _currentGapFuelStintStartAxisSeconds = axisSeconds;
+        }
+        else if (_lastGapFuelLevelLiters is { } previous
+            && fuelLevelLiters.Value - previous >= GapFuelStintResetMinimumLiters)
+        {
+            _currentGapFuelStintStartAxisSeconds = axisSeconds;
+        }
+
+        _lastGapFuelLevelLiters = fuelLevelLiters;
+    }
+
     private void PruneGapSeries(double latestAxisSeconds)
     {
         var cutoff = latestAxisSeconds - GapTrendWindowSeconds;
@@ -836,121 +911,540 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         }
 
         _gapWeather.RemoveAll(point => point.AxisSeconds < cutoff);
+        _gapDriverChangeMarkers.RemoveAll(marker => marker.AxisSeconds < cutoff);
+        _gapLeaderChangeMarkers.RemoveAll(marker => marker.AxisSeconds < cutoff);
+        foreach (var carIdx in _gapCarRenderStates.Keys.ToArray())
+        {
+            if (!_gapSeries.ContainsKey(carIdx)
+                && _gapCarRenderStates[carIdx].LastDesiredAxisSeconds is { } lastDesired
+                && latestAxisSeconds - lastDesired > GapStickyVisibilitySeconds())
+            {
+                _gapCarRenderStates.Remove(carIdx);
+            }
+        }
     }
 
-    private IReadOnlyList<LiveClassGapCar> SelectGapSeries(LiveLeaderGapSnapshot gap)
+    private void RecordGapDriverChangeMarkers(
+        LiveTelemetrySnapshot snapshot,
+        LiveLeaderGapSnapshot gap,
+        DateTimeOffset timestamp,
+        double axisSeconds,
+        double? lapReferenceSeconds)
     {
-        if (!gap.HasData)
+        RecordExplicitGapTeamDriverChangeMarker(snapshot, gap, timestamp, axisSeconds, lapReferenceSeconds);
+        RecordSessionInfoGapDriverChangeMarkers(snapshot, gap, timestamp, axisSeconds, lapReferenceSeconds);
+    }
+
+    private void RecordExplicitGapTeamDriverChangeMarker(
+        LiveTelemetrySnapshot snapshot,
+        LiveLeaderGapSnapshot gap,
+        DateTimeOffset timestamp,
+        double axisSeconds,
+        double? lapReferenceSeconds)
+    {
+        if (snapshot.Models.RaceEvents.DriversSoFar is not { } driversSoFar || driversSoFar <= 0)
         {
-            return [];
+            return;
         }
 
-        var cars = gap.ClassCars
-            .Where(car => _gapSeries.ContainsKey(car.CarIdx) || car.IsClassLeader || car.IsReferenceCar)
-            .OrderBy(car => car.ClassPosition ?? int.MaxValue)
-            .ThenBy(car => DesignV2GapSeconds(car, null) ?? double.MaxValue)
-            .ThenBy(car => car.CarIdx)
-            .ToArray();
+        if (_lastGapDriversSoFar is { } previousDrivers)
+        {
+            if (driversSoFar < previousDrivers)
+            {
+                _lastGapDriversSoFar = driversSoFar;
+                return;
+            }
+
+            if (driversSoFar > previousDrivers
+                && ReferenceUsesPlayerCar(snapshot)
+                && gap.ClassCars.FirstOrDefault(car => car.IsReferenceCar) is { } reference
+                && DesignV2GapSeconds(reference, lapReferenceSeconds) is { } gapSeconds)
+            {
+                AddGapDriverChangeMarker(new DesignV2GapDriverChangeMarker(
+                    timestamp,
+                    axisSeconds,
+                    reference.CarIdx,
+                    gapSeconds,
+                    true,
+                    $"D{driversSoFar}"));
+            }
+        }
+
+        _lastGapDriversSoFar = driversSoFar;
+    }
+
+    private void RecordSessionInfoGapDriverChangeMarkers(
+        LiveTelemetrySnapshot snapshot,
+        LiveLeaderGapSnapshot gap,
+        DateTimeOffset timestamp,
+        double axisSeconds,
+        double? lapReferenceSeconds)
+    {
+        if (snapshot.Context.Drivers.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var driver in snapshot.Context.Drivers)
+        {
+            if (ToGapDriverIdentity(driver) is not { } identity)
+            {
+                continue;
+            }
+
+            if (_gapDriverIdentities.TryGetValue(identity.CarIdx, out var previous)
+                && !previous.HasSameDriver(identity)
+                && gap.ClassCars.FirstOrDefault(car => car.CarIdx == identity.CarIdx) is { } car
+                && DesignV2GapSeconds(car, lapReferenceSeconds) is { } gapSeconds)
+            {
+                AddGapDriverChangeMarker(new DesignV2GapDriverChangeMarker(
+                    timestamp,
+                    axisSeconds,
+                    identity.CarIdx,
+                    gapSeconds,
+                    car.IsReferenceCar,
+                    identity.ShortLabel));
+            }
+
+            _gapDriverIdentities[identity.CarIdx] = identity;
+        }
+    }
+
+    private void AddGapDriverChangeMarker(DesignV2GapDriverChangeMarker marker)
+    {
+        if (_gapDriverChangeMarkers.Any(existing =>
+                existing.CarIdx == marker.CarIdx
+                && Math.Abs(existing.AxisSeconds - marker.AxisSeconds) < 5d))
+        {
+            return;
+        }
+
+        _gapDriverChangeMarkers.Add(marker);
+        if (_gapDriverChangeMarkers.Count > GapMaxDriverChangeMarkers)
+        {
+            _gapDriverChangeMarkers.RemoveRange(0, _gapDriverChangeMarkers.Count - GapMaxDriverChangeMarkers);
+        }
+    }
+
+    private void RecordGapLeaderChange(LiveLeaderGapSnapshot gap, DateTimeOffset timestamp, double axisSeconds)
+    {
+        if (gap.ClassLeaderCarIdx is not { } leaderCarIdx)
+        {
+            return;
+        }
+
+        if (_lastGapClassLeaderCarIdx is { } previousLeader && previousLeader != leaderCarIdx)
+        {
+            _gapLeaderChangeMarkers.Add(new DesignV2GapLeaderChangeMarker(timestamp, axisSeconds, previousLeader, leaderCarIdx));
+        }
+
+        _lastGapClassLeaderCarIdx = leaderCarIdx;
+    }
+
+    private void UpdateGapCarRenderStates(LiveLeaderGapSnapshot gap, double axisSeconds, double? lapReferenceSeconds)
+    {
+        var desiredCarIds = SelectDesiredGapCarIds(gap.ClassCars, lapReferenceSeconds);
+        foreach (var car in gap.ClassCars)
+        {
+            if (DesignV2GapSeconds(car, lapReferenceSeconds) is not { } gapSeconds)
+            {
+                continue;
+            }
+
+            if (!_gapCarRenderStates.TryGetValue(car.CarIdx, out var state))
+            {
+                state = new DesignV2GapCarRenderState(car.CarIdx);
+                _gapCarRenderStates[car.CarIdx] = state;
+            }
+
+            var wasVisible = ShouldKeepGapSeriesVisible(state, axisSeconds);
+            state.LastSeenAxisSeconds = axisSeconds;
+            state.LastGapSeconds = gapSeconds;
+            state.IsReference = car.IsReferenceCar;
+            state.IsClassLeader = car.IsClassLeader;
+            state.ClassPosition = car.ClassPosition;
+            state.DeltaSecondsToReference = car.DeltaSecondsToReference;
+            state.IsCurrentlyDesired = desiredCarIds.Contains(car.CarIdx);
+            if (state.IsCurrentlyDesired)
+            {
+                if (!wasVisible)
+                {
+                    state.VisibleSinceAxisSeconds = axisSeconds;
+                }
+
+                state.LastDesiredAxisSeconds = axisSeconds;
+            }
+        }
+
+        foreach (var state in _gapCarRenderStates.Values)
+        {
+            if (!desiredCarIds.Contains(state.CarIdx))
+            {
+                state.IsCurrentlyDesired = false;
+            }
+        }
+    }
+
+    private HashSet<int> SelectDesiredGapCarIds(IReadOnlyList<LiveClassGapCar> cars, double? lapReferenceSeconds)
+    {
+        var selected = new HashSet<int>();
         var reference = cars.FirstOrDefault(car => car.IsReferenceCar);
-        var selected = new List<LiveClassGapCar>();
-        void Add(LiveClassGapCar car)
+        foreach (var car in cars.Where(car => car.IsClassLeader || car.IsReferenceCar))
         {
-            if (selected.All(existing => existing.CarIdx != car.CarIdx))
-            {
-                selected.Add(car);
-            }
+            selected.Add(car.CarIdx);
         }
 
-        foreach (var leader in cars.Where(car => car.IsClassLeader))
+        var aheadCount = _settings.GetIntegerOption(OverlayOptionKeys.GapCarsAhead, defaultValue: 5, minimum: 0, maximum: 12);
+        var behindCount = _settings.GetIntegerOption(OverlayOptionKeys.GapCarsBehind, defaultValue: 5, minimum: 0, maximum: 12);
+        if (reference is null)
         {
-            Add(leader);
+            foreach (var car in cars
+                .Where(car => !car.IsClassLeader)
+                .OrderBy(car => car.ClassPosition ?? int.MaxValue)
+                .ThenBy(car => DesignV2GapSeconds(car, lapReferenceSeconds) ?? double.MaxValue)
+                .Take(behindCount))
+            {
+                selected.Add(car.CarIdx);
+            }
+
+            return selected;
         }
 
-        if (reference is not null)
+        var rangeSeconds = GapFilteredRangeSeconds();
+        foreach (var car in cars
+            .Where(car => !car.IsReferenceCar
+                && !car.IsClassLeader
+                && IsSameLapGapCandidate(car, reference, lapReferenceSeconds)
+                && car.DeltaSecondsToReference is < 0d
+                && Math.Abs(car.DeltaSecondsToReference.Value) <= rangeSeconds)
+            .OrderByDescending(car => car.DeltaSecondsToReference!.Value)
+            .Take(aheadCount))
         {
-            var aheadCount = _settings.GetIntegerOption(OverlayOptionKeys.GapCarsAhead, defaultValue: 5, minimum: 0, maximum: 12);
-            var behindCount = _settings.GetIntegerOption(OverlayOptionKeys.GapCarsBehind, defaultValue: 5, minimum: 0, maximum: 12);
-            foreach (var car in cars.Where(car => !car.IsReferenceCar && IsAheadOfReference(car, reference)).TakeLast(aheadCount))
-            {
-                Add(car);
-            }
+            selected.Add(car.CarIdx);
+        }
 
-            Add(reference);
-            foreach (var car in cars.Where(car => !car.IsReferenceCar && IsBehindReference(car, reference)).Take(behindCount))
-            {
-                Add(car);
-            }
+        foreach (var car in cars
+            .Where(car => !car.IsReferenceCar
+                && !car.IsClassLeader
+                && IsSameLapGapCandidate(car, reference, lapReferenceSeconds)
+                && car.DeltaSecondsToReference is > 0d
+                && car.DeltaSecondsToReference.Value <= rangeSeconds)
+            .OrderBy(car => car.DeltaSecondsToReference!.Value)
+            .Take(behindCount))
+        {
+            selected.Add(car.CarIdx);
+        }
+
+        return selected;
+    }
+
+    private IReadOnlyList<DesignV2GapSeriesSelection> SelectGapSeries()
+    {
+        var now = _latestGapAxisSeconds ?? 0d;
+        return _gapCarRenderStates.Values
+            .Where(state => ShouldKeepGapSeriesVisible(state, now))
+            .Select(state => ToGapSeriesSelection(state, now))
+            .OrderBy(selection => selection.State.LastGapSeconds)
+            .ToArray();
+    }
+
+    private bool ShouldKeepGapSeriesVisible(DesignV2GapCarRenderState state, double axisSeconds)
+    {
+        return state.LastDesiredAxisSeconds is { } lastDesired
+            && axisSeconds - lastDesired <= GapStickyVisibilitySeconds();
+    }
+
+    private double GapStickyVisibilitySeconds()
+    {
+        return GapFilteredRangeSeconds();
+    }
+
+    private double GapFilteredRangeSeconds()
+    {
+        var lapScaledRange = _lastGapLapReferenceSeconds is { } lapSeconds && IsValidLapReference(lapSeconds)
+            ? lapSeconds * GapFilteredRangeLaps
+            : 0d;
+        return Math.Min(
+            GapFilteredRangeMaximumSeconds,
+            Math.Max(GapFilteredRangeMinimumSeconds, lapScaledRange));
+    }
+
+    private double GapTrendLookupToleranceSeconds()
+    {
+        return Math.Min(
+            60d,
+            Math.Max(
+                8d,
+                _lastGapLapReferenceSeconds is { } lapSeconds && IsValidLapReference(lapSeconds)
+                    ? lapSeconds * 0.08d
+                    : 60d * 0.08d));
+    }
+
+    private double GapThreatGainThresholdSeconds()
+    {
+        return Math.Max(
+            GapThreatMinimumGainSeconds,
+            _lastGapLapReferenceSeconds is { } lapSeconds && IsValidLapReference(lapSeconds)
+                ? lapSeconds * GapThreatGainLapFraction
+                : 0d);
+    }
+
+    private double GapMetricDeadbandSeconds()
+    {
+        return Math.Max(
+            GapMetricDeadbandMinimumSeconds,
+            _lastGapLapReferenceSeconds is { } lapSeconds && IsValidLapReference(lapSeconds)
+                ? lapSeconds * GapMetricDeadbandLapFraction
+                : 0d);
+    }
+
+    private DesignV2GapSeriesSelection ToGapSeriesSelection(DesignV2GapCarRenderState state, double now)
+    {
+        var lastDesired = state.LastDesiredAxisSeconds ?? now;
+        var visibleSince = state.VisibleSinceAxisSeconds ?? lastDesired;
+        var isStickyExit = !state.IsCurrentlyDesired;
+        var isStale = now - state.LastSeenAxisSeconds > GapMissingTelemetryGraceSeconds;
+        var stickySeconds = GapStickyVisibilitySeconds();
+        var exitAlpha = isStickyExit
+            ? 1d - Math.Clamp((now - lastDesired) / Math.Max(1d, stickySeconds), 0d, 1d)
+            : 1d;
+        var entryAlpha = Math.Clamp((now - visibleSince) / GapEntryFadeSeconds, 0d, 1d);
+        var alpha = Math.Clamp(Math.Min(exitAlpha, 0.35d + entryAlpha * 0.65d), 0.18d, 1d);
+        var drawStartSeconds = now - visibleSince <= GapEntryFadeSeconds
+            ? Math.Max(0d, visibleSince - GapEntryTailSeconds)
+            : double.NegativeInfinity;
+        return new DesignV2GapSeriesSelection(state, alpha, isStickyExit, isStale, drawStartSeconds);
+    }
+
+    private bool IsSameLapGapCandidate(LiveClassGapCar candidate, LiveClassGapCar reference, double? lapReferenceSeconds)
+    {
+        return NormalizedDesignV2GapLaps(candidate, lapReferenceSeconds) is { } candidateGapLaps
+            && NormalizedDesignV2GapLaps(reference, lapReferenceSeconds) is { } referenceGapLaps
+            && Math.Abs(candidateGapLaps - referenceGapLaps) < 0.95d;
+    }
+
+    private DesignV2GraphBody BuildGapGraphBody(IReadOnlyList<DesignV2GapSeriesSelection> selectedSeries, LiveTelemetrySnapshot snapshot)
+    {
+        var endSeconds = _latestGapAxisSeconds ?? 0d;
+        var anchorSeconds = _gapTrendStartAxisSeconds ?? FirstVisibleGapAxisSeconds(selectedSeries) ?? endSeconds;
+        var elapsedSeconds = Math.Max(0d, endSeconds - anchorSeconds);
+        double startSeconds;
+        if (elapsedSeconds >= GapTrendWindowSeconds)
+        {
+            startSeconds = endSeconds - GapTrendWindowSeconds;
         }
         else
         {
-            foreach (var car in cars.Take(1 + _settings.GetIntegerOption(OverlayOptionKeys.GapCarsBehind, defaultValue: 5, minimum: 0, maximum: 12)))
-            {
-                Add(car);
-            }
+            var durationSeconds = Math.Min(
+                GapTrendWindowSeconds,
+                Math.Max(GapMinimumTrendDomainSecondsForCurrentLap(), elapsedSeconds + GapTrendRightPadding()));
+            startSeconds = anchorSeconds;
+            endSeconds = anchorSeconds + durationSeconds;
         }
 
-        return selected
-            .OrderBy(car => car.ClassPosition ?? int.MaxValue)
-            .ThenBy(car => DesignV2GapSeconds(car, null) ?? double.MaxValue)
-            .ThenBy(car => car.CarIdx)
-            .ToArray();
-    }
-
-    private static bool IsAheadOfReference(LiveClassGapCar car, LiveClassGapCar reference)
-    {
-        if (car.ClassPosition is { } carPosition && reference.ClassPosition is { } referencePosition)
-        {
-            return carPosition < referencePosition;
-        }
-
-        return DesignV2GapSeconds(car, null) < DesignV2GapSeconds(reference, null);
-    }
-
-    private static bool IsBehindReference(LiveClassGapCar car, LiveClassGapCar reference)
-    {
-        if (car.ClassPosition is { } carPosition && reference.ClassPosition is { } referencePosition)
-        {
-            return carPosition > referencePosition;
-        }
-
-        return DesignV2GapSeconds(car, null) > DesignV2GapSeconds(reference, null);
-    }
-
-    private DesignV2GraphBody BuildGapGraphBody(IReadOnlyList<LiveClassGapCar> selectedCars, LiveTelemetrySnapshot snapshot)
-    {
-        var selectedIds = selectedCars.Select(car => car.CarIdx).ToHashSet();
-        var endSeconds = _latestGapAxisSeconds ?? 0d;
-        var startSeconds = Math.Max(
-            _gapTrendStartAxisSeconds ?? endSeconds - GapMinimumTrendDomainSeconds,
-            endSeconds - GapTrendWindowSeconds);
-        if (endSeconds - startSeconds < GapMinimumTrendDomainSeconds)
-        {
-            startSeconds = endSeconds - GapMinimumTrendDomainSeconds;
-        }
-
-        var series = selectedCars
-            .Select(car => new DesignV2GapSeries(
-                car.CarIdx,
-                car.IsReferenceCar,
-                car.IsClassLeader,
-                car.ClassPosition,
-                PointsForGapCar(car.CarIdx, startSeconds, endSeconds)))
+        var trendMetrics = BuildDesignV2GapTrendMetrics();
+        var activeThreat = ActiveDesignV2GapThreat(trendMetrics);
+        var threatCarIdx = activeThreat?.Chaser?.CarIdx;
+        var series = selectedSeries
+            .Select(selection => new DesignV2GapSeries(
+                selection.State.CarIdx,
+                selection.State.IsReference,
+                selection.State.IsClassLeader,
+                selection.State.ClassPosition,
+                selection.Alpha,
+                selection.IsStickyExit,
+                selection.IsStale,
+                PointsForGapCar(selection.State.CarIdx, Math.Max(startSeconds, selection.DrawStartSeconds), endSeconds)))
             .Where(series => series.Points.Count > 0)
             .ToArray();
-        var maxGapSeconds = NiceCeiling(series
-            .SelectMany(series => series.Points)
-            .Select(point => point.GapSeconds)
-            .DefaultIfEmpty(1d)
-            .Max());
+        var scale = SelectDesignV2GapScale(selectedSeries, startSeconds, endSeconds);
         return new DesignV2GraphBody(
             _gapPoints.ToArray(),
             series,
             _gapWeather.Where(point => point.AxisSeconds >= startSeconds && point.AxisSeconds <= endSeconds).ToArray(),
+            _gapLeaderChangeMarkers.Where(marker => marker.AxisSeconds >= startSeconds && marker.AxisSeconds <= endSeconds).ToArray(),
+            _gapDriverChangeMarkers.Where(marker => marker.AxisSeconds >= startSeconds && marker.AxisSeconds <= endSeconds).ToArray(),
             StartSeconds: startSeconds,
             EndSeconds: Math.Max(endSeconds, startSeconds + 1d),
-            MaxGapSeconds: Math.Max(1d, maxGapSeconds),
+            MaxGapSeconds: Math.Max(1d, scale.MaxGapSeconds),
             LapReferenceSeconds: TmrOverlay.App.Overlays.GapToLeader.GapToLeaderLiveModelAdapter.SelectLapReferenceSeconds(snapshot),
-            SelectedSeriesCount: selectedIds.Count);
+            SelectedSeriesCount: selectedSeries.Count,
+            TrendMetrics: trendMetrics,
+            ActiveThreat: activeThreat,
+            ThreatCarIdx: threatCarIdx,
+            MetricDeadbandSeconds: GapMetricDeadbandSeconds(),
+            Scale: scale);
+    }
+
+    private IReadOnlyList<DesignV2GapTrendMetric> BuildDesignV2GapTrendMetrics()
+    {
+        if (_lastGapLapReferenceSeconds is not { } lapReferenceSeconds
+            || !IsValidLapReference(lapReferenceSeconds)
+            || _gapCarRenderStates.Values.FirstOrDefault(state => state.IsReference) is not { } referenceState)
+        {
+            return DefaultDesignV2GapTrendMetrics("unavailable");
+        }
+
+        var latest = _latestGapAxisSeconds ?? 0d;
+        return new[]
+        {
+            BuildDesignV2GapTrendMetric("5L", lapReferenceSeconds * 5d, 5d, latest, referenceState),
+            BuildDesignV2GapTrendMetric("10L", lapReferenceSeconds * 10d, 10d, latest, referenceState),
+            BuildDesignV2GapStintTrendMetric(latest, referenceState)
+        };
+    }
+
+    private DesignV2GapTrendMetric BuildDesignV2GapStintTrendMetric(double latest, DesignV2GapCarRenderState referenceState)
+    {
+        if (_currentGapFuelStintStartAxisSeconds is not { } stintStart)
+        {
+            return new DesignV2GapTrendMetric("stint", null, null, "unavailable", null);
+        }
+
+        var lookbackSeconds = latest - stintStart;
+        if (!IsFinite(lookbackSeconds) || lookbackSeconds < 5d)
+        {
+            return new DesignV2GapTrendMetric("stint", null, null, "warming", "out lap");
+        }
+
+        return BuildDesignV2GapTrendMetric("stint", lookbackSeconds, null, latest, referenceState);
+    }
+
+    private DesignV2GapTrendMetric BuildDesignV2GapTrendMetric(
+        string label,
+        double lookbackSeconds,
+        double? targetLaps,
+        double latest,
+        DesignV2GapCarRenderState referenceState)
+    {
+        if (!IsFinite(lookbackSeconds)
+            || lookbackSeconds <= 0d
+            || LatestDesignV2GapTrendPoint(referenceState.CarIdx) is not { } referenceCurrent)
+        {
+            return new DesignV2GapTrendMetric(label, null, null, "unavailable", null);
+        }
+
+        var targetAxisSeconds = latest - lookbackSeconds;
+        if (DesignV2GapLeaderChangedBetween(targetAxisSeconds, latest))
+        {
+            return new DesignV2GapTrendMetric(label, null, null, "leaderChanged", null);
+        }
+
+        if (DesignV2GapTrendPointNear(referenceState.CarIdx, targetAxisSeconds) is not { } referencePast)
+        {
+            return new DesignV2GapTrendMetric(
+                label,
+                null,
+                null,
+                "warming",
+                DesignV2GapWarmupLabel(referenceState.CarIdx, latest, targetLaps));
+        }
+
+        var focusGapChangeSeconds = referenceCurrent.GapSeconds - referencePast.GapSeconds;
+        var chaser = StrongestDesignV2GapBehindGain(referenceState, referenceCurrent, referencePast, targetAxisSeconds);
+        return new DesignV2GapTrendMetric(label, focusGapChangeSeconds, chaser, "ready", null);
+    }
+
+    private string? DesignV2GapWarmupLabel(int referenceCarIdx, double latest, double? targetLaps)
+    {
+        if (targetLaps is not { } laps
+            || laps <= 0d
+            || _lastGapLapReferenceSeconds is not { } lapReferenceSeconds
+            || !IsValidLapReference(lapReferenceSeconds)
+            || FirstDesignV2GapTrendPoint(referenceCarIdx) is not { } first)
+        {
+            return null;
+        }
+
+        var availableLaps = Math.Max(0d, (latest - first.AxisSeconds) / lapReferenceSeconds);
+        return $"{Math.Min(availableLaps, laps).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)}L";
+    }
+
+    private DesignV2BehindGainMetric? StrongestDesignV2GapBehindGain(
+        DesignV2GapCarRenderState referenceState,
+        DesignV2GapTrendPoint referenceCurrent,
+        DesignV2GapTrendPoint referencePast,
+        double targetAxisSeconds)
+    {
+        DesignV2BehindGainMetric? best = null;
+        foreach (var state in _gapCarRenderStates.Values)
+        {
+            if (state.CarIdx == referenceState.CarIdx
+                || state.IsReference
+                || LatestDesignV2GapTrendPoint(state.CarIdx) is not { } current
+                || current.GapSeconds <= referenceCurrent.GapSeconds
+                || DesignV2GapTrendPointNear(state.CarIdx, targetAxisSeconds) is not { } past)
+            {
+                continue;
+            }
+
+            var currentDelta = current.GapSeconds - referenceCurrent.GapSeconds;
+            var pastDelta = past.GapSeconds - referencePast.GapSeconds;
+            var gainSeconds = pastDelta - currentDelta;
+            if (gainSeconds < GapThreatGainThresholdSeconds())
+            {
+                continue;
+            }
+
+            if (best is null || gainSeconds > best.GainSeconds)
+            {
+                best = new DesignV2BehindGainMetric(state.CarIdx, DesignV2GapCarShortLabel(state), gainSeconds);
+            }
+        }
+
+        return best;
+    }
+
+    private DesignV2GapTrendMetric? ActiveDesignV2GapThreat(IReadOnlyList<DesignV2GapTrendMetric> metrics)
+    {
+        return metrics
+            .Where(metric => string.Equals(metric.State, "ready", StringComparison.Ordinal)
+                && metric.Chaser is not null
+                && metric.Chaser.GainSeconds >= GapThreatGainThresholdSeconds())
+            .OrderByDescending(metric => metric.Chaser!.GainSeconds)
+            .FirstOrDefault();
+    }
+
+    private DesignV2GapTrendPoint? LatestDesignV2GapTrendPoint(int carIdx)
+    {
+        return _gapSeries.TryGetValue(carIdx, out var points) && points.Count > 0
+            ? points[^1]
+            : null;
+    }
+
+    private DesignV2GapTrendPoint? FirstDesignV2GapTrendPoint(int carIdx)
+    {
+        return _gapSeries.TryGetValue(carIdx, out var points) && points.Count > 0
+            ? points[0]
+            : null;
+    }
+
+    private DesignV2GapTrendPoint? DesignV2GapTrendPointNear(int carIdx, double axisSeconds)
+    {
+        if (!_gapSeries.TryGetValue(carIdx, out var points) || points.Count == 0)
+        {
+            return null;
+        }
+
+        var best = points.MinBy(point => Math.Abs(point.AxisSeconds - axisSeconds));
+        return best is not null && Math.Abs(best.AxisSeconds - axisSeconds) <= GapTrendLookupToleranceSeconds()
+            ? best
+            : null;
+    }
+
+    private bool DesignV2GapLeaderChangedBetween(double startSeconds, double endSeconds)
+    {
+        return _gapLeaderChangeMarkers.Any(marker => marker.AxisSeconds > startSeconds && marker.AxisSeconds <= endSeconds);
+    }
+
+    private IReadOnlyList<DesignV2GapTrendMetric> DefaultDesignV2GapTrendMetrics(string state)
+    {
+        return new[]
+        {
+            new DesignV2GapTrendMetric("5L", null, null, state, null),
+            new DesignV2GapTrendMetric("10L", null, null, state, null),
+            new DesignV2GapTrendMetric("stint", null, null, state, null)
+        };
     }
 
     private IReadOnlyList<DesignV2GapTrendPoint> PointsForGapCar(int carIdx, double startSeconds, double endSeconds)
@@ -958,6 +1452,213 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         return _gapSeries.TryGetValue(carIdx, out var points)
             ? points.Where(point => point.AxisSeconds >= startSeconds && point.AxisSeconds <= endSeconds).ToArray()
             : Array.Empty<DesignV2GapTrendPoint>();
+    }
+
+    private double GapMinimumTrendDomainSecondsForCurrentLap()
+    {
+        return Math.Max(
+            GapMinimumTrendDomainSeconds,
+            _lastGapLapReferenceSeconds is { } lapSeconds && IsValidLapReference(lapSeconds)
+                ? lapSeconds * GapMinimumTrendDomainLaps
+                : 0d);
+    }
+
+    private double GapTrendRightPadding()
+    {
+        return Math.Max(
+            GapTrendRightPaddingSeconds,
+            _lastGapLapReferenceSeconds is { } lapSeconds && IsValidLapReference(lapSeconds)
+                ? lapSeconds * GapTrendRightPaddingLaps
+                : 0d);
+    }
+
+    private double? FirstVisibleGapAxisSeconds(IReadOnlyList<DesignV2GapSeriesSelection> selectedSeries)
+    {
+        double? firstVisiblePoint = null;
+        foreach (var selection in selectedSeries)
+        {
+            if (!_gapSeries.TryGetValue(selection.State.CarIdx, out var points))
+            {
+                continue;
+            }
+
+            foreach (var point in points.Where(point => point.AxisSeconds >= selection.DrawStartSeconds))
+            {
+                if (firstVisiblePoint is null || point.AxisSeconds < firstVisiblePoint.Value)
+                {
+                    firstVisiblePoint = point.AxisSeconds;
+                }
+            }
+        }
+
+        return firstVisiblePoint;
+    }
+
+    private DesignV2GapScale SelectDesignV2GapScale(
+        IReadOnlyList<DesignV2GapSeriesSelection> selectedSeries,
+        double startSeconds,
+        double endSeconds)
+    {
+        var leaderScaleMax = SelectDesignV2MaxGapSeconds(selectedSeries, startSeconds, endSeconds);
+        var referenceSelection = selectedSeries.FirstOrDefault(selection => selection.State.IsReference);
+        if (referenceSelection is null
+            || !_gapSeries.TryGetValue(referenceSelection.State.CarIdx, out var rawReferencePoints))
+        {
+            return DesignV2GapScale.Leader(leaderScaleMax);
+        }
+
+        var referencePoints = rawReferencePoints
+            .Where(point => point.AxisSeconds >= startSeconds && point.AxisSeconds <= endSeconds)
+            .OrderBy(point => point.AxisSeconds)
+            .ToArray();
+        if (referencePoints.Length == 0)
+        {
+            return DesignV2GapScale.Leader(leaderScaleMax);
+        }
+
+        var latestReferenceGap = GapReferenceAt(referencePoints, endSeconds);
+        var triggerGap = GapFocusScaleMinimumReferenceGap();
+        if (latestReferenceGap < triggerGap)
+        {
+            return DesignV2GapScale.Leader(leaderScaleMax);
+        }
+
+        var maxAheadSeconds = 0d;
+        var maxBehindSeconds = 0d;
+        var hasLocalComparison = false;
+        foreach (var selection in selectedSeries.Where(selection => !selection.State.IsClassLeader))
+        {
+            if (!_gapSeries.TryGetValue(selection.State.CarIdx, out var points))
+            {
+                continue;
+            }
+
+            foreach (var point in points.Where(point =>
+                point.AxisSeconds >= selection.DrawStartSeconds
+                && point.AxisSeconds >= startSeconds
+                && point.AxisSeconds <= endSeconds))
+            {
+                var delta = point.GapSeconds - GapReferenceAt(referencePoints, point.AxisSeconds);
+                hasLocalComparison |= !selection.State.IsReference && Math.Abs(delta) > 0.001d;
+                if (delta < 0d)
+                {
+                    maxAheadSeconds = Math.Max(maxAheadSeconds, Math.Abs(delta));
+                }
+                else
+                {
+                    maxBehindSeconds = Math.Max(maxBehindSeconds, delta);
+                }
+            }
+        }
+
+        var minimumRange = GapFocusScaleMinimumRange();
+        var aheadRange = NiceCeiling(Math.Max(minimumRange, maxAheadSeconds * GapFocusScalePaddingMultiplier));
+        var behindRange = NiceCeiling(Math.Max(minimumRange, maxBehindSeconds * GapFocusScalePaddingMultiplier));
+        var localRange = Math.Max(aheadRange, behindRange);
+        var forceFocusScaleForLappedReference = ShouldForceDesignV2FocusScaleForLappedReference(latestReferenceGap);
+        if (!forceFocusScaleForLappedReference
+            && (!hasLocalComparison || leaderScaleMax < Math.Max(triggerGap, localRange * GapFocusScaleTriggerRatio)))
+        {
+            return DesignV2GapScale.Leader(leaderScaleMax);
+        }
+
+        return DesignV2GapScale.FocusRelative(
+            leaderScaleMax,
+            aheadRange,
+            behindRange,
+            referencePoints,
+            latestReferenceGap);
+    }
+
+    private double SelectDesignV2MaxGapSeconds(
+        IReadOnlyList<DesignV2GapSeriesSelection> selectedSeries,
+        double startSeconds,
+        double endSeconds)
+    {
+        var maxGap = selectedSeries
+            .Where(selection => _gapSeries.ContainsKey(selection.State.CarIdx))
+            .SelectMany(selection => _gapSeries[selection.State.CarIdx].Where(point => point.AxisSeconds >= selection.DrawStartSeconds))
+            .Where(point => point.AxisSeconds >= startSeconds && point.AxisSeconds <= endSeconds)
+            .Select(point => point.GapSeconds)
+            .DefaultIfEmpty(1d)
+            .Max();
+        return NiceCeiling(Math.Max(1d, maxGap));
+    }
+
+    private double GapFocusScaleMinimumReferenceGap()
+    {
+        return Math.Max(
+            GapFocusScaleMinimumReferenceGapSeconds,
+            _lastGapLapReferenceSeconds is { } lapSeconds && IsValidLapReference(lapSeconds)
+                ? lapSeconds * GapFocusScaleMinimumReferenceGapLaps
+                : 0d);
+    }
+
+    private double GapFocusScaleMinimumRange()
+    {
+        return Math.Max(
+            GapFocusScaleMinimumRangeSeconds,
+            _lastGapLapReferenceSeconds is { } lapSeconds && IsValidLapReference(lapSeconds)
+                ? lapSeconds * GapFocusScaleMinimumRangeLaps
+                : 0d);
+    }
+
+    private bool ShouldForceDesignV2FocusScaleForLappedReference(double latestReferenceGap)
+    {
+        return _lastGapLapReferenceSeconds is { } lapSeconds
+            && IsValidLapReference(lapSeconds)
+            && latestReferenceGap >= lapSeconds * GapSameLapReferenceBoundaryLaps;
+    }
+
+    private static double GapReferenceAt(IReadOnlyList<DesignV2GapTrendPoint> referencePoints, double axisSeconds)
+    {
+        if (referencePoints.Count == 0)
+        {
+            return 0d;
+        }
+
+        if (axisSeconds <= referencePoints[0].AxisSeconds)
+        {
+            return referencePoints[0].GapSeconds;
+        }
+
+        var last = referencePoints[^1];
+        if (axisSeconds >= last.AxisSeconds)
+        {
+            return last.GapSeconds;
+        }
+
+        var low = 0;
+        var high = referencePoints.Count - 1;
+        while (low <= high)
+        {
+            var mid = low + (high - low) / 2;
+            var midSeconds = referencePoints[mid].AxisSeconds;
+            if (Math.Abs(midSeconds - axisSeconds) < 0.001d)
+            {
+                return referencePoints[mid].GapSeconds;
+            }
+
+            if (midSeconds < axisSeconds)
+            {
+                low = mid + 1;
+            }
+            else
+            {
+                high = mid - 1;
+            }
+        }
+
+        var after = referencePoints[Math.Clamp(low, 0, referencePoints.Count - 1)];
+        var before = referencePoints[Math.Clamp(low - 1, 0, referencePoints.Count - 1)];
+        var span = after.AxisSeconds - before.AxisSeconds;
+        if (span <= 0.001d)
+        {
+            return before.GapSeconds;
+        }
+
+        var ratio = Math.Clamp((axisSeconds - before.AxisSeconds) / span, 0d, 1d);
+        return before.GapSeconds + (after.GapSeconds - before.GapSeconds) * ratio;
     }
 
     private static double? DesignV2GapSeconds(LiveClassGapCar car, double? lapReferenceSeconds)
@@ -975,6 +1676,59 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         return car.GapLapsToClassLeader is { } laps && IsFinite(laps) && laps >= 0d
             ? laps * (lapReferenceSeconds is { } lapSeconds && IsFinite(lapSeconds) && lapSeconds > 20d ? lapSeconds : GapDefaultLapReferenceSeconds)
             : null;
+    }
+
+    private static double? NormalizedDesignV2GapLaps(LiveClassGapCar car, double? lapReferenceSeconds)
+    {
+        if (car.GapLapsToClassLeader is { } laps && IsFinite(laps))
+        {
+            return laps;
+        }
+
+        if (DesignV2GapSeconds(car, lapReferenceSeconds) is { } seconds
+            && lapReferenceSeconds is { } lapSeconds
+            && IsValidLapReference(lapSeconds))
+        {
+            return seconds / lapSeconds;
+        }
+
+        return null;
+    }
+
+    private static DesignV2GapDriverIdentity? ToGapDriverIdentity(HistoricalSessionDriver driver)
+    {
+        if (driver.CarIdx is not { } carIdx || driver.IsSpectator == true)
+        {
+            return null;
+        }
+
+        var key = driver.UserId is { } userId && userId > 0
+            ? FormattableString.Invariant($"id:{userId}")
+            : !string.IsNullOrWhiteSpace(driver.UserName)
+                ? $"name:{driver.UserName.Trim().ToUpperInvariant()}"
+                : null;
+        if (key is null)
+        {
+            return null;
+        }
+
+        return new DesignV2GapDriverIdentity(carIdx, key, SelectGapDriverLabel(driver));
+    }
+
+    private static string SelectGapDriverLabel(HistoricalSessionDriver driver)
+    {
+        foreach (var value in new[] { driver.Initials, driver.AbbrevName, driver.UserName })
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                var trimmed = value.Trim();
+                return trimmed.Length <= 3
+                    ? trimmed
+                    : trimmed[..Math.Min(3, trimmed.Length)].ToUpperInvariant();
+            }
+        }
+
+        return "DR";
     }
 
     private static DesignV2GapWeatherCondition SelectWeatherCondition(LiveTelemetrySnapshot snapshot)
@@ -1950,36 +2704,64 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         var frame = RectangleF.Inflate(rect, -12, -14);
         const float axisWidth = 58f;
         const float xAxisHeight = 17f;
+        var plotHeight = Math.Max(40, frame.Height - xAxisHeight);
+        var metricsTableWidth = FocusedGapMetricsTableWidth(frame);
+        var metricsTableRect = metricsTableWidth > 0f
+            ? new RectangleF(frame.Right - metricsTableWidth, frame.Top, metricsTableWidth, plotHeight)
+            : RectangleF.Empty;
+        var chartRight = metricsTableWidth > 0f
+            ? metricsTableRect.Left - GapMetricsTableGap
+            : frame.Right;
+        var labelLane = new RectangleF(
+            chartRight - GapEndpointLabelLaneWidth,
+            frame.Top,
+            GapEndpointLabelLaneWidth,
+            plotHeight);
         var plot = new RectangleF(
             frame.Left + axisWidth,
             frame.Top,
-            Math.Max(40, frame.Width - axisWidth - 4),
-            Math.Max(40, frame.Height - xAxisHeight));
+            Math.Max(40, labelLane.Left - (frame.Left + axisWidth)),
+            plotHeight);
+        var axisBounds = new RectangleF(frame.Left, frame.Top, axisWidth - 8, plot.Height);
+        var scale = graph.Scale ?? DesignV2GapScale.Leader(graph.MaxGapSeconds ?? 1d);
         DrawGapWeatherBands(graphics, graph, plot);
-        using var gridPen = new Pen(Color.FromArgb(80, TextMuted), 1);
-        for (var index = 1; index < 4; index++)
-        {
-            var y = plot.Top + index * plot.Height / 4f;
-            graphics.DrawLine(gridPen, plot.Left, y, plot.Right, y);
-        }
-
-        using var axisPen = new Pen(Color.FromArgb(70, TextMuted), 1);
-        graphics.DrawLine(axisPen, plot.Left, plot.Top, plot.Right, plot.Top);
-        graphics.DrawLine(axisPen, plot.Left, plot.Bottom, plot.Right, plot.Bottom);
+        DrawGapLapIntervalLines(graphics, graph, plot);
+        DrawGapGridLines(graphics, graph, scale, plot, axisBounds);
         using var axisFont = FontOf(9.5f);
-        var max = graph.MaxGapSeconds is { } graphMax && graphMax > 0d
-            ? graphMax
-            : Math.Max(1d, graph.Points.DefaultIfEmpty(1d).Max());
-        DrawText(graphics, "leader", axisFont, TextMuted, new RectangleF(frame.Left, plot.Top - 7, axisWidth - 8, 14), ContentAlignment.MiddleRight);
-        DrawText(graphics, FormatAxisSeconds(max), axisFont, TextMuted, new RectangleF(frame.Left, plot.Bottom - 7, axisWidth - 8, 14), ContentAlignment.MiddleRight);
-        DrawText(graphics, "10m", axisFont, TextMuted, new RectangleF(plot.Left, plot.Bottom + 3, 44, 14));
+        var max = Math.Max(1d, scale.MaxGapSeconds);
+        DrawText(graphics, FormatTrendWindow(TimeSpan.FromSeconds(graph.EndSeconds - graph.StartSeconds)), axisFont, TextMuted, new RectangleF(plot.Left, plot.Bottom + 3, 56, 14));
         DrawText(graphics, "now", axisFont, TextMuted, new RectangleF(plot.Right - 44, plot.Bottom + 3, 44, 14), ContentAlignment.MiddleRight);
+        DrawGapLeaderChangeMarkers(graphics, graph, plot);
 
         if (graph.Series.Count > 0)
         {
-            foreach (var (series, index) in graph.Series.Select((series, index) => (series, index)))
+            var endpointLabels = new List<DesignV2GapEndpointLabel>();
+            foreach (var (series, index) in graph.Series
+                .Select((series, index) => (series, index))
+                .OrderBy(item => GapDrawPriority(item.series, graph.ThreatCarIdx)))
             {
-                DrawGapSeries(graphics, plot, graph, series, index, max);
+                if (scale.IsFocusRelative && series.IsClassLeader)
+                {
+                    continue;
+                }
+
+                if (DrawGapSeries(graphics, plot, graph, series, index, max) is { } label)
+                {
+                    endpointLabels.Add(label);
+                }
+            }
+
+            if (graph.ActiveThreat is not null)
+            {
+                DrawGapThreatAnnotation(graphics, graph.ActiveThreat, plot);
+            }
+
+            DrawGapEndpointLabels(graphics, endpointLabels, plot, labelLane);
+            DrawGapDriverChangeMarkers(graphics, graph, plot, max);
+            DrawGapScaleLabels(graphics, scale, plot, axisBounds);
+            if (metricsTableWidth > 0f)
+            {
+                DrawGapFocusedMetricsTable(graphics, metricsTableRect, graph);
             }
 
             return;
@@ -2003,10 +2785,234 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             }
         }
 
+        DrawGapScaleLabels(graphics, scale, plot, axisBounds);
         graphics.DrawPath(linePen, path);
     }
 
-    private void DrawGapSeries(
+    private static float FocusedGapMetricsTableWidth(RectangleF frame)
+    {
+        var availableAfterTable = frame.Width
+            - 58f
+            - GapEndpointLabelLaneWidth
+            - GapMetricsTableGap
+            - GapMetricsTableWidth;
+        return availableAfterTable >= GapMetricsMinimumPlotWidth ? GapMetricsTableWidth : 0f;
+    }
+
+    private void DrawGapThreatAnnotation(Graphics graphics, DesignV2GapTrendMetric metric, RectangleF plot)
+    {
+        if (metric.Chaser is not { } chaser)
+        {
+            return;
+        }
+
+        var text = $"THREAT {chaser.Label} {FormatGapChangeSeconds(chaser.GainSeconds)} {metric.Label}";
+        using var font = FontOf(8.5f, FontStyle.Bold);
+        var size = graphics.MeasureString(text, font);
+        var x = Math.Min(Math.Max(plot.Left + 2f, plot.Left + plot.Width / 2f - size.Width / 2f), plot.Right - size.Width - 8f);
+        var y = plot.Bottom - GapThreatBadgeHeight - 6f;
+        var badge = new RectangleF(x - 4f, y - 1f, size.Width + 8f, GapThreatBadgeHeight);
+        FillRounded(graphics, badge, 3f, Color.FromArgb(214, 18, 24, 28), Color.FromArgb(97, Error));
+        DrawText(graphics, text, font, Error, new RectangleF(x, y, size.Width + 2f, GapThreatBadgeHeight - 1f));
+    }
+
+    private void DrawGapFocusedMetricsTable(Graphics graphics, RectangleF rect, DesignV2GraphBody graph)
+    {
+        FillRounded(graphics, rect, 3f, Color.FromArgb(188, 18, 24, 28), Color.FromArgb(38, TextPrimary));
+        using var titleFont = FontOf(10f, FontStyle.Bold);
+        using var headerFont = FontOf(8f);
+        using var rowFont = FontOf(9f);
+        DrawText(graphics, "TREND", titleFont, TextPrimary, new RectangleF(rect.Left + 8f, rect.Top + 4f, rect.Width - 16f, 14f));
+        DrawText(graphics, "win", headerFont, TextMuted, new RectangleF(rect.Left + 8f, rect.Top + 20f, 32f, 12f));
+        DrawText(graphics, "leader d", headerFont, TextMuted, new RectangleF(rect.Left + 43f, rect.Top + 20f, 58f, 12f));
+        DrawText(graphics, "threat", headerFont, TextMuted, new RectangleF(rect.Left + 104f, rect.Top + 20f, rect.Width - 110f, 12f));
+
+        for (var index = 0; index < graph.TrendMetrics.Count; index++)
+        {
+            var metric = graph.TrendMetrics[index];
+            var y = rect.Top + 38f + index * 22f;
+            DrawText(graphics, metric.Label, rowFont, TextSecondary, new RectangleF(rect.Left + 8f, y, 32f, 14f));
+            DrawText(
+                graphics,
+                GapMetricValueText(metric),
+                rowFont,
+                GapMetricValueColor(metric, graph.MetricDeadbandSeconds),
+                new RectangleF(rect.Left + 43f, y, 58f, 14f));
+            DrawText(
+                graphics,
+                GapMetricChaserText(metric),
+                rowFont,
+                GapMetricChaserColor(metric),
+                new RectangleF(rect.Left + 104f, y, rect.Width - 110f, 14f));
+        }
+    }
+
+    private static string GapMetricValueText(DesignV2GapTrendMetric metric)
+    {
+        return metric.State switch
+        {
+            "ready" when metric.FocusGapChangeSeconds is { } value => FormatGapChangeSeconds(value),
+            "warming" => string.IsNullOrWhiteSpace(metric.StateLabel) ? "--" : metric.StateLabel,
+            "leaderChanged" => "leader",
+            _ => "--"
+        };
+    }
+
+    private static Color GapMetricValueColor(DesignV2GapTrendMetric metric, double deadbandSeconds)
+    {
+        if (!string.Equals(metric.State, "ready", StringComparison.Ordinal) || metric.FocusGapChangeSeconds is not { } value)
+        {
+            return string.Equals(metric.State, "warming", StringComparison.Ordinal)
+                || string.Equals(metric.State, "leaderChanged", StringComparison.Ordinal)
+                ? TextMuted
+                : Color.FromArgb(184, TextMuted);
+        }
+
+        if (Math.Abs(value) < deadbandSeconds)
+        {
+            return TextSecondary;
+        }
+
+        return value > 0d ? Error : Green;
+    }
+
+    private static string GapMetricChaserText(DesignV2GapTrendMetric metric)
+    {
+        return metric.State switch
+        {
+            "ready" when metric.Chaser is { } chaser => $"{chaser.Label} {FormatGapChangeSeconds(chaser.GainSeconds)}",
+            "leaderChanged" => "reset",
+            _ => "--"
+        };
+    }
+
+    private static Color GapMetricChaserColor(DesignV2GapTrendMetric metric)
+    {
+        return string.Equals(metric.State, "ready", StringComparison.Ordinal) && metric.Chaser is not null
+            ? Error
+            : Color.FromArgb(184, TextMuted);
+    }
+
+    private void DrawGapEndpointLabels(
+        Graphics graphics,
+        IReadOnlyList<DesignV2GapEndpointLabel> labels,
+        RectangleF plot,
+        RectangleF labelLane)
+    {
+        if (labels.Count == 0)
+        {
+            return;
+        }
+
+        var pinnedLabels = labels.Where(label => ShouldPinGapEndpointLabel(label, plot)).ToArray();
+        var floatingLabels = labels.Where(label => !ShouldPinGapEndpointLabel(label, plot)).ToArray();
+        foreach (var label in floatingLabels.OrderBy(GapEndpointLabelDrawPriority).ThenBy(label => label.Point.Y))
+        {
+            var y = ClampGapEndpointLabelY(label.Point.Y - GapEndpointLabelHeight / 2f, plot);
+            DrawGapEndpointLabel(graphics, label, y, plot, plot, false);
+        }
+
+        DrawPinnedGapEndpointLabels(graphics, pinnedLabels, plot, labelLane);
+    }
+
+    private void DrawPinnedGapEndpointLabels(
+        Graphics graphics,
+        IReadOnlyList<DesignV2GapEndpointLabel> labels,
+        RectangleF plot,
+        RectangleF labelLane)
+    {
+        if (labels.Count == 0)
+        {
+            return;
+        }
+
+        var positioned = labels
+            .OrderBy(label => label.Point.Y)
+            .ThenBy(GapEndpointLabelDrawPriority)
+            .Select(label => new DesignV2PositionedGapEndpointLabel(
+                label,
+                ClampGapEndpointLabelY(label.Point.Y - GapEndpointLabelHeight / 2f, labelLane)))
+            .ToArray();
+
+        for (var index = 1; index < positioned.Length; index++)
+        {
+            var minimumY = positioned[index - 1].Y + GapEndpointLabelHeight + GapEndpointLabelGap;
+            if (positioned[index].Y < minimumY)
+            {
+                positioned[index] = positioned[index] with { Y = minimumY };
+            }
+        }
+
+        var maxY = labelLane.Bottom - GapEndpointLabelHeight - 1f;
+        if (positioned.Length > 0 && positioned[^1].Y > maxY)
+        {
+            var shift = positioned[^1].Y - maxY;
+            for (var index = 0; index < positioned.Length; index++)
+            {
+                positioned[index] = positioned[index] with
+                {
+                    Y = Math.Max(labelLane.Top + 1f, positioned[index].Y - shift)
+                };
+            }
+        }
+
+        foreach (var item in positioned.OrderBy(item => GapEndpointLabelDrawPriority(item.Label)))
+        {
+            DrawGapEndpointLabel(graphics, item.Label, item.Y, plot, labelLane, true);
+        }
+    }
+
+    private void DrawGapEndpointLabel(
+        Graphics graphics,
+        DesignV2GapEndpointLabel label,
+        float y,
+        RectangleF plot,
+        RectangleF labelBounds,
+        bool pinnedToLane)
+    {
+        using var font = FontOf(label.IsReference ? 10f : 9f);
+        var size = graphics.MeasureString(label.Text, font);
+        var x = pinnedToLane
+            ? Math.Min(labelBounds.Right - size.Width - 1f, Math.Max(labelBounds.Left + 4f, label.Point.X + 8f))
+            : Math.Min(labelBounds.Right - size.Width - 2f, label.Point.X + 6f);
+        var background = new RectangleF(x - 2f, y, size.Width + 4f, GapEndpointLabelHeight);
+        if (pinnedToLane || Math.Abs(y + GapEndpointLabelHeight / 2f - label.Point.Y) > 3f)
+        {
+            using var connector = new Pen(Color.FromArgb(82, label.Color), 1f);
+            graphics.DrawLine(connector, label.Point.X + 3f, label.Point.Y, background.Left, y + GapEndpointLabelHeight / 2f);
+        }
+
+        using var backgroundBrush = new SolidBrush(Color.FromArgb(label.IsReference ? 188 : 150, 18, 30, 42));
+        graphics.FillRectangle(backgroundBrush, background);
+        DrawText(
+            graphics,
+            label.Text,
+            font,
+            WithAlpha(label.Color, label.IsReference ? 1d : 0.78d),
+            new RectangleF(x, y - 1f, size.Width + 2f, GapEndpointLabelHeight + 2f));
+    }
+
+    private static bool ShouldPinGapEndpointLabel(DesignV2GapEndpointLabel label, RectangleF plot)
+    {
+        return label.Point.X >= plot.Right - GapEndpointLabelPinThreshold;
+    }
+
+    private static float ClampGapEndpointLabelY(float y, RectangleF bounds)
+    {
+        return Math.Min(Math.Max(y, bounds.Top + 1f), bounds.Bottom - GapEndpointLabelHeight - 1f);
+    }
+
+    private static int GapEndpointLabelDrawPriority(DesignV2GapEndpointLabel label)
+    {
+        if (label.IsReference)
+        {
+            return 2;
+        }
+
+        return label.IsClassLeader ? 1 : 0;
+    }
+
+    private DesignV2GapEndpointLabel? DrawGapSeries(
         Graphics graphics,
         RectangleF plot,
         DesignV2GraphBody graph,
@@ -2014,13 +3020,20 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         int seriesIndex,
         double maxGapSeconds)
     {
-        var color = GapSeriesColor(series, seriesIndex);
+        var color = WithAlpha(
+            GapSeriesColor(series, seriesIndex, graph.ThreatCarIdx),
+            series.Alpha * GapSeriesAlphaMultiplier(series, graph.ThreatCarIdx));
         using var pen = new Pen(color, series.IsReference ? 2.6f : series.IsClassLeader ? 1.8f : 1.25f)
         {
             LineJoin = LineJoin.Round,
             StartCap = LineCap.Round,
             EndCap = LineCap.Round
         };
+        if (series.IsStale || series.IsStickyExit)
+        {
+            pen.DashStyle = DashStyle.Dash;
+        }
+
         using var path = new GraphicsPath();
         var hasPoint = false;
         foreach (var point in series.Points.OrderBy(point => point.AxisSeconds))
@@ -2041,22 +3054,206 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         var latest = series.Points.OrderBy(point => point.AxisSeconds).LastOrDefault();
         if (latest is null)
         {
-            return;
+            return null;
         }
 
-        using var labelFont = FontOf(8.8f, FontStyle.Bold);
         var latestPoint = GapGraphPoint(latest, graph, plot, maxGapSeconds);
         var label = series.IsClassLeader
             ? "P1"
             : series.ClassPosition is { } position
                 ? $"P{position}"
                 : $"#{series.CarIdx}";
+        if (series.IsStale)
+        {
+            using var markerPen = new Pen(color, 1.2f);
+            graphics.DrawLine(markerPen, latestPoint.X - 4f, latestPoint.Y - 4f, latestPoint.X + 4f, latestPoint.Y + 4f);
+            graphics.DrawLine(markerPen, latestPoint.X - 4f, latestPoint.Y + 4f, latestPoint.X + 4f, latestPoint.Y - 4f);
+        }
+
+        return new DesignV2GapEndpointLabel(label, latestPoint, color, series.IsReference, series.IsClassLeader);
+    }
+
+    private void DrawGapGridLines(
+        Graphics graphics,
+        DesignV2GraphBody graph,
+        DesignV2GapScale scale,
+        RectangleF plot,
+        RectangleF axisBounds)
+    {
+        using var axisPen = new Pen(Color.FromArgb(70, TextMuted), 1);
+        graphics.DrawLine(axisPen, plot.Left, plot.Top, plot.Right, plot.Top);
+        graphics.DrawLine(axisPen, plot.Left, plot.Bottom, plot.Right, plot.Bottom);
+
+        if (scale.IsFocusRelative)
+        {
+            DrawGapFocusGridLines(graphics, scale, plot, axisBounds);
+            return;
+        }
+
+        using var gridPen = new Pen(Color.FromArgb(46, TextMuted), 1);
+        using var gridFont = FontOf(7.5f);
+        var step = NiceGridStep(scale.MaxGapSeconds / 4d);
+        for (var value = step; value < scale.MaxGapSeconds; value += step)
+        {
+            var y = GapToY(value, scale.MaxGapSeconds, plot);
+            graphics.DrawLine(gridPen, plot.Left, y, plot.Right, y);
+            DrawText(
+                graphics,
+                FormatAxisSeconds(value),
+                gridFont,
+                TextMuted,
+                new RectangleF(axisBounds.Left, y - 8f, axisBounds.Width, 16f),
+                ContentAlignment.MiddleRight);
+        }
+
+        if (graph.LapReferenceSeconds is not { } lapSeconds || lapSeconds < 20d || scale.MaxGapSeconds < lapSeconds * 0.85d)
+        {
+            return;
+        }
+
+        using var lapPen = new Pen(Color.FromArgb(130, TextPrimary), 1.2f);
+        for (var lap = 1; lap * lapSeconds < scale.MaxGapSeconds; lap++)
+        {
+            var y = GapToY(lap * lapSeconds, scale.MaxGapSeconds, plot);
+            graphics.DrawLine(lapPen, plot.Left, y, plot.Right, y);
+            DrawText(
+                graphics,
+                $"+{lap} lap",
+                gridFont,
+                TextPrimary,
+                new RectangleF(axisBounds.Left, y - 8f, axisBounds.Width, 16f),
+                ContentAlignment.MiddleRight);
+        }
+    }
+
+    private void DrawGapFocusGridLines(Graphics graphics, DesignV2GapScale scale, RectangleF plot, RectangleF axisBounds)
+    {
+        using var gridPen = new Pen(Color.FromArgb(46, TextMuted), 1);
+        using var referencePen = new Pen(Color.FromArgb(110, Green), 1.2f);
+        using var gridFont = FontOf(7.5f);
+        var referenceY = GapFocusReferenceY(plot);
+        graphics.DrawLine(referencePen, plot.Left, referenceY, plot.Right, referenceY);
         DrawText(
             graphics,
-            label,
-            labelFont,
-            color,
-            new RectangleF(Math.Min(plot.Right - 34, latestPoint.X + 4), latestPoint.Y - 8, 34, 16));
+            "focus",
+            gridFont,
+            Green,
+            new RectangleF(axisBounds.Left, referenceY - 8f, axisBounds.Width, 16f),
+            ContentAlignment.MiddleRight);
+
+        var aheadStep = NiceGridStep(scale.AheadSeconds / 2d);
+        for (var value = aheadStep; value < scale.AheadSeconds; value += aheadStep)
+        {
+            var y = GapDeltaToY(-value, scale, plot);
+            graphics.DrawLine(gridPen, plot.Left, y, plot.Right, y);
+            DrawText(
+                graphics,
+                FormatDeltaSeconds(-value),
+                gridFont,
+                TextMuted,
+                new RectangleF(axisBounds.Left, y - 8f, axisBounds.Width, 16f),
+                ContentAlignment.MiddleRight);
+        }
+
+        var behindStep = NiceGridStep(scale.BehindSeconds / 2d);
+        for (var value = behindStep; value < scale.BehindSeconds; value += behindStep)
+        {
+            var y = GapDeltaToY(value, scale, plot);
+            graphics.DrawLine(gridPen, plot.Left, y, plot.Right, y);
+            DrawText(
+                graphics,
+                FormatDeltaSeconds(value),
+                gridFont,
+                TextMuted,
+                new RectangleF(axisBounds.Left, y - 8f, axisBounds.Width, 16f),
+                ContentAlignment.MiddleRight);
+        }
+    }
+
+    private void DrawGapLapIntervalLines(Graphics graphics, DesignV2GraphBody graph, RectangleF plot)
+    {
+        if (graph.LapReferenceSeconds is not { } lapSeconds || lapSeconds < 20d)
+        {
+            return;
+        }
+
+        var intervalSeconds = lapSeconds * 5d;
+        var durationSeconds = graph.EndSeconds - graph.StartSeconds;
+        if (durationSeconds < intervalSeconds * 0.75d)
+        {
+            return;
+        }
+
+        using var linePen = new Pen(Color.FromArgb(34, TextPrimary), 1f);
+        using var labelFont = FontOf(7f);
+        for (var elapsed = intervalSeconds; elapsed < durationSeconds; elapsed += intervalSeconds)
+        {
+            var x = plot.Left + (float)(elapsed / durationSeconds * plot.Width);
+            graphics.DrawLine(linePen, x, plot.Top, x, plot.Bottom);
+            DrawText(
+                graphics,
+                $"{elapsed / lapSeconds:0}L",
+                labelFont,
+                TextMuted,
+                new RectangleF(x - 18f, plot.Bottom + 1f, 36f, 12f),
+                ContentAlignment.MiddleCenter);
+        }
+    }
+
+    private void DrawGapScaleLabels(Graphics graphics, DesignV2GapScale scale, RectangleF plot, RectangleF axisBounds)
+    {
+        using var font = FontOf(9.5f);
+        DrawText(graphics, scale.IsFocusRelative ? "local" : "leader", font, TextMuted, new RectangleF(axisBounds.Left, plot.Top - 7, axisBounds.Width, 14), ContentAlignment.MiddleRight);
+        if (scale.IsFocusRelative)
+        {
+            DrawText(graphics, FormatDeltaSeconds(-scale.AheadSeconds), font, TextMuted, new RectangleF(axisBounds.Left, plot.Top + GapFocusScaleTopPadding - 8f, axisBounds.Width, 16f), ContentAlignment.MiddleRight);
+            DrawText(graphics, FormatDeltaSeconds(scale.BehindSeconds), font, TextMuted, new RectangleF(axisBounds.Left, plot.Bottom - GapFocusScaleBottomPadding - 8f, axisBounds.Width, 16f), ContentAlignment.MiddleRight);
+            return;
+        }
+
+        DrawText(graphics, FormatAxisSeconds(scale.MaxGapSeconds), font, TextMuted, new RectangleF(axisBounds.Left, plot.Bottom - 7, axisBounds.Width, 14), ContentAlignment.MiddleRight);
+    }
+
+    private void DrawGapLeaderChangeMarkers(Graphics graphics, DesignV2GraphBody graph, RectangleF plot)
+    {
+        if (graph.LeaderChanges.Count == 0)
+        {
+            return;
+        }
+
+        var domain = Math.Max(1d, graph.EndSeconds - graph.StartSeconds);
+        using var pen = new Pen(Color.FromArgb(115, TextPrimary), 1f)
+        {
+            DashStyle = DashStyle.Dot
+        };
+        using var font = FontOf(7.5f, FontStyle.Bold);
+        foreach (var marker in graph.LeaderChanges)
+        {
+            var x = plot.Left + (float)Math.Clamp((marker.AxisSeconds - graph.StartSeconds) / domain, 0d, 1d) * plot.Width;
+            graphics.DrawLine(pen, x, plot.Top, x, plot.Bottom);
+            DrawText(graphics, "leader", font, TextMuted, new RectangleF(x + 4f, plot.Top + 4f, 42f, 12f));
+        }
+    }
+
+    private void DrawGapDriverChangeMarkers(Graphics graphics, DesignV2GraphBody graph, RectangleF plot, double maxGapSeconds)
+    {
+        if (graph.DriverChanges.Count == 0)
+        {
+            return;
+        }
+
+        using var font = FontOf(7.5f, FontStyle.Bold);
+        foreach (var marker in graph.DriverChanges)
+        {
+            var point = GapGraphPoint(marker.AxisSeconds, marker.GapSeconds, graph, plot, maxGapSeconds);
+            var color = marker.IsReference ? Green : TextSecondary;
+            using var linePen = new Pen(Color.FromArgb(170, color), 1.2f);
+            using var fill = new SolidBrush(Surface);
+            graphics.DrawLine(linePen, point.X, point.Y - 8f, point.X, point.Y + 8f);
+            graphics.FillEllipse(fill, point.X - 4f, point.Y - 4f, 8f, 8f);
+            graphics.DrawEllipse(linePen, point.X - 4f, point.Y - 4f, 8f, 8f);
+            DrawText(graphics, marker.Label, font, color, new RectangleF(point.X + 6f, point.Y - 16f, 28f, 12f));
+        }
     }
 
     internal static PointF GapGraphPoint(
@@ -2065,14 +3262,70 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         RectangleF plot,
         double maxGapSeconds)
     {
+        return GapGraphPoint(point.AxisSeconds, point.GapSeconds, graph, plot, maxGapSeconds);
+    }
+
+    private static PointF GapGraphPoint(
+        double axisSeconds,
+        double gapSeconds,
+        DesignV2GraphBody graph,
+        RectangleF plot,
+        double maxGapSeconds)
+    {
         var domain = Math.Max(1d, graph.EndSeconds - graph.StartSeconds);
-        var x = plot.Left + (float)Math.Clamp((point.AxisSeconds - graph.StartSeconds) / domain, 0d, 1d) * plot.Width;
-        var y = plot.Top + (float)Math.Clamp(point.GapSeconds / Math.Max(1d, maxGapSeconds), 0d, 1d) * plot.Height;
+        var x = plot.Left + (float)Math.Clamp((axisSeconds - graph.StartSeconds) / domain, 0d, 1d) * plot.Width;
+        var scale = graph.Scale ?? DesignV2GapScale.Leader(maxGapSeconds);
+        var y = scale.IsFocusRelative
+            ? GapDeltaToY(gapSeconds - GapReferenceAt(scale.ReferencePoints, axisSeconds), scale, plot)
+            : GapToY(gapSeconds, Math.Max(1d, maxGapSeconds), plot);
         return new PointF(x, y);
     }
 
-    private static Color GapSeriesColor(DesignV2GapSeries series, int index)
+    private static float GapToY(double gapSeconds, double maxGapSeconds, RectangleF plot)
     {
+        return plot.Top + (float)(Math.Clamp(gapSeconds / Math.Max(1d, maxGapSeconds), 0d, 1d) * plot.Height);
+    }
+
+    private static float GapDeltaToY(double deltaSeconds, DesignV2GapScale scale, RectangleF plot)
+    {
+        var referenceY = GapFocusReferenceY(plot);
+        if (deltaSeconds < 0d)
+        {
+            var ratio = Math.Clamp(Math.Abs(deltaSeconds) / Math.Max(1d, scale.AheadSeconds), 0d, 1d);
+            return referenceY - (float)(ratio * Math.Max(1f, referenceY - (plot.Top + GapFocusScaleTopPadding)));
+        }
+
+        var behindRatio = Math.Clamp(deltaSeconds / Math.Max(1d, scale.BehindSeconds), 0d, 1d);
+        return referenceY + (float)(behindRatio * Math.Max(1f, plot.Bottom - GapFocusScaleBottomPadding - referenceY));
+    }
+
+    private static float GapFocusReferenceY(RectangleF plot)
+    {
+        return plot.Top + plot.Height * GapFocusScaleReferenceRatio;
+    }
+
+    private static int GapDrawPriority(DesignV2GapSeries series, int? threatCarIdx)
+    {
+        if (series.IsReference)
+        {
+            return 3;
+        }
+
+        if (series.IsClassLeader)
+        {
+            return 2;
+        }
+
+        return series.CarIdx == threatCarIdx ? 1 : 0;
+    }
+
+    private static Color GapSeriesColor(DesignV2GapSeries series, int index, int? threatCarIdx)
+    {
+        if (series.CarIdx == threatCarIdx)
+        {
+            return Error;
+        }
+
         if (series.IsReference)
         {
             return Cyan;
@@ -2083,12 +3336,19 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             return TextPrimary;
         }
 
-        return index % 3 switch
+        return (index % 3) switch
         {
             0 => Amber,
             1 => Green,
             _ => Magenta
         };
+    }
+
+    private static double GapSeriesAlphaMultiplier(DesignV2GapSeries series, int? threatCarIdx)
+    {
+        return series.IsClassLeader || series.IsReference || series.CarIdx == threatCarIdx
+            ? 1d
+            : 0.48d;
     }
 
     private static void DrawGapWeatherBands(Graphics graphics, DesignV2GraphBody graph, RectangleF plot)
@@ -3516,6 +4776,39 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             : $"+{Math.Floor(seconds / 60d):0}:{seconds % 60d:00.0}";
     }
 
+    private static string FormatDeltaSeconds(double seconds)
+    {
+        if (!IsFinite(seconds))
+        {
+            return "--";
+        }
+
+        var sign = seconds > 0d ? "+" : seconds < 0d ? "-" : string.Empty;
+        var absolute = Math.Abs(seconds);
+        return absolute >= 60d
+            ? $"{sign}{Math.Floor(absolute / 60d):0}:{absolute % 60d:00.0}"
+            : $"{sign}{absolute:0.0}s";
+    }
+
+    private static string FormatTrendWindow(TimeSpan trendWindow)
+    {
+        return trendWindow.TotalHours >= 1d
+            ? $"{trendWindow.TotalHours:0.#}h"
+            : $"{trendWindow.TotalMinutes:0}m";
+    }
+
+    private static string FormatGapChangeSeconds(double seconds)
+    {
+        if (!IsFinite(seconds))
+        {
+            return "--";
+        }
+
+        return Math.Abs(seconds) < 0.05d
+            ? "0.0"
+            : $"{(seconds > 0d ? "+" : string.Empty)}{seconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)}";
+    }
+
     private static double NiceCeiling(double value)
     {
         if (!IsFinite(value) || value <= 0d)
@@ -3531,6 +4824,26 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             : normalized <= 5d ? 5d
             : 10d;
         return nice * baseValue;
+    }
+
+    private static double NiceGridStep(double value)
+    {
+        if (!IsFinite(value) || value <= 0.25d)
+        {
+            return 0.25d;
+        }
+
+        var magnitude = Math.Pow(10d, Math.Floor(Math.Log10(value)));
+        var normalized = value / magnitude;
+        foreach (var step in new[] { 1d, 2d, 2.5d, 5d, 10d })
+        {
+            if (normalized <= step)
+            {
+                return step * magnitude;
+            }
+        }
+
+        return 10d * magnitude;
     }
 
     private static string FormatPercent(double? value)
@@ -3556,6 +4869,24 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         return angleRadians is { } value && IsFinite(value)
             ? $"{(value * 180d / Math.PI).ToString("+0;-0;0", System.Globalization.CultureInfo.InvariantCulture)} deg"
             : "--";
+    }
+
+    private static double? FirstValidFuelLevel(params double?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (value is { } fuelLevel && IsFinite(fuelLevel) && fuelLevel > 0d)
+            {
+                return fuelLevel;
+            }
+        }
+
+        return null;
+    }
+
+    private static string DesignV2GapCarShortLabel(DesignV2GapCarRenderState state)
+    {
+        return $"#{state.CarIdx}";
     }
 
     private Font FontOf(float size, FontStyle style = FontStyle.Regular)
@@ -3619,6 +4950,15 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             (panel.R * panelWeight + accent.R * accentWeight) / total,
             (panel.G * panelWeight + accent.G * accentWeight) / total,
             (panel.B * panelWeight + accent.B * accentWeight) / total);
+    }
+
+    private static Color WithAlpha(Color color, double alpha)
+    {
+        return Color.FromArgb(
+            (int)Math.Clamp(color.A * alpha, 0d, 255d),
+            color.R,
+            color.G,
+            color.B);
     }
 
     private static bool TryParseHexColor(string? value, out Color color)
@@ -3704,15 +5044,70 @@ internal sealed record DesignV2GraphBody(
     IReadOnlyList<double> Points,
     IReadOnlyList<DesignV2GapSeries> Series,
     IReadOnlyList<DesignV2GapWeatherPoint> Weather,
+    IReadOnlyList<DesignV2GapLeaderChangeMarker> LeaderChanges,
+    IReadOnlyList<DesignV2GapDriverChangeMarker> DriverChanges,
     double StartSeconds,
     double EndSeconds,
     double? MaxGapSeconds,
     double? LapReferenceSeconds,
-    int SelectedSeriesCount) : DesignV2Body
+    int SelectedSeriesCount,
+    IReadOnlyList<DesignV2GapTrendMetric> TrendMetrics,
+    DesignV2GapTrendMetric? ActiveThreat,
+    int? ThreatCarIdx,
+    double MetricDeadbandSeconds,
+    DesignV2GapScale? Scale = null) : DesignV2Body
 {
     public DesignV2GraphBody(IReadOnlyList<double> points)
-        : this(points, [], [], 0d, 0d, null, null, 0)
+        : this(points, [], [], [], [], 0d, 0d, null, null, 0, [], null, null, 0d)
     {
+    }
+}
+
+internal sealed record DesignV2GapTrendMetric(
+    string Label,
+    double? FocusGapChangeSeconds,
+    DesignV2BehindGainMetric? Chaser,
+    string State,
+    string? StateLabel);
+
+internal sealed record DesignV2BehindGainMetric(
+    int CarIdx,
+    string Label,
+    double GainSeconds);
+
+internal sealed record DesignV2GapScale(
+    double MaxGapSeconds,
+    bool IsFocusRelative,
+    double AheadSeconds,
+    double BehindSeconds,
+    IReadOnlyList<DesignV2GapTrendPoint> ReferencePoints,
+    double LatestReferenceGapSeconds)
+{
+    public static DesignV2GapScale Leader(double maxGapSeconds)
+    {
+        return new DesignV2GapScale(
+            MaxGapSeconds: maxGapSeconds,
+            IsFocusRelative: false,
+            AheadSeconds: 0d,
+            BehindSeconds: 0d,
+            ReferencePoints: [],
+            LatestReferenceGapSeconds: 0d);
+    }
+
+    public static DesignV2GapScale FocusRelative(
+        double maxGapSeconds,
+        double aheadSeconds,
+        double behindSeconds,
+        IReadOnlyList<DesignV2GapTrendPoint> referencePoints,
+        double latestReferenceGapSeconds)
+    {
+        return new DesignV2GapScale(
+            MaxGapSeconds: maxGapSeconds,
+            IsFocusRelative: true,
+            AheadSeconds: aheadSeconds,
+            BehindSeconds: behindSeconds,
+            ReferencePoints: referencePoints,
+            LatestReferenceGapSeconds: latestReferenceGapSeconds);
     }
 }
 
@@ -3721,6 +5116,9 @@ internal sealed record DesignV2GapSeries(
     bool IsReference,
     bool IsClassLeader,
     int? ClassPosition,
+    double Alpha,
+    bool IsStickyExit,
+    bool IsStale,
     IReadOnlyList<DesignV2GapTrendPoint> Points);
 
 internal sealed record DesignV2GapTrendPoint(
@@ -3736,6 +5134,72 @@ internal sealed record DesignV2GapTrendPoint(
 internal sealed record DesignV2GapWeatherPoint(
     double AxisSeconds,
     DesignV2GapWeatherCondition Condition);
+
+internal sealed record DesignV2GapLeaderChangeMarker(
+    DateTimeOffset TimestampUtc,
+    double AxisSeconds,
+    int PreviousLeaderCarIdx,
+    int NewLeaderCarIdx);
+
+internal sealed record DesignV2GapDriverChangeMarker(
+    DateTimeOffset TimestampUtc,
+    double AxisSeconds,
+    int CarIdx,
+    double GapSeconds,
+    bool IsReference,
+    string Label);
+
+internal sealed record DesignV2GapEndpointLabel(
+    string Text,
+    PointF Point,
+    Color Color,
+    bool IsReference,
+    bool IsClassLeader);
+
+internal sealed record DesignV2PositionedGapEndpointLabel(
+    DesignV2GapEndpointLabel Label,
+    float Y);
+
+internal sealed record DesignV2GapSeriesSelection(
+    DesignV2GapCarRenderState State,
+    double Alpha,
+    bool IsStickyExit,
+    bool IsStale,
+    double DrawStartSeconds);
+
+internal sealed record DesignV2GapDriverIdentity(
+    int CarIdx,
+    string DriverKey,
+    string ShortLabel)
+{
+    public bool HasSameDriver(DesignV2GapDriverIdentity other)
+    {
+        return string.Equals(DriverKey, other.DriverKey, StringComparison.Ordinal);
+    }
+}
+
+internal sealed class DesignV2GapCarRenderState(int carIdx)
+{
+    public int CarIdx { get; } = carIdx;
+
+    public double LastSeenAxisSeconds { get; set; }
+
+    public double LastGapSeconds { get; set; }
+
+    public double? LastDesiredAxisSeconds { get; set; }
+
+    public double? VisibleSinceAxisSeconds { get; set; }
+
+    public bool IsCurrentlyDesired { get; set; }
+
+    public bool IsReference { get; set; }
+
+    public bool IsClassLeader { get; set; }
+
+    public int? ClassPosition { get; set; }
+
+    public double? DeltaSecondsToReference { get; set; }
+}
 
 internal sealed record DesignV2GapReferenceContext(int? CarIdx, int? CarClass);
 

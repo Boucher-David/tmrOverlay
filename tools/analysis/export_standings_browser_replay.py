@@ -24,6 +24,7 @@ from extract_live_telemetry_fixture_corpus import (  # noqa: E402
     FRAME_HEADER,
     SCALAR_FIELDS,
     all_timing_cars,
+    array_value,
     classify_session_kind,
     current_session,
     first_number,
@@ -62,19 +63,39 @@ REPLAY_SCALAR_FIELDS = list(
             "SteeringWheelAngle",
             "BrakeABSactive",
             "Gear",
+            "RPM",
+            "EngineWarnings",
+            "PlayerTireCompound",
             "FuelLevel",
             "FuelLevelPct",
             "FuelUsePerHour",
+            "Voltage",
+            "WaterTemp",
+            "FuelPress",
+            "OilTemp",
+            "OilPress",
             "AirTemp",
             "TrackTempCrew",
             "TrackTemp",
             "TrackWetness",
             "WeatherDeclaredWet",
+            "Skies",
+            "Precipitation",
+            "WindVel",
+            "WindDir",
+            "RelativeHumidity",
+            "FogLevel",
+            "PlayerCarPitSvStatus",
+            "TireSetsUsed",
+            "FastRepairUsed",
         ]
     )
 )
 
+REPLAY_ARRAY_FIELDS = list(dict.fromkeys([*ARRAY_FIELDS, "CarIdxFastRepairsUsed"]))
+
 ON_TRACK_SURFACE = 3
+GAP_TO_LEADER_MISSING_SEGMENT_THRESHOLD_SECONDS = 10.0
 
 
 def read_json(path: Path) -> Any:
@@ -88,6 +109,17 @@ def write_json(path: Path, document: Any) -> None:
 
 def finite(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(float(value))
+
+
+def compact_number(value: Any, digits: int = 3) -> float | int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if not finite(value):
+        return None
+    rounded = round(float(value), digits)
+    return 0.0 if rounded == 0 else rounded
 
 
 def signed_seconds(value: float | None, digits: int = 1) -> str:
@@ -194,6 +226,28 @@ def class_color(driver: dict[str, Any] | None) -> str | None:
     return f"#{text}" if len(text) == 6 else None
 
 
+def track_wetness_label(value: Any) -> str | None:
+    if not isinstance(value, int):
+        return None
+    if value <= 1:
+        return "dry"
+    if value <= 3:
+        return "damp"
+    return "wet"
+
+
+def skies_label(value: Any, session_data: dict[str, Any]) -> str | None:
+    if isinstance(value, int):
+        return {
+            0: "clear",
+            1: "partly cloudy",
+            2: "mostly cloudy",
+            3: "overcast",
+        }.get(value, f"skies {value}")
+    weekend_skies = str(((session_data.get("WeekendInfo") or {}).get("TrackSkies") or "")).strip()
+    return weekend_skies or None
+
+
 def frame_indexes(frame_count: int, max_frames: int, stride: int | None, start_frame: int) -> list[int]:
     if frame_count <= 0:
         return []
@@ -237,7 +291,7 @@ def read_capture_frame(
 def extract_raw(schema: dict[str, dict[str, Any]], payload: bytes) -> tuple[dict[str, Any], dict[str, list[Any]]]:
     return (
         {name: unpack_value(payload, schema.get(name)) for name in REPLAY_SCALAR_FIELDS},
-        {name: unpack_array(payload, schema.get(name)) for name in ARRAY_FIELDS},
+        {name: unpack_array(payload, schema.get(name)) for name in REPLAY_ARRAY_FIELDS},
     )
 
 
@@ -617,13 +671,36 @@ def build_live_snapshot(
             },
             "trackMap": {"hasData": True, "quality": "capture-derived", "sectors": []},
             "fuelPit": {
-                "hasData": fuel_level is not None or fuel_pct is not None or on_pit_road,
+                "hasData": any(raw.get(name) is not None for name in (
+                    "FuelLevel",
+                    "FuelLevelPct",
+                    "FuelUsePerHour",
+                    "PitSvFlags",
+                    "PitSvFuel",
+                    "PitRepairLeft",
+                    "PitOptRepairLeft",
+                    "PlayerCarPitSvStatus",
+                    "TireSetsUsed",
+                    "FastRepairUsed",
+                )) or on_pit_road,
                 "quality": "capture-derived",
                 "fuel": {
                     "fuelLevelLiters": fuel_level,
                     "fuelLevelPercent": fuel_pct,
                     "fuelUsePerHourKg": positive(raw.get("FuelUsePerHour")),
                 },
+                "onPitRoad": on_pit_road,
+                "pitstopActive": raw.get("PitstopActive") is True,
+                "playerCarInPitStall": raw.get("PlayerCarInPitStall") is True,
+                "teamOnPitRoad": array_value(values, "CarIdxOnPitRoad", player_idx) if player_idx is not None else None,
+                "pitServiceStatus": raw.get("PlayerCarPitSvStatus") if isinstance(raw.get("PlayerCarPitSvStatus"), int) else None,
+                "pitServiceFlags": raw.get("PitSvFlags") if isinstance(raw.get("PitSvFlags"), int) else None,
+                "pitServiceFuelLiters": positive(raw.get("PitSvFuel")),
+                "pitRepairLeftSeconds": valid_non_negative(raw.get("PitRepairLeft")),
+                "pitOptRepairLeftSeconds": valid_non_negative(raw.get("PitOptRepairLeft")),
+                "tireSetsUsed": raw.get("TireSetsUsed") if isinstance(raw.get("TireSetsUsed"), int) else None,
+                "fastRepairUsed": raw.get("FastRepairUsed") if isinstance(raw.get("FastRepairUsed"), int) else None,
+                "teamFastRepairsUsed": array_value(values, "CarIdxFastRepairsUsed", player_idx) if player_idx is not None else None,
             },
             "raceProgress": {
                 "hasData": reference is not None,
@@ -636,23 +713,42 @@ def build_live_snapshot(
             },
             "raceProjection": {"hasData": reference is not None, "quality": "capture-derived" if reference is not None else "unavailable"},
             "weather": {
-                "hasData": any(raw.get(name) is not None for name in ("AirTemp", "TrackTempCrew", "TrackTemp", "TrackWetness", "WeatherDeclaredWet")),
+                "hasData": any(raw.get(name) is not None for name in ("AirTemp", "TrackTempCrew", "TrackTemp", "TrackWetness", "WeatherDeclaredWet", "Skies", "Precipitation", "WindVel", "WindDir", "RelativeHumidity", "FogLevel")),
                 "quality": "capture-derived",
                 "airTempC": raw.get("AirTemp") if finite(raw.get("AirTemp")) else None,
                 "trackTempCrewC": raw.get("TrackTempCrew") if finite(raw.get("TrackTempCrew")) else raw.get("TrackTemp") if finite(raw.get("TrackTemp")) else None,
                 "trackWetness": track_wetness,
                 "weatherDeclaredWet": raw.get("WeatherDeclaredWet") if isinstance(raw.get("WeatherDeclaredWet"), bool) else None,
+                "trackWetnessLabel": track_wetness_label(track_wetness),
+                "skies": raw.get("Skies") if isinstance(raw.get("Skies"), int) else None,
+                "skiesLabel": skies_label(raw.get("Skies"), session_data),
+                "precipitationPercent": valid_non_negative(raw.get("Precipitation")),
+                "windVelocityMetersPerSecond": valid_non_negative(raw.get("WindVel")),
+                "windDirectionRadians": raw.get("WindDir") if finite(raw.get("WindDir")) else None,
+                "relativeHumidityPercent": valid_non_negative(raw.get("RelativeHumidity")),
+                "fogLevelPercent": valid_non_negative(raw.get("FogLevel")),
+                "rubberState": str((selected or {}).get("SessionTrackRubberState") or "").strip() or None,
             },
             "inputs": {
-                "hasData": any(raw.get(name) is not None for name in ("Throttle", "Brake", "Clutch", "ClutchRaw", "SteeringWheelAngle", "Gear", "Speed")),
+                "hasData": any(raw.get(name) is not None for name in ("Throttle", "Brake", "Clutch", "ClutchRaw", "SteeringWheelAngle", "Gear", "Speed", "RPM", "EngineWarnings", "Voltage", "WaterTemp", "FuelPress", "OilTemp", "OilPress")),
                 "quality": "capture-derived",
+                "speedMetersPerSecond": raw.get("Speed") if finite(raw.get("Speed")) else None,
+                "playerTireCompound": raw.get("PlayerTireCompound") if isinstance(raw.get("PlayerTireCompound"), int) else None,
+                "hasPedalInputs": any(unit_interval(raw.get(name)) is not None for name in ("Throttle", "Brake", "Clutch", "ClutchRaw")),
+                "hasSteeringInput": finite(raw.get("SteeringWheelAngle")),
+                "gear": raw.get("Gear") if isinstance(raw.get("Gear"), int) else None,
+                "rpm": raw.get("RPM") if finite(raw.get("RPM")) else None,
                 "throttle": unit_interval(raw.get("Throttle")),
                 "brake": unit_interval(raw.get("Brake")),
                 "clutch": clutch,
                 "steeringWheelAngle": raw.get("SteeringWheelAngle") if finite(raw.get("SteeringWheelAngle")) else None,
-                "gear": raw.get("Gear") if isinstance(raw.get("Gear"), int) else None,
-                "speedMetersPerSecond": raw.get("Speed") if finite(raw.get("Speed")) else None,
                 "brakeAbsActive": raw.get("BrakeABSactive") if isinstance(raw.get("BrakeABSactive"), bool) else None,
+                "engineWarnings": raw.get("EngineWarnings") if isinstance(raw.get("EngineWarnings"), int) else None,
+                "voltage": raw.get("Voltage") if finite(raw.get("Voltage")) else None,
+                "waterTempC": raw.get("WaterTemp") if finite(raw.get("WaterTemp")) else None,
+                "fuelPressureBar": raw.get("FuelPress") if finite(raw.get("FuelPress")) else None,
+                "oilTempC": raw.get("OilTemp") if finite(raw.get("OilTemp")) else None,
+                "oilPressureBar": raw.get("OilPress") if finite(raw.get("OilPress")) else None,
             },
         },
     }
@@ -1315,6 +1411,107 @@ def build_frame(
     return replay_frame
 
 
+def annotate_source_cadence(frames: list[dict[str, Any]]) -> dict[str, Any]:
+    if not frames:
+        return {
+            "basis": "raw-capture frame header sessionTime",
+            "selectedFrameCount": 0,
+            "gapToLeaderMissingSegmentThresholdSeconds": GAP_TO_LEADER_MISSING_SEGMENT_THRESHOLD_SECONDS,
+            "denseForGapToLeader": False,
+        }
+
+    first_session_time = first_finite(frame.get("sessionTimeSeconds") for frame in frames)
+    first_captured_ms = first_finite(frame.get("capturedUnixMs") for frame in frames)
+    previous_frame: dict[str, Any] | None = None
+    session_deltas: list[float] = []
+    captured_deltas: list[float] = []
+    frame_index_deltas: list[int] = []
+    non_monotonic_session_time = False
+
+    for frame in frames:
+        session_time = frame.get("sessionTimeSeconds")
+        captured_ms = frame.get("capturedUnixMs")
+        if first_session_time is not None and finite(session_time):
+            frame["sourceElapsedSeconds"] = compact_number(float(session_time) - first_session_time)
+        elif first_captured_ms is not None and finite(captured_ms):
+            frame["sourceElapsedSeconds"] = compact_number((float(captured_ms) - first_captured_ms) / 1000.0)
+
+        if previous_frame is not None:
+            previous_session_time = previous_frame.get("sessionTimeSeconds")
+            previous_captured_ms = previous_frame.get("capturedUnixMs")
+            if finite(session_time) and finite(previous_session_time):
+                delta = float(session_time) - float(previous_session_time)
+                frame["sourceSessionDeltaSeconds"] = compact_number(delta)
+                if delta < 0:
+                    non_monotonic_session_time = True
+                else:
+                    session_deltas.append(delta)
+            if finite(captured_ms) and finite(previous_captured_ms):
+                delta = (float(captured_ms) - float(previous_captured_ms)) / 1000.0
+                frame["sourceCapturedDeltaSeconds"] = compact_number(delta)
+                if delta > 0:
+                    captured_deltas.append(delta)
+            if isinstance(frame.get("frameIndex"), int) and isinstance(previous_frame.get("frameIndex"), int):
+                delta = frame["frameIndex"] - previous_frame["frameIndex"]
+                frame["sourceFrameDelta"] = delta
+                if delta > 0:
+                    frame_index_deltas.append(delta)
+
+        previous_frame = frame
+
+    source_elapsed = [
+        float(frame["sourceElapsedSeconds"])
+        for frame in frames
+        if finite(frame.get("sourceElapsedSeconds"))
+    ]
+    max_session_delta = max(session_deltas) if session_deltas else 0.0
+    return {
+        "basis": "raw-capture frame header sessionTime",
+        "selectedFrameCount": len(frames),
+        "gapToLeaderMissingSegmentThresholdSeconds": GAP_TO_LEADER_MISSING_SEGMENT_THRESHOLD_SECONDS,
+        "denseForGapToLeader": len(frames) < 2 or (bool(session_deltas) and max_session_delta <= GAP_TO_LEADER_MISSING_SEGMENT_THRESHOLD_SECONDS),
+        "hasNonMonotonicSessionTime": non_monotonic_session_time,
+        "sourceElapsedSeconds": summarize_numeric(source_elapsed),
+        "sourceSessionDeltaSeconds": summarize_numeric(session_deltas),
+        "sourceCapturedDeltaSeconds": summarize_numeric(captured_deltas),
+        "sourceFrameDelta": summarize_numeric(frame_index_deltas, digits=0),
+    }
+
+
+def first_finite(values: Iterable[Any]) -> float | None:
+    for value in values:
+        if finite(value):
+            return float(value)
+    return None
+
+
+def summarize_numeric(values: Iterable[Any], digits: int = 3) -> dict[str, Any]:
+    numbers = sorted(float(value) for value in values if finite(value))
+    if not numbers:
+        return {"count": 0, "min": None, "median": None, "max": None}
+    return {
+        "count": len(numbers),
+        "min": compact_number(numbers[0], digits),
+        "median": compact_number(statistics.median(numbers), digits),
+        "max": compact_number(numbers[-1], digits),
+    }
+
+
+def enforce_dense_cadence(cadence: dict[str, Any], allow_sparse_review: bool) -> None:
+    if allow_sparse_review or cadence.get("denseForGapToLeader") is True:
+        return
+
+    max_delta = ((cadence.get("sourceSessionDeltaSeconds") or {}).get("max"))
+    threshold = cadence.get("gapToLeaderMissingSegmentThresholdSeconds") or GAP_TO_LEADER_MISSING_SEGMENT_THRESHOLD_SECONDS
+    detail = f"max SessionTime delta {max_delta}s" if max_delta is not None else "missing positive SessionTime deltas"
+    raise SystemExit(
+        "Selected replay frames are too sparse for Gap To Leader browser validation "
+        f"({detail}; threshold {threshold}s). Export denser raw frames with a smaller --stride "
+        "or larger --max-frames. Use --allow-sparse-review only for non-graph/table review; "
+        "do not alter graph segmentation to connect sparse samples."
+    )
+
+
 def export_capture(args: argparse.Namespace) -> dict[str, Any]:
     capture_dir = args.capture
     manifest = read_json(capture_dir / "capture-manifest.json")
@@ -1347,6 +1544,8 @@ def export_capture(args: argparse.Namespace) -> dict[str, Any]:
         if args.start_relative_seconds is not None and args.step_seconds is not None:
             replay_frame["raceStartRelativeSeconds"] = args.start_relative_seconds + replay_index * args.step_seconds
         frames.append(replay_frame)
+    cadence = annotate_source_cadence(frames)
+    enforce_dense_cadence(cadence, args.allow_sparse_review)
     alignment = None
     if args.start_relative_seconds is not None and args.step_seconds is not None and frames:
         alignment = {
@@ -1355,6 +1554,7 @@ def export_capture(args: argparse.Namespace) -> dict[str, Any]:
             "startRelativeSeconds": args.start_relative_seconds,
             "endRelativeSeconds": frames[-1].get("raceStartRelativeSeconds"),
             "stepSeconds": args.step_seconds,
+            "basis": "review navigation only; source cadence uses raw capture SessionTime",
             "selectedFrameCount": len(frames),
         }
     return {
@@ -1370,6 +1570,7 @@ def export_capture(args: argparse.Namespace) -> dict[str, Any]:
             "startedAtUtc": manifest.get("startedAtUtc"),
             "finishedAtUtc": manifest.get("finishedAtUtc"),
             "alignment": alignment,
+            "cadence": cadence,
         },
         "frames": frames,
     }
@@ -1386,6 +1587,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--other-class-rows", type=int, default=2, help="Other-class rows per class.")
     parser.add_argument("--start-relative-seconds", type=float, default=None, help="Relative race-start seconds assigned to the first exported frame.")
     parser.add_argument("--step-seconds", type=float, default=None, help="Relative seconds added per exported frame.")
+    parser.add_argument("--allow-sparse-review", action="store_true", help="Permit sparse exports only for non-graph review; Gap To Leader validation will reject them.")
     return parser.parse_args()
 
 

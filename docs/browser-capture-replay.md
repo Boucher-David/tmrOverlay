@@ -9,12 +9,24 @@ localhost browser overlay routes without running iRacing or the Windows app.
 python3 tools/analysis/export_standings_browser_replay.py \
   --capture captures/capture-YYYYMMDD-HHMMSS-fff \
   --output /tmp/tmr-browser-replay.json \
-  --max-frames 240 \
-  --stride 60
+  --stride 60 \
+  --max-frames 20000
 ```
 
+Real-capture replay used for graph or stream validation must keep dense raw
+telemetry cadence. The exporter records raw capture `SessionTime`,
+`capturedUnixMs`, frame-index deltas, and source-cadence summaries in
+`source.cadence`; by default it rejects selected frames whose positive
+`SessionTime` deltas exceed the Gap To Leader production missing-segment
+threshold of 10 seconds. Export with an explicit stride small enough for the
+capture tick rate, or a large enough `--max-frames`, so graph points remain
+production-like. Use `--allow-sparse-review` only for table/status review; do
+not patch overlay data, graph points, or segment flags to make sparse samples
+look connected.
+
 For race-start review, align sampled frames to green by choosing the first raw
-frame and relative clock manually:
+frame and relative clock manually. The relative clock is navigation metadata
+only; stream cadence still comes from raw capture frame/session-time deltas.
 
 ```bash
 python3 tools/analysis/export_standings_browser_replay.py \
@@ -37,11 +49,15 @@ frame contains:
   track-map sector context
 - raw frame metadata including frame index, session time, session state, camera
   car, and player car
+- source cadence metadata including source elapsed time, frame/session-time
+  deltas, captured-time deltas, and whether the selection is dense enough for
+  Gap To Leader graph validation
 
 ## Serve
 
 ```bash
-TMR_STANDINGS_REPLAY_FRAME_MS=250 \
+TMR_STANDINGS_REPLAY_TIMING=source \
+TMR_STANDINGS_REPLAY_SPEED=60 \
 node tools/browser-review/standings-replay-server.mjs /tmp/tmr-browser-replay.json
 ```
 
@@ -51,6 +67,15 @@ route such as `http://127.0.0.1:5187/overlays/standings`.
 Use `?frame=N` to pin a sampled replay frame. Use `?rel=-120`, `?rel=0`, or
 another exported relative race-start second when the export includes
 `--start-relative-seconds` and `--step-seconds`.
+
+The replay server defaults to source-elapsed timing, scaled by
+`TMR_STANDINGS_REPLAY_SPEED`, so live routes advance according to captured
+source time instead of a hidden fixed frame count. Set
+`TMR_STANDINGS_REPLAY_TIMING=fixed-frame` with
+`TMR_STANDINGS_REPLAY_FRAME_MS=250` only for explicit compressed review. The
+`/api/replay/status` payload reports the effective timing mode, current source
+position, and cadence summary so reviewers can confirm whether a replay is
+dense enough for Gap To Leader.
 
 ## Validate
 
@@ -67,6 +92,12 @@ checks basic render/model invariants, and writes screenshots plus
 `race-start-overlay-validation.json`. The `--require-capture-live` option also
 asserts that `/api/snapshot` is serving capture-derived live models with timing,
 driver-directory, scoring, and input data.
+
+Gap To Leader validation rejects sparse replay streams whose graph points are
+more than 10 seconds apart unless the segment is explicitly marked as intended
+missing telemetry. A sparse failure means the replay should be re-exported from
+denser raw capture frames; it is not a reason to change production/native graph
+segmentation or to force sparse browser samples into connected lines.
 
 ## Limits
 

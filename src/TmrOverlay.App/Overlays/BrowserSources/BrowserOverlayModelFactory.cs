@@ -20,13 +20,56 @@ namespace TmrOverlay.App.Overlays.BrowserSources;
 internal sealed class BrowserOverlayModelFactory
 {
     private const int MaximumRelativeRows = 17;
+    private const int GapMaxTrendPointsPerCar = 36_000;
+    private const int GapMaxWeatherPoints = 36_000;
+    private const int GapMaxDriverChangeMarkers = 64;
+    private const double GapTrendWindowSeconds = 4d * 60d * 60d;
+    private const double GapMinimumTrendDomainSeconds = 120d;
+    private const double GapMinimumTrendDomainLaps = 1.5d;
+    private const double GapTrendRightPaddingSeconds = 20d;
+    private const double GapTrendRightPaddingLaps = 0.15d;
+    private const double GapMissingSegmentSeconds = 10d;
+    private const double GapMissingTelemetryGraceSeconds = 5d;
+    private const double GapEntryTailSeconds = 300d;
+    private const double GapEntryFadeSeconds = 45d;
+    private const double GapDefaultLapReferenceSeconds = 60d;
+    private const double GapFilteredRangeMinimumSeconds = 15d;
+    private const double GapFilteredRangeMaximumSeconds = 90d;
+    private const double GapFilteredRangeLaps = 0.5d;
+    private const double GapFocusScaleMinimumReferenceGapSeconds = 90d;
+    private const double GapFocusScaleMinimumReferenceGapLaps = 0.5d;
+    private const double GapFocusScaleMinimumRangeSeconds = 20d;
+    private const double GapFocusScaleMinimumRangeLaps = 0.1d;
+    private const double GapFocusScalePaddingMultiplier = 1.18d;
+    private const double GapFocusScaleTriggerRatio = 3d;
+    private const double GapSameLapReferenceBoundaryLaps = 0.95d;
+    private const double GapMetricDeadbandMinimumSeconds = 0.25d;
+    private const double GapMetricDeadbandLapFraction = 0.0025d;
+    private const double GapThreatMinimumGainSeconds = 0.5d;
+    private const double GapThreatGainLapFraction = 0.005d;
+    private const double GapFuelStintResetMinimumLiters = 5d;
     private readonly SessionHistoryQueryService _historyQueryService;
     private readonly Func<LiveTelemetrySnapshot, DateTimeOffset, string, SimpleTelemetryOverlayViewModel> _sessionWeatherBuilder;
     private readonly Func<LiveTelemetrySnapshot, DateTimeOffset, string, SimpleTelemetryOverlayViewModel> _pitServiceBuilder;
     private readonly List<double> _gapPoints = [];
+    private readonly Dictionary<int, List<BrowserGapTrendPoint>> _gapSeries = [];
+    private readonly List<BrowserGapWeatherPoint> _gapWeather = [];
+    private readonly List<BrowserGapLeaderChangeMarker> _gapLeaderChanges = [];
+    private readonly List<BrowserGapDriverChangeMarker> _gapDriverChanges = [];
+    private readonly Dictionary<int, BrowserGapCarRenderState> _gapCarRenderStates = [];
+    private readonly Dictionary<int, BrowserGapDriverIdentity> _gapDriverIdentities = [];
     private HistoricalComboIdentity? _cachedHistoryCombo;
     private SessionHistoryLookupResult? _cachedHistory;
     private DateTimeOffset _cachedHistoryAtUtc;
+    private BrowserGapReferenceContext? _lastGapReferenceContext;
+    private long? _lastGapSequence;
+    private double? _latestGapAxisSeconds;
+    private double? _gapTrendStartAxisSeconds;
+    private double? _lastGapLapReferenceSeconds;
+    private double? _currentGapFuelStintStartAxisSeconds;
+    private double? _lastGapFuelLevelLiters;
+    private int? _lastGapDriversSoFar;
+    private int? _lastGapClassLeaderCarIdx;
 
     public BrowserOverlayModelFactory(SessionHistoryQueryService historyQueryService)
     {
@@ -302,6 +345,7 @@ internal sealed class BrowserOverlayModelFactory
     {
         var overlay = FindOverlay(settings, GapToLeaderOverlayDefinition.Definition.Id);
         var gap = GapToLeaderLiveModelAdapter.Select(snapshot);
+        RecordGapSnapshot(snapshot, gap, settings);
         if (gap.HasData
             && GapToLeaderLiveModelAdapter.SelectFocusedTrendPointSeconds(snapshot, gap) is { } seconds
             && ShouldAcceptGapPoint(snapshot, seconds))
@@ -313,14 +357,9 @@ internal sealed class BrowserOverlayModelFactory
             }
         }
 
-        var metrics = new[]
-        {
-            new BrowserOverlayMetricRow("Class pos", FormatPosition(gap.ReferenceClassPosition), BrowserOverlayTone.Live),
-            new BrowserOverlayMetricRow("Class leader", FormatGap(gap.ClassLeaderGap), BrowserOverlayTone.Live)
-        };
-
         var status = gap.HasData ? "live | race gap" : "waiting for timing";
         var headerItems = HeaderItems(overlay, snapshot, status);
+        var graph = BuildBrowserGapGraph(settings);
         return new BrowserOverlayDisplayModel(
             GapToLeaderOverlayDefinition.Definition.Id,
             GapToLeaderOverlayDefinition.Definition.DisplayName,
@@ -329,9 +368,10 @@ internal sealed class BrowserOverlayModelFactory
             "graph",
             Columns: [],
             Rows: [],
-            Metrics: metrics,
+            Metrics: [],
             Points: _gapPoints.ToArray(),
-            HeaderItems: headerItems);
+            HeaderItems: headerItems,
+            Graph: graph);
     }
 
     private bool ShouldAcceptGapPoint(LiveTelemetrySnapshot snapshot, double seconds)
@@ -350,6 +390,1062 @@ internal sealed class BrowserOverlayModelFactory
         var lapReferenceSeconds = GapToLeaderLiveModelAdapter.SelectLapReferenceSeconds(snapshot);
         var maximumJump = Math.Max(30d, Math.Min(180d, (lapReferenceSeconds ?? 90d) * 0.5d));
         return Math.Abs(seconds - previous) <= maximumJump;
+    }
+
+    private void RecordGapSnapshot(LiveTelemetrySnapshot snapshot, LiveLeaderGapSnapshot gap, ApplicationSettings settings)
+    {
+        if (_lastGapSequence == snapshot.Sequence)
+        {
+            return;
+        }
+
+        _lastGapSequence = snapshot.Sequence;
+        var timestamp = snapshot.LatestSample?.CapturedAtUtc
+            ?? snapshot.LastUpdatedAtUtc
+            ?? DateTimeOffset.UtcNow;
+        var axisSeconds = SelectGapAxisSeconds(timestamp, snapshot.Models.Session.SessionTimeSeconds ?? snapshot.LatestSample?.SessionTime);
+        _latestGapAxisSeconds = axisSeconds;
+        if (_gapTrendStartAxisSeconds is null || axisSeconds < _gapTrendStartAxisSeconds.Value)
+        {
+            _gapTrendStartAxisSeconds = axisSeconds;
+        }
+
+        var context = SelectGapReferenceContext(snapshot);
+        if (_lastGapReferenceContext is not null && _lastGapReferenceContext != context)
+        {
+            _gapSeries.Clear();
+            _gapWeather.Clear();
+            _gapLeaderChanges.Clear();
+            _gapDriverChanges.Clear();
+            _gapCarRenderStates.Clear();
+            _lastGapClassLeaderCarIdx = null;
+            _currentGapFuelStintStartAxisSeconds = null;
+            _lastGapFuelLevelLiters = null;
+            _gapTrendStartAxisSeconds = axisSeconds;
+        }
+
+        _lastGapReferenceContext = context;
+        var lapReferenceSeconds = GapToLeaderLiveModelAdapter.SelectLapReferenceSeconds(snapshot);
+        _lastGapLapReferenceSeconds = lapReferenceSeconds;
+        RecordGapFuelStint(snapshot, axisSeconds);
+        RecordGapWeather(snapshot, axisSeconds);
+        RecordGapDriverChangeMarkers(snapshot, gap, timestamp, axisSeconds, lapReferenceSeconds);
+        RecordGapLeaderChange(gap, timestamp, axisSeconds);
+        foreach (var car in gap.ClassCars)
+        {
+            if (BrowserGapSeconds(car, lapReferenceSeconds) is not { } gapSeconds)
+            {
+                continue;
+            }
+
+            if (!_gapSeries.TryGetValue(car.CarIdx, out var points))
+            {
+                points = [];
+                _gapSeries[car.CarIdx] = points;
+            }
+
+            var startsSegment = points.Count == 0 || axisSeconds - points[^1].AxisSeconds > GapMissingSegmentSeconds;
+            var point = new BrowserGapTrendPoint(
+                timestamp,
+                axisSeconds,
+                gapSeconds,
+                car.CarIdx,
+                car.IsReferenceCar,
+                car.IsClassLeader,
+                car.ClassPosition,
+                startsSegment);
+            if (points.Count > 0 && Math.Abs(points[^1].AxisSeconds - axisSeconds) < 0.001d)
+            {
+                points[^1] = point with { StartsSegment = points[^1].StartsSegment };
+            }
+            else
+            {
+                points.Add(point);
+            }
+
+            if (points.Count > GapMaxTrendPointsPerCar)
+            {
+                points.RemoveRange(0, points.Count - GapMaxTrendPointsPerCar);
+            }
+        }
+
+        UpdateGapCarRenderStates(gap, settings, axisSeconds, lapReferenceSeconds);
+        PruneGapSeries(axisSeconds);
+    }
+
+    private void RecordGapWeather(LiveTelemetrySnapshot snapshot, double axisSeconds)
+    {
+        var condition = SelectGapWeatherCondition(snapshot);
+        if (_gapWeather.Count > 0 && Math.Abs(_gapWeather[^1].AxisSeconds - axisSeconds) < 0.001d)
+        {
+            _gapWeather[^1] = new BrowserGapWeatherPoint(axisSeconds, condition);
+        }
+        else
+        {
+            _gapWeather.Add(new BrowserGapWeatherPoint(axisSeconds, condition));
+        }
+
+        if (_gapWeather.Count > GapMaxWeatherPoints)
+        {
+            _gapWeather.RemoveRange(0, _gapWeather.Count - GapMaxWeatherPoints);
+        }
+    }
+
+    private void RecordGapFuelStint(LiveTelemetrySnapshot snapshot, double axisSeconds)
+    {
+        var fuelLevelLiters = FirstValidFuelLevel(
+            snapshot.Models.FuelPit.Fuel.FuelLevelLiters,
+            snapshot.Fuel.FuelLevelLiters,
+            snapshot.LatestSample?.FuelLevelLiters);
+        if (fuelLevelLiters is null)
+        {
+            return;
+        }
+
+        if (_currentGapFuelStintStartAxisSeconds is null)
+        {
+            _currentGapFuelStintStartAxisSeconds = axisSeconds;
+        }
+        else if (_lastGapFuelLevelLiters is { } previous
+            && fuelLevelLiters.Value - previous >= GapFuelStintResetMinimumLiters)
+        {
+            _currentGapFuelStintStartAxisSeconds = axisSeconds;
+        }
+
+        _lastGapFuelLevelLiters = fuelLevelLiters;
+    }
+
+    private void RecordGapDriverChangeMarkers(
+        LiveTelemetrySnapshot snapshot,
+        LiveLeaderGapSnapshot gap,
+        DateTimeOffset timestamp,
+        double axisSeconds,
+        double? lapReferenceSeconds)
+    {
+        if (snapshot.Models.RaceEvents.DriversSoFar is { } driversSoFar && driversSoFar > 0)
+        {
+            if (_lastGapDriversSoFar is { } previousDrivers)
+            {
+                if (driversSoFar < previousDrivers)
+                {
+                    _lastGapDriversSoFar = driversSoFar;
+                }
+                else if (driversSoFar > previousDrivers
+                    && ReferenceUsesPlayerCar(snapshot)
+                    && gap.ClassCars.FirstOrDefault(car => car.IsReferenceCar) is { } reference
+                    && BrowserGapSeconds(reference, lapReferenceSeconds) is { } gapSeconds)
+                {
+                    AddGapDriverChangeMarker(new BrowserGapDriverChangeMarker(
+                        timestamp,
+                        axisSeconds,
+                        reference.CarIdx,
+                        gapSeconds,
+                        true,
+                        $"D{driversSoFar}"));
+                }
+            }
+
+            _lastGapDriversSoFar = driversSoFar;
+        }
+
+        foreach (var driver in snapshot.Context.Drivers)
+        {
+            if (ToGapDriverIdentity(driver) is not { } identity)
+            {
+                continue;
+            }
+
+            if (_gapDriverIdentities.TryGetValue(identity.CarIdx, out var previous)
+                && !previous.HasSameDriver(identity)
+                && gap.ClassCars.FirstOrDefault(car => car.CarIdx == identity.CarIdx) is { } car
+                && BrowserGapSeconds(car, lapReferenceSeconds) is { } gapSeconds)
+            {
+                AddGapDriverChangeMarker(new BrowserGapDriverChangeMarker(
+                    timestamp,
+                    axisSeconds,
+                    identity.CarIdx,
+                    gapSeconds,
+                    car.IsReferenceCar,
+                    identity.ShortLabel));
+            }
+
+            _gapDriverIdentities[identity.CarIdx] = identity;
+        }
+    }
+
+    private void AddGapDriverChangeMarker(BrowserGapDriverChangeMarker marker)
+    {
+        if (_gapDriverChanges.Any(existing =>
+                existing.CarIdx == marker.CarIdx
+                && Math.Abs(existing.AxisSeconds - marker.AxisSeconds) < 5d))
+        {
+            return;
+        }
+
+        _gapDriverChanges.Add(marker);
+        if (_gapDriverChanges.Count > GapMaxDriverChangeMarkers)
+        {
+            _gapDriverChanges.RemoveRange(0, _gapDriverChanges.Count - GapMaxDriverChangeMarkers);
+        }
+    }
+
+    private void RecordGapLeaderChange(LiveLeaderGapSnapshot gap, DateTimeOffset timestamp, double axisSeconds)
+    {
+        if (gap.ClassLeaderCarIdx is not { } leaderCarIdx)
+        {
+            return;
+        }
+
+        if (_lastGapClassLeaderCarIdx is { } previousLeader && previousLeader != leaderCarIdx)
+        {
+            _gapLeaderChanges.Add(new BrowserGapLeaderChangeMarker(timestamp, axisSeconds, previousLeader, leaderCarIdx));
+        }
+
+        _lastGapClassLeaderCarIdx = leaderCarIdx;
+    }
+
+    private void UpdateGapCarRenderStates(
+        LiveLeaderGapSnapshot gap,
+        ApplicationSettings settings,
+        double axisSeconds,
+        double? lapReferenceSeconds)
+    {
+        var desiredCarIds = SelectDesiredGapCarIds(gap.ClassCars, settings, lapReferenceSeconds);
+        foreach (var car in gap.ClassCars)
+        {
+            if (BrowserGapSeconds(car, lapReferenceSeconds) is not { } gapSeconds)
+            {
+                continue;
+            }
+
+            if (!_gapCarRenderStates.TryGetValue(car.CarIdx, out var state))
+            {
+                state = new BrowserGapCarRenderState(car.CarIdx);
+                _gapCarRenderStates[car.CarIdx] = state;
+            }
+
+            var wasVisible = ShouldKeepGapSeriesVisible(state, axisSeconds);
+            state.LastSeenAxisSeconds = axisSeconds;
+            state.LastGapSeconds = gapSeconds;
+            state.IsReference = car.IsReferenceCar;
+            state.IsClassLeader = car.IsClassLeader;
+            state.ClassPosition = car.ClassPosition;
+            state.DeltaSecondsToReference = car.DeltaSecondsToReference;
+            state.IsCurrentlyDesired = desiredCarIds.Contains(car.CarIdx);
+            if (state.IsCurrentlyDesired)
+            {
+                if (!wasVisible)
+                {
+                    state.VisibleSinceAxisSeconds = axisSeconds;
+                }
+
+                state.LastDesiredAxisSeconds = axisSeconds;
+            }
+        }
+
+        foreach (var state in _gapCarRenderStates.Values)
+        {
+            if (!desiredCarIds.Contains(state.CarIdx))
+            {
+                state.IsCurrentlyDesired = false;
+            }
+        }
+    }
+
+    private HashSet<int> SelectDesiredGapCarIds(
+        IReadOnlyList<LiveClassGapCar> cars,
+        ApplicationSettings settings,
+        double? lapReferenceSeconds)
+    {
+        var selected = new HashSet<int>();
+        var reference = cars.FirstOrDefault(car => car.IsReferenceCar);
+        foreach (var car in cars.Where(car => car.IsClassLeader || car.IsReferenceCar))
+        {
+            selected.Add(car.CarIdx);
+        }
+
+        var overlay = FindOverlay(settings, GapToLeaderOverlayDefinition.Definition.Id);
+        var aheadCount = overlay?.GetIntegerOption(OverlayOptionKeys.GapCarsAhead, defaultValue: 5, minimum: 0, maximum: 12) ?? 5;
+        var behindCount = overlay?.GetIntegerOption(OverlayOptionKeys.GapCarsBehind, defaultValue: 5, minimum: 0, maximum: 12) ?? 5;
+        if (reference is null)
+        {
+            foreach (var car in cars
+                .Where(car => !car.IsClassLeader)
+                .OrderBy(car => car.ClassPosition ?? int.MaxValue)
+                .ThenBy(car => BrowserGapSeconds(car, lapReferenceSeconds) ?? double.MaxValue)
+                .Take(behindCount))
+            {
+                selected.Add(car.CarIdx);
+            }
+
+            return selected;
+        }
+
+        var rangeSeconds = GapFilteredRangeSeconds();
+        foreach (var car in cars
+            .Where(car => !car.IsReferenceCar
+                && !car.IsClassLeader
+                && IsSameLapGapCandidate(car, reference, lapReferenceSeconds)
+                && car.DeltaSecondsToReference is < 0d
+                && Math.Abs(car.DeltaSecondsToReference.Value) <= rangeSeconds)
+            .OrderByDescending(car => car.DeltaSecondsToReference!.Value)
+            .Take(aheadCount))
+        {
+            selected.Add(car.CarIdx);
+        }
+
+        foreach (var car in cars
+            .Where(car => !car.IsReferenceCar
+                && !car.IsClassLeader
+                && IsSameLapGapCandidate(car, reference, lapReferenceSeconds)
+                && car.DeltaSecondsToReference is > 0d
+                && car.DeltaSecondsToReference.Value <= rangeSeconds)
+            .OrderBy(car => car.DeltaSecondsToReference!.Value)
+            .Take(behindCount))
+        {
+            selected.Add(car.CarIdx);
+        }
+
+        return selected;
+    }
+
+    private BrowserGapGraph? BuildBrowserGapGraph(ApplicationSettings settings)
+    {
+        var selectedSeries = SelectGapSeries();
+        var endSeconds = _latestGapAxisSeconds ?? 0d;
+        var anchorSeconds = _gapTrendStartAxisSeconds ?? FirstVisibleGapAxisSeconds(selectedSeries) ?? endSeconds;
+        var elapsedSeconds = Math.Max(0d, endSeconds - anchorSeconds);
+        double startSeconds;
+        if (elapsedSeconds >= GapTrendWindowSeconds)
+        {
+            startSeconds = endSeconds - GapTrendWindowSeconds;
+        }
+        else
+        {
+            var durationSeconds = Math.Min(
+                GapTrendWindowSeconds,
+                Math.Max(GapMinimumTrendDomainSecondsForCurrentLap(), elapsedSeconds + GapTrendRightPadding()));
+            startSeconds = anchorSeconds;
+            endSeconds = anchorSeconds + durationSeconds;
+        }
+
+        var trendMetrics = BuildBrowserGapTrendMetrics();
+        var activeThreat = ActiveBrowserGapThreat(trendMetrics);
+        var threatCarIdx = activeThreat?.Chaser?.CarIdx;
+        var series = selectedSeries
+            .Select(selection => new BrowserGapSeries(
+                selection.State.CarIdx,
+                selection.State.IsReference,
+                selection.State.IsClassLeader,
+                selection.State.ClassPosition,
+                selection.Alpha,
+                selection.IsStickyExit,
+                selection.IsStale,
+                PointsForGapCar(selection.State.CarIdx, Math.Max(startSeconds, selection.DrawStartSeconds), endSeconds)))
+            .Where(series => series.Points.Count > 0)
+            .ToArray();
+        var scale = SelectBrowserGapScale(selectedSeries, startSeconds, endSeconds);
+        return new BrowserGapGraph(
+            series,
+            _gapWeather.Where(point => point.AxisSeconds >= startSeconds && point.AxisSeconds <= endSeconds).ToArray(),
+            _gapLeaderChanges.Where(marker => marker.AxisSeconds >= startSeconds && marker.AxisSeconds <= endSeconds).ToArray(),
+            _gapDriverChanges.Where(marker => marker.AxisSeconds >= startSeconds && marker.AxisSeconds <= endSeconds).ToArray(),
+            startSeconds,
+            Math.Max(endSeconds, startSeconds + 1d),
+            Math.Max(1d, scale.MaxGapSeconds),
+            _lastGapLapReferenceSeconds,
+            selectedSeries.Count,
+            trendMetrics,
+            activeThreat,
+            threatCarIdx,
+            GapMetricDeadbandSeconds(),
+            scale);
+    }
+
+    private IReadOnlyList<BrowserGapTrendMetric> BuildBrowserGapTrendMetrics()
+    {
+        if (_lastGapLapReferenceSeconds is not { } lapReferenceSeconds
+            || !IsValidLapReference(lapReferenceSeconds)
+            || _gapCarRenderStates.Values.FirstOrDefault(state => state.IsReference) is not { } referenceState)
+        {
+            return DefaultBrowserGapTrendMetrics("unavailable");
+        }
+
+        var latest = _latestGapAxisSeconds ?? 0d;
+        return new[]
+        {
+            BuildBrowserGapTrendMetric("5L", lapReferenceSeconds * 5d, 5d, latest, referenceState),
+            BuildBrowserGapTrendMetric("10L", lapReferenceSeconds * 10d, 10d, latest, referenceState),
+            BuildBrowserGapStintTrendMetric(latest, referenceState)
+        };
+    }
+
+    private BrowserGapTrendMetric BuildBrowserGapStintTrendMetric(double latest, BrowserGapCarRenderState referenceState)
+    {
+        if (_currentGapFuelStintStartAxisSeconds is not { } stintStart)
+        {
+            return new BrowserGapTrendMetric("stint", null, null, "unavailable", null);
+        }
+
+        var lookbackSeconds = latest - stintStart;
+        if (!IsFinite(lookbackSeconds) || lookbackSeconds < 5d)
+        {
+            return new BrowserGapTrendMetric("stint", null, null, "warming", "out lap");
+        }
+
+        return BuildBrowserGapTrendMetric("stint", lookbackSeconds, null, latest, referenceState);
+    }
+
+    private BrowserGapTrendMetric BuildBrowserGapTrendMetric(
+        string label,
+        double lookbackSeconds,
+        double? targetLaps,
+        double latest,
+        BrowserGapCarRenderState referenceState)
+    {
+        if (!IsFinite(lookbackSeconds)
+            || lookbackSeconds <= 0d
+            || LatestBrowserGapTrendPoint(referenceState.CarIdx) is not { } referenceCurrent)
+        {
+            return new BrowserGapTrendMetric(label, null, null, "unavailable", null);
+        }
+
+        var targetAxisSeconds = latest - lookbackSeconds;
+        if (BrowserGapLeaderChangedBetween(targetAxisSeconds, latest))
+        {
+            return new BrowserGapTrendMetric(label, null, null, "leaderChanged", null);
+        }
+
+        if (BrowserGapTrendPointNear(referenceState.CarIdx, targetAxisSeconds) is not { } referencePast)
+        {
+            return new BrowserGapTrendMetric(
+                label,
+                null,
+                null,
+                "warming",
+                BrowserGapWarmupLabel(referenceState.CarIdx, latest, targetLaps));
+        }
+
+        var focusGapChangeSeconds = referenceCurrent.GapSeconds - referencePast.GapSeconds;
+        var chaser = StrongestBrowserGapBehindGain(referenceState, referenceCurrent, referencePast, targetAxisSeconds);
+        return new BrowserGapTrendMetric(label, focusGapChangeSeconds, chaser, "ready", null);
+    }
+
+    private string? BrowserGapWarmupLabel(int referenceCarIdx, double latest, double? targetLaps)
+    {
+        if (targetLaps is not { } laps
+            || laps <= 0d
+            || _lastGapLapReferenceSeconds is not { } lapReferenceSeconds
+            || !IsValidLapReference(lapReferenceSeconds)
+            || FirstBrowserGapTrendPoint(referenceCarIdx) is not { } first)
+        {
+            return null;
+        }
+
+        var availableLaps = Math.Max(0d, (latest - first.AxisSeconds) / lapReferenceSeconds);
+        return $"{Math.Min(availableLaps, laps).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)}L";
+    }
+
+    private BrowserBehindGainMetric? StrongestBrowserGapBehindGain(
+        BrowserGapCarRenderState referenceState,
+        BrowserGapTrendPoint referenceCurrent,
+        BrowserGapTrendPoint referencePast,
+        double targetAxisSeconds)
+    {
+        BrowserBehindGainMetric? best = null;
+        foreach (var state in _gapCarRenderStates.Values)
+        {
+            if (state.CarIdx == referenceState.CarIdx
+                || state.IsReference
+                || LatestBrowserGapTrendPoint(state.CarIdx) is not { } current
+                || current.GapSeconds <= referenceCurrent.GapSeconds
+                || BrowserGapTrendPointNear(state.CarIdx, targetAxisSeconds) is not { } past)
+            {
+                continue;
+            }
+
+            var currentDelta = current.GapSeconds - referenceCurrent.GapSeconds;
+            var pastDelta = past.GapSeconds - referencePast.GapSeconds;
+            var gainSeconds = pastDelta - currentDelta;
+            if (gainSeconds < GapThreatGainThresholdSeconds())
+            {
+                continue;
+            }
+
+            if (best is null || gainSeconds > best.GainSeconds)
+            {
+                best = new BrowserBehindGainMetric(state.CarIdx, BrowserGapCarShortLabel(state), gainSeconds);
+            }
+        }
+
+        return best;
+    }
+
+    private BrowserGapTrendMetric? ActiveBrowserGapThreat(IReadOnlyList<BrowserGapTrendMetric> metrics)
+    {
+        return metrics
+            .Where(metric => string.Equals(metric.State, "ready", StringComparison.Ordinal)
+                && metric.Chaser is not null
+                && metric.Chaser.GainSeconds >= GapThreatGainThresholdSeconds())
+            .OrderByDescending(metric => metric.Chaser!.GainSeconds)
+            .FirstOrDefault();
+    }
+
+    private BrowserGapTrendPoint? LatestBrowserGapTrendPoint(int carIdx)
+    {
+        return _gapSeries.TryGetValue(carIdx, out var points) && points.Count > 0
+            ? points[^1]
+            : null;
+    }
+
+    private BrowserGapTrendPoint? FirstBrowserGapTrendPoint(int carIdx)
+    {
+        return _gapSeries.TryGetValue(carIdx, out var points) && points.Count > 0
+            ? points[0]
+            : null;
+    }
+
+    private BrowserGapTrendPoint? BrowserGapTrendPointNear(int carIdx, double axisSeconds)
+    {
+        if (!_gapSeries.TryGetValue(carIdx, out var points) || points.Count == 0)
+        {
+            return null;
+        }
+
+        var best = points.MinBy(point => Math.Abs(point.AxisSeconds - axisSeconds));
+        return best is not null && Math.Abs(best.AxisSeconds - axisSeconds) <= GapTrendLookupToleranceSeconds()
+            ? best
+            : null;
+    }
+
+    private bool BrowserGapLeaderChangedBetween(double startSeconds, double endSeconds)
+    {
+        return _gapLeaderChanges.Any(marker => marker.AxisSeconds > startSeconds && marker.AxisSeconds <= endSeconds);
+    }
+
+    private IReadOnlyList<BrowserGapTrendMetric> DefaultBrowserGapTrendMetrics(string state)
+    {
+        return new[]
+        {
+            new BrowserGapTrendMetric("5L", null, null, state, null),
+            new BrowserGapTrendMetric("10L", null, null, state, null),
+            new BrowserGapTrendMetric("stint", null, null, state, null)
+        };
+    }
+
+    private IReadOnlyList<BrowserGapTrendPoint> PointsForGapCar(int carIdx, double startSeconds, double endSeconds)
+    {
+        return _gapSeries.TryGetValue(carIdx, out var points)
+            ? points.Where(point => point.AxisSeconds >= startSeconds && point.AxisSeconds <= endSeconds).ToArray()
+            : Array.Empty<BrowserGapTrendPoint>();
+    }
+
+    private double GapMinimumTrendDomainSecondsForCurrentLap()
+    {
+        return Math.Max(
+            GapMinimumTrendDomainSeconds,
+            _lastGapLapReferenceSeconds is { } lapSeconds && IsValidLapReference(lapSeconds)
+                ? lapSeconds * GapMinimumTrendDomainLaps
+                : 0d);
+    }
+
+    private double GapTrendRightPadding()
+    {
+        return Math.Max(
+            GapTrendRightPaddingSeconds,
+            _lastGapLapReferenceSeconds is { } lapSeconds && IsValidLapReference(lapSeconds)
+                ? lapSeconds * GapTrendRightPaddingLaps
+                : 0d);
+    }
+
+    private double? FirstVisibleGapAxisSeconds(IReadOnlyList<BrowserGapSeriesSelection> selectedSeries)
+    {
+        double? firstVisiblePoint = null;
+        foreach (var selection in selectedSeries)
+        {
+            if (!_gapSeries.TryGetValue(selection.State.CarIdx, out var points))
+            {
+                continue;
+            }
+
+            foreach (var point in points.Where(point => point.AxisSeconds >= selection.DrawStartSeconds))
+            {
+                if (firstVisiblePoint is null || point.AxisSeconds < firstVisiblePoint.Value)
+                {
+                    firstVisiblePoint = point.AxisSeconds;
+                }
+            }
+        }
+
+        return firstVisiblePoint;
+    }
+
+    private BrowserGapScale SelectBrowserGapScale(
+        IReadOnlyList<BrowserGapSeriesSelection> selectedSeries,
+        double startSeconds,
+        double endSeconds)
+    {
+        var leaderScaleMax = SelectBrowserMaxGapSeconds(selectedSeries, startSeconds, endSeconds);
+        var referenceSelection = selectedSeries.FirstOrDefault(selection => selection.State.IsReference);
+        if (referenceSelection is null
+            || !_gapSeries.TryGetValue(referenceSelection.State.CarIdx, out var rawReferencePoints))
+        {
+            return BrowserGapScale.Leader(leaderScaleMax);
+        }
+
+        var referencePoints = rawReferencePoints
+            .Where(point => point.AxisSeconds >= startSeconds && point.AxisSeconds <= endSeconds)
+            .OrderBy(point => point.AxisSeconds)
+            .ToArray();
+        if (referencePoints.Length == 0)
+        {
+            return BrowserGapScale.Leader(leaderScaleMax);
+        }
+
+        var latestReferenceGap = BrowserGapReferenceAt(referencePoints, endSeconds);
+        var triggerGap = GapFocusScaleMinimumReferenceGap();
+        if (latestReferenceGap < triggerGap)
+        {
+            return BrowserGapScale.Leader(leaderScaleMax);
+        }
+
+        var maxAheadSeconds = 0d;
+        var maxBehindSeconds = 0d;
+        var hasLocalComparison = false;
+        foreach (var selection in selectedSeries.Where(selection => !selection.State.IsClassLeader))
+        {
+            if (!_gapSeries.TryGetValue(selection.State.CarIdx, out var points))
+            {
+                continue;
+            }
+
+            foreach (var point in points.Where(point =>
+                point.AxisSeconds >= selection.DrawStartSeconds
+                && point.AxisSeconds >= startSeconds
+                && point.AxisSeconds <= endSeconds))
+            {
+                var delta = point.GapSeconds - BrowserGapReferenceAt(referencePoints, point.AxisSeconds);
+                hasLocalComparison |= !selection.State.IsReference && Math.Abs(delta) > 0.001d;
+                if (delta < 0d)
+                {
+                    maxAheadSeconds = Math.Max(maxAheadSeconds, Math.Abs(delta));
+                }
+                else
+                {
+                    maxBehindSeconds = Math.Max(maxBehindSeconds, delta);
+                }
+            }
+        }
+
+        var minimumRange = GapFocusScaleMinimumRange();
+        var aheadRange = NiceCeiling(Math.Max(minimumRange, maxAheadSeconds * GapFocusScalePaddingMultiplier));
+        var behindRange = NiceCeiling(Math.Max(minimumRange, maxBehindSeconds * GapFocusScalePaddingMultiplier));
+        var localRange = Math.Max(aheadRange, behindRange);
+        var forceFocusScaleForLappedReference = ShouldForceBrowserFocusScaleForLappedReference(latestReferenceGap);
+        if (!forceFocusScaleForLappedReference
+            && (!hasLocalComparison || leaderScaleMax < Math.Max(triggerGap, localRange * GapFocusScaleTriggerRatio)))
+        {
+            return BrowserGapScale.Leader(leaderScaleMax);
+        }
+
+        return BrowserGapScale.FocusRelative(
+            leaderScaleMax,
+            aheadRange,
+            behindRange,
+            referencePoints,
+            latestReferenceGap);
+    }
+
+    private double SelectBrowserMaxGapSeconds(
+        IReadOnlyList<BrowserGapSeriesSelection> selectedSeries,
+        double startSeconds,
+        double endSeconds)
+    {
+        var maxGap = selectedSeries
+            .Where(selection => _gapSeries.ContainsKey(selection.State.CarIdx))
+            .SelectMany(selection => _gapSeries[selection.State.CarIdx].Where(point => point.AxisSeconds >= selection.DrawStartSeconds))
+            .Where(point => point.AxisSeconds >= startSeconds && point.AxisSeconds <= endSeconds)
+            .Select(point => point.GapSeconds)
+            .DefaultIfEmpty(1d)
+            .Max();
+        return NiceCeiling(Math.Max(1d, maxGap));
+    }
+
+    private double GapFocusScaleMinimumReferenceGap()
+    {
+        return Math.Max(
+            GapFocusScaleMinimumReferenceGapSeconds,
+            _lastGapLapReferenceSeconds is { } lapSeconds && IsValidLapReference(lapSeconds)
+                ? lapSeconds * GapFocusScaleMinimumReferenceGapLaps
+                : 0d);
+    }
+
+    private double GapFocusScaleMinimumRange()
+    {
+        return Math.Max(
+            GapFocusScaleMinimumRangeSeconds,
+            _lastGapLapReferenceSeconds is { } lapSeconds && IsValidLapReference(lapSeconds)
+                ? lapSeconds * GapFocusScaleMinimumRangeLaps
+                : 0d);
+    }
+
+    private bool ShouldForceBrowserFocusScaleForLappedReference(double latestReferenceGap)
+    {
+        return _lastGapLapReferenceSeconds is { } lapSeconds
+            && IsValidLapReference(lapSeconds)
+            && latestReferenceGap >= lapSeconds * GapSameLapReferenceBoundaryLaps;
+    }
+
+    private IReadOnlyList<BrowserGapSeriesSelection> SelectGapSeries()
+    {
+        var now = _latestGapAxisSeconds ?? 0d;
+        return _gapCarRenderStates.Values
+            .Where(state => ShouldKeepGapSeriesVisible(state, now))
+            .Select(state => ToGapSeriesSelection(state, now))
+            .OrderBy(selection => selection.State.LastGapSeconds)
+            .ToArray();
+    }
+
+    private bool ShouldKeepGapSeriesVisible(BrowserGapCarRenderState state, double axisSeconds)
+    {
+        return state.LastDesiredAxisSeconds is { } lastDesired
+            && axisSeconds - lastDesired <= GapStickyVisibilitySeconds();
+    }
+
+    private double GapStickyVisibilitySeconds()
+    {
+        return GapFilteredRangeSeconds();
+    }
+
+    private double GapFilteredRangeSeconds()
+    {
+        var lapScaledRange = _lastGapLapReferenceSeconds is { } lapSeconds && IsValidLapReference(lapSeconds)
+            ? lapSeconds * GapFilteredRangeLaps
+            : 0d;
+        return Math.Min(
+            GapFilteredRangeMaximumSeconds,
+            Math.Max(GapFilteredRangeMinimumSeconds, lapScaledRange));
+    }
+
+    private double GapTrendLookupToleranceSeconds()
+    {
+        return Math.Min(
+            60d,
+            Math.Max(
+                8d,
+                _lastGapLapReferenceSeconds is { } lapSeconds && IsValidLapReference(lapSeconds)
+                    ? lapSeconds * 0.08d
+                    : 60d * 0.08d));
+    }
+
+    private double GapThreatGainThresholdSeconds()
+    {
+        return Math.Max(
+            GapThreatMinimumGainSeconds,
+            _lastGapLapReferenceSeconds is { } lapSeconds && IsValidLapReference(lapSeconds)
+                ? lapSeconds * GapThreatGainLapFraction
+                : 0d);
+    }
+
+    private double GapMetricDeadbandSeconds()
+    {
+        return Math.Max(
+            GapMetricDeadbandMinimumSeconds,
+            _lastGapLapReferenceSeconds is { } lapSeconds && IsValidLapReference(lapSeconds)
+                ? lapSeconds * GapMetricDeadbandLapFraction
+                : 0d);
+    }
+
+    private BrowserGapSeriesSelection ToGapSeriesSelection(BrowserGapCarRenderState state, double now)
+    {
+        var lastDesired = state.LastDesiredAxisSeconds ?? now;
+        var visibleSince = state.VisibleSinceAxisSeconds ?? lastDesired;
+        var isStickyExit = !state.IsCurrentlyDesired;
+        var isStale = now - state.LastSeenAxisSeconds > GapMissingTelemetryGraceSeconds;
+        var stickySeconds = GapStickyVisibilitySeconds();
+        var exitAlpha = isStickyExit
+            ? 1d - Math.Clamp((now - lastDesired) / Math.Max(1d, stickySeconds), 0d, 1d)
+            : 1d;
+        var entryAlpha = Math.Clamp((now - visibleSince) / GapEntryFadeSeconds, 0d, 1d);
+        var alpha = Math.Clamp(Math.Min(exitAlpha, 0.35d + entryAlpha * 0.65d), 0.18d, 1d);
+        var drawStartSeconds = now - visibleSince <= GapEntryFadeSeconds
+            ? Math.Max(0d, visibleSince - GapEntryTailSeconds)
+            : double.NegativeInfinity;
+        return new BrowserGapSeriesSelection(state, alpha, isStickyExit, isStale, drawStartSeconds);
+    }
+
+    private void PruneGapSeries(double latestAxisSeconds)
+    {
+        var cutoff = latestAxisSeconds - GapTrendWindowSeconds;
+        foreach (var carIdx in _gapSeries.Keys.ToArray())
+        {
+            _gapSeries[carIdx].RemoveAll(point => point.AxisSeconds < cutoff);
+            if (_gapSeries[carIdx].Count == 0)
+            {
+                _gapSeries.Remove(carIdx);
+            }
+        }
+
+        _gapWeather.RemoveAll(point => point.AxisSeconds < cutoff);
+        _gapLeaderChanges.RemoveAll(marker => marker.AxisSeconds < cutoff);
+        _gapDriverChanges.RemoveAll(marker => marker.AxisSeconds < cutoff);
+        foreach (var carIdx in _gapCarRenderStates.Keys.ToArray())
+        {
+            if (!_gapSeries.ContainsKey(carIdx)
+                && _gapCarRenderStates[carIdx].LastDesiredAxisSeconds is { } lastDesired
+                && latestAxisSeconds - lastDesired > GapStickyVisibilitySeconds())
+            {
+                _gapCarRenderStates.Remove(carIdx);
+            }
+        }
+    }
+
+    private static double SelectGapAxisSeconds(DateTimeOffset timestampUtc, double? sessionTimeSeconds)
+    {
+        return sessionTimeSeconds is { } sessionTime
+            && sessionTime >= 0d
+            && IsFinite(sessionTime)
+            ? sessionTime
+            : timestampUtc.ToUnixTimeMilliseconds() / 1000d;
+    }
+
+    private static BrowserGapReferenceContext? SelectGapReferenceContext(LiveTelemetrySnapshot snapshot)
+    {
+        var directory = snapshot.Models.DriverDirectory;
+        var reference = snapshot.Models.Reference;
+        if (!directory.HasData && !reference.HasData)
+        {
+            return null;
+        }
+
+        var referenceCarIdx = reference.FocusCarIdx ?? directory.FocusCarIdx;
+        if (referenceCarIdx is null)
+        {
+            return null;
+        }
+
+        var referenceClass = reference.ReferenceCarClass
+            ?? (ReferenceUsesPlayerCar(snapshot)
+                ? directory.FocusDriver?.CarClassId ?? directory.PlayerDriver?.CarClassId ?? directory.ReferenceCarClass
+                : directory.FocusDriver?.CarClassId ?? directory.ReferenceCarClass);
+        return new BrowserGapReferenceContext(referenceCarIdx, referenceClass);
+    }
+
+    private static bool ReferenceUsesPlayerCar(LiveTelemetrySnapshot snapshot)
+    {
+        var reference = snapshot.Models.Reference;
+        if (reference.HasData)
+        {
+            return reference.FocusIsPlayer;
+        }
+
+        var directory = snapshot.Models.DriverDirectory;
+        return directory.FocusCarIdx is not null
+            && directory.PlayerCarIdx is not null
+            && directory.FocusCarIdx == directory.PlayerCarIdx;
+    }
+
+    private static BrowserGapDriverIdentity? ToGapDriverIdentity(HistoricalSessionDriver driver)
+    {
+        if (driver.CarIdx is not { } carIdx || driver.IsSpectator == true)
+        {
+            return null;
+        }
+
+        var key = driver.UserId is { } userId && userId > 0
+            ? FormattableString.Invariant($"id:{userId}")
+            : !string.IsNullOrWhiteSpace(driver.UserName)
+                ? $"name:{driver.UserName.Trim().ToUpperInvariant()}"
+                : null;
+        if (key is null)
+        {
+            return null;
+        }
+
+        return new BrowserGapDriverIdentity(carIdx, key, SelectGapDriverLabel(driver));
+    }
+
+    private static string SelectGapDriverLabel(HistoricalSessionDriver driver)
+    {
+        foreach (var value in new[] { driver.Initials, driver.AbbrevName, driver.UserName })
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                var trimmed = value.Trim();
+                return trimmed.Length <= 3
+                    ? trimmed
+                    : trimmed[..Math.Min(3, trimmed.Length)].ToUpperInvariant();
+            }
+        }
+
+        return "DR";
+    }
+
+    private static double? BrowserGapSeconds(LiveClassGapCar car, double? lapReferenceSeconds)
+    {
+        return ValidGapSeconds(car.GapSecondsToClassLeader)
+            ?? (ValidGapLaps(car.GapLapsToClassLeader) is { } laps ? laps * ChartLapReferenceSeconds(lapReferenceSeconds) : null);
+    }
+
+    private static bool IsSameLapGapCandidate(
+        LiveClassGapCar candidate,
+        LiveClassGapCar reference,
+        double? lapReferenceSeconds)
+    {
+        return NormalizedBrowserGapLaps(candidate, lapReferenceSeconds) is { } candidateGapLaps
+            && NormalizedBrowserGapLaps(reference, lapReferenceSeconds) is { } referenceGapLaps
+            && Math.Abs(candidateGapLaps - referenceGapLaps) < 0.95d;
+    }
+
+    private static double? NormalizedBrowserGapLaps(LiveClassGapCar car, double? lapReferenceSeconds)
+    {
+        if (ValidGapLaps(car.GapLapsToClassLeader) is { } laps)
+        {
+            return laps;
+        }
+
+        if (BrowserGapSeconds(car, lapReferenceSeconds) is { } seconds
+            && IsValidLapReference(lapReferenceSeconds))
+        {
+            return seconds / lapReferenceSeconds.Value;
+        }
+
+        return null;
+    }
+
+    private static double BrowserGapReferenceAt(IReadOnlyList<BrowserGapTrendPoint> referencePoints, double axisSeconds)
+    {
+        if (referencePoints.Count == 0)
+        {
+            return 0d;
+        }
+
+        if (axisSeconds <= referencePoints[0].AxisSeconds)
+        {
+            return referencePoints[0].GapSeconds;
+        }
+
+        var last = referencePoints[^1];
+        if (axisSeconds >= last.AxisSeconds)
+        {
+            return last.GapSeconds;
+        }
+
+        var low = 0;
+        var high = referencePoints.Count - 1;
+        while (low <= high)
+        {
+            var mid = low + (high - low) / 2;
+            var midSeconds = referencePoints[mid].AxisSeconds;
+            if (Math.Abs(midSeconds - axisSeconds) < 0.001d)
+            {
+                return referencePoints[mid].GapSeconds;
+            }
+
+            if (midSeconds < axisSeconds)
+            {
+                low = mid + 1;
+            }
+            else
+            {
+                high = mid - 1;
+            }
+        }
+
+        var after = referencePoints[Math.Clamp(low, 0, referencePoints.Count - 1)];
+        var before = referencePoints[Math.Clamp(low - 1, 0, referencePoints.Count - 1)];
+        var span = after.AxisSeconds - before.AxisSeconds;
+        if (span <= 0.001d)
+        {
+            return before.GapSeconds;
+        }
+
+        var ratio = Math.Clamp((axisSeconds - before.AxisSeconds) / span, 0d, 1d);
+        return before.GapSeconds + (after.GapSeconds - before.GapSeconds) * ratio;
+    }
+
+    private static BrowserGapWeatherCondition SelectGapWeatherCondition(LiveTelemetrySnapshot snapshot)
+    {
+        var weather = snapshot.Models.Weather;
+        if (!weather.HasData)
+        {
+            return BrowserGapWeatherCondition.Unknown;
+        }
+
+        if (weather.WeatherDeclaredWet == true)
+        {
+            return BrowserGapWeatherCondition.DeclaredWet;
+        }
+
+        return weather.TrackWetness switch
+        {
+            >= 4 => BrowserGapWeatherCondition.Wet,
+            >= 2 => BrowserGapWeatherCondition.Damp,
+            >= 0 => BrowserGapWeatherCondition.Dry,
+            _ => BrowserGapWeatherCondition.Unknown
+        };
+    }
+
+    private static double ChartLapReferenceSeconds(double? lapReferenceSeconds)
+    {
+        return IsValidLapReference(lapReferenceSeconds) ? lapReferenceSeconds.Value : GapDefaultLapReferenceSeconds;
+    }
+
+    private static bool IsValidLapReference(double? seconds)
+    {
+        return seconds is { } value && value is > 20d and < 1800d && IsFinite(value);
+    }
+
+    private static double? ValidGapSeconds(double? seconds)
+    {
+        return seconds is { } value && IsFinite(value) && value >= 0d && value < 86400d
+            ? value
+            : null;
+    }
+
+    private static double? ValidGapLaps(double? laps)
+    {
+        return laps is { } value && IsFinite(value) && value >= 0d
+            ? value
+            : null;
+    }
+
+    private static double? FirstValidFuelLevel(params double?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (value is { } fuelLevel && IsFinite(fuelLevel) && fuelLevel > 0d)
+            {
+                return fuelLevel;
+            }
+        }
+
+        return null;
+    }
+
+    private static string BrowserGapCarShortLabel(BrowserGapCarRenderState state)
+    {
+        return $"#{state.CarIdx}";
+    }
+
+    private static double NiceCeiling(double value)
+    {
+        if (value <= 1d)
+        {
+            return 1d;
+        }
+
+        var magnitude = Math.Pow(10d, Math.Floor(Math.Log10(value)));
+        var normalized = value / magnitude;
+        foreach (var step in new[] { 1d, 1.5d, 2d, 3d, 5d, 7.5d, 10d })
+        {
+            if (normalized <= step)
+            {
+                return step * magnitude;
+            }
+        }
+
+        return 10d * magnitude;
     }
 
     private SessionHistoryLookupResult LookupHistory(HistoricalComboIdentity combo)
@@ -490,7 +1586,8 @@ internal sealed record BrowserOverlayDisplayModel(
     IReadOnlyList<BrowserOverlayDisplayRow> Rows,
     IReadOnlyList<BrowserOverlayMetricRow> Metrics,
     IReadOnlyList<double> Points,
-    IReadOnlyList<BrowserOverlayHeaderItem> HeaderItems)
+    IReadOnlyList<BrowserOverlayHeaderItem> HeaderItems,
+    BrowserGapGraph? Graph = null)
 {
     public static BrowserOverlayDisplayModel Table(
         string overlayId,
@@ -534,6 +1631,160 @@ internal sealed record BrowserOverlayDisplayModel(
             [],
             headerItems ?? []);
     }
+}
+
+internal sealed record BrowserGapGraph(
+    IReadOnlyList<BrowserGapSeries> Series,
+    IReadOnlyList<BrowserGapWeatherPoint> Weather,
+    IReadOnlyList<BrowserGapLeaderChangeMarker> LeaderChanges,
+    IReadOnlyList<BrowserGapDriverChangeMarker> DriverChanges,
+    double StartSeconds,
+    double EndSeconds,
+    double MaxGapSeconds,
+    double? LapReferenceSeconds,
+    int SelectedSeriesCount,
+    IReadOnlyList<BrowserGapTrendMetric> TrendMetrics,
+    BrowserGapTrendMetric? ActiveThreat,
+    int? ThreatCarIdx,
+    double MetricDeadbandSeconds,
+    BrowserGapScale? Scale = null);
+
+internal sealed record BrowserGapTrendMetric(
+    string Label,
+    double? FocusGapChangeSeconds,
+    BrowserBehindGainMetric? Chaser,
+    string State,
+    string? StateLabel);
+
+internal sealed record BrowserBehindGainMetric(
+    int CarIdx,
+    string Label,
+    double GainSeconds);
+
+internal sealed record BrowserGapScale(
+    double MaxGapSeconds,
+    bool IsFocusRelative,
+    double AheadSeconds,
+    double BehindSeconds,
+    IReadOnlyList<BrowserGapTrendPoint> ReferencePoints,
+    double LatestReferenceGapSeconds)
+{
+    public static BrowserGapScale Leader(double maxGapSeconds)
+    {
+        return new BrowserGapScale(
+            MaxGapSeconds: maxGapSeconds,
+            IsFocusRelative: false,
+            AheadSeconds: 0d,
+            BehindSeconds: 0d,
+            ReferencePoints: [],
+            LatestReferenceGapSeconds: 0d);
+    }
+
+    public static BrowserGapScale FocusRelative(
+        double maxGapSeconds,
+        double aheadSeconds,
+        double behindSeconds,
+        IReadOnlyList<BrowserGapTrendPoint> referencePoints,
+        double latestReferenceGapSeconds)
+    {
+        return new BrowserGapScale(
+            MaxGapSeconds: maxGapSeconds,
+            IsFocusRelative: true,
+            AheadSeconds: aheadSeconds,
+            BehindSeconds: behindSeconds,
+            ReferencePoints: referencePoints,
+            LatestReferenceGapSeconds: latestReferenceGapSeconds);
+    }
+}
+
+internal sealed record BrowserGapSeries(
+    int CarIdx,
+    bool IsReference,
+    bool IsClassLeader,
+    int? ClassPosition,
+    double Alpha,
+    bool IsStickyExit,
+    bool IsStale,
+    IReadOnlyList<BrowserGapTrendPoint> Points);
+
+internal sealed record BrowserGapTrendPoint(
+    DateTimeOffset TimestampUtc,
+    double AxisSeconds,
+    double GapSeconds,
+    int CarIdx,
+    bool IsReference,
+    bool IsClassLeader,
+    int? ClassPosition,
+    bool StartsSegment);
+
+internal sealed record BrowserGapWeatherPoint(
+    double AxisSeconds,
+    BrowserGapWeatherCondition Condition);
+
+internal sealed record BrowserGapLeaderChangeMarker(
+    DateTimeOffset TimestampUtc,
+    double AxisSeconds,
+    int PreviousLeaderCarIdx,
+    int NewLeaderCarIdx);
+
+internal sealed record BrowserGapDriverChangeMarker(
+    DateTimeOffset TimestampUtc,
+    double AxisSeconds,
+    int CarIdx,
+    double GapSeconds,
+    bool IsReference,
+    string Label);
+
+internal sealed record BrowserGapSeriesSelection(
+    BrowserGapCarRenderState State,
+    double Alpha,
+    bool IsStickyExit,
+    bool IsStale,
+    double DrawStartSeconds);
+
+internal sealed record BrowserGapDriverIdentity(
+    int CarIdx,
+    string DriverKey,
+    string ShortLabel)
+{
+    public bool HasSameDriver(BrowserGapDriverIdentity other)
+    {
+        return string.Equals(DriverKey, other.DriverKey, StringComparison.Ordinal);
+    }
+}
+
+internal sealed record BrowserGapReferenceContext(int? CarIdx, int? CarClass);
+
+internal sealed class BrowserGapCarRenderState(int carIdx)
+{
+    public int CarIdx { get; } = carIdx;
+
+    public double LastSeenAxisSeconds { get; set; }
+
+    public double LastGapSeconds { get; set; }
+
+    public double? LastDesiredAxisSeconds { get; set; }
+
+    public double? VisibleSinceAxisSeconds { get; set; }
+
+    public bool IsCurrentlyDesired { get; set; }
+
+    public bool IsReference { get; set; }
+
+    public bool IsClassLeader { get; set; }
+
+    public int? ClassPosition { get; set; }
+
+    public double? DeltaSecondsToReference { get; set; }
+}
+
+internal enum BrowserGapWeatherCondition
+{
+    Unknown,
+    Dry,
+    Damp,
+    Wet,
+    DeclaredWet
 }
 
 internal sealed record BrowserOverlayDisplayRow(
