@@ -6,6 +6,7 @@ using System.Text;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.App.History;
 using TmrOverlay.App.Overlays.Abstractions;
+using TmrOverlay.App.Overlays.CarRadar;
 using TmrOverlay.App.Overlays.Content;
 using TmrOverlay.App.Overlays.Flags;
 using TmrOverlay.App.Overlays.FuelCalculator;
@@ -62,8 +63,8 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private const float TrackSectorBoundaryTickLength = 17f;
     private const float TrackPitLineWidth = 2.2f;
     private const double TrackMapReloadIntervalSeconds = 10d;
-    private const int MaximumChatMessages = 64;
-    private const int VisibleChatMessageBudget = 36;
+    private const int MaximumChatMessages = StreamChatOverlayViewModel.MaximumMessages;
+    private const int VisibleChatMessageBudget = StreamChatOverlayViewModel.VisibleMessageBudget;
     private const int GapMaxTrendPointsPerCar = 36_000;
     private const int GapMaxWeatherPoints = 36_000;
     private const int GapMaxDriverChangeMarkers = 64;
@@ -152,6 +153,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private readonly string _fontFamily;
     private readonly string _unitSystem;
     private readonly System.Windows.Forms.Timer _refreshTimer;
+    private readonly Func<LiveTelemetrySnapshot, DateTimeOffset, string, SimpleTelemetryOverlayViewModel> _pitServiceBuilder;
     private readonly List<double> _gapPoints = [];
     private readonly Dictionary<int, List<DesignV2GapTrendPoint>> _gapSeries = [];
     private readonly List<DesignV2GapWeatherPoint> _gapWeather = [];
@@ -217,6 +219,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         _settings = settings;
         _fontFamily = fontFamily;
         _unitSystem = unitSystem;
+        _pitServiceBuilder = PitServiceOverlayViewModel.CreateBuilder();
         _model = WaitingModel(TitleFor(kind), "waiting");
 
         BackColor = UsesTransparentBackground(kind) ? TransparentColor : Color.Black;
@@ -388,7 +391,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             DesignV2LiveOverlayKind.Relative => BuildRelativeModel(snapshot, now),
             DesignV2LiveOverlayKind.FuelCalculator => BuildFuelModel(snapshot, now),
             DesignV2LiveOverlayKind.SessionWeather => FromSimple(SessionWeatherOverlayViewModel.From(snapshot, now, _unitSystem)),
-            DesignV2LiveOverlayKind.PitService => FromSimple(PitServiceOverlayViewModel.From(snapshot, now, _unitSystem)),
+            DesignV2LiveOverlayKind.PitService => FromSimple(_pitServiceBuilder(snapshot, now, _unitSystem)),
             DesignV2LiveOverlayKind.InputState => BuildInputModel(snapshot, now),
             DesignV2LiveOverlayKind.Flags => BuildFlagsModel(snapshot, now),
             DesignV2LiveOverlayKind.CarRadar => BuildRadarModel(snapshot, now),
@@ -687,26 +690,30 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     private DesignV2OverlayModel BuildRadarModel(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
     {
-        var availability = OverlayAvailabilityEvaluator.FromSnapshot(snapshot, now);
-        var spatial = snapshot.Models.Spatial;
-        var body = RadarBodyFromSpatial(spatial, availability.IsAvailable, _settingsPreviewVisible, _settings);
-        var status = !body.IsAvailable
-            ? availability.StatusText
-            : spatial.HasCarLeft && spatial.HasCarRight
-            ? "cars both sides"
-            : spatial.HasCarLeft
-                ? "car left"
-                : spatial.HasCarRight
-                    ? "car right"
-                    : spatial.StrongestMulticlassApproach is not null
-                        ? "class traffic"
-                        : "clear";
+        var viewModel = CarRadarOverlayViewModel.From(
+            snapshot,
+            now,
+            _settingsPreviewVisible,
+            _settings.GetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true));
+        var body = RadarBodyFromViewModel(viewModel);
         return new DesignV2OverlayModel(
-            "Car Radar",
-            status,
-            body.IsAvailable ? "source: spatial telemetry" : "source: waiting",
-            body.IsAvailable ? DesignV2Evidence.Live : DesignV2Evidence.Unavailable,
+            viewModel.Title,
+            viewModel.Status,
+            viewModel.Source,
+            viewModel.IsAvailable ? DesignV2Evidence.Live : DesignV2Evidence.Unavailable,
             body);
+    }
+
+    internal static DesignV2RadarBody RadarBodyFromViewModel(CarRadarOverlayViewModel viewModel)
+    {
+        return new DesignV2RadarBody(
+            viewModel.IsAvailable,
+            viewModel.HasCarLeft,
+            viewModel.HasCarRight,
+            viewModel.Cars,
+            viewModel.StrongestMulticlassApproach,
+            viewModel.ShowMulticlassWarning,
+            viewModel.PreviewVisible);
     }
 
     internal static DesignV2RadarBody RadarBodyFromSpatial(
@@ -717,28 +724,28 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     {
         var isAvailable = overlayAvailable && spatial.HasData;
         var cars = spatial.Cars
-            .Where(car => car.RelativeMeters is { } meters && IsFinite(meters))
+            .Where(CarRadarOverlayViewModel.IsInRadarRange)
             .ToArray();
+        var showMulticlassWarning = settings.GetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true);
         return new DesignV2RadarBody(
             isAvailable || previewVisible,
             spatial.HasCarLeft,
             spatial.HasCarRight,
             cars,
-            spatial.StrongestMulticlassApproach,
-            settings.GetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true),
+            showMulticlassWarning ? spatial.StrongestMulticlassApproach : null,
+            showMulticlassWarning,
             previewVisible);
     }
 
     private DesignV2OverlayModel BuildGapModel(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
     {
-        var availability = OverlayAvailabilityEvaluator.FromSnapshot(snapshot, now);
-        var gap = TmrOverlay.App.Overlays.GapToLeader.GapToLeaderLiveModelAdapter.Select(snapshot);
+        var viewModel = GapToLeaderOverlayViewModel.From(snapshot, now);
+        var gap = viewModel.Gap;
         if (_lastGapSequence != snapshot.Sequence)
         {
             _lastGapSequence = snapshot.Sequence;
             RecordGapSnapshot(snapshot, gap, now);
-            if (gap.HasData
-                && TmrOverlay.App.Overlays.GapToLeader.GapToLeaderLiveModelAdapter.SelectFocusedTrendPointSeconds(snapshot, gap) is { } seconds
+            if (viewModel.FocusedTrendPointSeconds is { } seconds
                 && IsFinite(seconds))
             {
                 _gapPoints.Add(seconds);
@@ -751,23 +758,22 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
         var selectedSeries = SelectGapSeries();
         var graph = BuildGapGraphBody(selectedSeries, snapshot);
-        if (!availability.IsAvailable)
+        if (!viewModel.IsAvailable)
         {
             return new DesignV2OverlayModel(
-                "Focused Gap Trend",
-                availability.StatusText,
-                "source: waiting",
+                viewModel.Title,
+                viewModel.Status,
+                viewModel.Source,
                 DesignV2Evidence.Unavailable,
                 graph);
         }
 
-        var status = gap.HasData ? "live | race gap" : "waiting";
         var footer = gap.HasData
             ? $"source: live gap telemetry | cars {selectedSeries.Count}/{gap.ClassCars.Count}"
-            : "source: waiting";
+            : viewModel.Source;
         return new DesignV2OverlayModel(
-            "Focused Gap Trend",
-            status,
+            viewModel.Title,
+            viewModel.Status,
             footer,
             gap.HasData ? DesignV2Evidence.Live : DesignV2Evidence.Unavailable,
             graph);
@@ -2174,21 +2180,20 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     private DesignV2OverlayModel BuildTrackMapModel(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
     {
-        var availability = OverlayAvailabilityEvaluator.FromSnapshot(snapshot, now);
-        var trackMap = snapshot.Models.TrackMap;
         RefreshTrackMap(snapshot, now);
+        var viewModel = TrackMapOverlayViewModel.From(snapshot, now, _settings, _trackMap);
         return new DesignV2OverlayModel(
-            "Track Map",
-            availability.IsAvailable ? "live" : availability.StatusText,
-            availability.IsAvailable ? "source: live position telemetry" : "source: waiting",
-            availability.IsAvailable ? DesignV2Evidence.Live : DesignV2Evidence.Unavailable,
+            viewModel.Title,
+            viewModel.Status,
+            viewModel.Source,
+            viewModel.IsAvailable ? DesignV2Evidence.Live : DesignV2Evidence.Unavailable,
             new DesignV2TrackMapBody(
-                SmoothTrackMapMarkers(BuildTrackMapMarkers(snapshot)),
-                trackMap.Sectors,
-                _settings.GetBooleanOption(OverlayOptionKeys.TrackMapSectorBoundariesEnabled, defaultValue: true),
-                _settings.Opacity,
-                availability.IsAvailable,
-                _trackMap));
+                SmoothTrackMapMarkers(viewModel.Markers.Select(ToDesignV2TrackMapMarker).ToArray()),
+                viewModel.Sectors,
+                viewModel.ShowSectorBoundaries,
+                viewModel.InternalOpacity,
+                viewModel.IsAvailable,
+                viewModel.TrackMap));
     }
 
     private void RefreshTrackMap(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
@@ -2216,22 +2221,18 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private DesignV2OverlayModel BuildStreamChatModel()
     {
         RefreshStreamChatSettings();
-        var rows = _chatMessages
-            .Skip(Math.Max(0, _chatMessages.Count - VisibleChatMessageBudget))
+        var viewModel = StreamChatOverlayViewModel.From(_streamChatStatus, _chatMessages, VisibleChatMessageBudget);
+        var rows = viewModel.Rows
             .Select(message => new DesignV2ChatRow(message.Name, message.Text, ChatEvidence(message.Kind)))
             .ToArray();
-        if (rows.Length == 0)
-        {
-            rows = [new DesignV2ChatRow("TMR", "Choose Twitch or Streamlabs in settings.", DesignV2Evidence.Unavailable)];
-        }
 
         return new DesignV2OverlayModel(
-            "Stream Chat",
-            _streamChatStatus,
-            "source: stream chat settings",
-            rows.Any(row => row.Evidence == DesignV2Evidence.Live)
+            viewModel.Title,
+            viewModel.Status,
+            viewModel.Source,
+            viewModel.HasLiveRows
                 ? DesignV2Evidence.Live
-                : rows.Any(row => row.Evidence == DesignV2Evidence.Error)
+                : viewModel.HasErrorRows
                     ? DesignV2Evidence.Error
                     : DesignV2Evidence.Unavailable,
             new DesignV2ChatBody(rows));
@@ -2252,29 +2253,22 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
         if (!settings.IsConfigured)
         {
-            ReplaceChatMessages(new StreamChatMessage("TMR", StreamChatStatusText(settings.Status), StreamChatMessageKind.System));
-            SetChatStatus("waiting for chat source");
+            ReplaceChatMessages(StreamChatOverlayViewModel.InitialMessage(settings));
+            SetChatStatus(StreamChatOverlayViewModel.InitialStatus(settings));
             return;
         }
 
         if (string.Equals(settings.Provider, StreamChatOverlaySettings.ProviderTwitch, StringComparison.Ordinal)
             && settings.TwitchChannel is { Length: > 0 } channel)
         {
-            ReplaceChatMessages(new StreamChatMessage("TMR", $"Connecting to #{channel}...", StreamChatMessageKind.System));
-            SetChatStatus("connecting | twitch");
+            ReplaceChatMessages(StreamChatOverlayViewModel.InitialMessage(settings));
+            SetChatStatus(StreamChatOverlayViewModel.InitialStatus(settings));
             StartTwitchConnection(channel);
             return;
         }
 
-        if (string.Equals(settings.Provider, StreamChatOverlaySettings.ProviderStreamlabs, StringComparison.Ordinal))
-        {
-            ReplaceChatMessages(new StreamChatMessage("TMR", "Streamlabs is browser-source only in this build.", StreamChatMessageKind.Error));
-            SetChatStatus("streamlabs unavailable");
-            return;
-        }
-
-        ReplaceChatMessages(new StreamChatMessage("TMR", "Stream chat provider unavailable.", StreamChatMessageKind.Error));
-        SetChatStatus("chat provider unavailable");
+        ReplaceChatMessages(StreamChatOverlayViewModel.InitialMessage(settings));
+        SetChatStatus(StreamChatOverlayViewModel.InitialStatus(settings));
     }
 
     private StreamChatBrowserSettings StreamChatSettingsFromOverlay()
@@ -2576,16 +2570,6 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         _logger.LogWarning(exception, "Design V2 stream chat overlay {Phase} failed.", phase);
     }
 
-    private static string StreamChatStatusText(string status)
-    {
-        return status switch
-        {
-            "missing_or_invalid_streamlabs_url" => "Streamlabs Chat Box URL is missing.",
-            "missing_or_invalid_twitch_channel" => "Twitch channel is missing.",
-            _ => "Choose a chat source in settings."
-        };
-    }
-
     private static string KindName(DesignV2LiveOverlayKind kind)
     {
         return kind switch
@@ -2738,114 +2722,21 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     internal static IReadOnlyList<DesignV2TrackMapMarker> BuildTrackMapMarkers(LiveTelemetrySnapshot snapshot)
     {
-        var markers = new Dictionary<int, DesignV2TrackMapMarker>();
-        var scoringByCarIdx = snapshot.Models.Scoring.Rows
-            .GroupBy(row => row.CarIdx)
-            .ToDictionary(group => group.Key, group => group.First());
-        var referenceCarIdx = snapshot.Models.Reference.FocusCarIdx
-            ?? snapshot.Models.Scoring.ReferenceCarIdx
-            ?? snapshot.Models.Timing.FocusCarIdx
-            ?? snapshot.Models.Spatial.ReferenceCarIdx
-            ?? snapshot.LatestSample?.FocusCarIdx;
-
-        foreach (var row in snapshot.Models.Timing.OverallRows.Concat(snapshot.Models.Timing.ClassRows))
-        {
-            scoringByCarIdx.TryGetValue(row.CarIdx, out var scoringRow);
-            var isFocus = row.IsFocus
-                || row.CarIdx == referenceCarIdx
-                || scoringRow?.IsFocus == true;
-            if (!TrackMapMarkerPolicy.ShouldRenderTimingMarker(row, isFocus)
-                || row.LapDistPct is not { } lapDistPct)
-            {
-                continue;
-            }
-
-            var marker = new DesignV2TrackMapMarker(
-                row.CarIdx,
-                NormalizeProgress(lapDistPct),
-                isFocus,
-                MarkerColor(scoringRow?.CarClassColorHex ?? row.CarClassColorHex, isFocus),
-                PositionLabel(row, scoringRow, referenceCarIdx));
-            if (!markers.TryGetValue(row.CarIdx, out var existing)
-                || marker.IsFocus
-                || !existing.IsFocus)
-            {
-                markers[row.CarIdx] = marker;
-            }
-        }
-
-        var focusProgress = MarkerProgress(snapshot.LatestSample);
-        if (referenceCarIdx is { } focusMarkerCarIdx
-            && focusProgress is { } progress
-            && IsValidProgress(progress))
-        {
-            markers[focusMarkerCarIdx] = new DesignV2TrackMapMarker(
-                focusMarkerCarIdx,
-                NormalizeProgress(progress),
-                IsFocus: true,
-                Cyan,
-                FocusPositionLabel(snapshot, scoringByCarIdx, focusMarkerCarIdx));
-        }
-
-        return markers.Values.ToArray();
+        return TrackMapOverlayViewModel.BuildMarkers(snapshot)
+            .Select(ToDesignV2TrackMapMarker)
+            .ToArray();
     }
 
-    private static string? PositionLabel(LiveTimingRow row, LiveScoringRow? scoringRow, int? referenceCarIdx)
+    private static DesignV2TrackMapMarker ToDesignV2TrackMapMarker(TrackMapOverlayMarker marker)
     {
-        if (!row.IsFocus
-            && row.CarIdx != referenceCarIdx
-            && scoringRow?.IsFocus != true)
-        {
-            return null;
-        }
-
-        return PositionLabel(scoringRow) ?? PositionLabel(row);
-    }
-
-    private static string? PositionLabel(LiveTimingRow? row)
-    {
-        var position = row?.ClassPosition ?? row?.OverallPosition;
-        return position is > 0 ? position.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
-    }
-
-    private static string? PositionLabel(LiveScoringRow? row)
-    {
-        var position = row?.ClassPosition ?? row?.OverallPosition;
-        return position is > 0 ? position.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
-    }
-
-    private static string? FocusPositionLabel(
-        LiveTelemetrySnapshot snapshot,
-        IReadOnlyDictionary<int, LiveScoringRow> scoringByCarIdx,
-        int focusCarIdx)
-    {
-        if (scoringByCarIdx.TryGetValue(focusCarIdx, out var scoringRow))
-        {
-            return PositionLabel(scoringRow);
-        }
-
-        return PositionLabel(snapshot.Models.Timing.FocusRow)
-            ?? FocusPositionLabel(snapshot.LatestSample);
-    }
-
-    private static string? FocusPositionLabel(HistoricalTelemetrySample? sample)
-    {
-        var position = sample?.FocusClassPosition
-            ?? sample?.FocusPosition;
-        return position is > 0 ? position.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
-    }
-
-    private static double? MarkerProgress(HistoricalTelemetrySample? sample)
-    {
-        if (!TrackMapMarkerPolicy.ShouldRenderFocusSampleMarker(sample))
-        {
-            return null;
-        }
-
-        var progress = sample?.FocusLapDistPct;
-        return progress is { } value
-            ? NormalizeProgress(value)
-            : null;
+        return new DesignV2TrackMapMarker(
+            marker.CarIdx,
+            marker.LapDistPct,
+            marker.IsFocus,
+            MarkerColor(marker.ClassColorHex, marker.IsFocus),
+            marker.Position is > 0
+                ? marker.Position.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                : null);
     }
 
     private static Color MarkerColor(string? classColorHex, bool isFocus)
@@ -5390,11 +5281,6 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
         var normalized = value % 1d;
         return normalized < 0d ? normalized + 1d : normalized;
-    }
-
-    private static bool IsValidProgress(double value)
-    {
-        return IsFinite(value) && value >= 0d;
     }
 
     private static ContentAlignment AlignmentFor(OverlayContentColumnAlignment alignment)

@@ -245,8 +245,9 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
 
             var now = DateTimeOffset.UtcNow;
             var previousSequence = _lastRefreshSequence;
-            _gap = GapToLeaderLiveModelAdapter.Select(snapshot);
-            _lapReferenceSeconds = SelectLapReferenceSeconds(snapshot);
+            var viewModel = GapToLeaderOverlayViewModel.From(snapshot, now);
+            _gap = viewModel.Gap;
+            _lapReferenceSeconds = viewModel.LapReferenceSeconds;
             if (snapshot.Sequence != _lastSequence)
             {
                 _lastSequence = snapshot.Sequence;

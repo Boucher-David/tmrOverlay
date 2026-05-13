@@ -637,7 +637,9 @@ internal sealed record HistoricalTelemetrySample(
     double? OilPressureBar = null,
     bool? BrakeAbsActive = null,
     bool? IsReplayPlaying = null,
-    IReadOnlyList<HistoricalCarProximity>? AllCars = null);
+    IReadOnlyList<HistoricalCarProximity>? AllCars = null,
+    HistoricalTireConditionSnapshot? TireCondition = null,
+    HistoricalPitServiceTireRequest? PitServiceTireRequest = null);
 
 internal sealed record HistoricalCarProximity(
     int CarIdx,
@@ -651,3 +653,33 @@ internal sealed record HistoricalCarProximity(
     int? TrackSurface,
     bool? OnPitRoad,
     int? TireCompound = null);
+
+internal sealed record HistoricalTireConditionSnapshot(
+    HistoricalTireCornerCondition? LeftFront,
+    HistoricalTireCornerCondition? RightFront,
+    HistoricalTireCornerCondition? LeftRear,
+    HistoricalTireCornerCondition? RightRear);
+
+internal sealed record HistoricalTireCornerCondition(
+    double? WearLeft,
+    double? WearMiddle,
+    double? WearRight,
+    double? TemperatureCLeft,
+    double? TemperatureCMiddle,
+    double? TemperatureCRight,
+    double? ColdPressureKpa,
+    double? OdometerMeters);
+
+internal sealed record HistoricalPitServiceTireRequest(
+    double? LeftFrontServicePressureKpa,
+    double? RightFrontServicePressureKpa,
+    double? LeftRearServicePressureKpa,
+    double? RightRearServicePressureKpa,
+    double? LeftFrontColdPressurePa,
+    double? RightFrontColdPressurePa,
+    double? LeftRearColdPressurePa,
+    double? RightRearColdPressurePa,
+    bool? LeftFrontChangeRequested,
+    bool? RightFrontChangeRequested,
+    bool? LeftRearChangeRequested,
+    bool? RightRearChangeRequested);

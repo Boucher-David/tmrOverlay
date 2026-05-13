@@ -7,7 +7,6 @@ using TmrOverlay.App.Overlays.Styling;
 using TmrOverlay.App.Performance;
 using TmrOverlay.App.TrackMaps;
 using TmrOverlay.Core.Overlays;
-using TmrOverlay.Core.History;
 using TmrOverlay.Core.Settings;
 using TmrOverlay.Core.Telemetry.Live;
 using TmrOverlay.Core.TrackMaps;
@@ -49,6 +48,7 @@ internal sealed class TrackMapForm : PersistentOverlayForm
     private readonly Action _saveSettings;
     private readonly System.Windows.Forms.Timer _refreshTimer;
     private LiveTelemetrySnapshot _latestSnapshot = LiveTelemetrySnapshot.Empty;
+    private TrackMapOverlayViewModel _viewModel = TrackMapOverlayViewModel.Empty;
     private TrackMapDocument? _trackMap;
     private string? _trackMapIdentityKey;
     private readonly Dictionary<int, double> _smoothedMarkerProgress = [];
@@ -177,7 +177,9 @@ internal sealed class TrackMapForm : PersistentOverlayForm
                     snapshotSucceeded);
             }
 
-            RefreshTrackMap(_latestSnapshot);
+            var now = DateTimeOffset.UtcNow;
+            RefreshTrackMap(_latestSnapshot, now);
+            _viewModel = TrackMapOverlayViewModel.From(_latestSnapshot, now, _settings, _trackMap);
             Invalidate();
             succeeded = true;
         }
@@ -191,9 +193,8 @@ internal sealed class TrackMapForm : PersistentOverlayForm
         }
     }
 
-    private void RefreshTrackMap(LiveTelemetrySnapshot snapshot)
+    private void RefreshTrackMap(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
     {
-        var now = DateTimeOffset.UtcNow;
         var identity = TrackMapIdentity.From(snapshot.Context.Track);
         var identityChanged = !string.Equals(identity.Key, _trackMapIdentityKey, StringComparison.Ordinal);
         if (!identityChanged
@@ -223,15 +224,13 @@ internal sealed class TrackMapForm : PersistentOverlayForm
             return;
         }
 
-        var markers = SmoothMarkers(BuildMarkers(_latestSnapshot));
+        var markers = SmoothMarkers(_viewModel.Markers.Select(ToTrackMapMarker).ToArray());
         using var interiorBrush = TrackInteriorBrush();
-        var sectors = _latestSnapshot.Models.TrackMap.Sectors;
-        var showSectorBoundaries = _settings.GetBooleanOption(
-            OverlayOptionKeys.TrackMapSectorBoundariesEnabled,
-            defaultValue: true);
-        if (_trackMap?.RacingLine.Points is { Count: >= 3 })
+        var sectors = _viewModel.Sectors;
+        var showSectorBoundaries = _viewModel.ShowSectorBoundaries;
+        if (_viewModel.TrackMap?.RacingLine.Points is { Count: >= 3 })
         {
-            DrawGeneratedMap(graphics, drawBounds, _trackMap, markers, sectors, interiorBrush, showSectorBoundaries);
+            DrawGeneratedMap(graphics, drawBounds, _viewModel.TrackMap, markers, sectors, interiorBrush, showSectorBoundaries);
             return;
         }
 
@@ -792,115 +791,19 @@ internal sealed class TrackMapForm : PersistentOverlayForm
         return NormalizeProgress(current + delta * Math.Clamp(alpha, 0d, 1d));
     }
 
-    private static IReadOnlyList<TrackMapMarker> BuildMarkers(LiveTelemetrySnapshot snapshot)
+    private static TrackMapMarker ToTrackMapMarker(TrackMapOverlayMarker marker)
     {
-        var markers = new Dictionary<int, TrackMapMarker>();
-        var scoringByCarIdx = snapshot.Models.Scoring.Rows
-            .GroupBy(row => row.CarIdx)
-            .ToDictionary(group => group.Key, group => group.First());
-        var referenceCarIdx = snapshot.Models.Reference.FocusCarIdx
-            ?? snapshot.Models.Scoring.ReferenceCarIdx
-            ?? snapshot.Models.Timing.FocusCarIdx
-            ?? snapshot.Models.Spatial.ReferenceCarIdx
-            ?? snapshot.LatestSample?.FocusCarIdx;
-        foreach (var row in snapshot.Models.Timing.OverallRows.Concat(snapshot.Models.Timing.ClassRows))
-        {
-            scoringByCarIdx.TryGetValue(row.CarIdx, out var scoringRow);
-            var isFocus = row.IsFocus
-                || row.CarIdx == referenceCarIdx
-                || scoringRow?.IsFocus == true;
-            if (!TrackMapMarkerPolicy.ShouldRenderTimingMarker(row, isFocus)
-                || row.LapDistPct is not { } lapDistPct)
-            {
-                continue;
-            }
-
-            var marker = new TrackMapMarker(
-                row.CarIdx,
-                NormalizeProgress(lapDistPct),
-                isFocus,
-                MarkerColor(scoringRow?.CarClassColorHex ?? row.CarClassColorHex, isFocus),
-                PositionLabel(row, scoringRow, referenceCarIdx));
-            if (!markers.TryGetValue(row.CarIdx, out var existing)
-                || marker.IsFocus
-                || !existing.IsFocus)
-            {
-                markers[row.CarIdx] = marker;
-            }
-        }
-
-        var focusProgress = MarkerProgress(snapshot.LatestSample);
-        if (referenceCarIdx is { } focusMarkerCarIdx
-            && focusProgress is { } progress
-            && IsValidProgress(progress))
-        {
-            markers[focusMarkerCarIdx] = new TrackMapMarker(
-                focusMarkerCarIdx,
-                NormalizeProgress(progress),
-                IsFocus: true,
-                FocusMarkerColor,
-                FocusPositionLabel(snapshot, scoringByCarIdx, focusMarkerCarIdx));
-        }
-
-        return markers.Values.ToArray();
+        return new TrackMapMarker(
+            marker.CarIdx,
+            marker.LapDistPct,
+            marker.IsFocus,
+            MarkerColor(marker.ClassColorHex, marker.IsFocus),
+            FormatPositionLabel(marker.Position));
     }
 
-    private static string? PositionLabel(LiveTimingRow row, LiveScoringRow? scoringRow, int? referenceCarIdx)
+    private static string? FormatPositionLabel(int? position)
     {
-        if (!row.IsFocus
-            && row.CarIdx != referenceCarIdx
-            && scoringRow?.IsFocus != true)
-        {
-            return null;
-        }
-
-        return PositionLabel(scoringRow) ?? PositionLabel(row);
-    }
-
-    private static string? PositionLabel(LiveTimingRow? row)
-    {
-        var position = row?.ClassPosition ?? row?.OverallPosition;
         return position is > 0 ? $"P{position.Value}" : null;
-    }
-
-    private static string? PositionLabel(LiveScoringRow? row)
-    {
-        var position = row?.ClassPosition ?? row?.OverallPosition;
-        return position is > 0 ? $"P{position.Value}" : null;
-    }
-
-    private static string? FocusPositionLabel(
-        LiveTelemetrySnapshot snapshot,
-        IReadOnlyDictionary<int, LiveScoringRow> scoringByCarIdx,
-        int focusCarIdx)
-    {
-        if (scoringByCarIdx.TryGetValue(focusCarIdx, out var scoringRow))
-        {
-            return PositionLabel(scoringRow);
-        }
-
-        return PositionLabel(snapshot.Models.Timing.FocusRow)
-            ?? FocusPositionLabel(snapshot.LatestSample);
-    }
-
-    private static string? FocusPositionLabel(HistoricalTelemetrySample? sample)
-    {
-        var position = sample?.FocusClassPosition
-            ?? sample?.FocusPosition;
-        return position is > 0 ? $"P{position.Value}" : null;
-    }
-
-    private static double? MarkerProgress(HistoricalTelemetrySample? sample)
-    {
-        if (!TrackMapMarkerPolicy.ShouldRenderFocusSampleMarker(sample))
-        {
-            return null;
-        }
-
-        var progress = sample?.FocusLapDistPct;
-        return progress is { } value
-            ? NormalizeProgress(value)
-            : null;
     }
 
     private static Color MarkerColor(string? classColorHex, bool isFocus)
@@ -924,11 +827,6 @@ internal sealed class TrackMapForm : PersistentOverlayForm
         return normalized < 0d ? normalized + 1d : normalized;
     }
 
-    private static bool IsValidProgress(double value)
-    {
-        return IsFinite(value) && value >= 0d;
-    }
-
     private static bool IsFinite(double value)
     {
         return !double.IsNaN(value) && !double.IsInfinity(value);
@@ -936,7 +834,7 @@ internal sealed class TrackMapForm : PersistentOverlayForm
 
     private Brush TrackInteriorBrush()
     {
-        var opacity = Math.Clamp(_settings.Opacity, 0.2d, 1d);
+        var opacity = _viewModel.InternalOpacity;
         var alpha = (int)Math.Round(TrackInteriorMaximumAlpha * opacity);
         return new SolidBrush(Color.FromArgb(alpha, TrackInteriorColor.R, TrackInteriorColor.G, TrackInteriorColor.B));
     }

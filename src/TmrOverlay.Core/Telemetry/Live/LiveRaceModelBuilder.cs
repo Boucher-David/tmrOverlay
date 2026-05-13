@@ -29,12 +29,14 @@ internal static class LiveRaceModelBuilder
         var spatial = BuildSpatial(context, sample, proximity);
         var coverage = BuildCoverage(context, scoring, timing, spatial, proximity);
         var raceProgress = BuildRaceProgress(context, sample, session);
+        var fuelPit = BuildFuelPit(sample, fuel);
 
         return new LiveRaceModels(
             Session: session,
             DriverDirectory: drivers,
             Reference: reference,
             TireCompounds: tireCompounds,
+            TireCondition: BuildTireCondition(sample),
             Coverage: coverage,
             Scoring: scoring,
             Timing: timing,
@@ -44,7 +46,8 @@ internal static class LiveRaceModelBuilder
             Spatial: spatial,
             TrackMap: trackMap ?? BuildTrackMap(context),
             Weather: BuildWeather(context, sample),
-            FuelPit: BuildFuelPit(sample, fuel),
+            FuelPit: fuelPit,
+            PitService: LivePitServiceModel.FromFuelPit(fuelPit, tireCompounds),
             RaceEvents: BuildRaceEvents(sample),
             Inputs: BuildInputs(sample));
     }
@@ -445,6 +448,71 @@ internal static class LiveRaceModelBuilder
         return char.IsLetterOrDigit(normalized[0])
             ? char.ToUpperInvariant(normalized[0]).ToString()
             : $"C{index.ToString(CultureInfo.InvariantCulture)}";
+    }
+
+    private static LiveTireConditionModel BuildTireCondition(HistoricalTelemetrySample sample)
+    {
+        var condition = sample.TireCondition;
+        var request = sample.PitServiceTireRequest;
+        var leftFront = BuildTireCornerCondition(
+            "LF",
+            condition?.LeftFront,
+            request?.LeftFrontServicePressureKpa,
+            request?.LeftFrontColdPressurePa,
+            request?.LeftFrontChangeRequested);
+        var rightFront = BuildTireCornerCondition(
+            "RF",
+            condition?.RightFront,
+            request?.RightFrontServicePressureKpa,
+            request?.RightFrontColdPressurePa,
+            request?.RightFrontChangeRequested);
+        var leftRear = BuildTireCornerCondition(
+            "LR",
+            condition?.LeftRear,
+            request?.LeftRearServicePressureKpa,
+            request?.LeftRearColdPressurePa,
+            request?.LeftRearChangeRequested);
+        var rightRear = BuildTireCornerCondition(
+            "RR",
+            condition?.RightRear,
+            request?.RightRearServicePressureKpa,
+            request?.RightRearColdPressurePa,
+            request?.RightRearChangeRequested);
+        var hasData = leftFront.HasData || rightFront.HasData || leftRear.HasData || rightRear.HasData;
+        return new LiveTireConditionModel(
+            HasData: hasData,
+            Quality: hasData ? LiveModelQuality.Partial : LiveModelQuality.Unavailable,
+            Evidence: hasData
+                ? LiveSignalEvidence.DiagnosticOnly("tire telemetry", "tire condition channels are inspection/service-adjacent and may be stale")
+                : LiveSignalEvidence.Unavailable("tire telemetry", "tire condition signals missing"),
+            LeftFront: leftFront,
+            RightFront: rightFront,
+            LeftRear: leftRear,
+            RightRear: rightRear);
+    }
+
+    private static LiveTireCornerCondition BuildTireCornerCondition(
+        string corner,
+        HistoricalTireCornerCondition? condition,
+        double? pitServicePressureKpa,
+        double? blackBoxColdPressurePa,
+        bool? changeRequested)
+    {
+        return new LiveTireCornerCondition(
+            Corner: corner,
+            Wear: new LiveTireAcrossTreadValues(
+                ValidUnitInterval(condition?.WearLeft),
+                ValidUnitInterval(condition?.WearMiddle),
+                ValidUnitInterval(condition?.WearRight)),
+            TemperatureC: new LiveTireAcrossTreadValues(
+                ValidFinite(condition?.TemperatureCLeft),
+                ValidFinite(condition?.TemperatureCMiddle),
+                ValidFinite(condition?.TemperatureCRight)),
+            ColdPressureKpa: ValidNonNegative(condition?.ColdPressureKpa),
+            OdometerMeters: ValidNonNegative(condition?.OdometerMeters),
+            PitServicePressureKpa: ValidNonNegative(pitServicePressureKpa),
+            BlackBoxColdPressurePa: ValidNonNegative(blackBoxColdPressurePa),
+            ChangeRequested: changeRequested);
     }
 
     private static LiveReferenceModel BuildReference(HistoricalTelemetrySample sample)

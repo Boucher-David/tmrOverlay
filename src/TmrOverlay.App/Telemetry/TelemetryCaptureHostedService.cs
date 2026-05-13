@@ -778,6 +778,45 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         };
     }
 
+    private static HistoricalTireConditionSnapshot ReadTireCondition(IRacingSDK sdk)
+    {
+        return new HistoricalTireConditionSnapshot(
+            LeftFront: ReadTireCornerCondition(sdk, "LF"),
+            RightFront: ReadTireCornerCondition(sdk, "RF"),
+            LeftRear: ReadTireCornerCondition(sdk, "LR"),
+            RightRear: ReadTireCornerCondition(sdk, "RR"));
+    }
+
+    private static HistoricalTireCornerCondition ReadTireCornerCondition(IRacingSDK sdk, string prefix)
+    {
+        return new HistoricalTireCornerCondition(
+            WearLeft: ReadNullableFiniteDouble(sdk, $"{prefix}wearL"),
+            WearMiddle: ReadNullableFiniteDouble(sdk, $"{prefix}wearM"),
+            WearRight: ReadNullableFiniteDouble(sdk, $"{prefix}wearR"),
+            TemperatureCLeft: ReadNullableFiniteDouble(sdk, $"{prefix}tempCL"),
+            TemperatureCMiddle: ReadNullableFiniteDouble(sdk, $"{prefix}tempCM"),
+            TemperatureCRight: ReadNullableFiniteDouble(sdk, $"{prefix}tempCR"),
+            ColdPressureKpa: ReadNullableFiniteDouble(sdk, $"{prefix}coldPressure"),
+            OdometerMeters: ReadNullableFiniteDouble(sdk, $"{prefix}odometer"));
+    }
+
+    private static HistoricalPitServiceTireRequest ReadPitServiceTireRequest(IRacingSDK sdk)
+    {
+        return new HistoricalPitServiceTireRequest(
+            LeftFrontServicePressureKpa: ReadNullableFiniteDouble(sdk, "PitSvLFP"),
+            RightFrontServicePressureKpa: ReadNullableFiniteDouble(sdk, "PitSvRFP"),
+            LeftRearServicePressureKpa: ReadNullableFiniteDouble(sdk, "PitSvLRP"),
+            RightRearServicePressureKpa: ReadNullableFiniteDouble(sdk, "PitSvRRP"),
+            LeftFrontColdPressurePa: ReadNullableFiniteDouble(sdk, "dpLFTireColdPress"),
+            RightFrontColdPressurePa: ReadNullableFiniteDouble(sdk, "dpRFTireColdPress"),
+            LeftRearColdPressurePa: ReadNullableFiniteDouble(sdk, "dpLRTireColdPress"),
+            RightRearColdPressurePa: ReadNullableFiniteDouble(sdk, "dpRRTireColdPress"),
+            LeftFrontChangeRequested: ReadNullableBoolean(sdk, "dpLFTireChange"),
+            RightFrontChangeRequested: ReadNullableBoolean(sdk, "dpRFTireChange"),
+            LeftRearChangeRequested: ReadNullableBoolean(sdk, "dpLRTireChange"),
+            RightRearChangeRequested: ReadNullableBoolean(sdk, "dpRRTireChange"));
+    }
+
     private static int? ReadInt32ArrayElement(IRacingSDK sdk, string variableName, int index)
     {
         if (index < 0)
@@ -1586,6 +1625,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 PitOptRepairLeftSeconds: ReadNullableDouble(sdk, "PitOptRepairLeft"),
                 TireSetsUsed: ReadInt32(sdk, "TireSetsUsed"),
                 FastRepairUsed: ReadInt32(sdk, "FastRepairUsed"),
+                TireCondition: ReadTireCondition(sdk),
+                PitServiceTireRequest: ReadPitServiceTireRequest(sdk),
                 DriversSoFar: ReadInt32(sdk, "DCDriversSoFar"),
                 DriverChangeLapStatus: ReadInt32(sdk, "DCLapStatus"),
                 LapCurrentLapTimeSeconds: ReadNullableDouble(sdk, "LapCurrentLapTime"),

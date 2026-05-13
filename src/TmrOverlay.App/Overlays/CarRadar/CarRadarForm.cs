@@ -46,7 +46,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
     private readonly OverlaySettings _settings;
     private readonly string _fontFamily;
     private readonly Dictionary<int, RadarCarVisual> _carVisuals = [];
-    private LiveSpatialModel _spatial = LiveSpatialModel.Empty;
+    private CarRadarOverlayViewModel _viewModel = CarRadarOverlayViewModel.Empty;
     private DateTimeOffset? _lastRefreshAtUtc;
     private double _radarAlpha;
     private double _leftSideAlpha;
@@ -222,7 +222,11 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             {
                 snapshot = _liveTelemetrySource.Snapshot();
                 previousSequence = _lastRefreshSequence;
-                _spatial = IsFresh(snapshot, now) ? snapshot.Models.Spatial : LiveSpatialModel.Empty;
+                _viewModel = CarRadarOverlayViewModel.From(
+                    snapshot,
+                    now,
+                    _settingsPreviewVisible,
+                    ShowMulticlassWarning);
                 snapshotSucceeded = true;
             }
             finally
@@ -318,15 +322,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
     {
         return _overlayError is not null
             || _settingsPreviewVisible
-            || _spatial.HasCarLeft
-            || _spatial.HasCarRight
-            || CurrentRadarCars().Any()
-            || CurrentMulticlassApproach() is not null;
-    }
-
-    private static bool IsFresh(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
-    {
-        return OverlayAvailabilityEvaluator.FromSnapshot(snapshot, now).IsAvailable;
+            || _viewModel.HasCurrentSignal;
     }
 
     private bool UpdateFadeState(DateTimeOffset now, double elapsedSeconds)
@@ -358,8 +354,8 @@ internal sealed class CarRadarForm : PersistentOverlayForm
 
     private void UpdateSideWarningAlphas(double elapsedSeconds)
     {
-        _leftSideAlpha = MoveTowardSideAlpha(_leftSideAlpha, _spatial.HasCarLeft, elapsedSeconds);
-        _rightSideAlpha = MoveTowardSideAlpha(_rightSideAlpha, _spatial.HasCarRight, elapsedSeconds);
+        _leftSideAlpha = MoveTowardSideAlpha(_leftSideAlpha, _viewModel.HasCarLeft, elapsedSeconds);
+        _rightSideAlpha = MoveTowardSideAlpha(_rightSideAlpha, _viewModel.HasCarRight, elapsedSeconds);
     }
 
     private static double MoveTowardSideAlpha(double current, bool visible, double elapsedSeconds)
@@ -430,19 +426,12 @@ internal sealed class CarRadarForm : PersistentOverlayForm
 
     private IEnumerable<LiveSpatialCar> CurrentRadarCars()
     {
-        return _spatial.Cars.Where(IsInRadarRange);
+        return _viewModel.Cars;
     }
 
     private LiveMulticlassApproach? CurrentMulticlassApproach()
     {
-        if (!ShowMulticlassWarning)
-        {
-            return null;
-        }
-
-        return _spatial.MulticlassApproaches
-            .Where(IsInMulticlassWarningRange)
-            .MaxBy(approach => approach.Urgency);
+        return _viewModel.StrongestMulticlassApproach;
     }
 
     private static double MoveToward(double current, double target, double delta)
@@ -1004,29 +993,12 @@ internal sealed class CarRadarForm : PersistentOverlayForm
 
     private bool IsInRadarRange(LiveSpatialCar car)
     {
-        if (ReliableRelativeMeters(car) is { } meters)
-        {
-            return Math.Abs(meters) <= RadarRangeMeters;
-        }
-
-        return false;
+        return CarRadarOverlayViewModel.IsInRadarRange(car);
     }
 
     private static double? ReliableRelativeMeters(LiveSpatialCar car)
     {
-        return car.RelativeMeters is { } meters && !double.IsNaN(meters) && !double.IsInfinity(meters)
-            ? meters
-            : null;
-    }
-
-    private static bool IsInMulticlassWarningRange(LiveMulticlassApproach approach)
-    {
-        if (approach.RelativeSeconds is not { } seconds || double.IsNaN(seconds) || double.IsInfinity(seconds))
-        {
-            return false;
-        }
-
-        return seconds < -RadarRangeSeconds && seconds >= -MulticlassWarningRangeSeconds;
+        return CarRadarOverlayViewModel.ReliableRelativeMeters(car);
     }
 
     private static string FormatRingGap(int ringIndex)

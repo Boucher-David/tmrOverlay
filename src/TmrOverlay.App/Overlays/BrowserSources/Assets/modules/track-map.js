@@ -1,5 +1,6 @@
 let cachedTrackMap = null;
 let cachedTrackMapSettings = { internalOpacity: 0.88, showSectorBoundaries: true };
+let trackMapDisplayModel = null;
 let nextTrackMapFetchAt = 0;
 const smoothedMarkerProgress = new Map();
 let lastMarkerSmoothingAt = 0;
@@ -7,13 +8,14 @@ const trackMapModel = window.TmrBrowserModel;
 
 TmrBrowserOverlay.register({
   async beforeRefresh() {
+    trackMapDisplayModel = await fetchOverlayModel('track-map');
     await refreshTrackMapAsset();
   },
-  render(live) {
-    renderTrackMap(live, cachedTrackMap, cachedTrackMapSettings);
+  render() {
+    renderTrackMap(trackMapDisplayModel, cachedTrackMap);
   },
   renderOffline() {
-    renderTrackMap(null, cachedTrackMap, cachedTrackMapSettings);
+    renderTrackMap(trackMapDisplayModel, cachedTrackMap);
   }
 });
 
@@ -34,21 +36,21 @@ async function refreshTrackMapAsset() {
   }
 }
 
-function renderTrackMap(live, trackMap, trackMapSettings) {
-  const spatial = trackMapModel.spatial(live);
-  const race = trackMapModel.raceEvents(live);
-  const latest = live?.latestSample || {};
-  const focusPct = shouldRenderFocusSampleMarker(latest) && Number.isFinite(latest.focusLapDistPct)
-    ? latest.focusLapDistPct
-    : null;
-  const markers = smoothTrackMapMarkers(trackMapMarkers(live, focusPct));
-  const sectors = trackMapModel.trackMap(live).sectors || [];
-  const svg = trackMapSvg(trackMap, markers, sectors, trackMapSettings);
+function renderTrackMap(model, trackMap) {
+  const view = model?.trackMap || {};
+  const settings = {
+    internalOpacity: Number.isFinite(view.internalOpacity) ? view.internalOpacity : cachedTrackMapSettings.internalOpacity,
+    showSectorBoundaries: view.showSectorBoundaries ?? cachedTrackMapSettings.showSectorBoundaries
+  };
+  const markers = smoothTrackMapMarkers(view.markers || []);
+  const sectors = view.sectors || [];
+  const svg = trackMapSvg(trackMap, markers, sectors, settings);
   contentEl.innerHTML = `
     <div class="track">
       ${svg}
     </div>`;
-  setStatus(live, spatial.hasData || race.hasData ? 'live | track map' : 'waiting for position');
+  renderHeaderItems(model, model?.status || 'waiting for position');
+  renderFooterSource(model);
 }
 
 function trackMapSvg(trackMap, markers, sectors, settings) {
@@ -322,18 +324,21 @@ function pointOnCircle(progress) {
 
 function markerSvg(marker, point) {
   if (!point) return '';
-  const radius = marker.isFocus && marker.positionLabel
-    ? focusMarkerRadius(marker.positionLabel)
+  const positionLabel = marker.positionLabel
+    ?? (Number.isFinite(marker.position) ? String(marker.position) : null);
+  const radius = marker.isFocus && positionLabel
+    ? focusMarkerRadius(positionLabel)
     : marker.isFocus ? 5.7 : 3.6;
-  const circle = `<circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="${radius}" fill="${marker.color}" stroke="var(--tmr-title)" stroke-width="${marker.isFocus ? 2 : 1.4}"></circle>`;
-  if (!marker.isFocus || !marker.positionLabel) {
+  const fill = marker.color || (marker.isFocus ? 'var(--tmr-cyan)' : markerColor(marker.classColorHex));
+  const circle = `<circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="${radius}" fill="${fill}" stroke="var(--tmr-title)" stroke-width="${marker.isFocus ? 2 : 1.4}"></circle>`;
+  if (!marker.isFocus || !positionLabel) {
     return circle;
   }
 
   return `
     <g>
       ${circle}
-      <text x="${point.x.toFixed(1)}" y="${(point.y + 2.9).toFixed(1)}" text-anchor="middle" font-size="7.6" font-weight="800" fill="var(--tmr-title)">${escapeHtml(marker.positionLabel)}</text>
+      <text x="${point.x.toFixed(1)}" y="${(point.y + 2.9).toFixed(1)}" text-anchor="middle" font-size="7.6" font-weight="800" fill="var(--tmr-title)">${escapeHtml(positionLabel)}</text>
     </g>`;
 }
 

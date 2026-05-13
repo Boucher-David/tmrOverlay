@@ -640,7 +640,10 @@ public sealed class SimpleTelemetryOverlayViewModelTests
                     HasData = true,
                     Quality = LiveModelQuality.Reliable,
                     IsOnTrack = true
-                }
+                },
+            PitService = models.PitService.HasData || !models.FuelPit.HasData
+                ? models.PitService
+                : LivePitServiceModel.FromFuelPit(models.FuelPit, models.TireCompounds)
         };
 
         return LiveTelemetrySnapshot.Empty with

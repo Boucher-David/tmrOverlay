@@ -15,8 +15,8 @@ namespace TmrOverlay.App.Overlays.StreamChat;
 internal sealed class StreamChatForm : PersistentOverlayForm
 {
     private const int SettingsRefreshIntervalMilliseconds = 1000;
-    private const int MaximumMessages = 64;
-    private const int VisibleMessageBudget = 36;
+    private const int MaximumMessages = StreamChatOverlayViewModel.MaximumMessages;
+    private const int VisibleMessageBudget = StreamChatOverlayViewModel.VisibleMessageBudget;
     private static readonly Uri TwitchChatUri = new("wss://irc-ws.chat.twitch.tv:443");
 
     private readonly AppSettingsStore _settingsStore;
@@ -143,7 +143,7 @@ internal sealed class StreamChatForm : PersistentOverlayForm
         var succeeded = false;
         try
         {
-            var settings = StreamChatOverlaySettings.From(_settingsStore.Load());
+            var settings = StreamChatOverlayViewModel.BrowserSettingsFrom(_settingsStore.Load());
             ApplyChatSettings(settings, force);
             succeeded = true;
         }
@@ -177,29 +177,22 @@ internal sealed class StreamChatForm : PersistentOverlayForm
 
         if (!settings.IsConfigured)
         {
-            ReplaceMessages(new StreamChatMessage("TMR", StreamChatStatusText(settings.Status), StreamChatMessageKind.System));
-            SetStatus("waiting for chat source");
+            ReplaceMessages(StreamChatOverlayViewModel.InitialMessage(settings));
+            SetStatus(StreamChatOverlayViewModel.InitialStatus(settings));
             return;
         }
 
         if (string.Equals(settings.Provider, StreamChatOverlaySettings.ProviderTwitch, StringComparison.Ordinal)
             && settings.TwitchChannel is { Length: > 0 } channel)
         {
-            ReplaceMessages(new StreamChatMessage("TMR", $"Connecting to #{channel}...", StreamChatMessageKind.System));
-            SetStatus("connecting | twitch");
+            ReplaceMessages(StreamChatOverlayViewModel.InitialMessage(settings));
+            SetStatus(StreamChatOverlayViewModel.InitialStatus(settings));
             StartTwitchConnection(channel);
             return;
         }
 
-        if (string.Equals(settings.Provider, StreamChatOverlaySettings.ProviderStreamlabs, StringComparison.Ordinal))
-        {
-            ReplaceMessages(new StreamChatMessage("TMR", "Streamlabs is browser-source only in this build.", StreamChatMessageKind.Error));
-            SetStatus("streamlabs unavailable");
-            return;
-        }
-
-        ReplaceMessages(new StreamChatMessage("TMR", "Stream chat provider unavailable.", StreamChatMessageKind.Error));
-        SetStatus("chat provider unavailable");
+        ReplaceMessages(StreamChatOverlayViewModel.InitialMessage(settings));
+        SetStatus(StreamChatOverlayViewModel.InitialStatus(settings));
     }
 
     private void StartTwitchConnection(string channel)
@@ -563,8 +556,8 @@ internal sealed class StreamChatForm : PersistentOverlayForm
         };
 
         var y = content.Bottom;
-        var visibleMessages = _messages
-            .Skip(Math.Max(0, _messages.Count - VisibleMessageBudget))
+        var viewModel = StreamChatOverlayViewModel.From(_status, _messages, VisibleMessageBudget);
+        var visibleMessages = viewModel.Rows
             .Reverse()
             .ToArray();
         foreach (var message in visibleMessages)
@@ -612,16 +605,6 @@ internal sealed class StreamChatForm : PersistentOverlayForm
             StreamChatMessageKind.System => OverlayTheme.Colors.WarningText,
             StreamChatMessageKind.Error => OverlayTheme.Colors.ErrorText,
             _ => OverlayTheme.Colors.InfoText
-        };
-    }
-
-    private static string StreamChatStatusText(string status)
-    {
-        return status switch
-        {
-            "missing_or_invalid_streamlabs_url" => "Streamlabs Chat Box URL is missing.",
-            "missing_or_invalid_twitch_channel" => "Twitch channel is missing.",
-            _ => "Choose a chat source in settings."
         };
     }
 

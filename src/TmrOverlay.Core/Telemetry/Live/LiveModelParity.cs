@@ -97,16 +97,19 @@ internal static class LiveModelParityAnalyzer
             return;
         }
 
-        var model = snapshot.Models.FuelPit;
+        var model = snapshot.Models.PitService;
         CompareBoolean(observations, "pit", "on-pit-road", sample.OnPitRoad, model.OnPitRoad);
         CompareBoolean(observations, "pit", "pitstop-active", sample.PitstopActive, model.PitstopActive);
         CompareBoolean(observations, "pit", "player-car-in-pit-stall", sample.PlayerCarInPitStall, model.PlayerCarInPitStall);
         CompareNullableBoolean(observations, "pit", "team-on-pit-road", sample.TeamOnPitRoad, model.TeamOnPitRoad);
-        CompareNullableInt(observations, "pit", "pit-service-status", sample.PitServiceStatus, model.PitServiceStatus);
-        CompareNullableInt(observations, "pit", "pit-service-flags", sample.PitServiceFlags, model.PitServiceFlags);
-        CompareNullableDouble(observations, "pit", "pit-service-fuel-liters", ValidNonNegative(sample.PitServiceFuelLiters), model.PitServiceFuelLiters, FuelTolerance);
-        CompareNullableDouble(observations, "pit", "pit-repair-left-seconds", ValidNonNegative(sample.PitRepairLeftSeconds), model.PitRepairLeftSeconds, SecondsTolerance);
-        CompareNullableDouble(observations, "pit", "pit-opt-repair-left-seconds", ValidNonNegative(sample.PitOptRepairLeftSeconds), model.PitOptRepairLeftSeconds, SecondsTolerance);
+        CompareNullableInt(observations, "pit", "pit-service-status", sample.PitServiceStatus, model.Status);
+        CompareNullableInt(observations, "pit", "pit-service-flags", sample.PitServiceFlags, model.Flags);
+        CompareNullableDouble(observations, "pit", "pit-service-fuel-liters", ValidNonNegative(sample.PitServiceFuelLiters), model.Request.FuelLiters, FuelTolerance);
+        CompareNullableDouble(observations, "pit", "pit-repair-left-seconds", ValidNonNegative(sample.PitRepairLeftSeconds), model.Repair.RequiredSeconds, SecondsTolerance);
+        CompareNullableDouble(observations, "pit", "pit-opt-repair-left-seconds", ValidNonNegative(sample.PitOptRepairLeftSeconds), model.Repair.OptionalSeconds, SecondsTolerance);
+        CompareNullableInt(observations, "pit", "tire-sets-used", sample.TireSetsUsed is >= 0 ? sample.TireSetsUsed : null, model.Tires.TireSetsUsed);
+        CompareNullableInt(observations, "pit", "fast-repair-used", sample.FastRepairUsed is >= 0 ? sample.FastRepairUsed : null, model.FastRepair.LocalUsed);
+        CompareNullableInt(observations, "pit", "team-fast-repairs-used", sample.TeamFastRepairsUsed is >= 0 ? sample.TeamFastRepairsUsed : null, model.FastRepair.TeamUsed);
     }
 
     private static void CompareProximity(

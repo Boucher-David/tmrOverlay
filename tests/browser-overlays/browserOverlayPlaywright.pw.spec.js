@@ -58,7 +58,7 @@ test.describe('browser overlay Playwright integration', () => {
     await expect(page.locator('.chat-text')).toHaveText('Choose Streamlabs or Twitch in the Stream Chat settings tab.');
     await expect(page.locator('#status')).toHaveText('waiting for chat source');
     await expect(page.locator('.overlay')).toHaveCSS('opacity', '1');
-    expect(requests).toContain('/api/stream-chat');
+    expect(requests).toContain('/api/overlay-model/stream-chat');
   });
 
   test('keeps input graph smoothing inside each trace segment', async ({ page }) => {

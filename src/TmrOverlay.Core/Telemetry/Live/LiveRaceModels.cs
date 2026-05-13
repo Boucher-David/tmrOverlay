@@ -47,6 +47,7 @@ internal sealed record LiveRaceModels(
     LiveDriverDirectoryModel DriverDirectory,
     LiveReferenceModel Reference,
     LiveTireCompoundModel TireCompounds,
+    LiveTireConditionModel TireCondition,
     LiveCoverageModel Coverage,
     LiveScoringModel Scoring,
     LiveTimingModel Timing,
@@ -57,6 +58,7 @@ internal sealed record LiveRaceModels(
     LiveTrackMapModel TrackMap,
     LiveWeatherModel Weather,
     LiveFuelPitModel FuelPit,
+    LivePitServiceModel PitService,
     LiveRaceEventModel RaceEvents,
     LiveInputTelemetryModel Inputs)
 {
@@ -65,6 +67,7 @@ internal sealed record LiveRaceModels(
         DriverDirectory: LiveDriverDirectoryModel.Empty,
         Reference: LiveReferenceModel.Empty,
         TireCompounds: LiveTireCompoundModel.Empty,
+        TireCondition: LiveTireConditionModel.Empty,
         Coverage: LiveCoverageModel.Empty,
         Scoring: LiveScoringModel.Empty,
         Timing: LiveTimingModel.Empty,
@@ -75,6 +78,7 @@ internal sealed record LiveRaceModels(
         TrackMap: LiveTrackMapModel.Empty,
         Weather: LiveWeatherModel.Empty,
         FuelPit: LiveFuelPitModel.Empty,
+        PitService: LivePitServiceModel.Empty,
         RaceEvents: LiveRaceEventModel.Empty,
         Inputs: LiveInputTelemetryModel.Empty);
 }
@@ -266,6 +270,68 @@ internal sealed record LiveCarTireCompound(
     bool IsPlayer,
     bool IsFocus,
     LiveSignalEvidence Evidence);
+
+internal sealed record LiveTireConditionModel(
+    bool HasData,
+    LiveModelQuality Quality,
+    LiveSignalEvidence Evidence,
+    LiveTireCornerCondition LeftFront,
+    LiveTireCornerCondition RightFront,
+    LiveTireCornerCondition LeftRear,
+    LiveTireCornerCondition RightRear)
+{
+    public static LiveTireConditionModel Empty { get; } = new(
+        HasData: false,
+        Quality: LiveModelQuality.Unavailable,
+        Evidence: LiveSignalEvidence.Unavailable("tire telemetry", "tire condition signals missing"),
+        LeftFront: LiveTireCornerCondition.Empty,
+        RightFront: LiveTireCornerCondition.Empty,
+        LeftRear: LiveTireCornerCondition.Empty,
+        RightRear: LiveTireCornerCondition.Empty);
+}
+
+internal sealed record LiveTireCornerCondition(
+    string Corner,
+    LiveTireAcrossTreadValues Wear,
+    LiveTireAcrossTreadValues TemperatureC,
+    double? ColdPressureKpa,
+    double? OdometerMeters,
+    double? PitServicePressureKpa,
+    double? BlackBoxColdPressurePa,
+    bool? ChangeRequested)
+{
+    public bool HasData =>
+        Wear.HasData
+        || TemperatureC.HasData
+        || ColdPressureKpa is not null
+        || OdometerMeters is not null
+        || PitServicePressureKpa is not null
+        || BlackBoxColdPressurePa is not null
+        || ChangeRequested is not null;
+
+    public static LiveTireCornerCondition Empty { get; } = new(
+        Corner: string.Empty,
+        Wear: LiveTireAcrossTreadValues.Empty,
+        TemperatureC: LiveTireAcrossTreadValues.Empty,
+        ColdPressureKpa: null,
+        OdometerMeters: null,
+        PitServicePressureKpa: null,
+        BlackBoxColdPressurePa: null,
+        ChangeRequested: null);
+}
+
+internal sealed record LiveTireAcrossTreadValues(
+    double? Left,
+    double? Middle,
+    double? Right)
+{
+    public bool HasData => Left is not null || Middle is not null || Right is not null;
+
+    public static LiveTireAcrossTreadValues Empty { get; } = new(
+        Left: null,
+        Middle: null,
+        Right: null);
+}
 
 internal sealed record LiveCoverageModel(
     int RosterCount,
@@ -704,6 +770,245 @@ internal sealed record LiveFuelPitModel(
         TireSetsUsed: null,
         FastRepairUsed: null,
         TeamFastRepairsUsed: null);
+}
+
+internal sealed record LivePitServiceModel(
+    bool HasData,
+    LiveModelQuality Quality,
+    bool OnPitRoad,
+    bool PitstopActive,
+    bool PlayerCarInPitStall,
+    bool? TeamOnPitRoad,
+    int? Status,
+    int? Flags,
+    LivePitServiceRequest Request,
+    LivePitServiceRepairState Repair,
+    LivePitServiceTireState Tires,
+    LivePitServiceFastRepairState FastRepair)
+{
+    public static LivePitServiceModel Empty { get; } = new(
+        HasData: false,
+        Quality: LiveModelQuality.Unavailable,
+        OnPitRoad: false,
+        PitstopActive: false,
+        PlayerCarInPitStall: false,
+        TeamOnPitRoad: null,
+        Status: null,
+        Flags: null,
+        Request: LivePitServiceRequest.Empty,
+        Repair: LivePitServiceRepairState.Empty,
+        Tires: LivePitServiceTireState.Empty,
+        FastRepair: LivePitServiceFastRepairState.Empty);
+
+    public static LivePitServiceModel FromFuelPit(
+        LiveFuelPitModel fuelPit,
+        LiveTireCompoundModel tireCompounds)
+    {
+        var request = LivePitServiceRequest.FromFlags(
+            fuelPit.PitServiceFlags,
+            fuelPit.PitServiceFuelLiters,
+            requestedTireCompoundIndex: null,
+            requestedTireCompoundLabel: null,
+            requestedTireCompoundShortLabel: null);
+        var tires = new LivePitServiceTireState(
+            RequestedTireCount: request.RequestedTireCount,
+            TireSetsUsed: ValidNonNegative(fuelPit.TireSetsUsed),
+            TireSetsAvailable: null,
+            LeftTireSetsUsed: null,
+            RightTireSetsUsed: null,
+            FrontTireSetsUsed: null,
+            RearTireSetsUsed: null,
+            LeftFrontTiresUsed: null,
+            RightFrontTiresUsed: null,
+            LeftRearTiresUsed: null,
+            RightRearTiresUsed: null,
+            RequestedCompoundIndex: null,
+            RequestedCompoundLabel: null,
+            RequestedCompoundShortLabel: null,
+            CurrentCompoundIndex: tireCompounds.PlayerCar?.CompoundIndex,
+            CurrentCompoundLabel: tireCompounds.PlayerCar?.Label,
+            CurrentCompoundShortLabel: tireCompounds.PlayerCar?.ShortLabel,
+            LeftFrontChangeRequested: request.LeftFrontTire,
+            RightFrontChangeRequested: request.RightFrontTire,
+            LeftRearChangeRequested: request.LeftRearTire,
+            RightRearChangeRequested: request.RightRearTire,
+            LeftFrontPressureKpa: null,
+            RightFrontPressureKpa: null,
+            LeftRearPressureKpa: null,
+            RightRearPressureKpa: null);
+
+        return new LivePitServiceModel(
+            HasData: fuelPit.HasData,
+            Quality: fuelPit.Quality,
+            OnPitRoad: fuelPit.OnPitRoad,
+            PitstopActive: fuelPit.PitstopActive,
+            PlayerCarInPitStall: fuelPit.PlayerCarInPitStall,
+            TeamOnPitRoad: fuelPit.TeamOnPitRoad,
+            Status: fuelPit.PitServiceStatus,
+            Flags: fuelPit.PitServiceFlags,
+            Request: request,
+            Repair: new LivePitServiceRepairState(
+                RequiredSeconds: fuelPit.PitRepairLeftSeconds,
+                OptionalSeconds: fuelPit.PitOptRepairLeftSeconds),
+            Tires: tires,
+            FastRepair: new LivePitServiceFastRepairState(
+                Selected: request.FastRepair,
+                LocalUsed: ValidNonNegative(fuelPit.FastRepairUsed),
+                LocalAvailable: null,
+                TeamUsed: ValidNonNegative(fuelPit.TeamFastRepairsUsed)));
+    }
+
+    private static int? ValidNonNegative(int? value)
+    {
+        return value is >= 0 ? value : null;
+    }
+}
+
+internal sealed record LivePitServiceRequest(
+    bool LeftFrontTire,
+    bool RightFrontTire,
+    bool LeftRearTire,
+    bool RightRearTire,
+    bool Fuel,
+    bool Tearoff,
+    bool FastRepair,
+    double? FuelLiters,
+    int? RequestedTireCompoundIndex,
+    string? RequestedTireCompoundLabel,
+    string? RequestedTireCompoundShortLabel)
+{
+    private const int LeftFrontTireFlag = 0x01;
+    private const int RightFrontTireFlag = 0x02;
+    private const int LeftRearTireFlag = 0x04;
+    private const int RightRearTireFlag = 0x08;
+    private const int FuelServiceFlag = 0x10;
+    private const int TearoffServiceFlag = 0x20;
+    private const int FastRepairServiceFlag = 0x40;
+
+    public int RequestedTireCount =>
+        (LeftFrontTire ? 1 : 0)
+        + (RightFrontTire ? 1 : 0)
+        + (LeftRearTire ? 1 : 0)
+        + (RightRearTire ? 1 : 0);
+
+    public bool HasAnyRequest =>
+        RequestedTireCount > 0
+        || Fuel
+        || Tearoff
+        || FastRepair
+        || FuelLiters is > 0d;
+
+    public static LivePitServiceRequest Empty { get; } = new(
+        LeftFrontTire: false,
+        RightFrontTire: false,
+        LeftRearTire: false,
+        RightRearTire: false,
+        Fuel: false,
+        Tearoff: false,
+        FastRepair: false,
+        FuelLiters: null,
+        RequestedTireCompoundIndex: null,
+        RequestedTireCompoundLabel: null,
+        RequestedTireCompoundShortLabel: null);
+
+    public static LivePitServiceRequest FromFlags(
+        int? flags,
+        double? fuelLiters,
+        int? requestedTireCompoundIndex,
+        string? requestedTireCompoundLabel,
+        string? requestedTireCompoundShortLabel)
+    {
+        var value = flags.GetValueOrDefault();
+        return new LivePitServiceRequest(
+            LeftFrontTire: (value & LeftFrontTireFlag) != 0,
+            RightFrontTire: (value & RightFrontTireFlag) != 0,
+            LeftRearTire: (value & LeftRearTireFlag) != 0,
+            RightRearTire: (value & RightRearTireFlag) != 0,
+            Fuel: (value & FuelServiceFlag) != 0,
+            Tearoff: (value & TearoffServiceFlag) != 0,
+            FastRepair: (value & FastRepairServiceFlag) != 0,
+            FuelLiters: fuelLiters is >= 0d ? fuelLiters : null,
+            RequestedTireCompoundIndex: requestedTireCompoundIndex is >= 0 ? requestedTireCompoundIndex : null,
+            RequestedTireCompoundLabel: requestedTireCompoundLabel,
+            RequestedTireCompoundShortLabel: requestedTireCompoundShortLabel);
+    }
+}
+
+internal sealed record LivePitServiceRepairState(
+    double? RequiredSeconds,
+    double? OptionalSeconds)
+{
+    public static LivePitServiceRepairState Empty { get; } = new(
+        RequiredSeconds: null,
+        OptionalSeconds: null);
+}
+
+internal sealed record LivePitServiceTireState(
+    int RequestedTireCount,
+    int? TireSetsUsed,
+    int? TireSetsAvailable,
+    int? LeftTireSetsUsed,
+    int? RightTireSetsUsed,
+    int? FrontTireSetsUsed,
+    int? RearTireSetsUsed,
+    int? LeftFrontTiresUsed,
+    int? RightFrontTiresUsed,
+    int? LeftRearTiresUsed,
+    int? RightRearTiresUsed,
+    int? RequestedCompoundIndex,
+    string? RequestedCompoundLabel,
+    string? RequestedCompoundShortLabel,
+    int? CurrentCompoundIndex,
+    string? CurrentCompoundLabel,
+    string? CurrentCompoundShortLabel,
+    bool? LeftFrontChangeRequested,
+    bool? RightFrontChangeRequested,
+    bool? LeftRearChangeRequested,
+    bool? RightRearChangeRequested,
+    double? LeftFrontPressureKpa,
+    double? RightFrontPressureKpa,
+    double? LeftRearPressureKpa,
+    double? RightRearPressureKpa)
+{
+    public static LivePitServiceTireState Empty { get; } = new(
+        RequestedTireCount: 0,
+        TireSetsUsed: null,
+        TireSetsAvailable: null,
+        LeftTireSetsUsed: null,
+        RightTireSetsUsed: null,
+        FrontTireSetsUsed: null,
+        RearTireSetsUsed: null,
+        LeftFrontTiresUsed: null,
+        RightFrontTiresUsed: null,
+        LeftRearTiresUsed: null,
+        RightRearTiresUsed: null,
+        RequestedCompoundIndex: null,
+        RequestedCompoundLabel: null,
+        RequestedCompoundShortLabel: null,
+        CurrentCompoundIndex: null,
+        CurrentCompoundLabel: null,
+        CurrentCompoundShortLabel: null,
+        LeftFrontChangeRequested: null,
+        RightFrontChangeRequested: null,
+        LeftRearChangeRequested: null,
+        RightRearChangeRequested: null,
+        LeftFrontPressureKpa: null,
+        RightFrontPressureKpa: null,
+        LeftRearPressureKpa: null,
+        RightRearPressureKpa: null);
+}
+
+internal sealed record LivePitServiceFastRepairState(
+    bool Selected,
+    int? LocalUsed,
+    int? LocalAvailable,
+    int? TeamUsed)
+{
+    public static LivePitServiceFastRepairState Empty { get; } = new(
+        Selected: false,
+        LocalUsed: null,
+        LocalAvailable: null,
+        TeamUsed: null);
 }
 
 internal sealed record LiveRaceEventModel(

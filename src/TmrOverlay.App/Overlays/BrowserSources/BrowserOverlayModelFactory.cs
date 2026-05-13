@@ -1,7 +1,9 @@
 using TmrOverlay.App.History;
 using TmrOverlay.App.Overlays.Abstractions;
+using TmrOverlay.App.Overlays.CarRadar;
 using TmrOverlay.App.Overlays.Content;
 using TmrOverlay.App.Overlays.FuelCalculator;
+using TmrOverlay.App.Overlays.GarageCover;
 using TmrOverlay.App.Overlays.GapToLeader;
 using TmrOverlay.App.Overlays.InputState;
 using TmrOverlay.App.Overlays.PitService;
@@ -9,6 +11,8 @@ using TmrOverlay.App.Overlays.Relative;
 using TmrOverlay.App.Overlays.SessionWeather;
 using TmrOverlay.App.Overlays.SimpleTelemetry;
 using TmrOverlay.App.Overlays.Standings;
+using TmrOverlay.App.Overlays.StreamChat;
+using TmrOverlay.App.Overlays.TrackMap;
 using TmrOverlay.Core.Fuel;
 using TmrOverlay.Core.History;
 using TmrOverlay.Core.Overlays;
@@ -133,9 +137,25 @@ internal sealed class BrowserOverlayModelFactory
                 headerItems,
                 SourceText(overlay, snapshot, viewModel.Source));
         }
+        else if (string.Equals(overlayId, CarRadarOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            model = BuildCarRadar(snapshot, settings, now);
+        }
         else if (string.Equals(overlayId, GapToLeaderOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
-            model = BuildGapToLeader(snapshot, settings);
+            model = BuildGapToLeader(snapshot, settings, now);
+        }
+        else if (string.Equals(overlayId, TrackMapOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            model = BuildTrackMap(snapshot, settings, now);
+        }
+        else if (string.Equals(overlayId, GarageCoverOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            model = BuildGarageCover(snapshot, settings, now);
+        }
+        else if (string.Equals(overlayId, StreamChatOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            model = BuildStreamChat(snapshot, settings, now);
         }
 
         if (model is null)
@@ -342,13 +362,13 @@ internal sealed class BrowserOverlayModelFactory
             headerItems);
     }
 
-    private BrowserOverlayDisplayModel BuildGapToLeader(LiveTelemetrySnapshot snapshot, ApplicationSettings settings)
+    private BrowserOverlayDisplayModel BuildGapToLeader(LiveTelemetrySnapshot snapshot, ApplicationSettings settings, DateTimeOffset now)
     {
         var overlay = FindOverlay(settings, GapToLeaderOverlayDefinition.Definition.Id);
-        var gap = GapToLeaderLiveModelAdapter.Select(snapshot);
+        var viewModel = GapToLeaderOverlayViewModel.From(snapshot, now);
+        var gap = viewModel.Gap;
         RecordGapSnapshot(snapshot, gap, settings);
-        if (gap.HasData
-            && GapToLeaderLiveModelAdapter.SelectFocusedTrendPointSeconds(snapshot, gap) is { } seconds
+        if (viewModel.FocusedTrendPointSeconds is { } seconds
             && ShouldAcceptGapPoint(snapshot, seconds))
         {
             _gapPoints.Add(seconds);
@@ -358,17 +378,16 @@ internal sealed class BrowserOverlayModelFactory
             }
         }
 
-        var status = gap.HasData ? "live | race gap" : "waiting for timing";
-        var headerItems = HeaderItems(overlay, snapshot, status);
+        var headerItems = HeaderItems(overlay, snapshot, viewModel.Status);
         var graph = BuildBrowserGapGraph(settings);
         IReadOnlyList<double> points = graph?.SelectedSeriesCount > 0
             ? _gapPoints.ToArray()
             : Array.Empty<double>();
         return new BrowserOverlayDisplayModel(
             GapToLeaderOverlayDefinition.Definition.Id,
-            GapToLeaderOverlayDefinition.Definition.DisplayName,
-            BrowserStatus(headerItems, status),
-            SourceText(overlay, snapshot, gap.HasData ? $"source: live gap telemetry | cars {gap.ClassCars.Count}" : "source: waiting"),
+            viewModel.Title,
+            BrowserStatus(headerItems, viewModel.Status),
+            SourceText(overlay, snapshot, viewModel.Source),
             "graph",
             Columns: [],
             Rows: [],
@@ -376,6 +395,121 @@ internal sealed class BrowserOverlayModelFactory
             Points: points,
             HeaderItems: headerItems,
             Graph: graph);
+    }
+
+    private static BrowserOverlayDisplayModel BuildCarRadar(
+        LiveTelemetrySnapshot snapshot,
+        ApplicationSettings settings,
+        DateTimeOffset now)
+    {
+        var overlay = FindOverlay(settings, CarRadarOverlayDefinition.Definition.Id);
+        var viewModel = CarRadarOverlayViewModel.From(
+            snapshot,
+            now,
+            previewVisible: false,
+            overlay?.GetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true) ?? true);
+        var headerItems = HeaderItems(overlay, snapshot, viewModel.Status);
+        return new BrowserOverlayDisplayModel(
+            CarRadarOverlayDefinition.Definition.Id,
+            viewModel.Title,
+            BrowserStatus(headerItems, viewModel.Status),
+            SourceText(overlay, snapshot, viewModel.Source),
+            "car-radar",
+            Columns: [],
+            Rows: [],
+            Metrics: [],
+            Points: [],
+            HeaderItems: headerItems,
+            CarRadar: new BrowserCarRadarModel(
+                viewModel.IsAvailable,
+                viewModel.HasCarLeft,
+                viewModel.HasCarRight,
+                viewModel.Cars,
+                viewModel.StrongestMulticlassApproach,
+                viewModel.ShowMulticlassWarning,
+                viewModel.PreviewVisible,
+                viewModel.HasCurrentSignal));
+    }
+
+    private static BrowserOverlayDisplayModel BuildTrackMap(
+        LiveTelemetrySnapshot snapshot,
+        ApplicationSettings settings,
+        DateTimeOffset now)
+    {
+        var overlay = OverlayOrDefault(settings, TrackMapOverlayDefinition.Definition);
+        var viewModel = TrackMapOverlayViewModel.From(snapshot, now, overlay, trackMap: null);
+        var status = viewModel.IsAvailable ? "live | track map" : viewModel.Status;
+        var headerItems = HeaderItems(overlay, snapshot, status);
+        return new BrowserOverlayDisplayModel(
+            TrackMapOverlayDefinition.Definition.Id,
+            viewModel.Title,
+            BrowserStatus(headerItems, status),
+            SourceText(overlay, snapshot, viewModel.Source),
+            "track-map",
+            Columns: [],
+            Rows: [],
+            Metrics: [],
+            Points: [],
+            HeaderItems: headerItems,
+            TrackMap: new BrowserTrackMapModel(
+                viewModel.Markers,
+                viewModel.Sectors,
+                viewModel.ShowSectorBoundaries,
+                viewModel.InternalOpacity,
+                viewModel.IncludeUserMaps));
+    }
+
+    private static BrowserOverlayDisplayModel BuildGarageCover(
+        LiveTelemetrySnapshot snapshot,
+        ApplicationSettings settings,
+        DateTimeOffset now)
+    {
+        var viewModel = GarageCoverViewModel.From(settings, snapshot, now);
+        var overlay = FindOverlay(settings, GarageCoverOverlayDefinition.Definition.Id);
+        var headerItems = HeaderItems(overlay, snapshot, viewModel.Status);
+        return new BrowserOverlayDisplayModel(
+            GarageCoverOverlayDefinition.Definition.Id,
+            viewModel.Title,
+            BrowserStatus(headerItems, viewModel.Status),
+            SourceText(overlay, snapshot, viewModel.Source),
+            "garage-cover",
+            Columns: [],
+            Rows: [],
+            Metrics: [],
+            Points: [],
+            HeaderItems: headerItems,
+            GarageCover: new BrowserGarageCoverModel(
+                viewModel.ShouldCover,
+                viewModel.BrowserSettings,
+                viewModel.Detection));
+    }
+
+    private static BrowserOverlayDisplayModel BuildStreamChat(
+        LiveTelemetrySnapshot snapshot,
+        ApplicationSettings settings,
+        DateTimeOffset now)
+    {
+        var browserSettings = StreamChatOverlayViewModel.BrowserSettingsFrom(settings);
+        var initialMessage = StreamChatOverlayViewModel.InitialMessage(browserSettings);
+        var viewModel = StreamChatOverlayViewModel.From(
+            StreamChatOverlayViewModel.InitialStatus(browserSettings),
+            [initialMessage]);
+        var overlay = FindOverlay(settings, StreamChatOverlayDefinition.Definition.Id);
+        var headerItems = HeaderItems(overlay, snapshot, viewModel.Status);
+        return new BrowserOverlayDisplayModel(
+            StreamChatOverlayDefinition.Definition.Id,
+            viewModel.Title,
+            BrowserStatus(headerItems, viewModel.Status),
+            SourceText(overlay, snapshot, viewModel.Source),
+            "stream-chat",
+            Columns: [],
+            Rows: [],
+            Metrics: [],
+            Points: [],
+            HeaderItems: headerItems,
+            StreamChat: new BrowserStreamChatModel(
+                browserSettings,
+                viewModel.Rows.Select(BrowserStreamChatMessage.From).ToArray()));
     }
 
     private bool ShouldAcceptGapPoint(LiveTelemetrySnapshot snapshot, double seconds)
@@ -1874,6 +2008,16 @@ internal sealed class BrowserOverlayModelFactory
             overlay => string.Equals(overlay.Id, overlayId, StringComparison.OrdinalIgnoreCase));
     }
 
+    private static OverlaySettings OverlayOrDefault(ApplicationSettings settings, OverlayDefinition definition)
+    {
+        return FindOverlay(settings, definition.Id) ?? new OverlaySettings
+        {
+            Id = definition.Id,
+            Width = definition.DefaultWidth,
+            Height = definition.DefaultHeight
+        };
+    }
+
     private static string UnitSystem(ApplicationSettings settings)
     {
         return string.Equals(settings.General.UnitSystem, "Imperial", StringComparison.OrdinalIgnoreCase)
@@ -1988,7 +2132,11 @@ internal sealed record BrowserOverlayDisplayModel(
     IReadOnlyList<BrowserOverlayMetricRow> Metrics,
     IReadOnlyList<double> Points,
     IReadOnlyList<BrowserOverlayHeaderItem> HeaderItems,
-    BrowserGapGraph? Graph = null)
+    BrowserGapGraph? Graph = null,
+    BrowserCarRadarModel? CarRadar = null,
+    BrowserTrackMapModel? TrackMap = null,
+    BrowserGarageCoverModel? GarageCover = null,
+    BrowserStreamChatModel? StreamChat = null)
 {
     public static BrowserOverlayDisplayModel Table(
         string overlayId,
@@ -2031,6 +2179,51 @@ internal sealed record BrowserOverlayDisplayModel(
             metrics,
             [],
             headerItems ?? []);
+    }
+}
+
+internal sealed record BrowserCarRadarModel(
+    bool IsAvailable,
+    bool HasCarLeft,
+    bool HasCarRight,
+    IReadOnlyList<LiveSpatialCar> Cars,
+    LiveMulticlassApproach? StrongestMulticlassApproach,
+    bool ShowMulticlassWarning,
+    bool PreviewVisible,
+    bool HasCurrentSignal);
+
+internal sealed record BrowserTrackMapModel(
+    IReadOnlyList<TrackMapOverlayMarker> Markers,
+    IReadOnlyList<LiveTrackSectorSegment> Sectors,
+    bool ShowSectorBoundaries,
+    double InternalOpacity,
+    bool IncludeUserMaps);
+
+internal sealed record BrowserGarageCoverModel(
+    bool ShouldCover,
+    GarageCoverBrowserSettingsSnapshot BrowserSettings,
+    GarageCoverDetectionSnapshot Detection);
+
+internal sealed record BrowserStreamChatModel(
+    StreamChatBrowserSettings Settings,
+    IReadOnlyList<BrowserStreamChatMessage> Rows);
+
+internal sealed record BrowserStreamChatMessage(
+    string Name,
+    string Text,
+    string Kind)
+{
+    public static BrowserStreamChatMessage From(StreamChatMessage message)
+    {
+        return new BrowserStreamChatMessage(
+            message.Name,
+            message.Text,
+            message.Kind switch
+            {
+                StreamChatMessageKind.Error => "error",
+                StreamChatMessageKind.System => "system",
+                _ => "message"
+            });
     }
 }
 

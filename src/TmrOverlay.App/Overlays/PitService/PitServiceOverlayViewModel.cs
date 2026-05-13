@@ -7,10 +7,6 @@ namespace TmrOverlay.App.Overlays.PitService;
 
 internal static class PitServiceOverlayViewModel
 {
-    private const int TireServiceMask = 0x0f;
-    private const int FuelServiceFlag = 0x10;
-    private const int TearoffServiceFlag = 0x20;
-    private const int FastRepairServiceFlag = 0x40;
     private static readonly TimeSpan ChangeHighlightDuration = TimeSpan.FromSeconds(30);
 
     public static Func<LiveTelemetrySnapshot, DateTimeOffset, string, SimpleTelemetryOverlayViewModel> CreateBuilder()
@@ -46,7 +42,7 @@ internal static class PitServiceOverlayViewModel
             return SimpleTelemetryOverlayViewModel.Waiting("Pit Service", localContext.StatusText);
         }
 
-        var pit = snapshot.Models.FuelPit;
+        var pit = snapshot.Models.PitService;
         if (!pit.HasData)
         {
             changeTracker?.Reset();
@@ -71,7 +67,7 @@ internal static class PitServiceOverlayViewModel
             new SimpleTelemetryRowViewModel("Release", release.Value, release.Tone),
             new SimpleTelemetryRowViewModel("Location", FormatLocation(pit), tone),
             new SimpleTelemetryRowViewModel("Service", service, HighlightTone(tone, serviceChanged)),
-            new SimpleTelemetryRowViewModel("Pit status", PitServiceStatusFormatter.Format(pit.PitServiceStatus), tone),
+            new SimpleTelemetryRowViewModel("Pit status", PitServiceStatusFormatter.Format(pit.Status), tone),
             new SimpleTelemetryRowViewModel("Fuel request", fuelRequest, HighlightTone(SimpleTelemetryTone.Normal, fuelRequestChanged)),
             new SimpleTelemetryRowViewModel("Repair", repair, HighlightTone(RepairTone(pit), repairChanged)),
             new SimpleTelemetryRowViewModel("Tires", tires, HighlightTone(SimpleTelemetryTone.Normal, tiresChanged)),
@@ -91,9 +87,9 @@ internal static class PitServiceOverlayViewModel
         return "source: player/team pit service telemetry";
     }
 
-    private static string BuildStatus(LiveFuelPitModel pit, PitReleaseState release)
+    private static string BuildStatus(LivePitServiceModel pit, PitReleaseState release)
     {
-        if (PitServiceStatusFormatter.IsError(pit.PitServiceStatus))
+        if (PitServiceStatusFormatter.IsError(pit.Status))
         {
             return "pit stall error";
         }
@@ -131,7 +127,7 @@ internal static class PitServiceOverlayViewModel
         return HasRequestedService(pit) ? "service requested" : "pit ready";
     }
 
-    private static string FormatLocation(LiveFuelPitModel pit)
+    private static string FormatLocation(LivePitServiceModel pit)
     {
         if (pit.PlayerCarInPitStall)
         {
@@ -156,13 +152,11 @@ internal static class PitServiceOverlayViewModel
         return "off pit road";
     }
 
-    private static string FormatService(LiveFuelPitModel pit)
+    private static string FormatService(LivePitServiceModel pit)
     {
-        var service = FormatServiceFlags(pit.PitServiceFlags);
-        if ((service == "--" || service == "none") && pit.PitServiceFuelLiters is > 0d)
-        {
-            service = "fuel";
-        }
+        var service = pit.Flags is null && pit.Request.FuelLiters is not > 0d
+            ? "--"
+            : FormatServiceRequest(pit.Request);
 
         if (IsServiceActive(pit))
         {
@@ -177,61 +171,56 @@ internal static class PitServiceOverlayViewModel
         return service;
     }
 
-    private static string FormatFuelRequest(LiveFuelPitModel pit, string unitSystem)
+    private static string FormatFuelRequest(LivePitServiceModel pit, string unitSystem)
     {
-        return pit.PitServiceFuelLiters is > 0d
-            ? SimpleTelemetryOverlayViewModel.FormatFuelVolume(pit.PitServiceFuelLiters, unitSystem)
+        return pit.Request.FuelLiters is > 0d
+            ? SimpleTelemetryOverlayViewModel.FormatFuelVolume(pit.Request.FuelLiters, unitSystem)
             : "--";
     }
 
-    private static string FormatRepair(LiveFuelPitModel pit)
+    private static string FormatRepair(LivePitServiceModel pit)
     {
-        string? required = pit.PitRepairLeftSeconds is { } requiredSeconds && requiredSeconds > 0d
+        string? required = pit.Repair.RequiredSeconds is { } requiredSeconds && requiredSeconds > 0d
             ? $"{requiredSeconds.ToString("0", CultureInfo.InvariantCulture)}s required"
             : null;
-        string? optional = pit.PitOptRepairLeftSeconds is { } optionalSeconds && optionalSeconds > 0d
+        string? optional = pit.Repair.OptionalSeconds is { } optionalSeconds && optionalSeconds > 0d
             ? $"{optionalSeconds.ToString("0", CultureInfo.InvariantCulture)}s optional"
             : null;
         return SimpleTelemetryOverlayViewModel.JoinAvailable(required, optional);
     }
 
-    private static string FormatTires(LiveFuelPitModel pit)
+    private static string FormatTires(LivePitServiceModel pit)
     {
-        var service = TireServiceCount(pit.PitServiceFlags) switch
+        var service = pit.Tires.RequestedTireCount switch
         {
             4 => "four tires",
-            > 0 => $"{TireServiceCount(pit.PitServiceFlags).ToString(CultureInfo.InvariantCulture)} tires",
+            > 0 => $"{pit.Tires.RequestedTireCount.ToString(CultureInfo.InvariantCulture)} tires",
             _ => null
         };
-        var sets = pit.TireSetsUsed is { } value && value >= 0
+        var sets = pit.Tires.TireSetsUsed is { } value && value >= 0
             ? $"{value.ToString(CultureInfo.InvariantCulture)} sets used"
             : null;
         return SimpleTelemetryOverlayViewModel.JoinAvailable(service, sets);
     }
 
-    private static string FormatFastRepair(LiveFuelPitModel pit)
+    private static string FormatFastRepair(LivePitServiceModel pit)
     {
-        var selected = HasFastRepairSelected(pit.PitServiceFlags)
+        var selected = pit.FastRepair.Selected
             ? "selected"
             : null;
-        var local = pit.FastRepairUsed is { } used && used >= 0
+        var local = pit.FastRepair.LocalUsed is { } used && used >= 0
             ? $"local {used.ToString(CultureInfo.InvariantCulture)}"
             : null;
-        var team = pit.TeamFastRepairsUsed is { } teamUsed && teamUsed >= 0
+        var team = pit.FastRepair.TeamUsed is { } teamUsed && teamUsed >= 0
             ? $"team {teamUsed.ToString(CultureInfo.InvariantCulture)}"
             : null;
         return SimpleTelemetryOverlayViewModel.JoinAvailable(selected, local, team);
     }
 
-    private static string FormatServiceFlags(int? flags)
+    private static string FormatServiceRequest(LivePitServiceRequest request)
     {
-        if (flags is null)
-        {
-            return "--";
-        }
-
         var active = new List<string>();
-        var tireCount = TireServiceCount(flags);
+        var tireCount = request.RequestedTireCount;
         if (tireCount == 4)
         {
             active.Add("tires");
@@ -241,17 +230,17 @@ internal static class PitServiceOverlayViewModel
             active.Add($"{tireCount.ToString(CultureInfo.InvariantCulture)} tires");
         }
 
-        if ((flags.Value & FuelServiceFlag) != 0)
+        if (request.Fuel || request.FuelLiters is > 0d)
         {
             active.Add("fuel");
         }
 
-        if ((flags.Value & TearoffServiceFlag) != 0)
+        if (request.Tearoff)
         {
             active.Add("tearoff");
         }
 
-        if (HasFastRepairSelected(flags))
+        if (request.FastRepair)
         {
             active.Add("fast repair");
         }
@@ -259,7 +248,7 @@ internal static class PitServiceOverlayViewModel
         return active.Count == 0 ? "none" : string.Join(", ", active);
     }
 
-    private static SimpleTelemetryTone ToneFor(LiveFuelPitModel pit, PitReleaseState release)
+    private static SimpleTelemetryTone ToneFor(LivePitServiceModel pit, PitReleaseState release)
     {
         if (release.Tone is SimpleTelemetryTone.Info or SimpleTelemetryTone.Success or SimpleTelemetryTone.Warning or SimpleTelemetryTone.Error)
         {
@@ -279,7 +268,7 @@ internal static class PitServiceOverlayViewModel
         return HasRequestedService(pit) ? SimpleTelemetryTone.Success : SimpleTelemetryTone.Normal;
     }
 
-    private static SimpleTelemetryTone RepairTone(LiveFuelPitModel pit)
+    private static SimpleTelemetryTone RepairTone(LivePitServiceModel pit)
     {
         if (HasRequiredRepair(pit))
         {
@@ -289,23 +278,22 @@ internal static class PitServiceOverlayViewModel
         return HasOptionalRepair(pit) ? SimpleTelemetryTone.Warning : SimpleTelemetryTone.Normal;
     }
 
-    private static bool HasRequestedService(LiveFuelPitModel pit)
+    private static bool HasRequestedService(LivePitServiceModel pit)
     {
-        return (pit.PitServiceFlags is { } flags && flags != 0)
-            || pit.PitServiceFuelLiters is > 0d;
+        return pit.Request.HasAnyRequest || (pit.Flags is { } flags && flags != 0);
     }
 
-    private static PitReleaseState BuildReleaseState(LiveFuelPitModel pit)
+    private static PitReleaseState BuildReleaseState(LivePitServiceModel pit)
     {
-        if (PitServiceStatusFormatter.IsError(pit.PitServiceStatus))
+        if (PitServiceStatusFormatter.IsError(pit.Status))
         {
             return new PitReleaseState(
                 PitReleaseKind.Hold,
-                $"RED - {PitServiceStatusFormatter.Format(pit.PitServiceStatus)}",
+                $"RED - {PitServiceStatusFormatter.Format(pit.Status)}",
                 SimpleTelemetryTone.Error);
         }
 
-        if (PitServiceStatusFormatter.IsComplete(pit.PitServiceStatus))
+        if (PitServiceStatusFormatter.IsComplete(pit.Status))
         {
             return new PitReleaseState(
                 PitReleaseKind.Go,
@@ -341,7 +329,7 @@ internal static class PitServiceOverlayViewModel
         {
             return new PitReleaseState(
                 PitReleaseKind.Go,
-                pit.PitServiceStatus is null ? "GREEN - go (inferred)" : "GREEN - go",
+                pit.Status is null ? "GREEN - go (inferred)" : "GREEN - go",
                 SimpleTelemetryTone.Success);
         }
 
@@ -364,24 +352,19 @@ internal static class PitServiceOverlayViewModel
                 SimpleTelemetryTone.Normal);
     }
 
-    private static bool IsServiceActive(LiveFuelPitModel pit)
+    private static bool IsServiceActive(LivePitServiceModel pit)
     {
-        return PitServiceStatusFormatter.IsInProgress(pit.PitServiceStatus) || pit.PitstopActive;
+        return PitServiceStatusFormatter.IsInProgress(pit.Status) || pit.PitstopActive;
     }
 
-    private static bool HasRequiredRepair(LiveFuelPitModel pit)
+    private static bool HasRequiredRepair(LivePitServiceModel pit)
     {
-        return pit.PitRepairLeftSeconds is > 0d;
+        return pit.Repair.RequiredSeconds is > 0d;
     }
 
-    private static bool HasOptionalRepair(LiveFuelPitModel pit)
+    private static bool HasOptionalRepair(LivePitServiceModel pit)
     {
-        return pit.PitOptRepairLeftSeconds is > 0d;
-    }
-
-    private static bool HasFastRepairSelected(int? flags)
-    {
-        return flags is { } value && (value & FastRepairServiceFlag) != 0;
+        return pit.Repair.OptionalSeconds is > 0d;
     }
 
     private static bool IsChanged(ChangeTracker? tracker, string key, string value, DateTimeOffset now)
@@ -410,26 +393,6 @@ internal static class PitServiceOverlayViewModel
             SimpleTelemetryTone.Waiting => 10,
             _ => 0
         };
-    }
-
-    private static int TireServiceCount(int? flags)
-    {
-        if (flags is null)
-        {
-            return 0;
-        }
-
-        var tireFlags = flags.Value & TireServiceMask;
-        var count = 0;
-        for (var bit = 1; bit <= 0x08; bit <<= 1)
-        {
-            if ((tireFlags & bit) != 0)
-            {
-                count++;
-            }
-        }
-
-        return count;
     }
 
     private enum PitReleaseKind

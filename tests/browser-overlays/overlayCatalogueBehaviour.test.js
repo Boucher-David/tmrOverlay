@@ -39,9 +39,13 @@ describe('browser overlay catalogue behaviour', () => {
       'session-weather',
       'pit-service',
       'input-state',
-      'gap-to-leader'
+      'gap-to-leader',
+      'car-radar',
+      'track-map',
+      'garage-cover',
+      'stream-chat'
     ];
-    const noModelOverlayIds = ['car-radar', 'track-map', 'garage-cover', 'stream-chat'];
+    const noModelOverlayIds = [];
 
     for (const overlayId of modeledOverlayIds) {
       const response = browserOverlayApiResponse(overlayId, `/api/overlay-model/${overlayId}`, { live });

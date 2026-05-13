@@ -25,16 +25,16 @@ async function initStreamChat() {
 
   streamChatState.initialized = true;
   try {
-    const response = await fetch(TmrBrowserApiPath('/api/stream-chat'), { cache: 'no-store' });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const payload = await response.json();
-    const settings = payload.streamChat || {};
+    const model = await fetchOverlayModel('stream-chat');
+    const settings = model?.streamChat?.settings || {};
+    const initialRows = model?.streamChat?.rows || [];
     streamChatState.settings = settings;
     if (!settings.isConfigured) {
-      renderChatLines([
+      renderChatLines(initialRows.length ? initialRows : [
         { name: 'TMR', text: streamChatStatusText(settings.status), kind: 'system' }
       ]);
-      statusEl.textContent = 'waiting for chat source';
+      renderHeaderItems(model, model?.status || 'waiting for chat source');
+      renderFooterSource(model);
       return;
     }
 
@@ -44,6 +44,11 @@ async function initStreamChat() {
     }
 
     if (settings.provider === 'twitch') {
+      if (initialRows.length) {
+        renderChatLines(initialRows);
+        renderHeaderItems(model, model?.status || 'connecting | twitch');
+        renderFooterSource(model);
+      }
       connectTwitchChat(settings.twitchChannel);
       return;
     }

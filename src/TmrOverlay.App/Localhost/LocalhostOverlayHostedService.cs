@@ -277,7 +277,7 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
                     await WriteJsonAsync(context.Response, HttpStatusCode.OK, new
                     {
                         generatedAtUtc = DateTimeOffset.UtcNow,
-                        streamChat = StreamChatOverlaySettings.From(_settingsStore.Load())
+                        streamChat = StreamChatOverlayViewModel.BrowserSettingsFrom(_settingsStore.Load())
                     }, cancellationToken).ConfigureAwait(false);
                     statusCode = (int)HttpStatusCode.OK;
                     break;

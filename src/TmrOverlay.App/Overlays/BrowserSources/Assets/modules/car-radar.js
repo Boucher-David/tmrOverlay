@@ -1,19 +1,24 @@
 ensureRadarStyle();
-const radarModel = window.TmrBrowserModel;
+let carRadarDisplayModel = null;
 
 TmrBrowserOverlay.register({
-  render(live) {
-    if (!radarModel.isPlayerInCar(live)) {
+  async beforeRefresh() {
+    carRadarDisplayModel = await fetchOverlayModel('car-radar');
+  },
+  render() {
+    const radar = carRadarDisplayModel?.carRadar || {};
+    if (!radar.isAvailable) {
       contentEl.innerHTML = '<div class="empty">Waiting for player in car.</div>';
-      setStatus(live, 'waiting for player in car');
+      renderHeaderItems(carRadarDisplayModel, carRadarDisplayModel?.status || 'waiting for player in car');
+      renderFooterSource(carRadarDisplayModel);
       return;
     }
 
-    const spatial = radarModel.spatial(live);
-    const cars = (spatial.cars || [])
-      .filter((row) => radarModel.hasRelativePlacement(row) && Number.isFinite(row?.relativeMeters));
-    contentEl.innerHTML = radarMarkup(spatial, cars.slice(0, 10));
-    setStatus(live, spatial.hasData ? `live | ${spatial.sideStatus || 'radar'}` : 'waiting for radar');
+    const cars = (radar.cars || [])
+      .filter((row) => Number.isFinite(row?.relativeMeters));
+    contentEl.innerHTML = radarMarkup(radar, cars.slice(0, 10));
+    renderHeaderItems(carRadarDisplayModel, carRadarDisplayModel?.status || 'live');
+    renderFooterSource(carRadarDisplayModel);
   }
 });
 
@@ -137,17 +142,19 @@ function ensureRadarStyle() {
   document.head.appendChild(style);
 }
 
-function radarMarkup(spatial, cars) {
-  const sideLeft = spatial.hasCarLeft === true;
-  const sideRight = spatial.hasCarRight === true;
-  const approach = spatial.strongestMulticlassApproach;
+function radarMarkup(radar, cars) {
+  const sideLeft = radar.hasCarLeft === true;
+  const sideRight = radar.hasCarRight === true;
+  const approach = radar.showMulticlassWarning !== false
+    ? radar.strongestMulticlassApproach
+    : null;
   const carMarkup = cars.map((car, index) => radarCarMarkup(car, index)).join('');
   const approachSeconds = Number.isFinite(approach?.relativeSeconds)
     ? Math.abs(approach.relativeSeconds).toFixed(1)
     : null;
   return `
     <div class="radar-v2">
-      <div class="radar-status">${escapeHtml(radarStatusText(spatial))}</div>
+      <div class="radar-status">${escapeHtml(radarStatusText(radar))}</div>
       <div class="radar-axis radar-axis-x"></div>
       <div class="radar-axis radar-axis-y"></div>
       ${approachSeconds ? `
@@ -172,12 +179,13 @@ function radarCarMarkup(car, index) {
   return `<div class="radar-car" style="left:${left.toFixed(1)}%;top:${top.toFixed(1)}%;background:${classColorCss(car.carClassColorHex)};"></div>`;
 }
 
-function radarStatusText(spatial) {
-  if (Number.isFinite(spatial?.strongestMulticlassApproach?.relativeSeconds)) {
-    return `${Math.abs(spatial.strongestMulticlassApproach.relativeSeconds).toFixed(1)}s`;
+function radarStatusText(radar) {
+  if (radar?.showMulticlassWarning !== false
+    && Number.isFinite(radar?.strongestMulticlassApproach?.relativeSeconds)) {
+    return `${Math.abs(radar.strongestMulticlassApproach.relativeSeconds).toFixed(1)}s`;
   }
-  if (spatial?.hasCarLeft || spatial?.hasCarRight) {
+  if (radar?.hasCarLeft || radar?.hasCarRight) {
     return 'SIDE';
   }
-  return spatial?.hasData ? 'CLEAR' : 'WAIT';
+  return radar?.isAvailable ? 'CLEAR' : 'WAIT';
 }
