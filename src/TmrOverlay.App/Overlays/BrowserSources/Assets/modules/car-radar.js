@@ -11,7 +11,7 @@ TmrBrowserOverlay.register({
 
     const spatial = radarModel.spatial(live);
     const cars = (spatial.cars || [])
-      .filter((row) => Number.isFinite(row?.relativeMeters));
+      .filter((row) => radarModel.hasRelativePlacement(row) && Number.isFinite(row?.relativeMeters));
     contentEl.innerHTML = radarMarkup(spatial, cars.slice(0, 10));
     setStatus(live, spatial.hasData ? `live | ${spatial.sideStatus || 'radar'}` : 'waiting for radar');
   }

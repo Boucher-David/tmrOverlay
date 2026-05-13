@@ -1206,7 +1206,7 @@ DriverInfo:
         Assert.Equal(2d, chase.IntervalSecondsToPreviousClassRow);
 
         var standings = StandingsOverlayViewModel.From(store.Snapshot(), DateTimeOffset.UtcNow, maximumRows: 3);
-        Assert.Equal(new[] { "Leader", "+3.0", "+5.0" }, standings.Rows.Select(row => row.Gap));
+        Assert.Equal(new[] { "Lap 3", "+3.0", "+5.0" }, standings.Rows.Select(row => row.Gap));
         Assert.Equal(new[] { "0.0", "+3.0", "+2.0" }, standings.Rows.Select(row => row.Interval));
     }
 
@@ -1329,7 +1329,7 @@ DriverInfo:
         Assert.Equal(1d, reference.IntervalLapsToPreviousClassRow);
 
         var standings = StandingsOverlayViewModel.From(store.Snapshot(), DateTimeOffset.UtcNow, maximumRows: 2);
-        Assert.Equal(new[] { "Leader", "+1L" }, standings.Rows.Select(row => row.Gap));
+        Assert.Equal(new[] { "Lap 3", "+1L" }, standings.Rows.Select(row => row.Gap));
         Assert.Equal(new[] { "0.0", "+1L" }, standings.Rows.Select(row => row.Interval));
     }
 

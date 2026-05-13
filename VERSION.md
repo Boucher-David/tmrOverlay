@@ -13,63 +13,67 @@ Use `docs/model-v2-future-branches.md` for session-handoff notes, current model-
 
 ## Current Branch Target
 
-### v0.18.12 - Live Reference And Race-Start Overlay Hardening
+### v0.19.0 - Live Overlay Browser Parity And Race-Start Hardening
 
 Planned branch name:
 
 ```text
-live-reference-race-start-fixes
+fix/live-overlay-capture-regressions
 ```
 
 Planned scope:
 
 - Promote normalized live reference facts so Standings, Relative, Gap To Leader, Track Map, diagnostics, and browser validation agree on focus/player/reference identity before overlay-specific interpretation.
-- Keep Radar as the explicit local in-car spatial special case instead of generalizing its context handler into Relative or other timing overlays.
-- Keep Relative usable from pits when the focused/reference car has usable timing/progress evidence, but suppress lap-only display placeholders such as `0.002L`.
-- Keep Standings grounded in scoring/results order, prevent race `GAP`/`INT` cells from using estimated timing fallbacks, and stabilize row height while live row counts change.
-- Fix the Settings Alt+Tab regression by keeping Settings visible after focus loss while demoting it out of the topmost layer.
-- Add raw `ClutchRaw` capture and input-display fallback while preserving brake behavior for pit/engine-off captures.
-- Fix Gap To Leader orientation and invalid point filtering so the leader/reference baseline stays at the top and placeholder points cannot invert the graph.
-- Extend browser race-start validation to inspect overlay models as well as screenshot artifacts.
+- Keep Radar as the explicit local in-car spatial special case while allowing Relative, Standings, Gap To Leader, and Track Map to work from timing/scoring evidence in pits, spectated focus, and replayed browser validation contexts.
+- Bring Standings, Relative, and Gap To Leader native/browser behavior into production-contract parity: settings-backed chrome/content, stable row/window sizing, grounded source selection, and no fabricated browser-only fields.
+- Keep Standings grounded in scoring/results order, keep race row membership stable from field/class settings, preserve leader rows when row caps are smaller than class size, and calculate gap/interval only from explicit timing evidence.
+- Keep Relative centered and stable around the reference car, use numerical position and delta semantics, preserve blank slots instead of resizing, and avoid radar-only locality rules.
+- Port Gap To Leader V2 parity features from legacy/mac where agreed: filtered focused range, threat highlighting, trend metrics, endpoint labels, weather/leader/driver markers, and the 4h growing focus window, while intentionally leaving tactical relative mode out of GtL.
+- Fix settings visibility/persistence and overlay chrome persistence for visibility, position, opacity, scale, content/header/footer options, session filters, and browser-source settings.
+- Add raw `ClutchRaw` capture and input-display fallback while preserving brake behavior for pit/engine-off captures and addressing input wheel clipping.
+- Extend browser replay validation to stream real telemetry-derived overlay models instead of hand-authored demos, with Road Atlanta, four-hour, and 24-hour mid-race rejoin captures as the preferred scenario set.
 - Keep uploaded raw captures, screenshots, and diagnostic bundles local unless they are deliberately promoted into compact redacted fixtures or review artifacts.
 
 Technical implementation checklist:
 
-1. Bump shared .NET product/version metadata to `0.18.12`.
+1. Bump shared .NET product/version metadata to `0.19.0`.
 2. Add `LiveReferenceModel` and route shared overlay consumers through it.
 3. Update Standings, Relative, Gap To Leader, Track Map, diagnostics, and browser replay tooling to consume normalized reference facts.
 4. Keep overlay-specific contexts local to overlays that need them, especially Radar local/in-car spatial gating.
-5. Add clutch raw capture/read models and use `ClutchRaw` as an input fallback when normalized clutch is flat zero.
-6. Update Settings z-order policy/tests/docs so focus loss demotes Settings instead of hiding it, and keep diagnostics from reporting Settings active while hidden.
-7. Extend browser race-start replay validation to fetch overlay models, assert live-model invariants, and preserve generated review artifacts.
-8. Validate local static checks, browser tests, screenshot expectations, and git hygiene; use Windows CI or a Windows machine for the full .NET build/test and real WinForms behavior pass.
+5. Align native and browser contracts for Standings, Relative, and Gap To Leader, including settings-backed content/header/footer behavior.
+6. Add clutch raw capture/read models and use `ClutchRaw` as an input fallback when normalized clutch is flat zero.
+7. Update Settings z-order, persistence, and diagnostics behavior so update/restart and focus transitions preserve visible overlays and settings choices.
+8. Extend browser replay validation to fetch real telemetry-derived overlay models, assert live-model invariants, and preserve generated review artifacts.
+9. Validate local static checks, browser tests, screenshot expectations, and git hygiene; use Windows CI or a Windows machine for the full .NET build/test and real WinForms behavior pass.
 
 Likely squash title:
 
 ```text
-[v0.18.12] Harden live reference and race-start overlays
+[v0.19.0] Align live overlays and browser validation
 ```
 
 Likely squash body:
 
 ```text
-- Bumped shared .NET product/version metadata to 0.18.12.
+- Bumped shared .NET product/version metadata to 0.19.0.
 - Added a normalized `LiveReferenceModel` and routed Standings, Relative, Gap To Leader, Track Map, diagnostics, and browser validation through shared focus/player/reference facts.
 - Kept Radar as an overlay-specific local in-car spatial context while allowing Relative to render from pits when reference timing/progress evidence exists.
-- Prevented Relative from showing lap-fraction placeholders, and kept Standings race `GAP`/`INT` cells unavailable until positive F2 or another explicit timing source exists.
-- Stabilized native Standings window height so live row-count changes do not resize the OS window.
-- Kept Settings visible after Alt+Tab/focus loss while demoting it from the topmost layer, and updated z-order policy tests/docs.
-- Normalized live-overlay and freeze-watch diagnostics so `settingsOverlayActive` cannot stay true after the Settings window is hidden.
+- Aligned Standings native/browser behavior around scoring order, row caps, class leaders, stable race sizing, and grounded `GAP`/`INT` timing evidence.
+- Aligned Relative native/browser behavior around stable centered rows, numerical positions, delta semantics, lap-ahead/behind styling, and non-local timing contexts.
+- Ported agreed Gap To Leader V2 parity behavior: filtered focused range, threat highlighting, trend metrics, endpoint label lanes, weather bands, leader/driver markers, and the 4h growing focus window.
+- Kept tactical relative mode out of Gap To Leader V2 by design.
+- Kept Settings visible after Alt+Tab/focus loss while demoting it from the topmost layer, and preserved overlay visibility, position, opacity, scale, content/header/footer, and session-filter settings across update/restart flows.
+- Normalized live-overlay and freeze-watch diagnostics so settings and overlay visibility state cannot be reported as active while hidden.
 - Captured raw clutch telemetry and used `ClutchRaw` as the input-display fallback when normalized clutch remains flat zero.
-- Fixed Gap To Leader graph orientation and browser point filtering so the reference/leader baseline stays at the top and invalid points are ignored.
-- Extended browser race-start replay validation to inspect overlay models in addition to screenshot artifacts, aligned replay/corpus tooling with meaningful race-scoring coverage, and regenerated the May 12 race-start review artifacts.
-- Updated live-model, Relative, Standings, Gap To Leader, Settings, and future-branch docs for the normalized-reference model and race-start behavior.
-- Validated git hygiene, C# compile-shape scanning, browser unit tests, browser replay script syntax, Python compile checks, screenshot expectations, and May 12 browser race-start replay; Windows .NET build/test and real WinForms behavior validation remain CI/Windows-machine gates.
+- Fixed input wheel clipping and preserved pit/engine-off brake behavior.
+- Extended browser race-start replay validation to inspect telemetry-derived overlay models in addition to screenshot artifacts, aligned replay/corpus tooling with meaningful race-scoring coverage, and documented real-capture replay expectations.
+- Updated live-model, Relative, Standings, Gap To Leader, Settings, browser replay, and future-branch docs for the normalized-reference model and browser-equals-native validation target.
+- Validated git hygiene, C# compile-shape scanning, browser unit tests, browser Playwright tests, browser replay script syntax, Python compile checks, and screenshot expectations; Windows .NET build/test and real WinForms behavior validation remain CI/Windows-machine gates.
 ```
 
 ## Next Planned Milestone
 
-### v0.18.13 - V1 Candidate Polish
+### v0.19.1 - V1 Candidate Polish
 
 Likely scope:
 

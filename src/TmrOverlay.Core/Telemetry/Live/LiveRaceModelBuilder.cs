@@ -1669,6 +1669,7 @@ internal static class LiveRaceModelBuilder
         }
 
         var gapSeconds = gap.GapSecondsToClassLeader;
+        var gapLaps = WholeLapGapForTiming(gap.GapLapsToClassLeader);
         var deltaSecondsToReference = gap.DeltaSecondsToReference;
         if (isRaceSession
             && gapSeconds is not null
@@ -1684,9 +1685,13 @@ internal static class LiveRaceModelBuilder
             IsClassLeader = row.IsClassLeader || gap.IsClassLeader,
             ClassPosition = row.ClassPosition ?? gap.ClassPosition,
             GapSecondsToClassLeader = row.GapSecondsToClassLeader ?? gapSeconds,
-            GapLapsToClassLeader = row.GapLapsToClassLeader ?? gap.GapLapsToClassLeader,
+            GapLapsToClassLeader = row.GapLapsToClassLeader ?? gapLaps,
             DeltaSecondsToFocus = row.DeltaSecondsToFocus ?? deltaSecondsToReference,
-            GapEvidence = BuildClassGapRowEvidence(gap with { GapSecondsToClassLeader = gapSeconds }, classGapEvidence)
+            GapEvidence = BuildClassGapRowEvidence(gap with
+            {
+                GapSecondsToClassLeader = gapSeconds,
+                GapLapsToClassLeader = gapLaps
+            }, classGapEvidence)
         };
     }
 
@@ -1946,23 +1951,57 @@ internal static class LiveRaceModelBuilder
         HistoricalTelemetrySample sample,
         IEnumerable<LiveTimingRow> rows)
     {
-        var lapTimes = rows
-            .SelectMany(row => new[] { row.LastLapTimeSeconds, row.BestLapTimeSeconds })
+        var lastLapTimes = rows
+            .Select(row => row.LastLapTimeSeconds)
             .Select(ValidPositive)
             .Where(value => value is not null && value.Value >= 20d && value.Value <= 300d)
             .Select(value => value!.Value)
             .OrderBy(value => value)
             .ToArray();
-
-        if (lapTimes.Length > 0)
+        if (lastLapTimes.Length > 0)
         {
-            var middle = lapTimes.Length / 2;
-            return lapTimes.Length % 2 == 1
-                ? lapTimes[middle]
-                : (lapTimes[middle - 1] + lapTimes[middle]) / 2d;
+            return Median(lastLapTimes);
+        }
+
+        var bestLapTimes = rows
+            .Select(row => row.BestLapTimeSeconds)
+            .Select(ValidPositive)
+            .Where(value => value is not null && value.Value >= 20d && value.Value <= 300d)
+            .Select(value => value!.Value)
+            .OrderBy(value => value)
+            .ToArray();
+        if (bestLapTimes.Length > 0)
+        {
+            return Median(bestLapTimes);
         }
 
         return PreGreenEstimatedLapTimeSeconds(context, sample);
+    }
+
+    private static double? WholeLapGapForTiming(double? gapLaps)
+    {
+        if (ValidNonNegative(gapLaps) is not { } laps)
+        {
+            return null;
+        }
+
+        if (laps == 0d)
+        {
+            return 0d;
+        }
+
+        var nearestLap = Math.Round(laps);
+        return nearestLap >= 1d && Math.Abs(laps - nearestLap) <= 0.05d
+            ? nearestLap
+            : null;
+    }
+
+    private static double Median(IReadOnlyList<double> orderedValues)
+    {
+        var middle = orderedValues.Count / 2;
+        return orderedValues.Count % 2 == 1
+            ? orderedValues[middle]
+            : (orderedValues[middle - 1] + orderedValues[middle]) / 2d;
     }
 
     private readonly record struct ClassTimingLeaders(

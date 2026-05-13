@@ -810,8 +810,10 @@ public sealed class StandingsOverlayViewModelTests
 
         var viewModel = StandingsOverlayViewModel.From(snapshot, now, maximumRows: 5);
 
-        Assert.Equal(new[] { "#5", "#6", "#7", "#8", "#9" }, viewModel.Rows.Select(row => row.CarNumber));
+        Assert.Equal(new[] { "#1", "#5", "#6", "#7", "#8" }, viewModel.Rows.Select(row => row.CarNumber));
+        Assert.True(viewModel.Rows.Single(row => row.CarNumber == "#1").IsLeader);
         Assert.True(viewModel.Rows.Single(row => row.CarNumber == "#7").IsReference);
+        Assert.DoesNotContain(viewModel.Rows, row => row.CarNumber == "#9");
     }
 
     [Fact]

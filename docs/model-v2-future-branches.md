@@ -32,14 +32,15 @@ Current evidence/tooling shape:
 - 2026-05-12: Added a redacted SDK field availability corpus with 334 fields from local four-hour and 24-hour endurance captures, including SDK-declared array/storage maximums, primitive type bounds, sampled observed ranges, and identity shape counts. New telemetry-backed work should first run `tools/analysis/check_sdk_schema_against_corpus.py` against available local raw-capture schemas so newly exposed iRacing SDK fields become corpus/product-planning inputs instead of invisible drift.
 - 2026-05-12: Race-start captures confirmed that active race `SessionNum` plus `SessionState` separates early pre-grid/countdown, gridding/pace, and green phases. Standings now stays on grounded starting-grid/scoring rows before green and dims rows for cars that have not taken the grid, while Relative can use observed estimated timing/lap-distance signals during race `SessionState == 3`, including tow/pit cases. Settings stays visible after Alt+Tab/focus loss and drops out of the topmost layer instead of auto-hiding; update installs preserve existing app data.
 
-## Current v0.18.12 Branch Focus
+## Current v0.19.0 Branch Focus
 
-The current useful model-v2 work is evidence-backed live-reference hardening, not a broad overlay rewrite:
+The current useful model-v2 work is evidence-backed live-overlay parity and browser validation hardening, not a broad product expansion:
 
 - Keep the compact tracked "full-picture" live telemetry fixture corpus current as representative real states are collected. Keep it redacted and compact: no raw `telemetry.bin`, no source `.ibt`, no private chat/settings values, and no full-session payloads.
 - Keep the SDK field availability corpus current with local capture schemas before telemetry-backed feature work. If iRacing adds SDK fields or changes declared shape, update the corpus or document the gap before deciding overlay behavior from guesses.
 - Include labeled states for pre-grid/gridding, green start, green plus delay, normal race running, spectating another car, local player in-car, pit road/stall/service, garage/setup visible, replay if observed, multiclass coverage, and degraded/missing focus or official-position fields.
 - Use the corpus to validate AI/spectated Standings, Relative, and Gap To Leader behavior after implementation changes instead of relying on hypothetical fallback data.
+- Treat browser validation for Standings, Relative, and Gap To Leader as a native-overlay parity check: browser models should come from production-shaped telemetry contracts and settings, not from hand-authored rows or fake graph fields.
 - Preserve the current valid-lap gate for Standings in Practice/Qualifying/Test.
 - Keep broad validation, screenshot regeneration, installer/update polish, first-run docs, privacy/defaults review, and Windows-native behavior checks as V1-candidate readiness work.
 
