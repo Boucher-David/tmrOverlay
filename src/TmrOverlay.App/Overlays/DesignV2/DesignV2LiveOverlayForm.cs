@@ -3480,6 +3480,19 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                 : "--";
     }
 
+    private static string? FirstNonEmpty(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+
+        return null;
+    }
+
     private static Color GapTireComparisonColor(DesignV2TireMetricValue? focusTire, DesignV2TireMetricValue? comparisonTire)
     {
         var comparison = FirstNonEmpty(comparisonTire?.ShortLabel, comparisonTire?.Label);
