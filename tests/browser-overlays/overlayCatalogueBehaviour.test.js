@@ -82,7 +82,7 @@ function browserScenarios() {
           '2 #10 Reference Driver -- --',
           '3 #12 Chase Driver -- --'
         ]);
-        expect(document.body.textContent).not.toMatch(/\d(?:\.\d+)?L\b/i);
+        expect(contentText(document)).not.toMatch(/\d(?:\.\d+)?L\b/i);
       }
     },
     {
@@ -101,7 +101,7 @@ function browserScenarios() {
           '5 #55 Focus Driver 0.000',
           '6 #61 Near Behind +1.200 IN'
         ]);
-        expect(document.body.textContent).not.toMatch(/\d(?:\.\d+)?L\b/i);
+        expect(contentText(document)).not.toMatch(/\d(?:\.\d+)?L\b/i);
       }
     },
     {
@@ -118,7 +118,7 @@ function browserScenarios() {
       assert: ({ document }) => {
         expect(metricText(document)).toContain('Plan 31 laps | 3 stints | final 7');
         expect(metricText(document)).toContain('Stint 1 12 laps | target 3.1 L/lap | tires free (36.8 L)');
-        expect(document.body.textContent).not.toContain('Laps Left');
+        expect(contentText(document)).not.toContain('Laps Left');
         expect(document.getElementById('status').textContent).toBe('3 stints / 2 stops');
       }
     },
@@ -224,9 +224,14 @@ function browserScenarios() {
             trendMetrics: [
               { label: '5L', focusGapChangeSeconds: -1.4, chaser: { carIdx: 14, label: '#14', gainSeconds: 0.8 }, state: 'ready', stateLabel: null },
               { label: '10L', focusGapChangeSeconds: null, chaser: null, state: 'warming', stateLabel: '0.7L' },
-              { label: 'stint', focusGapChangeSeconds: null, chaser: null, state: 'unavailable', stateLabel: null }
+              { label: 'Pit', focusGapChangeSeconds: null, chaser: null, state: 'unavailable', stateLabel: null },
+              { label: 'PLap', focusGapChangeSeconds: null, chaser: null, state: 'unavailable', stateLabel: null },
+              { label: 'Stint', focusGapChangeSeconds: null, chaser: null, state: 'stint', stateLabel: null, primaryText: '5L', threatText: '6L', comparisonText: '5L' },
+              { label: 'Tire', focusGapChangeSeconds: null, chaser: null, state: 'unavailable', stateLabel: null },
+              { label: 'Last', focusGapChangeSeconds: null, chaser: null, state: 'last', stateLabel: null, primaryText: '1:31.842', threatText: '1:30.913', comparisonText: '1:32.104' },
+              { label: 'Status', focusGapChangeSeconds: null, chaser: null, state: 'status', stateLabel: null, primaryText: 'Track', threatText: 'Track', comparisonText: 'Pit' }
             ],
-            activeThreat: { label: '5L', focusGapChangeSeconds: -1.4, chaser: { carIdx: 14, label: '#14', gainSeconds: 0.8 }, state: 'ready', stateLabel: null },
+            activeThreat: { label: 'Threat', focusGapChangeSeconds: null, chaser: { carIdx: 14, label: '#14', gainSeconds: 0.8 }, state: 'ready', stateLabel: null },
             threatCarIdx: 14,
             metricDeadbandSeconds: 0.25,
             scale: {
@@ -513,6 +518,10 @@ function rowText(document) {
 function metricText(document) {
   return [...document.querySelectorAll('.metric')]
     .map((metricElement) => metricElement.textContent.replace(/\s+/g, ' ').trim());
+}
+
+function contentText(document) {
+  return document.getElementById('content').textContent;
 }
 
 function trackMapAsset() {

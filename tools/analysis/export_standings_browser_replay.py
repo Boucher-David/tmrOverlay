@@ -1207,6 +1207,15 @@ def whole_lap_gap(
     lap_time_seconds: float | None,
     is_race: bool,
 ) -> float | None:
+    reference_progress = progress_laps(reference_ahead)
+    timing_progress = progress_laps(timing)
+    if reference_progress is not None and timing_progress is not None:
+        progress_gap = reference_progress - timing_progress
+        if progress_gap < 0.95:
+            return None
+        nearest_lap = round(progress_gap)
+        return float(nearest_lap) if nearest_lap >= 1 and abs(progress_gap - nearest_lap) <= 0.35 else progress_gap
+
     reference_lap = reference_ahead.get("lapCompleted")
     timing_lap = timing.get("lapCompleted")
     if isinstance(reference_lap, int) and isinstance(timing_lap, int):
@@ -1241,13 +1250,19 @@ def estimated_seconds_behind(
     is_race: bool,
     lap_time_seconds: float | None,
 ) -> float | None:
-    if not is_race or has_different_completed_lap(timing, reference_ahead):
+    if not is_race:
         return None
 
     relative_seconds = estimated_relative_seconds(timing, reference_ahead, lap_time_seconds)
     if relative_seconds is None or relative_seconds > 0.0:
         return None
     return max(0.0, -relative_seconds)
+
+
+def progress_laps(row: dict[str, Any]) -> float | None:
+    lap = row.get("lapCompleted")
+    pct = valid_lap_dist_pct(row.get("lapDistPct"))
+    return lap + pct if isinstance(lap, int) and lap >= 0 and pct is not None else None
 
 
 def has_different_completed_lap(row: dict[str, Any], reference_ahead: dict[str, Any]) -> bool:

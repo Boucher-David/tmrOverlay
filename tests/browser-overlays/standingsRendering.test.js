@@ -31,7 +31,7 @@ describe('standings browser rendering', () => {
     expect(rows[5].classList.contains('pit')).toBe(true);
     expect(currentOverlay.document.getElementById('status').textContent).toBe('scoring | 5/5 live');
     expect(currentOverlay.document.getElementById('source').textContent).toBe('source: scoring snapshot + live timing');
-    expect(currentOverlay.document.body.textContent).not.toContain('Proto Two');
+    expect(contentText(currentOverlay.document)).not.toContain('Proto Two');
   });
 
   it('renders placeholder-F2 race standings without lap-distance gap fallback', async () => {
@@ -48,7 +48,7 @@ describe('standings browser rendering', () => {
       '2 #10 Reference Driver -- --',
       '3 #12 Chase Driver -- --'
     ]);
-    expect(currentOverlay.document.body.textContent).not.toMatch(/\d(?:\.\d+)?L\b/i);
+    expect(contentText(currentOverlay.document)).not.toMatch(/\d(?:\.\d+)?L\b/i);
   });
 
 });
@@ -103,6 +103,10 @@ function standingsColumns() {
 
 function rowCells(row) {
   return [...row.querySelectorAll('td')].map((cell) => cell.textContent.replace(/\s+/g, ' ').trim()).join(' ').trim();
+}
+
+function contentText(document) {
+  return document.getElementById('content').textContent;
 }
 
 function headerRow(headerTitle, headerDetail, carClassColorHex) {

@@ -46,6 +46,7 @@ internal sealed record LiveRaceModels(
     LiveSessionModel Session,
     LiveDriverDirectoryModel DriverDirectory,
     LiveReferenceModel Reference,
+    LiveTireCompoundModel TireCompounds,
     LiveCoverageModel Coverage,
     LiveScoringModel Scoring,
     LiveTimingModel Timing,
@@ -63,6 +64,7 @@ internal sealed record LiveRaceModels(
         Session: LiveSessionModel.Empty,
         DriverDirectory: LiveDriverDirectoryModel.Empty,
         Reference: LiveReferenceModel.Empty,
+        TireCompounds: LiveTireCompoundModel.Empty,
         Coverage: LiveCoverageModel.Empty,
         Scoring: LiveScoringModel.Empty,
         Timing: LiveTimingModel.Empty,
@@ -231,6 +233,39 @@ internal sealed record LiveDriverIdentity(
     string? CarClassName,
     string? CarClassColorHex,
     bool? IsSpectator);
+
+internal sealed record LiveTireCompoundModel(
+    bool HasData,
+    LiveModelQuality Quality,
+    IReadOnlyList<LiveTireCompoundDefinition> Definitions,
+    LiveCarTireCompound? PlayerCar,
+    LiveCarTireCompound? FocusCar,
+    IReadOnlyList<LiveCarTireCompound> Cars)
+{
+    public static LiveTireCompoundModel Empty { get; } = new(
+        HasData: false,
+        Quality: LiveModelQuality.Unavailable,
+        Definitions: [],
+        PlayerCar: null,
+        FocusCar: null,
+        Cars: []);
+}
+
+internal sealed record LiveTireCompoundDefinition(
+    int Index,
+    string Label,
+    string ShortLabel,
+    bool IsWet);
+
+internal sealed record LiveCarTireCompound(
+    int CarIdx,
+    int CompoundIndex,
+    string Label,
+    string ShortLabel,
+    bool IsWet,
+    bool IsPlayer,
+    bool IsFocus,
+    LiveSignalEvidence Evidence);
 
 internal sealed record LiveCoverageModel(
     int RosterCount,

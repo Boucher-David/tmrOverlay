@@ -90,6 +90,7 @@ function installCanvasMock(window) {
     'fillText',
     'lineTo',
     'moveTo',
+    'quadraticCurveTo',
     'rect',
     'restore',
     'save',

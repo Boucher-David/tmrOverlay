@@ -728,6 +728,129 @@ DriverInfo:
     }
 
     [Fact]
+    public void RecordFrame_MapsLiveTireCompoundTelemetryThroughSharedModel()
+    {
+        var store = new LiveTelemetryStore();
+        store.ApplySessionInfo("""
+SessionInfo:
+ CurrentSessionNum: 0
+ Sessions:
+ - SessionNum: 0
+   SessionType: Race
+DriverInfo:
+ DriverCarIdx: 10
+ DriverTires:
+ - TireIndex: 0
+   TireCompoundType: "Hard"
+ - TireIndex: 1
+   TireCompoundType: "Wet"
+ Drivers:
+ - CarIdx: 10
+   UserName: Reference Driver
+ - CarIdx: 12
+   UserName: Threat Driver
+""");
+
+        store.RecordFrame(CreateSample(
+            playerCarIdx: 10,
+            playerTireCompound: 0,
+            teamTireCompound: 0,
+            allCars:
+            [
+                new HistoricalCarProximity(
+                    CarIdx: 12,
+                    LapCompleted: 2,
+                    LapDistPct: 0.49d,
+                    F2TimeSeconds: 4d,
+                    EstimatedTimeSeconds: 49d,
+                    Position: 2,
+                    ClassPosition: 2,
+                    CarClass: 4098,
+                    TrackSurface: 3,
+                    OnPitRoad: false,
+                    TireCompound: 1)
+            ]));
+
+        var tires = store.Snapshot().Models.TireCompounds;
+
+        Assert.True(tires.HasData);
+        Assert.Equal(LiveModelQuality.Reliable, tires.Quality);
+        Assert.Collection(
+            tires.Definitions,
+            tire =>
+            {
+                Assert.Equal(0, tire.Index);
+                Assert.Equal("Hard", tire.Label);
+                Assert.Equal("H", tire.ShortLabel);
+                Assert.False(tire.IsWet);
+            },
+            tire =>
+            {
+                Assert.Equal(1, tire.Index);
+                Assert.Equal("Wet", tire.Label);
+                Assert.Equal("W", tire.ShortLabel);
+                Assert.True(tire.IsWet);
+            });
+        Assert.Equal("Hard", tires.PlayerCar?.Label);
+        var threat = Assert.Single(tires.Cars, car => car.CarIdx == 12);
+        Assert.Equal("Wet", threat.Label);
+        Assert.True(threat.IsWet);
+        Assert.Equal("CarIdxTireCompound", threat.Evidence.Source);
+    }
+
+    [Fact]
+    public void RecordFrame_TreatsNegativeTireCompoundAsUnavailableNotWet()
+    {
+        var store = new LiveTelemetryStore();
+        store.ApplySessionInfo("""
+SessionInfo:
+ CurrentSessionNum: 0
+ Sessions:
+ - SessionNum: 0
+   SessionType: Race
+DriverInfo:
+ DriverCarIdx: 10
+ DriverTires:
+ - TireIndex: 0
+   TireCompoundType: "Hard"
+ - TireIndex: 1
+   TireCompoundType: "Wet"
+ Drivers:
+ - CarIdx: 10
+   UserName: Reference Driver
+ - CarIdx: 12
+   UserName: Threat Driver
+""");
+
+        store.RecordFrame(CreateSample(
+            playerCarIdx: 10,
+            playerTireCompound: -1,
+            teamTireCompound: -1,
+            allCars:
+            [
+                new HistoricalCarProximity(
+                    CarIdx: 12,
+                    LapCompleted: 2,
+                    LapDistPct: 0.49d,
+                    F2TimeSeconds: 4d,
+                    EstimatedTimeSeconds: 49d,
+                    Position: 2,
+                    ClassPosition: 2,
+                    CarClass: 4098,
+                    TrackSurface: 3,
+                    OnPitRoad: false,
+                    TireCompound: -1)
+            ]));
+
+        var tires = store.Snapshot().Models.TireCompounds;
+
+        Assert.True(tires.HasData);
+        Assert.Null(tires.PlayerCar);
+        Assert.Empty(tires.Cars);
+        Assert.Contains(tires.Definitions, tire => tire.Index == 1 && tire.Label == "Wet");
+    }
+
+    [Fact]
     public void RecordFrame_HoldsRaceStartingGridUntilLiveScoringCoverageIsMeaningful()
     {
         var store = new LiveTelemetryStore();
@@ -1334,6 +1457,63 @@ DriverInfo:
     }
 
     [Fact]
+    public void RecordFrame_UsesEstimatedTimingAcrossStartFinishLapCounterSkewAfterGreen()
+    {
+        var store = new LiveTelemetryStore();
+        store.ApplySessionInfo("""
+WeekendInfo:
+ EventType: Race
+ TrackDisplayName: Test Circuit
+ TrackLength: 5.100
+SessionInfo:
+ CurrentSessionNum: 0
+ Sessions:
+ - SessionNum: 0
+   SessionType: Race
+   SessionName: Race
+DriverInfo:
+ DriverCarIdx: 10
+ Drivers:
+ - CarIdx: 10
+   UserName: Reference Driver
+   CarNumber: 10
+   CarClassID: 4098
+ - CarIdx: 11
+   UserName: Class Leader
+   CarNumber: 11
+   CarClassID: 4098
+""");
+
+        store.RecordFrame(CreateSample(
+            sessionState: 4,
+            playerCarIdx: 10,
+            focusCarIdx: 10,
+            teamPosition: 2,
+            teamClassPosition: 2,
+            teamCarClass: 4098,
+            teamLapCompleted: 1,
+            teamLapDistPct: 0.99d,
+            teamF2TimeSeconds: 0.001d,
+            teamEstimatedTimeSeconds: 89d,
+            teamLastLapTimeSeconds: 90d,
+            classLeaderCarIdx: 11,
+            classLeaderLapDistPct: 0.01d,
+            classLeaderF2TimeSeconds: 0d,
+            allCars:
+            [
+                Car(11, position: 1, classPosition: 1, lapDistPct: 0.01d, f2TimeSeconds: 0d, lapCompleted: 2, estimatedTimeSeconds: 1d),
+                Car(10, position: 2, classPosition: 2, lapDistPct: 0.99d, f2TimeSeconds: 0.001d, lapCompleted: 1, estimatedTimeSeconds: 89d)
+            ]));
+
+        var reference = Assert.Single(store.Snapshot().Models.Timing.OverallRows, row => row.CarIdx == 10);
+
+        Assert.Equal(2d, reference.GapSecondsToClassLeader);
+        Assert.Null(reference.GapLapsToClassLeader);
+        Assert.Equal(2d, reference.IntervalSecondsToPreviousClassRow);
+        Assert.Null(reference.IntervalLapsToPreviousClassRow);
+    }
+
+    [Fact]
     public void RecordFrame_InfersLapGapFromF2AndEstimatedTimingWhenLapCompletedIsMissingAfterGreen()
     {
         var store = new LiveTelemetryStore();
@@ -1392,6 +1572,70 @@ DriverInfo:
         var standings = StandingsOverlayViewModel.From(store.Snapshot(), DateTimeOffset.UtcNow, maximumRows: 2);
         Assert.Equal(new[] { "Leader", "+1L" }, standings.Rows.Select(row => row.Gap));
         Assert.Equal(new[] { "0.0", "+1L" }, standings.Rows.Select(row => row.Interval));
+    }
+
+    [Fact]
+    public void RecordFrame_UsesEstimatedGridTimingUntilRaceF2PlaceholdersBecomeUsableAfterGreen()
+    {
+        var store = new LiveTelemetryStore();
+        store.ApplySessionInfo("""
+WeekendInfo:
+ EventType: Race
+ TrackDisplayName: Test Circuit
+ TrackLength: 5.100
+SessionInfo:
+ CurrentSessionNum: 0
+ Sessions:
+ - SessionNum: 0
+   SessionType: Race
+   SessionName: Race
+DriverInfo:
+ DriverCarIdx: 10
+ Drivers:
+ - CarIdx: 10
+   UserName: Reference Driver
+   CarNumber: 10
+   CarClassID: 4098
+ - CarIdx: 11
+   UserName: Class Leader
+   CarNumber: 11
+   CarClassID: 4098
+ - CarIdx: 12
+   UserName: Chase Driver
+   CarNumber: 12
+   CarClassID: 4098
+""");
+
+        store.RecordFrame(CreateSample(
+            sessionState: 4,
+            playerCarIdx: 10,
+            focusCarIdx: 10,
+            teamPosition: 2,
+            teamClassPosition: 2,
+            teamCarClass: 4098,
+            teamLapCompleted: -1,
+            teamLapDistPct: -1d,
+            teamF2TimeSeconds: 0.001d,
+            teamEstimatedTimeSeconds: 88d,
+            teamLastLapTimeSeconds: 90d,
+            classLeaderCarIdx: 11,
+            classLeaderLapDistPct: -1d,
+            classLeaderF2TimeSeconds: 0d,
+            allCars:
+            [
+                Car(11, position: 1, classPosition: 1, lapDistPct: -1d, f2TimeSeconds: 0d, lapCompleted: -1, estimatedTimeSeconds: 90d),
+                Car(10, position: 2, classPosition: 2, lapDistPct: -1d, f2TimeSeconds: 0.001d, lapCompleted: -1, estimatedTimeSeconds: 88d),
+                Car(12, position: 3, classPosition: 3, lapDistPct: -1d, f2TimeSeconds: 0.002d, lapCompleted: -1, estimatedTimeSeconds: 86d)
+            ]));
+
+        var reference = Assert.Single(store.Snapshot().Models.Timing.OverallRows, row => row.CarIdx == 10);
+        var chase = Assert.Single(store.Snapshot().Models.Timing.OverallRows, row => row.CarIdx == 12);
+
+        Assert.Equal(2d, reference.GapSecondsToClassLeader);
+        Assert.Equal("CarIdxEstTime+CarIdxPosition", reference.GapEvidence.Source);
+        Assert.Equal(2d, reference.IntervalSecondsToPreviousClassRow);
+        Assert.Equal(4d, chase.GapSecondsToClassLeader);
+        Assert.Equal(2d, chase.IntervalSecondsToPreviousClassRow);
     }
 
     [Fact]
@@ -2089,6 +2333,7 @@ QualifyResultsInfo:
         double fuelLevelLiters = 42d,
         double fuelLevelPercent = 0.4d,
         double fuelUsePerHourKg = 60d,
+        int playerTireCompound = 0,
         int? playerCarIdx = null,
         double? teamLapDistPct = null,
         int? teamLapCompleted = null,
@@ -2098,19 +2343,23 @@ QualifyResultsInfo:
         int? teamCarClass = null,
         int? teamPosition = null,
         int? teamClassPosition = null,
+        int? teamTireCompound = null,
         double? teamLastLapTimeSeconds = null,
         int? focusCarIdx = null,
         double? focusLapDistPct = null,
         double? focusEstimatedTimeSeconds = null,
         int? focusCarClass = null,
+        int? focusTireCompound = null,
         int? classLeaderCarIdx = null,
         double? classLeaderLapDistPct = null,
         double? classLeaderF2TimeSeconds = null,
         double? classLeaderLastLapTimeSeconds = null,
+        int? classLeaderTireCompound = null,
         int? leaderCarIdx = null,
         int? leaderLapCompleted = null,
         double? leaderLapDistPct = null,
         double? leaderLastLapTimeSeconds = null,
+        int? leaderTireCompound = null,
         double? sessionTimeRemain = null,
         int? sessionState = null,
         IReadOnlyList<HistoricalCarProximity>? focusClassCars = null,
@@ -2153,7 +2402,7 @@ QualifyResultsInfo:
             TrackTempCrewC: 24d,
             TrackWetness: 1,
             WeatherDeclaredWet: false,
-            PlayerTireCompound: 0,
+            PlayerTireCompound: playerTireCompound,
             SessionTimeRemain: sessionTimeRemain,
             SessionState: sessionState,
             IsGarageVisible: isGarageVisible,
@@ -2165,6 +2414,7 @@ QualifyResultsInfo:
             FocusF2TimeSeconds: focusF2TimeSeconds,
             FocusEstimatedTimeSeconds: focusEstimatedTimeSeconds,
             FocusCarClass: focusCarClass,
+            FocusTireCompound: focusTireCompound,
             CarLeftRight: carLeftRight,
             TeamLapCompleted: teamLapCompleted ?? (teamLapDistPct is null ? null : 2),
             TeamLapDistPct: teamLapDistPct,
@@ -2173,18 +2423,21 @@ QualifyResultsInfo:
             TeamPosition: teamPosition,
             TeamClassPosition: teamClassPosition,
             TeamCarClass: teamCarClass,
+            TeamTireCompound: teamTireCompound,
             TeamLastLapTimeSeconds: teamLastLapTimeSeconds,
             FocusClassLeaderCarIdx: classLeaderCarIdx,
             FocusClassLeaderLapCompleted: classLeaderLapDistPct is null ? null : 2,
             FocusClassLeaderLapDistPct: classLeaderLapDistPct,
             FocusClassLeaderF2TimeSeconds: classLeaderF2TimeSeconds,
             FocusClassLeaderLastLapTimeSeconds: classLeaderLastLapTimeSeconds,
+            FocusClassLeaderTireCompound: classLeaderTireCompound,
             TeamOnPitRoad: teamOnPitRoad,
             PlayerTrackSurface: playerTrackSurface,
             LeaderCarIdx: leaderCarIdx,
             LeaderLapCompleted: leaderLapCompleted,
             LeaderLapDistPct: leaderLapDistPct,
             LeaderLastLapTimeSeconds: leaderLastLapTimeSeconds,
+            LeaderTireCompound: leaderTireCompound,
             FocusClassCars: focusClassCars,
             NearbyCars: nearbyCars,
             AllCars: allCars,

@@ -957,7 +957,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             BestLapTimeSeconds: ReadNullableDoubleArrayElement(sdk, "CarIdxBestLapTime", carIdx),
             Position: position,
             ClassPosition: classPosition,
-            CarClass: ReadInt32ArrayElement(sdk, "CarIdxClass", carIdx));
+            CarClass: ReadInt32ArrayElement(sdk, "CarIdxClass", carIdx),
+            TireCompound: ReadInt32ArrayElement(sdk, "CarIdxTireCompound", carIdx));
     }
 
     private static IReadOnlyList<HistoricalCarProximity> ReadNearbyCars(IRacingSDK sdk, int referenceCarIdx)
@@ -995,7 +996,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 ClassPosition: ReadInt32ArrayElement(sdk, "CarIdxClassPosition", carIdx),
                 CarClass: ReadInt32ArrayElement(sdk, "CarIdxClass", carIdx),
                 TrackSurface: ReadInt32ArrayElement(sdk, "CarIdxTrackSurface", carIdx),
-                OnPitRoad: ReadBooleanArrayElement(sdk, "CarIdxOnPitRoad", carIdx)));
+                OnPitRoad: ReadBooleanArrayElement(sdk, "CarIdxOnPitRoad", carIdx),
+                TireCompound: ReadInt32ArrayElement(sdk, "CarIdxTireCompound", carIdx)));
         }
 
         return cars;
@@ -1045,7 +1047,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 ClassPosition: classPosition,
                 CarClass: carClass,
                 TrackSurface: ReadInt32ArrayElement(sdk, "CarIdxTrackSurface", carIdx),
-                OnPitRoad: ReadBooleanArrayElement(sdk, "CarIdxOnPitRoad", carIdx)));
+                OnPitRoad: ReadBooleanArrayElement(sdk, "CarIdxOnPitRoad", carIdx),
+                TireCompound: ReadInt32ArrayElement(sdk, "CarIdxTireCompound", carIdx)));
         }
 
         return cars;
@@ -1078,7 +1081,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 ClassPosition: classPosition,
                 CarClass: ReadInt32ArrayElement(sdk, "CarIdxClass", carIdx),
                 TrackSurface: ReadInt32ArrayElement(sdk, "CarIdxTrackSurface", carIdx),
-                OnPitRoad: ReadBooleanArrayElement(sdk, "CarIdxOnPitRoad", carIdx)));
+                OnPitRoad: ReadBooleanArrayElement(sdk, "CarIdxOnPitRoad", carIdx),
+                TireCompound: ReadInt32ArrayElement(sdk, "CarIdxTireCompound", carIdx)));
         }
 
         return cars;
@@ -1526,6 +1530,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 FocusPosition: focusProgress?.Position,
                 FocusClassPosition: focusProgress?.ClassPosition,
                 FocusCarClass: focusProgress?.CarClass,
+                FocusTireCompound: focusProgress?.TireCompound,
                 FocusOnPitRoad: focusCarIdx is { } focusPitCarIdx
                     ? ReadBooleanArrayElement(sdk, "CarIdxOnPitRoad", focusPitCarIdx)
                     : null,
@@ -1541,6 +1546,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 TeamPosition: ReadInt32ArrayElement(sdk, "CarIdxPosition", playerCarIdx),
                 TeamClassPosition: ReadInt32ArrayElement(sdk, "CarIdxClassPosition", playerCarIdx),
                 TeamCarClass: ReadInt32ArrayElement(sdk, "CarIdxClass", playerCarIdx),
+                TeamTireCompound: ReadInt32ArrayElement(sdk, "CarIdxTireCompound", playerCarIdx),
                 LeaderCarIdx: leaderProgress?.CarIdx,
                 LeaderLapCompleted: leaderProgress?.LapCompleted,
                 LeaderLapDistPct: leaderProgress?.LapDistPct,
@@ -1548,6 +1554,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 LeaderEstimatedTimeSeconds: leaderProgress?.EstimatedTimeSeconds,
                 LeaderLastLapTimeSeconds: leaderProgress?.LastLapTimeSeconds,
                 LeaderBestLapTimeSeconds: leaderProgress?.BestLapTimeSeconds,
+                LeaderTireCompound: leaderProgress?.TireCompound,
                 ClassLeaderCarIdx: classLeaderProgress?.CarIdx,
                 ClassLeaderLapCompleted: classLeaderProgress?.LapCompleted,
                 ClassLeaderLapDistPct: classLeaderProgress?.LapDistPct,
@@ -1555,6 +1562,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 ClassLeaderEstimatedTimeSeconds: classLeaderProgress?.EstimatedTimeSeconds,
                 ClassLeaderLastLapTimeSeconds: classLeaderProgress?.LastLapTimeSeconds,
                 ClassLeaderBestLapTimeSeconds: classLeaderProgress?.BestLapTimeSeconds,
+                ClassLeaderTireCompound: classLeaderProgress?.TireCompound,
                 FocusClassLeaderCarIdx: focusClassLeaderProgress?.CarIdx,
                 FocusClassLeaderLapCompleted: focusClassLeaderProgress?.LapCompleted,
                 FocusClassLeaderLapDistPct: focusClassLeaderProgress?.LapDistPct,
@@ -1562,6 +1570,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 FocusClassLeaderEstimatedTimeSeconds: focusClassLeaderProgress?.EstimatedTimeSeconds,
                 FocusClassLeaderLastLapTimeSeconds: focusClassLeaderProgress?.LastLapTimeSeconds,
                 FocusClassLeaderBestLapTimeSeconds: focusClassLeaderProgress?.BestLapTimeSeconds,
+                FocusClassLeaderTireCompound: focusClassLeaderProgress?.TireCompound,
                 PlayerTrackSurface: ReadNullableInt32(sdk, "PlayerTrackSurface"),
                 CarLeftRight: ReadNullableInt32(sdk, "CarLeftRight"),
                 NearbyCars: nearbyCars,
@@ -2400,7 +2409,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         double? BestLapTimeSeconds,
         int? Position,
         int? ClassPosition,
-        int? CarClass)
+        int? CarClass,
+        int? TireCompound)
     {
         public bool HasLapProgress => LapCompleted >= 0 && LapDistPct >= 0d;
 

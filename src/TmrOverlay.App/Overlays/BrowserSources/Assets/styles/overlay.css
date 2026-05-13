@@ -361,8 +361,8 @@
     .model-graph-panel {
       min-width: 520px;
       width: min(620px, calc(100vw - 48px));
-      height: min(190px, calc(100vh - 180px));
-      min-height: 150px;
+      height: min(270px, calc(100vh - 120px));
+      min-height: 250px;
       border: 1px solid var(--tmr-border-muted);
       border-radius: 5px;
       background: var(--tmr-surface-inset);

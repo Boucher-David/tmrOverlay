@@ -193,18 +193,18 @@ test.describe('browser overlay Playwright integration', () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 
-  test('preserves preview mode on browser overlay API calls', async ({ page }) => {
+  test('preserves preview and replay controls on browser overlay API calls', async ({ page }) => {
     const requests = await installBrowserOverlayRoutes(page, 'standings', {
       live: freshLiveSnapshot({}),
       model: standingsDisplayModel()
     });
 
     await page.setViewportSize({ width: 692, height: 520 });
-    await page.goto('http://localhost:8765/overlays/standings?preview=race');
+    await page.goto('http://localhost:8765/overlays/standings?preview=race&rel=0');
     await expect(page.locator('tbody tr')).toHaveCount(6);
 
-    expect(requests).toContain('/api/snapshot?preview=race');
-    expect(requests).toContain('/api/overlay-model/standings?preview=race');
+    expect(requests).toContain('/api/snapshot?preview=race&rel=0');
+    expect(requests).toContain('/api/overlay-model/standings?preview=race&rel=0');
   });
 });
 

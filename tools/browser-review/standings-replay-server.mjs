@@ -59,7 +59,7 @@ const server = createServer((request, response) => {
 
     if (path === '/api/snapshot') {
       const { frame, index } = currentFrame(url, request);
-      serveJson(response, { live: liveSnapshot(frame, index) });
+      serveJson(response, { live: liveSnapshot(frame, index, url.searchParams) });
       return;
     }
 
@@ -73,8 +73,8 @@ const server = createServer((request, response) => {
       const { frame, index } = currentFrame(url, request);
       serveJson(response, {
         generatedAtUtc: new Date().toISOString(),
-        replay: frameMetadata(frame, index),
-        model: displayModel(overlayId, frame, index)
+        replay: frameMetadata(frame, index, url.searchParams),
+        model: displayModel(overlayId, frame, index, url.searchParams)
       });
       return;
     }
@@ -83,9 +83,9 @@ const server = createServer((request, response) => {
     if (settingsPage) {
       const { frame, index } = currentFrame(url, request);
       serveJson(response, browserOverlayApiResponse(settingsPage.page.id, path, {
-        live: liveSnapshot(frame, index),
+        live: liveSnapshot(frame, index, url.searchParams),
         settings: settings(settingsPage.page.id, frame),
-        model: displayModel(settingsPage.page.id, frame, index)
+        model: displayModel(settingsPage.page.id, frame, index, url.searchParams)
       }));
       return;
     }
@@ -382,7 +382,7 @@ function parseFrame(searchParams) {
   return null;
 }
 
-function frameMetadata(frame, index) {
+function frameMetadata(frame, index, searchParams = null) {
   return {
     index,
     captureId: frame.captureId,
@@ -397,14 +397,16 @@ function frameMetadata(frame, index) {
     sessionPhase: frame.sessionPhase,
     camCarIdx: frame.camCarIdx,
     playerCarIdx: frame.playerCarIdx,
+    spoofFocus: spoofFocusMode(searchParams),
     timing: replayStatusTiming(frame, index)
   };
 }
 
-function liveSnapshot(frame, index) {
+function liveSnapshot(frame, index, searchParams = null) {
   if (frame.live && typeof frame.live === 'object') {
     return {
       ...frame.live,
+      models: spoofLiveModels(frame.live.models || {}, frame, index, searchParams),
       sourceId: frame.live.sourceId || replay.source?.captureId || 'capture-replay',
       startedAtUtc: frame.live.startedAtUtc || replay.source?.startedAtUtc || null,
       lastUpdatedAtUtc: new Date().toISOString(),
@@ -540,13 +542,147 @@ function liveSnapshot(frame, index) {
   };
 }
 
-function displayModel(overlayId, frame, index) {
+function liveModelsForReplayFrame(index, searchParams = null) {
+  const frame = replay.frames[index];
+  return spoofLiveModels(frame?.live?.models || {}, frame, index, searchParams);
+}
+
+function spoofLiveModels(models, frame, index, searchParams = null) {
+  const targetPosition = spoofFocusClassPosition(models, frame, index, searchParams);
+  if (!targetPosition) {
+    return models;
+  }
+
+  const timing = models?.timing || {};
+  const target = timingRowByClassPosition(timing, targetPosition);
+  if (!target || !Number.isFinite(target.carIdx)) {
+    return models;
+  }
+
+  const spoofed = clonePlainObject(models);
+  const spoofedTiming = spoofed.timing || {};
+  const playerCarIdx = Number.isFinite(spoofed.reference?.playerCarIdx)
+    ? spoofed.reference.playerCarIdx
+    : Number.isFinite(frame?.playerCarIdx)
+      ? frame.playerCarIdx
+      : null;
+
+  for (const rowsKey of ['classRows', 'overallRows']) {
+    if (!Array.isArray(spoofedTiming[rowsKey])) {
+      continue;
+    }
+
+    spoofedTiming[rowsKey] = spoofedTiming[rowsKey].map((row) => ({
+      ...row,
+      isFocus: row?.carIdx === target.carIdx,
+      isPlayer: playerCarIdx !== null && row?.carIdx === playerCarIdx
+    }));
+  }
+
+  const targetRow = timingRowByCarIdx(spoofedTiming, target.carIdx) || { ...target };
+  targetRow.isFocus = true;
+  targetRow.isPlayer = playerCarIdx !== null && target.carIdx === playerCarIdx;
+  spoofedTiming.focusCarIdx = target.carIdx;
+  spoofedTiming.focusRow = targetRow;
+  spoofed.timing = spoofedTiming;
+
+  const reference = spoofed.reference || {};
+  spoofed.reference = {
+    ...reference,
+    hasData: true,
+    focusCarIdx: target.carIdx,
+    focusIsPlayer: playerCarIdx !== null && target.carIdx === playerCarIdx,
+    hasExplicitNonPlayerFocus: playerCarIdx !== null && target.carIdx !== playerCarIdx,
+    referenceCarClass: target.carClass ?? reference.referenceCarClass ?? null,
+    lapDistPct: Number.isFinite(target.lapDistPct) ? target.lapDistPct : reference.lapDistPct ?? null,
+    onPitRoad: target.onPitRoad === true,
+    isOnTrack: target.onPitRoad !== true,
+    isInGarage: false
+  };
+
+  return spoofed;
+}
+
+function spoofFocusMode(searchParams = null) {
+  const raw = searchParams?.get('spoofFocus') ?? searchParams?.get('focus');
+  return raw ? String(raw).trim().toLowerCase() : null;
+}
+
+function spoofFocusClassPosition(models, frame, index, searchParams = null) {
+  const mode = spoofFocusMode(searchParams);
+  if (!mode) {
+    return null;
+  }
+
+  if (mode === 'leader' || mode === 'p1') {
+    return 1;
+  }
+
+  const explicitPosition = /^p?(\d+)$/i.exec(mode);
+  if (explicitPosition) {
+    const position = Number.parseInt(explicitPosition[1], 10);
+    return position > 0 ? position : null;
+  }
+
+  if (mode === 'switch' || mode === 'focus-switch' || mode === 'mid-switch') {
+    return replayProgress(frame, index) < 0.5 ? 3 : 5;
+  }
+
+  if (mode === 'leader-switch' || mode === 'switch-leader') {
+    return replayProgress(frame, index) < 0.5 ? 3 : 1;
+  }
+
+  return null;
+}
+
+function replayProgress(frame, index) {
+  const elapsed = finiteNumber(frame?.sourceElapsedSeconds);
+  const firstElapsed = replayTiming.timeline[0]?.elapsed;
+  if (Number.isFinite(elapsed)
+    && Number.isFinite(firstElapsed)
+    && replayTiming.sourceDurationSeconds > 0) {
+    return clamp((elapsed - firstElapsed) / replayTiming.sourceDurationSeconds, 0, 1);
+  }
+
+  return replay.frames.length > 1
+    ? clamp(index / (replay.frames.length - 1), 0, 1)
+    : 0;
+}
+
+function timingRowByClassPosition(timing, classPosition) {
+  const position = Number.parseInt(classPosition, 10);
+  if (!Number.isFinite(position) || position <= 0) {
+    return null;
+  }
+
+  const rows = [
+    ...(Array.isArray(timing?.classRows) ? timing.classRows : []),
+    ...(Array.isArray(timing?.overallRows) ? timing.overallRows : [])
+  ];
+  return rows.find((row) => toPositiveInteger(row?.classPosition) === position) || null;
+}
+
+function timingRowByCarIdx(timing, carIdx) {
+  const rows = [
+    ...(Array.isArray(timing?.classRows) ? timing.classRows : []),
+    ...(Array.isArray(timing?.overallRows) ? timing.overallRows : [])
+  ];
+  return rows.find((row) => row?.carIdx === carIdx) || null;
+}
+
+function clonePlainObject(value) {
+  return globalThis.structuredClone
+    ? globalThis.structuredClone(value)
+    : JSON.parse(JSON.stringify(value));
+}
+
+function displayModel(overlayId, frame, index, searchParams = null) {
   if (overlayId === 'standings') {
     return frame.model;
   }
 
   if (frame.live?.models) {
-    return captureDisplayModel(overlayId, frame, index);
+    return captureDisplayModel(overlayId, frame, index, searchParams);
   }
 
   const relativeSeconds = Number.isFinite(frame.raceStartRelativeSeconds)
@@ -605,10 +741,7 @@ function displayModel(overlayId, frame, index) {
       bodyKind: 'graph',
       columns: [],
       rows: [],
-      metrics: [
-        { label: 'Class pos', value: isPreGreen ? '--' : '2', tone: 'live' },
-        { label: 'Class leader', value: isPreGreen ? '--' : '+30.0s', tone: 'live' }
-      ],
+      metrics: [],
       points: isPreGreen ? [] : Array.from({ length: 24 }, (_, point) => 30 - point * 0.7 + Math.sin(point / 2) * 1.4),
       headerItems: replayHeaderItems(frame, isPreGreen ? 'waiting for timing' : 'live | race gap', gapSettings)
     };
@@ -617,8 +750,8 @@ function displayModel(overlayId, frame, index) {
   return tableModel(overlayId, browserOverlayPage(overlayId).title, status, headerItems, []);
 }
 
-function captureDisplayModel(overlayId, frame, index) {
-  const live = liveSnapshot(frame, index);
+function captureDisplayModel(overlayId, frame, index, searchParams = null) {
+  const live = liveSnapshot(frame, index, searchParams);
   const models = live.models || {};
   const relativeSeconds = Number.isFinite(frame.raceStartRelativeSeconds)
     ? frame.raceStartRelativeSeconds
@@ -676,7 +809,7 @@ function captureDisplayModel(overlayId, frame, index) {
   }
 
   if (overlayId === 'gap-to-leader') {
-    return captureGapToLeaderModel(models, frame, index);
+    return captureGapToLeaderModel(models, frame, index, searchParams);
   }
 
   if (overlayId === 'input-state') {
@@ -1003,33 +1136,33 @@ function positionLabel(row, fallbackRow = null) {
   return Number.isFinite(overallPosition) && overallPosition > 0 ? `${overallPosition}` : '--';
 }
 
-function captureGapToLeaderModel(models, frame, index) {
+function captureGapToLeaderModel(models, frame, index, searchParams = null) {
   const gapSettings = gapSettingsModel();
   const currentGap = focusedClassLeaderGap(models);
-  const status = currentGap?.hasData ? 'live | race gap' : 'waiting for timing';
-  const graph = captureGapGraph(index);
+  const graph = captureGapGraph(index, searchParams);
+  const hasGraphData = graph?.series?.some((series) => Array.isArray(series?.points) && series.points.length > 0) === true;
+  const status = currentGap?.hasData || hasGraphData ? 'live | race gap' : 'waiting for timing';
   return {
     overlayId: 'gap-to-leader',
     title: 'Gap To Leader',
     status,
     source: sourceFromSettings(gapSettings, currentGap?.hasData
       ? `source: live gap telemetry | cars ${currentGap.classCarCount}`
+      : hasGraphData
+        ? `source: live gap telemetry | cars ${graph.selectedSeriesCount}`
       : 'source: waiting'),
     bodyKind: 'graph',
     columns: [],
     rows: [],
-    metrics: [
-      { label: 'Class pos', value: formatPosition(currentGap?.classPosition), tone: 'live' },
-      { label: 'Class leader', value: formatGapValue(currentGap), tone: 'live' }
-    ],
+    metrics: [],
     points: gapTrendPoints(index),
     graph,
     headerItems: captureHeaderItems(models, status, gapSettings)
   };
 }
 
-function captureGapGraph(index) {
-  const context = gapGraphContext(replay.frames[index]?.live?.models || {});
+function captureGapGraph(index, searchParams = null) {
+  const context = gapGraphContext(liveModelsForReplayFrame(index, searchParams));
   if (!context) {
     return null;
   }
@@ -1040,7 +1173,7 @@ function captureGapGraph(index) {
     return null;
   }
 
-  const frameContexts = gapGraphFrameContexts(index, context.focusClass);
+  const frameContexts = gapGraphFrameContexts(index, context.focusClass, searchParams);
 
   if (frameContexts.length === 0) {
     return null;
@@ -1064,18 +1197,29 @@ function captureGapGraph(index) {
         return;
       }
 
-      const gapSeconds = gapSecondsForGraphRow(row, item.context.leader, item.context.lapReferenceSeconds);
+      const gapValue = gapValueForGraphRow(row, item.context.leader, item.context.lapReferenceSeconds);
+      const gapSeconds = gapValue?.seconds;
       if (!Number.isFinite(gapSeconds)) {
         return;
       }
 
       const axisSeconds = item.context.axisSeconds;
       const sourceGraphDeltaSeconds = previousAxis === null ? null : axisSeconds - previousAxis;
-      const segmentReason = gapSegmentReason(frameContexts, previousContextPosition, contextPosition, sourceGraphDeltaSeconds);
+      const segmentReason = gapSegmentReason(
+        frameContexts,
+        previousContextPosition,
+        contextPosition,
+        sourceGraphDeltaSeconds,
+        points.length > 0 ? points[points.length - 1]?.gapSeconds : null,
+        gapSeconds,
+        points.length > 0 ? points[points.length - 1]?.gapSource : null,
+        gapValue?.source,
+        item.context.lapReferenceSeconds);
       points.push({
         timestampUtc: item.frame?.live?.lastUpdatedAtUtc || new Date().toISOString(),
         axisSeconds,
         gapSeconds,
+        gapSource: gapValue?.source || null,
         carIdx,
         sourceReplayIndex: item.index,
         sourceFrameIndex: item.frame?.frameIndex ?? null,
@@ -1111,6 +1255,8 @@ function captureGapGraph(index) {
 
   const leaderChanges = gapLeaderChangeMarkers(frameContexts, startSeconds, endSeconds);
   const scale = selectGapGraphScale(series, startSeconds, endSeconds, lapReferenceSeconds);
+  const trendMetrics = demoGapTrendMetrics(series, lapReferenceSeconds);
+  const activeThreat = trendMetrics.find((metric) => metric?.chaser) || null;
   return {
     series,
     weather,
@@ -1121,12 +1267,162 @@ function captureGapGraph(index) {
     maxGapSeconds: scale.maxGapSeconds,
     lapReferenceSeconds,
     selectedSeriesCount: series.length,
+    trendMetrics,
+    activeThreat,
+    threatCarIdx: activeThreat?.chaser?.carIdx ?? null,
+    metricDeadbandSeconds: Math.max(0.25, isValidLapReference(lapReferenceSeconds) ? lapReferenceSeconds * 0.0025 : 0),
+    comparisonLabel: gapComparisonLabel(context),
     sourceCadence: graphSourceCadence(frameContexts),
     scale
   };
 }
 
-function gapGraphFrameContexts(index, focusClass) {
+function demoGapTrendMetrics(series, lapReferenceSeconds) {
+  const candidates = [...series]
+    .filter((item) => !item?.isClassLeader)
+    .sort((a, b) => (a.classPosition ?? Number.MAX_SAFE_INTEGER) - (b.classPosition ?? Number.MAX_SAFE_INTEGER) || a.carIdx - b.carIdx);
+  const threat = candidates[1] || candidates[0] || series.find((item) => !item?.isClassLeader) || null;
+  const chaser = threat
+    ? { carIdx: threat.carIdx, label: Number.isFinite(threat.classPosition) ? `P${threat.classPosition}` : `#${threat.carIdx}`, gainSeconds: 1.4 }
+    : null;
+  const lap = Math.max(1, Math.round(chartLapReferenceSeconds(lapReferenceSeconds) / 10));
+  return [
+    {
+      label: '5L',
+      focusGapChangeSeconds: -0.8,
+      chaser,
+      state: 'ready',
+      stateLabel: null
+    },
+    {
+      label: '10L',
+      focusGapChangeSeconds: 1.2,
+      chaser: chaser ? { ...chaser, gainSeconds: 2.1 } : null,
+      state: 'ready',
+      stateLabel: null
+    },
+    {
+      label: 'Pit',
+      focusGapChangeSeconds: null,
+      chaser: null,
+      state: 'pit',
+      stateLabel: null,
+      primaryPit: { seconds: 42, lap, isActive: false },
+      threatPit: chaser ? { seconds: 39, lap: lap + 1, isActive: false } : null,
+      comparisonPit: { seconds: 44, lap, isActive: false }
+    },
+    {
+      label: 'PLap',
+      focusGapChangeSeconds: null,
+      chaser: null,
+      state: 'pitLap',
+      stateLabel: null,
+      primaryPit: { seconds: 42, lap, isActive: false },
+      threatPit: chaser ? { seconds: 39, lap: lap + 1, isActive: false } : null,
+      comparisonPit: { seconds: 44, lap, isActive: false }
+    },
+    {
+      label: 'Stint',
+      focusGapChangeSeconds: null,
+      chaser: null,
+      state: 'stint',
+      stateLabel: null,
+      primaryText: '5L',
+      threatText: '6L',
+      comparisonText: '5L'
+    },
+    {
+      label: 'Tire',
+      focusGapChangeSeconds: null,
+      chaser: null,
+      state: 'tire',
+      stateLabel: null,
+      primaryTire: { label: 'Hard', shortLabel: 'H', isWet: false },
+      threatTire: { label: 'Wet', shortLabel: 'W', isWet: true },
+      comparisonTire: { label: 'Hard', shortLabel: 'H', isWet: false }
+    },
+    {
+      label: 'Last',
+      focusGapChangeSeconds: null,
+      chaser: null,
+      state: 'last',
+      stateLabel: null,
+      primaryText: '1:31.842',
+      threatText: '1:30.913',
+      comparisonText: '1:32.104'
+    },
+    {
+      label: 'Status',
+      focusGapChangeSeconds: null,
+      chaser: null,
+      state: 'status',
+      stateLabel: null,
+      primaryText: 'Track',
+      threatText: 'Track',
+      comparisonText: 'Pit'
+    }
+  ];
+}
+
+function gapComparisonLabel(context) {
+  if (!Number.isFinite(context?.focusGapSeconds)) {
+    return inferredGapComparisonLabel(context);
+  }
+
+  const candidates = context.rows
+    .map((row) => {
+      const gapValue = gapValueForGraphRow(row, context.leader, context.lapReferenceSeconds);
+      const gapSeconds = gapValue?.seconds;
+      return {
+        row,
+        gapSeconds,
+        classPosition: toPositiveInteger(row?.classPosition)
+      };
+    })
+    .filter((item) =>
+      item.row
+      && Number.isFinite(item.row.carIdx)
+      && item.row.carIdx !== context.focusCarIdx
+      && Number.isFinite(item.gapSeconds));
+
+  const ahead = candidates
+    .filter((item) => item.gapSeconds < context.focusGapSeconds - 0.001)
+    .sort((a, b) => (context.focusGapSeconds - a.gapSeconds) - (context.focusGapSeconds - b.gapSeconds)
+      || (a.classPosition ?? Number.MAX_SAFE_INTEGER) - (b.classPosition ?? Number.MAX_SAFE_INTEGER))[0];
+  const comparison = ahead || candidates
+    .filter((item) => item.gapSeconds > context.focusGapSeconds + 0.001)
+    .sort((a, b) => (a.gapSeconds - context.focusGapSeconds) - (b.gapSeconds - context.focusGapSeconds)
+      || (a.classPosition ?? Number.MAX_SAFE_INTEGER) - (b.classPosition ?? Number.MAX_SAFE_INTEGER))[0];
+
+  return Number.isFinite(comparison?.classPosition) && comparison.classPosition > 0
+    ? `P${comparison.classPosition}`
+    : inferredGapComparisonLabel(context);
+}
+
+function inferredGapComparisonLabel(context) {
+  const classPositions = (Array.isArray(context?.rows) ? context.rows : [])
+    .map((row) => toPositiveInteger(row?.classPosition))
+    .filter((position) => Number.isFinite(position) && position > 0)
+    .sort((a, b) => a - b);
+  if (classPositions.length === 0) {
+    return '--';
+  }
+
+  const focusPosition = toPositiveInteger(context?.focus?.classPosition);
+  if (focusPosition > 1) {
+    return `P${focusPosition - 1}`;
+  }
+
+  if (focusPosition === 1) {
+    const behind = classPositions.find((position) => position > 1);
+    return behind ? `P${behind}` : '--';
+  }
+
+  const firstNonLeader = classPositions.find((position) => position > 1);
+  return firstNonLeader ? `P${firstNonLeader}` : `P${classPositions[0]}`;
+}
+
+function gapGraphFrameContexts(index, focusClass, searchParams = null) {
   const currentElapsed = finiteNumber(replay.frames[index]?.sourceElapsedSeconds);
   const startFrame = Number.isFinite(currentElapsed) && replayTiming.isTimelineMonotonic
     ? firstFrameIndexAtOrAfterSourceElapsed(Math.max(0, currentElapsed - gapGraphTrendWindowSeconds), index)
@@ -1145,7 +1441,7 @@ function gapGraphFrameContexts(index, focusClass) {
   const frameContexts = [];
   for (const frameIndex of selectedIndexes) {
     const frame = replay.frames[frameIndex];
-    const frameContext = gapGraphContext(frame?.live?.models || {}, focusClass);
+    const frameContext = gapGraphContext(liveModelsForReplayFrame(frameIndex, searchParams), focusClass);
     if (frameContext) {
       frameContexts.push({ frame, index: frameIndex, context: frameContext });
     }
@@ -1153,9 +1449,25 @@ function gapGraphFrameContexts(index, focusClass) {
   return frameContexts;
 }
 
-function gapSegmentReason(frameContexts, previousContextPosition, contextPosition, sourceGraphDeltaSeconds) {
+function gapSegmentReason(
+  frameContexts,
+  previousContextPosition,
+  contextPosition,
+  sourceGraphDeltaSeconds,
+  previousGapSeconds = null,
+  gapSeconds = null,
+  previousGapSource = null,
+  gapSource = null,
+  lapReferenceSeconds = null) {
   if (previousContextPosition === null || previousContextPosition === undefined) {
     return 'first-point';
+  }
+
+  if (String(previousGapSource || '') !== String(gapSource || '')
+    && Number.isFinite(previousGapSeconds)
+    && Number.isFinite(gapSeconds)
+    && !acceptsGapTrendPoint(previousGapSeconds, gapSeconds, lapReferenceSeconds)) {
+    return 'source-crossover';
   }
 
   if (!Number.isFinite(sourceGraphDeltaSeconds) || sourceGraphDeltaSeconds <= gapMissingSegmentThresholdSeconds) {
@@ -1198,6 +1510,10 @@ function graphSourceCadence(frameContexts) {
 }
 
 function gapGraphContext(models, preferredClass = null) {
+  if (!isGreenRace(models)) {
+    return null;
+  }
+
   const timing = models?.timing || {};
   const focusCarIdx = models?.reference?.focusCarIdx ?? timing.focusCarIdx;
   const focus = timing.focusRow
@@ -1218,6 +1534,7 @@ function gapGraphContext(models, preferredClass = null) {
   const leader = rows.find((row) => toPositiveInteger(row?.classPosition) === 1)
     || rows.find((row) => toPositiveInteger(row?.overallPosition) === 1)
     || rows[0];
+
   const lapReference = lapReferenceSeconds(rows);
   const axisSeconds = Number.isFinite(models?.session?.sessionTimeSeconds)
     ? models.session.sessionTimeSeconds
@@ -1248,7 +1565,8 @@ function selectGapGraphCars(context) {
   };
   const candidates = context.rows
     .map((row) => {
-      const gapSeconds = gapSecondsForGraphRow(row, context.leader, context.lapReferenceSeconds);
+      const gapValue = gapValueForGraphRow(row, context.leader, context.lapReferenceSeconds);
+      const gapSeconds = gapValue?.seconds;
       const deltaSeconds = Number.isFinite(gapSeconds) && Number.isFinite(context.focusGapSeconds)
         ? gapSeconds - context.focusGapSeconds
         : null;
@@ -1264,7 +1582,26 @@ function selectGapGraphCars(context) {
     })
     .filter((car) => Number.isFinite(car.carIdx) && Number.isFinite(car.gapSeconds));
 
-  candidates.filter((car) => car.isClassLeader || car.isReference).forEach(add);
+  const reference = candidates.find((car) => car.isReference);
+  const referenceCanAnchor = reference && !isLappedGraphGap(reference.gapSeconds, context.lapReferenceSeconds);
+  candidates.filter((car) => car.isClassLeader || (referenceCanAnchor && car.isReference)).forEach(add);
+  if (!referenceCanAnchor) {
+    candidates
+      .filter((car) => !car.isClassLeader && !isLappedGraphGap(car.gapSeconds, context.lapReferenceSeconds))
+      .sort((a, b) => a.gapSeconds - b.gapSeconds || (a.classPosition ?? Number.MAX_SAFE_INTEGER) - (b.classPosition ?? Number.MAX_SAFE_INTEGER))
+      .slice(0, Math.max(1, gapCarsBehind))
+      .forEach(add);
+
+    if (selected.size <= 1) {
+      candidates
+        .sort((a, b) => a.gapSeconds - b.gapSeconds || (a.classPosition ?? Number.MAX_SAFE_INTEGER) - (b.classPosition ?? Number.MAX_SAFE_INTEGER))
+        .slice(0, 6)
+        .forEach(add);
+    }
+
+    return [...selected.values()].sort((a, b) => a.gapSeconds - b.gapSeconds || a.carIdx - b.carIdx);
+  }
+
   candidates
     .filter((car) => !car.isClassLeader && !car.isReference && car.deltaSeconds < 0 && isSameLapGapCandidate(car, context))
     .sort((a, b) => b.deltaSeconds - a.deltaSeconds)
@@ -1287,12 +1624,20 @@ function selectGapGraphCars(context) {
 }
 
 function gapSecondsForGraphRow(row, leader, lapReferenceSeconds) {
+  return gapValueForGraphRow(row, leader, lapReferenceSeconds)?.seconds ?? null;
+}
+
+function gapValueForGraphRow(row, leader, lapReferenceSeconds) {
   if (!row || !leader) {
     return null;
   }
 
+  if (isPlaceholderPitGapRow(row)) {
+    return null;
+  }
+
   if (row.carIdx === leader.carIdx || toPositiveInteger(row.classPosition) === 1) {
-    return 0;
+    return { seconds: 0, source: 'class-leader-row' };
   }
 
   const gap = derivedClassGap(row, leader, lapReferenceSeconds);
@@ -1301,11 +1646,11 @@ function gapSecondsForGraphRow(row, leader, lapReferenceSeconds) {
   }
 
   if (Number.isFinite(gap.seconds)) {
-    return gap.seconds;
+    return { seconds: gap.seconds, source: gap.source || null };
   }
 
   return Number.isFinite(gap.laps)
-    ? gap.laps * chartLapReferenceSeconds(lapReferenceSeconds)
+    ? { seconds: gap.laps * chartLapReferenceSeconds(lapReferenceSeconds), source: gap.source || null }
     : null;
 }
 
@@ -1316,6 +1661,12 @@ function isSameLapGapCandidate(car, context) {
 
   const lapReference = chartLapReferenceSeconds(context.lapReferenceSeconds);
   return Math.abs((car.gapSeconds - context.focusGapSeconds) / lapReference) < 0.95;
+}
+
+function isLappedGraphGap(gapSeconds, lapReferenceSeconds) {
+  return Number.isFinite(gapSeconds)
+    && isValidLapReference(lapReferenceSeconds)
+    && gapSeconds >= lapReferenceSeconds * 0.95;
 }
 
 function isClassLeaderRow(row, leader) {
@@ -1503,6 +1854,10 @@ function gapTrendPoints(index) {
 }
 
 function focusedClassLeaderGap(models) {
+  if (!isGreenRace(models)) {
+    return null;
+  }
+
   const timing = models?.timing || {};
   const focusCarIdx = models?.reference?.focusCarIdx ?? timing.focusCarIdx;
   const focus = timing.focusRow
@@ -1530,7 +1885,7 @@ function focusedClassLeaderGap(models) {
     };
   }
 
-  if (!leader || !isGreenRace(models)) {
+  if (!leader) {
     return null;
   }
 
@@ -1569,24 +1924,81 @@ function classTimingRows(timing, focus) {
 function derivedClassGap(row, leader, lapReferenceSeconds) {
   const lapGap = wholeLapGap(leader, row);
   if (Number.isFinite(lapGap) && lapGap > 0) {
-    return { seconds: null, laps: lapGap };
+    return { seconds: null, laps: lapGap, source: 'CarIdxLapCompleted' };
   }
 
   const projected = estimatedSecondsBehind(row, leader, lapReferenceSeconds);
   if (Number.isFinite(projected)) {
-    return { seconds: projected, laps: null };
+    return { seconds: projected, laps: null, source: 'CarIdxEstTime+CarIdxLapDistPct' };
+  }
+
+  const startGap = estimatedGreenStartSecondsBehind(row, leader, lapReferenceSeconds);
+  if (Number.isFinite(startGap)) {
+    return { seconds: startGap, laps: null, source: 'CarIdxEstTime+CarIdxPosition' };
   }
 
   const rowF2 = usableF2ForRace(row);
   const leaderF2 = usableF2ForRace(leader);
   if (Number.isFinite(rowF2) && Number.isFinite(leaderF2) && rowF2 >= leaderF2) {
-    return { seconds: rowF2 - leaderF2, laps: null };
+    return { seconds: rowF2 - leaderF2, laps: null, source: 'CarIdxF2Time' };
   }
 
   return null;
 }
 
+function estimatedGreenStartSecondsBehind(row, leader, lapReferenceSeconds) {
+  if (!isRaceLaunchEstimatedRow(row) || !isRaceLaunchEstimatedRow(leader) || !isPositionBehind(row, leader)) {
+    return null;
+  }
+
+  const rowEstimated = validTimingSeconds(row?.estimatedTimeSeconds);
+  const leaderEstimated = validTimingSeconds(leader?.estimatedTimeSeconds);
+  if (!Number.isFinite(rowEstimated) || !Number.isFinite(leaderEstimated)) {
+    return null;
+  }
+
+  const seconds = leaderEstimated - rowEstimated;
+  const maximumSeconds = Math.min(30, Math.max(5, chartLapReferenceSeconds(lapReferenceSeconds) * 0.25));
+  return Number.isFinite(seconds) && seconds >= 0 && seconds <= maximumSeconds ? seconds : null;
+}
+
+function isRaceLaunchEstimatedRow(row) {
+  if (!row || row.hasTakenGrid !== true || validLapDistPct(row.lapDistPct) !== null) {
+    return false;
+  }
+
+  return toPositiveInteger(row.classPosition) === 1 || isRaceF2Placeholder(row);
+}
+
+function isPositionBehind(row, leader) {
+  const rowClassPosition = toPositiveInteger(row?.classPosition);
+  const leaderClassPosition = toPositiveInteger(leader?.classPosition);
+  if (rowClassPosition && leaderClassPosition) {
+    return rowClassPosition > leaderClassPosition;
+  }
+
+  const rowOverallPosition = toPositiveInteger(row?.overallPosition);
+  const leaderOverallPosition = toPositiveInteger(leader?.overallPosition);
+  return rowOverallPosition && leaderOverallPosition
+    ? rowOverallPosition > leaderOverallPosition
+    : false;
+}
+
 function wholeLapGap(leader, row) {
+  const leaderProgress = progressLaps(leader);
+  const rowProgress = progressLaps(row);
+  if (Number.isFinite(leaderProgress) && Number.isFinite(rowProgress)) {
+    const progressGap = leaderProgress - rowProgress;
+    if (progressGap < 0.95) {
+      return null;
+    }
+
+    const roundedGap = Math.round(progressGap);
+    return roundedGap >= 1 && Math.abs(progressGap - roundedGap) <= 0.35
+      ? roundedGap
+      : progressGap;
+  }
+
   const leaderLap = Number.isInteger(leader?.lapCompleted) ? leader.lapCompleted : null;
   const rowLap = Number.isInteger(row?.lapCompleted) ? row.lapCompleted : null;
   if (leaderLap == null || rowLap == null) {
@@ -1598,12 +2010,6 @@ function wholeLapGap(leader, row) {
 }
 
 function estimatedSecondsBehind(row, leader, lapReferenceSeconds) {
-  if (Number.isInteger(row?.lapCompleted)
-    && Number.isInteger(leader?.lapCompleted)
-    && row.lapCompleted !== leader.lapCompleted) {
-    return null;
-  }
-
   const rowEstimated = validTimingSeconds(row?.estimatedTimeSeconds);
   const leaderEstimated = validTimingSeconds(leader?.estimatedTimeSeconds);
   const rowLapDist = validLapDistPct(row?.lapDistPct);
@@ -1654,6 +2060,12 @@ function estimatedSecondsBehind(row, leader, lapReferenceSeconds) {
   return Math.max(0, -seconds);
 }
 
+function progressLaps(row) {
+  const lap = Number.isInteger(row?.lapCompleted) && row.lapCompleted >= 0 ? row.lapCompleted : null;
+  const pct = validLapDistPct(row?.lapDistPct);
+  return lap !== null && Number.isFinite(pct) ? lap + pct : null;
+}
+
 function usableF2ForRace(row) {
   const f2 = validNonNegative(row?.f2TimeSeconds);
   if (!Number.isFinite(f2)) {
@@ -1670,11 +2082,41 @@ function usableF2ForRace(row) {
     return null;
   }
 
-  if (overallPosition && overallPosition > 1 && Math.abs(f2 - ((overallPosition - 1) / 1000)) <= 0.00002) {
+  if (isRaceF2Placeholder(row)) {
     return null;
   }
 
   return f2;
+}
+
+function isRaceF2Placeholder(row) {
+  const f2 = validNonNegative(row?.f2TimeSeconds);
+  const overallPosition = toPositiveInteger(row?.overallPosition);
+  return Number.isFinite(f2)
+    && overallPosition
+    && overallPosition > 1
+    && Math.abs(f2 - ((overallPosition - 1) / 1000)) <= 0.00002;
+}
+
+function isPlaceholderPitGapRow(row) {
+  if (!row || row.hasTakenGrid === true) {
+    return false;
+  }
+
+  if (row.onPitRoad !== true && !isKnownNonTrackSurface(row.trackSurface)) {
+    return false;
+  }
+
+  return !hasUsableRaceTiming(row) && (!Number.isInteger(row.lapCompleted) || row.lapCompleted <= 0);
+}
+
+function hasUsableRaceTiming(row) {
+  const f2 = validNonNegative(row?.f2TimeSeconds);
+  return Number.isFinite(f2) && f2 >= 0.1 && !isRaceF2Placeholder(row);
+}
+
+function isKnownNonTrackSurface(trackSurface) {
+  return trackSurface !== null && trackSurface !== undefined && trackSurface !== 3;
 }
 
 function lapReferenceSeconds(rows) {

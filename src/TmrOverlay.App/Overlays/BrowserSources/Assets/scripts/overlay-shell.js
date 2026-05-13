@@ -15,9 +15,16 @@
 
     function apiPath(path) {
       const url = new URL(path, window.location.href);
-      const preview = new URLSearchParams(window.location.search).get('preview');
+      const currentParams = new URLSearchParams(window.location.search);
+      const preview = currentParams.get('preview');
       if (['practice', 'qualifying', 'race'].includes(preview)) {
         url.searchParams.set('preview', preview);
+      }
+      for (const replayParam of ['frame', 'rel', 'spoofFocus', 'focus']) {
+        const value = currentParams.get(replayParam);
+        if (value !== null) {
+          url.searchParams.set(replayParam, value);
+        }
       }
 
       return `${url.pathname}${url.search}`;
@@ -56,6 +63,31 @@
       const rgb = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
       return rgb ? `rgba(${rgb}, ${alpha})` : fallback;
     };
+    function roundedRectPath(ctx, left, top, width, height, radius) {
+      const r = Math.max(0, Math.min(radius, width / 2, height / 2));
+      ctx.beginPath();
+      ctx.moveTo(left + r, top);
+      ctx.lineTo(left + width - r, top);
+      ctx.quadraticCurveTo(left + width, top, left + width, top + r);
+      ctx.lineTo(left + width, top + height - r);
+      ctx.quadraticCurveTo(left + width, top + height, left + width - r, top + height);
+      ctx.lineTo(left + r, top + height);
+      ctx.quadraticCurveTo(left, top + height, left, top + height - r);
+      ctx.lineTo(left, top + r);
+      ctx.quadraticCurveTo(left, top, left + r, top);
+      ctx.closePath();
+    }
+    function drawRoundedRect(ctx, left, top, width, height, radius, fillStyle, strokeStyle = null) {
+      roundedRectPath(ctx, left, top, width, height, radius);
+      if (fillStyle) {
+        ctx.fillStyle = fillStyle;
+        ctx.fill();
+      }
+      if (strokeStyle) {
+        ctx.strokeStyle = strokeStyle;
+        ctx.stroke();
+      }
+    }
     const parsedHexColors = new Map();
     const classHeaderStyles = new Map();
     const browserModel = {
@@ -513,7 +545,8 @@
           : '';
         contentEl.innerHTML = summary + rowsTable(displayModelHeaders(model), rows);
       } else if (model.bodyKind === 'graph') {
-        const summary = metrics.length
+        const showGraphMetrics = model.overlayId !== 'gap-to-leader' && metrics.length;
+        const summary = showGraphMetrics
           ? `<div class="grid graph-metrics">${metrics.map(metricRow).join('')}</div>`
           : '';
         contentEl.innerHTML = `${summary}<div class="model-graph-panel"><canvas class="model-graph" aria-label="Gap trend graph"></canvas></div>`;
@@ -574,35 +607,11 @@
       const points = Array.isArray(model?.points) ? model.points : [];
       const values = points.map(Number).filter(Number.isFinite);
       if (values.length < 2) {
-        ctx.fillStyle = themeColor('--tmr-text-muted', '#8caed4');
-        ctx.font = '700 13px "Segoe UI", Arial, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('waiting for trend', width / 2, height / 2);
+        drawEmptyGapTrendFrame(ctx, width, height, model?.graph);
         return;
       }
 
-      const axisWidth = 58;
-      const xAxisHeight = 17;
-      const labelLaneWidth = 38;
-      const metricsWidth = gapMetricsTableWidth(width);
-      const plotHeight = Math.max(40, height - xAxisHeight);
-      const metricsRect = metricsWidth > 0
-        ? { left: width - metricsWidth, top: 0, width: metricsWidth, height: plotHeight }
-        : null;
-      const chartRight = metricsRect ? metricsRect.left - 10 : width - 4;
-      const labelLane = {
-        left: chartRight - labelLaneWidth,
-        top: 0,
-        width: labelLaneWidth,
-        height: plotHeight
-      };
-      const plot = {
-        left: axisWidth,
-        top: 0,
-        width: Math.max(40, labelLane.left - axisWidth),
-        height: plotHeight
-      };
+      const { plot, labelLane, metricsRect } = gapGraphLayout(width, height);
       const max = Math.max(1, ...values.map((value) => Math.max(0, value)));
       ctx.strokeStyle = themeRgba('--tmr-text-muted-rgb', 0.28, 'rgba(140, 174, 212, 0.28)');
       ctx.lineWidth = 1;
@@ -661,27 +670,7 @@
         return false;
       }
 
-      const axisWidth = 58;
-      const xAxisHeight = 17;
-      const labelLaneWidth = 38;
-      const metricsWidth = gapMetricsTableWidth(width);
-      const plotHeight = Math.max(40, height - xAxisHeight);
-      const metricsRect = metricsWidth > 0
-        ? { left: width - metricsWidth, top: 0, width: metricsWidth, height: plotHeight }
-        : null;
-      const chartRight = metricsRect ? metricsRect.left - 10 : width - 4;
-      const labelLane = {
-        left: chartRight - labelLaneWidth,
-        top: 0,
-        width: labelLaneWidth,
-        height: plotHeight
-      };
-      const plot = {
-        left: axisWidth,
-        top: 0,
-        width: Math.max(40, labelLane.left - axisWidth),
-        height: plotHeight
-      };
+      const { plot, labelLane, metricsRect } = gapGraphLayout(width, height);
       const scale = graph.scale || { isFocusRelative: false, maxGapSeconds: graph.maxGapSeconds };
       const maxGapSeconds = Math.max(1, numberOr(scale.maxGapSeconds, graph.maxGapSeconds, 1));
       drawGapWeatherBands(ctx, graph, plot);
@@ -743,6 +732,56 @@
       drawGapDriverMarkers(ctx, graph, scale, plot, maxGapSeconds);
       if (metricsRect) drawGapFocusedMetricsTable(ctx, metricsRect, graph);
       return true;
+    }
+
+    function gapGraphLayout(width, height) {
+      const axisWidth = 58;
+      const xAxisHeight = 17;
+      const labelLaneWidth = 38;
+      const metricsWidth = gapMetricsTableWidth(width);
+      const plotHeight = Math.max(40, height - xAxisHeight);
+      const metricsRect = metricsWidth > 0
+        ? { left: width - metricsWidth, top: 0, width: metricsWidth, height: plotHeight }
+        : null;
+      const chartRight = metricsRect ? metricsRect.left - 10 : width - 4;
+      const labelLane = {
+        left: chartRight - labelLaneWidth,
+        top: 0,
+        width: labelLaneWidth,
+        height: plotHeight
+      };
+      const plot = {
+        left: axisWidth,
+        top: 0,
+        width: Math.max(40, labelLane.left - axisWidth),
+        height: plotHeight
+      };
+      return { plot, labelLane, metricsRect, plotHeight };
+    }
+
+    function drawEmptyGapTrendFrame(ctx, width, height, graph) {
+      const { plot, metricsRect } = gapGraphLayout(width, height);
+      ctx.save();
+      ctx.strokeStyle = themeRgba('--tmr-text-muted-rgb', 0.18, 'rgba(140, 174, 212, 0.18)');
+      ctx.lineWidth = 1;
+      for (let index = 1; index < 4; index += 1) {
+        const y = plot.top + index * plot.height / 4;
+        ctx.beginPath();
+        ctx.moveTo(plot.left, y);
+        ctx.lineTo(plot.left + plot.width, y);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = themeColor('--tmr-text-muted', '#8caed4');
+      ctx.font = '700 12px "Segoe UI", Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('waiting for timing', plot.left + plot.width / 2, plot.top + plot.height / 2);
+      ctx.font = '10px "Segoe UI", Arial, sans-serif';
+      ctx.fillStyle = 'rgba(140, 174, 212, 0.74)';
+      ctx.fillText('trend will populate when live gaps are grounded', plot.left + plot.width / 2, plot.top + plot.height / 2 + 18);
+      ctx.restore();
+      if (metricsRect) drawGapFocusedMetricsTable(ctx, metricsRect, graph);
     }
 
     function drawGapSeriesSegments(ctx, graph, scale, plot, maxGapSeconds, points) {
@@ -864,27 +903,34 @@
         return;
       }
 
+      const labelYs = [plot.top + 7, plot.top + plot.height - 7];
       const step = niceGridStep(maxGapSeconds / 4);
       for (let value = step; value < maxGapSeconds; value += step) {
-        drawGridLineWithLabel(ctx, plot, gapToY(value, maxGapSeconds, plot), formatSignedGap(value));
+        drawGridLineWithLabel(ctx, plot, gapToY(value, maxGapSeconds, plot), formatSignedGap(value), labelYs);
       }
       const lapSeconds = Number(graph?.lapReferenceSeconds);
       if (Number.isFinite(lapSeconds) && lapSeconds >= 20 && maxGapSeconds >= lapSeconds * 0.85) {
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.58)';
         ctx.fillStyle = themeColor('--tmr-text', '#ffffff');
         for (let lap = 1; lap * lapSeconds < maxGapSeconds; lap += 1) {
-          drawGridLineWithLabel(ctx, plot, gapToY(lap * lapSeconds, maxGapSeconds, plot), `+${lap} lap`);
+          drawGridLineWithLabel(ctx, plot, gapToY(lap * lapSeconds, maxGapSeconds, plot), `+${lap} lap`, labelYs);
         }
       }
       ctx.restore();
     }
 
-    function drawGridLineWithLabel(ctx, plot, y, label) {
+    function drawGridLineWithLabel(ctx, plot, y, label, labelYs = null) {
       ctx.beginPath();
       ctx.moveTo(plot.left, y);
       ctx.lineTo(plot.left + plot.width, y);
       ctx.stroke();
+      if (Array.isArray(labelYs) && labelYs.some((usedY) => Math.abs(usedY - y) < 13)) {
+        return;
+      }
       ctx.fillText(label, plot.left - 8, y);
+      if (Array.isArray(labelYs)) {
+        labelYs.push(y);
+      }
     }
 
     function drawGapScaleLabels(ctx, graph, scale, plot, maxGapSeconds) {
@@ -964,18 +1010,25 @@
     function drawGapThreatAnnotation(ctx, metric, plot) {
       const chaser = metric?.chaser;
       if (!chaser) return;
-      const text = `THREAT ${chaser.label || `#${chaser.carIdx ?? '--'}`} ${formatChangeSeconds(chaser.gainSeconds)} ${metric.label || ''}`;
+      const metricLabel = String(metric?.label || '').trim();
+      const suffix = metricLabel && metricLabel.toLowerCase() !== 'threat' ? ` ${metricLabel}` : '';
+      const text = `Threat ${chaser.label || `#${chaser.carIdx ?? '--'}`} ${formatFocusedTrendChangeSeconds(-chaser.gainSeconds)}${suffix}`;
       ctx.save();
       ctx.font = '700 8.5px "Segoe UI", Arial, sans-serif';
       const textWidth = ctx.measureText(text).width;
       const badgeHeight = 16;
       const x = Math.min(Math.max(plot.left + 2, plot.left + plot.width / 2 - textWidth / 2), plot.left + plot.width - textWidth - 8);
       const y = plot.top + plot.height - badgeHeight - 6;
-      ctx.fillStyle = 'rgba(18, 24, 28, 0.84)';
-      ctx.strokeStyle = colorWithAlpha(themeColor('--tmr-error', '#ec7063'), 0.38);
       ctx.lineWidth = 1;
-      ctx.fillRect(x - 4, y - 1, textWidth + 8, badgeHeight);
-      ctx.strokeRect(x - 4, y - 1, textWidth + 8, badgeHeight);
+      drawRoundedRect(
+        ctx,
+        x - 4,
+        y - 1,
+        textWidth + 8,
+        badgeHeight,
+        3,
+        'rgba(18, 24, 28, 0.84)',
+        colorWithAlpha(themeColor('--tmr-error', '#ec7063'), 0.38));
       ctx.fillStyle = themeColor('--tmr-error', '#ec7063');
       ctx.textBaseline = 'middle';
       ctx.fillText(text, x, y + badgeHeight / 2 - 0.5);
@@ -983,40 +1036,90 @@
     }
 
     function drawGapFocusedMetricsTable(ctx, rect, graph) {
-      const metrics = Array.isArray(graph?.trendMetrics) ? graph.trendMetrics : [];
-      if (metrics.length === 0) return;
+      const metrics = Array.isArray(graph?.trendMetrics) && graph.trendMetrics.length > 0
+        ? graph.trendMetrics
+        : [
+            { label: '5L', state: 'unavailable' },
+            { label: '10L', state: 'unavailable' },
+            { label: 'Pit', state: 'unavailable' },
+            { label: 'PLap', state: 'unavailable' },
+            { label: 'Stint', state: 'unavailable' },
+            { label: 'Tire', state: 'unavailable' },
+            { label: 'Last', state: 'unavailable' },
+            { label: 'Status', state: 'unavailable' }
+          ];
+      const visibleMetrics = metrics.filter(Boolean);
+      const showThreatFooter = visibleMetrics.length <= 6;
+      const rowAreaBottomPadding = showThreatFooter ? 48 : 8;
+      const rowHeight = Math.max(9.5, Math.min(26, (rect.height - rowAreaBottomPadding - 38) / Math.max(1, visibleMetrics.length)));
       ctx.save();
-      ctx.fillStyle = 'rgba(18, 24, 28, 0.74)';
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-      ctx.fillRect(rect.left, rect.top, rect.width, rect.height);
-      ctx.strokeRect(rect.left, rect.top, rect.width, rect.height);
+      ctx.lineWidth = 1;
+      drawRoundedRect(
+        ctx,
+        rect.left,
+        rect.top,
+        rect.width,
+        rect.height,
+        3,
+        'rgba(18, 24, 28, 0.74)',
+        themeRgba('--tmr-text-rgb', 0.15, 'rgba(247, 251, 255, 0.15)'));
 
       ctx.textBaseline = 'middle';
       ctx.font = '700 10px "Segoe UI", Arial, sans-serif';
-      ctx.fillStyle = 'rgba(220, 230, 236, 0.92)';
-      ctx.fillText('TREND', rect.left + 8, rect.top + 11);
-      ctx.font = '400 8px "Segoe UI", Arial, sans-serif';
-      ctx.fillStyle = 'rgba(126, 144, 154, 0.9)';
-      ctx.fillText('win', rect.left + 8, rect.top + 26);
-      ctx.fillText('leader d', rect.left + 43, rect.top + 26);
-      ctx.fillText('threat', rect.left + 104, rect.top + 26);
+      ctx.fillStyle = themeColor('--tmr-text', '#f7fbff');
+      ctx.fillText('Trend', rect.left + 8, rect.top + 11);
+      ctx.font = '8px "Segoe UI", Arial, sans-serif';
+      ctx.fillStyle = themeColor('--tmr-text-muted', '#8caed4');
+      ctx.fillText('Metric', rect.left + 8, rect.top + 26);
+      ctx.fillText(graph?.comparisonLabel || '--', rect.left + 43, rect.top + 26);
+      ctx.fillText('Threat', rect.left + 104, rect.top + 26);
 
-      ctx.font = '400 9px "Segoe UI", Arial, sans-serif';
-      metrics.slice(0, 3).forEach((metric, index) => {
-        const y = rect.top + 45 + index * 22;
-        ctx.fillStyle = 'rgba(205, 218, 228, 0.9)';
+      ctx.font = `${rowHeight < 16 ? '8px' : '9px'} "Segoe UI", Arial, sans-serif`;
+      visibleMetrics.forEach((metric, index) => {
+        const y = rect.top + 43 + index * rowHeight;
+        ctx.fillStyle = themeColor('--tmr-text-secondary', '#cdd8e4');
         ctx.fillText(metric?.label || '--', rect.left + 8, y);
         ctx.fillStyle = gapMetricValueColor(metric, numberOr(graph?.metricDeadbandSeconds, 0.25));
         ctx.fillText(gapMetricValueText(metric), rect.left + 43, y);
         ctx.fillStyle = gapMetricChaserColor(metric);
         ctx.fillText(gapMetricChaserText(metric), rect.left + 104, y);
       });
+
+      if (showThreatFooter) {
+        const threat = graph?.activeThreat || metrics.find((metric) => metric?.chaser);
+        const threatY = rect.top + rect.height - 28;
+        const footerStroke = threat?.chaser
+          ? colorWithAlpha(themeColor('--tmr-error', '#ec7063'), 0.34)
+          : 'rgba(255, 255, 255, 0.10)';
+        drawRoundedRect(
+          ctx,
+          rect.left + 8,
+          threatY,
+          rect.width - 16,
+          20,
+          3,
+          threat?.chaser ? 'rgba(236, 112, 99, 0.14)' : 'rgba(255, 255, 255, 0.055)',
+          footerStroke);
+        ctx.font = '700 8px "Segoe UI", Arial, sans-serif';
+        ctx.fillStyle = threat?.chaser
+          ? themeColor('--tmr-error', '#ec7063')
+          : 'rgba(140, 174, 212, 0.72)';
+        ctx.fillText(threat?.chaser
+          ? `Threat ${threat.chaser.label || `#${threat.chaser.carIdx ?? '--'}`} ${formatFocusedTrendChangeSeconds(-threat.chaser.gainSeconds)}`
+          : 'Threat --', rect.left + 14, threatY + 10);
+      }
       ctx.restore();
     }
 
     function gapMetricValueText(metric) {
       const state = String(metric?.state || '').toLowerCase();
-      if (state === 'ready' && Number.isFinite(metric?.focusGapChangeSeconds)) return formatChangeSeconds(metric.focusGapChangeSeconds);
+      if (state === 'pit') return gapPitSecondsText(metric?.comparisonPit);
+      if (state === 'pitlap') return gapPitLapText(metric?.comparisonPit);
+      if (state === 'tire') return gapTireText(metric?.comparisonTire);
+      if (state === 'stint') return metric?.comparisonText || '--';
+      if (state === 'last' || state === 'status') return metric?.comparisonText || '--';
+      if (state === 'ready' && Number.isFinite(metric?.focusGapChangeSeconds)) return formatFocusedTrendChangeSeconds(-metric.focusGapChangeSeconds);
+      if (state === 'ready' && metric?.stateLabel) return metric.stateLabel;
       if (state === 'warming') return metric?.stateLabel || '--';
       if (state === 'leaderchanged') return 'leader';
       return '--';
@@ -1024,6 +1127,11 @@
 
     function gapMetricValueColor(metric, deadbandSeconds) {
       const state = String(metric?.state || '').toLowerCase();
+      if (state === 'pit') return gapPitSecondsComparisonColor(metric?.primaryPit, metric?.comparisonPit);
+      if (state === 'pitlap') return gapPitLapComparisonColor(metric?.primaryPit, metric?.comparisonPit);
+      if (state === 'tire') return gapTireComparisonColor(metric?.primaryTire, metric?.comparisonTire);
+      if (state === 'last') return gapLastLapComparisonColor(metric?.primaryText, metric?.comparisonText);
+      if (state === 'status' || state === 'stint') return gapNeutralMetricColor(metric?.comparisonText);
       const value = Number(metric?.focusGapChangeSeconds);
       if (state !== 'ready' || !Number.isFinite(value)) {
         return state === 'warming' || state === 'leaderchanged'
@@ -1036,17 +1144,114 @@
 
     function gapMetricChaserText(metric) {
       const state = String(metric?.state || '').toLowerCase();
+      if (state === 'pit') return gapPitSecondsText(metric?.threatPit);
+      if (state === 'pitlap') return gapPitLapText(metric?.threatPit);
+      if (state === 'tire') return gapTireText(metric?.threatTire);
+      if (state === 'stint') return metric?.threatText || '--';
+      if (state === 'last' || state === 'status') return metric?.threatText || '--';
       if (state === 'ready' && metric?.chaser) {
-        return `${metric.chaser.label || `#${metric.chaser.carIdx ?? '--'}`} ${formatChangeSeconds(metric.chaser.gainSeconds)}`;
+        return `${metric.chaser.label || `#${metric.chaser.carIdx ?? '--'}`} ${formatFocusedTrendChangeSeconds(-metric.chaser.gainSeconds)}`;
       }
       if (state === 'leaderchanged') return 'reset';
       return '--';
     }
 
     function gapMetricChaserColor(metric) {
-      return String(metric?.state || '').toLowerCase() === 'ready' && metric?.chaser
+      const state = String(metric?.state || '').toLowerCase();
+      if (state === 'pit') return gapPitSecondsComparisonColor(metric?.primaryPit, metric?.threatPit);
+      if (state === 'pitlap') return gapPitLapComparisonColor(metric?.primaryPit, metric?.threatPit);
+      if (state === 'tire') return gapTireComparisonColor(metric?.primaryTire, metric?.threatTire);
+      if (state === 'last') return gapLastLapComparisonColor(metric?.primaryText, metric?.threatText);
+      if (state === 'status' || state === 'stint') return gapNeutralMetricColor(metric?.threatText);
+      return state === 'ready' && metric?.chaser
         ? themeColor('--tmr-error', '#ec7063')
         : 'rgba(140, 174, 212, 0.72)';
+    }
+
+    function gapPitSecondsText(pit) {
+      const seconds = Number(pit?.seconds);
+      if (!Number.isFinite(seconds)) return '--';
+      return seconds >= 60
+        ? `${Math.floor(seconds / 60)}:${Math.round(seconds % 60).toString().padStart(2, '0')}`
+        : `${Math.round(seconds)}s`;
+    }
+
+    function gapPitLapText(pit) {
+      const lap = Number(pit?.lap);
+      return Number.isFinite(lap) && lap > 0 ? `L${lap}` : '--';
+    }
+
+    function gapPitSecondsComparisonColor(focusPit, comparisonPit) {
+      const comparisonSeconds = Number(comparisonPit?.seconds);
+      if (!Number.isFinite(comparisonSeconds)) return 'rgba(140, 174, 212, 0.72)';
+
+      const focusSeconds = Number(focusPit?.seconds);
+      if (!Number.isFinite(focusSeconds)) return 'rgba(205, 218, 228, 0.88)';
+
+      const delta = focusSeconds - comparisonSeconds;
+      if (Math.abs(delta) <= 1) return 'rgba(205, 218, 228, 0.88)';
+      return delta < 0 ? themeColor('--tmr-green', '#70e092') : themeColor('--tmr-error', '#ec7063');
+    }
+
+    function gapPitLapComparisonColor(focusPit, comparisonPit) {
+      const comparisonLap = Number(comparisonPit?.lap);
+      if (!Number.isFinite(comparisonLap) || comparisonLap <= 0) return 'rgba(140, 174, 212, 0.72)';
+
+      const focusLap = Number(focusPit?.lap);
+      if (!Number.isFinite(focusLap) || focusLap <= 0 || focusLap === comparisonLap) {
+        return 'rgba(205, 218, 228, 0.88)';
+      }
+
+      return focusLap < comparisonLap ? themeColor('--tmr-green', '#70e092') : themeColor('--tmr-error', '#ec7063');
+    }
+
+    function gapTireText(tire) {
+      const text = String(tire?.shortLabel || tire?.label || '').trim();
+      return text || '--';
+    }
+
+    function gapTireComparisonColor(focusTire, comparisonTire) {
+      const comparison = String(comparisonTire?.shortLabel || comparisonTire?.label || '').trim().toLowerCase();
+      if (!comparison) return 'rgba(140, 174, 212, 0.72)';
+
+      const focus = String(focusTire?.shortLabel || focusTire?.label || '').trim().toLowerCase();
+      if (!focus || focus === comparison) {
+        return comparisonTire?.isWet === true
+          ? themeColor('--tmr-cyan', '#00e8ff')
+          : 'rgba(205, 218, 228, 0.88)';
+      }
+
+      return comparisonTire?.isWet === true
+        ? themeColor('--tmr-cyan', '#00e8ff')
+        : themeColor('--tmr-amber', '#ffcc66');
+    }
+
+    function gapLastLapComparisonColor(focusText, comparisonText) {
+      const focus = lapTimeTextToSeconds(focusText);
+      const comparison = lapTimeTextToSeconds(comparisonText);
+      if (!Number.isFinite(comparison)) return 'rgba(140, 174, 212, 0.72)';
+      if (!Number.isFinite(focus)) return 'rgba(205, 218, 228, 0.88)';
+      const delta = comparison - focus;
+      if (Math.abs(delta) <= 0.05) return 'rgba(205, 218, 228, 0.88)';
+      return delta < 0 ? themeColor('--tmr-error', '#ec7063') : themeColor('--tmr-green', '#70e092');
+    }
+
+    function gapNeutralMetricColor(value) {
+      const comparison = String(value || '').trim();
+      if (!comparison || comparison === '--') return 'rgba(140, 174, 212, 0.72)';
+      return 'rgba(205, 218, 228, 0.88)';
+    }
+
+    function lapTimeTextToSeconds(value) {
+      const text = String(value || '').trim();
+      if (!text || text === '--') return NaN;
+      const match = /^(\d+):(\d+(?:\.\d+)?)$/.exec(text);
+      if (match) {
+        return Number(match[1]) * 60 + Number(match[2]);
+      }
+
+      const seconds = Number(text);
+      return Number.isFinite(seconds) ? seconds : NaN;
     }
 
     function drawGapEndpointLabels(ctx, labels, plot, labelLane) {
@@ -1227,6 +1432,10 @@
       if (!Number.isFinite(value)) return '--';
       if (Math.abs(value) < 0.05) return '0.0';
       return `${value > 0 ? '+' : ''}${value.toFixed(1)}`;
+    }
+
+    function formatFocusedTrendChangeSeconds(value) {
+      return formatChangeSeconds(value);
     }
 
     function formatTrendWindow(seconds) {

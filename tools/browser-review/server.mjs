@@ -340,10 +340,7 @@ function reviewDisplayModel(overlayId, previewMode = 'off') {
         bodyKind: 'graph',
         columns: [],
         rows: [],
-        metrics: [
-          { label: 'Class pos', value: '2', tone: 'live' },
-          { label: 'Class leader', value: '+53.0', tone: 'live' }
-        ],
+        metrics: [],
         points: [74, 72, 70, 68, 66, 65, 63, 61, 60, 58, 55, 53],
         headerItems: [{ key: 'status', value: 'live | race gap' }]
       };

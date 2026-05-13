@@ -478,7 +478,9 @@ internal sealed record LiveLeaderGapSnapshot(
                 ClassPosition: 1,
                 GapSecondsToClassLeader: 0d,
                 GapLapsToClassLeader: 0d,
-                DeltaSecondsToReference: referenceClassGap.Seconds is { } referenceSeconds ? -referenceSeconds : null));
+                DeltaSecondsToReference: referenceClassGap.Seconds is { } referenceSeconds ? -referenceSeconds : null,
+                IsOnPitRoad: false,
+                CurrentLap: DisplayLap(FocusClassLeaderLapCompleted(sample))));
         }
 
         if (focusCarIdx is { } referenceIdx)
@@ -490,7 +492,9 @@ internal sealed record LiveLeaderGapSnapshot(
                 ClassPosition: FocusClassPosition(sample),
                 GapSecondsToClassLeader: referenceClassGap.Seconds,
                 GapLapsToClassLeader: referenceClassGap.Laps,
-                DeltaSecondsToReference: 0d));
+                DeltaSecondsToReference: 0d,
+                IsOnPitRoad: IsPitRoadLike(FocusTrackSurface(sample), FocusOnPitRoad(sample)),
+                CurrentLap: DisplayLap(FocusLapCompleted(sample))));
         }
 
         var classCandidates = sample.FocusClassCars is { Count: > 0 }
@@ -531,7 +535,9 @@ internal sealed record LiveLeaderGapSnapshot(
                 ClassPosition: car.ClassPosition,
                 GapSecondsToClassLeader: gapSeconds,
                 GapLapsToClassLeader: gapLaps,
-                DeltaSecondsToReference: CalculateDeltaSecondsToReference(gapSeconds, referenceClassGap.Seconds)));
+                DeltaSecondsToReference: CalculateDeltaSecondsToReference(gapSeconds, referenceClassGap.Seconds),
+                IsOnPitRoad: IsPitRoadLike(car.TrackSurface, car.OnPitRoad),
+                CurrentLap: DisplayLap(car.LapCompleted)));
         }
 
         return cars
@@ -566,6 +572,16 @@ internal sealed record LiveLeaderGapSnapshot(
             && carF2 >= leaderF2
             ? carF2 - leaderF2
             : null;
+    }
+
+    private static int? DisplayLap(int? lapCompleted)
+    {
+        return lapCompleted is >= 0 ? lapCompleted.Value + 1 : null;
+    }
+
+    private static bool IsPitRoadLike(int? trackSurface, bool? onPitRoad)
+    {
+        return onPitRoad == true || trackSurface is 1 or 2;
     }
 
     private static double? UsableF2TimeForGap(double? f2TimeSeconds, int? overallPosition)
@@ -882,7 +898,9 @@ internal sealed record LiveClassGapCar(
     int? ClassPosition,
     double? GapSecondsToClassLeader,
     double? GapLapsToClassLeader,
-    double? DeltaSecondsToReference);
+    double? DeltaSecondsToReference,
+    bool IsOnPitRoad = false,
+    int? CurrentLap = null);
 
 internal sealed record LiveFuelSnapshot(
     bool HasValidFuel,

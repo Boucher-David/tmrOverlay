@@ -92,6 +92,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private const double GapThreatMinimumGainSeconds = 0.5d;
     private const double GapThreatGainLapFraction = 0.005d;
     private const double GapFuelStintResetMinimumLiters = 5d;
+    private const int GapOnTrackSurface = 3;
     private const float GapEndpointLabelLaneWidth = 38f;
     private const float GapEndpointLabelPinThreshold = 4f;
     private const float GapEndpointLabelHeight = 13f;
@@ -99,6 +100,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private const float GapMetricsTableWidth = 184f;
     private const float GapMetricsTableGap = 10f;
     private const float GapMetricsMinimumPlotWidth = 300f;
+    private const float GapMetricsMinimumTableHeight = 164f;
     private const float GapThreatBadgeHeight = 16f;
     private const float GapFocusScaleReferenceRatio = 0.56f;
     private const float GapFocusScaleTopPadding = 18f;
@@ -819,7 +821,9 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                 _gapSeries[car.CarIdx] = points;
             }
 
-            var startsSegment = points.Count == 0 || axisSeconds - points[^1].AxisSeconds > GapMissingSegmentSeconds;
+            var startsSegment = points.Count == 0
+                || axisSeconds - points[^1].AxisSeconds > GapMissingSegmentSeconds
+                || !ShouldConnectGapSeriesPoint(points[^1].GapSeconds, gapSeconds, lapReferenceSeconds);
             var point = new DesignV2GapTrendPoint(
                 timestamp,
                 axisSeconds,
@@ -844,7 +848,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             }
         }
 
-        UpdateGapCarRenderStates(gap, axisSeconds, lapReferenceSeconds);
+        UpdateGapCarRenderStates(snapshot, gap, axisSeconds, lapReferenceSeconds);
         PruneGapSeries(axisSeconds);
     }
 
@@ -1041,7 +1045,11 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         _lastGapClassLeaderCarIdx = leaderCarIdx;
     }
 
-    private void UpdateGapCarRenderStates(LiveLeaderGapSnapshot gap, double axisSeconds, double? lapReferenceSeconds)
+    private void UpdateGapCarRenderStates(
+        LiveTelemetrySnapshot snapshot,
+        LiveLeaderGapSnapshot gap,
+        double axisSeconds,
+        double? lapReferenceSeconds)
     {
         var desiredCarIds = SelectDesiredGapCarIds(gap.ClassCars, lapReferenceSeconds);
         foreach (var car in gap.ClassCars)
@@ -1064,6 +1072,17 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             state.IsClassLeader = car.IsClassLeader;
             state.ClassPosition = car.ClassPosition;
             state.DeltaSecondsToReference = car.DeltaSecondsToReference;
+            state.CurrentLap = car.CurrentLap;
+            var timingRow = DesignV2GapTimingRow(snapshot.Models.Timing, car.CarIdx);
+            state.LastLapTimeSeconds = timingRow?.LastLapTimeSeconds;
+            state.BestLapTimeSeconds = timingRow?.BestLapTimeSeconds;
+            state.TrackSurface = timingRow?.TrackSurface;
+            state.OnPitRoad = timingRow?.OnPitRoad;
+            var tire = GapTireCompound(snapshot.Models.TireCompounds, car.CarIdx);
+            state.TireLabel = tire?.Label;
+            state.TireShortLabel = tire?.ShortLabel;
+            state.TireIsWet = tire?.IsWet;
+            UpdateDesignV2GapPitState(state, car, axisSeconds);
             state.IsCurrentlyDesired = desiredCarIds.Contains(car.CarIdx);
             if (state.IsCurrentlyDesired)
             {
@@ -1085,26 +1104,89 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         }
     }
 
+    private static LiveCarTireCompound? GapTireCompound(LiveTireCompoundModel tireCompounds, int carIdx)
+    {
+        return tireCompounds.Cars.FirstOrDefault(car => car.CarIdx == carIdx);
+    }
+
+    private static LiveTimingRow? DesignV2GapTimingRow(LiveTimingModel timing, int carIdx)
+    {
+        return timing.ClassRows.FirstOrDefault(row => row.CarIdx == carIdx)
+            ?? timing.OverallRows.FirstOrDefault(row => row.CarIdx == carIdx)
+            ?? (timing.FocusRow?.CarIdx == carIdx ? timing.FocusRow : null)
+            ?? (timing.PlayerRow?.CarIdx == carIdx ? timing.PlayerRow : null);
+    }
+
+    private static void UpdateDesignV2GapPitState(
+        DesignV2GapCarRenderState state,
+        LiveClassGapCar car,
+        double axisSeconds)
+    {
+        if (car.IsOnPitRoad)
+        {
+            if (!state.IsOnPitRoad)
+            {
+                state.CurrentPitEntryAxisSeconds = axisSeconds;
+                state.CurrentPitEntryLap = car.CurrentLap;
+            }
+
+            state.IsOnPitRoad = true;
+            if (state.CurrentPitEntryAxisSeconds is { } entry)
+            {
+                state.LastPitDurationSeconds = Math.Max(0d, axisSeconds - entry);
+                state.LastPitLap = state.CurrentPitEntryLap ?? car.CurrentLap;
+            }
+
+            return;
+        }
+
+        if (state.IsOnPitRoad && state.CurrentPitEntryAxisSeconds is { } pitEntry)
+        {
+            state.LastPitDurationSeconds = Math.Max(0d, axisSeconds - pitEntry);
+            state.LastPitLap = state.CurrentPitEntryLap ?? car.CurrentLap;
+            state.LastPitExitAxisSeconds = axisSeconds;
+        }
+
+        state.IsOnPitRoad = false;
+        state.CurrentPitEntryAxisSeconds = null;
+        state.CurrentPitEntryLap = null;
+    }
+
     private HashSet<int> SelectDesiredGapCarIds(IReadOnlyList<LiveClassGapCar> cars, double? lapReferenceSeconds)
     {
         var selected = new HashSet<int>();
-        var reference = cars.FirstOrDefault(car => car.IsReferenceCar);
-        foreach (var car in cars.Where(car => car.IsClassLeader || car.IsReferenceCar))
+        var reference = cars.FirstOrDefault(car =>
+            car.IsReferenceCar
+            && DesignV2GapSeconds(car, lapReferenceSeconds) is not null);
+        var referenceCanAnchor = reference is not null && !IsLappedGraphGap(reference, lapReferenceSeconds);
+        foreach (var car in cars.Where(car => car.IsClassLeader || (referenceCanAnchor && car.IsReferenceCar)))
         {
             selected.Add(car.CarIdx);
         }
 
         var aheadCount = _settings.GetIntegerOption(OverlayOptionKeys.GapCarsAhead, defaultValue: 5, minimum: 0, maximum: 12);
         var behindCount = _settings.GetIntegerOption(OverlayOptionKeys.GapCarsBehind, defaultValue: 5, minimum: 0, maximum: 12);
-        if (reference is null)
+        if (!referenceCanAnchor)
         {
             foreach (var car in cars
-                .Where(car => !car.IsClassLeader)
+                .Where(car => !car.IsClassLeader && !IsLappedGraphGap(car, lapReferenceSeconds))
                 .OrderBy(car => car.ClassPosition ?? int.MaxValue)
                 .ThenBy(car => DesignV2GapSeconds(car, lapReferenceSeconds) ?? double.MaxValue)
-                .Take(behindCount))
+                .Take(Math.Max(1, behindCount)))
             {
                 selected.Add(car.CarIdx);
+            }
+
+            if (selected.Count <= 1)
+            {
+                foreach (var car in cars
+                    .Where(car => !car.IsClassLeader)
+                    .OrderBy(car => DesignV2GapSeconds(car, lapReferenceSeconds) ?? double.MaxValue)
+                    .ThenBy(car => car.ClassPosition ?? int.MaxValue)
+                    .Take(Math.Max(1, behindCount)))
+                {
+                    selected.Add(car.CarIdx);
+                }
             }
 
             return selected;
@@ -1146,6 +1228,11 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             .Select(state => ToGapSeriesSelection(state, now))
             .OrderBy(selection => selection.State.LastGapSeconds)
             .ToArray();
+    }
+
+    private static bool HasGapComparisonSeries(IReadOnlyList<DesignV2GapSeriesSelection> selectedSeries)
+    {
+        return selectedSeries.Any(selection => !selection.State.IsClassLeader);
     }
 
     private bool ShouldKeepGapSeriesVisible(DesignV2GapCarRenderState state, double axisSeconds)
@@ -1223,8 +1310,22 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             && Math.Abs(candidateGapLaps - referenceGapLaps) < 0.95d;
     }
 
+    private static bool IsLappedGraphGap(LiveClassGapCar car, double? lapReferenceSeconds)
+    {
+        return DesignV2GapSeconds(car, lapReferenceSeconds) is { } gapSeconds
+            && lapReferenceSeconds is { } lapSeconds
+            && IsValidLapReference(lapSeconds)
+            && gapSeconds >= lapSeconds * 0.95d;
+    }
+
     private DesignV2GraphBody BuildGapGraphBody(IReadOnlyList<DesignV2GapSeriesSelection> selectedSeries, LiveTelemetrySnapshot snapshot)
     {
+        var hasComparisonSeries = HasGapComparisonSeries(selectedSeries);
+        if (!hasComparisonSeries)
+        {
+            selectedSeries = [];
+        }
+
         var endSeconds = _latestGapAxisSeconds ?? 0d;
         var anchorSeconds = _gapTrendStartAxisSeconds ?? FirstVisibleGapAxisSeconds(selectedSeries) ?? endSeconds;
         var elapsedSeconds = Math.Max(0d, endSeconds - anchorSeconds);
@@ -1242,6 +1343,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             endSeconds = anchorSeconds + durationSeconds;
         }
 
+        var comparisonLabel = DesignV2GapComparisonLabel();
         var trendMetrics = BuildDesignV2GapTrendMetrics();
         var activeThreat = ActiveDesignV2GapThreat(trendMetrics);
         var threatCarIdx = activeThreat?.Chaser?.CarIdx;
@@ -1259,7 +1361,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             .ToArray();
         var scale = SelectDesignV2GapScale(selectedSeries, startSeconds, endSeconds);
         return new DesignV2GraphBody(
-            _gapPoints.ToArray(),
+            hasComparisonSeries ? _gapPoints.ToArray() : Array.Empty<double>(),
             series,
             _gapWeather.Where(point => point.AxisSeconds >= startSeconds && point.AxisSeconds <= endSeconds).ToArray(),
             _gapLeaderChangeMarkers.Where(marker => marker.AxisSeconds >= startSeconds && marker.AxisSeconds <= endSeconds).ToArray(),
@@ -1273,6 +1375,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             ActiveThreat: activeThreat,
             ThreatCarIdx: threatCarIdx,
             MetricDeadbandSeconds: GapMetricDeadbandSeconds(),
+            ComparisonLabel: comparisonLabel,
             Scale: scale);
     }
 
@@ -1286,28 +1389,120 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         }
 
         var latest = _latestGapAxisSeconds ?? 0d;
+        var fiveLapMetric = BuildDesignV2GapTrendMetric("5L", lapReferenceSeconds * 5d, 5d, latest, referenceState);
+        var tenLapMetric = BuildDesignV2GapTrendMetric("10L", lapReferenceSeconds * 10d, 10d, latest, referenceState);
+        var paceMetrics = new[]
+        {
+            fiveLapMetric,
+            tenLapMetric
+        };
+        var threatCarIdx = ActiveDesignV2GapThreat(paceMetrics)?.Chaser?.CarIdx;
+        return paceMetrics
+            .Concat(BuildDesignV2GapPitTrendMetrics(referenceState, threatCarIdx))
+            .Append(BuildDesignV2GapStintTrendMetric(referenceState, threatCarIdx))
+            .Append(BuildDesignV2GapTireTrendMetric(referenceState, threatCarIdx))
+            .Concat(BuildDesignV2GapExtraTrendMetrics(referenceState, threatCarIdx))
+            .ToArray();
+    }
+
+    private DesignV2GapTrendMetric BuildDesignV2GapStintTrendMetric(
+        DesignV2GapCarRenderState referenceState,
+        int? threatCarIdx)
+    {
+        var threatState = threatCarIdx is { } carIdx && _gapCarRenderStates.TryGetValue(carIdx, out var state)
+            ? state
+            : null;
+        var comparisonState = LatestDesignV2GapTrendPoint(referenceState.CarIdx) is { } referenceCurrent
+            ? DesignV2GapComparisonCar(referenceState, referenceCurrent)
+            : null;
+
+        return new DesignV2GapTrendMetric(
+            "Stint",
+            null,
+            null,
+            "stint",
+            null,
+            PrimaryText: DesignV2GapStintLapText(referenceState),
+            ThreatText: DesignV2GapStintLapText(threatState),
+            ComparisonText: DesignV2GapStintLapText(comparisonState));
+    }
+
+    private IReadOnlyList<DesignV2GapTrendMetric> BuildDesignV2GapPitTrendMetrics(
+        DesignV2GapCarRenderState referenceState,
+        int? threatCarIdx)
+    {
+        var threatState = threatCarIdx is { } carIdx && _gapCarRenderStates.TryGetValue(carIdx, out var state)
+            ? state
+            : null;
+        var comparisonState = LatestDesignV2GapTrendPoint(referenceState.CarIdx) is { } referenceCurrent
+            ? DesignV2GapComparisonCar(referenceState, referenceCurrent)
+            : null;
+        var primaryPit = DesignV2GapPitMetricValue(referenceState);
+        var comparisonPit = DesignV2GapPitMetricValue(comparisonState);
+        var threatPit = DesignV2GapPitMetricValue(threatState);
         return new[]
         {
-            BuildDesignV2GapTrendMetric("5L", lapReferenceSeconds * 5d, 5d, latest, referenceState),
-            BuildDesignV2GapTrendMetric("10L", lapReferenceSeconds * 10d, 10d, latest, referenceState),
-            BuildDesignV2GapStintTrendMetric(latest, referenceState)
+            new DesignV2GapTrendMetric("Pit", null, null, "pit", null, primaryPit, threatPit, comparisonPit),
+            new DesignV2GapTrendMetric("PLap", null, null, "pitLap", null, primaryPit, threatPit, comparisonPit)
         };
     }
 
-    private DesignV2GapTrendMetric BuildDesignV2GapStintTrendMetric(double latest, DesignV2GapCarRenderState referenceState)
+    private DesignV2GapTrendMetric BuildDesignV2GapTireTrendMetric(
+        DesignV2GapCarRenderState referenceState,
+        int? threatCarIdx)
     {
-        if (_currentGapFuelStintStartAxisSeconds is not { } stintStart)
-        {
-            return new DesignV2GapTrendMetric("stint", null, null, "unavailable", null);
-        }
+        var threatState = threatCarIdx is { } carIdx && _gapCarRenderStates.TryGetValue(carIdx, out var state)
+            ? state
+            : null;
+        var comparisonState = LatestDesignV2GapTrendPoint(referenceState.CarIdx) is { } referenceCurrent
+            ? DesignV2GapComparisonCar(referenceState, referenceCurrent)
+            : null;
+        var primaryTire = DesignV2GapTireMetricValue(referenceState);
+        var threatTire = DesignV2GapTireMetricValue(threatState);
+        var comparisonTire = DesignV2GapTireMetricValue(comparisonState);
+        return new DesignV2GapTrendMetric(
+            "Tire",
+            null,
+            null,
+            "tire",
+            null,
+            PrimaryTire: primaryTire,
+            ThreatTire: threatTire,
+            ComparisonTire: comparisonTire);
+    }
 
-        var lookbackSeconds = latest - stintStart;
-        if (!IsFinite(lookbackSeconds) || lookbackSeconds < 5d)
-        {
-            return new DesignV2GapTrendMetric("stint", null, null, "warming", "out lap");
-        }
+    private IReadOnlyList<DesignV2GapTrendMetric> BuildDesignV2GapExtraTrendMetrics(
+        DesignV2GapCarRenderState referenceState,
+        int? threatCarIdx)
+    {
+        var threatState = threatCarIdx is { } carIdx && _gapCarRenderStates.TryGetValue(carIdx, out var state)
+            ? state
+            : null;
+        var comparisonState = LatestDesignV2GapTrendPoint(referenceState.CarIdx) is { } referenceCurrent
+            ? DesignV2GapComparisonCar(referenceState, referenceCurrent)
+            : null;
 
-        return BuildDesignV2GapTrendMetric("stint", lookbackSeconds, null, latest, referenceState);
+        return new[]
+        {
+            new DesignV2GapTrendMetric(
+                "Last",
+                null,
+                null,
+                "last",
+                null,
+                PrimaryText: DesignV2GapLapTimeText(referenceState.LastLapTimeSeconds),
+                ThreatText: DesignV2GapLapTimeText(threatState?.LastLapTimeSeconds),
+                ComparisonText: DesignV2GapLapTimeText(comparisonState?.LastLapTimeSeconds)),
+            new DesignV2GapTrendMetric(
+                "Status",
+                null,
+                null,
+                "status",
+                null,
+                PrimaryText: DesignV2GapStatusText(referenceState),
+                ThreatText: DesignV2GapStatusText(threatState),
+                ComparisonText: DesignV2GapStatusText(comparisonState))
+        };
     }
 
     private DesignV2GapTrendMetric BuildDesignV2GapTrendMetric(
@@ -1325,24 +1520,36 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         }
 
         var targetAxisSeconds = latest - lookbackSeconds;
-        if (DesignV2GapLeaderChangedBetween(targetAxisSeconds, latest))
-        {
-            return new DesignV2GapTrendMetric(label, null, null, "leaderChanged", null);
-        }
-
+        var chaser = StrongestDesignV2GapBehindGain(referenceState, referenceCurrent, targetAxisSeconds, latest);
         if (DesignV2GapTrendPointNear(referenceState.CarIdx, targetAxisSeconds) is not { } referencePast)
         {
             return new DesignV2GapTrendMetric(
                 label,
                 null,
-                null,
-                "warming",
+                chaser,
+                chaser is null ? "warming" : "ready",
                 DesignV2GapWarmupLabel(referenceState.CarIdx, latest, targetLaps));
         }
 
-        var focusGapChangeSeconds = referenceCurrent.GapSeconds - referencePast.GapSeconds;
-        var chaser = StrongestDesignV2GapBehindGain(referenceState, referenceCurrent, referencePast, targetAxisSeconds);
-        return new DesignV2GapTrendMetric(label, focusGapChangeSeconds, chaser, "ready", null);
+        var comparisonState = DesignV2GapComparisonCar(referenceState, referenceCurrent);
+        if (comparisonState is null || LatestDesignV2GapTrendPoint(comparisonState.CarIdx) is not { } comparisonCurrent)
+        {
+            return new DesignV2GapTrendMetric(label, null, chaser, "ready", "leader");
+        }
+
+        if (DesignV2GapTrendPointNear(comparisonState.CarIdx, targetAxisSeconds) is not { } comparisonPast)
+        {
+            return new DesignV2GapTrendMetric(
+                label,
+                null,
+                chaser,
+                chaser is null ? "warming" : "ready",
+                DesignV2GapWarmupLabel(comparisonState.CarIdx, latest, targetLaps));
+        }
+
+        var currentDelta = referenceCurrent.GapSeconds - comparisonCurrent.GapSeconds;
+        var pastDelta = referencePast.GapSeconds - comparisonPast.GapSeconds;
+        return new DesignV2GapTrendMetric(label, currentDelta - pastDelta, chaser, "ready", null);
     }
 
     private string? DesignV2GapWarmupLabel(int referenceCarIdx, double latest, double? targetLaps)
@@ -1363,14 +1570,21 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private DesignV2BehindGainMetric? StrongestDesignV2GapBehindGain(
         DesignV2GapCarRenderState referenceState,
         DesignV2GapTrendPoint referenceCurrent,
-        DesignV2GapTrendPoint referencePast,
-        double targetAxisSeconds)
+        double targetAxisSeconds,
+        double latest)
     {
+        if (HasDesignV2GapPitActivityBetween(referenceState, targetAxisSeconds, latest)
+            || DesignV2GapTrendPointNear(referenceState.CarIdx, targetAxisSeconds) is not { } referencePast)
+        {
+            return null;
+        }
+
         DesignV2BehindGainMetric? best = null;
         foreach (var state in _gapCarRenderStates.Values)
         {
             if (state.CarIdx == referenceState.CarIdx
                 || state.IsReference
+                || HasDesignV2GapPitActivityBetween(state, targetAxisSeconds, latest)
                 || LatestDesignV2GapTrendPoint(state.CarIdx) is not { } current
                 || current.GapSeconds <= referenceCurrent.GapSeconds
                 || DesignV2GapTrendPointNear(state.CarIdx, targetAxisSeconds) is not { } past)
@@ -1393,6 +1607,181 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         }
 
         return best;
+    }
+
+    private DesignV2GapCarRenderState? DesignV2GapCarAhead(
+        DesignV2GapCarRenderState referenceState,
+        DesignV2GapTrendPoint referenceCurrent)
+    {
+        return _gapCarRenderStates.Values
+            .Where(state => state.CarIdx != referenceState.CarIdx && !state.IsReference)
+            .Select(state => new
+            {
+                State = state,
+                Point = LatestDesignV2GapTrendPoint(state.CarIdx)
+            })
+            .Where(item => item.Point is not null && item.Point.GapSeconds < referenceCurrent.GapSeconds - 0.001d)
+            .OrderBy(item => referenceCurrent.GapSeconds - item.Point!.GapSeconds)
+            .ThenBy(item => item.State.ClassPosition ?? int.MaxValue)
+            .FirstOrDefault()
+            ?.State;
+    }
+
+    private DesignV2GapCarRenderState? DesignV2GapComparisonCar(
+        DesignV2GapCarRenderState referenceState,
+        DesignV2GapTrendPoint referenceCurrent)
+    {
+        return DesignV2GapCarAhead(referenceState, referenceCurrent)
+            ?? DesignV2GapCarBehind(referenceState, referenceCurrent);
+    }
+
+    private DesignV2GapCarRenderState? DesignV2GapCarBehind(
+        DesignV2GapCarRenderState referenceState,
+        DesignV2GapTrendPoint referenceCurrent)
+    {
+        return _gapCarRenderStates.Values
+            .Where(state => state.CarIdx != referenceState.CarIdx && !state.IsReference)
+            .Select(state => new
+            {
+                State = state,
+                Point = LatestDesignV2GapTrendPoint(state.CarIdx)
+            })
+            .Where(item => item.Point is not null && item.Point.GapSeconds > referenceCurrent.GapSeconds + 0.001d)
+            .OrderBy(item => item.Point!.GapSeconds - referenceCurrent.GapSeconds)
+            .ThenBy(item => item.State.ClassPosition ?? int.MaxValue)
+            .FirstOrDefault()
+            ?.State;
+    }
+
+    private string DesignV2GapComparisonLabel()
+    {
+        var referenceState = _gapCarRenderStates.Values.FirstOrDefault(state => state.IsReference);
+        if (referenceState is null || LatestDesignV2GapTrendPoint(referenceState.CarIdx) is not { } referenceCurrent)
+        {
+            return "--";
+        }
+
+        var comparisonState = DesignV2GapComparisonCar(referenceState, referenceCurrent);
+        return comparisonState?.ClassPosition is > 0
+            ? $"P{comparisonState.ClassPosition.Value}"
+            : "--";
+    }
+
+    private DesignV2PitMetricValue? DesignV2GapPitMetricValue(DesignV2GapCarRenderState? state)
+    {
+        if (state is null)
+        {
+            return null;
+        }
+
+        if (state.IsOnPitRoad && state.CurrentPitEntryAxisSeconds is { } entry)
+        {
+            var latest = _latestGapAxisSeconds ?? state.LastSeenAxisSeconds;
+            return new DesignV2PitMetricValue(
+                Math.Max(0d, latest - entry),
+                state.CurrentPitEntryLap ?? state.LastPitLap,
+                true);
+        }
+
+        return state.LastPitDurationSeconds is { } duration
+            ? new DesignV2PitMetricValue(duration, state.LastPitLap, false)
+            : null;
+    }
+
+    private static DesignV2TireMetricValue? DesignV2GapTireMetricValue(DesignV2GapCarRenderState? state)
+    {
+        return string.IsNullOrWhiteSpace(state?.TireShortLabel)
+            ? null
+            : new DesignV2TireMetricValue(state.TireLabel, state.TireShortLabel, state.TireIsWet == true);
+    }
+
+    private static string DesignV2GapStintLapText(DesignV2GapCarRenderState? state)
+    {
+        if (state is null)
+        {
+            return "--";
+        }
+
+        if (state.CurrentLap is { } currentLap
+            && (state.LastPitLap ?? state.CurrentPitEntryLap) is { } pitLap
+            && currentLap >= pitLap)
+        {
+            return DesignV2GapStintLapsText(currentLap - pitLap);
+        }
+
+        return "--";
+    }
+
+    private static string DesignV2GapStintLapsText(double laps)
+    {
+        if (!IsFinite(laps) || laps < 0d)
+        {
+            return "--";
+        }
+
+        var rounded = Math.Round(laps);
+        return rounded >= 1d && Math.Abs(laps - rounded) <= 0.05d
+            ? $"{rounded.ToString("0", System.Globalization.CultureInfo.InvariantCulture)}L"
+            : $"{laps.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)}L";
+    }
+
+    private static string DesignV2GapLapTimeText(double? seconds)
+    {
+        if (seconds is not { } value || !IsFinite(value) || value <= 0d)
+        {
+            return "--";
+        }
+
+        var minutes = (int)(value / 60d);
+        var remainder = value - minutes * 60d;
+        return minutes > 0
+            ? $"{minutes.ToString(System.Globalization.CultureInfo.InvariantCulture)}:{remainder.ToString("00.000", System.Globalization.CultureInfo.InvariantCulture)}"
+            : remainder.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static string DesignV2GapStatusText(DesignV2GapCarRenderState? state)
+    {
+        if (state is null)
+        {
+            return "--";
+        }
+
+        if (state.IsOnPitRoad || state.OnPitRoad == true)
+        {
+            return "Pit";
+        }
+
+        return state.TrackSurface switch
+        {
+            null => "Track",
+            GapOnTrackSurface => "Track",
+            0 => "Off",
+            1 => "Off",
+            2 => "Out",
+            _ => "Off"
+        };
+    }
+
+    private static bool HasDesignV2GapPitActivityBetween(
+        DesignV2GapCarRenderState state,
+        double startSeconds,
+        double endSeconds)
+    {
+        if (!IsFinite(startSeconds) || !IsFinite(endSeconds) || endSeconds < startSeconds)
+        {
+            return false;
+        }
+
+        if (state.IsOnPitRoad
+            && state.CurrentPitEntryAxisSeconds is { } entry
+            && entry <= endSeconds)
+        {
+            return true;
+        }
+
+        return state.LastPitExitAxisSeconds is { } exit
+            && exit > startSeconds
+            && exit <= endSeconds;
     }
 
     private DesignV2GapTrendMetric? ActiveDesignV2GapThreat(IReadOnlyList<DesignV2GapTrendMetric> metrics)
@@ -1432,18 +1821,18 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             : null;
     }
 
-    private bool DesignV2GapLeaderChangedBetween(double startSeconds, double endSeconds)
-    {
-        return _gapLeaderChangeMarkers.Any(marker => marker.AxisSeconds > startSeconds && marker.AxisSeconds <= endSeconds);
-    }
-
     private IReadOnlyList<DesignV2GapTrendMetric> DefaultDesignV2GapTrendMetrics(string state)
     {
         return new[]
         {
             new DesignV2GapTrendMetric("5L", null, null, state, null),
             new DesignV2GapTrendMetric("10L", null, null, state, null),
-            new DesignV2GapTrendMetric("stint", null, null, state, null)
+            new DesignV2GapTrendMetric("Pit", null, null, state, null),
+            new DesignV2GapTrendMetric("PLap", null, null, state, null),
+            new DesignV2GapTrendMetric("Stint", null, null, state, null),
+            new DesignV2GapTrendMetric("Tire", null, null, state, null),
+            new DesignV2GapTrendMetric("Last", null, null, state, null),
+            new DesignV2GapTrendMetric("Status", null, null, state, null)
         };
     }
 
@@ -1676,6 +2065,17 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         return car.GapLapsToClassLeader is { } laps && IsFinite(laps) && laps >= 0d
             ? laps * (lapReferenceSeconds is { } lapSeconds && IsFinite(lapSeconds) && lapSeconds > 20d ? lapSeconds : GapDefaultLapReferenceSeconds)
             : null;
+    }
+
+    private static bool ShouldConnectGapSeriesPoint(double previousSeconds, double nextSeconds, double? lapReferenceSeconds)
+    {
+        if (!IsFinite(previousSeconds) || !IsFinite(nextSeconds))
+        {
+            return false;
+        }
+
+        var maximumJump = Math.Max(8d, Math.Min(45d, (lapReferenceSeconds ?? 90d) * 0.25d));
+        return Math.Abs(nextSeconds - previousSeconds) <= maximumJump;
     }
 
     private static double? NormalizedDesignV2GapLaps(LiveClassGapCar car, double? lapReferenceSeconds)
@@ -2810,6 +3210,11 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     private static float FocusedGapMetricsTableWidth(RectangleF frame)
     {
+        if (frame.Height < GapMetricsMinimumTableHeight)
+        {
+            return 0f;
+        }
+
         var availableAfterTable = frame.Width
             - 58f
             - GapEndpointLabelLaneWidth
@@ -2825,7 +3230,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             return;
         }
 
-        var text = $"THREAT {chaser.Label} {FormatGapChangeSeconds(chaser.GainSeconds)} {metric.Label}";
+        var text = $"Threat {chaser.Label} {FormatFocusedTrendChangeSeconds(-chaser.GainSeconds)} {metric.Label}";
         using var font = FontOf(8.5f, FontStyle.Bold);
         var size = graphics.MeasureString(text, font);
         var x = Math.Min(Math.Max(plot.Left + 2f, plot.Left + plot.Width / 2f - size.Width / 2f), plot.Right - size.Width - 8f);
@@ -2840,37 +3245,62 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         FillRounded(graphics, rect, 3f, Color.FromArgb(188, 18, 24, 28), Color.FromArgb(38, TextPrimary));
         using var titleFont = FontOf(10f, FontStyle.Bold);
         using var headerFont = FontOf(8f);
-        using var rowFont = FontOf(9f);
-        DrawText(graphics, "TREND", titleFont, TextPrimary, new RectangleF(rect.Left + 8f, rect.Top + 4f, rect.Width - 16f, 14f));
-        DrawText(graphics, "win", headerFont, TextMuted, new RectangleF(rect.Left + 8f, rect.Top + 20f, 32f, 12f));
-        DrawText(graphics, "leader d", headerFont, TextMuted, new RectangleF(rect.Left + 43f, rect.Top + 20f, 58f, 12f));
-        DrawText(graphics, "threat", headerFont, TextMuted, new RectangleF(rect.Left + 104f, rect.Top + 20f, rect.Width - 110f, 12f));
+        var rowHeight = Math.Max(9.5f, Math.Min(26f, (rect.Height - 8f - 38f) / Math.Max(1, graph.TrendMetrics.Count)));
+        var rowTextHeight = Math.Max(10f, Math.Min(14f, rowHeight));
+        using var rowFont = FontOf(rowHeight < 16f ? 8f : 9f);
+        DrawText(graphics, "Trend", titleFont, TextPrimary, new RectangleF(rect.Left + 8f, rect.Top + 4f, rect.Width - 16f, 14f));
+        DrawText(graphics, "Metric", headerFont, TextMuted, new RectangleF(rect.Left + 8f, rect.Top + 20f, 32f, 12f));
+        DrawText(graphics, string.IsNullOrWhiteSpace(graph.ComparisonLabel) ? "--" : graph.ComparisonLabel, headerFont, TextMuted, new RectangleF(rect.Left + 43f, rect.Top + 20f, 58f, 12f));
+        DrawText(graphics, "Threat", headerFont, TextMuted, new RectangleF(rect.Left + 104f, rect.Top + 20f, rect.Width - 110f, 12f));
 
         for (var index = 0; index < graph.TrendMetrics.Count; index++)
         {
             var metric = graph.TrendMetrics[index];
-            var y = rect.Top + 38f + index * 22f;
-            DrawText(graphics, metric.Label, rowFont, TextSecondary, new RectangleF(rect.Left + 8f, y, 32f, 14f));
+            var y = rect.Top + 38f + index * rowHeight;
+            DrawText(graphics, metric.Label, rowFont, TextSecondary, new RectangleF(rect.Left + 8f, y, 32f, rowTextHeight));
             DrawText(
                 graphics,
                 GapMetricValueText(metric),
                 rowFont,
                 GapMetricValueColor(metric, graph.MetricDeadbandSeconds),
-                new RectangleF(rect.Left + 43f, y, 58f, 14f));
+                new RectangleF(rect.Left + 43f, y, 58f, rowTextHeight));
             DrawText(
                 graphics,
                 GapMetricChaserText(metric),
                 rowFont,
                 GapMetricChaserColor(metric),
-                new RectangleF(rect.Left + 104f, y, rect.Width - 110f, 14f));
+                new RectangleF(rect.Left + 104f, y, rect.Width - 110f, rowTextHeight));
         }
     }
 
     private static string GapMetricValueText(DesignV2GapTrendMetric metric)
     {
+        if (string.Equals(metric.State, "pit", StringComparison.Ordinal))
+        {
+            return GapPitSecondsText(metric.ComparisonPit);
+        }
+
+        if (string.Equals(metric.State, "pitLap", StringComparison.Ordinal))
+        {
+            return GapPitLapText(metric.ComparisonPit);
+        }
+
+        if (string.Equals(metric.State, "tire", StringComparison.Ordinal))
+        {
+            return GapTireText(metric.ComparisonTire);
+        }
+
+        if (string.Equals(metric.State, "stint", StringComparison.Ordinal)
+            || string.Equals(metric.State, "last", StringComparison.Ordinal)
+            || string.Equals(metric.State, "status", StringComparison.Ordinal))
+        {
+            return string.IsNullOrWhiteSpace(metric.ComparisonText) ? "--" : metric.ComparisonText;
+        }
+
         return metric.State switch
         {
-            "ready" when metric.FocusGapChangeSeconds is { } value => FormatGapChangeSeconds(value),
+            "ready" when metric.FocusGapChangeSeconds is { } value => FormatFocusedTrendChangeSeconds(-value),
+            "ready" when !string.IsNullOrWhiteSpace(metric.StateLabel) => metric.StateLabel,
             "warming" => string.IsNullOrWhiteSpace(metric.StateLabel) ? "--" : metric.StateLabel,
             "leaderChanged" => "leader",
             _ => "--"
@@ -2879,6 +3309,32 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     private static Color GapMetricValueColor(DesignV2GapTrendMetric metric, double deadbandSeconds)
     {
+        if (string.Equals(metric.State, "pit", StringComparison.Ordinal))
+        {
+            return GapPitSecondsComparisonColor(metric.PrimaryPit, metric.ComparisonPit);
+        }
+
+        if (string.Equals(metric.State, "pitLap", StringComparison.Ordinal))
+        {
+            return GapPitLapComparisonColor(metric.PrimaryPit, metric.ComparisonPit);
+        }
+
+        if (string.Equals(metric.State, "tire", StringComparison.Ordinal))
+        {
+            return GapTireComparisonColor(metric.PrimaryTire, metric.ComparisonTire);
+        }
+
+        if (string.Equals(metric.State, "last", StringComparison.Ordinal))
+        {
+            return GapLastLapComparisonColor(metric.PrimaryText, metric.ComparisonText);
+        }
+
+        if (string.Equals(metric.State, "stint", StringComparison.Ordinal)
+            || string.Equals(metric.State, "status", StringComparison.Ordinal))
+        {
+            return GapNeutralMetricColor(metric.ComparisonText);
+        }
+
         if (!string.Equals(metric.State, "ready", StringComparison.Ordinal) || metric.FocusGapChangeSeconds is not { } value)
         {
             return string.Equals(metric.State, "warming", StringComparison.Ordinal)
@@ -2897,9 +3353,31 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     private static string GapMetricChaserText(DesignV2GapTrendMetric metric)
     {
+        if (string.Equals(metric.State, "pit", StringComparison.Ordinal))
+        {
+            return GapPitSecondsText(metric.ThreatPit);
+        }
+
+        if (string.Equals(metric.State, "pitLap", StringComparison.Ordinal))
+        {
+            return GapPitLapText(metric.ThreatPit);
+        }
+
+        if (string.Equals(metric.State, "tire", StringComparison.Ordinal))
+        {
+            return GapTireText(metric.ThreatTire);
+        }
+
+        if (string.Equals(metric.State, "stint", StringComparison.Ordinal)
+            || string.Equals(metric.State, "last", StringComparison.Ordinal)
+            || string.Equals(metric.State, "status", StringComparison.Ordinal))
+        {
+            return string.IsNullOrWhiteSpace(metric.ThreatText) ? "--" : metric.ThreatText;
+        }
+
         return metric.State switch
         {
-            "ready" when metric.Chaser is { } chaser => $"{chaser.Label} {FormatGapChangeSeconds(chaser.GainSeconds)}",
+            "ready" when metric.Chaser is { } chaser => $"{chaser.Label} {FormatFocusedTrendChangeSeconds(-chaser.GainSeconds)}",
             "leaderChanged" => "reset",
             _ => "--"
         };
@@ -2907,9 +3385,168 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     private static Color GapMetricChaserColor(DesignV2GapTrendMetric metric)
     {
+        if (string.Equals(metric.State, "pit", StringComparison.Ordinal))
+        {
+            return GapPitSecondsComparisonColor(metric.PrimaryPit, metric.ThreatPit);
+        }
+
+        if (string.Equals(metric.State, "pitLap", StringComparison.Ordinal))
+        {
+            return GapPitLapComparisonColor(metric.PrimaryPit, metric.ThreatPit);
+        }
+
+        if (string.Equals(metric.State, "tire", StringComparison.Ordinal))
+        {
+            return GapTireComparisonColor(metric.PrimaryTire, metric.ThreatTire);
+        }
+
+        if (string.Equals(metric.State, "last", StringComparison.Ordinal))
+        {
+            return GapLastLapComparisonColor(metric.PrimaryText, metric.ThreatText);
+        }
+
+        if (string.Equals(metric.State, "stint", StringComparison.Ordinal)
+            || string.Equals(metric.State, "status", StringComparison.Ordinal))
+        {
+            return GapNeutralMetricColor(metric.ThreatText);
+        }
+
         return string.Equals(metric.State, "ready", StringComparison.Ordinal) && metric.Chaser is not null
             ? Error
             : Color.FromArgb(184, TextMuted);
+    }
+
+    private static string GapPitSecondsText(DesignV2PitMetricValue? pit)
+    {
+        if (pit?.Seconds is not { } seconds || !IsFinite(seconds))
+        {
+            return "--";
+        }
+
+        return seconds >= 60d
+            ? $"{Math.Floor(seconds / 60d):0}:{seconds % 60d:00}"
+            : $"{seconds:0}s";
+    }
+
+    private static string GapPitLapText(DesignV2PitMetricValue? pit)
+    {
+        return pit?.Lap is { } lap && lap > 0
+            ? $"L{lap}"
+            : "--";
+    }
+
+    private static Color GapPitSecondsComparisonColor(DesignV2PitMetricValue? focusPit, DesignV2PitMetricValue? comparisonPit)
+    {
+        if (comparisonPit?.Seconds is not { } comparisonSeconds || !IsFinite(comparisonSeconds))
+        {
+            return Color.FromArgb(184, TextMuted);
+        }
+
+        if (focusPit?.Seconds is not { } focusSeconds || !IsFinite(focusSeconds))
+        {
+            return TextSecondary;
+        }
+
+        var delta = focusSeconds - comparisonSeconds;
+        if (Math.Abs(delta) <= 1d)
+        {
+            return TextSecondary;
+        }
+
+        return delta < 0d ? Green : Error;
+    }
+
+    private static Color GapPitLapComparisonColor(DesignV2PitMetricValue? focusPit, DesignV2PitMetricValue? comparisonPit)
+    {
+        if (comparisonPit?.Lap is not { } comparisonLap || comparisonLap <= 0)
+        {
+            return Color.FromArgb(184, TextMuted);
+        }
+
+        if (focusPit?.Lap is not { } focusLap || focusLap <= 0 || focusLap == comparisonLap)
+        {
+            return TextSecondary;
+        }
+
+        return focusLap < comparisonLap ? Green : Error;
+    }
+
+    private static string GapTireText(DesignV2TireMetricValue? tire)
+    {
+        return !string.IsNullOrWhiteSpace(tire?.ShortLabel)
+            ? tire.ShortLabel!
+            : !string.IsNullOrWhiteSpace(tire?.Label)
+                ? tire.Label!
+                : "--";
+    }
+
+    private static Color GapTireComparisonColor(DesignV2TireMetricValue? focusTire, DesignV2TireMetricValue? comparisonTire)
+    {
+        var comparison = FirstNonEmpty(comparisonTire?.ShortLabel, comparisonTire?.Label);
+        if (string.IsNullOrWhiteSpace(comparison))
+        {
+            return Color.FromArgb(184, TextMuted);
+        }
+
+        var focus = FirstNonEmpty(focusTire?.ShortLabel, focusTire?.Label);
+        if (string.IsNullOrWhiteSpace(focus)
+            || string.Equals(focus, comparison, StringComparison.OrdinalIgnoreCase))
+        {
+            return comparisonTire?.IsWet == true ? Cyan : TextSecondary;
+        }
+
+        return comparisonTire?.IsWet == true ? Cyan : Amber;
+    }
+
+    private static Color GapLastLapComparisonColor(string? focusText, string? comparisonText)
+    {
+        var focus = LapTimeTextToSeconds(focusText);
+        var comparison = LapTimeTextToSeconds(comparisonText);
+        if (!comparison.HasValue)
+        {
+            return Color.FromArgb(184, TextMuted);
+        }
+
+        if (!focus.HasValue)
+        {
+            return TextSecondary;
+        }
+
+        var delta = comparison.Value - focus.Value;
+        if (Math.Abs(delta) <= 0.05d)
+        {
+            return TextSecondary;
+        }
+
+        return delta < 0d ? Error : Green;
+    }
+
+    private static Color GapNeutralMetricColor(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) || string.Equals(value, "--", StringComparison.Ordinal)
+            ? Color.FromArgb(184, TextMuted)
+            : TextSecondary;
+    }
+
+    private static double? LapTimeTextToSeconds(string? value)
+    {
+        var text = value?.Trim();
+        if (string.IsNullOrWhiteSpace(text) || string.Equals(text, "--", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var parts = text.Split(':', 2);
+        if (parts.Length == 2
+            && double.TryParse(parts[0], System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var minutes)
+            && double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var seconds))
+        {
+            return minutes * 60d + seconds;
+        }
+
+        return double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var plainSeconds)
+            ? plainSeconds
+            : null;
     }
 
     private void DrawGapEndpointLabels(
@@ -4828,6 +5465,11 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             : $"{(seconds > 0d ? "+" : string.Empty)}{seconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)}";
     }
 
+    private static string FormatFocusedTrendChangeSeconds(double seconds)
+    {
+        return FormatGapChangeSeconds(seconds);
+    }
+
     private static double NiceCeiling(double value)
     {
         if (!IsFinite(value) || value <= 0d)
@@ -5074,10 +5716,11 @@ internal sealed record DesignV2GraphBody(
     DesignV2GapTrendMetric? ActiveThreat,
     int? ThreatCarIdx,
     double MetricDeadbandSeconds,
+    string ComparisonLabel = "--",
     DesignV2GapScale? Scale = null) : DesignV2Body
 {
     public DesignV2GraphBody(IReadOnlyList<double> points)
-        : this(points, [], [], [], [], 0d, 0d, null, null, 0, [], null, null, 0d)
+        : this(points, [], [], [], [], 0d, 0d, null, null, 0, [], null, null, 0d, "--")
     {
     }
 }
@@ -5087,12 +5730,31 @@ internal sealed record DesignV2GapTrendMetric(
     double? FocusGapChangeSeconds,
     DesignV2BehindGainMetric? Chaser,
     string State,
-    string? StateLabel);
+    string? StateLabel,
+    DesignV2PitMetricValue? PrimaryPit = null,
+    DesignV2PitMetricValue? ThreatPit = null,
+    DesignV2PitMetricValue? ComparisonPit = null,
+    DesignV2TireMetricValue? PrimaryTire = null,
+    DesignV2TireMetricValue? ThreatTire = null,
+    DesignV2TireMetricValue? ComparisonTire = null,
+    string? PrimaryText = null,
+    string? ThreatText = null,
+    string? ComparisonText = null);
 
 internal sealed record DesignV2BehindGainMetric(
     int CarIdx,
     string Label,
     double GainSeconds);
+
+internal sealed record DesignV2PitMetricValue(
+    double? Seconds,
+    int? Lap,
+    bool IsActive);
+
+internal sealed record DesignV2TireMetricValue(
+    string? Label,
+    string? ShortLabel,
+    bool IsWet);
 
 internal sealed record DesignV2GapScale(
     double MaxGapSeconds,
@@ -5218,6 +5880,34 @@ internal sealed class DesignV2GapCarRenderState(int carIdx)
     public int? ClassPosition { get; set; }
 
     public double? DeltaSecondsToReference { get; set; }
+
+    public int? CurrentLap { get; set; }
+
+    public string? TireLabel { get; set; }
+
+    public string? TireShortLabel { get; set; }
+
+    public bool? TireIsWet { get; set; }
+
+    public double? LastLapTimeSeconds { get; set; }
+
+    public double? BestLapTimeSeconds { get; set; }
+
+    public int? TrackSurface { get; set; }
+
+    public bool? OnPitRoad { get; set; }
+
+    public bool IsOnPitRoad { get; set; }
+
+    public double? CurrentPitEntryAxisSeconds { get; set; }
+
+    public int? CurrentPitEntryLap { get; set; }
+
+    public double? LastPitDurationSeconds { get; set; }
+
+    public int? LastPitLap { get; set; }
+
+    public double? LastPitExitAxisSeconds { get; set; }
 }
 
 internal sealed record DesignV2GapReferenceContext(int? CarIdx, int? CarClass);

@@ -366,7 +366,9 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
                 _series[car.CarIdx] = points;
             }
 
-            var startsSegment = points.Count == 0 || axisSeconds - points[^1].AxisSeconds > MissingSegmentGapSeconds;
+            var startsSegment = points.Count == 0
+                || axisSeconds - points[^1].AxisSeconds > MissingSegmentGapSeconds
+                || !ShouldConnectGapSeriesPoint(points[^1].GapSeconds, gapSeconds.Value, _lapReferenceSeconds);
             if (points.Count > 0 && points[^1].TimestampUtc == timestamp)
             {
                 points[^1] = new GapTrendPoint(timestamp, axisSeconds, gapSeconds.Value, car.IsReferenceCar, car.IsClassLeader, car.ClassPosition, points[^1].StartsSegment);
@@ -408,6 +410,11 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
             axisBounds = new Rectangle(innerBounds.Left, innerBounds.Top, AxisLabelWidth - 8, innerBounds.Height);
 
             selectedSeries = SelectChartSeries();
+            if (!HasGapComparisonSeries(selectedSeries))
+            {
+                selectedSeries = [];
+            }
+
             domain = SelectTimeDomain(selectedSeries);
             gapScale = SelectGapScale(selectedSeries, domain.StartSeconds, domain.EndSeconds);
             prepareSucceeded = true;
@@ -418,6 +425,12 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
                 AppPerformanceMetricIds.OverlayGapDrawPrepare,
                 prepareStarted,
                 prepareSucceeded);
+        }
+
+        if (selectedSeries.Count == 0)
+        {
+            DrawWaitingForTiming(graphics, graphBounds);
+            return;
         }
 
         var staticStarted = Stopwatch.GetTimestamp();
@@ -729,16 +742,44 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
     private HashSet<int> SelectDesiredCarIds(IReadOnlyList<LiveClassGapCar> cars)
     {
         var selected = new HashSet<int>();
-        var reference = cars.FirstOrDefault(car => car.IsReferenceCar);
-        foreach (var car in cars.Where(car => car.IsClassLeader || car.IsReferenceCar))
+        var reference = cars.FirstOrDefault(car =>
+            car.IsReferenceCar
+            && ChartGapSeconds(car) is not null);
+        var referenceCanAnchor = reference is not null && !IsLappedGraphGap(reference);
+        foreach (var car in cars.Where(car => car.IsClassLeader || (referenceCanAnchor && car.IsReferenceCar)))
         {
             selected.Add(car.CarIdx);
+        }
+
+        if (!referenceCanAnchor)
+        {
+            foreach (var car in cars
+                .Where(car => !car.IsClassLeader && !IsLappedGraphGap(car))
+                .OrderBy(car => car.ClassPosition ?? int.MaxValue)
+                .ThenBy(car => ChartGapSeconds(car) ?? double.MaxValue)
+                .Take(Math.Max(1, _settings.GetIntegerOption(OverlayOptionKeys.GapCarsBehind, defaultValue: 5, minimum: 0, maximum: 12))))
+            {
+                selected.Add(car.CarIdx);
+            }
+
+            if (selected.Count <= 1)
+            {
+                foreach (var car in cars
+                    .Where(car => !car.IsClassLeader)
+                    .OrderBy(car => ChartGapSeconds(car) ?? double.MaxValue)
+                    .ThenBy(car => car.ClassPosition ?? int.MaxValue)
+                    .Take(Math.Max(1, _settings.GetIntegerOption(OverlayOptionKeys.GapCarsBehind, defaultValue: 5, minimum: 0, maximum: 12))))
+                {
+                    selected.Add(car.CarIdx);
+                }
+            }
+
+            return selected;
         }
 
         foreach (var car in cars
             .Where(car => !car.IsReferenceCar
                 && !car.IsClassLeader
-                && reference is not null
                 && IsSameLapReferenceCandidate(car, reference)
                 && car.DeltaSecondsToReference is not null
                 && car.DeltaSecondsToReference.Value < 0d)
@@ -751,7 +792,6 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         foreach (var car in cars
             .Where(car => !car.IsReferenceCar
                 && !car.IsClassLeader
-                && reference is not null
                 && IsSameLapReferenceCandidate(car, reference)
                 && car.DeltaSecondsToReference is not null
                 && car.DeltaSecondsToReference.Value > 0d)
@@ -787,6 +827,11 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
             .Select(state => ToSelection(state, now))
             .OrderBy(selection => selection.State.GapSortValue)
             .ToArray();
+    }
+
+    private static bool HasGapComparisonSeries(IReadOnlyList<ChartSeriesSelection> selectedSeries)
+    {
+        return selectedSeries.Any(selection => !selection.State.IsClassLeader);
     }
 
     private ChartSeriesSelection ToSelection(CarRenderState state, double now)
@@ -1517,6 +1562,29 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
             TimeRemaining: timeRemaining);
     }
 
+    private void DrawWaitingForTiming(Graphics graphics, Rectangle graphBounds)
+    {
+        using var overlayBrush = new SolidBrush(Color.FromArgb(112, 10, 16, 23));
+        graphics.FillRectangle(overlayBrush, graphBounds);
+
+        using var font = OverlayTheme.Font(_fontFamily, 10f, FontStyle.Bold);
+        using var detailFont = OverlayTheme.Font(_fontFamily, 8f);
+        using var brush = new SolidBrush(OverlayTheme.Colors.TextMuted);
+        using var format = new StringFormat
+        {
+            Alignment = StringAlignment.Center,
+            LineAlignment = StringAlignment.Center
+        };
+        graphics.DrawString("waiting for timing", font, brush, graphBounds, format);
+
+        var detailBounds = new Rectangle(
+            graphBounds.Left,
+            graphBounds.Top + graphBounds.Height / 2 + 14,
+            graphBounds.Width,
+            18);
+        graphics.DrawString("trend will populate when live gaps are grounded", detailFont, brush, detailBounds, format);
+    }
+
     private void DrawError(Graphics graphics, Rectangle graphBounds)
     {
         using var overlayBrush = new SolidBrush(Color.FromArgb(150, 42, 18, 22));
@@ -1625,6 +1693,14 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
             && Math.Abs(candidateGapLaps - referenceGapLaps) < SameLapReferenceBoundaryLaps;
     }
 
+    private bool IsLappedGraphGap(LiveClassGapCar car)
+    {
+        return ChartGapSeconds(car) is { } gapSeconds
+            && _lapReferenceSeconds is { } lapSeconds
+            && IsValidLapReference(lapSeconds)
+            && gapSeconds >= lapSeconds * SameLapReferenceBoundaryLaps;
+    }
+
     private double? NormalizedClassLeaderGapLaps(LiveClassGapCar car)
     {
         if (car.GapLapsToClassLeader is { } laps && !double.IsNaN(laps) && !double.IsInfinity(laps))
@@ -1729,6 +1805,22 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
     {
         return car.GapSecondsToClassLeader
             ?? (car.GapLapsToClassLeader is { } laps ? laps * (_lapReferenceSeconds ?? 60d) : null);
+    }
+
+    private static bool ShouldConnectGapSeriesPoint(double previousSeconds, double nextSeconds, double? lapReferenceSeconds)
+    {
+        if (!IsFinite(previousSeconds) || !IsFinite(nextSeconds))
+        {
+            return false;
+        }
+
+        var maximumJump = Math.Max(8d, Math.Min(45d, (lapReferenceSeconds ?? 90d) * 0.25d));
+        return Math.Abs(nextSeconds - previousSeconds) <= maximumJump;
+    }
+
+    private static bool IsFinite(double value)
+    {
+        return !double.IsNaN(value) && !double.IsInfinity(value);
     }
 
     private static WeatherCondition SelectWeatherCondition(LiveTelemetrySnapshot snapshot)

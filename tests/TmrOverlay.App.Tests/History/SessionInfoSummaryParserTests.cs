@@ -76,4 +76,34 @@ DriverInfo:
                 Assert.Equal(4.5d, row.TimeSeconds!.Value);
             });
     }
+
+    [Fact]
+    public void Parse_ReadsDriverTireCompoundDefinitions()
+    {
+        var context = SessionInfoSummaryParser.Parse("""
+DriverInfo:
+ DriverCarIdx: 10
+ DriverTires:
+ - TireIndex: 0
+   TireCompoundType: "Hard"
+ - TireIndex: 1
+   TireCompoundType: "Wet"
+ Drivers:
+ - CarIdx: 10
+   UserName: Driver One
+""");
+
+        Assert.Collection(
+            context.TireCompounds,
+            tire =>
+            {
+                Assert.Equal(0, tire.TireIndex);
+                Assert.Equal("Hard", tire.TireCompoundType);
+            },
+            tire =>
+            {
+                Assert.Equal(1, tire.TireIndex);
+                Assert.Equal("Wet", tire.TireCompoundType);
+            });
+    }
 }

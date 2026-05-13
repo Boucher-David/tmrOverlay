@@ -247,6 +247,9 @@ Primary source:
 - `CarIdxGear`
 - `CarIdxBestLapTime`
 - `CarIdxTireCompound`
+- `CarIdxTireCompound` and `PlayerTireCompound` values are indices into `DriverInfo.DriverTires[]`.
+  Treat `-1` as unknown/unavailable, not as wet or as a wraparound list index.
+  `CarIdxQualTireCompound` is qualifying metadata and should not be used as current tire state.
 - `CamCarIdx`
 - `CarLeftRight`
 

@@ -22,6 +22,8 @@ internal sealed class HistoricalSessionContext
 
     public IReadOnlyList<HistoricalSessionDriver> Drivers { get; init; } = [];
 
+    public IReadOnlyList<HistoricalSessionTireCompound> TireCompounds { get; init; } = [];
+
     public IReadOnlyList<HistoricalTrackSector> Sectors { get; init; } = [];
 
     public IReadOnlyList<HistoricalSessionResultPosition> ResultPositions { get; init; } = [];
@@ -223,6 +225,13 @@ internal sealed class HistoricalSessionDriver
     public string? CarClassColorHex { get; init; }
 
     public bool? IsSpectator { get; init; }
+}
+
+internal sealed class HistoricalSessionTireCompound
+{
+    public int? TireIndex { get; init; }
+
+    public string? TireCompoundType { get; init; }
 }
 
 internal sealed class HistoricalSessionResultPosition
@@ -544,6 +553,7 @@ internal sealed record HistoricalTelemetrySample(
     int? FocusPosition = null,
     int? FocusClassPosition = null,
     int? FocusCarClass = null,
+    int? FocusTireCompound = null,
     bool? FocusOnPitRoad = null,
     int? FocusTrackSurface = null,
     int? TeamLapCompleted = null,
@@ -555,6 +565,7 @@ internal sealed record HistoricalTelemetrySample(
     int? TeamPosition = null,
     int? TeamClassPosition = null,
     int? TeamCarClass = null,
+    int? TeamTireCompound = null,
     int? LeaderCarIdx = null,
     int? LeaderLapCompleted = null,
     double? LeaderLapDistPct = null,
@@ -562,6 +573,7 @@ internal sealed record HistoricalTelemetrySample(
     double? LeaderEstimatedTimeSeconds = null,
     double? LeaderLastLapTimeSeconds = null,
     double? LeaderBestLapTimeSeconds = null,
+    int? LeaderTireCompound = null,
     int? ClassLeaderCarIdx = null,
     int? ClassLeaderLapCompleted = null,
     double? ClassLeaderLapDistPct = null,
@@ -569,6 +581,7 @@ internal sealed record HistoricalTelemetrySample(
     double? ClassLeaderEstimatedTimeSeconds = null,
     double? ClassLeaderLastLapTimeSeconds = null,
     double? ClassLeaderBestLapTimeSeconds = null,
+    int? ClassLeaderTireCompound = null,
     int? FocusClassLeaderCarIdx = null,
     int? FocusClassLeaderLapCompleted = null,
     double? FocusClassLeaderLapDistPct = null,
@@ -576,6 +589,7 @@ internal sealed record HistoricalTelemetrySample(
     double? FocusClassLeaderEstimatedTimeSeconds = null,
     double? FocusClassLeaderLastLapTimeSeconds = null,
     double? FocusClassLeaderBestLapTimeSeconds = null,
+    int? FocusClassLeaderTireCompound = null,
     int? PlayerTrackSurface = null,
     int? CarLeftRight = null,
     IReadOnlyList<HistoricalCarProximity>? NearbyCars = null,
@@ -635,4 +649,5 @@ internal sealed record HistoricalCarProximity(
     int? ClassPosition,
     int? CarClass,
     int? TrackSurface,
-    bool? OnPitRoad);
+    bool? OnPitRoad,
+    int? TireCompound = null);
