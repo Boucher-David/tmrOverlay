@@ -102,7 +102,7 @@ WINDOWS_EXPECTED_PNGS = {
     "states/pit-service-active.png": (420, 330),
     "states/input-state-trace.png": (520, 260),
     "states/car-radar-side-pressure.png": (300, 300),
-    "states/gap-to-leader-trend.png": (560, 260),
+    "states/gap-to-leader-trend.png": (720, 360),
 }
 
 WINDOWS_EXPECTED_SIZE_SOURCES = {

@@ -705,6 +705,23 @@ internal sealed record LiveLeaderGapSnapshot(
             : sample.FocusClassPosition;
     }
 
+    private static int? FocusLapCompleted(HistoricalTelemetrySample sample)
+    {
+        if (!HasFocus(sample))
+        {
+            return null;
+        }
+
+        if (HasExplicitNonPlayerFocus(sample))
+        {
+            return sample.FocusLapCompleted;
+        }
+
+        return FocusUsesPlayerLocalFallback(sample)
+            ? sample.FocusLapCompleted ?? sample.TeamLapCompleted ?? sample.LapCompleted
+            : sample.FocusLapCompleted;
+    }
+
     private static int? FocusCarClass(HistoricalTelemetrySample sample)
     {
         if (!HasFocus(sample))
@@ -737,6 +754,40 @@ internal sealed record LiveLeaderGapSnapshot(
         return FocusUsesPlayerLocalFallback(sample)
             ? sample.FocusF2TimeSeconds ?? sample.TeamF2TimeSeconds
             : sample.FocusF2TimeSeconds;
+    }
+
+    private static bool? FocusOnPitRoad(HistoricalTelemetrySample sample)
+    {
+        if (!HasFocus(sample))
+        {
+            return null;
+        }
+
+        if (HasExplicitNonPlayerFocus(sample))
+        {
+            return sample.FocusOnPitRoad;
+        }
+
+        return FocusUsesPlayerLocalFallback(sample)
+            ? sample.FocusOnPitRoad ?? sample.TeamOnPitRoad ?? sample.OnPitRoad
+            : sample.FocusOnPitRoad;
+    }
+
+    private static int? FocusTrackSurface(HistoricalTelemetrySample sample)
+    {
+        if (!HasFocus(sample))
+        {
+            return null;
+        }
+
+        if (HasExplicitNonPlayerFocus(sample))
+        {
+            return sample.FocusTrackSurface;
+        }
+
+        return FocusUsesPlayerLocalFallback(sample)
+            ? sample.FocusTrackSurface ?? sample.PlayerTrackSurface
+            : sample.FocusTrackSurface;
     }
 
     private static double? FocusProgress(HistoricalTelemetrySample sample)
