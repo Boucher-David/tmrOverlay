@@ -314,33 +314,145 @@
       font-weight: 800;
     }
 
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(120px, 1fr));
-      gap: 10px;
+    .grid,
+    .metric-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
       min-width: 420px;
     }
 
     .metric {
-      min-height: 58px;
-      padding: 9px 10px;
+      display: grid;
+      grid-template-columns: minmax(92px, 38%) minmax(0, 62%);
+      align-items: center;
+      min-height: 28px;
+      padding: 0;
       border: 1px solid var(--tmr-border-muted);
       border-radius: 5px;
       background: var(--tmr-surface-raised);
+      overflow: hidden;
     }
 
     .metric .label {
+      min-width: 0;
+      padding: 6px 8px 6px 10px;
       color: var(--tmr-text-muted);
       font-size: 10px;
       font-weight: 800;
       text-transform: uppercase;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .metric .value {
-      margin-top: 3px;
-      font-size: 18px;
+      min-width: 0;
+      padding: 6px 10px 6px 8px;
+      border-left: 1px solid rgba(var(--tmr-text-muted-rgb), 0.09);
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
       font-weight: 800;
       color: var(--tmr-text);
+      text-align: right;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .metric.class-colored {
+      border-color: var(--metric-border, var(--tmr-border-muted));
+      background: var(--metric-bg, var(--tmr-surface-raised));
+    }
+
+    .metric.class-colored .label {
+      box-shadow: inset 3px 0 0 var(--metric-accent, var(--tmr-cyan));
+      color: var(--tmr-text-secondary);
+    }
+
+    .metric.class-colored .value {
+      color: var(--tmr-text);
+      border-left-color: rgba(var(--tmr-text-muted-rgb), 0.13);
+    }
+
+    .metric.segmented .value {
+      padding: 3px;
+      overflow: visible;
+      text-overflow: clip;
+    }
+
+    .value-segments {
+      display: grid;
+      grid-template-columns: repeat(var(--tmr-segment-count, 3), minmax(0, 1fr));
+      gap: 3px;
+      min-height: 26px;
+    }
+
+    .value-segment {
+      display: grid;
+      grid-template-rows: auto auto;
+      align-content: center;
+      min-width: 0;
+      min-height: 24px;
+      padding: 3px 5px;
+      border-radius: 3px;
+      background: rgba(var(--tmr-text-muted-rgb), 0.08);
+      color: var(--tmr-text);
+      line-height: 1.05;
+      text-align: center;
+      overflow: hidden;
+    }
+
+    .value-segment .segment-label,
+    .value-segment .segment-value {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .value-segment .segment-label {
+      color: var(--tmr-text-muted);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 8px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .value-segment .segment-value {
+      margin-top: 1px;
+      font-size: 11px;
+      font-weight: 900;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .value-segment.info {
+      background: rgba(var(--tmr-cyan-rgb), 0.13);
+      color: var(--tmr-cyan);
+    }
+
+    .value-segment.success {
+      background: rgba(var(--tmr-green-rgb), 0.13);
+      color: var(--tmr-green);
+    }
+
+    .value-segment.warning {
+      background: rgba(var(--tmr-amber-rgb), 0.15);
+      color: var(--tmr-amber);
+    }
+
+    .value-segment.modeled {
+      background: rgba(var(--tmr-magenta-rgb), 0.13);
+      color: var(--tmr-magenta);
+    }
+
+    .value-segment.error {
+      background: rgba(var(--tmr-error-rgb), 0.14);
+      color: var(--tmr-error);
+    }
+
+    .value-segment.waiting {
+      color: var(--tmr-text-muted);
     }
 
     .metric.highlight {
@@ -353,12 +465,17 @@
     }
 
     .metric-section {
-      margin-top: 10px;
+      margin-top: 8px;
       min-width: 420px;
     }
 
+    .metric-section:first-child {
+      margin-top: 0;
+    }
+
     .metric-section-title {
-      margin: 0 0 6px;
+      margin: 0 0 4px;
+      padding: 0 4px;
       color: var(--tmr-text-muted);
       font-size: 10px;
       font-weight: 800;
@@ -366,12 +483,10 @@
     }
 
     .tire-grid {
-      display: grid;
-      gap: 3px;
-      border: 1px solid var(--tmr-border-muted);
-      border-radius: 5px;
-      background: var(--tmr-surface-inset);
-      padding: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 420px;
     }
 
     .tire-grid-head,
@@ -379,7 +494,20 @@
       display: grid;
       grid-template-columns: var(--tmr-grid-columns);
       gap: 3px;
-      min-height: 24px;
+    }
+
+    .tire-grid-head {
+      min-height: 20px;
+      padding: 0 1px;
+    }
+
+    .tire-grid-row {
+      min-height: 28px;
+      border: 1px solid var(--tmr-border-muted);
+      border-radius: 5px;
+      background: var(--tmr-surface-raised);
+      padding: 3px;
+      overflow: hidden;
     }
 
     .tire-grid-header,
@@ -389,17 +517,24 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      border-radius: 3px;
-      padding: 5px 6px;
-      font-size: 11px;
       font-weight: 800;
-      line-height: 14px;
     }
 
     .tire-grid-header {
+      padding: 0 6px 3px;
       color: var(--tmr-text-muted);
+      font-size: 10px;
+      line-height: 14px;
       text-align: right;
       text-transform: uppercase;
+    }
+
+    .tire-grid-label,
+    .tire-grid-cell {
+      border-radius: 3px;
+      padding: 4px 6px;
+      font-size: 11px;
+      line-height: 13px;
     }
 
     .tire-grid-header:first-child,
@@ -407,16 +542,17 @@
       text-align: left;
     }
 
-    .tire-grid-label,
-    .tire-grid-cell {
-      background: var(--tmr-surface-raised);
-    }
-
     .tire-grid-label {
+      display: flex;
+      align-items: center;
       color: var(--tmr-text-secondary);
     }
 
     .tire-grid-cell {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      background: rgba(var(--tmr-text-muted-rgb), 0.08);
       color: var(--tmr-text);
       text-align: right;
       font-variant-numeric: tabular-nums;
@@ -424,27 +560,30 @@
 
     .tire-grid-cell.info,
     .tire-grid-row.info .tire-grid-label {
+      background: rgba(var(--tmr-cyan-rgb), 0.13);
       color: var(--tmr-cyan);
     }
 
     .tire-grid-cell.success,
     .tire-grid-row.success .tire-grid-label {
+      background: rgba(var(--tmr-green-rgb), 0.13);
       color: var(--tmr-green);
     }
 
     .tire-grid-cell.warning,
     .tire-grid-row.warning .tire-grid-label {
+      background: rgba(var(--tmr-amber-rgb), 0.15);
       color: var(--tmr-amber);
     }
 
     .tire-grid-cell.error,
     .tire-grid-row.error .tire-grid-label {
+      background: rgba(var(--tmr-error-rgb), 0.14);
       color: var(--tmr-error);
     }
 
     .graph-metrics {
       margin-bottom: 10px;
-      grid-template-columns: repeat(2, minmax(120px, 1fr));
       max-width: 620px;
     }
 

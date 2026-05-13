@@ -1,5 +1,6 @@
 using TmrOverlay.App.History;
 using TmrOverlay.App.Overlays.BrowserSources;
+using TmrOverlay.App.Overlays.PitService;
 using TmrOverlay.Core.Settings;
 using TmrOverlay.Core.Telemetry.Live;
 using Xunit;
@@ -8,6 +9,114 @@ namespace TmrOverlay.App.Tests.Overlays;
 
 public sealed class BrowserOverlayModelFactoryTests
 {
+    [Fact]
+    public void ProductionBrowserPage_DoesNotForwardReviewSpoofQueryParameters()
+    {
+        var rendered = BrowserOverlayPageRenderer.TryRender("/overlays/pit-service", out var html);
+
+        Assert.True(rendered);
+        Assert.DoesNotContain("forwardQueryParameters", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("pitService=all", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("spoofFocus", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PitServiceModel_UsesSegmentedProductionRowsWithoutFuelEstimateOrSummaryRows()
+    {
+        var factory = new BrowserOverlayModelFactory(new SessionHistoryQueryService(new SessionHistoryOptions
+        {
+            Enabled = false,
+            ResolvedUserHistoryRoot = Path.Combine(Path.GetTempPath(), "tmr-overlay-test-history"),
+            ResolvedBaselineHistoryRoot = Path.Combine(Path.GetTempPath(), "tmr-overlay-test-baseline-history")
+        }));
+        var now = DateTimeOffset.Parse("2026-05-13T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
+        var fuelPit = LiveFuelPitModel.Empty with
+        {
+            HasData = true,
+            Quality = LiveModelQuality.Reliable,
+            OnPitRoad = true,
+            PitstopActive = true,
+            PlayerCarInPitStall = true,
+            PitServiceStatus = PitServiceStatusFormatter.InProgress,
+            PitServiceFlags = 0x7b,
+            PitServiceFuelLiters = 31.6d,
+            PitRepairLeftSeconds = 12.2d,
+            PitOptRepairLeftSeconds = 18.4d,
+            PlayerCarDryTireSetLimit = 4,
+            TireSetsAvailable = 2,
+            LeftFrontTiresAvailable = 2,
+            RightFrontTiresAvailable = 2,
+            LeftRearTiresAvailable = 0,
+            RightRearTiresAvailable = 2,
+            FastRepairAvailable = 1,
+            FastRepairUsed = 0,
+            TeamFastRepairsUsed = 1
+        };
+        var snapshot = LiveTelemetrySnapshot.Empty with
+        {
+            IsConnected = true,
+            IsCollecting = true,
+            LastUpdatedAtUtc = now,
+            Sequence = 1,
+            Models = LiveRaceModels.Empty with
+            {
+                Session = LiveSessionModel.Empty with
+                {
+                    HasData = true,
+                    Quality = LiveModelQuality.Reliable,
+                    SessionType = "Race",
+                    SessionState = 3,
+                    SessionTimeRemainSeconds = 238d,
+                    SessionLapsRemain = 148,
+                    SessionLapsTotal = 179
+                },
+                DriverDirectory = LiveDriverDirectoryModel.Empty with
+                {
+                    HasData = true,
+                    Quality = LiveModelQuality.Reliable,
+                    PlayerCarIdx = 10,
+                    FocusCarIdx = 10
+                },
+                RaceEvents = LiveRaceEventModel.Empty with
+                {
+                    HasData = true,
+                    Quality = LiveModelQuality.Reliable,
+                    IsOnTrack = false,
+                    OnPitRoad = true
+                },
+                FuelPit = fuelPit,
+                PitService = LivePitServiceModel.FromFuelPit(fuelPit, LiveTireCompoundModel.Empty)
+            }
+        };
+
+        var built = factory.TryBuild("pit-service", snapshot, new ApplicationSettings(), now, out var response);
+
+        Assert.True(built);
+        Assert.Equal(string.Empty, response.Model.HeaderItems.First(item => item.Key == "status").Value);
+        Assert.Equal("03:58", response.Model.HeaderItems.First(item => item.Key == "timeRemaining").Value);
+        Assert.DoesNotContain(response.Model.Metrics, row => row.Label == "Location");
+        Assert.DoesNotContain(response.Model.Metrics, row => row.Label == "Service");
+        Assert.DoesNotContain(response.Model.Metrics, row => row.Label == "Tires");
+        Assert.Collection(
+            response.Model.MetricSections!.Select(section => section.Title),
+            title => Assert.Equal("Session", title),
+            title => Assert.Equal("Pit Signal", title),
+            title => Assert.Equal("Service Request", title));
+        var fuel = Assert.Single(response.Model.Metrics, row => row.Label == "Fuel request");
+        Assert.Equal("requested | 31.6 L", fuel.Value);
+        Assert.Collection(
+            fuel.Segments,
+            segment => Assert.Equal("Requested", segment.Label),
+            segment => Assert.Equal("Selected", segment.Label));
+        Assert.DoesNotContain(fuel.Segments, segment => segment.Label == "Estimated");
+        var fastRepair = Assert.Single(response.Model.Metrics, row => row.Label == "Fast repair");
+        Assert.Equal("selected | available 1", fastRepair.Value);
+        Assert.DoesNotContain(fastRepair.Segments, segment => segment.Label.Contains("used", StringComparison.OrdinalIgnoreCase));
+        var tireAnalysis = Assert.Single(response.Model.GridSections!);
+        Assert.Contains(tireAnalysis.Rows, row => row.Label == "Change" && row.Cells.Any(cell => cell.Value == "Keep" && cell.Tone == "info"));
+        Assert.Contains(tireAnalysis.Rows, row => row.Label == "Available" && row.Cells.Any(cell => cell.Value == "0" && cell.Tone == "error"));
+    }
+
     [Fact]
     public void GapToLeaderGraph_SelectsClassCarsWhenReferenceTimingIsNotChartable()
     {

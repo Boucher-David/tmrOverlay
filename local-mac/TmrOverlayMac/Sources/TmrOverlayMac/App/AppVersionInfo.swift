@@ -8,7 +8,7 @@ struct AppVersionInfo: Codable {
 
     static let current = AppVersionInfo(
         productName: "Tech Mates Racing Overlay",
-        version: "local-dev",
+        version: "0.19.0",
         operatingSystem: ProcessInfo.processInfo.operatingSystemVersionString,
         processArchitecture: AppVersionInfo.architecture
     )

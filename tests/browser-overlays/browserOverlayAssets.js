@@ -218,7 +218,8 @@ function pageDefinition(id, title, route, options = {}) {
       requiresTelemetry: options.requiresTelemetry ?? true,
       renderWhenTelemetryUnavailable: options.renderWhenTelemetryUnavailable ?? false,
       fadeWhenTelemetryUnavailable: options.fadeWhenTelemetryUnavailable ?? false,
-      refreshIntervalMilliseconds: options.refreshIntervalMilliseconds ?? 250
+      refreshIntervalMilliseconds: options.refreshIntervalMilliseconds ?? 250,
+      forwardQueryParameters: options.forwardQueryParameters ?? ['preview', 'frame', 'rel', 'spoofFocus', 'focus', 'pitService']
     }
   };
 }

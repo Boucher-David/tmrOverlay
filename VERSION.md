@@ -29,6 +29,7 @@ Planned scope:
 - Keep Standings grounded in scoring/results order, keep race row membership stable from field/class settings, preserve leader rows when row caps are smaller than class size, and calculate gap/interval only from explicit timing evidence.
 - Keep Relative centered and stable around the reference car, use numerical position and delta semantics, preserve blank slots instead of resizing, and avoid radar-only locality rules.
 - Port Gap To Leader V2 parity features from legacy/mac where agreed: filtered focused range, threat highlighting, trend metrics, endpoint labels, weather/leader/driver markers, and the 4h growing focus window, while intentionally leaving tactical relative mode out of GtL.
+- Align Pit Service native/browser V2 behavior around the accepted grouped layout, compact session time/lap context, segmented service rows, tire analysis chips, and evidence-backed omission of estimated fuel and in-car setup rows.
 - Fix settings visibility/persistence and overlay chrome persistence for visibility, position, opacity, scale, content/header/footer options, session filters, and browser-source settings.
 - Add raw `ClutchRaw` capture and input-display fallback while preserving brake behavior for pit/engine-off captures and addressing input wheel clipping.
 - Extend browser replay validation to stream real telemetry-derived overlay models instead of hand-authored demos, with Road Atlanta, four-hour, and 24-hour mid-race rejoin captures as the preferred scenario set.
@@ -36,15 +37,16 @@ Planned scope:
 
 Technical implementation checklist:
 
-1. Bump shared .NET product/version metadata to `0.19.0`.
+1. Bump shared product/version metadata to `0.19.0` across Windows and the tracked mac harness.
 2. Add `LiveReferenceModel` and route shared overlay consumers through it.
 3. Update Standings, Relative, Gap To Leader, Track Map, diagnostics, and browser replay tooling to consume normalized reference facts.
 4. Keep overlay-specific contexts local to overlays that need them, especially Radar local/in-car spatial gating.
 5. Align native and browser contracts for Standings, Relative, and Gap To Leader, including settings-backed content/header/footer behavior.
-6. Add clutch raw capture/read models and use `ClutchRaw` as an input fallback when normalized clutch is flat zero.
-7. Update Settings z-order, persistence, and diagnostics behavior so update/restart and focus transitions preserve visible overlays and settings choices.
-8. Extend browser replay validation to fetch real telemetry-derived overlay models, assert live-model invariants, and preserve generated review artifacts.
-9. Validate local static checks, browser tests, screenshot expectations, and git hygiene; use Windows CI or a Windows machine for the full .NET build/test and real WinForms behavior pass.
+6. Align Pit Service native and browser contracts around grouped sections, segmented service rows, tire analysis chips, and the first-pass feature boundary for fuel estimates and in-car setup rows.
+7. Add clutch raw capture/read models and use `ClutchRaw` as an input fallback when normalized clutch is flat zero.
+8. Update Settings z-order, persistence, and diagnostics behavior so update/restart and focus transitions preserve visible overlays and settings choices.
+9. Extend browser replay validation to fetch real telemetry-derived overlay models, assert live-model invariants, and preserve generated review artifacts.
+10. Validate local static checks, browser tests, screenshot expectations, and git hygiene; use Windows CI or a Windows machine for the full .NET build/test and real WinForms behavior pass.
 
 Likely squash title:
 
@@ -55,19 +57,20 @@ Likely squash title:
 Likely squash body:
 
 ```text
-- Bumped shared .NET product/version metadata to 0.19.0.
+- Bumped shared product/version metadata to 0.19.0 across Windows and the tracked mac harness, with a mac test guard for version drift.
 - Added a normalized `LiveReferenceModel` and routed Standings, Relative, Gap To Leader, Track Map, diagnostics, and browser validation through shared focus/player/reference facts.
 - Kept Radar as an overlay-specific local in-car spatial context while allowing Relative to render from pits when reference timing/progress evidence exists.
 - Aligned Standings native/browser behavior around scoring order, row caps, class leaders, stable race sizing, and grounded `GAP`/`INT` timing evidence.
 - Aligned Relative native/browser behavior around stable centered rows, numerical positions, delta semantics, lap-ahead/behind styling, and non-local timing contexts.
 - Ported agreed Gap To Leader V2 parity behavior: filtered focused range, threat highlighting, trend metrics, endpoint label lanes, weather bands, leader/driver markers, and the 4h growing focus window.
 - Kept tactical relative mode out of Gap To Leader V2 by design.
+- Aligned Pit Service native/browser V2 behavior around grouped Session/Pit Signal/Service Request/Tire Analysis sections, segmented service rows, tire analysis chips, and evidence-backed omission of estimated fuel and in-car setup rows.
 - Kept Settings visible after Alt+Tab/focus loss while demoting it from the topmost layer, and preserved overlay visibility, position, opacity, scale, content/header/footer, and session-filter settings across update/restart flows.
 - Normalized live-overlay and freeze-watch diagnostics so settings and overlay visibility state cannot be reported as active while hidden.
 - Captured raw clutch telemetry and used `ClutchRaw` as the input-display fallback when normalized clutch remains flat zero.
 - Fixed input wheel clipping and preserved pit/engine-off brake behavior.
 - Extended browser race-start replay validation to inspect telemetry-derived overlay models in addition to screenshot artifacts, aligned replay/corpus tooling with meaningful race-scoring coverage, and documented real-capture replay expectations.
-- Updated live-model, Relative, Standings, Gap To Leader, Settings, browser replay, and future-branch docs for the normalized-reference model and browser-equals-native validation target.
+- Updated live-model, Relative, Standings, Gap To Leader, Pit Service, Settings, browser replay, and future-branch docs for the normalized-reference model and browser-equals-native validation target.
 - Validated git hygiene, C# compile-shape scanning, browser unit tests, browser Playwright tests, browser replay script syntax, Python compile checks, and screenshot expectations; Windows .NET build/test and real WinForms behavior validation remain CI/Windows-machine gates.
 ```
 

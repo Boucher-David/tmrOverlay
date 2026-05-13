@@ -723,12 +723,36 @@ function displayModel(overlayId, frame, index, searchParams = null) {
   }
 
   if (overlayId === 'pit-service') {
-    return metricsModel(overlayId, 'Pit Service', status, headerItems, [
-      ['Box', referenceDisplayRow(frame)?.isPit ? 'In pit' : 'Closed', referenceDisplayRow(frame)?.isPit ? 'warning' : 'normal'],
-      ['Fuel Add', '--', 'normal'],
-      ['Tires', 'None', 'normal'],
-      ['Repair', 'Available', 'success']
-    ]);
+    const releaseRow = ['Release', referenceDisplayRow(frame)?.isPit ? 'pit road' : '--', referenceDisplayRow(frame)?.isPit ? 'info' : 'normal'];
+    const pitStatusRow = ['Pit status', status || '--', 'normal'];
+    const fuelRequestRow = ['Fuel request', '--', 'normal', [
+      pitSegment('Requested', '--', 'waiting'),
+      pitSegment('Selected', '--', 'waiting')
+    ]];
+    const tearoffRow = ['Tearoff', '--', 'normal', [
+      pitSegment('Requested', '--', 'waiting')
+    ]];
+    const repairRow = ['Repair', 'Available', 'success', [
+      pitSegment('Required', '--', 'success'),
+      pitSegment('Optional', '--', 'success')
+    ]];
+    const fastRepairRow = ['Fast repair', '--', 'normal', [
+      pitSegment('Selected', '--', 'waiting'),
+      pitSegment('Available', '--', 'waiting')
+    ]];
+    const metricSections = [
+      ['Pit Signal', [releaseRow, pitStatusRow]],
+      ['Service Request', [fuelRequestRow, tearoffRow, repairRow, fastRepairRow]]
+    ];
+    return metricsModel(
+      overlayId,
+      'Pit Service',
+      status,
+      headerItems,
+      metricSections.flatMap(([, rows]) => rows),
+      'source: race-start replay',
+      [],
+      metricSections);
   }
 
   if (overlayId === 'gap-to-leader') {
@@ -805,7 +829,7 @@ function captureDisplayModel(overlayId, frame, index, searchParams = null) {
         'source: waiting');
     }
 
-    return capturePitServiceModel(models, status, headerItems);
+    return capturePitServiceModel(models, status, headerItems, searchParams);
   }
 
   if (overlayId === 'gap-to-leader') {
@@ -880,21 +904,343 @@ function captureSessionWeatherModel(models, fallbackStatus, headerItems) {
   ], source);
 }
 
-function capturePitServiceModel(models, fallbackStatus, headerItems) {
-  const pit = models.fuelPit || {};
+function capturePitServiceModel(models, fallbackStatus, headerItems, searchParams = null) {
+  const spoofAllRows = pitServiceSpoofAllRowsEnabled(searchParams);
+  const pitModels = spoofAllRows
+    ? pitServiceAllRowsModels(models)
+    : models;
+  const pit = pitModels.fuelPit || {};
   const release = pitReleaseState(pit);
   const status = pitStatus(pit, release) || fallbackStatus || 'pit ready';
-  const tone = release.tone || (pit.onPitRoad || pit.pitstopActive || pit.playerCarInPitStall || pit.teamOnPitRoad ? 'info' : 'normal');
-  return metricsModel('pit-service', 'Pit Service', status, headerItems, [
-    ['Release', release.value, release.tone],
-    ['Location', pitLocation(pit), tone],
-    ['Service', pitService(pit), tone],
-    ['Pit status', pitServiceStatusText(pit.pitServiceStatus), tone],
-    ['Fuel request', formatLiters(pit.pitServiceFuelLiters), 'normal'],
-    ['Repair', pitRepair(pit), pitRepairTone(pit)],
-    ['Tires', pitTires(pit), 'normal'],
-    ['Fast repair', pitFastRepair(pit), 'normal']
-  ], 'source: player/team pit service telemetry');
+  const effectiveHeaderItems = spoofAllRows
+    ? [
+        { key: 'status', value: '' },
+        { key: 'timeRemaining', value: formatPitTimeRemaining(pitModels.session) || '' }
+      ]
+    : headerItems;
+  const releaseRow = pitSignalMetricRow('Release', release.value, release.tone);
+  const pitStatusRow = pitSignalMetricRow('Pit status', pitServiceStatusText(pit.pitServiceStatus), pitServiceActivityTone(pit, release));
+  const timeLaps = pitTimeLaps(pitModels);
+  const fuelRequestRow = spoofAllRows ? pitFuelRequestSegmentedRow(pit) : ['Fuel request', pitFuelRequest(pit), 'normal'];
+  const tearoffRow = spoofAllRows ? pitTearoffSegmentedRow(pit) : ['Tearoff', pitTearoff(pit), 'normal'];
+  const repairRow = spoofAllRows ? pitRepairSegmentedRow(pit) : ['Repair', pitRepair(pit), pitRepairTone(pit)];
+  const fastRepairRow = spoofAllRows ? pitFastRepairSegmentedRow(pit) : ['Fast repair', pitFastRepair(pit), 'normal'];
+  const metricSections = [
+    ...(timeLaps === '--' ? [] : [['Session', [['Time / Laps', timeLaps, 'normal']]]]),
+    ['Pit Signal', [releaseRow, pitStatusRow]],
+    ['Service Request', [fuelRequestRow, tearoffRow, repairRow, fastRepairRow]]
+  ];
+  const metrics = metricSections.flatMap(([, rows]) => rows);
+  return metricsModel(
+    'pit-service',
+    'Pit Service',
+    status,
+    effectiveHeaderItems,
+    metrics,
+    spoofAllRows
+      ? 'source: spoofed pit service all-rows preview'
+      : 'source: player/team pit service telemetry',
+    spoofAllRows ? pitServiceGridSectionsFromData(pitModels, pit) : [],
+    metricSections);
+}
+
+function pitServiceSpoofAllRowsEnabled(searchParams) {
+  const value = searchParams?.get('pitService') || '';
+  return ['all', 'all-rows', 'full'].includes(value.trim().toLowerCase());
+}
+
+function pitServiceAllRowsModels(models) {
+  const pit = pitServiceAllRowsPit();
+  return {
+    ...models,
+    fuelPit: pit,
+    session: {
+      ...(models.session || {}),
+      sessionType: 'Race',
+      sessionName: 'Road Atlanta spoof',
+      sessionTimeRemainSeconds: 86258.266667,
+      sessionLapsRemain: 4,
+      sessionLapsRemainEx: 4,
+      sessionLapsTotal: 5
+    },
+    raceProgress: {
+      ...(models.raceProgress || {}),
+      raceLapsRemaining: 4
+    },
+    raceProjection: {
+      ...(models.raceProjection || {}),
+      estimatedTeamLapsRemaining: 4,
+      estimatedFinishLap: 5
+    },
+    tireCompounds: pitServiceAllRowsTireCompounds(models),
+    tireCondition: pitServiceAllRowsTireCondition()
+  };
+}
+
+function pitServiceAllRowsPit() {
+  return {
+    hasData: true,
+    quality: 'spoofed',
+    onPitRoad: true,
+    teamOnPitRoad: true,
+    playerCarInPitStall: true,
+    pitstopActive: true,
+    pitServiceStatus: 1,
+    pitServiceFlags: 0x7b,
+    pitServiceFuelLiters: 45.5,
+    pitRepairLeftSeconds: 12.2,
+    pitOptRepairLeftSeconds: 18.4,
+    playerCarDryTireSetLimit: 4,
+    tireSetsUsed: 2,
+    tireSetsAvailable: 2,
+    leftTireSetsUsed: 1,
+    rightTireSetsUsed: 1,
+    frontTireSetsUsed: 1,
+    rearTireSetsUsed: 1,
+    leftTireSetsAvailable: 2,
+    rightTireSetsAvailable: 2,
+    frontTireSetsAvailable: 2,
+    rearTireSetsAvailable: 2,
+    leftFrontTiresUsed: 1,
+    rightFrontTiresUsed: 1,
+    leftRearTiresUsed: 1,
+    rightRearTiresUsed: 1,
+    leftFrontTiresAvailable: 2,
+    rightFrontTiresAvailable: 2,
+    leftRearTiresAvailable: 2,
+    rightRearTiresAvailable: 2,
+    requestedTireCompound: 1,
+    fastRepairUsed: 0,
+    fastRepairAvailable: 1,
+    teamFastRepairsUsed: 1
+  };
+}
+
+function pitServiceAllRowsTireCompounds(models) {
+  const playerCarIdx = models.driverDirectory?.playerCarIdx ?? models.reference?.playerCarIdx ?? 15;
+  return {
+    hasData: true,
+    quality: 'spoofed',
+    definitions: [
+      { index: 0, label: 'Medium', shortLabel: 'M', isWet: false },
+      { index: 1, label: 'Soft', shortLabel: 'S', isWet: false },
+      { index: 2, label: 'Wet', shortLabel: 'W', isWet: true }
+    ],
+    playerCar: {
+      carIdx: playerCarIdx,
+      compoundIndex: 0,
+      label: 'Medium',
+      shortLabel: 'M',
+      isWet: false,
+      isPlayer: true,
+      isFocus: true
+    },
+    focusCar: {
+      carIdx: playerCarIdx,
+      compoundIndex: 0,
+      label: 'Medium',
+      shortLabel: 'M',
+      isWet: false,
+      isPlayer: true,
+      isFocus: true
+    },
+    cars: []
+  };
+}
+
+function pitServiceAllRowsTireCondition() {
+  return {
+    hasData: true,
+    quality: 'spoofed',
+    leftFront: pitServiceTireCorner('LF', [0.92, 0.91, 0.90], [80, 81, 82], 206.8, 20000, true),
+    rightFront: pitServiceTireCorner('RF', [0.93, 0.92, 0.91], [79, 80, 81], 203.4, 19750, true),
+    leftRear: pitServiceTireCorner('LR', [0.96, 0.95, 0.94], [72, 73, 74], 196.5, 20000, false),
+    rightRear: pitServiceTireCorner('RR', [0.97, 0.96, 0.95], [73, 74, 75], 198.6, 19750, true)
+  };
+}
+
+function pitServiceTireCorner(corner, wear, tempC, pressureKpa, odometerMeters, changeRequested) {
+  return {
+    corner,
+    wear: { left: wear[0], middle: wear[1], right: wear[2] },
+    temperatureC: { left: tempC[0], middle: tempC[1], right: tempC[2] },
+    coldPressureKpa: pressureKpa,
+    odometerMeters,
+    pitServicePressureKpa: null,
+    blackBoxColdPressurePa: null,
+    changeRequested
+  };
+}
+
+function pitServiceGridSectionsFromData(models, pit) {
+  const condition = models.tireCondition || {};
+  const rows = [
+    pitServiceCompoundRow(models.tireCompounds || {}, pit),
+    pitServiceChangeRow(condition, pit),
+    pitServiceSetLimitRow(pit),
+    pitServiceAvailableRow(pit),
+    pitServiceUsedRow(pit),
+    pitServicePressureRow(condition),
+    pitServiceTemperatureRow(condition),
+    pitServiceWearRow(condition),
+    pitServiceDistanceRow(condition)
+  ].filter(Boolean);
+  return rows.length
+    ? [{ title: 'Tire Analysis', headers: ['Info', 'FL', 'FR', 'RL', 'RR'], rows }]
+    : [];
+}
+
+function pitServiceCompoundRow(tireCompounds, pit) {
+  const current = firstText(tireCompounds.playerCar?.shortLabel, tireCompounds.playerCar?.label);
+  const requestedDefinition = Array.isArray(tireCompounds.definitions)
+    ? tireCompounds.definitions.find((definition) => definition?.index === pit?.requestedTireCompound)
+    : null;
+  const requested = firstText(requestedDefinition?.shortLabel, requestedDefinition?.label);
+  const isChanging = Boolean(requested && requested !== current);
+  const value = isChanging ? requested : firstText(current, requested);
+  const cells = [value, value, value, value].map((cellValue) => ({
+    value: cellValue,
+    tone: isChanging ? 'success' : 'info'
+  }));
+  return value ? pitServiceGridRow('Compound', cells, 'normal') : null;
+}
+
+function pitServiceChangeRow(condition, pit) {
+  const hasEvidence = Number.isInteger(pit?.pitServiceFlags)
+    || pitServiceCorners().some(({ key }) => condition?.[key]?.changeRequested != null);
+  if (!hasEvidence) return null;
+  const values = pitServiceCorners().map(({ key, flag }) => {
+    const requested = condition?.[key]?.changeRequested;
+    const selected = requested === true || (requested == null && (pit?.pitServiceFlags & flag) !== 0);
+    return {
+      value: selected ? 'Change' : 'Keep',
+      tone: selected ? 'success' : 'info'
+    };
+  });
+  return pitServiceGridRow('Change', values);
+}
+
+function pitServiceSetLimitRow(pit) {
+  const value = Number.isInteger(pit?.playerCarDryTireSetLimit) && pit.playerCarDryTireSetLimit > 0
+    ? `${pit.playerCarDryTireSetLimit} sets`
+    : null;
+  return value ? pitServiceGridRow('Set limit', [value, value, value, value]) : null;
+}
+
+function pitServiceAvailableRow(pit) {
+  const values = [
+    pitServiceAvailableCell(pit?.leftFrontTiresAvailable ?? pit?.leftTireSetsAvailable ?? pit?.frontTireSetsAvailable ?? pit?.tireSetsAvailable),
+    pitServiceAvailableCell(pit?.rightFrontTiresAvailable ?? pit?.rightTireSetsAvailable ?? pit?.frontTireSetsAvailable ?? pit?.tireSetsAvailable),
+    pitServiceAvailableCell(pit?.leftRearTiresAvailable ?? pit?.leftTireSetsAvailable ?? pit?.rearTireSetsAvailable ?? pit?.tireSetsAvailable),
+    pitServiceAvailableCell(pit?.rightRearTiresAvailable ?? pit?.rightTireSetsAvailable ?? pit?.rearTireSetsAvailable ?? pit?.tireSetsAvailable)
+  ];
+  return pitServiceAnyCellHasValue(values) ? pitServiceGridRow('Available', values) : null;
+}
+
+function pitServiceAvailableCell(value) {
+  const display = pitServiceCounter(value, true);
+  return {
+    value: display,
+    tone: display === '0' ? 'error' : 'normal'
+  };
+}
+
+function pitServiceUsedRow(pit) {
+  const values = [
+    pitServiceCounter(pit?.leftFrontTiresUsed ?? pit?.leftTireSetsUsed ?? pit?.frontTireSetsUsed ?? pit?.tireSetsUsed, false),
+    pitServiceCounter(pit?.rightFrontTiresUsed ?? pit?.rightTireSetsUsed ?? pit?.frontTireSetsUsed ?? pit?.tireSetsUsed, false),
+    pitServiceCounter(pit?.leftRearTiresUsed ?? pit?.leftTireSetsUsed ?? pit?.rearTireSetsUsed ?? pit?.tireSetsUsed, false),
+    pitServiceCounter(pit?.rightRearTiresUsed ?? pit?.rightTireSetsUsed ?? pit?.rearTireSetsUsed ?? pit?.tireSetsUsed, false)
+  ];
+  return pitServiceAnyCellHasValue(values) ? pitServiceGridRow('Used', values) : null;
+}
+
+function pitServicePressureRow(condition) {
+  const values = pitServiceCorners().map(({ key }) => {
+    const corner = condition?.[key] || {};
+    const kpa = firstFinite([
+      corner.pitServicePressureKpa,
+      corner.coldPressureKpa,
+      Number.isFinite(corner.blackBoxColdPressurePa) ? corner.blackBoxColdPressurePa / 1000 : null
+    ]);
+    return Number.isFinite(kpa) && kpa > 0 ? `${Math.round(kpa * 0.145037738)} psi` : '--';
+  });
+  return pitServiceAnyCellHasValue(values) ? pitServiceGridRow('Pressure', values) : null;
+}
+
+function pitServiceTemperatureRow(condition) {
+  const values = pitServiceCorners().map(({ key }) => {
+    const raw = acrossValues(condition?.[key]?.temperatureC)
+      .filter((value) => Number.isFinite(value) && value > 0 && value < 250)
+      .map((value) => value * 9 / 5 + 32);
+    return pitServiceFormatAcross(raw, '0', ' F');
+  });
+  return pitServiceAnyCellHasValue(values) ? pitServiceGridRow('Temp', values) : null;
+}
+
+function pitServiceWearRow(condition) {
+  const values = pitServiceCorners().map(({ key }) => {
+    const raw = acrossValues(condition?.[key]?.wear)
+      .filter((value) => Number.isFinite(value) && value > 0 && value <= 1)
+      .map((value) => value * 100);
+    return pitServiceFormatAcross(raw, '0', '%');
+  });
+  return pitServiceAnyCellHasValue(values) ? pitServiceGridRow('Wear', values) : null;
+}
+
+function pitServiceDistanceRow(condition) {
+  const values = pitServiceCorners().map(({ key }) => {
+    const meters = condition?.[key]?.odometerMeters;
+    return Number.isFinite(meters) && meters > 0 ? `${(meters / 1609.344).toFixed(1)} mi` : '--';
+  });
+  return pitServiceAnyCellHasValue(values) ? pitServiceGridRow('Distance', values) : null;
+}
+
+function pitServiceCorners() {
+  return [
+    { key: 'leftFront', label: 'LF', flag: 0x01 },
+    { key: 'rightFront', label: 'RF', flag: 0x02 },
+    { key: 'leftRear', label: 'LR', flag: 0x04 },
+    { key: 'rightRear', label: 'RR', flag: 0x08 }
+  ];
+}
+
+function pitServiceCounter(value, allowZero) {
+  if (value === 255) return 'unlim';
+  return Number.isInteger(value) && (value > 0 || allowZero && value === 0) ? String(value) : '--';
+}
+
+function acrossValues(values) {
+  return [values?.left, values?.middle, values?.right];
+}
+
+function pitServiceFormatAcross(values, format, suffix) {
+  if (!values.length) return '--';
+  const formatted = values.map((value) => format === '0' ? Math.round(value).toFixed(0) : value.toFixed(1));
+  const distinct = new Set(formatted);
+  return `${distinct.size === 1 ? formatted[0] : formatted.join('/')}${suffix}`;
+}
+
+function pitServiceAnyCellHasValue(values) {
+  return values.some((value) => value && value !== '--');
+}
+
+function pitServiceGridRow(label, values, tone = 'normal') {
+  const cells = values.map((cell) => {
+    if (cell && typeof cell === 'object') {
+      return {
+        value: cell.value || '--',
+        tone: cell.tone || tone
+      };
+    }
+
+    return { value: cell, tone };
+  });
+  return {
+    label,
+    cells,
+    tone
+  };
 }
 
 function captureInputStateModel(models, fallbackStatus, headerItems) {
@@ -2238,6 +2584,10 @@ function joinAvailable(...values) {
   return parts.length > 0 ? parts.join(' | ') : '--';
 }
 
+function firstText(...values) {
+  return values.find((value) => typeof value === 'string' && value.trim().length > 0)?.trim() || null;
+}
+
 function formatLiters(value) {
   return Number.isFinite(value) ? `${value.toFixed(1)} L` : '--';
 }
@@ -2307,11 +2657,12 @@ function isRacePreGreenSession(session) {
 }
 
 function formatSessionLaps(session, raceProgress = {}, raceProjection = {}) {
-  const remain = formatLapCount(session?.sessionLapsRemainEx)
+  const remain = formatRemainingLapCount(session?.sessionLapsRemain ?? session?.sessionLapsRemainEx)
     || formatEstimatedLapCount(raceProjection?.estimatedTeamLapsRemaining)
     || formatEstimatedLapCount(raceProgress?.raceLapsRemaining);
   const total = formatLapCount(session?.sessionLapsTotal)
-    || formatEstimatedLapCount(raceProjection?.estimatedFinishLap)
+    || formatEstimatedTotalLapCount(raceProjection?.estimatedFinishLap)
+    || formatEstimatedRaceProgressTotalLaps(raceProgress)
     || formatLapCount(session?.raceLaps);
   return `${remain || '--'} left | ${total || '--'} total`;
 }
@@ -2320,8 +2671,58 @@ function formatLapCount(value) {
   return Number.isFinite(value) && value > 0 && value <= 1000 ? String(Math.round(value)) : null;
 }
 
+function formatRemainingLapCount(value) {
+  return Number.isFinite(value) && value >= 0 && value <= 1000 ? String(Math.round(value)) : null;
+}
+
 function formatEstimatedLapCount(value) {
   return Number.isFinite(value) && value >= 0 && value <= 1000 ? `${value.toFixed(value % 1 === 0 ? 0 : 1)} est` : null;
+}
+
+function formatEstimatedTotalLapCount(value) {
+  return Number.isFinite(value) && value >= 0 && value <= 1000 ? `${Math.ceil(value)} est` : null;
+}
+
+function formatEstimatedRaceProgressTotalLaps(raceProgress = {}) {
+  const remaining = raceProgress?.raceLapsRemaining;
+  if (!Number.isFinite(remaining) || remaining < 0 || remaining > 1000) return null;
+  const progress = [
+    raceProgress?.overallLeaderProgressLaps,
+    raceProgress?.classLeaderProgressLaps,
+    raceProgress?.strategyCarProgressLaps
+  ].find((value) => Number.isFinite(value) && value >= 0);
+  return Number.isFinite(progress) ? `${Math.ceil(progress + remaining)} est` : null;
+}
+
+function pitTimeLaps(models) {
+  const session = models.session || {};
+  const timeRemaining = formatPitTimeRemaining(session);
+  return joinAvailable(timeRemaining, pitCompactLaps(session, models.raceProgress, models.raceProjection));
+}
+
+function pitCompactLaps(session, raceProgress = {}, raceProjection = {}) {
+  const remain = formatRemainingLapCount(session?.sessionLapsRemain ?? session?.sessionLapsRemainEx)
+    || formatEstimatedLapCount(raceProjection?.estimatedTeamLapsRemaining)
+    || formatEstimatedLapCount(raceProgress?.raceLapsRemaining);
+  const total = formatLapCount(session?.sessionLapsTotal)
+    || formatEstimatedTotalLapCount(raceProjection?.estimatedFinishLap)
+    || formatEstimatedRaceProgressTotalLaps(raceProgress)
+    || formatLapCount(session?.raceLaps);
+  if (remain && total) return `${remain}/${total} laps`;
+  if (remain) return `${remain} laps`;
+  if (total) return `${total} laps total`;
+  return null;
+}
+
+function formatPitTimeRemaining(session) {
+  const seconds = session?.sessionTimeRemainSeconds;
+  if (!Number.isFinite(seconds) || seconds < 0) return null;
+  const totalSeconds = Math.ceil(Math.max(0, seconds));
+  if (isRacePreGreenSession(session)) {
+    return `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}`;
+  }
+  const totalMinutes = Math.ceil(totalSeconds / 60);
+  return `${String(Math.floor(totalMinutes / 60)).padStart(2, '0')}:${String(totalMinutes % 60).padStart(2, '0')}`;
 }
 
 function formatWeatherTemps(weather) {
@@ -2390,66 +2791,72 @@ function pitServiceStatusText(status) {
 
 function pitReleaseState(pit) {
   if (Number.isInteger(pit?.pitServiceStatus) && pit.pitServiceStatus >= 100) {
-    return { value: `RED - ${pitServiceStatusText(pit.pitServiceStatus)}`, tone: 'error' };
+    return { kind: 'hold', value: `RED - ${pitServiceStatusText(pit.pitServiceStatus)}`, tone: 'error' };
   }
   if (pit?.pitServiceStatus === 2) {
-    return { value: 'GREEN - go', tone: 'success' };
+    return { kind: 'go', value: 'GREEN - go', tone: 'success' };
   }
-  if (pit?.pitstopActive || pit?.playerCarInPitStall || pit?.pitServiceStatus === 1) {
-    return { value: 'RED - service active', tone: 'error' };
+  if (pit?.pitstopActive || pit?.pitServiceStatus === 1) {
+    return { kind: 'hold', value: 'RED - service active', tone: 'error' };
   }
   if (hasRequiredRepair(pit)) {
-    return { value: 'RED - required repair', tone: 'error' };
+    return { kind: 'hold', value: 'RED - repair active', tone: 'error' };
   }
   if (hasOptionalRepair(pit)) {
-    return { value: 'YELLOW - optional repair', tone: 'warning' };
+    return { kind: 'advisory', value: 'YELLOW - optional repair', tone: 'warning' };
   }
-  return { value: 'GREEN - go', tone: 'success' };
+  if (pit?.playerCarInPitStall) {
+    return {
+      kind: 'go',
+      value: pit?.pitServiceStatus == null ? 'GREEN - go (inferred)' : 'GREEN - go',
+      tone: 'success'
+    };
+  }
+  if (pit?.onPitRoad || pit?.teamOnPitRoad === true) {
+    return { kind: 'pending', value: 'pit road', tone: 'info' };
+  }
+  if (hasRequestedService(pit)) {
+    return { kind: 'pending', value: 'armed', tone: 'info' };
+  }
+  return { kind: 'pending', value: '--', tone: 'normal' };
 }
 
 function pitStatus(pit, release) {
   if (Number.isInteger(pit?.pitServiceStatus) && pit.pitServiceStatus >= 100) return 'pit stall error';
-  if (release?.tone === 'success') return 'release ready';
-  if (release?.tone === 'warning') return 'optional repair';
-  if (release?.tone === 'error') return 'hold';
+  if (release?.kind === 'go') return 'release ready';
+  if (release?.kind === 'advisory') return 'optional repair';
+  if (release?.kind === 'hold') return 'hold';
   if (pit?.playerCarInPitStall) return 'in pit stall';
   if (pit?.pitstopActive) return 'service active';
   if (pit?.onPitRoad || pit?.teamOnPitRoad === true) return 'on pit road';
   return hasRequestedService(pit) ? 'service requested' : 'pit ready';
 }
 
-function pitLocation(pit) {
-  if (pit?.playerCarInPitStall) return 'player in stall';
-  if (pit?.onPitRoad && pit?.teamOnPitRoad === true) return 'player/team on pit road';
-  if (pit?.onPitRoad) return 'player on pit road';
-  if (pit?.teamOnPitRoad === true) return 'team on pit road';
-  return 'off pit road';
+function pitServiceActivityTone(pit, release) {
+  if (Number.isInteger(pit?.pitServiceStatus) && pit.pitServiceStatus >= 100) return 'error';
+  if (pit?.pitServiceStatus === 2 || release?.kind === 'go') return 'success';
+  if (pit?.pitstopActive || pit?.pitServiceStatus === 1) return 'warning';
+  if (hasRequiredRepair(pit)) return 'error';
+  if (hasOptionalRepair(pit)) return 'warning';
+  return hasRequestedService(pit) ? 'success' : 'normal';
 }
 
-function pitService(pit) {
-  let service = pitServiceFlags(pit?.pitServiceFlags);
-  if ((service === '--' || service === 'none') && Number.isFinite(pit?.pitServiceFuelLiters) && pit.pitServiceFuelLiters > 0) {
-    service = 'fuel';
-  }
-  if (pit?.pitServiceStatus === 1 || pit?.pitstopActive) {
-    return service === '--' || service === 'none' ? 'active' : `active | ${service}`;
-  }
-  if (hasRequestedService(pit)) {
-    return service === '--' || service === 'none' ? 'requested' : `requested | ${service}`;
-  }
-  return service;
+function pitFuelRequest(pit) {
+  const requested = Number.isInteger(pit?.pitServiceFlags) && (pit.pitServiceFlags & 0x10) !== 0
+    || Number.isFinite(pit?.pitServiceFuelLiters) && pit.pitServiceFuelLiters > 0;
+  const amount = Number.isFinite(pit?.pitServiceFuelLiters) && pit.pitServiceFuelLiters > 0
+    ? formatLiters(pit.pitServiceFuelLiters)
+    : null;
+  const value = joinAvailable(requested ? 'requested' : null, amount);
+  if (value !== '--') return value;
+  return Number.isInteger(pit?.pitServiceFlags) ? 'none' : '--';
 }
 
-function pitServiceFlags(flags) {
-  if (!Number.isInteger(flags)) return '--';
-  const active = [];
-  const tires = tireServiceCount(flags);
-  if (tires === 4) active.push('tires');
-  else if (tires > 0) active.push(`${tires} tires`);
-  if ((flags & 0x10) !== 0) active.push('fuel');
-  if ((flags & 0x20) !== 0) active.push('tearoff');
-  if ((flags & 0x40) !== 0) active.push('fast repair');
-  return active.length ? active.join(', ') : 'none';
+function pitTearoff(pit) {
+  if (Number.isInteger(pit?.pitServiceFlags) && (pit.pitServiceFlags & 0x20) !== 0) {
+    return 'requested';
+  }
+  return Number.isInteger(pit?.pitServiceFlags) ? 'none' : '--';
 }
 
 function tireServiceCount(flags) {
@@ -2473,21 +2880,99 @@ function pitRepair(pit) {
 }
 
 function pitRepairTone(pit) {
-  return hasRequiredRepair(pit) || hasOptionalRepair(pit) ? 'warning' : 'normal';
-}
-
-function pitTires(pit) {
-  const tires = tireServiceCount(pit?.pitServiceFlags);
-  const service = tires === 4 ? 'four tires' : tires > 0 ? `${tires} tires` : null;
-  const sets = Number.isInteger(pit?.tireSetsUsed) && pit.tireSetsUsed >= 0 ? `${pit.tireSetsUsed} sets used` : null;
-  return joinAvailable(service, sets);
+  if (hasRequiredRepair(pit)) return 'error';
+  return hasOptionalRepair(pit) ? 'warning' : 'normal';
 }
 
 function pitFastRepair(pit) {
   const selected = Number.isInteger(pit?.pitServiceFlags) && (pit.pitServiceFlags & 0x40) !== 0 ? 'selected' : null;
-  const local = Number.isInteger(pit?.fastRepairUsed) && pit.fastRepairUsed >= 0 ? `local ${pit.fastRepairUsed}` : null;
-  const team = Number.isInteger(pit?.teamFastRepairsUsed) && pit.teamFastRepairsUsed >= 0 ? `team ${pit.teamFastRepairsUsed}` : null;
-  return joinAvailable(selected, local, team);
+  const available = Number.isInteger(pit?.fastRepairAvailable) && pit.fastRepairAvailable >= 0
+    ? `available ${pit.fastRepairAvailable}`
+    : null;
+  return joinAvailable(selected, available);
+}
+
+function pitFuelRequestSegmentedRow(pit) {
+  const requested = pitFuelRequested(pit);
+  const selectedLiters = Number.isFinite(pit?.pitServiceFuelLiters) && pit.pitServiceFuelLiters > 0
+    ? pit.pitServiceFuelLiters
+    : null;
+  const selected = Number.isFinite(selectedLiters) ? formatLiters(selectedLiters) : '--';
+  return ['Fuel request', pitFuelRequest(pit), 'normal', [
+    pitSegment('Requested', requested ? 'Yes' : 'No', requested ? 'success' : 'error'),
+    pitSegment('Selected', selected, selected === '--' ? 'waiting' : 'info')
+  ]];
+}
+
+function pitTearoffSegmentedRow(pit) {
+  const requested = pitTearoffRequested(pit);
+  return ['Tearoff', pitTearoff(pit), 'normal', [
+    pitSegment('Requested', requested ? 'Yes' : 'No', requested ? 'success' : 'error')
+  ]];
+}
+
+function pitRepairSegmentedRow(pit) {
+  const required = Number.isFinite(pit?.pitRepairLeftSeconds) && pit.pitRepairLeftSeconds > 0
+    ? `${pit.pitRepairLeftSeconds.toFixed(0)}s`
+    : '--';
+  const optional = Number.isFinite(pit?.pitOptRepairLeftSeconds) && pit.pitOptRepairLeftSeconds > 0
+    ? `${pit.pitOptRepairLeftSeconds.toFixed(0)}s`
+    : '--';
+  return ['Repair', pitRepair(pit), pitRepairTone(pit), [
+    pitSegment('Required', required, required === '--' ? 'success' : 'error'),
+    pitSegment('Optional', optional, optional === '--' ? 'success' : 'warning')
+  ]];
+}
+
+function pitFastRepairSegmentedRow(pit) {
+  const selected = pitFastRepairRequested(pit);
+  const available = Number.isInteger(pit?.fastRepairAvailable) ? String(pit.fastRepairAvailable) : '--';
+  return ['Fast repair', pitFastRepair(pit), 'normal', [
+    pitSegment('Selected', selected ? 'Yes' : 'No', selected ? 'success' : 'error'),
+    pitSegment('Available', available, Number.isInteger(pit?.fastRepairAvailable) && pit.fastRepairAvailable > 0 ? 'success' : 'warning')
+  ]];
+}
+
+function pitSignalMetricRow(label, value, tone) {
+  return {
+    label,
+    value: value || '--',
+    tone: tone || 'normal',
+    rowColorHex: pitSignalColorHex(tone)
+  };
+}
+
+function pitSignalColorHex(tone) {
+  switch (tone) {
+    case 'error':
+      return '#FF6274';
+    case 'warning':
+      return '#FFD15B';
+    case 'success':
+      return '#62FF9F';
+    case 'info':
+      return '#00E8FF';
+    default:
+      return null;
+  }
+}
+
+function pitSegment(label, value, tone = 'normal') {
+  return { label, value, tone };
+}
+
+function pitFuelRequested(pit) {
+  return Boolean(
+    Number.isInteger(pit?.pitServiceFlags) && (pit.pitServiceFlags & 0x10) !== 0
+    || Number.isFinite(pit?.pitServiceFuelLiters) && pit.pitServiceFuelLiters > 0);
+}
+
+function pitTearoffRequested(pit) {
+  return Number.isInteger(pit?.pitServiceFlags) && (pit.pitServiceFlags & 0x20) !== 0;
+}
+
+function pitFastRepairRequested(pit) {
+  return Number.isInteger(pit?.pitServiceFlags) && (pit.pitServiceFlags & 0x40) !== 0;
 }
 
 function hasRequiredRepair(pit) {
@@ -2499,7 +2984,7 @@ function hasOptionalRepair(pit) {
 }
 
 function hasRequestedService(pit) {
-  return Number.isInteger(pit?.pitServiceFlags)
+  return (Number.isInteger(pit?.pitServiceFlags) && pit.pitServiceFlags !== 0)
     || (Number.isFinite(pit?.pitServiceFuelLiters) && pit.pitServiceFuelLiters > 0)
     || hasRequiredRepair(pit)
     || hasOptionalRepair(pit);
@@ -2617,7 +3102,15 @@ function relativeCells(row, columns) {
   return row?.cells || row || [];
 }
 
-function metricsModel(overlayId, title, status, headerItems, metrics, source = 'source: race-start replay') {
+function metricsModel(
+  overlayId,
+  title,
+  status,
+  headerItems,
+  metrics,
+  source = 'source: race-start replay',
+  gridSections = [],
+  metricSections = []) {
   return {
     overlayId,
     title,
@@ -2626,9 +3119,54 @@ function metricsModel(overlayId, title, status, headerItems, metrics, source = '
     bodyKind: 'metrics',
     columns: [],
     rows: [],
-    metrics: metrics.map(([label, value, tone]) => ({ label, value, tone })),
+    metrics: metrics.map(metricModelRow),
     points: [],
-    headerItems
+    headerItems,
+    gridSections,
+    metricSections: metricSections.map(([title, rows]) => ({
+      title,
+      rows: rows.map(metricModelRow)
+    }))
+  };
+}
+
+function metricModelRow(row) {
+  if (!Array.isArray(row)) {
+    const modelRow = {
+      label: row?.label || '',
+      value: row?.value || '--',
+      tone: row?.tone || 'normal'
+    };
+    if (Array.isArray(row?.segments) && row.segments.length > 0) {
+      modelRow.segments = row.segments.map(metricModelSegment);
+    }
+    if (row?.variant) {
+      modelRow.variant = row.variant;
+    }
+    if (row?.rowColorHex) {
+      modelRow.rowColorHex = row.rowColorHex;
+    }
+    if (row?.carClassColorHex) {
+      modelRow.carClassColorHex = row.carClassColorHex;
+    }
+
+    return modelRow;
+  }
+
+  const [label, value, tone, segments] = row;
+  const modelRow = { label, value, tone };
+  if (Array.isArray(segments) && segments.length > 0) {
+    modelRow.segments = segments.map(metricModelSegment);
+  }
+
+  return modelRow;
+}
+
+function metricModelSegment(segment) {
+  return {
+    label: segment?.label || '',
+    value: segment?.value || '--',
+    tone: segment?.tone || 'normal'
   };
 }
 

@@ -310,16 +310,85 @@ function reviewDisplayModel(overlayId, previewMode = 'off') {
         ['Wind', 'S | 15 km/h | hum 48% | fog 0%', 'normal']
       ], 'source: session + live weather telemetry');
     case 'pit-service':
-      return metricsModel('pit-service', 'Pit Service', 'hold', [
-        ['Release', 'RED - service active', 'error'],
-        ['Location', 'player on pit road', 'error'],
-        ['Service', 'active | tires, fuel, tearoff', 'error'],
-        ['Pit status', 'in progress', 'error'],
-        ['Fuel request', '31.6 L', 'normal'],
-        ['Repair', '12s required', 'error'],
-        ['Tires', 'four tires | 2 sets used', 'normal'],
-        ['Fast repair', 'local 0 | team 1', 'normal']
-      ], 'source: player/team pit service telemetry');
+      return metricsModel('pit-service', 'Pit Service', '', [
+        ['Time / Laps', '03:58 | 148/179 laps', 'normal'],
+        metricRow('Release', 'RED - service active', 'error', undefined, { rowColorHex: '#FF6274' }),
+        metricRow('Pit status', 'in progress', 'error', undefined, { rowColorHex: '#FF6274' }),
+        metricRow('Fuel request', 'requested | 31.6 L', 'normal', [
+          metricSegment('Requested', 'Yes', 'success'),
+          metricSegment('Selected', '31.6 L', 'info')
+        ]),
+        metricRow('Tearoff', 'requested', 'normal', [
+          metricSegment('Requested', 'Yes', 'success')
+        ]),
+        metricRow('Repair', '12s required', 'error', [
+          metricSegment('Required', '12s', 'error'),
+          metricSegment('Optional', '18s', 'warning')
+        ]),
+        metricRow('Fast repair', 'selected | available 1', 'normal', [
+          metricSegment('Selected', 'Yes', 'success'),
+          metricSegment('Available', '1', 'success')
+        ])
+      ], 'source: player/team pit service telemetry', [
+        {
+          title: 'Tire Analysis',
+          headers: ['Info', 'FL', 'FR', 'RL', 'RR'],
+          rows: [
+            gridRow('Compound', [
+              gridCell('S', 'success'),
+              gridCell('S', 'success'),
+              gridCell('S', 'success'),
+              gridCell('S', 'success')
+            ]),
+            gridRow('Change', [
+              gridCell('Change', 'success'),
+              gridCell('Change', 'success'),
+              gridCell('Keep', 'info'),
+              gridCell('Change', 'success')
+            ]),
+            gridRow('Set limit', ['4 sets', '4 sets', '4 sets', '4 sets']),
+            gridRow('Available', ['2', '2', gridCell('0', 'error'), '2']),
+            gridRow('Wear', ['92/91/90%', '93/92/91%', '96/95/94%', '97/96/95%'])
+          ]
+        }
+      ], [
+        {
+          title: 'Session',
+          rows: [
+            ['Time / Laps', '03:58 | 148/179 laps', 'normal']
+          ]
+        },
+        {
+          title: 'Pit Signal',
+          rows: [
+            metricRow('Release', 'RED - service active', 'error', undefined, { rowColorHex: '#FF6274' }),
+            metricRow('Pit status', 'in progress', 'error', undefined, { rowColorHex: '#FF6274' })
+          ]
+        },
+        {
+          title: 'Service Request',
+          rows: [
+            metricRow('Fuel request', 'requested | 31.6 L', 'normal', [
+              metricSegment('Requested', 'Yes', 'success'),
+              metricSegment('Selected', '31.6 L', 'info')
+            ]),
+            metricRow('Tearoff', 'requested', 'normal', [
+              metricSegment('Requested', 'Yes', 'success')
+            ]),
+            metricRow('Repair', '12s required', 'error', [
+              metricSegment('Required', '12s', 'error'),
+              metricSegment('Optional', '18s', 'warning')
+            ]),
+            metricRow('Fast repair', 'selected | available 1', 'normal', [
+              metricSegment('Selected', 'Yes', 'success'),
+              metricSegment('Available', '1', 'success')
+            ])
+          ]
+        }
+      ], [
+        { key: 'status', value: '' },
+        { key: 'timeRemaining', value: '03:58' }
+      ]);
     case 'input-state':
       return metricsModel('input-state', 'Inputs', '4 | 7250 rpm | ABS', [
         ['Speed', '231 km/h', 'normal'],
@@ -413,7 +482,15 @@ function relativeRow(cells, extra = {}) {
   };
 }
 
-function metricsModel(overlayId, title, status, metrics, source = 'source: review fixture') {
+function metricsModel(
+  overlayId,
+  title,
+  status,
+  metrics,
+  source = 'source: review fixture',
+  gridSections = [],
+  metricSections = [],
+  headerItems = [{ key: 'status', value: status }]) {
   return {
     overlayId,
     title,
@@ -422,10 +499,52 @@ function metricsModel(overlayId, title, status, metrics, source = 'source: revie
     bodyKind: 'metrics',
     columns: [],
     rows: [],
-    metrics: metrics.map(([label, value, tone]) => ({ label, value, tone })),
+    metrics: metrics.map(metricModelRow),
     points: [],
-    headerItems: [{ key: 'status', value: status }]
+    headerItems,
+    gridSections,
+    metricSections: metricSections.map((section) => ({
+      title: section.title,
+      rows: section.rows.map(metricModelRow)
+    }))
   };
+}
+
+function metricRow(label, value, tone, segments = undefined, extra = {}) {
+  return segments ? { label, value, tone, segments, ...extra } : { label, value, tone, ...extra };
+}
+
+function metricSegment(label, value, tone) {
+  return { label, value, tone };
+}
+
+function metricModelRow(row) {
+  if (!Array.isArray(row)) {
+    return {
+      label: row?.label || '',
+      value: row?.value || '--',
+      tone: row?.tone || 'normal',
+      ...(Array.isArray(row?.segments) && row.segments.length > 0 ? { segments: row.segments } : {}),
+      ...(row?.rowColorHex ? { rowColorHex: row.rowColorHex } : {})
+    };
+  }
+
+  const [label, value, tone] = row;
+  return { label, value, tone };
+}
+
+function gridRow(label, values, tone = 'normal') {
+  return {
+    label,
+    tone,
+    cells: values.map((value) => typeof value === 'object' && value !== null
+      ? { value: value.value, tone: value.tone || tone }
+      : { value, tone })
+  };
+}
+
+function gridCell(value, tone) {
+  return { value, tone };
 }
 
 function standingsDisplayModel(previewLabel = 'review fixture') {

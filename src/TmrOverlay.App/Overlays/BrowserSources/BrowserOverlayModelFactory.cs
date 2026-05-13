@@ -119,7 +119,7 @@ internal sealed class BrowserOverlayModelFactory
         {
             var overlay = FindOverlay(settings, PitServiceOverlayDefinition.Definition.Id);
             var viewModel = _pitServiceBuilder.Build(snapshot, now, unitSystem, overlay);
-            var headerItems = HeaderItems(overlay, snapshot, viewModel.Status);
+            var headerItems = HeaderItems(overlay, snapshot, PitServiceOverlayViewModel.HeaderStatus(viewModel.Status));
             model = FromSimple(
                 PitServiceOverlayDefinition.Definition.Id,
                 viewModel,
@@ -357,10 +357,44 @@ internal sealed class BrowserOverlayModelFactory
                 .Select(row => new BrowserOverlayMetricRow(
                     row.Label,
                     row.Value,
-                    ToneName(row.Tone)))
+                    ToneName(row.Tone))
+                {
+                    Segments = BrowserSegmentsFrom(row.Segments),
+                    RowColorHex = row.RowColorHex
+                })
                 .ToArray(),
             headerItems,
-            GridSectionsFrom(viewModel.Sections));
+            GridSectionsFrom(viewModel.Sections),
+            MetricSectionsFrom(viewModel.MetricSections));
+    }
+
+    private static IReadOnlyList<BrowserOverlayMetricSection> MetricSectionsFrom(
+        IReadOnlyList<SimpleTelemetryMetricSectionViewModel> sections)
+    {
+        return sections
+            .Where(section => section.Rows.Count > 0)
+            .Select(section => new BrowserOverlayMetricSection(
+                section.Title,
+                section.Rows.Select(row => new BrowserOverlayMetricRow(
+                    row.Label,
+                    row.Value,
+                    ToneName(row.Tone))
+                {
+                    Segments = BrowserSegmentsFrom(row.Segments),
+                    RowColorHex = row.RowColorHex
+                }).ToArray()))
+            .ToArray();
+    }
+
+    private static IReadOnlyList<BrowserOverlayMetricSegment> BrowserSegmentsFrom(
+        IReadOnlyList<SimpleTelemetryMetricSegmentViewModel> segments)
+    {
+        return segments
+            .Select(segment => new BrowserOverlayMetricSegment(
+                segment.Label,
+                segment.Value,
+                ToneName(segment.Tone)))
+            .ToArray();
     }
 
     private static IReadOnlyList<BrowserOverlayGridSection> GridSectionsFrom(
@@ -2155,7 +2189,8 @@ internal sealed record BrowserOverlayDisplayModel(
     BrowserTrackMapModel? TrackMap = null,
     BrowserGarageCoverModel? GarageCover = null,
     BrowserStreamChatModel? StreamChat = null,
-    IReadOnlyList<BrowserOverlayGridSection>? GridSections = null)
+    IReadOnlyList<BrowserOverlayGridSection>? GridSections = null,
+    IReadOnlyList<BrowserOverlayMetricSection>? MetricSections = null)
 {
     public static BrowserOverlayDisplayModel Table(
         string overlayId,
@@ -2186,7 +2221,8 @@ internal sealed record BrowserOverlayDisplayModel(
         string source,
         IReadOnlyList<BrowserOverlayMetricRow> metrics,
         IReadOnlyList<BrowserOverlayHeaderItem>? headerItems = null,
-        IReadOnlyList<BrowserOverlayGridSection>? gridSections = null)
+        IReadOnlyList<BrowserOverlayGridSection>? gridSections = null,
+        IReadOnlyList<BrowserOverlayMetricSection>? metricSections = null)
     {
         return new BrowserOverlayDisplayModel(
             overlayId,
@@ -2199,7 +2235,8 @@ internal sealed record BrowserOverlayDisplayModel(
             metrics,
             [],
             headerItems ?? [],
-            GridSections: gridSections);
+            GridSections: gridSections,
+            MetricSections: metricSections);
     }
 }
 
@@ -2470,6 +2507,16 @@ internal sealed record BrowserOverlayHeaderItem(
 internal sealed record BrowserOverlayMetricRow(
     string Label,
     string Value,
+    string Tone)
+{
+    public IReadOnlyList<BrowserOverlayMetricSegment> Segments { get; init; } = [];
+
+    public string? RowColorHex { get; init; }
+}
+
+internal sealed record BrowserOverlayMetricSegment(
+    string Label,
+    string Value,
     string Tone);
 
 internal sealed record BrowserOverlayGridSection(
@@ -2485,6 +2532,10 @@ internal sealed record BrowserOverlayGridRow(
 internal sealed record BrowserOverlayGridCell(
     string Value,
     string Tone);
+
+internal sealed record BrowserOverlayMetricSection(
+    string Title,
+    IReadOnlyList<BrowserOverlayMetricRow> Rows);
 
 internal static class BrowserOverlayTone
 {

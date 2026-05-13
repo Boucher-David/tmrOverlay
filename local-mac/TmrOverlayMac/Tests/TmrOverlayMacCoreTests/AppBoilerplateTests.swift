@@ -2,6 +2,15 @@
 import XCTest
 
 final class AppBoilerplateTests: XCTestCase {
+    func testMacHarnessVersionMatchesSharedBuildVersion() throws {
+        let propsURL = try repositoryRoot()
+            .appendingPathComponent("Directory.Build.props")
+        let props = try String(contentsOf: propsURL, encoding: .utf8)
+        let versionPrefix = try XCTUnwrap(extractVersionPrefix(from: props))
+
+        XCTAssertEqual(AppVersionInfo.current.version, versionPrefix)
+    }
+
     func testSettingsStorePersistsOverlaySettings() throws {
         let root = temporaryRoot("settings")
         defer {
@@ -241,5 +250,34 @@ final class AppBoilerplateTests: XCTestCase {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("tmr-overlay-mac-\(purpose)-tests", isDirectory: true)
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    }
+
+    private func repositoryRoot() throws -> URL {
+        var candidate = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+        while true {
+            if FileManager.default.fileExists(atPath: candidate.appendingPathComponent("Directory.Build.props").path) {
+                return candidate
+            }
+
+            let parent = candidate.deletingLastPathComponent()
+            if parent.path == candidate.path {
+                throw XCTSkip("Repository root not available for version parity check.")
+            }
+
+            candidate = parent
+        }
+    }
+
+    private func extractVersionPrefix(from props: String) -> String? {
+        guard let openRange = props.range(of: "<VersionPrefix>") else {
+            return nil
+        }
+
+        let searchStart = openRange.upperBound
+        guard let closeRange = props[searchStart...].range(of: "</VersionPrefix>") else {
+            return nil
+        }
+
+        return String(props[searchStart..<closeRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

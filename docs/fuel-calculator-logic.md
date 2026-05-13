@@ -140,6 +140,7 @@ Planned hardening:
 - Require minimum evidence windows before measured live burn can drive stint targets.
 - Reject samples around pits, refuels, session resets, zero/unavailable fuel levels, and implausible fuel deltas.
 - Keep `FuelUsePerHour` out of primary strategy selection until it is smoothed and agrees with measured fuel-level behavior.
+- Fuel Calculator V2 should own any pit-service refuel recommendation. When that exists, Pit Service can surface the selected pit fuel against that shared recommendation; the first Pit Service pass intentionally shows only requested and selected pit fuel.
 
 ## Lap Time Selection
 

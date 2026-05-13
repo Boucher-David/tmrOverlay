@@ -230,7 +230,7 @@ Reviewer checks:
 
 ## Pit Service
 
-Purpose: Summarize pit-service state and current pit action.
+Purpose: Summarize session context, pit release/service state, requested service, and tire-service evidence.
 
 Inputs:
 
@@ -242,14 +242,21 @@ Behavior:
 
 - Requires fresh telemetry, local active driver/team context, and pit-service data. In native overlay mode, focus on another car, unavailable focus, missing player car, garage/setup context, and no active local/pit context keep the enabled window hidden; browser/model callers show `waiting for local pit-service context`.
 - Still renders during the local pit window: on pit road, in the pit stall, or while service is active.
-- Shows current service status, fuel add/target, tire selections, fast repair, pit-road/stall state, and service completion context when available.
-- Uses warning/info/success tones for service state rather than treating all pit messages equally.
+- Groups rows as `Session`, `Pit Signal`, `Service Request`, and `Tire Analysis` in both native and browser surfaces.
+- Production localhost browser-source pages build the Pit Service model from the same normalized live snapshot and `PitServiceOverlayViewModel` path as native Design V2; spoofed all-row Pit Service data is limited to browser-review tooling.
+- Shows compact time plus lap context when telemetry exposes plausible values, so lap-based races can display remaining/total laps alongside the clock.
+- Shows release and pit-service status in `Pit Signal`; the old pit-location row is intentionally omitted because it duplicated lower-value context.
+- Shows service requests as segmented rows: fuel request is requested state plus selected fuel amount, tearoff is requested state, repair is required/optional time, and fast repair is selected state plus remaining availability.
+- Shows tire analysis as per-corner chip cells for compound, change/keep, set limits/availability/used state, cold pressure, temperature, wear, and distance when those rows are enabled and available.
+- Uses warning/info/success tones for release, repair, and tire availability/change state rather than treating all pit messages equally.
 - Formats fuel volume according to the selected unit system.
+- Does not show estimated fuel or in-car setup rows in this pass; estimated fuel belongs to the future Fuel Calculator V2 shared strategy model, and ARB/wing rows need deliberate raw-capture proof before promotion.
 
 Reviewer checks:
 
 - Does the overlay distinguish requested service from active/completed service?
 - Are repair and tire states understandable under partial telemetry?
+- Do the browser-source and native Design V2 Pit Service layouts stay functionally identical?
 
 ## Input / Car State
 

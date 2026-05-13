@@ -152,35 +152,92 @@ function browserScenarios() {
       id: 'pit-service',
       fixture: () => ({
         live: freshLiveSnapshot({}),
-        model: metricsModel('pit-service', 'Pit Service', 'hold', [
+        model: metricsModel('pit-service', 'Pit Service', '', [
+          metric('Time / Laps', '03:58 | 148/179 laps', 'normal'),
           metric('Release', 'RED - service active', 'error'),
-          metric('Location', 'player on pit road', 'error'),
-          metric('Service', 'active | tires, fuel, tearoff', 'error'),
           metric('Pit status', 'in progress', 'error'),
-          metric('Fuel request', '31.6 L', 'normal'),
-          metric('Repair', '12s required', 'error'),
-          metric('Tires', 'four tires | 2 sets used', 'normal'),
-          metric('Fast repair', 'local 0 | team 1', 'normal')
+          metric('Fuel request', 'requested | 31.6 L', 'normal', [
+            segment('Requested', 'Yes', 'success'),
+            segment('Selected', '31.6 L', 'info')
+          ]),
+          metric('Tearoff', 'requested', 'normal', [
+            segment('Requested', 'Yes', 'success')
+          ]),
+          metric('Repair', '12s required', 'error', [
+            segment('Required', '12s', 'error'),
+            segment('Optional', '18s', 'warning')
+          ]),
+          metric('Fast repair', 'selected | available 1', 'normal', [
+            segment('Selected', 'Yes', 'success'),
+            segment('Available', '1', 'success')
+          ])
         ], 'source: player/team pit service telemetry', [
           {
             title: 'Tire Analysis',
             headers: ['Info', 'FL', 'FR', 'RL', 'RR'],
             rows: [
+              gridRow('Compound', [gridCell('S', 'success'), gridCell('S', 'success'), gridCell('S', 'success'), gridCell('S', 'success')]),
+              gridRow('Change', [gridCell('Change', 'success'), gridCell('Change', 'success'), gridCell('Keep', 'info'), gridCell('Change', 'success')]),
               gridRow('Set limit', ['4 sets', '4 sets', '4 sets', '4 sets']),
-              gridRow('Available', ['2', '2', '2', '2']),
+              gridRow('Available', ['2', '2', gridCell('0', 'error'), '2']),
               gridRow('Wear', ['92/91/90%', '93/92/91%', '96/95/94%', '97/96/95%'])
             ]
           }
+        ], [
+          {
+            title: 'Session',
+            rows: [
+              metric('Time / Laps', '03:58 | 148/179 laps', 'normal')
+            ]
+          },
+          {
+            title: 'Pit Signal',
+            rows: [
+              metric('Release', 'RED - service active', 'error', undefined, { rowColorHex: '#FF6274' }),
+              metric('Pit status', 'in progress', 'error', undefined, { rowColorHex: '#FF6274' })
+            ]
+          },
+          {
+            title: 'Service Request',
+            rows: [
+              metric('Fuel request', 'requested | 31.6 L', 'normal', [
+                segment('Requested', 'Yes', 'success'),
+                segment('Selected', '31.6 L', 'info')
+              ]),
+              metric('Tearoff', 'requested', 'normal', [
+                segment('Requested', 'Yes', 'success')
+              ]),
+              metric('Repair', '12s required', 'error', [
+                segment('Required', '12s', 'error'),
+                segment('Optional', '18s', 'warning')
+              ]),
+              metric('Fast repair', 'selected | available 1', 'normal', [
+                segment('Selected', 'Yes', 'success'),
+                segment('Available', '1', 'success')
+              ])
+            ]
+          }
+        ], [
+          { key: 'status', value: '' },
+          { key: 'timeRemaining', value: '03:58' }
         ]),
-        waitForSelector: '.tire-grid'
+        waitForSelector: '.metric.segmented'
       }),
       assert: ({ document }) => {
         expect(metricText(document)).toContain('Release RED - service active');
         expect(metricText(document)).toContain('Pit status in progress');
-        expect(document.querySelector('.metric-section').textContent).toContain('Tire Analysis');
+        expect(document.querySelectorAll('.metric.segmented').length).toBeGreaterThanOrEqual(4);
+        expect(contentText(document)).not.toContain('Estimated');
+        expect([...document.querySelectorAll('.tire-grid-cell.info')].some((cellElement) => cellElement.textContent.includes('Keep'))).toBe(true);
+        expect([...document.querySelectorAll('.tire-grid-cell.error')].some((cellElement) => cellElement.textContent.includes('0'))).toBe(true);
+        expect([...document.querySelectorAll('.metric-section')].map((section) => section.textContent).join(' ')).toContain('Pit Signal');
+        expect([...document.querySelectorAll('.metric-section')].map((section) => section.textContent).join(' ')).toContain('Tire Analysis');
+        expect(contentText(document)).not.toContain('fARB');
+        expect(contentText(document)).not.toContain('player on pit road');
         expect(document.querySelector('.tire-grid').textContent).toContain('Set limit');
         expect(document.querySelector('.tire-grid').textContent).toContain('92/91/90%');
-        expect(document.getElementById('status').textContent).toBe('hold');
+        expect(document.getElementById('status').textContent).toBe('');
+        expect(document.getElementById('time-remaining').textContent).toBe('03:58');
       }
     },
     {
@@ -469,7 +526,7 @@ function tableModel(overlayId, title, status, columns, rows) {
   };
 }
 
-function metricsModel(overlayId, title, status, metrics, source = 'source: catalogue behaviour', gridSections = []) {
+function metricsModel(overlayId, title, status, metrics, source = 'source: catalogue behaviour', gridSections = [], metricSections = [], headerItems = []) {
   return {
     overlayId,
     title,
@@ -479,7 +536,9 @@ function metricsModel(overlayId, title, status, metrics, source = 'source: catal
     columns: [],
     rows: [],
     metrics,
-    gridSections
+    gridSections,
+    metricSections,
+    headerItems
   };
 }
 
@@ -521,7 +580,11 @@ function row(cells, extra = {}) {
   };
 }
 
-function metric(label, value, tone) {
+function metric(label, value, tone, segments = undefined, extra = {}) {
+  return segments ? { label, value, tone, segments, ...extra } : { label, value, tone, ...extra };
+}
+
+function segment(label, value, tone) {
   return { label, value, tone };
 }
 
@@ -529,8 +592,14 @@ function gridRow(label, values, tone = 'normal') {
   return {
     label,
     tone,
-    cells: values.map((value) => ({ value, tone }))
+    cells: values.map((value) => typeof value === 'object' && value !== null
+      ? { value: value.value, tone: value.tone || tone }
+      : { value, tone })
   };
+}
+
+function gridCell(value, tone) {
+  return { value, tone };
 }
 
 function rowText(document) {

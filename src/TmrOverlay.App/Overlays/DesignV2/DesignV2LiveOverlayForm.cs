@@ -405,13 +405,20 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     private DesignV2OverlayModel ApplyChromeSettings(DesignV2OverlayModel model, LiveTelemetrySnapshot snapshot)
     {
-        var headerText = BuildHeaderText(_settings, snapshot, model.Status);
+        var headerText = BuildHeaderText(_settings, snapshot, HeaderStatusFor(_kind, model.Status));
         var showFooter = ShowFooterForSettings(_kind, _settings, snapshot);
         return model with
         {
             HeaderText = headerText,
             ShowFooter = showFooter
         };
+    }
+
+    private static string HeaderStatusFor(DesignV2LiveOverlayKind kind, string status)
+    {
+        return kind == DesignV2LiveOverlayKind.PitService
+            ? PitServiceOverlayViewModel.HeaderStatus(status)
+            : status;
     }
 
     internal static string BuildHeaderText(OverlaySettings settings, LiveTelemetrySnapshot snapshot, string status)
@@ -2643,7 +2650,27 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             new DesignV2MetricRowsBody(viewModel.Rows.Select(row => new DesignV2MetricRow(
                 row.Label,
                 row.Value,
-                EvidenceFor(row.Tone))).ToArray(),
+                EvidenceFor(row.Tone))
+            {
+                Segments = row.Segments.Select(segment => new DesignV2MetricSegment(
+                    segment.Label,
+                    segment.Value,
+                    EvidenceFor(segment.Tone))).ToArray(),
+                RowColorHex = row.RowColorHex
+            }).ToArray(),
+                viewModel.MetricSections.Select(section => new DesignV2MetricSection(
+                    section.Title,
+                    section.Rows.Select(row => new DesignV2MetricRow(
+                        row.Label,
+                        row.Value,
+                        EvidenceFor(row.Tone))
+                    {
+                        Segments = row.Segments.Select(segment => new DesignV2MetricSegment(
+                            segment.Label,
+                            segment.Value,
+                            EvidenceFor(segment.Tone))).ToArray(),
+                        RowColorHex = row.RowColorHex
+                    }).ToArray())).ToArray(),
                 viewModel.Sections.Select(section => new DesignV2MetricGridSection(
                     section.Title,
                     section.Headers,
@@ -2842,7 +2869,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                 DrawTable(graphics, rect, table);
                 break;
             case DesignV2MetricRowsBody metrics:
-                DrawMetricRows(graphics, rect, metrics.Rows, metrics.Sections);
+                DrawMetricRows(graphics, rect, metrics.Rows, metrics.MetricSections, metrics.Sections);
                 break;
             case DesignV2GraphBody graph:
                 DrawGraph(graphics, rect, graph);
@@ -2991,9 +3018,10 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         Graphics graphics,
         RectangleF rect,
         IReadOnlyList<DesignV2MetricRow> rows,
+        IReadOnlyList<DesignV2MetricSection> metricSections,
         IReadOnlyList<DesignV2MetricGridSection> sections)
     {
-        if (rows.Count == 0 && sections.Count == 0)
+        if (rows.Count == 0 && metricSections.Count == 0 && sections.Count == 0)
         {
             FillRounded(graphics, rect, 5, SurfaceInset, BorderMuted);
             using var waitingFont = FontOf(11, FontStyle.Bold);
@@ -3003,19 +3031,25 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
         using var labelFont = FontOf(9.8f, FontStyle.Bold);
         using var valueFont = FontOf(10.5f, FontStyle.Bold);
+        using var sectionFont = FontOf(8.8f, FontStyle.Bold);
         var gridHeight = sections.Count == 0
             ? 0f
-            : Math.Min(116f, Math.Max(80f, sections.Sum(section => 26f + Math.Min(6, section.Rows.Count) * 25f) + Math.Max(0, sections.Count - 1) * 8f));
+            : Math.Min(176f, Math.Max(80f, sections.Sum(section => 26f + Math.Min(6, section.Rows.Count) * 25f) + Math.Max(0, sections.Count - 1) * 8f));
         var rowsRect = sections.Count == 0
             ? rect
             : new RectangleF(rect.Left, rect.Top, rect.Width, Math.Max(RowHeight, rect.Height - gridHeight - 8f));
-        var maximumRows = Math.Max(1, (int)(rowsRect.Height / (RowHeight + RowGap)));
-        foreach (var (row, index) in rows.Take(maximumRows).Select((row, index) => (row, index)))
+        if (metricSections.Count > 0)
         {
-            var rowRect = new RectangleF(rowsRect.Left, rowsRect.Top + index * (RowHeight + RowGap), rowsRect.Width, RowHeight);
-            FillRounded(graphics, rowRect, 5, SurfaceRaised, Color.FromArgb(90, BorderMuted));
-            DrawText(graphics, row.Label, labelFont, TextMuted, new RectangleF(rowRect.Left + 10, rowRect.Top + 7, MetricLabelWidth, 16));
-            DrawText(graphics, row.Value, valueFont, EvidenceColor(row.Evidence), new RectangleF(rowRect.Left + MetricLabelWidth + 12, rowRect.Top + 7, rowRect.Width - MetricLabelWidth - 22, 16), ContentAlignment.MiddleRight);
+            DrawMetricSections(graphics, rowsRect, metricSections, sectionFont, labelFont, valueFont);
+        }
+        else
+        {
+            var maximumRows = Math.Max(1, (int)(rowsRect.Height / (RowHeight + RowGap)));
+            foreach (var (row, index) in rows.Take(maximumRows).Select((row, index) => (row, index)))
+            {
+                var rowRect = new RectangleF(rowsRect.Left, rowsRect.Top + index * (RowHeight + RowGap), rowsRect.Width, RowHeight);
+                DrawMetricRow(graphics, rowRect, row, labelFont, valueFont);
+            }
         }
 
         if (sections.Count == 0)
@@ -3036,6 +3070,106 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             var sectionRect = new RectangleF(rect.Left, sectionTop, rect.Width, Math.Min(sectionHeight, rect.Bottom - sectionTop));
             DrawMetricGridSection(graphics, sectionRect, section, maxRows);
             sectionTop += sectionRect.Height + 8f;
+        }
+    }
+
+    private void DrawMetricSections(
+        Graphics graphics,
+        RectangleF rect,
+        IReadOnlyList<DesignV2MetricSection> sections,
+        Font sectionFont,
+        Font labelFont,
+        Font valueFont)
+    {
+        var y = rect.Top;
+        var rowHeight = 24f;
+        var sectionTitleHeight = 14f;
+        foreach (var section in sections.Where(section => section.Rows.Count > 0))
+        {
+            if (y + sectionTitleHeight + rowHeight > rect.Bottom)
+            {
+                break;
+            }
+
+            DrawText(graphics, section.Title, sectionFont, TextMuted, new RectangleF(rect.Left + 4, y, rect.Width - 8, sectionTitleHeight), ContentAlignment.MiddleLeft);
+            y += sectionTitleHeight;
+            foreach (var row in section.Rows)
+            {
+                if (y + rowHeight > rect.Bottom)
+                {
+                    return;
+                }
+
+                var rowRect = new RectangleF(rect.Left, y, rect.Width, rowHeight);
+                DrawMetricRow(graphics, rowRect, row, labelFont, valueFont);
+                y += rowHeight + 2f;
+            }
+
+            y += 2f;
+        }
+    }
+
+    private void DrawMetricRow(
+        Graphics graphics,
+        RectangleF rowRect,
+        DesignV2MetricRow row,
+        Font labelFont,
+        Font valueFont)
+    {
+        var hasAccent = TryParseHexColor(row.RowColorHex, out var accent);
+        var fill = hasAccent ? Blend(SurfaceRaised, accent, 12, 1) : SurfaceRaised;
+        FillRounded(graphics, rowRect, 5, fill, hasAccent ? WithAlpha(accent, 0.38d) : Color.FromArgb(90, BorderMuted));
+        if (hasAccent)
+        {
+            FillRounded(graphics, new RectangleF(rowRect.Left, rowRect.Top, 3, rowRect.Height), 2, accent, null);
+        }
+
+        DrawText(graphics, row.Label, labelFont, TextMuted, new RectangleF(rowRect.Left + 10, rowRect.Top + 6, MetricLabelWidth, 16));
+        var valueRect = new RectangleF(rowRect.Left + MetricLabelWidth + 12, rowRect.Top + 3, rowRect.Width - MetricLabelWidth - 18, rowRect.Height - 6);
+        if (row.Segments.Count > 0)
+        {
+            DrawMetricSegments(graphics, valueRect, row.Segments);
+            return;
+        }
+
+        DrawText(graphics, row.Value, valueFont, EvidenceColor(row.Evidence), new RectangleF(valueRect.Left, rowRect.Top + 6, valueRect.Width - 4, 16), ContentAlignment.MiddleRight);
+    }
+
+    private void DrawMetricSegments(
+        Graphics graphics,
+        RectangleF rect,
+        IReadOnlyList<DesignV2MetricSegment> segments)
+    {
+        var count = Math.Min(6, segments.Count);
+        if (count <= 0)
+        {
+            return;
+        }
+
+        using var segmentLabelFont = FontOf(7.2f, FontStyle.Bold);
+        using var segmentValueFont = FontOf(9.2f, FontStyle.Bold);
+        var gap = 3f;
+        var width = Math.Max(1f, (rect.Width - gap * (count - 1)) / count);
+        var x = rect.Left;
+        foreach (var segment in segments.Take(count))
+        {
+            var segmentRect = new RectangleF(x, rect.Top, width, rect.Height);
+            FillRounded(graphics, segmentRect, 3, EvidenceBackground(segment.Evidence), null);
+            DrawText(
+                graphics,
+                segment.Label,
+                segmentLabelFont,
+                TextMuted,
+                new RectangleF(segmentRect.Left + 4, segmentRect.Top + 2, segmentRect.Width - 8, 9),
+                ContentAlignment.MiddleCenter);
+            DrawText(
+                graphics,
+                segment.Value,
+                segmentValueFont,
+                EvidenceColor(segment.Evidence),
+                new RectangleF(segmentRect.Left + 4, segmentRect.Top + 12, segmentRect.Width - 8, Math.Max(9, segmentRect.Height - 13)),
+                ContentAlignment.MiddleCenter);
+            x += width + gap;
         }
     }
 
@@ -3097,7 +3231,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             {
                 var cell = index - 1 < row.Cells.Count ? row.Cells[index - 1] : new DesignV2MetricGridCell("--", DesignV2Evidence.Unavailable);
                 var cellRect = new RectangleF(x, y, widths[index], 21f);
-                FillRounded(graphics, cellRect, 3, SurfaceRaised, null);
+                FillRounded(graphics, cellRect, 3, EvidenceBackground(cell.Evidence), null);
                 DrawText(graphics, cell.Value, cellFont, EvidenceColor(cell.Evidence), RectangleF.Inflate(cellRect, -5, -3), ContentAlignment.MiddleRight);
                 x += widths[index] + gap;
             }
@@ -5405,6 +5539,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         {
             SimpleTelemetryTone.Success => DesignV2Evidence.Live,
             SimpleTelemetryTone.Info => DesignV2Evidence.Measured,
+            SimpleTelemetryTone.Modeled => DesignV2Evidence.Modeled,
             SimpleTelemetryTone.Warning => DesignV2Evidence.Partial,
             SimpleTelemetryTone.Error => DesignV2Evidence.Error,
             SimpleTelemetryTone.Waiting => DesignV2Evidence.Unavailable,
@@ -5422,6 +5557,19 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             DesignV2Evidence.Partial => Amber,
             DesignV2Evidence.Error => Error,
             _ => TextMuted
+        };
+    }
+
+    private static Color EvidenceBackground(DesignV2Evidence evidence)
+    {
+        return evidence switch
+        {
+            DesignV2Evidence.Live => Blend(SurfaceRaised, Green, 8, 1),
+            DesignV2Evidence.Measured => Blend(SurfaceRaised, Cyan, 8, 1),
+            DesignV2Evidence.Modeled => Blend(SurfaceRaised, Magenta, 8, 1),
+            DesignV2Evidence.Partial => Blend(SurfaceRaised, Amber, 8, 1),
+            DesignV2Evidence.Error => Blend(SurfaceRaised, Error, 7, 1),
+            _ => SurfaceInset
         };
     }
 
@@ -5705,10 +5853,18 @@ internal sealed record DesignV2TableBody(
 
 internal sealed record DesignV2MetricRowsBody(
     IReadOnlyList<DesignV2MetricRow> Rows,
+    IReadOnlyList<DesignV2MetricSection> MetricSections,
     IReadOnlyList<DesignV2MetricGridSection> Sections) : DesignV2Body
 {
     public DesignV2MetricRowsBody(IReadOnlyList<DesignV2MetricRow> rows)
-        : this(rows, [])
+        : this(rows, [], [])
+    {
+    }
+
+    public DesignV2MetricRowsBody(
+        IReadOnlyList<DesignV2MetricRow> rows,
+        IReadOnlyList<DesignV2MetricGridSection> sections)
+        : this(rows, [], sections)
     {
     }
 }
@@ -5994,7 +6150,21 @@ internal sealed record DesignV2TableRow(
 internal sealed record DesignV2MetricRow(
     string Label,
     string Value,
+    DesignV2Evidence Evidence)
+{
+    public IReadOnlyList<DesignV2MetricSegment> Segments { get; init; } = [];
+
+    public string? RowColorHex { get; init; }
+}
+
+internal sealed record DesignV2MetricSegment(
+    string Label,
+    string Value,
     DesignV2Evidence Evidence);
+
+internal sealed record DesignV2MetricSection(
+    string Title,
+    IReadOnlyList<DesignV2MetricRow> Rows);
 
 internal sealed record DesignV2MetricGridSection(
     string Title,

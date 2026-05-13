@@ -16,11 +16,10 @@
     function apiPath(path) {
       const url = new URL(path, window.location.href);
       const currentParams = new URLSearchParams(window.location.search);
-      const preview = currentParams.get('preview');
-      if (['practice', 'qualifying', 'race'].includes(preview)) {
-        url.searchParams.set('preview', preview);
-      }
-      for (const replayParam of ['frame', 'rel', 'spoofFocus', 'focus']) {
+      const forwardedQueryParameters = Array.isArray(page.forwardQueryParameters)
+        ? page.forwardQueryParameters
+        : [];
+      for (const replayParam of forwardedQueryParameters) {
         const value = currentParams.get(replayParam);
         if (value !== null) {
           url.searchParams.set(replayParam, value);
@@ -515,11 +514,43 @@
     function metricRow(row) {
       const tone = toneClass(row?.tone);
       const highlight = tone === 'info' ? ' highlight' : '';
+      const segments = Array.isArray(row?.segments) ? row.segments : [];
+      const hasSegments = segments.length > 0;
+      const rowColor = metricColorStyle(row?.rowColorHex || row?.carClassColorHex);
+      const valueHtml = hasSegments
+        ? `<div class="value value-segments" style="--tmr-segment-count: ${Math.min(segments.length, 6)};">${segments.map(metricSegment).join('')}</div>`
+        : `<div class="value">${escapeHtml(row?.value || '--')}</div>`;
       return `
-        <div class="metric ${tone}${highlight}">
+        <div class="metric ${tone}${highlight}${hasSegments ? ' segmented' : ''}${rowColor ? ' class-colored' : ''}"${rowColor}>
           <div class="label">${escapeHtml(row?.label || '')}</div>
-          <div class="value">${escapeHtml(row?.value || '--')}</div>
+          ${valueHtml}
         </div>`;
+    }
+
+    function metricColorStyle(value) {
+      const color = parseHexColor(value);
+      return color
+        ? ` style="--metric-accent: #${color.key}; --metric-bg: rgba(${color.r}, ${color.g}, ${color.b}, 0.13); --metric-border: rgba(${color.r}, ${color.g}, ${color.b}, 0.38);"`
+        : '';
+    }
+
+    function metricSegment(segment) {
+      const tone = toneClass(segment?.tone);
+      return `
+        <div class="value-segment ${tone}">
+          <span class="segment-label">${escapeHtml(segment?.label || '')}</span>
+          <span class="segment-value">${escapeHtml(segment?.value || '--')}</span>
+        </div>`;
+    }
+
+    function metricSection(section) {
+      const rows = Array.isArray(section?.rows) ? section.rows : [];
+      if (!rows.length) return '';
+      return `
+        <section class="metric-section">
+          <div class="metric-section-title">${escapeHtml(section?.title || 'Details')}</div>
+          <div class="metric-list">${rows.map(metricRow).join('')}</div>
+        </section>`;
     }
 
     function gridSection(section) {
@@ -571,27 +602,29 @@
       }
 
       const metrics = Array.isArray(model.metrics) ? model.metrics : [];
+      const metricSections = Array.isArray(model.metricSections) ? model.metricSections : [];
       const gridSections = Array.isArray(model.gridSections) ? model.gridSections : [];
       const rows = Array.isArray(model.rows) ? model.rows : [];
+      const metricSectionHtml = metricSections.map(metricSection).join('');
       const sectionHtml = gridSections.map(gridSection).join('');
       if (model.bodyKind === 'summary-table') {
         const summary = metrics.length
-          ? `<div class="grid" style="margin-bottom: 10px;">${metrics.map(metricRow).join('')}</div>`
+          ? `<div class="metric-list" style="margin-bottom: 10px;">${metrics.map(metricRow).join('')}</div>`
           : '';
         contentEl.innerHTML = summary + rowsTable(displayModelHeaders(model), rows);
       } else if (model.bodyKind === 'graph') {
         const showGraphMetrics = model.overlayId !== 'gap-to-leader' && metrics.length;
         const summary = showGraphMetrics
-          ? `<div class="grid graph-metrics">${metrics.map(metricRow).join('')}</div>`
+          ? `<div class="metric-list graph-metrics">${metrics.map(metricRow).join('')}</div>`
           : '';
         contentEl.innerHTML = `${summary}<div class="model-graph-panel"><canvas class="model-graph" aria-label="Gap trend graph"></canvas></div>`;
         drawOverlayGraph(contentEl.querySelector('.model-graph'), model);
       } else if (model.bodyKind === 'metrics') {
-        const metricsHtml = metrics.length
-          ? `<div class="grid">${metrics.map(metricRow).join('')}</div>`
+        const metricsHtml = metrics.length && !metricSectionHtml
+          ? `<div class="metric-list">${metrics.map(metricRow).join('')}</div>`
           : '';
-        contentEl.innerHTML = metricsHtml || sectionHtml
-          ? `${metricsHtml}${sectionHtml}`
+        contentEl.innerHTML = metricsHtml || metricSectionHtml || sectionHtml
+          ? `${metricsHtml}${metricSectionHtml}${sectionHtml}`
           : '<div class="empty">Waiting for live values.</div>';
       } else {
         contentEl.innerHTML = rowsTable(displayModelHeaders(model), rows);
@@ -605,7 +638,9 @@
       const items = Array.isArray(model?.headerItems) ? model.headerItems : [];
       const statusItem = items.find((item) => String(item?.key || '').toLowerCase() === 'status');
       const timeItem = items.find((item) => String(item?.key || '').toLowerCase() === 'timeremaining');
-      statusEl.textContent = statusItem?.value || fallbackStatus || '';
+      const statusValue = statusItem ? String(statusItem.value || '').trim() : fallbackStatus || '';
+      statusEl.textContent = statusValue;
+      statusEl.hidden = !statusValue;
       if (timeRemainingEl) {
         const value = timeItem?.value || '';
         timeRemainingEl.textContent = value;

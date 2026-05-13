@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Drawing;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Overlays.Abstractions;
+using TmrOverlay.App.Overlays.PitService;
 using TmrOverlay.App.Overlays.Styling;
 using TmrOverlay.App.Performance;
 using TmrOverlay.Core.Overlays;
@@ -12,7 +13,7 @@ namespace TmrOverlay.App.Overlays.SimpleTelemetry;
 
 internal sealed class SimpleTelemetryOverlayForm : PersistentOverlayForm
 {
-    private const int MaximumRows = 8;
+    private const int MaximumRows = 10;
     private const int MinimumTableHeight = 128;
     private const int RefreshIntervalMilliseconds = 500;
 
@@ -354,6 +355,10 @@ internal sealed class SimpleTelemetryOverlayForm : PersistentOverlayForm
                 OverlayTheme.Colors.InfoBackground,
                 OverlayTheme.Colors.TextSecondary,
                 OverlayTheme.Colors.InfoText),
+            SimpleTelemetryTone.Modeled => (
+                OverlayTheme.Colors.InfoBackground,
+                OverlayTheme.Colors.TextSecondary,
+                OverlayTheme.DesignV2.Magenta),
             SimpleTelemetryTone.Waiting => (
                 OverlayTheme.Colors.PanelBackground,
                 OverlayTheme.Colors.TextMuted,
@@ -422,9 +427,12 @@ internal sealed class SimpleTelemetryOverlayForm : PersistentOverlayForm
         var timeRemaining = OverlayChromeSettings.ShowHeaderTimeRemaining(_settings, snapshot)
             ? OverlayHeaderTimeFormatter.FormatTimeRemaining(snapshot)
             : null;
+        var status = string.Equals(_definition.Id, PitServiceOverlayDefinition.Definition.Id, StringComparison.Ordinal)
+            ? PitServiceOverlayViewModel.HeaderStatus(viewModel.Status)
+            : viewModel.Status;
         return new OverlayChromeState(
             viewModel.Title,
-            viewModel.Status,
+            status,
             ChromeTone(viewModel.Tone),
             viewModel.Source,
             footerMode,
@@ -439,6 +447,7 @@ internal sealed class SimpleTelemetryOverlayForm : PersistentOverlayForm
             SimpleTelemetryTone.Warning => OverlayChromeTone.Warning,
             SimpleTelemetryTone.Success => OverlayChromeTone.Success,
             SimpleTelemetryTone.Info => OverlayChromeTone.Info,
+            SimpleTelemetryTone.Modeled => OverlayChromeTone.Info,
             SimpleTelemetryTone.Waiting => OverlayChromeTone.Waiting,
             _ => OverlayChromeTone.Normal
         };

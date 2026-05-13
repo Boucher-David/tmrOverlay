@@ -358,7 +358,7 @@ public sealed class SimpleTelemetryOverlayViewModelTests
                 OnPitRoad = true,
                 PitstopActive = true,
                 PitServiceStatus = PitServiceStatusFormatter.InProgress,
-                PitServiceFlags = 0x1f,
+                PitServiceFlags = 0x3f,
                 PitServiceFuelLiters = 45.5d,
                 PitRepairLeftSeconds = 12.2d,
                 TireSetsUsed = 2,
@@ -381,10 +381,68 @@ public sealed class SimpleTelemetryOverlayViewModelTests
         Assert.Equal("source: player/team pit service telemetry", viewModel.Source);
         Assert.Contains(viewModel.Rows, row => row.Label == "Release" && row.Value == "RED - service active");
         Assert.Contains(viewModel.Rows, row => row.Label == "Pit status" && row.Value == "in progress");
-        Assert.Contains(viewModel.Rows, row => row.Label == "Service" && row.Value.Contains("active", StringComparison.Ordinal));
-        Assert.Contains(viewModel.Rows, row => row.Label == "Fuel request" && row.Value == "45.5 L");
+        Assert.DoesNotContain(viewModel.Rows, row => row.Label == "Location");
+        Assert.DoesNotContain(viewModel.Rows, row => row.Label == "Service");
+        Assert.DoesNotContain(viewModel.Rows, row => row.Label == "Tires");
+        Assert.Contains(viewModel.Rows, row => row.Label == "Fuel request" && row.Value == "requested | 45.5 L");
+        Assert.Contains(viewModel.Rows, row => row.Label == "Fuel request" && row.Segments.Select(segment => segment.Label).SequenceEqual(new[] { "Requested", "Selected" }));
+        Assert.Contains(viewModel.Rows, row => row.Label == "Tearoff" && row.Value == "requested" && row.Segments.Count == 1);
         Assert.Contains(viewModel.Rows, row => row.Label == "Repair" && row.Value.Contains("12s required", StringComparison.Ordinal));
-        Assert.Contains(viewModel.Rows, row => row.Label == "Fast repair" && row.Value == "local 0 | team 1");
+        Assert.Contains(viewModel.Rows, row => row.Label == "Fast repair" && row.Value == "--" && row.Segments.Count == 2);
+    }
+
+    [Fact]
+    public void PitService_FromTelemetry_GroupsRowsAndShowsTimeWithFiniteRaceLaps()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = Snapshot(now, LiveRaceModels.Empty with
+        {
+            Session = LiveSessionModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                SessionType = "Race",
+                SessionTimeRemainSeconds = 86_258.266667d,
+                SessionLapsRemain = 4,
+                SessionLapsTotal = 5
+            },
+            FuelPit = LiveFuelPitModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                PlayerCarInPitStall = true,
+                PitstopActive = false,
+                PitServiceFlags = 0
+            }
+        });
+
+        var viewModel = PitServiceOverlayViewModel.From(snapshot, now, "Metric");
+
+        Assert.Equal("release ready", viewModel.Status);
+        Assert.Contains(viewModel.Rows, row => row.Label == "Release" && row.Value == "GREEN - go (inferred)");
+        Assert.Contains(viewModel.Rows, row => row.Label == "Time / Laps" && row.Value == "23:58 | 4/5 laps");
+
+        Assert.Collection(
+            viewModel.MetricSections,
+            section =>
+            {
+                Assert.Equal("Session", section.Title);
+                Assert.Contains(section.Rows, row => row.Label == "Time / Laps");
+            },
+            section =>
+            {
+                Assert.Equal("Pit Signal", section.Title);
+                Assert.Contains(section.Rows, row => row.Label == "Release");
+                Assert.Contains(section.Rows, row => row.Label == "Pit status");
+                Assert.DoesNotContain(section.Rows, row => row.Label == "Location");
+            },
+            section =>
+            {
+                Assert.Equal("Service Request", section.Title);
+                Assert.DoesNotContain(section.Rows, row => row.Label == "Service");
+                Assert.Contains(section.Rows, row => row.Label == "Tearoff");
+                Assert.Contains(section.Rows, row => row.Label == "Fast repair");
+            });
     }
 
     [Fact]
@@ -507,6 +565,7 @@ public sealed class SimpleTelemetryOverlayViewModelTests
                 Quality = LiveModelQuality.Reliable,
                 PitServiceFlags = 0x40,
                 FastRepairUsed = 0,
+                FastRepairAvailable = 1,
                 TeamFastRepairsUsed = 1
             }
         });
@@ -515,8 +574,9 @@ public sealed class SimpleTelemetryOverlayViewModelTests
 
         Assert.Equal("service requested", viewModel.Status);
         Assert.Contains(viewModel.Rows, row => row.Label == "Release" && row.Value == "armed");
-        Assert.Contains(viewModel.Rows, row => row.Label == "Service" && row.Value == "requested | fast repair");
-        Assert.Contains(viewModel.Rows, row => row.Label == "Fast repair" && row.Value == "selected | local 0 | team 1");
+        Assert.DoesNotContain(viewModel.Rows, row => row.Label == "Service");
+        Assert.Contains(viewModel.Rows, row => row.Label == "Fast repair" && row.Value == "selected | available 1");
+        Assert.Contains(viewModel.Rows, row => row.Label == "Fast repair" && row.Segments.Any(segment => segment.Label == "Available" && segment.Value == "1"));
     }
 
     [Fact]
@@ -553,8 +613,9 @@ public sealed class SimpleTelemetryOverlayViewModelTests
         var second = builder(changed, now.AddSeconds(1), "Metric");
 
         Assert.Contains(first.Rows, row => row.Label == "Fuel request" && row.Tone == SimpleTelemetryTone.Normal);
-        Assert.Contains(second.Rows, row => row.Label == "Fuel request" && row.Value == "45.0 L" && row.Tone == SimpleTelemetryTone.Info);
-        Assert.Contains(second.Rows, row => row.Label == "Tires" && row.Value == "four tires" && row.Tone == SimpleTelemetryTone.Info);
+        Assert.Contains(second.Rows, row => row.Label == "Fuel request" && row.Value == "requested | 45.0 L" && row.Tone == SimpleTelemetryTone.Info);
+        Assert.DoesNotContain(second.Rows, row => row.Label == "Tires");
+        Assert.Contains(second.Sections.SelectMany(section => section.Rows), row => row.Label == "Change" && row.Cells.All(cell => cell.Value == "Change"));
     }
 
     [Fact]
@@ -580,7 +641,7 @@ public sealed class SimpleTelemetryOverlayViewModelTests
         var viewModel = PitServiceOverlayViewModel.From(snapshot, now, "Metric");
 
         Assert.Empty(viewModel.Sections);
-        Assert.Contains(viewModel.Rows, row => row.Label == "Tires" && row.Value == "--");
+        Assert.DoesNotContain(viewModel.Rows, row => row.Label == "Tires");
     }
 
     [Fact]
@@ -601,6 +662,9 @@ public sealed class SimpleTelemetryOverlayViewModelTests
             header => Assert.Equal("RL", header),
             header => Assert.Equal("RR", header));
         Assert.Contains(section.Rows, row => row.Label == "Set limit" && row.Cells.All(cell => cell.Value == "4 sets"));
+        Assert.Contains(section.Rows, row => row.Label == "Compound" && row.Cells.All(cell => cell.Value == "Dry" && cell.Tone == SimpleTelemetryTone.Info));
+        Assert.Contains(section.Rows, row => row.Label == "Change" && row.Cells[0].Value == "Change" && row.Cells[0].Tone == SimpleTelemetryTone.Success);
+        Assert.Contains(section.Rows, row => row.Label == "Change" && row.Cells[1].Value == "Keep" && row.Cells[1].Tone == SimpleTelemetryTone.Info);
         Assert.Contains(section.Rows, row => row.Label == "Available" && row.Cells[0].Value == "2");
         Assert.Contains(section.Rows, row => row.Label == "Used" && row.Cells[0].Value == "1");
         Assert.Contains(section.Rows, row => row.Label == "Wear" && row.Cells[0].Value == "92/91/90%");
@@ -632,7 +696,7 @@ public sealed class SimpleTelemetryOverlayViewModelTests
 
         var section = Assert.Single(viewModel.Sections);
         Assert.Contains(section.Rows, row => row.Label == "Set limit" && row.Cells.All(cell => cell.Value == "4 sets"));
-        Assert.Contains(section.Rows, row => row.Label == "Available" && row.Cells.All(cell => cell.Value == "0"));
+        Assert.Contains(section.Rows, row => row.Label == "Available" && row.Cells.All(cell => cell.Value == "0" && cell.Tone == SimpleTelemetryTone.Error));
     }
 
     [Fact]

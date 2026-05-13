@@ -12,6 +12,8 @@ internal sealed record SimpleTelemetryOverlayViewModel(
     IReadOnlyList<SimpleTelemetryRowViewModel> Rows,
     IReadOnlyList<SimpleTelemetryGridSectionViewModel> Sections)
 {
+    public IReadOnlyList<SimpleTelemetryMetricSectionViewModel> MetricSections { get; init; } = [];
+
     public SimpleTelemetryOverlayViewModel(
         string Title,
         string Status,
@@ -20,6 +22,19 @@ internal sealed record SimpleTelemetryOverlayViewModel(
         IReadOnlyList<SimpleTelemetryRowViewModel> Rows)
         : this(Title, Status, Source, Tone, Rows, [])
     {
+    }
+
+    public SimpleTelemetryOverlayViewModel(
+        string Title,
+        string Status,
+        string Source,
+        SimpleTelemetryTone Tone,
+        IReadOnlyList<SimpleTelemetryRowViewModel> Rows,
+        IReadOnlyList<SimpleTelemetryMetricSectionViewModel> MetricSections,
+        IReadOnlyList<SimpleTelemetryGridSectionViewModel> Sections)
+        : this(Title, Status, Source, Tone, Rows, Sections)
+    {
+        this.MetricSections = MetricSections;
     }
 
     public static SimpleTelemetryOverlayViewModel Waiting(string title, string status)
@@ -141,7 +156,21 @@ internal sealed record SimpleTelemetryOverlayViewModel(
 internal sealed record SimpleTelemetryRowViewModel(
     string Label,
     string Value,
+    SimpleTelemetryTone Tone = SimpleTelemetryTone.Normal)
+{
+    public IReadOnlyList<SimpleTelemetryMetricSegmentViewModel> Segments { get; init; } = [];
+
+    public string? RowColorHex { get; init; }
+}
+
+internal sealed record SimpleTelemetryMetricSegmentViewModel(
+    string Label,
+    string Value,
     SimpleTelemetryTone Tone = SimpleTelemetryTone.Normal);
+
+internal sealed record SimpleTelemetryMetricSectionViewModel(
+    string Title,
+    IReadOnlyList<SimpleTelemetryRowViewModel> Rows);
 
 internal sealed record SimpleTelemetryGridSectionViewModel(
     string Title,
@@ -163,6 +192,7 @@ internal enum SimpleTelemetryTone
     Waiting,
     Info,
     Success,
+    Modeled,
     Warning,
     Error
 }
