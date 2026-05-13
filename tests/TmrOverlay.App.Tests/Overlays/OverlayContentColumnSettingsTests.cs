@@ -121,6 +121,10 @@ public sealed class OverlayContentColumnSettingsTests
             && column.Label == "Pos"
             && column.SettingsLabel == "Relative position");
         Assert.Contains(relativeColumns, column =>
+            column.Id == OverlayContentColumnSettings.RelativeGapColumnId
+            && column.Label == "Delta"
+            && column.SettingsLabel == "Relative delta");
+        Assert.Contains(relativeColumns, column =>
             column.Id == OverlayContentColumnSettings.RelativePitColumnId
             && column.Label == "Pit"
             && column.SettingsLabel == "Pit status");
@@ -144,6 +148,23 @@ public sealed class OverlayContentColumnSettingsTests
 
         Assert.Equal(736, size.Width);
         Assert.Equal(650, size.Height);
+    }
+
+    [Fact]
+    public void OverlayManagerPreservesExpandedStandingsHeightWithoutFreezingOtherSizes()
+    {
+        Assert.True(OverlayManager.ShouldPreserveExpandedOverlayHeight(
+            StandingsOverlayDefinition.Definition,
+            new Size(780, 720),
+            new Size(780, 520)));
+        Assert.False(OverlayManager.ShouldPreserveExpandedOverlayHeight(
+            StandingsOverlayDefinition.Definition,
+            new Size(760, 720),
+            new Size(780, 520)));
+        Assert.False(OverlayManager.ShouldPreserveExpandedOverlayHeight(
+            RelativeOverlayDefinition.Definition,
+            new Size(520, 520),
+            new Size(520, 360)));
     }
 
     [Fact]

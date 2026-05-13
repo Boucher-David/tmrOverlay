@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import { chromium } from '@playwright/test';
 import { browserOverlayPages } from '../../tests/browser-overlays/browserOverlayAssets.js';
 
-const { baseUrl, outputDir, relativeSeconds } = parseArguments(process.argv.slice(2));
+const { baseUrl, outputDir, relativeSeconds, requireCaptureLive } = parseArguments(process.argv.slice(2));
 mkdirSync(outputDir, { recursive: true });
 
 const browser = await chromium.launch();
@@ -16,7 +16,7 @@ const results = [];
 try {
   for (const frameSeconds of relativeSeconds) {
     for (const overlay of browserOverlayPages()) {
-      results.push(await validateOverlayFrame(context, overlay, frameSeconds));
+      results.push(await validateOverlayFrame(context, overlay, frameSeconds, requireCaptureLive));
     }
   }
 } finally {
@@ -27,6 +27,7 @@ const reportPath = join(outputDir, 'race-start-overlay-validation.json');
 writeFileSync(reportPath, `${JSON.stringify({
   baseUrl,
   relativeSeconds,
+  requireCaptureLive,
   generatedAtUtc: new Date().toISOString(),
   screenshotArtifacts: summarizeScreenshotArtifacts(results),
   results
@@ -41,7 +42,7 @@ if (failures.length > 0) {
   process.exitCode = 1;
 }
 
-async function validateOverlayFrame(context, overlay, frameSeconds) {
+async function validateOverlayFrame(context, overlay, frameSeconds, requireCaptureLive) {
   const page = await context.newPage();
   const consoleErrors = [];
   const pageErrors = [];
@@ -64,6 +65,10 @@ async function validateOverlayFrame(context, overlay, frameSeconds) {
       const response = await fetch(`/api/overlay-model/${encodeURIComponent(overlayId)}`);
       return response.ok ? response.json() : { error: `${response.status} ${response.statusText}` };
     }, overlay.page.id);
+    const snapshotResponse = await page.evaluate(async () => {
+      const response = await fetch('/api/snapshot');
+      return response.ok ? response.json() : { error: `${response.status} ${response.statusText}` };
+    });
     const screenshotPath = join(outputDir, screenshotName(overlay.page.id, frameSeconds));
     await page.screenshot({ path: screenshotPath, fullPage: true });
     const screenshotArtifact = inspectScreenshotArtifact(screenshotPath);
@@ -128,6 +133,7 @@ async function validateOverlayFrame(context, overlay, frameSeconds) {
     const canvasPixels = await canvasHasVisiblePixels(page);
     const failures = validateMetrics(overlay.page.id, metrics, canvasPixels)
       .concat(validateModel(overlay.page.id, modelResponse))
+      .concat(validateCaptureLiveSnapshot(snapshotResponse, requireCaptureLive))
       .concat(screenshotArtifact.failures)
       .concat(consoleErrors.map((error) => `console error: ${error}`))
       .concat(pageErrors.map((error) => `page error: ${error}`))
@@ -142,6 +148,7 @@ async function validateOverlayFrame(context, overlay, frameSeconds) {
       screenshotArtifact,
       metrics,
       model: summarizeModel(modelResponse),
+      snapshot: summarizeSnapshot(snapshotResponse),
       canvasPixels,
       failures
     };
@@ -160,6 +167,36 @@ async function validateOverlayFrame(context, overlay, frameSeconds) {
   } finally {
     await page.close();
   }
+}
+
+function validateCaptureLiveSnapshot(response, requireCaptureLive) {
+  if (!requireCaptureLive) {
+    return [];
+  }
+  if (!response || response.error) {
+    return [`snapshot fetch failed: ${response?.error || 'missing response'}`];
+  }
+  const live = response.live || {};
+  const models = live.models || {};
+  const failures = [];
+  for (const name of ['session', 'reference', 'driverDirectory', 'timing', 'scoring', 'inputs']) {
+    if (!models[name]) {
+      failures.push(`capture live model missing: ${name}`);
+    }
+  }
+  if (models.session?.quality !== 'capture-derived') {
+    failures.push(`session model was not capture-derived (${models.session?.quality || 'missing quality'})`);
+  }
+  if (!Array.isArray(models.timing?.overallRows) || models.timing.overallRows.length === 0) {
+    failures.push('capture timing model has no rows');
+  }
+  if (!Array.isArray(models.driverDirectory?.drivers) || models.driverDirectory.drivers.length === 0) {
+    failures.push('capture driver directory has no drivers');
+  }
+  if (models.inputs?.hasData !== true) {
+    failures.push('capture inputs model has no input data');
+  }
+  return failures;
 }
 
 function validateMetrics(overlayId, metrics, canvasPixels) {
@@ -186,10 +223,14 @@ function validateMetrics(overlayId, metrics, canvasPixels) {
       failures.push('table overlay rendered no rows');
     }
   }
-  if (['fuel-calculator', 'session-weather', 'pit-service'].includes(overlayId) && metrics.metricCount <= 0) {
+  if (['fuel-calculator', 'session-weather', 'pit-service'].includes(overlayId)
+    && metrics.metricCount <= 0
+    && !localStrategyContextUnavailable(metrics)) {
     failures.push('metric overlay rendered no metrics');
   }
-  if (overlayId === 'input-state' && !canvasPixels.some((canvas) => canvas.selector === '.input-graph' && canvas.hasPixels)) {
+  if (overlayId === 'input-state'
+    && !inputStateContextUnavailable(metrics)
+    && !canvasPixels.some((canvas) => canvas.selector === '.input-graph' && canvas.hasPixels)) {
     failures.push('input graph canvas is blank');
   }
   if (overlayId === 'gap-to-leader' && !canvasPixels.some((canvas) => canvas.selector === '.model-graph' && canvas.hasPixels)) {
@@ -198,10 +239,10 @@ function validateMetrics(overlayId, metrics, canvasPixels) {
   if (overlayId === 'track-map' && !metrics.hasTrackMap) {
     failures.push('track map SVG missing');
   }
-  if (overlayId === 'car-radar' && !metrics.hasRadar) {
+  if (overlayId === 'car-radar' && !metrics.hasRadar && !localInCarContextUnavailable(metrics)) {
     failures.push('radar body missing');
   }
-  if (overlayId === 'car-radar' && metrics.radarChromeVisible === false) {
+  if (overlayId === 'car-radar' && metrics.radarChromeVisible === false && !localInCarContextUnavailable(metrics)) {
     failures.push('radar title/status is clipped by circular viewport');
   }
   if (overlayId === 'stream-chat' && !metrics.hasChatLine) {
@@ -212,6 +253,24 @@ function validateMetrics(overlayId, metrics, canvasPixels) {
   }
 
   return failures;
+}
+
+function inputStateContextUnavailable(metrics) {
+  return localInCarContextUnavailable(metrics);
+}
+
+function localInCarContextUnavailable(metrics) {
+  const text = String(metrics?.bodyText || '').toLowerCase();
+  const status = String(metrics?.statusText || '').toLowerCase();
+  return text.includes('waiting for player in car')
+    || status.includes('waiting for player in car');
+}
+
+function localStrategyContextUnavailable(metrics) {
+  const text = String(metrics?.bodyText || '').toLowerCase();
+  const status = String(metrics?.statusText || '').toLowerCase();
+  return text.includes('waiting for local ')
+    || status.includes('waiting for local ');
 }
 
 function validateModel(overlayId, response) {
@@ -226,15 +285,16 @@ function validateModel(overlayId, response) {
     const source = String(model.source || '').toLowerCase();
     const isPreGreen = Number.isFinite(sessionState) && sessionState < 4;
     const isGrid = source.includes('starting grid');
+    const isGridOnly = isGrid && !source.includes('live timing');
     const timingValues = tableValuesForKeys(model, ['gap', 'interval']);
-    const lapDistanceValue = timingValues.find((value) => /\d(?:\.\d+)?L$/i.test(value));
+    const lapDistanceValue = timingValues.find((value) => /\d+\.\d+L$/i.test(value));
     if (lapDistanceValue) {
-      failures.push(`standings rendered lap-distance gap value "${lapDistanceValue}"`);
+      failures.push(`standings rendered fractional lap-distance gap value "${lapDistanceValue}"`);
     }
-    if (isPreGreen || isGrid) {
+    if (isPreGreen || isGridOnly) {
       for (const value of timingValues) {
         if (/^\+\d/.test(value)) {
-          failures.push(`standings rendered unstable ${isPreGreen ? 'pre-green' : 'grid'} gap value "${value}"`);
+          failures.push(`standings rendered unstable ${isPreGreen ? 'pre-green' : 'grid-only'} gap value "${value}"`);
           break;
         }
       }
@@ -294,6 +354,18 @@ function summarizeModel(response) {
     status: model.status || null,
     rowCount: Array.isArray(model.rows) ? model.rows.length : 0,
     pointCount: Array.isArray(model.points) ? model.points.length : 0
+  };
+}
+
+function summarizeSnapshot(response) {
+  const models = response?.live?.models || {};
+  return {
+    sourceId: response?.live?.sourceId || null,
+    sessionQuality: models.session?.quality || null,
+    timingRowCount: Array.isArray(models.timing?.overallRows) ? models.timing.overallRows.length : 0,
+    scoringRowCount: Array.isArray(models.scoring?.rows) ? models.scoring.rows.length : 0,
+    driverCount: Array.isArray(models.driverDirectory?.drivers) ? models.driverDirectory.drivers.length : 0,
+    inputsHasData: models.inputs?.hasData === true
   };
 }
 
@@ -413,7 +485,7 @@ function normalizedBaseUrl() {
 function parseArguments(args) {
   const [rawBaseUrl, rawOutputDir, ...options] = args;
   if (!rawBaseUrl || !rawOutputDir) {
-    console.error('Usage: node tools/browser-review/validate-race-start-replay.mjs <base-url> <output-dir> [--rel=-120,0,120]');
+    console.error('Usage: node tools/browser-review/validate-race-start-replay.mjs <base-url> <output-dir> [--rel=-120,0,120] [--require-capture-live]');
     process.exit(2);
   }
 
@@ -429,6 +501,7 @@ function parseArguments(args) {
   return {
     baseUrl: rawBaseUrl,
     outputDir: resolve(rawOutputDir),
-    relativeSeconds: relValues
+    relativeSeconds: relValues,
+    requireCaptureLive: options.includes('--require-capture-live')
   };
 }

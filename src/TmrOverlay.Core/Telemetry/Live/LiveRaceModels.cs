@@ -371,6 +371,7 @@ internal sealed record LiveTimingRow(
     double? GapSecondsToClassLeader,
     double? GapLapsToClassLeader,
     double? IntervalSecondsToPreviousClassRow,
+    double? IntervalLapsToPreviousClassRow,
     double? DeltaSecondsToFocus,
     int? TrackSurface,
     bool? OnPitRoad,

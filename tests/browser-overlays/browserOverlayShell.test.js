@@ -56,6 +56,18 @@ describe('browser overlay shell', () => {
         relative: { referenceCarIdx: 7 }
       }
     }, { preferRelative: true })).toBe(9);
+    expect(currentOverlay.dom.window.TmrBrowserModel.isPlayerInCar({
+      models: {
+        reference: { hasData: true, playerCarIdx: 10, focusCarIdx: 42, focusIsPlayer: false },
+        raceEvents: { hasData: true, isOnTrack: true, isInGarage: false }
+      }
+    })).toBe(false);
+    expect(currentOverlay.dom.window.TmrBrowserModel.isPlayerInCar({
+      models: {
+        reference: { hasData: true, playerCarIdx: 10, focusCarIdx: 10, focusIsPlayer: true },
+        raceEvents: { hasData: true, isOnTrack: true, isInGarage: false, onPitRoad: true }
+      }
+    })).toBe(false);
   });
 });
 

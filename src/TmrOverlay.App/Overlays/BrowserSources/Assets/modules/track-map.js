@@ -38,7 +38,7 @@ function renderTrackMap(live, trackMap, trackMapSettings) {
   const spatial = trackMapModel.spatial(live);
   const race = trackMapModel.raceEvents(live);
   const latest = live?.latestSample || {};
-  const focusPct = Number.isFinite(latest.focusLapDistPct)
+  const focusPct = shouldRenderFocusSampleMarker(latest) && Number.isFinite(latest.focusLapDistPct)
     ? latest.focusLapDistPct
     : null;
   const markers = smoothTrackMapMarkers(trackMapMarkers(live, focusPct));
@@ -355,6 +355,7 @@ function trackMapMarkers(live, fallbackFocusPct) {
       row.isFocus
       || row.carIdx === referenceCarIdx
       || scoringRow?.isFocus);
+    if (!isFocus && row.hasTakenGrid !== true) continue;
     const marker = {
       carIdx: row.carIdx,
       lapDistPct: normalizeProgress(row.lapDistPct),
@@ -380,6 +381,16 @@ function trackMapMarkers(live, fallbackFocusPct) {
   }
 
   return [...markers.values()].sort((left, right) => Number(left.isFocus) - Number(right.isFocus) || left.carIdx - right.carIdx);
+}
+
+function shouldRenderFocusSampleMarker(sample) {
+  if (!sample || !Number.isFinite(sample.focusLapDistPct) || sample.focusLapDistPct < 0) {
+    return false;
+  }
+
+  const localFocus = sample.focusCarIdx === sample.playerCarIdx;
+  const pitSurface = sample.playerTrackSurface === 1 || sample.playerTrackSurface === 2;
+  return !localFocus || (sample.onPitRoad !== true && !pitSurface);
 }
 
 function smoothTrackMapMarkers(markers) {

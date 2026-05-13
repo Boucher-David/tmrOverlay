@@ -122,7 +122,7 @@ enum OverlayContentColumns {
         columns: [
             OverlayContentColumnDefinition(id: relativePositionColumnId, label: "Pos", dataKey: dataRelativePosition, defaultEnabled: true, defaultOrder: 1, defaultWidth: 38, minimumWidth: 32, maximumWidth: 100),
             OverlayContentColumnDefinition(id: relativeDriverColumnId, label: "Driver", dataKey: dataDriver, defaultEnabled: true, defaultOrder: 2, defaultWidth: 250, minimumWidth: 180, maximumWidth: 520, alignment: .left),
-            OverlayContentColumnDefinition(id: relativeGapColumnId, label: "Gap", dataKey: dataGap, defaultEnabled: true, defaultOrder: 3, defaultWidth: 70, minimumWidth: 60, maximumWidth: 160),
+            OverlayContentColumnDefinition(id: relativeGapColumnId, label: "Delta", dataKey: dataGap, defaultEnabled: true, defaultOrder: 3, defaultWidth: 70, minimumWidth: 60, maximumWidth: 160),
             OverlayContentColumnDefinition(id: relativePitColumnId, label: "Pit", dataKey: dataPit, defaultEnabled: false, defaultOrder: 4, defaultWidth: 30, minimumWidth: 24, maximumWidth: 90)
         ],
         browserWidthPadding: 66,

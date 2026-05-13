@@ -3,9 +3,15 @@ const radarModel = window.TmrBrowserModel;
 
 TmrBrowserOverlay.register({
   render(live) {
+    if (!radarModel.isPlayerInCar(live)) {
+      contentEl.innerHTML = '<div class="empty">Waiting for player in car.</div>';
+      setStatus(live, 'waiting for player in car');
+      return;
+    }
+
     const spatial = radarModel.spatial(live);
     const cars = (spatial.cars || [])
-      .filter((row) => radarModel.hasRelativePlacement(row));
+      .filter((row) => Number.isFinite(row?.relativeMeters));
     contentEl.innerHTML = radarMarkup(spatial, cars.slice(0, 10));
     setStatus(live, spatial.hasData ? `live | ${spatial.sideStatus || 'radar'}` : 'waiting for radar');
   }
@@ -157,10 +163,9 @@ function radarMarkup(spatial, cars) {
 }
 
 function radarCarMarkup(car, index) {
-  const seconds = Number.isFinite(car.relativeSeconds)
-    ? car.relativeSeconds
-    : Number.isFinite(car.relativeLaps) ? car.relativeLaps * 120 : 0;
-  const normalized = Math.max(-1, Math.min(1, seconds / 3.5));
+  const focusedCarLengthMeters = 4.746;
+  const radarRangeMeters = focusedCarLengthMeters * 6;
+  const normalized = Math.max(-1, Math.min(1, car.relativeMeters / radarRangeMeters));
   const lane = (index % 3) - 1;
   const left = 50 + lane * 12;
   const top = 50 - normalized * 37;

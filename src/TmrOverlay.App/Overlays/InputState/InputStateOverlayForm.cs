@@ -154,7 +154,7 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
             {
                 ResetInputState(snapshot, availability.StatusText);
             }
-            else if (!IsPlayerInCar(snapshot))
+            else if (!IsPlayerInCar(snapshot, now))
             {
                 ResetInputState(snapshot, "waiting for player in car");
             }
@@ -883,10 +883,12 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
         return string.IsNullOrWhiteSpace(status) ? "--" : status;
     }
 
-    private static bool IsPlayerInCar(LiveTelemetrySnapshot snapshot)
+    private static bool IsPlayerInCar(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
     {
-        var race = snapshot.Models.RaceEvents;
-        return !race.HasData || (race.IsOnTrack && !race.IsInGarage);
+        return LiveLocalStrategyContext.ForRequirement(
+            snapshot,
+            now,
+            OverlayContextRequirement.LocalPlayerInCar).IsAvailable;
     }
 
     private static string FormatGear(int? gear)

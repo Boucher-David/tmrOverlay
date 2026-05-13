@@ -8,7 +8,7 @@ internal static class InputStateOverlayDefinition
         Id: "input-state",
         DisplayName: "Inputs",
         DefaultWidth: 520,
-        DefaultHeight: 220,
+        DefaultHeight: 260,
         FadeWhenLiveTelemetryUnavailable: true,
         ContextRequirement: OverlayContextRequirement.LocalPlayerInCar);
 }

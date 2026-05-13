@@ -805,17 +805,16 @@ internal sealed class TrackMapForm : PersistentOverlayForm
             ?? snapshot.LatestSample?.FocusCarIdx;
         foreach (var row in snapshot.Models.Timing.OverallRows.Concat(snapshot.Models.Timing.ClassRows))
         {
-            if (!row.HasSpatialProgress
-                || row.LapDistPct is not { } lapDistPct
-                || !IsValidProgress(lapDistPct))
-            {
-                continue;
-            }
-
             scoringByCarIdx.TryGetValue(row.CarIdx, out var scoringRow);
             var isFocus = row.IsFocus
                 || row.CarIdx == referenceCarIdx
                 || scoringRow?.IsFocus == true;
+            if (!TrackMapMarkerPolicy.ShouldRenderTimingMarker(row, isFocus)
+                || row.LapDistPct is not { } lapDistPct)
+            {
+                continue;
+            }
+
             var marker = new TrackMapMarker(
                 row.CarIdx,
                 NormalizeProgress(lapDistPct),
@@ -893,8 +892,13 @@ internal sealed class TrackMapForm : PersistentOverlayForm
 
     private static double? MarkerProgress(HistoricalTelemetrySample? sample)
     {
+        if (!TrackMapMarkerPolicy.ShouldRenderFocusSampleMarker(sample))
+        {
+            return null;
+        }
+
         var progress = sample?.FocusLapDistPct;
-        return progress is { } value && IsValidProgress(value)
+        return progress is { } value
             ? NormalizeProgress(value)
             : null;
     }

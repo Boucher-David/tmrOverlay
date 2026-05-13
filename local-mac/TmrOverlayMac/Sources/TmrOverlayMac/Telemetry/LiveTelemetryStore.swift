@@ -643,6 +643,8 @@ struct LiveLeaderGapSnapshot {
                 carNumber: car.carNumber,
                 carClass: car.carClass,
                 carClassName: car.carClassName,
+                lapCompleted: car.lapCompleted,
+                lapDistPct: car.lapDistPct,
                 onPitRoad: car.onPitRoad
             )
         }
@@ -752,6 +754,8 @@ struct LiveClassGapCar {
     var carNumber: String? = nil
     var carClass: Int? = nil
     var carClassName: String? = nil
+    var lapCompleted: Int? = nil
+    var lapDistPct: Double? = nil
     var onPitRoad: Bool? = nil
 }
 

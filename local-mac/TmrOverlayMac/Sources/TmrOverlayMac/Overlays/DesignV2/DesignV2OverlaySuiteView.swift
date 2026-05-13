@@ -1467,7 +1467,9 @@ final class DesignV2OverlaySuiteView: NSView {
         StandingsDisplayFormatting.gap(
             isClassLeader: car.isClassLeader,
             seconds: car.gapSecondsToClassLeader,
-            laps: car.gapLapsToClassLeader)
+            laps: car.gapLapsToClassLeader,
+            lapCompleted: car.lapCompleted,
+            lapDistPct: car.lapDistPct)
     }
 
     private func intervalText(_ delta: Double?, referenceGap: Double, isReference: Bool) -> String {

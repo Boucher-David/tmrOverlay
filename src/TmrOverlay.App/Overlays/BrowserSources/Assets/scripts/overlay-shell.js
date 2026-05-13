@@ -3,6 +3,7 @@
     const statusEl = document.getElementById('status');
     const timeRemainingEl = document.getElementById('time-remaining');
     const contentEl = document.getElementById('content');
+    const sourceEl = document.getElementById('source');
     let lastSequence = null;
     const browserOverlay = {
       module: null,
@@ -242,7 +243,23 @@
       },
       isPlayerInCar(live) {
         const race = browserModel.raceEvents(live);
-        return !race.hasData || (race.isOnTrack === true && race.isInGarage !== true);
+        const reference = browserModel.model(live, 'reference');
+        const fuelPit = browserModel.fuelPit(live);
+        if (reference.focusIsPlayer === false) return false;
+        if (Number.isFinite(reference.focusCarIdx)
+          && Number.isFinite(reference.playerCarIdx)
+          && reference.focusCarIdx !== reference.playerCarIdx) {
+          return false;
+        }
+        if (race.isInGarage === true
+          || race.isGarageVisible === true
+          || reference.isInGarage === true
+          || localPitContext(race, reference, fuelPit)) {
+          return false;
+        }
+        const hasRaceContext = race.hasData === true || reference.hasData === true;
+        if (!hasRaceContext) return true;
+        return race.isOnTrack === true || reference.isOnTrack === true;
       },
       isLiveTelemetryAvailable(live) {
         return telemetryAvailability(live).isAvailable;
@@ -296,6 +313,7 @@
 
     function setStatus(live, detail) {
       const availability = telemetryAvailability(live);
+      clearFooterSource();
       if (!availability.isAvailable) {
         statusEl.textContent = availability.status;
         if (timeRemainingEl) {
@@ -312,6 +330,23 @@
         timeRemainingEl.hidden = true;
         timeRemainingEl.textContent = '';
       }
+    }
+
+    function localPitContext(race, reference, fuelPit) {
+      return race.onPitRoad === true
+        || reference.onPitRoad === true
+        || reference.playerOnPitRoad === true
+        || reference.playerCarInPitStall === true
+        || isPitRoadTrackSurface(reference.trackSurface)
+        || isPitRoadTrackSurface(reference.playerTrackSurface)
+        || fuelPit.onPitRoad === true
+        || fuelPit.pitstopActive === true
+        || fuelPit.playerCarInPitStall === true
+        || fuelPit.teamOnPitRoad === true;
+    }
+
+    function isPitRoadTrackSurface(trackSurface) {
+      return trackSurface === 1 || trackSurface === 2;
     }
 
     function rowsTable(headers, rows) {
@@ -445,6 +480,7 @@
       if (!model) {
         contentEl.innerHTML = '<div class="empty">Waiting for overlay model.</div>';
         renderHeaderItems(null, 'waiting for model');
+        clearFooterSource();
         return;
       }
 
@@ -467,6 +503,7 @@
       }
 
       renderHeaderItems(model, model.status || 'live');
+      renderFooterSource(model);
     }
 
     function renderHeaderItems(model, fallbackStatus) {
@@ -479,6 +516,19 @@
         timeRemainingEl.textContent = value;
         timeRemainingEl.hidden = !value;
       }
+    }
+
+    function renderFooterSource(model) {
+      if (!sourceEl) return;
+      const value = String(model?.source || '').trim();
+      sourceEl.textContent = value;
+      sourceEl.hidden = !value;
+    }
+
+    function clearFooterSource() {
+      if (!sourceEl) return;
+      sourceEl.hidden = true;
+      sourceEl.textContent = '';
     }
 
     function drawOverlayGraph(canvas, points) {
@@ -600,6 +650,7 @@
       if (!module?.render) {
         contentEl.innerHTML = '<div class="empty">Unknown overlay route.</div>';
         statusEl.textContent = 'not configured';
+        clearFooterSource();
         if (timeRemainingEl) {
           timeRemainingEl.hidden = true;
           timeRemainingEl.textContent = '';
@@ -640,6 +691,7 @@
         }
 
         statusEl.textContent = 'localhost offline';
+        clearFooterSource();
         if (timeRemainingEl) {
           timeRemainingEl.hidden = true;
           timeRemainingEl.textContent = '';

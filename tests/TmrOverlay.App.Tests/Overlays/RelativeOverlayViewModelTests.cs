@@ -110,6 +110,66 @@ public sealed class RelativeOverlayViewModelTests
     }
 
     [Fact]
+    public void From_PrefersClassPositionWhenOverallPositionDiffers()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var reference = TimingRow(
+            10,
+            "Reference Driver",
+            classPosition: 15,
+            overallPosition: 27,
+            isPlayer: true,
+            isFocus: true);
+        var relative = RelativeRow(
+            carIdx: 11,
+            isAhead: true,
+            seconds: 1.2d,
+            classPosition: 14) with
+        {
+            OverallPosition = 26
+        };
+        var snapshot = Snapshot(now, relative) with
+        {
+            Models = Snapshot(now, relative).Models with
+            {
+                Timing = LiveTimingModel.Empty with
+                {
+                    HasData = true,
+                    Quality = LiveModelQuality.Reliable,
+                    PlayerCarIdx = 10,
+                    FocusCarIdx = 10,
+                    PlayerRow = reference,
+                    FocusRow = reference,
+                    OverallRows = [reference, TimingRow(11, "Ahead Driver", classPosition: 14, overallPosition: 26)],
+                    ClassRows = [reference, TimingRow(11, "Ahead Driver", classPosition: 14, overallPosition: 26)]
+                },
+                Scoring = LiveScoringModel.Empty with
+                {
+                    HasData = true,
+                    Quality = LiveModelQuality.Reliable,
+                    Source = LiveScoringSource.SessionResults,
+                    ReferenceCarIdx = 10,
+                    ReferenceCarClass = 4098,
+                    Rows =
+                    [
+                        ScoringRow(10, overallPosition: 27, classPosition: 15, carNumber: "10", driverName: "Reference Driver"),
+                        ScoringRow(11, overallPosition: 26, classPosition: 14, carNumber: "11", driverName: "Ahead Driver")
+                    ]
+                }
+            }
+        };
+
+        var viewModel = RelativeOverlayViewModel.From(
+            snapshot,
+            now,
+            carsAhead: 5,
+            carsBehind: 5);
+
+        Assert.Equal(new[] { "14", "15" }, viewModel.Rows.Select(row => row.Position));
+        Assert.Equal("15 - 1 cars", viewModel.Status);
+    }
+
+    [Fact]
     public void From_FormatsTimingFallbackRowsByDirection()
     {
         var now = DateTimeOffset.UtcNow;
@@ -502,6 +562,7 @@ public sealed class RelativeOverlayViewModelTests
             GapSecondsToClassLeader: null,
             GapLapsToClassLeader: null,
             IntervalSecondsToPreviousClassRow: null,
+            IntervalLapsToPreviousClassRow: null,
             DeltaSecondsToFocus: null,
             TrackSurface: null,
             OnPitRoad: onPitRoad);

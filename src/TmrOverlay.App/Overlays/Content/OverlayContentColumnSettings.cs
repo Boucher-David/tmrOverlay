@@ -149,7 +149,7 @@ internal static class OverlayContentColumnSettings
     [
         new(RelativePositionColumnId, "Pos", DataRelativePosition, true, 1, 38, 32, 100, SettingsLabel: "Relative position"),
         new(RelativeDriverColumnId, "Driver", DataDriver, true, 2, 250, 180, 520, Alignment: OverlayContentColumnAlignment.Left),
-        new(RelativeGapColumnId, "Gap", DataGap, true, 3, 70, 60, 160),
+        new(RelativeGapColumnId, "Delta", DataGap, true, 3, 70, 60, 160, SettingsLabel: "Relative delta"),
         new(RelativePitColumnId, "Pit", DataPit, false, 4, 30, 24, 90, SettingsLabel: "Pit status")
     ]);
 

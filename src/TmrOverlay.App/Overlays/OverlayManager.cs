@@ -162,6 +162,8 @@ internal sealed class OverlayManager : IDisposable
         _settings ??= _settingsStore.Load();
         EnsureManagedOverlaySettings();
         var defaultLocation = CenteredDefaultLocation(SettingsOverlayDefinition.Definition);
+        var hadSettingsOverlay = _settings.Overlays.Any(overlay =>
+            string.Equals(overlay.Id, SettingsOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase));
         var settings = _settings.GetOrAddOverlay(
             SettingsOverlayDefinition.Definition.Id,
             SettingsOverlayDefinition.Definition.DefaultWidth,
@@ -169,7 +171,14 @@ internal sealed class OverlayManager : IDisposable
             defaultLocation.X,
             defaultLocation.Y);
         var settingsSizeChanged = EnsureSettingsOverlayFixedSize(settings);
-        CenterSettingsOverlay(settings);
+        if (!hadSettingsOverlay
+            || !IsOverlayOnVisibleScreen(
+                settings,
+                SettingsOverlayDefinition.Definition.DefaultWidth,
+                SettingsOverlayDefinition.Definition.DefaultHeight))
+        {
+            CenterSettingsOverlay(settings);
+        }
 
         var form = EnsureForm(
             SettingsOverlayDefinition.Definition.Id,
@@ -206,6 +215,10 @@ internal sealed class OverlayManager : IDisposable
         {
             form.Show();
         }
+        else if (form.WindowState == FormWindowState.Minimized)
+        {
+            form.WindowState = FormWindowState.Normal;
+        }
 
         _settingsOverlayActive = true;
         ApplyEmergencyOverlayZOrder();
@@ -215,6 +228,7 @@ internal sealed class OverlayManager : IDisposable
         }
 
         form.Activate();
+        form.BringToFront();
     }
 
     public void Dispose()
@@ -830,13 +844,23 @@ internal sealed class OverlayManager : IDisposable
         settings.Height = size.Height;
         if (_appliedScales.TryGetValue(definition.Id, out var appliedScale)
             && Math.Abs(appliedScale - settings.Scale) < 0.001d
-            && form.ClientSize == size)
+            && (form.ClientSize == size || ShouldPreserveExpandedOverlayHeight(definition, form.ClientSize, size)))
         {
             return;
         }
 
         form.ClientSize = size;
         _appliedScales[definition.Id] = settings.Scale;
+    }
+
+    internal static bool ShouldPreserveExpandedOverlayHeight(
+        OverlayDefinition definition,
+        Size currentSize,
+        Size targetSize)
+    {
+        return string.Equals(definition.Id, StandingsOverlayDefinition.Definition.Id, StringComparison.Ordinal)
+            && currentSize.Width == targetSize.Width
+            && currentSize.Height > targetSize.Height;
     }
 
     private void ApplyOpacityIfChanged(OverlayDefinition definition, OverlaySettings settings, Form form)
@@ -1204,9 +1228,24 @@ internal sealed class OverlayManager : IDisposable
         settings.Y = area.Top + Math.Max(0, (area.Height - height) / 2);
     }
 
+    private static bool IsOverlayOnVisibleScreen(OverlaySettings settings, int width, int height)
+    {
+        var bounds = new Rectangle(
+            settings.X,
+            settings.Y,
+            Math.Max(1, width),
+            Math.Max(1, height));
+        return Screen.AllScreens.Any(screen => screen.WorkingArea.IntersectsWith(bounds));
+    }
+
     private static void ApplyGapToLeaderRaceOnlyPolicy(OverlayDefinition definition, OverlaySettings settings)
     {
         if (!string.Equals(definition.Id, GapToLeaderOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (settings.GetBooleanOption(OverlayOptionKeys.GapRaceOnlyDefaultApplied, defaultValue: false))
         {
             return;
         }

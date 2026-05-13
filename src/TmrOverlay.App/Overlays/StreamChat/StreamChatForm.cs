@@ -101,7 +101,8 @@ internal sealed class StreamChatForm : PersistentOverlayForm
 
     protected override bool ShouldReceiveInputWhileTransparent(Point clientPoint)
     {
-        return IsCloseButtonHit(clientPoint);
+        return IsCloseButtonHit(clientPoint)
+            || IsHeaderDragHit(clientPoint, ClientSize);
     }
 
     protected override void OnMouseUp(MouseEventArgs e)
@@ -541,6 +542,14 @@ internal sealed class StreamChatForm : PersistentOverlayForm
     private bool IsCloseButtonHit(Point clientPoint)
     {
         return _closeButton is not null && _closeButton.Bounds.Contains(clientPoint);
+    }
+
+    internal static bool IsHeaderDragHit(Point clientPoint, Size clientSize)
+    {
+        return clientPoint.X >= 0
+            && clientPoint.X < clientSize.Width
+            && clientPoint.Y >= 0
+            && clientPoint.Y < Math.Min(42, clientSize.Height);
     }
 
     private void DrawMessages(Graphics graphics)

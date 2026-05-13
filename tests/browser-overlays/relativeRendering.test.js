@@ -40,7 +40,7 @@ function relativeDisplayModel() {
     columns: [
       { id: 'relative.position', label: 'Pos', dataKey: 'relative-position', width: 38, alignment: 'right' },
       { id: 'relative.driver', label: 'Driver', dataKey: 'driver', width: 180, alignment: 'left' },
-      { id: 'relative.gap', label: 'Gap', dataKey: 'gap', width: 70, alignment: 'right' },
+      { id: 'relative.gap', label: 'Delta', dataKey: 'gap', width: 70, alignment: 'right' },
       { id: 'relative.pit', label: 'Pit', dataKey: 'pit', width: 30, alignment: 'right' }
     ],
     rows: [

@@ -140,6 +140,16 @@
       padding: 12px 16px 14px;
     }
 
+    .source {
+      padding: 0 14px 10px;
+      color: var(--tmr-text-muted);
+      font-size: 10px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
     body.car-radar-page .content,
     body.track-map-page .content,
     body.garage-cover-page .content {
@@ -148,6 +158,12 @@
       display: grid;
       place-items: center;
       padding: 0;
+    }
+
+    body.car-radar-page .source,
+    body.track-map-page .source,
+    body.garage-cover-page .source {
+      display: none;
     }
 
     table {

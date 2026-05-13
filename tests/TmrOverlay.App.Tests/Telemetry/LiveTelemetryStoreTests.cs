@@ -913,6 +913,126 @@ QualifyResultsInfo:
     }
 
     [Fact]
+    public void RecordFrame_MergesEstimatedRelativeRowsWhenProximityOnlyHasPartialField()
+    {
+        var store = new LiveTelemetryStore();
+        store.ApplySessionInfo("""
+WeekendInfo:
+ EventType: Race
+SessionInfo:
+ CurrentSessionNum: 0
+ Sessions:
+ - SessionNum: 0
+   SessionType: Race
+   SessionName: Race
+DriverInfo:
+ DriverCarIdx: 10
+ Drivers:
+ - CarIdx: 10
+   UserName: Reference Driver
+   CarNumber: 10
+   CarClassID: 4098
+ - CarIdx: 11
+   UserName: Near Proximity
+   CarNumber: 11
+   CarClassID: 4098
+ - CarIdx: 12
+   UserName: Estimated Only
+   CarNumber: 12
+   CarClassID: 4098
+""");
+
+        store.RecordFrame(CreateSample(
+            sessionState: 3,
+            playerCarIdx: 10,
+            focusCarIdx: 10,
+            teamCarClass: 4098,
+            teamLapDistPct: 0.50d,
+            teamEstimatedTimeSeconds: 50d,
+            nearbyCars:
+            [
+                Car(11, position: 0, classPosition: 0, lapDistPct: 0.53d, f2TimeSeconds: 0d, estimatedTimeSeconds: 53d)
+            ],
+            allCars:
+            [
+                Car(11, position: 0, classPosition: 0, lapDistPct: 0.53d, f2TimeSeconds: 0d, estimatedTimeSeconds: 53d),
+                Car(10, position: 0, classPosition: 0, lapDistPct: 0.50d, f2TimeSeconds: 0d, estimatedTimeSeconds: 50d),
+                Car(12, position: 0, classPosition: 0, lapDistPct: 0.48d, f2TimeSeconds: 0d, estimatedTimeSeconds: 48d)
+            ]));
+
+        var rows = store.Snapshot().Models.Relative.Rows;
+
+        Assert.Contains(rows, row =>
+            row.CarIdx == 11
+            && row.Source == "proximity"
+            && row.RelativeSeconds == 3d);
+        Assert.Contains(rows, row =>
+            row.CarIdx == 12
+            && row.Source == "estimated-relative"
+            && row.RelativeSeconds == -2d);
+    }
+
+    [Fact]
+    public void RecordFrame_KeepsRelativeTimingAvailableWhenPlayerIsInPitStall()
+    {
+        var store = new LiveTelemetryStore();
+        store.ApplySessionInfo("""
+WeekendInfo:
+ EventType: Race
+SessionInfo:
+ CurrentSessionNum: 0
+ Sessions:
+ - SessionNum: 0
+   SessionType: Race
+   SessionName: Race
+DriverInfo:
+ DriverCarIdx: 10
+ Drivers:
+ - CarIdx: 10
+   UserName: Reference Driver
+   CarNumber: 10
+   CarClassID: 4098
+ - CarIdx: 11
+   UserName: Leader
+   CarNumber: 11
+   CarClassID: 4098
+ - CarIdx: 12
+   UserName: Chase
+   CarNumber: 12
+   CarClassID: 4098
+""");
+
+        store.RecordFrame(CreateSample(
+            sessionState: 4,
+            playerCarIdx: 10,
+            focusCarIdx: 10,
+            teamCarClass: 4098,
+            teamLapDistPct: 0.50d,
+            teamEstimatedTimeSeconds: 50d,
+            onPitRoad: true,
+            playerCarInPitStall: true,
+            teamOnPitRoad: true,
+            allCars:
+            [
+                Car(11, position: 26, classPosition: 14, lapDistPct: 0.53d, f2TimeSeconds: 0d, estimatedTimeSeconds: 53d),
+                Car(10, position: 27, classPosition: 15, lapDistPct: 0.50d, f2TimeSeconds: 0d, estimatedTimeSeconds: 50d, onPitRoad: true),
+                Car(12, position: 28, classPosition: 16, lapDistPct: 0.48d, f2TimeSeconds: 0d, estimatedTimeSeconds: 48d)
+            ]));
+
+        var snapshot = store.Snapshot();
+
+        Assert.Empty(snapshot.Models.Spatial.Cars);
+        Assert.Contains(snapshot.Models.Relative.Rows, row =>
+            row.CarIdx == 11
+            && row.IsAhead
+            && row.RelativeSeconds == 3d);
+        Assert.Contains(snapshot.Models.Relative.Rows, row =>
+            row.CarIdx == 12
+            && row.IsBehind
+            && row.RelativeSeconds == -2d);
+    }
+
+    [Fact]
     public void RecordFrame_DoesNotUseEstimatedTimingForRacePreGreenStateTwo()
     {
         var store = new LiveTelemetryStore();
@@ -1021,7 +1141,7 @@ DriverInfo:
     }
 
     [Fact]
-    public void RecordFrame_DoesNotDeriveStandingsGapAndIntervalFromEstimatedTimingWhenF2IsPlaceholder()
+    public void RecordFrame_UsesEstimatedStandingsGapAndIntervalWhenRaceF2IsPlaceholderAfterGreen()
     {
         var store = new LiveTelemetryStore();
         store.ApplySessionInfo("""
@@ -1068,9 +1188,9 @@ DriverInfo:
             classLeaderF2TimeSeconds: 0d,
             allCars:
             [
-                Car(11, position: 1, classPosition: 1, lapDistPct: 0.53d, f2TimeSeconds: 0d, estimatedTimeSeconds: 53d),
-                Car(10, position: 2, classPosition: 2, lapDistPct: 0.50d, f2TimeSeconds: 0.001d, estimatedTimeSeconds: 50d),
-                Car(12, position: 3, classPosition: 3, lapDistPct: 0.48d, f2TimeSeconds: 0.002d, estimatedTimeSeconds: 48d)
+                Car(11, position: 1, classPosition: 1, lapDistPct: 0.53d, f2TimeSeconds: 0d, lapCompleted: 2, estimatedTimeSeconds: 53d),
+                Car(10, position: 2, classPosition: 2, lapDistPct: 0.50d, f2TimeSeconds: 0.001d, lapCompleted: 2, estimatedTimeSeconds: 50d),
+                Car(12, position: 3, classPosition: 3, lapDistPct: 0.48d, f2TimeSeconds: 0.002d, lapCompleted: 2, estimatedTimeSeconds: 48d)
             ]));
 
         var models = store.Snapshot().Models;
@@ -1080,18 +1200,18 @@ DriverInfo:
 
         Assert.Equal(0d, leader.GapSecondsToClassLeader);
         Assert.Null(leader.IntervalSecondsToPreviousClassRow);
-        Assert.Null(reference.GapSecondsToClassLeader);
-        Assert.Null(reference.IntervalSecondsToPreviousClassRow);
-        Assert.Null(chase.GapSecondsToClassLeader);
-        Assert.Null(chase.IntervalSecondsToPreviousClassRow);
+        Assert.Equal(3d, reference.GapSecondsToClassLeader);
+        Assert.Equal(3d, reference.IntervalSecondsToPreviousClassRow);
+        Assert.Equal(5d, chase.GapSecondsToClassLeader);
+        Assert.Equal(2d, chase.IntervalSecondsToPreviousClassRow);
 
         var standings = StandingsOverlayViewModel.From(store.Snapshot(), DateTimeOffset.UtcNow, maximumRows: 3);
-        Assert.Equal(new[] { "Leader", "--", "--" }, standings.Rows.Select(row => row.Gap));
-        Assert.Equal(new[] { "0.0", "--", "--" }, standings.Rows.Select(row => row.Interval));
+        Assert.Equal(new[] { "Leader", "+3.0", "+5.0" }, standings.Rows.Select(row => row.Gap));
+        Assert.Equal(new[] { "0.0", "+3.0", "+2.0" }, standings.Rows.Select(row => row.Interval));
     }
 
     [Fact]
-    public void RecordFrame_DoesNotDeriveStandingsGapAndIntervalAcrossStartFinishWrapFromEstimatedTiming()
+    public void RecordFrame_UsesWrapAwareEstimatedStandingsGapAndIntervalAcrossStartFinishAfterGreen()
     {
         var store = new LiveTelemetryStore();
         store.ApplySessionInfo("""
@@ -1138,18 +1258,140 @@ DriverInfo:
             classLeaderF2TimeSeconds: 0d,
             allCars:
             [
-                Car(11, position: 1, classPosition: 1, lapDistPct: 0.01d, f2TimeSeconds: 0d, estimatedTimeSeconds: 4d),
-                Car(10, position: 2, classPosition: 2, lapDistPct: 0.99d, f2TimeSeconds: 0.001d, estimatedTimeSeconds: 89d),
-                Car(12, position: 3, classPosition: 3, lapDistPct: 0.97d, f2TimeSeconds: 0.002d, estimatedTimeSeconds: 87d)
+                Car(11, position: 1, classPosition: 1, lapDistPct: 0.01d, f2TimeSeconds: 0d, lapCompleted: 2, estimatedTimeSeconds: 4d),
+                Car(10, position: 2, classPosition: 2, lapDistPct: 0.99d, f2TimeSeconds: 0.001d, lapCompleted: 2, estimatedTimeSeconds: 89d),
+                Car(12, position: 3, classPosition: 3, lapDistPct: 0.97d, f2TimeSeconds: 0.002d, lapCompleted: 2, estimatedTimeSeconds: 87d)
             ]));
 
         var reference = Assert.Single(store.Snapshot().Models.Timing.OverallRows, row => row.CarIdx == 10);
         var chase = Assert.Single(store.Snapshot().Models.Timing.OverallRows, row => row.CarIdx == 12);
 
+        Assert.Equal(5d, reference.GapSecondsToClassLeader);
+        Assert.Equal(5d, reference.IntervalSecondsToPreviousClassRow);
+        Assert.Equal(7d, chase.GapSecondsToClassLeader);
+        Assert.Equal(2d, chase.IntervalSecondsToPreviousClassRow);
+    }
+
+    [Fact]
+    public void RecordFrame_UsesLapGapForDifferentLapStandingsComparisonsAfterGreen()
+    {
+        var store = new LiveTelemetryStore();
+        store.ApplySessionInfo("""
+WeekendInfo:
+ EventType: Race
+ TrackDisplayName: Test Circuit
+ TrackLength: 5.100
+SessionInfo:
+ CurrentSessionNum: 0
+ Sessions:
+ - SessionNum: 0
+   SessionType: Race
+   SessionName: Race
+DriverInfo:
+ DriverCarIdx: 10
+ Drivers:
+ - CarIdx: 10
+   UserName: Reference Driver
+   CarNumber: 10
+   CarClassID: 4098
+ - CarIdx: 11
+   UserName: Class Leader
+   CarNumber: 11
+   CarClassID: 4098
+""");
+
+        store.RecordFrame(CreateSample(
+            sessionState: 4,
+            playerCarIdx: 10,
+            focusCarIdx: 10,
+            teamPosition: 2,
+            teamClassPosition: 2,
+            teamCarClass: 4098,
+            teamLapCompleted: 1,
+            teamLapDistPct: 0.50d,
+            teamF2TimeSeconds: 0.001d,
+            teamEstimatedTimeSeconds: 50d,
+            teamLastLapTimeSeconds: 90d,
+            classLeaderCarIdx: 11,
+            classLeaderLapDistPct: 0.53d,
+            classLeaderF2TimeSeconds: 0d,
+            allCars:
+            [
+                Car(11, position: 1, classPosition: 1, lapDistPct: 0.53d, f2TimeSeconds: 0d, lapCompleted: 2, estimatedTimeSeconds: 53d),
+                Car(10, position: 2, classPosition: 2, lapDistPct: 0.50d, f2TimeSeconds: 0.001d, lapCompleted: 1, estimatedTimeSeconds: 50d)
+            ]));
+
+        var reference = Assert.Single(store.Snapshot().Models.Timing.OverallRows, row => row.CarIdx == 10);
+
         Assert.Null(reference.GapSecondsToClassLeader);
+        Assert.Equal(1d, reference.GapLapsToClassLeader);
         Assert.Null(reference.IntervalSecondsToPreviousClassRow);
-        Assert.Null(chase.GapSecondsToClassLeader);
-        Assert.Null(chase.IntervalSecondsToPreviousClassRow);
+        Assert.Equal(1d, reference.IntervalLapsToPreviousClassRow);
+
+        var standings = StandingsOverlayViewModel.From(store.Snapshot(), DateTimeOffset.UtcNow, maximumRows: 2);
+        Assert.Equal(new[] { "Leader", "+1L" }, standings.Rows.Select(row => row.Gap));
+        Assert.Equal(new[] { "0.0", "+1L" }, standings.Rows.Select(row => row.Interval));
+    }
+
+    [Fact]
+    public void RecordFrame_InfersLapGapFromF2AndEstimatedTimingWhenLapCompletedIsMissingAfterGreen()
+    {
+        var store = new LiveTelemetryStore();
+        store.ApplySessionInfo("""
+WeekendInfo:
+ EventType: Race
+ TrackDisplayName: Test Circuit
+ TrackLength: 5.100
+SessionInfo:
+ CurrentSessionNum: 0
+ Sessions:
+ - SessionNum: 0
+   SessionType: Race
+   SessionName: Race
+DriverInfo:
+ DriverCarIdx: 10
+ Drivers:
+ - CarIdx: 10
+   UserName: Reference Driver
+   CarNumber: 10
+   CarClassID: 4098
+ - CarIdx: 11
+   UserName: Class Leader
+   CarNumber: 11
+   CarClassID: 4098
+""");
+
+        store.RecordFrame(CreateSample(
+            sessionState: 4,
+            playerCarIdx: 10,
+            focusCarIdx: 10,
+            teamPosition: 2,
+            teamClassPosition: 2,
+            teamCarClass: 4098,
+            teamLapCompleted: null,
+            teamLapDistPct: 0.45d,
+            teamF2TimeSeconds: 95d,
+            teamEstimatedTimeSeconds: 45d,
+            teamLastLapTimeSeconds: 90d,
+            classLeaderCarIdx: 11,
+            classLeaderLapDistPct: null,
+            classLeaderF2TimeSeconds: 0d,
+            allCars:
+            [
+                Car(11, position: 1, classPosition: 1, lapDistPct: 0.50d, f2TimeSeconds: 0d, lapCompleted: -1, estimatedTimeSeconds: 50d),
+                Car(10, position: 2, classPosition: 2, lapDistPct: 0.45d, f2TimeSeconds: 95d, lapCompleted: -1, estimatedTimeSeconds: 45d)
+            ]));
+
+        var reference = Assert.Single(store.Snapshot().Models.Timing.OverallRows, row => row.CarIdx == 10);
+
+        Assert.Null(reference.GapSecondsToClassLeader);
+        Assert.Equal(1d, reference.GapLapsToClassLeader);
+        Assert.Null(reference.IntervalSecondsToPreviousClassRow);
+        Assert.Equal(1d, reference.IntervalLapsToPreviousClassRow);
+
+        var standings = StandingsOverlayViewModel.From(store.Snapshot(), DateTimeOffset.UtcNow, maximumRows: 2);
+        Assert.Equal(new[] { "Leader", "+1L" }, standings.Rows.Select(row => row.Gap));
+        Assert.Equal(new[] { "0.0", "+1L" }, standings.Rows.Select(row => row.Interval));
     }
 
     [Fact]
@@ -1247,7 +1489,7 @@ QualifyResultsInfo:
     }
 
     [Fact]
-    public void RecordFrame_DerivesBlankAiClassNamesFromCarNames()
+    public void RecordFrame_UsesNumericClassLabelsWhenSdkClassNamesAreBlank()
     {
         var store = new LiveTelemetryStore();
         store.ApplySessionInfo("""
@@ -1337,12 +1579,12 @@ QualifyResultsInfo:
 
         var models = store.Snapshot().Models;
 
-        Assert.Equal("GT3", models.DriverDirectory.Drivers.Single(driver => driver.CarIdx == 10).CarClassName);
-        Assert.Equal("TCR", models.DriverDirectory.Drivers.Single(driver => driver.CarIdx == 20).CarClassName);
-        Assert.Equal("BMW M2 CS Racing", models.DriverDirectory.Drivers.Single(driver => driver.CarIdx == 30).CarClassName);
-        Assert.Contains(models.Scoring.ClassGroups, group => group.CarClass == 4098 && group.ClassName == "GT3");
-        Assert.Contains(models.Scoring.ClassGroups, group => group.CarClass == 4101 && group.ClassName == "TCR");
-        Assert.Contains(models.Scoring.ClassGroups, group => group.CarClass == 4102 && group.ClassName == "BMW M2 CS Racing");
+        Assert.Null(models.DriverDirectory.Drivers.Single(driver => driver.CarIdx == 10).CarClassName);
+        Assert.Null(models.DriverDirectory.Drivers.Single(driver => driver.CarIdx == 20).CarClassName);
+        Assert.Null(models.DriverDirectory.Drivers.Single(driver => driver.CarIdx == 30).CarClassName);
+        Assert.Contains(models.Scoring.ClassGroups, group => group.CarClass == 4098 && group.ClassName == "Class 4098");
+        Assert.Contains(models.Scoring.ClassGroups, group => group.CarClass == 4101 && group.ClassName == "Class 4101");
+        Assert.Contains(models.Scoring.ClassGroups, group => group.CarClass == 4102 && group.ClassName == "Class 4102");
     }
 
     [Fact]
@@ -1646,6 +1888,7 @@ QualifyResultsInfo:
             GapSecondsToClassLeader: 0d,
             GapLapsToClassLeader: null,
             IntervalSecondsToPreviousClassRow: null,
+            IntervalLapsToPreviousClassRow: null,
             DeltaSecondsToFocus: 0d,
             TrackSurface: 3,
             OnPitRoad: false);
@@ -1831,6 +2074,7 @@ QualifyResultsInfo:
             GapSecondsToClassLeader: 5.1234d,
             GapLapsToClassLeader: null,
             IntervalSecondsToPreviousClassRow: null,
+            IntervalLapsToPreviousClassRow: null,
             DeltaSecondsToFocus: 0d,
             TrackSurface: 3,
             OnPitRoad: false);

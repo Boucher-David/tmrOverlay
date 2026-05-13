@@ -40,15 +40,15 @@ function browserScenarios() {
       id: 'standings',
       fixture: () => ({
         live: freshLiveSnapshot({}),
-        model: tableModel('standings', 'Standings', '2 - 3 rows', standingsColumns(), [
-          row(['1', '#11', 'Class Leader', 'Leader', '0.0']),
+        model: tableModel('standings', 'Standings', 'P2 | 3 shown', standingsColumns(), [
+          row(['1', '#11', 'Class Leader', 'Lap 13', '0.0']),
           row(['2', '#10', 'Reference Driver', '--', '--'], { isReference: true }),
           row(['3', '#12', 'Chase Driver', '--', '--'])
         ])
       }),
       assert: ({ document }) => {
         expect(rowText(document)).toEqual([
-          '1 #11 Class Leader Leader 0.0',
+          '1 #11 Class Leader Lap 13 0.0',
           '2 #10 Reference Driver -- --',
           '3 #12 Chase Driver -- --'
         ]);
@@ -181,6 +181,7 @@ function browserScenarios() {
       id: 'car-radar',
       fixture: () => ({
         live: freshLiveSnapshot({
+          raceEvents: { hasData: true, isOnTrack: true, isInGarage: false },
           spatial: {
             hasData: true,
             sideStatus: 'left',
@@ -188,8 +189,8 @@ function browserScenarios() {
             hasCarRight: false,
             strongestMulticlassApproach: { relativeSeconds: -8.4 },
             cars: [
-              { carIdx: 12, relativeSeconds: -1.2, carClassColorHex: '#FFDA59' },
-              { carIdx: 14, relativeSeconds: 1.7, carClassColorHex: '#33CEFF' }
+              { carIdx: 12, relativeSeconds: -1.2, relativeMeters: -8, carClassColorHex: '#FFDA59' },
+              { carIdx: 14, relativeSeconds: 1.7, relativeMeters: 12, carClassColorHex: '#33CEFF' }
             ]
           }
         }),
@@ -201,9 +202,45 @@ function browserScenarios() {
       }
     },
     {
+      id: 'car-radar',
+      fixture: () => ({
+        live: freshLiveSnapshot({
+          raceEvents: { hasData: true, isOnTrack: false, isInGarage: false },
+          spatial: {
+            hasData: true,
+            sideStatus: 'left',
+            hasCarLeft: true,
+            hasCarRight: false,
+            strongestMulticlassApproach: { relativeSeconds: -8.4 },
+            cars: [
+              { carIdx: 12, relativeSeconds: -1.2, relativeMeters: -8, carClassColorHex: '#FFDA59' }
+            ]
+          }
+        }),
+        waitForSelector: '.empty'
+      }),
+      assert: ({ document }) => {
+        expect(document.querySelector('.radar-v2')).toBeNull();
+        expect(document.body.textContent).toContain('Waiting for player in car.');
+        expect(document.getElementById('status').textContent).toMatch(/waiting( for player in car)?/);
+      }
+    },
+    {
       id: 'track-map',
       fixture: () => ({
         live: freshLiveSnapshot({
+          latestSample: { focusCarIdx: 10, playerCarIdx: 10, focusLapDistPct: 0.42, onPitRoad: false, playerTrackSurface: 3 },
+          reference: { focusCarIdx: 10 },
+          timing: {
+            focusCarIdx: 10,
+            focusRow: { carIdx: 10, isFocus: true, lapDistPct: 0.42, hasSpatialProgress: true, hasTakenGrid: false, classPosition: 5 },
+            overallRows: [
+              { carIdx: 10, isFocus: true, lapDistPct: 0.42, hasSpatialProgress: true, hasTakenGrid: false, classPosition: 5 },
+              { carIdx: 11, lapDistPct: 0.28, hasSpatialProgress: true, hasTakenGrid: false, carClassColorHex: '#33CEFF' },
+              { carIdx: 12, lapDistPct: 0.58, hasSpatialProgress: true, hasTakenGrid: true, carClassColorHex: '#FFDA59' }
+            ],
+            classRows: []
+          },
           spatial: {
             hasData: true,
             referenceCarIdx: 10,
@@ -227,6 +264,9 @@ function browserScenarios() {
       assert: ({ document }) => {
         expect(document.querySelector('.track svg')).not.toBeNull();
         expect(document.querySelectorAll('.track circle, .track path').length).toBeGreaterThan(2);
+        expect(document.querySelectorAll('.track circle[fill="#33CEFF"]').length).toBe(0);
+        expect(document.querySelectorAll('.track circle[fill="#FFDA59"]').length).toBe(1);
+        expect(document.querySelectorAll('.track circle[fill="var(--tmr-cyan)"]').length).toBe(1);
         expect(document.getElementById('status').textContent).toBe('live | track map');
       }
     },
@@ -308,7 +348,7 @@ function relativeColumns() {
   return [
     column('relative.position', 'Pos', 'relative-position', 38, 'right'),
     column('relative.driver', 'Driver', 'driver', 180, 'left'),
-    column('relative.gap', 'Gap', 'gap', 70, 'right'),
+    column('relative.gap', 'Delta', 'gap', 70, 'right'),
     column('relative.pit', 'Pit', 'pit', 30, 'right')
   ];
 }

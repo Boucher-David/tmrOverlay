@@ -159,6 +159,16 @@ function frameMetadata(frame, index) {
 }
 
 function liveSnapshot(frame, index) {
+  if (frame.live && typeof frame.live === 'object') {
+    return {
+      ...frame.live,
+      sourceId: frame.live.sourceId || replay.source?.captureId || 'capture-replay',
+      startedAtUtc: frame.live.startedAtUtc || replay.source?.startedAtUtc || null,
+      lastUpdatedAtUtc: new Date().toISOString(),
+      sequence: index + 1
+    };
+  }
+
   const relativeSeconds = Number.isFinite(frame.raceStartRelativeSeconds)
     ? frame.raceStartRelativeSeconds
     : (frame.sessionState === 4 ? index - 60 : index - 60) * 2;
@@ -292,6 +302,10 @@ function displayModel(overlayId, frame, index) {
     return frame.model;
   }
 
+  if (frame.live?.models) {
+    return captureDisplayModel(overlayId, frame, index);
+  }
+
   const relativeSeconds = Number.isFinite(frame.raceStartRelativeSeconds)
     ? frame.raceStartRelativeSeconds
     : 0;
@@ -352,12 +366,216 @@ function displayModel(overlayId, frame, index) {
   return tableModel(overlayId, browserOverlayPage(overlayId).title, status, headerItems, []);
 }
 
-function tableModel(overlayId, title, status, headerItems, rows) {
+function captureDisplayModel(overlayId, frame, index) {
+  const live = liveSnapshot(frame, index);
+  const models = live.models || {};
+  const relativeSeconds = Number.isFinite(frame.raceStartRelativeSeconds)
+    ? frame.raceStartRelativeSeconds
+    : null;
+  const phase = frame.sessionPhase || models.session?.sessionPhase || 'capture';
+  const status = relativeSeconds == null
+    ? `${phase} | frame ${frame.frameIndex}`
+    : `${phase} | ${relativeSeconds >= 0 ? '+' : ''}${relativeSeconds}s`;
+  const headerItems = captureHeaderItems(models, status);
+
+  if (overlayId === 'relative') {
+    const rows = relativeRows(models, 8);
+    return tableModel(overlayId, 'Relative', status, headerItems, rows, 'source: capture-derived live replay');
+  }
+
+  if (overlayId === 'fuel-calculator') {
+    const localContext = localInCarOrPitContext(models, 'waiting for local fuel context');
+    if (!localContext.isAvailable) {
+      return metricsModel(
+        overlayId,
+        'Fuel Calculator',
+        localContext.statusText,
+        captureHeaderItems(models, localContext.statusText),
+        [],
+        'source: waiting');
+    }
+
+    const fuel = models.fuelPit?.fuel || live.fuel || {};
+    return metricsModel(overlayId, 'Fuel Calculator', status, headerItems, [
+      ['Fuel', formatLiters(fuel.fuelLevelLiters), 'info'],
+      ['Fuel %', formatPercent(fuel.fuelLevelPercent), 'normal'],
+      ['Burn', formatFuelBurn(fuel.fuelUsePerHourKg), 'normal'],
+      ['Source', models.fuelPit?.hasData ? 'capture frame' : 'unavailable', models.fuelPit?.hasData ? 'success' : 'waiting']
+    ], 'source: capture-derived live replay');
+  }
+
+  if (overlayId === 'session-weather') {
+    const session = models.session || {};
+    const weather = models.weather || {};
+    return metricsModel(overlayId, 'Session / Weather', status, headerItems, [
+      ['Session', session.sessionName || session.sessionType || '--', 'info'],
+      ['Track', formatTemp(weather.trackTempCrewC), 'normal'],
+      ['Air', formatTemp(weather.airTempC), 'normal'],
+      ['Wetness', trackWetnessLabel(weather.trackWetness, weather.weatherDeclaredWet), weather.weatherDeclaredWet ? 'warning' : 'success']
+    ], 'source: capture-derived live replay');
+  }
+
+  if (overlayId === 'pit-service') {
+    const localContext = localInCarOrPitContext(models, 'waiting for local pit-service context');
+    if (!localContext.isAvailable) {
+      return metricsModel(
+        overlayId,
+        'Pit Service',
+        localContext.statusText,
+        captureHeaderItems(models, localContext.statusText),
+        [],
+        'source: waiting');
+    }
+
+    const reference = models.reference || {};
+    const race = models.raceEvents || {};
+    return metricsModel(overlayId, 'Pit Service', status, headerItems, [
+      ['Box', reference.playerCarInPitStall ? 'In stall' : race.onPitRoad ? 'Pit road' : 'Closed', race.onPitRoad ? 'warning' : 'normal'],
+      ['Fuel Add', '--', 'normal'],
+      ['Tires', '--', 'normal'],
+      ['Repair', '--', 'normal']
+    ], 'source: capture-derived live replay');
+  }
+
+  if (overlayId === 'gap-to-leader') {
+    return {
+      overlayId,
+      title: 'Gap To Leader',
+      status,
+      source: 'source: capture-derived live replay',
+      bodyKind: 'graph',
+      columns: [],
+      rows: [],
+      metrics: [],
+      points: gapTrendPoints(index),
+      headerItems
+    };
+  }
+
+  return tableModel(overlayId, browserOverlayPage(overlayId).title, status, headerItems, [], 'source: capture-derived live replay');
+}
+
+function localInCarOrPitContext(models, statusText) {
+  const reference = models.reference || {};
+  const race = models.raceEvents || {};
+  const fuelPit = models.fuelPit || {};
+  if (reference.focusIsPlayer === false) {
+    return { isAvailable: false, reason: 'focus_on_another_car', statusText };
+  }
+
+  if (race.isInGarage === true || race.isGarageVisible === true) {
+    return { isAvailable: false, reason: 'garage', statusText };
+  }
+
+  if (race.isOnTrack === true) {
+    return { isAvailable: true, reason: 'available', statusText: 'live' };
+  }
+
+  if (race.onPitRoad === true
+    || reference.onPitRoad === true
+    || reference.playerCarInPitStall === true
+    || fuelPit.onPitRoad === true
+    || fuelPit.pitstopActive === true
+    || fuelPit.playerCarInPitStall === true
+    || fuelPit.teamOnPitRoad === true) {
+    return { isAvailable: true, reason: 'available', statusText: 'live' };
+  }
+
+  return { isAvailable: false, reason: 'not_in_car', statusText };
+}
+
+function captureHeaderItems(models, status) {
+  const items = [{ key: 'status', value: status }];
+  const seconds = models.session?.sessionTimeRemainSeconds;
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    items.push({ key: 'timeRemaining', value: formatDuration(seconds, models.session?.sessionPhase) });
+  }
+  return items;
+}
+
+function relativeRows(models, limit) {
+  const referenceCarIdx = models.reference?.focusCarIdx ?? models.relative?.referenceCarIdx;
+  const timingByCarIdx = new Map((models.timing?.overallRows || []).map((row) => [row.carIdx, row]));
+  const reference = timingByCarIdx.get(referenceCarIdx);
+  const rows = (models.relative?.rows || [])
+    .filter((row) => Number.isFinite(row.relativeSeconds))
+    .sort((a, b) => a.relativeSeconds - b.relativeSeconds);
+  const ahead = rows.filter((row) => row.relativeSeconds < 0).slice(-Math.floor(limit / 2));
+  const behind = rows.filter((row) => row.relativeSeconds > 0).slice(0, Math.floor(limit / 2));
+  return [
+    ...ahead.map((row) => ['AHEAD', displayDriver(row), formatSigned(row.relativeSeconds, 3), row.carClassName || '']),
+    reference ? ['YOU', displayDriver(reference), '0.000', reference.carClassName || ''] : ['YOU', 'Replay focus', '0.000', ''],
+    ...behind.map((row) => ['BEHIND', displayDriver(row), formatSigned(row.relativeSeconds, 3), row.carClassName || ''])
+  ];
+}
+
+function gapTrendPoints(index) {
+  const values = [];
+  const start = Math.max(0, index - 23);
+  for (let frameIndex = start; frameIndex <= index; frameIndex += 1) {
+    const frame = replay.frames[frameIndex];
+    const models = frame?.live?.models || {};
+    const focusCarIdx = models.reference?.focusCarIdx;
+    const focus = (models.timing?.classRows || models.timing?.overallRows || [])
+      .find((row) => row?.carIdx === focusCarIdx);
+    const gap = Number.isFinite(focus?.f2TimeSeconds)
+      ? focus.f2TimeSeconds
+      : Number.isFinite(focus?.estimatedTimeSeconds)
+        ? focus.estimatedTimeSeconds
+        : null;
+    if (Number.isFinite(gap) && gap >= 0) {
+      values.push(gap);
+    }
+  }
+  return values;
+}
+
+function displayDriver(row) {
+  return row?.driverName || row?.teamName || `Car ${row?.carIdx ?? '--'}`;
+}
+
+function formatSigned(value, digits = 1) {
+  if (!Number.isFinite(value)) return '--';
+  return `${value > 0 ? '+' : ''}${value.toFixed(digits)}`;
+}
+
+function formatLiters(value) {
+  return Number.isFinite(value) ? `${value.toFixed(1)} L` : '--';
+}
+
+function formatPercent(value) {
+  return Number.isFinite(value) ? `${Math.round(value * 100)}%` : '--';
+}
+
+function formatFuelBurn(value) {
+  return Number.isFinite(value) ? `${value.toFixed(1)}/h` : '--';
+}
+
+function formatTemp(value) {
+  return Number.isFinite(value) ? `${Math.round(value)} C` : '--';
+}
+
+function trackWetnessLabel(value, declaredWet) {
+  if (declaredWet === true) return 'Declared wet';
+  if (!Number.isFinite(value)) return '--';
+  return value <= 1 ? 'Dry' : value <= 3 ? 'Damp' : 'Wet';
+}
+
+function formatDuration(seconds, phase) {
+  const totalSeconds = Math.ceil(Math.max(0, seconds));
+  if (phase === 'pre-green' || totalSeconds < 3600) {
+    return `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}`;
+  }
+  const totalMinutes = Math.ceil(totalSeconds / 60);
+  return `${String(Math.floor(totalMinutes / 60)).padStart(2, '0')}:${String(totalMinutes % 60).padStart(2, '0')}`;
+}
+
+function tableModel(overlayId, title, status, headerItems, rows, source = 'source: race-start replay') {
   return {
     overlayId,
     title,
     status,
-    source: 'source: race-start replay',
+    source,
     bodyKind: 'table',
     columns: [
       { label: 'POS', dataKey: 'position', width: 52, alignment: 'left' },
@@ -382,12 +600,12 @@ function tableModel(overlayId, title, status, headerItems, rows) {
   };
 }
 
-function metricsModel(overlayId, title, status, headerItems, metrics) {
+function metricsModel(overlayId, title, status, headerItems, metrics, source = 'source: race-start replay') {
   return {
     overlayId,
     title,
     status,
-    source: 'source: race-start replay',
+    source,
     bodyKind: 'metrics',
     columns: [],
     rows: [],

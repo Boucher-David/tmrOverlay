@@ -85,7 +85,7 @@ enum DesignV2OverlayMockKind: CaseIterable {
         case .carRadar:
             return NSSize(width: 300, height: 300)
         case .inputState:
-            return NSSize(width: 520, height: 220)
+            return InputStateOverlayDefinition.definition.defaultSize
         case .trackMap:
             return TrackMapOverlayDefinition.definition.defaultSize
         }

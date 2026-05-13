@@ -18,6 +18,7 @@ using TmrOverlay.App.Overlays.SimpleTelemetry;
 using TmrOverlay.App.Overlays.Standings;
 using TmrOverlay.App.Overlays.StreamChat;
 using TmrOverlay.App.Overlays.Styling;
+using TmrOverlay.App.Overlays.TrackMap;
 using TmrOverlay.App.TrackMaps;
 using TmrOverlay.App.Performance;
 using TmrOverlay.Core.Fuel;
@@ -63,6 +64,14 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private const double TrackMapReloadIntervalSeconds = 10d;
     private const int MaximumChatMessages = 64;
     private const int VisibleChatMessageBudget = 36;
+    private const int GapMaxTrendPointsPerCar = 36_000;
+    private const int GapMaxWeatherPoints = 36_000;
+    private const double GapTrendWindowSeconds = 4d * 60d * 60d;
+    private const double GapMinimumTrendDomainSeconds = 120d;
+    private const double GapMissingSegmentSeconds = 10d;
+    private const double GapDefaultLapReferenceSeconds = 60d;
+    private const double FocusedCarLengthMeters = 4.746d;
+    private const double RadarRangeMeters = FocusedCarLengthMeters * 6d;
 
     private static readonly Uri TwitchChatUri = new("wss://irc-ws.chat.twitch.tv:443");
     private static readonly Color TransparentColor = Color.FromArgb(1, 2, 3);
@@ -105,6 +114,8 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private readonly string _unitSystem;
     private readonly System.Windows.Forms.Timer _refreshTimer;
     private readonly List<double> _gapPoints = [];
+    private readonly Dictionary<int, List<DesignV2GapTrendPoint>> _gapSeries = [];
+    private readonly List<DesignV2GapWeatherPoint> _gapWeather = [];
     private readonly List<DesignV2InputPoint> _inputTrace = [];
     private readonly List<StreamChatMessage> _chatMessages = [];
     private readonly Dictionary<int, double> _smoothedTrackMarkerProgress = new();
@@ -124,6 +135,10 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private string? _lastChatLoggedError;
     private DateTimeOffset? _lastTrackMarkerSmoothingAtUtc;
     private DateTimeOffset _nextTrackMapReloadAtUtc = DateTimeOffset.MinValue;
+    private long? _lastGapSequence;
+    private double? _latestGapAxisSeconds;
+    private double? _gapTrendStartAxisSeconds;
+    private DesignV2GapReferenceContext? _lastGapReferenceContext;
     private bool _settingsPreviewVisible;
     private bool _flagsManagedEnabled = true;
     private bool _flagsSettingsOverlayActive;
@@ -252,7 +267,8 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     protected override bool ShouldReceiveInputWhileTransparent(Point clientPoint)
     {
-        return IsStreamChatCloseButtonHit(clientPoint);
+        return IsStreamChatCloseButtonHit(clientPoint)
+            || IsStreamChatDragHit(clientPoint, ClientSize);
     }
 
     protected override void OnMouseUp(MouseEventArgs e)
@@ -318,7 +334,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     private DesignV2OverlayModel BuildModel(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
     {
-        return _kind switch
+        var model = _kind switch
         {
             DesignV2LiveOverlayKind.Standings => BuildStandingsModel(snapshot, now),
             DesignV2LiveOverlayKind.Relative => BuildRelativeModel(snapshot, now),
@@ -333,6 +349,45 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             DesignV2LiveOverlayKind.StreamChat => BuildStreamChatModel(),
             _ => WaitingModel(TitleFor(_kind), "waiting")
         };
+        return ApplyChromeSettings(model, snapshot);
+    }
+
+    private DesignV2OverlayModel ApplyChromeSettings(DesignV2OverlayModel model, LiveTelemetrySnapshot snapshot)
+    {
+        var headerText = BuildHeaderText(_settings, snapshot, model.Status);
+        var showFooter = ShowFooterForSettings(_kind, _settings, snapshot);
+        return model with
+        {
+            HeaderText = headerText,
+            ShowFooter = showFooter
+        };
+    }
+
+    internal static string BuildHeaderText(OverlaySettings settings, LiveTelemetrySnapshot snapshot, string status)
+    {
+        var parts = new List<string>(2);
+        if (OverlayChromeSettings.ShowHeaderStatus(settings, snapshot) && !string.IsNullOrWhiteSpace(status))
+        {
+            parts.Add(status);
+        }
+
+        if (OverlayChromeSettings.ShowHeaderTimeRemaining(settings, snapshot))
+        {
+            var timeRemaining = OverlayHeaderTimeFormatter.FormatTimeRemaining(snapshot);
+            if (!string.IsNullOrWhiteSpace(timeRemaining))
+            {
+                parts.Add(timeRemaining);
+            }
+        }
+
+        return string.Join(" | ", parts);
+    }
+
+    internal static bool ShowFooterForSettings(DesignV2LiveOverlayKind kind, OverlaySettings settings, LiveTelemetrySnapshot snapshot)
+    {
+        return OverlayChromeSettings.ShowFooterSource(settings, snapshot)
+            && (kind != DesignV2LiveOverlayKind.FuelCalculator
+                || settings.GetBooleanOption(OverlayOptionKeys.FuelSource, defaultValue: true));
     }
 
     private DesignV2OverlayModel BuildStandingsModel(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
@@ -384,7 +439,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private bool EnsureClientHeightForStandingsRows(int rowCount)
     {
         var targetHeight = TargetClientHeightForStandingsRows(rowCount);
-        if (ClientSize.Height == targetHeight)
+        if (ClientSize.Height >= targetHeight)
         {
             return false;
         }
@@ -454,18 +509,75 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         var columns = OverlayContentColumnSettings.VisibleColumnsFor(_settings, OverlayContentColumnSettings.Relative)
             .Select(column => new DesignV2Column(column.Label, column.Width, AlignmentFor(column.Alignment)))
             .ToArray();
-        var rows = viewModel.Rows.Select(row => new DesignV2TableRow(
-            ValuesForRelativeRow(row),
-            row.IsReference,
-            IsClassHeader: false,
-            row.IsPartial ? DesignV2Evidence.Partial : DesignV2Evidence.Measured,
-            row.ClassColorHex)).ToArray();
+        var rows = StableRelativeRows(viewModel, carsEachSide, carsEachSide)
+            .Select(row => row is null
+                ? BlankTableRow(columns.Count)
+                : new DesignV2TableRow(
+                    ValuesForRelativeRow(row),
+                    row.IsReference,
+                    IsClassHeader: false,
+                    row.IsPartial ? DesignV2Evidence.Partial : DesignV2Evidence.Measured,
+                    row.ClassColorHex))
+            .ToArray();
         return new DesignV2OverlayModel(
             "Relative",
             viewModel.Status,
             viewModel.Source,
             rows.Length == 0 ? DesignV2Evidence.Unavailable : DesignV2Evidence.Live,
             new DesignV2TableBody(columns, rows));
+    }
+
+    internal static IReadOnlyList<RelativeOverlayRowViewModel?> StableRelativeRows(
+        RelativeOverlayViewModel viewModel,
+        int carsAhead,
+        int carsBehind)
+    {
+        if (viewModel.Rows.Count == 0)
+        {
+            return [null];
+        }
+
+        var aheadCapacity = Math.Clamp(carsAhead, 0, 8);
+        var behindCapacity = Math.Clamp(carsBehind, 0, 8);
+        var reference = viewModel.Rows.FirstOrDefault(row => row.IsReference);
+        var hasReference = reference is not null;
+        var visibleRows = Math.Clamp(
+            aheadCapacity + behindCapacity + (hasReference ? 1 : 0),
+            1,
+            17);
+        var stableRows = new RelativeOverlayRowViewModel?[visibleRows];
+        var ahead = viewModel.Rows.Where(row => row.IsAhead).ToArray();
+        var aheadStart = Math.Max(0, aheadCapacity - ahead.Length);
+        for (var index = 0; index < ahead.Length && aheadStart + index < stableRows.Length; index++)
+        {
+            stableRows[aheadStart + index] = ahead[index];
+        }
+
+        var behindStart = hasReference ? aheadCapacity + 1 : aheadCapacity;
+        if (hasReference && aheadCapacity < stableRows.Length)
+        {
+            stableRows[aheadCapacity] = reference;
+        }
+
+        var behind = viewModel.Rows.Where(row => row.IsBehind).ToArray();
+        for (var index = 0; index < behind.Length && behindStart + index < stableRows.Length; index++)
+        {
+            stableRows[behindStart + index] = behind[index];
+        }
+
+        return !hasReference && ahead.Length == 0 && behind.Length == 0
+            ? [null]
+            : stableRows;
+    }
+
+    private static DesignV2TableRow BlankTableRow(int columnCount)
+    {
+        return new DesignV2TableRow(
+            Enumerable.Repeat(string.Empty, Math.Max(0, columnCount)).ToArray(),
+            IsReference: false,
+            IsClassHeader: false,
+            DesignV2Evidence.Unavailable,
+            ClassColorHex: null);
     }
 
     private IReadOnlyList<string> ValuesForRelativeRow(RelativeOverlayRowViewModel row)
@@ -562,49 +674,69 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private DesignV2OverlayModel BuildRadarModel(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
     {
         var availability = OverlayAvailabilityEvaluator.FromSnapshot(snapshot, now);
-        var proximity = snapshot.Proximity;
-        var isAvailable = availability.IsAvailable && proximity.HasData;
-        var status = !isAvailable
+        var spatial = snapshot.Models.Spatial;
+        var body = RadarBodyFromSpatial(spatial, availability.IsAvailable, _settingsPreviewVisible, _settings);
+        var status = !body.IsAvailable
             ? availability.StatusText
-            : proximity.HasCarLeft && proximity.HasCarRight
+            : spatial.HasCarLeft && spatial.HasCarRight
             ? "cars both sides"
-            : proximity.HasCarLeft
+            : spatial.HasCarLeft
                 ? "car left"
-                : proximity.HasCarRight
+                : spatial.HasCarRight
                     ? "car right"
-                    : proximity.StrongestMulticlassApproach is not null
+                    : spatial.StrongestMulticlassApproach is not null
                         ? "class traffic"
                         : "clear";
         return new DesignV2OverlayModel(
             "Car Radar",
             status,
-            isAvailable ? "source: spatial telemetry" : "source: waiting",
-            isAvailable ? DesignV2Evidence.Live : DesignV2Evidence.Unavailable,
-            new DesignV2RadarBody(
-                isAvailable || _settingsPreviewVisible,
-                proximity.HasCarLeft,
-                proximity.HasCarRight,
-                proximity.NearbyCars,
-                proximity.StrongestMulticlassApproach,
-                _settings.GetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true),
-                _settingsPreviewVisible));
+            body.IsAvailable ? "source: spatial telemetry" : "source: waiting",
+            body.IsAvailable ? DesignV2Evidence.Live : DesignV2Evidence.Unavailable,
+            body);
+    }
+
+    internal static DesignV2RadarBody RadarBodyFromSpatial(
+        LiveSpatialModel spatial,
+        bool overlayAvailable,
+        bool previewVisible,
+        OverlaySettings settings)
+    {
+        var isAvailable = overlayAvailable && spatial.HasData;
+        var cars = spatial.Cars
+            .Where(car => car.RelativeMeters is { } meters && IsFinite(meters))
+            .ToArray();
+        return new DesignV2RadarBody(
+            isAvailable || previewVisible,
+            spatial.HasCarLeft,
+            spatial.HasCarRight,
+            cars,
+            spatial.StrongestMulticlassApproach,
+            settings.GetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true),
+            previewVisible);
     }
 
     private DesignV2OverlayModel BuildGapModel(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
     {
         var availability = OverlayAvailabilityEvaluator.FromSnapshot(snapshot, now);
         var gap = TmrOverlay.App.Overlays.GapToLeader.GapToLeaderLiveModelAdapter.Select(snapshot);
-        if (gap.HasData
-            && TmrOverlay.App.Overlays.GapToLeader.GapToLeaderLiveModelAdapter.SelectFocusedTrendPointSeconds(snapshot, gap) is { } seconds
-            && IsFinite(seconds))
+        if (_lastGapSequence != snapshot.Sequence)
         {
-            _gapPoints.Add(seconds);
-            if (_gapPoints.Count > 120)
+            _lastGapSequence = snapshot.Sequence;
+            RecordGapSnapshot(snapshot, gap, now);
+            if (gap.HasData
+                && TmrOverlay.App.Overlays.GapToLeader.GapToLeaderLiveModelAdapter.SelectFocusedTrendPointSeconds(snapshot, gap) is { } seconds
+                && IsFinite(seconds))
             {
-                _gapPoints.RemoveRange(0, _gapPoints.Count - 120);
+                _gapPoints.Add(seconds);
+                if (_gapPoints.Count > 120)
+                {
+                    _gapPoints.RemoveRange(0, _gapPoints.Count - 120);
+                }
             }
         }
 
+        var selectedSeries = SelectGapSeries(gap);
+        var graph = BuildGapGraphBody(selectedSeries, snapshot);
         if (!availability.IsAvailable)
         {
             return new DesignV2OverlayModel(
@@ -612,21 +744,289 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                 availability.StatusText,
                 "source: waiting",
                 DesignV2Evidence.Unavailable,
-                new DesignV2GraphBody(_gapPoints.ToArray()));
+                graph);
         }
 
         var status = gap.HasData
             ? $"{FormatPosition(gap.ReferenceClassPosition)} {FormatGap(gap.ClassLeaderGap)}"
             : "waiting";
         var footer = gap.HasData
-            ? $"source: live gap telemetry | cars {gap.ClassCars.Count}"
+            ? $"source: live gap telemetry | cars {selectedSeries.Count}/{gap.ClassCars.Count}"
             : "source: waiting";
         return new DesignV2OverlayModel(
             "Focused Gap Trend",
             status,
             footer,
             gap.HasData ? DesignV2Evidence.Live : DesignV2Evidence.Unavailable,
-            new DesignV2GraphBody(_gapPoints.ToArray()));
+            graph);
+    }
+
+    private void RecordGapSnapshot(LiveTelemetrySnapshot snapshot, LiveLeaderGapSnapshot gap, DateTimeOffset now)
+    {
+        var timestamp = snapshot.LatestSample?.CapturedAtUtc
+            ?? snapshot.LastUpdatedAtUtc
+            ?? now;
+        var axisSeconds = SelectGapAxisSeconds(timestamp, snapshot.Models.Session.SessionTimeSeconds ?? snapshot.LatestSample?.SessionTime);
+        _latestGapAxisSeconds = axisSeconds;
+        if (_gapTrendStartAxisSeconds is null || axisSeconds < _gapTrendStartAxisSeconds.Value)
+        {
+            _gapTrendStartAxisSeconds = axisSeconds;
+        }
+
+        var context = new DesignV2GapReferenceContext(
+            snapshot.Models.Reference.FocusCarIdx ?? snapshot.Models.Timing.FocusCarIdx,
+            snapshot.Models.Reference.ReferenceCarClass ?? snapshot.Models.Timing.FocusRow?.CarClass);
+        if (_lastGapReferenceContext is not null && _lastGapReferenceContext != context)
+        {
+            _gapSeries.Clear();
+            _gapWeather.Clear();
+            _gapTrendStartAxisSeconds = axisSeconds;
+        }
+
+        _lastGapReferenceContext = context;
+        RecordGapWeather(snapshot, axisSeconds);
+        var lapReferenceSeconds = TmrOverlay.App.Overlays.GapToLeader.GapToLeaderLiveModelAdapter.SelectLapReferenceSeconds(snapshot);
+        foreach (var car in gap.ClassCars)
+        {
+            if (DesignV2GapSeconds(car, lapReferenceSeconds) is not { } gapSeconds)
+            {
+                continue;
+            }
+
+            if (!_gapSeries.TryGetValue(car.CarIdx, out var points))
+            {
+                points = [];
+                _gapSeries[car.CarIdx] = points;
+            }
+
+            var startsSegment = points.Count == 0 || axisSeconds - points[^1].AxisSeconds > GapMissingSegmentSeconds;
+            var point = new DesignV2GapTrendPoint(
+                timestamp,
+                axisSeconds,
+                gapSeconds,
+                car.CarIdx,
+                car.IsReferenceCar,
+                car.IsClassLeader,
+                car.ClassPosition,
+                startsSegment);
+            if (points.Count > 0 && Math.Abs(points[^1].AxisSeconds - axisSeconds) < 0.001d)
+            {
+                points[^1] = point with { StartsSegment = points[^1].StartsSegment };
+            }
+            else
+            {
+                points.Add(point);
+            }
+
+            if (points.Count > GapMaxTrendPointsPerCar)
+            {
+                points.RemoveRange(0, points.Count - GapMaxTrendPointsPerCar);
+            }
+        }
+
+        PruneGapSeries(axisSeconds);
+    }
+
+    private static double SelectGapAxisSeconds(DateTimeOffset timestamp, double? sessionTimeSeconds)
+    {
+        return sessionTimeSeconds is { } sessionTime && IsFinite(sessionTime) && sessionTime >= 0d
+            ? sessionTime
+            : timestamp.ToUnixTimeMilliseconds() / 1000d;
+    }
+
+    private void RecordGapWeather(LiveTelemetrySnapshot snapshot, double axisSeconds)
+    {
+        var condition = SelectWeatherCondition(snapshot);
+        if (_gapWeather.Count > 0 && Math.Abs(_gapWeather[^1].AxisSeconds - axisSeconds) < 0.001d)
+        {
+            _gapWeather[^1] = new DesignV2GapWeatherPoint(axisSeconds, condition);
+        }
+        else
+        {
+            _gapWeather.Add(new DesignV2GapWeatherPoint(axisSeconds, condition));
+        }
+
+        if (_gapWeather.Count > GapMaxWeatherPoints)
+        {
+            _gapWeather.RemoveRange(0, _gapWeather.Count - GapMaxWeatherPoints);
+        }
+    }
+
+    private void PruneGapSeries(double latestAxisSeconds)
+    {
+        var cutoff = latestAxisSeconds - GapTrendWindowSeconds;
+        foreach (var carIdx in _gapSeries.Keys.ToArray())
+        {
+            var points = _gapSeries[carIdx];
+            points.RemoveAll(point => point.AxisSeconds < cutoff);
+            if (points.Count == 0)
+            {
+                _gapSeries.Remove(carIdx);
+            }
+        }
+
+        _gapWeather.RemoveAll(point => point.AxisSeconds < cutoff);
+    }
+
+    private IReadOnlyList<LiveClassGapCar> SelectGapSeries(LiveLeaderGapSnapshot gap)
+    {
+        if (!gap.HasData)
+        {
+            return [];
+        }
+
+        var cars = gap.ClassCars
+            .Where(car => _gapSeries.ContainsKey(car.CarIdx) || car.IsClassLeader || car.IsReferenceCar)
+            .OrderBy(car => car.ClassPosition ?? int.MaxValue)
+            .ThenBy(car => DesignV2GapSeconds(car, null) ?? double.MaxValue)
+            .ThenBy(car => car.CarIdx)
+            .ToArray();
+        var reference = cars.FirstOrDefault(car => car.IsReferenceCar);
+        var selected = new List<LiveClassGapCar>();
+        void Add(LiveClassGapCar car)
+        {
+            if (selected.All(existing => existing.CarIdx != car.CarIdx))
+            {
+                selected.Add(car);
+            }
+        }
+
+        foreach (var leader in cars.Where(car => car.IsClassLeader))
+        {
+            Add(leader);
+        }
+
+        if (reference is not null)
+        {
+            var aheadCount = _settings.GetIntegerOption(OverlayOptionKeys.GapCarsAhead, defaultValue: 5, minimum: 0, maximum: 12);
+            var behindCount = _settings.GetIntegerOption(OverlayOptionKeys.GapCarsBehind, defaultValue: 5, minimum: 0, maximum: 12);
+            foreach (var car in cars.Where(car => !car.IsReferenceCar && IsAheadOfReference(car, reference)).TakeLast(aheadCount))
+            {
+                Add(car);
+            }
+
+            Add(reference);
+            foreach (var car in cars.Where(car => !car.IsReferenceCar && IsBehindReference(car, reference)).Take(behindCount))
+            {
+                Add(car);
+            }
+        }
+        else
+        {
+            foreach (var car in cars.Take(1 + _settings.GetIntegerOption(OverlayOptionKeys.GapCarsBehind, defaultValue: 5, minimum: 0, maximum: 12)))
+            {
+                Add(car);
+            }
+        }
+
+        return selected
+            .OrderBy(car => car.ClassPosition ?? int.MaxValue)
+            .ThenBy(car => DesignV2GapSeconds(car, null) ?? double.MaxValue)
+            .ThenBy(car => car.CarIdx)
+            .ToArray();
+    }
+
+    private static bool IsAheadOfReference(LiveClassGapCar car, LiveClassGapCar reference)
+    {
+        if (car.ClassPosition is { } carPosition && reference.ClassPosition is { } referencePosition)
+        {
+            return carPosition < referencePosition;
+        }
+
+        return DesignV2GapSeconds(car, null) < DesignV2GapSeconds(reference, null);
+    }
+
+    private static bool IsBehindReference(LiveClassGapCar car, LiveClassGapCar reference)
+    {
+        if (car.ClassPosition is { } carPosition && reference.ClassPosition is { } referencePosition)
+        {
+            return carPosition > referencePosition;
+        }
+
+        return DesignV2GapSeconds(car, null) > DesignV2GapSeconds(reference, null);
+    }
+
+    private DesignV2GraphBody BuildGapGraphBody(IReadOnlyList<LiveClassGapCar> selectedCars, LiveTelemetrySnapshot snapshot)
+    {
+        var selectedIds = selectedCars.Select(car => car.CarIdx).ToHashSet();
+        var endSeconds = _latestGapAxisSeconds ?? 0d;
+        var startSeconds = Math.Max(
+            _gapTrendStartAxisSeconds ?? endSeconds - GapMinimumTrendDomainSeconds,
+            endSeconds - GapTrendWindowSeconds);
+        if (endSeconds - startSeconds < GapMinimumTrendDomainSeconds)
+        {
+            startSeconds = endSeconds - GapMinimumTrendDomainSeconds;
+        }
+
+        var series = selectedCars
+            .Select(car => new DesignV2GapSeries(
+                car.CarIdx,
+                car.IsReferenceCar,
+                car.IsClassLeader,
+                car.ClassPosition,
+                PointsForGapCar(car.CarIdx, startSeconds, endSeconds)))
+            .Where(series => series.Points.Count > 0)
+            .ToArray();
+        var maxGapSeconds = NiceCeiling(series
+            .SelectMany(series => series.Points)
+            .Select(point => point.GapSeconds)
+            .DefaultIfEmpty(1d)
+            .Max());
+        return new DesignV2GraphBody(
+            _gapPoints.ToArray(),
+            series,
+            _gapWeather.Where(point => point.AxisSeconds >= startSeconds && point.AxisSeconds <= endSeconds).ToArray(),
+            StartSeconds: startSeconds,
+            EndSeconds: Math.Max(endSeconds, startSeconds + 1d),
+            MaxGapSeconds: Math.Max(1d, maxGapSeconds),
+            LapReferenceSeconds: TmrOverlay.App.Overlays.GapToLeader.GapToLeaderLiveModelAdapter.SelectLapReferenceSeconds(snapshot),
+            SelectedSeriesCount: selectedIds.Count);
+    }
+
+    private IReadOnlyList<DesignV2GapTrendPoint> PointsForGapCar(int carIdx, double startSeconds, double endSeconds)
+    {
+        return _gapSeries.TryGetValue(carIdx, out var points)
+            ? points.Where(point => point.AxisSeconds >= startSeconds && point.AxisSeconds <= endSeconds).ToArray()
+            : Array.Empty<DesignV2GapTrendPoint>();
+    }
+
+    private static double? DesignV2GapSeconds(LiveClassGapCar car, double? lapReferenceSeconds)
+    {
+        if (car.IsClassLeader)
+        {
+            return 0d;
+        }
+
+        if (car.GapSecondsToClassLeader is { } seconds && IsFinite(seconds) && seconds >= 0d)
+        {
+            return seconds;
+        }
+
+        return car.GapLapsToClassLeader is { } laps && IsFinite(laps) && laps >= 0d
+            ? laps * (lapReferenceSeconds is { } lapSeconds && IsFinite(lapSeconds) && lapSeconds > 20d ? lapSeconds : GapDefaultLapReferenceSeconds)
+            : null;
+    }
+
+    private static DesignV2GapWeatherCondition SelectWeatherCondition(LiveTelemetrySnapshot snapshot)
+    {
+        var weather = snapshot.Models.Weather;
+        if (!weather.HasData)
+        {
+            return DesignV2GapWeatherCondition.Unknown;
+        }
+
+        if (weather.WeatherDeclaredWet == true)
+        {
+            return DesignV2GapWeatherCondition.DeclaredWet;
+        }
+
+        return weather.TrackWetness switch
+        {
+            >= 4 => DesignV2GapWeatherCondition.Wet,
+            >= 2 => DesignV2GapWeatherCondition.Damp,
+            >= 0 => DesignV2GapWeatherCondition.Dry,
+            _ => DesignV2GapWeatherCondition.Unknown
+        };
     }
 
     private DesignV2OverlayModel BuildTrackMapModel(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
@@ -1193,7 +1593,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         }).ToArray();
     }
 
-    private static IReadOnlyList<DesignV2TrackMapMarker> BuildTrackMapMarkers(LiveTelemetrySnapshot snapshot)
+    internal static IReadOnlyList<DesignV2TrackMapMarker> BuildTrackMapMarkers(LiveTelemetrySnapshot snapshot)
     {
         var markers = new Dictionary<int, DesignV2TrackMapMarker>();
         var scoringByCarIdx = snapshot.Models.Scoring.Rows
@@ -1207,17 +1607,16 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
         foreach (var row in snapshot.Models.Timing.OverallRows.Concat(snapshot.Models.Timing.ClassRows))
         {
-            if (!row.HasSpatialProgress
-                || row.LapDistPct is not { } lapDistPct
-                || !IsValidProgress(lapDistPct))
-            {
-                continue;
-            }
-
             scoringByCarIdx.TryGetValue(row.CarIdx, out var scoringRow);
             var isFocus = row.IsFocus
                 || row.CarIdx == referenceCarIdx
                 || scoringRow?.IsFocus == true;
+            if (!TrackMapMarkerPolicy.ShouldRenderTimingMarker(row, isFocus)
+                || row.LapDistPct is not { } lapDistPct)
+            {
+                continue;
+            }
+
             var marker = new DesignV2TrackMapMarker(
                 row.CarIdx,
                 NormalizeProgress(lapDistPct),
@@ -1230,11 +1629,6 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             {
                 markers[row.CarIdx] = marker;
             }
-        }
-
-        if (markers.Count == 0 && snapshot.Models.Scoring.Rows.Count > 0)
-        {
-            AddStartingGridMarkers(markers, snapshot.Models.Scoring.Rows, referenceCarIdx);
         }
 
         var focusProgress = MarkerProgress(snapshot.LatestSample);
@@ -1251,29 +1645,6 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         }
 
         return markers.Values.ToArray();
-    }
-
-    private static void AddStartingGridMarkers(
-        Dictionary<int, DesignV2TrackMapMarker> markers,
-        IReadOnlyList<LiveScoringRow> scoringRows,
-        int? referenceCarIdx)
-    {
-        var rows = scoringRows
-            .OrderBy(row => row.OverallPosition ?? int.MaxValue)
-            .ThenBy(row => row.ClassPosition ?? int.MaxValue)
-            .ThenBy(row => row.CarIdx)
-            .ToArray();
-        for (var index = 0; index < rows.Length; index++)
-        {
-            var row = rows[index];
-            var isFocus = row.IsFocus || row.CarIdx == referenceCarIdx;
-            markers[row.CarIdx] = new DesignV2TrackMapMarker(
-                row.CarIdx,
-                rows.Length <= 1 ? 0d : NormalizeProgress(index / (double)rows.Length),
-                isFocus,
-                MarkerColor(row.CarClassColorHex, isFocus),
-                isFocus ? PositionLabel(row) : null);
-        }
     }
 
     private static string? PositionLabel(LiveTimingRow row, LiveScoringRow? scoringRow, int? referenceCarIdx)
@@ -1323,8 +1694,13 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     private static double? MarkerProgress(HistoricalTelemetrySample? sample)
     {
+        if (!TrackMapMarkerPolicy.ShouldRenderFocusSampleMarker(sample))
+        {
+            return null;
+        }
+
         var progress = sample?.FocusLapDistPct;
-        return progress is { } value && IsValidProgress(value)
+        return progress is { } value
             ? NormalizeProgress(value)
             : null;
     }
@@ -1394,21 +1770,25 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         var closeButtonSpace = _closeButton is not null ? 34 : 0;
         DrawText(
             graphics,
-            model.Status,
+            model.HeaderText ?? model.Status,
             statusFont,
             EvidenceColor(model.Evidence),
             new RectangleF(outer.Left + 230, header.Top + 10, Math.Max(1, outer.Width - 244 - closeButtonSpace), 18),
             ContentAlignment.MiddleRight);
 
+        var footerReserve = model.ShowFooter ? FooterHeight : 8;
         var body = new RectangleF(
             outer.Left + PaddingSize,
             header.Bottom + BodyGap,
             outer.Width - PaddingSize * 2,
-            Math.Max(1, outer.Height - HeaderHeight - FooterHeight - BodyGap - 1));
+            Math.Max(1, outer.Height - HeaderHeight - footerReserve - BodyGap - 1));
         DrawBody(graphics, body, model.Body);
 
-        using var footerFont = FontOf(9.5f);
-        DrawText(graphics, model.Footer, footerFont, TextMuted, new RectangleF(outer.Left + 14, outer.Bottom - 24, outer.Width - 28, 14));
+        if (model.ShowFooter)
+        {
+            using var footerFont = FontOf(9.5f);
+            DrawText(graphics, model.Footer, footerFont, TextMuted, new RectangleF(outer.Left + 14, outer.Bottom - 24, outer.Width - 28, 14));
+        }
     }
 
     private void DrawBody(Graphics graphics, RectangleF rect, DesignV2Body body)
@@ -1422,7 +1802,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                 DrawMetricRows(graphics, rect, metrics.Rows);
                 break;
             case DesignV2GraphBody graph:
-                DrawGraph(graphics, rect, graph.Points);
+                DrawGraph(graphics, rect, graph);
                 break;
             case DesignV2ChatBody chat:
                 DrawChat(graphics, rect, chat.Rows);
@@ -1564,19 +1944,17 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         }
     }
 
-    private void DrawGraph(Graphics graphics, RectangleF rect, IReadOnlyList<double> points)
+    private void DrawGraph(Graphics graphics, RectangleF rect, DesignV2GraphBody graph)
     {
         FillRounded(graphics, rect, 5, SurfaceInset, BorderMuted);
-        if (points.Count < 2)
+        var totalSeriesPoints = graph.Series.Sum(series => series.Points.Count);
+        if (totalSeriesPoints < 2 && graph.Points.Count < 2)
         {
             using var waitingFont = FontOf(11, FontStyle.Bold);
             DrawText(graphics, "waiting for trend", waitingFont, TextMuted, RectangleF.Inflate(rect, -12, -10));
             return;
         }
 
-        var min = points.Min();
-        var max = points.Max();
-        var span = Math.Max(1d, max - min);
         var frame = RectangleF.Inflate(rect, -12, -14);
         const float axisWidth = 58f;
         const float xAxisHeight = 17f;
@@ -1585,6 +1963,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             frame.Top,
             Math.Max(40, frame.Width - axisWidth - 4),
             Math.Max(40, frame.Height - xAxisHeight));
+        DrawGapWeatherBands(graphics, graph, plot);
         using var gridPen = new Pen(Color.FromArgb(80, TextMuted), 1);
         for (var index = 1; index < 4; index++)
         {
@@ -1593,19 +1972,33 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         }
 
         using var axisPen = new Pen(Color.FromArgb(70, TextMuted), 1);
+        graphics.DrawLine(axisPen, plot.Left, plot.Top, plot.Right, plot.Top);
         graphics.DrawLine(axisPen, plot.Left, plot.Bottom, plot.Right, plot.Bottom);
         using var axisFont = FontOf(9.5f);
-        DrawText(graphics, "leader", axisFont, TextMuted, new RectangleF(frame.Left, plot.Bottom - 7, axisWidth - 8, 14), ContentAlignment.MiddleRight);
-        DrawText(graphics, FormatAxisSeconds(max), axisFont, TextMuted, new RectangleF(frame.Left, plot.Top - 7, axisWidth - 8, 14), ContentAlignment.MiddleRight);
+        var max = graph.MaxGapSeconds is { } graphMax && graphMax > 0d
+            ? graphMax
+            : Math.Max(1d, graph.Points.DefaultIfEmpty(1d).Max());
+        DrawText(graphics, "leader", axisFont, TextMuted, new RectangleF(frame.Left, plot.Top - 7, axisWidth - 8, 14), ContentAlignment.MiddleRight);
+        DrawText(graphics, FormatAxisSeconds(max), axisFont, TextMuted, new RectangleF(frame.Left, plot.Bottom - 7, axisWidth - 8, 14), ContentAlignment.MiddleRight);
         DrawText(graphics, "10m", axisFont, TextMuted, new RectangleF(plot.Left, plot.Bottom + 3, 44, 14));
         DrawText(graphics, "now", axisFont, TextMuted, new RectangleF(plot.Right - 44, plot.Bottom + 3, 44, 14), ContentAlignment.MiddleRight);
 
+        if (graph.Series.Count > 0)
+        {
+            foreach (var (series, index) in graph.Series.Select((series, index) => (series, index)))
+            {
+                DrawGapSeries(graphics, plot, graph, series, index, max);
+            }
+
+            return;
+        }
+
         using var linePen = new Pen(Cyan, 2f);
         using var path = new GraphicsPath();
-        for (var index = 0; index < points.Count; index++)
+        for (var index = 0; index < graph.Points.Count; index++)
         {
-            var progress = index / (float)Math.Max(1, points.Count - 1);
-            var normalized = (float)((points[index] - min) / span);
+            var progress = index / (float)Math.Max(1, graph.Points.Count - 1);
+            var normalized = (float)Math.Clamp(graph.Points[index] / max, 0d, 1d);
             var point = new PointF(plot.Left + progress * plot.Width, plot.Top + normalized * plot.Height);
             if (index == 0)
             {
@@ -1619,6 +2012,132 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         }
 
         graphics.DrawPath(linePen, path);
+    }
+
+    private void DrawGapSeries(
+        Graphics graphics,
+        RectangleF plot,
+        DesignV2GraphBody graph,
+        DesignV2GapSeries series,
+        int seriesIndex,
+        double maxGapSeconds)
+    {
+        var color = GapSeriesColor(series, seriesIndex);
+        using var pen = new Pen(color, series.IsReference ? 2.6f : series.IsClassLeader ? 1.8f : 1.25f)
+        {
+            LineJoin = LineJoin.Round,
+            StartCap = LineCap.Round,
+            EndCap = LineCap.Round
+        };
+        using var path = new GraphicsPath();
+        var hasPoint = false;
+        foreach (var point in series.Points.OrderBy(point => point.AxisSeconds))
+        {
+            var graphPoint = GapGraphPoint(point, graph, plot, maxGapSeconds);
+            if (!hasPoint || point.StartsSegment)
+            {
+                path.StartFigure();
+                path.AddLine(graphPoint, graphPoint);
+                hasPoint = true;
+                continue;
+            }
+
+            path.AddLine(path.GetLastPoint(), graphPoint);
+        }
+
+        graphics.DrawPath(pen, path);
+        var latest = series.Points.OrderBy(point => point.AxisSeconds).LastOrDefault();
+        if (latest is null)
+        {
+            return;
+        }
+
+        using var labelFont = FontOf(8.8f, FontStyle.Bold);
+        var latestPoint = GapGraphPoint(latest, graph, plot, maxGapSeconds);
+        var label = series.IsClassLeader
+            ? "P1"
+            : series.ClassPosition is { } position
+                ? $"P{position}"
+                : $"#{series.CarIdx}";
+        DrawText(
+            graphics,
+            label,
+            labelFont,
+            color,
+            new RectangleF(Math.Min(plot.Right - 34, latestPoint.X + 4), latestPoint.Y - 8, 34, 16));
+    }
+
+    internal static PointF GapGraphPoint(
+        DesignV2GapTrendPoint point,
+        DesignV2GraphBody graph,
+        RectangleF plot,
+        double maxGapSeconds)
+    {
+        var domain = Math.Max(1d, graph.EndSeconds - graph.StartSeconds);
+        var x = plot.Left + (float)Math.Clamp((point.AxisSeconds - graph.StartSeconds) / domain, 0d, 1d) * plot.Width;
+        var y = plot.Top + (float)Math.Clamp(point.GapSeconds / Math.Max(1d, maxGapSeconds), 0d, 1d) * plot.Height;
+        return new PointF(x, y);
+    }
+
+    private static Color GapSeriesColor(DesignV2GapSeries series, int index)
+    {
+        if (series.IsReference)
+        {
+            return Cyan;
+        }
+
+        if (series.IsClassLeader)
+        {
+            return TextPrimary;
+        }
+
+        return index % 3 switch
+        {
+            0 => Amber,
+            1 => Green,
+            _ => Magenta
+        };
+    }
+
+    private static void DrawGapWeatherBands(Graphics graphics, DesignV2GraphBody graph, RectangleF plot)
+    {
+        if (graph.Weather.Count == 0)
+        {
+            return;
+        }
+
+        var domain = Math.Max(1d, graph.EndSeconds - graph.StartSeconds);
+        foreach (var (point, index) in graph.Weather.Select((point, index) => (point, index)))
+        {
+            if (GapWeatherColor(point.Condition) is not { } color)
+            {
+                continue;
+            }
+
+            var nextAxis = index + 1 < graph.Weather.Count
+                ? graph.Weather[index + 1].AxisSeconds
+                : graph.EndSeconds;
+            var x = plot.Left + (float)Math.Clamp((point.AxisSeconds - graph.StartSeconds) / domain, 0d, 1d) * plot.Width;
+            var nextX = plot.Left + (float)Math.Clamp((nextAxis - graph.StartSeconds) / domain, 0d, 1d) * plot.Width;
+            if (nextX <= x)
+            {
+                continue;
+            }
+
+            using var brush = new SolidBrush(color);
+            graphics.FillRectangle(brush, x, plot.Top, nextX - x, plot.Height);
+        }
+    }
+
+    private static Color? GapWeatherColor(DesignV2GapWeatherCondition condition)
+    {
+        return condition switch
+        {
+            DesignV2GapWeatherCondition.Damp => Color.FromArgb(16, Cyan),
+            DesignV2GapWeatherCondition.Wet => Color.FromArgb(24, 70, 135, 230),
+            DesignV2GapWeatherCondition.DeclaredWet => Color.FromArgb(32, 78, 142, 238),
+            _ => null
+        };
     }
 
     private void DrawChat(Graphics graphics, RectangleF rect, IReadOnlyList<DesignV2ChatRow> rows)
@@ -1662,11 +2181,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         }
 
         using var titleFont = FontOf(13f, FontStyle.Bold);
-        using var pillFont = FontOf(9f, FontStyle.Bold);
         DrawText(graphics, "Inputs", titleFont, TextPrimary, new RectangleF(rect.Left + 14, rect.Top + 10, 100, 16));
-        var pill = new RectangleF(rect.Right - 92, rect.Top + 8, 76, 20);
-        FillRounded(graphics, pill, 10, Color.FromArgb(62, Cyan), Color.FromArgb(115, Cyan));
-        DrawText(graphics, body.IsAvailable ? "LIVE" : "WAIT", pillFont, Cyan, RectangleF.Inflate(pill, -10, -4), ContentAlignment.MiddleCenter);
 
         var content = new RectangleF(rect.Left + 18, header.Bottom + 18, Math.Max(1, rect.Width - 36), Math.Max(1, rect.Height - HeaderHeight - 34));
         var railVisible = body.ShowThrottle || body.ShowBrake || body.ShowClutch || body.ShowSteering || body.ShowGear || body.ShowSpeed;
@@ -1804,47 +2319,114 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     private void DrawInputRail(Graphics graphics, DesignV2InputsBody body, RectangleF rect)
     {
+        var layout = BuildInputRailLayout(
+            rect,
+            body.ShowThrottle,
+            body.ShowBrake,
+            body.ShowClutch,
+            body.ShowSteering,
+            body.ShowGear,
+            body.ShowSpeed);
+        foreach (var item in layout.Items)
+        {
+            switch (item.Kind)
+            {
+                case DesignV2InputRailItemKind.Throttle:
+                    DrawInputBar(graphics, "THR", body.Throttle, Green, item.Bounds);
+                    break;
+                case DesignV2InputRailItemKind.Brake:
+                    DrawInputBar(graphics, body.BrakeAbsActive ? "ABS" : "BRK", body.Brake, body.BrakeAbsActive ? Amber : Error, item.Bounds);
+                    break;
+                case DesignV2InputRailItemKind.Clutch:
+                    DrawInputBar(graphics, "CLT", body.Clutch, Cyan, item.Bounds);
+                    break;
+                case DesignV2InputRailItemKind.SteeringWheel:
+                    DrawInputWheel(graphics, body.SteeringWheelAngle, item.Bounds);
+                    break;
+                case DesignV2InputRailItemKind.Gear:
+                    DrawInputReadout(graphics, "GEAR", FormatGear(body.Gear), item.Bounds);
+                    break;
+                case DesignV2InputRailItemKind.Speed:
+                    DrawInputReadout(graphics, "SPD", SimpleTelemetryOverlayViewModel.FormatSpeed(body.SpeedMetersPerSecond, _unitSystem), item.Bounds);
+                    break;
+            }
+        }
+    }
+
+    internal static DesignV2InputRailLayout BuildInputRailLayout(
+        RectangleF rect,
+        bool showThrottle,
+        bool showBrake,
+        bool showClutch,
+        bool showSteering,
+        bool showGear,
+        bool showSpeed)
+    {
+        var items = new List<DesignV2InputRailItem>();
+        var compact = rect.Height < 190f;
+        var barHeight = compact ? 24f : 27f;
+        var barGap = compact ? 7f : 11f;
+        var readoutHeight = 20f;
+        var readoutGap = compact ? 4f : 8f;
+        var readoutKinds = new List<DesignV2InputRailItemKind>();
+        if (showGear)
+        {
+            readoutKinds.Add(DesignV2InputRailItemKind.Gear);
+        }
+
+        if (showSpeed)
+        {
+            readoutKinds.Add(DesignV2InputRailItemKind.Speed);
+        }
+
+        var readoutReserve = readoutKinds.Count == 0
+            ? 0f
+            : readoutKinds.Count * readoutHeight + Math.Max(0, readoutKinds.Count - 1) * readoutGap;
         var y = rect.Top;
-        if (body.ShowThrottle)
+        AddBar(showThrottle, DesignV2InputRailItemKind.Throttle);
+        AddBar(showBrake, DesignV2InputRailItemKind.Brake);
+        AddBar(showClutch, DesignV2InputRailItemKind.Clutch);
+
+        if (showSteering)
         {
-            DrawInputBar(graphics, "THR", body.Throttle, Green, new RectangleF(rect.Left, y, rect.Width, 27));
-            y += 38;
-        }
-        if (body.ShowBrake)
-        {
-            DrawInputBar(graphics, body.BrakeAbsActive ? "ABS" : "BRK", body.Brake, body.BrakeAbsActive ? Amber : Error, new RectangleF(rect.Left, y, rect.Width, 27));
-            y += 38;
-        }
-        if (body.ShowClutch)
-        {
-            DrawInputBar(graphics, "CLT", body.Clutch, Cyan, new RectangleF(rect.Left, y, rect.Width, 27));
-            y += 40;
-        }
-        if (body.ShowSteering)
-        {
-            var wheelHeight = Math.Min(78f, Math.Max(52f, rect.Bottom - y - 58f));
-            DrawInputWheel(graphics, body.SteeringWheelAngle, new RectangleF(rect.Left, y, rect.Width, wheelHeight));
-            y += wheelHeight + 8;
+            var readoutGapReserve = readoutReserve > 0f ? 8f : 0f;
+            var wheelBottom = rect.Bottom - readoutReserve - readoutGapReserve;
+            var wheelAvailable = wheelBottom - y;
+            if (wheelAvailable >= 24f)
+            {
+                var wheelHeight = Math.Min(compact ? 58f : 78f, Math.Max(28f, wheelAvailable));
+                items.Add(new DesignV2InputRailItem(
+                    DesignV2InputRailItemKind.SteeringWheel,
+                    new RectangleF(rect.Left, y, rect.Width, wheelHeight)));
+            }
         }
 
-        var readouts = new List<(string Label, string Value)>();
-        if (body.ShowGear)
+        if (readoutKinds.Count > 0)
         {
-            readouts.Add(("GEAR", FormatGear(body.Gear)));
-        }
-        if (body.ShowSpeed)
-        {
-            readouts.Add(("SPD", SimpleTelemetryOverlayViewModel.FormatSpeed(body.SpeedMetersPerSecond, _unitSystem)));
-        }
-        if (body.ShowSteering)
-        {
-            readouts.Add(("STR", FormatSteering(body.SteeringWheelAngle)));
+            var readoutTop = Math.Max(rect.Top, rect.Bottom - readoutReserve);
+            for (var index = 0; index < readoutKinds.Count; index++)
+            {
+                items.Add(new DesignV2InputRailItem(
+                    readoutKinds[index],
+                    new RectangleF(
+                        rect.Left,
+                        readoutTop + index * (readoutHeight + readoutGap),
+                        rect.Width,
+                        readoutHeight)));
+            }
         }
 
-        var readoutTop = Math.Max(y + 4, rect.Bottom - Math.Max(1, readouts.Count) * 28);
-        for (var index = 0; index < readouts.Count; index++)
+        return new DesignV2InputRailLayout(items);
+
+        void AddBar(bool enabled, DesignV2InputRailItemKind kind)
         {
-            DrawInputReadout(graphics, readouts[index].Label, readouts[index].Value, new RectangleF(rect.Left, readoutTop + index * 28, rect.Width, 20));
+            if (!enabled)
+            {
+                return;
+            }
+
+            items.Add(new DesignV2InputRailItem(kind, new RectangleF(rect.Left, y, rect.Width, barHeight)));
+            y += barHeight + barGap;
         }
     }
 
@@ -1980,21 +2562,20 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     private void DrawRadarCars(Graphics graphics, DesignV2RadarBody radar, RectangleF rect)
     {
-        IReadOnlyList<LiveProximityCar> cars = radar.IsAvailable && radar.NearbyCars.Count > 0
-            ? radar.NearbyCars
+        IReadOnlyList<LiveSpatialCar> cars = radar.IsAvailable && radar.Cars.Count > 0
+            ? radar.Cars
             : radar.PreviewVisible
                 ?
                 [
-                    new LiveProximityCar(12, 0.014d, 1.2d, null, 6, 5, 4098, null, false, null, null, "#FFDA59"),
-                    new LiveProximityCar(51, -0.065d, -3.4d, null, 3, 1, 4099, null, false, null, null, "#33CEFF")
+                    new LiveSpatialCar(12, LiveModelQuality.Reliable, LiveSignalEvidence.Reliable("preview"), 0.014d, 1.2d, 8d, 6, 5, 4098, null, false, "#FFDA59"),
+                    new LiveSpatialCar(51, LiveModelQuality.Reliable, LiveSignalEvidence.Reliable("preview"), -0.065d, -3.4d, -12d, 3, 1, 4099, null, false, "#33CEFF")
                 ]
                 : [];
         var center = new PointF(rect.Left + rect.Width / 2f, rect.Top + rect.Height / 2f);
         var usableRadius = rect.Width / 2f - 48f;
         foreach (var (car, index) in cars.Take(8).Select((car, index) => (car, index)))
         {
-            var seconds = car.RelativeSeconds ?? car.RelativeLaps * 120d;
-            var normalized = Math.Clamp(seconds / 2d, -1d, 1d);
+            var normalized = Math.Clamp((car.RelativeMeters ?? 0d) / RadarRangeMeters, -1d, 1d);
             var lane = ((index % 3) - 1) * 36f;
             var x = center.X + lane;
             var y = center.Y - (float)normalized * usableRadius;
@@ -2809,6 +3390,14 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         return _closeButton is not null && _closeButton.Bounds.Contains(clientPoint);
     }
 
+    internal static bool IsStreamChatDragHit(Point clientPoint, Size clientSize)
+    {
+        return clientPoint.X >= 0
+            && clientPoint.X < clientSize.Width
+            && clientPoint.Y >= 0
+            && clientPoint.Y < Math.Min(HeaderHeight, clientSize.Height);
+    }
+
     private static bool HasTrackMapHighlight(LiveTrackSectorSegment sector)
     {
         return string.Equals(sector.Highlight, LiveTrackSectorHighlights.PersonalBest, StringComparison.Ordinal)
@@ -2933,6 +3522,23 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         return seconds < 60d
             ? $"+{seconds:0.0}s"
             : $"+{Math.Floor(seconds / 60d):0}:{seconds % 60d:00.0}";
+    }
+
+    private static double NiceCeiling(double value)
+    {
+        if (!IsFinite(value) || value <= 0d)
+        {
+            return 1d;
+        }
+
+        var exponent = Math.Floor(Math.Log10(value));
+        var baseValue = Math.Pow(10d, exponent);
+        var normalized = value / baseValue;
+        var nice = normalized <= 1d ? 1d
+            : normalized <= 2d ? 2d
+            : normalized <= 5d ? 5d
+            : 10d;
+        return nice * baseValue;
     }
 
     private static string FormatPercent(double? value)
@@ -3089,7 +3695,9 @@ internal sealed record DesignV2OverlayModel(
     string Status,
     string Footer,
     DesignV2Evidence Evidence,
-    DesignV2Body Body);
+    DesignV2Body Body,
+    string? HeaderText = null,
+    bool ShowFooter = true);
 
 internal abstract record DesignV2Body;
 
@@ -3101,7 +3709,52 @@ internal sealed record DesignV2MetricRowsBody(
     IReadOnlyList<DesignV2MetricRow> Rows) : DesignV2Body;
 
 internal sealed record DesignV2GraphBody(
-    IReadOnlyList<double> Points) : DesignV2Body;
+    IReadOnlyList<double> Points,
+    IReadOnlyList<DesignV2GapSeries> Series,
+    IReadOnlyList<DesignV2GapWeatherPoint> Weather,
+    double StartSeconds,
+    double EndSeconds,
+    double? MaxGapSeconds,
+    double? LapReferenceSeconds,
+    int SelectedSeriesCount) : DesignV2Body
+{
+    public DesignV2GraphBody(IReadOnlyList<double> points)
+        : this(points, [], [], 0d, 0d, null, null, 0)
+    {
+    }
+}
+
+internal sealed record DesignV2GapSeries(
+    int CarIdx,
+    bool IsReference,
+    bool IsClassLeader,
+    int? ClassPosition,
+    IReadOnlyList<DesignV2GapTrendPoint> Points);
+
+internal sealed record DesignV2GapTrendPoint(
+    DateTimeOffset TimestampUtc,
+    double AxisSeconds,
+    double GapSeconds,
+    int CarIdx,
+    bool IsReference,
+    bool IsClassLeader,
+    int? ClassPosition,
+    bool StartsSegment);
+
+internal sealed record DesignV2GapWeatherPoint(
+    double AxisSeconds,
+    DesignV2GapWeatherCondition Condition);
+
+internal sealed record DesignV2GapReferenceContext(int? CarIdx, int? CarClass);
+
+internal enum DesignV2GapWeatherCondition
+{
+    Unknown,
+    Dry,
+    Damp,
+    Wet,
+    DeclaredWet
+}
 
 internal sealed record DesignV2InputsBody(
     double? Throttle,
@@ -3124,7 +3777,7 @@ internal sealed record DesignV2RadarBody(
     bool IsAvailable,
     bool HasLeft,
     bool HasRight,
-    IReadOnlyList<LiveProximityCar> NearbyCars,
+    IReadOnlyList<LiveSpatialCar> Cars,
     LiveMulticlassApproach? StrongestMulticlassApproach,
     bool ShowMulticlassWarning,
     bool PreviewVisible) : DesignV2Body;
@@ -3175,6 +3828,23 @@ internal sealed record DesignV2InputPoint(
     double Brake,
     double Clutch,
     bool BrakeAbsActive);
+
+internal sealed record DesignV2InputRailLayout(
+    IReadOnlyList<DesignV2InputRailItem> Items);
+
+internal sealed record DesignV2InputRailItem(
+    DesignV2InputRailItemKind Kind,
+    RectangleF Bounds);
+
+internal enum DesignV2InputRailItemKind
+{
+    Throttle,
+    Brake,
+    Clutch,
+    SteeringWheel,
+    Gear,
+    Speed
+}
 
 internal sealed record DesignV2TrackMapMarker(
     int CarIdx,

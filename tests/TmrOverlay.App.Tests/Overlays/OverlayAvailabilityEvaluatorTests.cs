@@ -175,6 +175,33 @@ public sealed class OverlayAvailabilityEvaluatorTests
     }
 
     [Fact]
+    public void LiveLocalStrategyContext_InCarRequirementRejectsPitRoadEvenWhenOnTrackIsTrue()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = LocalStrategySnapshot(
+            now,
+            playerCarIdx: 10,
+            focusCarIdx: 10,
+            isOnTrack: true,
+            isInGarage: false,
+            onPitRoad: true);
+
+        var inCarOnly = LiveLocalStrategyContext.ForRequirement(
+            snapshot,
+            now,
+            OverlayContextRequirement.LocalPlayerInCar);
+        var inCarOrPit = LiveLocalStrategyContext.ForRequirement(
+            snapshot,
+            now,
+            OverlayContextRequirement.LocalPlayerInCarOrPit);
+
+        Assert.False(inCarOnly.IsAvailable);
+        Assert.Equal("not_in_car", inCarOnly.Reason);
+        Assert.True(inCarOrPit.IsAvailable);
+        Assert.Equal("available", inCarOrPit.Reason);
+    }
+
+    [Fact]
     public void LiveLocalStrategyContext_WaitsInGarageEvenWithPlayerFocus()
     {
         var now = DateTimeOffset.UtcNow;

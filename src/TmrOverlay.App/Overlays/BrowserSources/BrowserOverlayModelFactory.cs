@@ -63,7 +63,8 @@ internal sealed class BrowserOverlayModelFactory
             model = FromSimple(
                 SessionWeatherOverlayDefinition.Definition.Id,
                 viewModel,
-                headerItems);
+                headerItems,
+                SourceText(overlay, snapshot, viewModel.Source));
         }
         else if (string.Equals(overlayId, PitServiceOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
@@ -73,7 +74,8 @@ internal sealed class BrowserOverlayModelFactory
             model = FromSimple(
                 PitServiceOverlayDefinition.Definition.Id,
                 viewModel,
-                headerItems);
+                headerItems,
+                SourceText(overlay, snapshot, viewModel.Source));
         }
         else if (string.Equals(overlayId, InputStateOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
@@ -83,7 +85,8 @@ internal sealed class BrowserOverlayModelFactory
             model = FromSimple(
                 InputStateOverlayDefinition.Definition.Id,
                 viewModel,
-                headerItems);
+                headerItems,
+                SourceText(overlay, snapshot, viewModel.Source));
         }
         else if (string.Equals(overlayId, GapToLeaderOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
@@ -133,7 +136,7 @@ internal sealed class BrowserOverlayModelFactory
             StandingsOverlayDefinition.Definition.Id,
             StandingsOverlayDefinition.Definition.DisplayName,
             BrowserStatus(headerItems, viewModel.Status),
-            viewModel.Source,
+            SourceText(overlay, snapshot, viewModel.Source),
             browserSettings.Columns,
             rows,
             headerItems);
@@ -185,7 +188,7 @@ internal sealed class BrowserOverlayModelFactory
             RelativeOverlayDefinition.Definition.Id,
             RelativeOverlayDefinition.Definition.DisplayName,
             BrowserStatus(headerItems, viewModel.Status),
-            viewModel.Source,
+            SourceText(overlay, snapshot, viewModel.Source),
             browserSettings.Columns,
             rows,
             headerItems);
@@ -218,7 +221,7 @@ internal sealed class BrowserOverlayModelFactory
                 FuelCalculatorOverlayDefinition.Definition.Id,
                 FuelCalculatorOverlayDefinition.Definition.DisplayName,
                 BrowserStatus(waitingHeaderItems, localContext.StatusText),
-                "source: waiting",
+                SourceText(overlay, snapshot, "source: waiting"),
                 [],
                 waitingHeaderItems);
         }
@@ -245,7 +248,7 @@ internal sealed class BrowserOverlayModelFactory
             FuelCalculatorOverlayDefinition.Definition.Id,
             FuelCalculatorOverlayDefinition.Definition.DisplayName,
             BrowserStatus(headerItems, viewModel.Status),
-            viewModel.Source,
+            SourceText(overlay, snapshot, viewModel.Source),
             metrics,
             headerItems);
     }
@@ -253,14 +256,15 @@ internal sealed class BrowserOverlayModelFactory
     private static BrowserOverlayDisplayModel FromSimple(
         string overlayId,
         SimpleTelemetryOverlayViewModel viewModel,
-        IReadOnlyList<BrowserOverlayHeaderItem>? headerItems = null)
+        IReadOnlyList<BrowserOverlayHeaderItem>? headerItems = null,
+        string? source = null)
     {
         headerItems ??= [];
         return BrowserOverlayDisplayModel.MetricRows(
             overlayId,
             viewModel.Title,
             BrowserStatus(headerItems, viewModel.Status),
-            viewModel.Source,
+            source ?? viewModel.Source,
             viewModel.Rows
                 .Select(row => new BrowserOverlayMetricRow(
                     row.Label,
@@ -297,7 +301,7 @@ internal sealed class BrowserOverlayModelFactory
             GapToLeaderOverlayDefinition.Definition.Id,
             GapToLeaderOverlayDefinition.Definition.DisplayName,
             BrowserStatus(headerItems, status),
-            gap.HasData ? $"source: live gap telemetry | cars {gap.ClassCars.Count}" : "source: waiting",
+            SourceText(overlay, snapshot, gap.HasData ? $"source: live gap telemetry | cars {gap.ClassCars.Count}" : "source: waiting"),
             "graph",
             Columns: [],
             Rows: [],
@@ -377,6 +381,13 @@ internal sealed class BrowserOverlayModelFactory
         }
 
         return items;
+    }
+
+    private static string SourceText(OverlaySettings? overlay, LiveTelemetrySnapshot snapshot, string source)
+    {
+        return overlay is null || OverlayChromeSettings.ShowFooterSource(overlay, snapshot)
+            ? source
+            : string.Empty;
     }
 
     private static string BrowserStatus(IReadOnlyList<BrowserOverlayHeaderItem> headerItems, string fallback)
