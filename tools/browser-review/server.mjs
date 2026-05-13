@@ -14,6 +14,7 @@ import {
 } from '../../tests/browser-overlays/browserOverlayAssets.js';
 
 const port = Number.parseInt(process.env.TMR_BROWSER_REVIEW_PORT || '5177', 10);
+const reviewUnitSystem = normalizeUnitSystem(process.env.TMR_REVIEW_UNIT_SYSTEM || process.env.TMR_UNIT_SYSTEM || 'Metric');
 const clients = new Set();
 const productionOverlayModelIds = new Set([
   'standings',
@@ -271,6 +272,9 @@ function reviewSettings(overlayId, previewMode = 'off') {
 
   if (overlayId === 'input-state') {
     return {
+      showThrottleTrace: true,
+      showBrakeTrace: true,
+      showClutchTrace: true,
       showThrottle: true,
       showBrake: true,
       showClutch: true,
@@ -293,30 +297,30 @@ function reviewDisplayModel(overlayId, previewMode = 'off') {
     case 'fuel-calculator':
       return metricsModel('fuel-calculator', 'Fuel Calculator', '3 stints / 2 stops', [
         ['Plan', '31 laps | 3 stints | final 7', 'modeled'],
-        ['Strategy', '12-lap rhythm avoids +1 stop | ~52s | save 0.2 L/lap', 'modeled'],
-        ['Stint 1', '12 laps | target 3.1 L/lap | tires free (36.8 L)', 'modeled'],
-        ['Stint 2', '12 laps | target 3.1 L/lap | tires free (36.8 L)', 'modeled'],
-        ['Stint 3', '7 laps final | target 3.1 L/lap | --', 'modeled']
-      ], 'burn 3.1 L/lap (live burn) | 34.2 laps/tank | history user | tires user pit history | gap O0.18 C0.04');
+        ['Strategy', `12-lap rhythm avoids +1 stop | ~52s | save ${formatFuelPerLap(0.2)}`, 'modeled'],
+        ['Stint 1', `12 laps | target ${formatFuelPerLap(3.1)} | tires free (${formatFuelVolume(36.8)})`, 'modeled'],
+        ['Stint 2', `12 laps | target ${formatFuelPerLap(3.1)} | tires free (${formatFuelVolume(36.8)})`, 'modeled'],
+        ['Stint 3', `7 laps final | target ${formatFuelPerLap(3.1)} | --`, 'modeled']
+      ], `burn ${formatFuelPerLap(3.1)} (live burn) | 34.2 laps/tank | history user | tires user pit history | gap O0.18 C0.04`);
     case 'session-weather':
       return metricsModel('session-weather', 'Session / Weather', 'Race', [
         ['Session', `Race | ${previewLabel} | team`, 'normal'],
         ['Clock', '17:22 elapsed | 6:37:08 left', 'normal'],
         ['Laps', '-- left | 179 total', 'normal'],
         ['Track', 'Gesamtstrecke 24h | 25.38 km', 'normal'],
-        ['Temps', 'air 22 C | track 31 C', 'normal'],
+        ['Temps', `air ${formatTemperature(22)} | track ${formatTemperature(31)}`, 'normal'],
         ['Surface', 'dry | rubber moderate usage', 'normal'],
         ['Sky', 'partly cloudy | constant | rain:0%', 'normal'],
-        ['Wind', 'S | 15 km/h | hum 48% | fog 0%', 'normal']
+        ['Wind', `S | ${formatSpeed(15 / 3.6)} | hum 48% | fog 0%`, 'normal']
       ], 'source: session + live weather telemetry');
     case 'pit-service':
       return metricsModel('pit-service', 'Pit Service', '', [
         ['Time / Laps', '03:58 | 148/179 laps', 'normal'],
         metricRow('Release', 'RED - service active', 'error', undefined, { rowColorHex: '#FF6274' }),
         metricRow('Pit status', 'in progress', 'error', undefined, { rowColorHex: '#FF6274' }),
-        metricRow('Fuel request', 'requested | 31.6 L', 'normal', [
+        metricRow('Fuel request', `requested | ${formatFuelVolume(31.6)}`, 'normal', [
           metricSegment('Requested', 'Yes', 'success'),
-          metricSegment('Selected', '31.6 L', 'info')
+          metricSegment('Selected', formatFuelVolume(31.6), 'info')
         ]),
         metricRow('Tearoff', 'requested', 'normal', [
           metricSegment('Requested', 'Yes', 'success')
@@ -368,9 +372,9 @@ function reviewDisplayModel(overlayId, previewMode = 'off') {
         {
           title: 'Service Request',
           rows: [
-            metricRow('Fuel request', 'requested | 31.6 L', 'normal', [
+            metricRow('Fuel request', `requested | ${formatFuelVolume(31.6)}`, 'normal', [
               metricSegment('Requested', 'Yes', 'success'),
-              metricSegment('Selected', '31.6 L', 'info')
+              metricSegment('Selected', formatFuelVolume(31.6), 'info')
             ]),
             metricRow('Tearoff', 'requested', 'normal', [
               metricSegment('Requested', 'Yes', 'success')
@@ -390,16 +394,7 @@ function reviewDisplayModel(overlayId, previewMode = 'off') {
         { key: 'timeRemaining', value: '03:58' }
       ]);
     case 'input-state':
-      return metricsModel('input-state', 'Inputs', '4 | 7250 rpm | ABS', [
-        ['Speed', '231 km/h', 'normal'],
-        ['Gear / RPM', '4 | 7250 rpm', 'normal'],
-        ['Pedals', 'T 78% | B 16% ABS | C 0%', 'normal'],
-        ['Steering', '-10 deg', 'normal'],
-        ['Warnings', 'none', 'normal'],
-        ['Electrical', '13.8 V', 'normal'],
-        ['Cooling', '88 C', 'normal'],
-        ['Oil / Fuel', 'oil 96 C | oil 5.4 bar | fuel 4.1 bar', 'normal']
-      ], 'source: local car telemetry');
+      return inputStateModel(previewLabel);
     case 'gap-to-leader':
       return {
         overlayId,
@@ -518,6 +513,56 @@ function metricSegment(label, value, tone) {
   return { label, value, tone };
 }
 
+function inputStateModel(previewLabel = 'review fixture') {
+  const trace = Array.from({ length: 180 }, (_, index) => {
+    const t = index / 10;
+    return {
+      throttle: Math.max(0, Math.min(1, 0.68 + Math.sin(t) * 0.28)),
+      brake: Math.max(0, Math.min(1, Math.sin(t * 0.58 + 1.6) - 0.42)),
+      clutch: Math.max(0, Math.min(1, 0.08 + Math.sin(t * 0.35) * 0.06)),
+      brakeAbsActive: index > 112 && index < 132
+    };
+  });
+  const latest = trace[trace.length - 1];
+  return {
+    overlayId: 'input-state',
+    title: 'Inputs',
+    status: `4 | 7250 rpm | ABS | ${previewLabel}`,
+    source: '',
+    bodyKind: 'inputs',
+    columns: [],
+    rows: [],
+    metrics: [],
+    points: [],
+    headerItems: [],
+    inputs: {
+      isAvailable: true,
+      throttle: latest.throttle,
+      brake: latest.brake,
+      clutch: latest.clutch,
+      steeringWheelAngle: -10 * Math.PI / 180,
+      speedMetersPerSecond: 64.2,
+      gear: 4,
+      speedText: formatSpeed(64.2),
+      gearText: '4',
+      steeringText: '-10 deg',
+      brakeAbsActive: true,
+      showThrottleTrace: true,
+      showBrakeTrace: true,
+      showClutchTrace: true,
+      showThrottle: true,
+      showBrake: true,
+      showClutch: true,
+      showSteering: true,
+      showGear: true,
+      showSpeed: true,
+      sampleIntervalMilliseconds: 50,
+      maximumTracePoints: 180,
+      trace
+    }
+  };
+}
+
 function metricModelRow(row) {
   if (!Array.isArray(row)) {
     return {
@@ -582,6 +627,44 @@ function normalizePreviewMode(mode) {
 function titleCase(value) {
   const text = String(value || '');
   return text.length ? text.charAt(0).toUpperCase() + text.slice(1) : '';
+}
+
+function normalizeUnitSystem(value) {
+  return String(value || '').trim().toLowerCase() === 'imperial'
+    ? 'Imperial'
+    : 'Metric';
+}
+
+function isImperial() {
+  return reviewUnitSystem === 'Imperial';
+}
+
+function formatFuelVolume(liters) {
+  if (!Number.isFinite(liters)) return '--';
+  return isImperial()
+    ? `${(liters * 0.2641720524).toFixed(1)} gal`
+    : `${liters.toFixed(1)} L`;
+}
+
+function formatFuelPerLap(liters) {
+  if (!Number.isFinite(liters)) return '--';
+  return isImperial()
+    ? `${(liters * 0.2641720524).toFixed(1)} gal/lap`
+    : `${liters.toFixed(1)} L/lap`;
+}
+
+function formatTemperature(celsius) {
+  if (!Number.isFinite(celsius)) return '--';
+  return isImperial()
+    ? `${Math.round(celsius * 9 / 5 + 32)} F`
+    : `${Math.round(celsius)} C`;
+}
+
+function formatSpeed(metersPerSecond) {
+  if (!Number.isFinite(metersPerSecond)) return '--';
+  return isImperial()
+    ? `${Math.round(metersPerSecond * 2.2369362921)} mph`
+    : `${Math.round(metersPerSecond * 3.6)} km/h`;
 }
 
 function headerRow(headerTitle, headerDetail, carClassColorHex) {

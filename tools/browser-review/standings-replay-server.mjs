@@ -15,6 +15,10 @@ const port = Number.parseInt(process.env.TMR_STANDINGS_REPLAY_PORT || '5187', 10
 const frameMilliseconds = Number.parseInt(process.env.TMR_STANDINGS_REPLAY_FRAME_MS || '500', 10);
 const requestedReplayTimingMode = normalizeReplayTimingMode(process.env.TMR_STANDINGS_REPLAY_TIMING || 'source');
 const replaySpeedMultiplier = positiveNumber(process.env.TMR_STANDINGS_REPLAY_SPEED, 60);
+const replayWindowSourceStart = optionalNumber(process.env.TMR_STANDINGS_REPLAY_SOURCE_START);
+const replayWindowSourceEnd = optionalNumber(process.env.TMR_STANDINGS_REPLAY_SOURCE_END);
+const replayWindowFrameStart = optionalInteger(process.env.TMR_STANDINGS_REPLAY_FRAME_START);
+const replayWindowFrameEnd = optionalInteger(process.env.TMR_STANDINGS_REPLAY_FRAME_END);
 const relativeCarsEachSide = clampInteger(process.env.TMR_RELATIVE_CARS_EACH_SIDE, 3, 0, 8);
 const relativeShowPitColumn = parseBoolean(process.env.TMR_RELATIVE_SHOW_PIT_COLUMN, false);
 const relativeShowHeaderStatus = parseBoolean(process.env.TMR_RELATIVE_SHOW_HEADER_STATUS, true);
@@ -28,6 +32,18 @@ const gapCarsBehind = clampInteger(process.env.TMR_GAP_CARS_BEHIND, 5, 0, 12);
 const gapShowHeaderStatus = parseBoolean(process.env.TMR_GAP_SHOW_HEADER_STATUS, true);
 const gapShowHeaderTimeRemaining = parseBoolean(process.env.TMR_GAP_SHOW_TIME_REMAINING, true);
 const gapShowFooterSource = parseBoolean(process.env.TMR_GAP_SHOW_FOOTER_SOURCE, true);
+const reviewUnitSystem = normalizeUnitSystem(process.env.TMR_REVIEW_UNIT_SYSTEM || process.env.TMR_UNIT_SYSTEM || 'Metric');
+const inputStateReviewSettings = {
+  showThrottleTrace: parseBoolean(process.env.TMR_INPUT_SHOW_THROTTLE_TRACE, true),
+  showBrakeTrace: parseBoolean(process.env.TMR_INPUT_SHOW_BRAKE_TRACE, true),
+  showClutchTrace: parseBoolean(process.env.TMR_INPUT_SHOW_CLUTCH_TRACE, true),
+  showThrottle: parseBoolean(process.env.TMR_INPUT_SHOW_THROTTLE, true),
+  showBrake: parseBoolean(process.env.TMR_INPUT_SHOW_BRAKE, true),
+  showClutch: parseBoolean(process.env.TMR_INPUT_SHOW_CLUTCH, true),
+  showSteering: parseBoolean(process.env.TMR_INPUT_SHOW_STEERING, true),
+  showGear: parseBoolean(process.env.TMR_INPUT_SHOW_GEAR, true),
+  showSpeed: parseBoolean(process.env.TMR_INPUT_SHOW_SPEED, true)
+};
 const productionOverlayModelIds = new Set([
   'standings',
   'relative',
@@ -95,8 +111,8 @@ const server = createServer((request, response) => {
       serveJson(response, {
         source: replay.source,
         frameCount: replay.frames.length,
-        current: frameMetadata(frame, index),
-        timing: replayStatusTiming(frame, index),
+        current: frameMetadata(frame, index, url.searchParams),
+        timing: replayStatusTiming(frame, index, url.searchParams),
         assetRoot: browserAssetRoot
       });
       return;
@@ -226,13 +242,16 @@ function effectiveReplayTimingMode() {
     : 'fixed-frame';
 }
 
-function replayStatusTiming(frame = null, index = null) {
+function replayStatusTiming(frame = null, index = null, searchParams = null) {
   const effectiveMode = effectiveReplayTimingMode();
   return {
     requestedMode: requestedReplayTimingMode,
     effectiveMode,
-    speedMultiplier: effectiveMode === 'source-elapsed' ? replaySpeedMultiplier : null,
+    speedMultiplier: effectiveMode === 'source-elapsed'
+      ? replaySpeedFromSearchParams(searchParams) ?? replaySpeedMultiplier
+      : null,
     fixedFrameMilliseconds: effectiveMode === 'fixed-frame' ? frameMilliseconds : null,
+    replayWindow: replayWindowFromSearchParams(searchParams) ?? replayWindowStatus(),
     sourceDurationSeconds: roundNumber(replayTiming.sourceDurationSeconds),
     sourceTimelineMonotonic: replayTiming.isTimelineMonotonic,
     sourceCadence: replayTiming.sourceCadence,
@@ -330,37 +349,53 @@ function currentFrame(url = null, request = null) {
     return { index, frame: replay.frames[index] };
   }
 
+  const window = replayWindow(url, request);
   if (effectiveReplayTimingMode() === 'source-elapsed') {
-    const index = currentSourceElapsedFrameIndex();
+    const index = currentSourceElapsedFrameIndex(url, request, window);
     return { index, frame: replay.frames[index] };
   }
 
-  const elapsed = Math.max(0, Date.now() - startedAtMs);
-  const index = Math.floor(elapsed / Math.max(1, frameMilliseconds)) % replay.frames.length;
+  const index = currentFixedFrameIndex(window);
   return { index, frame: replay.frames[index] };
 }
 
-function currentSourceElapsedFrameIndex() {
+function currentSourceElapsedFrameIndex(url = null, request = null, window = null) {
   const duration = replayTiming.sourceDurationSeconds;
   if (!Number.isFinite(duration) || duration <= 0) {
-    return Math.floor(Math.max(0, Date.now() - startedAtMs) / Math.max(1, frameMilliseconds)) % replay.frames.length;
+    return currentFixedFrameIndex(window);
   }
 
-  const elapsedSeconds = (Math.max(0, Date.now() - startedAtMs) / 1000) * replaySpeedMultiplier;
+  const speedMultiplier = replaySpeed(url, request);
+  const elapsedSeconds = (Math.max(0, Date.now() - startedAtMs) / 1000) * speedMultiplier;
+  const sourceWindow = window?.source;
+  if (sourceWindow) {
+    return frameIndexForSourceElapsed(sourceWindow.start + (elapsedSeconds % sourceWindow.duration));
+  }
+
   const startElapsed = replayTiming.timeline[0]?.elapsed || 0;
   return frameIndexForSourceElapsed(startElapsed + (elapsedSeconds % duration));
 }
 
-function frameOverride(url, request) {
-  const direct = parseFrame(url?.searchParams);
-  if (direct !== null) return direct;
-  const referrer = request?.headers?.referer;
-  if (!referrer) return null;
-  try {
-    return parseFrame(new URL(referrer).searchParams);
-  } catch {
-    return null;
+function currentFixedFrameIndex(window = null) {
+  const elapsed = Math.max(0, Date.now() - startedAtMs);
+  const frameWindow = window?.frame;
+  if (frameWindow) {
+    const offset = Math.floor(elapsed / Math.max(1, frameMilliseconds)) % frameWindow.count;
+    return frameWindow.start + offset;
   }
+
+  return Math.floor(elapsed / Math.max(1, frameMilliseconds)) % replay.frames.length;
+}
+
+function frameOverride(url, request) {
+  for (const searchParams of requestSearchParams(url, request)) {
+    const frame = parseFrame(searchParams);
+    if (frame !== null) {
+      return frame;
+    }
+  }
+
+  return null;
 }
 
 function parseFrame(searchParams) {
@@ -382,6 +417,106 @@ function parseFrame(searchParams) {
   return null;
 }
 
+function replayWindow(url = null, request = null) {
+  for (const searchParams of requestSearchParams(url, request)) {
+    const window = replayWindowFromSearchParams(searchParams);
+    if (window) return window;
+  }
+
+  const envSourceWindow = boundedSourceWindow(replayWindowSourceStart, replayWindowSourceEnd);
+  const envFrameWindow = boundedFrameWindow(replayWindowFrameStart, replayWindowFrameEnd);
+  return envSourceWindow || envFrameWindow
+    ? { source: envSourceWindow, frame: envFrameWindow }
+    : null;
+}
+
+function replayWindowFromSearchParams(searchParams) {
+  const sourceWindow = sourceReplayWindow(searchParams);
+  const frameWindow = frameReplayWindow(searchParams);
+  return sourceWindow || frameWindow
+    ? { source: sourceWindow, frame: frameWindow }
+    : null;
+}
+
+function sourceReplayWindow(searchParams) {
+  const start = optionalNumber(searchParams?.get('sourceStart'));
+  const end = optionalNumber(searchParams?.get('sourceEnd'));
+  return boundedSourceWindow(start, end);
+}
+
+function frameReplayWindow(searchParams) {
+  const start = optionalInteger(searchParams?.get('frameStart'));
+  const end = optionalInteger(searchParams?.get('frameEnd'));
+  return boundedFrameWindow(start, end);
+}
+
+function boundedSourceWindow(start, end) {
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end || replayTiming.timeline.length === 0) {
+    return null;
+  }
+
+  const timelineStart = replayTiming.timeline[0].elapsed;
+  const timelineEnd = replayTiming.timeline[replayTiming.timeline.length - 1].elapsed;
+  const boundedStart = clamp(start, timelineStart, timelineEnd);
+  const boundedEnd = clamp(end, timelineStart, timelineEnd);
+  return boundedStart < boundedEnd
+    ? { start: boundedStart, end: boundedEnd, duration: boundedEnd - boundedStart }
+    : null;
+}
+
+function boundedFrameWindow(start, end) {
+  if (!Number.isInteger(start) || !Number.isInteger(end)) {
+    return null;
+  }
+
+  const boundedStart = Math.max(0, Math.min(replay.frames.length - 1, start));
+  const boundedEnd = Math.max(0, Math.min(replay.frames.length - 1, end));
+  return boundedStart <= boundedEnd
+    ? { start: boundedStart, end: boundedEnd, count: boundedEnd - boundedStart + 1 }
+    : null;
+}
+
+function replaySpeed(url = null, request = null) {
+  for (const searchParams of requestSearchParams(url, request)) {
+    const speed = replaySpeedFromSearchParams(searchParams);
+    if (speed !== null) {
+      return speed;
+    }
+  }
+
+  return replaySpeedMultiplier;
+}
+
+function replaySpeedFromSearchParams(searchParams = null) {
+  return positiveNumber(searchParams?.get('replaySpeed'), null);
+}
+
+function replayWindowStatus() {
+  const sourceWindow = boundedSourceWindow(replayWindowSourceStart, replayWindowSourceEnd);
+  const frameWindow = boundedFrameWindow(replayWindowFrameStart, replayWindowFrameEnd);
+  return sourceWindow || frameWindow
+    ? { source: sourceWindow, frame: frameWindow }
+    : null;
+}
+
+function requestSearchParams(url = null, request = null) {
+  const candidates = [];
+  if (url?.searchParams) {
+    candidates.push(url.searchParams);
+  }
+
+  const referrer = request?.headers?.referer;
+  if (referrer) {
+    try {
+      candidates.push(new URL(referrer).searchParams);
+    } catch {
+      // Ignore malformed referrers from external tools.
+    }
+  }
+
+  return candidates;
+}
+
 function frameMetadata(frame, index, searchParams = null) {
   return {
     index,
@@ -398,7 +533,7 @@ function frameMetadata(frame, index, searchParams = null) {
     camCarIdx: frame.camCarIdx,
     playerCarIdx: frame.playerCarIdx,
     spoofFocus: spoofFocusMode(searchParams),
-    timing: replayStatusTiming(frame, index)
+    timing: replayStatusTiming(frame, index, searchParams)
   };
 }
 
@@ -706,8 +841,8 @@ function displayModel(overlayId, frame, index, searchParams = null) {
 
   if (overlayId === 'fuel-calculator') {
     return metricsModel(overlayId, 'Fuel Calculator', status, headerItems, [
-      ['Fuel', isPreGreen ? '74.0 L' : '73.4 L', 'info'],
-      ['Burn', isPreGreen ? 'grid idle' : '2.9 L/lap', 'normal'],
+      ['Fuel', formatLiters(isPreGreen ? 74.0 : 73.4), 'info'],
+      ['Burn', isPreGreen ? 'grid idle' : formatFuelPerLap(2.9), 'normal'],
       ['Window', isPreGreen ? 'after green' : '24 laps', 'normal'],
       ['Mode', isPreGreen ? 'countdown ignored' : 'timed race', isPreGreen ? 'warning' : 'success']
     ]);
@@ -716,8 +851,8 @@ function displayModel(overlayId, frame, index, searchParams = null) {
   if (overlayId === 'session-weather') {
     return metricsModel(overlayId, 'Session / Weather', status, headerItems, [
       ['Session', isPreGreen ? 'Race Grid' : 'Race', 'info'],
-      ['Track', '29 C', 'normal'],
-      ['Air', '21 C', 'normal'],
+      ['Track', formatTemp(29), 'normal'],
+      ['Air', formatTemp(21), 'normal'],
       ['Wetness', 'Dry', 'success']
     ]);
   }
@@ -837,7 +972,7 @@ function captureDisplayModel(overlayId, frame, index, searchParams = null) {
   }
 
   if (overlayId === 'input-state') {
-    return captureInputStateModel(models, status, headerItems);
+    return captureInputStateModel(models, status, index, searchParams);
   }
 
   return tableModel(overlayId, browserOverlayPage(overlayId).title, status, headerItems, [], 'source: capture-derived live replay');
@@ -1163,7 +1298,7 @@ function pitServicePressureRow(condition) {
       corner.coldPressureKpa,
       Number.isFinite(corner.blackBoxColdPressurePa) ? corner.blackBoxColdPressurePa / 1000 : null
     ]);
-    return Number.isFinite(kpa) && kpa > 0 ? `${Math.round(kpa * 0.145037738)} psi` : '--';
+    return formatKpa(kpa);
   });
   return pitServiceAnyCellHasValue(values) ? pitServiceGridRow('Pressure', values) : null;
 }
@@ -1171,9 +1306,9 @@ function pitServicePressureRow(condition) {
 function pitServiceTemperatureRow(condition) {
   const values = pitServiceCorners().map(({ key }) => {
     const raw = acrossValues(condition?.[key]?.temperatureC)
-      .filter((value) => Number.isFinite(value) && value > 0 && value < 250)
-      .map((value) => value * 9 / 5 + 32);
-    return pitServiceFormatAcross(raw, '0', ' F');
+      .filter((value) => Number.isFinite(value) && value > 0 && value < 250);
+    const converted = raw.map((value) => isImperial() ? value * 9 / 5 + 32 : value);
+    return pitServiceFormatAcross(converted, '0', isImperial() ? ' F' : ' C');
   });
   return pitServiceAnyCellHasValue(values) ? pitServiceGridRow('Temp', values) : null;
 }
@@ -1191,9 +1326,23 @@ function pitServiceWearRow(condition) {
 function pitServiceDistanceRow(condition) {
   const values = pitServiceCorners().map(({ key }) => {
     const meters = condition?.[key]?.odometerMeters;
-    return Number.isFinite(meters) && meters > 0 ? `${(meters / 1609.344).toFixed(1)} mi` : '--';
+    return formatMeters(meters);
   });
   return pitServiceAnyCellHasValue(values) ? pitServiceGridRow('Distance', values) : null;
+}
+
+function formatKpa(kpa) {
+  if (!Number.isFinite(kpa) || kpa <= 0) return '--';
+  return isImperial()
+    ? `${Math.round(kpa * 0.145037738)} psi`
+    : `${(kpa / 100).toFixed(1)} bar`;
+}
+
+function formatMeters(meters) {
+  if (!Number.isFinite(meters) || meters <= 0) return '--';
+  return isImperial()
+    ? `${(meters / 1609.344).toFixed(1)} mi`
+    : `${(meters / 1000).toFixed(1)} km`;
 }
 
 function pitServiceCorners() {
@@ -1243,26 +1392,107 @@ function pitServiceGridRow(label, values, tone = 'normal') {
   };
 }
 
-function captureInputStateModel(models, fallbackStatus, headerItems) {
+function captureInputStateModel(models, fallbackStatus, index, searchParams = null) {
   const inputs = models.inputs || {};
   if (inputs.hasData !== true) {
-    return metricsModel('input-state', 'Inputs', 'waiting for car telemetry', captureHeaderItems(models, 'waiting for car telemetry'), [], 'source: waiting');
+    return inputStateModel(
+      'waiting for car telemetry',
+      [],
+      '',
+      false,
+      inputs,
+      []);
   }
 
   const status = Number.isInteger(inputs.engineWarnings) && inputs.engineWarnings > 0
     ? 'engine warning'
     : joinAvailable(formatGear(inputs.gear), formatRpm(inputs.rpm), inputs.brakeAbsActive === true ? 'ABS' : null);
-  const warningTone = Number.isInteger(inputs.engineWarnings) && inputs.engineWarnings > 0 ? 'warning' : 'normal';
-  return metricsModel('input-state', 'Inputs', status || fallbackStatus || 'live', headerItems, [
-    ['Speed', formatSpeed(inputs.speedMetersPerSecond), 'normal'],
-    ['Gear / RPM', joinAvailable(formatGear(inputs.gear), formatRpm(inputs.rpm)), 'normal'],
-    ['Pedals', formatPedals(inputs), 'normal'],
-    ['Steering', formatSteering(inputs.steeringWheelAngle), 'normal'],
-    ['Warnings', formatWarnings(inputs.engineWarnings), warningTone],
-    ['Electrical', formatVoltage(inputs.voltage), 'normal'],
-    ['Cooling', formatTemp(inputs.waterTempC), 'normal'],
-    ['Oil / Fuel', formatOilFuel(inputs), 'normal']
-  ], 'source: local car telemetry');
+  return inputStateModel(
+    status || fallbackStatus || 'live',
+    [],
+    '',
+    true,
+    inputs,
+    captureInputTrace(index, inputs, searchParams));
+}
+
+function inputStateModel(status, headerItems, source, isAvailable, inputs, trace = null) {
+  const hasGraph = inputStateReviewSettings.showThrottleTrace
+    || inputStateReviewSettings.showBrakeTrace
+    || inputStateReviewSettings.showClutchTrace;
+  const hasRail = inputStateReviewSettings.showThrottle
+    || inputStateReviewSettings.showBrake
+    || inputStateReviewSettings.showClutch
+    || inputStateReviewSettings.showSteering
+    || inputStateReviewSettings.showGear
+    || inputStateReviewSettings.showSpeed;
+  const hasContent = hasGraph || hasRail;
+  return {
+    overlayId: 'input-state',
+    title: 'Inputs',
+    status: hasContent ? status : 'no input content enabled',
+    source,
+    bodyKind: 'inputs',
+    columns: [],
+    rows: [],
+    metrics: [],
+    points: [],
+    headerItems,
+    inputs: {
+      isAvailable,
+      throttle: inputs.throttle,
+      brake: inputs.brake,
+      clutch: inputs.clutch,
+      steeringWheelAngle: inputs.steeringWheelAngle,
+      speedMetersPerSecond: inputs.speedMetersPerSecond,
+      gear: inputs.gear,
+      speedText: formatSpeed(inputs.speedMetersPerSecond),
+      gearText: formatGear(inputs.gear),
+      steeringText: formatSteering(inputs.steeringWheelAngle),
+      brakeAbsActive: inputs.brakeAbsActive === true,
+      ...inputStateReviewSettings,
+      hasGraph,
+      hasRail,
+      hasContent,
+      sampleIntervalMilliseconds: 50,
+      maximumTracePoints: 180,
+      trace: isAvailable
+        ? Array.isArray(trace) && trace.length > 0
+          ? trace
+          : [inputTracePoint(inputs)]
+        : []
+    }
+  };
+}
+
+function captureInputTrace(index, currentInputs, searchParams = null) {
+  const window = replayWindowFromSearchParams(searchParams) ?? replayWindowStatus();
+  const sourceWindow = window?.source;
+  const frameWindow = window?.frame;
+  const windowStartIndex = sourceWindow
+    ? firstFrameIndexAtOrAfterSourceElapsed(sourceWindow.start, index)
+    : frameWindow?.start;
+  const startIndex = Math.max(0, windowStartIndex ?? index - 179);
+  const trace = replay.frames
+    .slice(startIndex, index + 1)
+    .map((frame) => frame.live?.models?.inputs)
+    .filter((inputs) => inputs?.hasData === true)
+    .map(inputTracePoint);
+
+  if (trace.length === 0 && currentInputs?.hasData === true) {
+    trace.push(inputTracePoint(currentInputs));
+  }
+
+  return trace;
+}
+
+function inputTracePoint(inputs) {
+  return {
+    throttle: clamp(Number.isFinite(inputs?.throttle) ? inputs.throttle : 0, 0, 1),
+    brake: clamp(Number.isFinite(inputs?.brake) ? inputs.brake : 0, 0, 1),
+    clutch: clamp(Number.isFinite(inputs?.clutch) ? inputs.clutch : 0, 0, 1),
+    brakeAbsActive: inputs?.brakeAbsActive === true
+  };
 }
 
 function captureHeaderItems(models, status, overlaySettings = null) {
@@ -2589,7 +2819,17 @@ function firstText(...values) {
 }
 
 function formatLiters(value) {
-  return Number.isFinite(value) ? `${value.toFixed(1)} L` : '--';
+  if (!Number.isFinite(value)) return '--';
+  return isImperial()
+    ? `${(value * 0.2641720524).toFixed(1)} gal`
+    : `${value.toFixed(1)} L`;
+}
+
+function formatFuelPerLap(value) {
+  if (!Number.isFinite(value)) return '--';
+  return isImperial()
+    ? `${(value * 0.2641720524).toFixed(1)} gal/lap`
+    : `${value.toFixed(1)} L/lap`;
 }
 
 function formatPercent(value) {
@@ -2597,19 +2837,28 @@ function formatPercent(value) {
 }
 
 function formatFuelBurn(value) {
-  return Number.isFinite(value) ? `${value.toFixed(1)}/h` : '--';
+  return Number.isFinite(value) ? `${value.toFixed(1)} kg/h` : '--';
 }
 
 function formatTemp(value) {
-  return Number.isFinite(value) ? `${Math.round(value)} C` : '--';
+  if (!Number.isFinite(value)) return '--';
+  return isImperial()
+    ? `${Math.round(value * 9 / 5 + 32)} F`
+    : `${Math.round(value)} C`;
 }
 
 function formatSpeed(value) {
-  return Number.isFinite(value) ? `${Math.round(value * 3.6)} km/h` : '--';
+  if (!Number.isFinite(value)) return '--';
+  return isImperial()
+    ? `${Math.round(value * 2.2369362921)} mph`
+    : `${Math.round(value * 3.6)} km/h`;
 }
 
 function formatPressureBar(value) {
-  return Number.isFinite(value) ? `${value.toFixed(1)} bar` : '--';
+  if (!Number.isFinite(value)) return '--';
+  return isImperial()
+    ? `${Math.round(value * 14.5037738)} psi`
+    : `${value.toFixed(1)} bar`;
 }
 
 function formatDurationCompact(seconds) {
@@ -3218,14 +3467,7 @@ function settings(overlayId, frame) {
   }
 
   if (overlayId === 'input-state') {
-    return {
-      showThrottle: true,
-      showBrake: true,
-      showClutch: true,
-      showSteering: true,
-      showGear: true,
-      showSpeed: true
-    };
+    return { ...inputStateReviewSettings };
   }
 
   return {};
@@ -3439,6 +3681,16 @@ function positiveNumber(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function optionalNumber(value) {
+  const parsed = Number.parseFloat(String(value ?? ''));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function optionalInteger(value) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Number.isInteger(parsed) ? parsed : null;
+}
+
 function normalizeReplayTimingMode(value) {
   const normalized = String(value || '').trim().toLowerCase();
   if (['source', 'source-elapsed', 'elapsed'].includes(normalized)) {
@@ -3482,6 +3734,16 @@ function parseBoolean(value, fallback) {
   }
 
   return fallback;
+}
+
+function normalizeUnitSystem(value) {
+  return String(value || '').trim().toLowerCase() === 'imperial'
+    ? 'Imperial'
+    : 'Metric';
+}
+
+function isImperial() {
+  return reviewUnitSystem === 'Imperial';
 }
 
 function overlayIdFromPath(path) {

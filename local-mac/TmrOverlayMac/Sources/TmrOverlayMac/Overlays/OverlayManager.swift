@@ -1757,6 +1757,9 @@ final class OverlayManager {
         if id == InputStateOverlayDefinition.definition.id,
            let inputSettings = settings.overlays.first(where: { $0.id == id }) {
             view.inputDisplayOptions = InputDisplayOptions(
+                showThrottleTrace: optionBool(inputSettings, key: "input-state.trace.throttle", defaultValue: true),
+                showBrakeTrace: optionBool(inputSettings, key: "input-state.trace.brake", defaultValue: true),
+                showClutchTrace: optionBool(inputSettings, key: "input-state.trace.clutch", defaultValue: true),
                 showThrottle: optionBool(inputSettings, key: "input-state.current.throttle", defaultValue: true),
                 showBrake: optionBool(inputSettings, key: "input-state.current.brake", defaultValue: true),
                 showClutch: optionBool(inputSettings, key: "input-state.current.clutch", defaultValue: true),
@@ -2209,7 +2212,9 @@ final class OverlayManager {
     private func scaledOverlaySize(definition: OverlayDefinition, settings overlaySettings: OverlaySettings) -> NSSize {
         let scale = clampedOverlayScale(overlaySettings.scale)
         var baseSize = definition.defaultSize
-        if let content = OverlayContentColumns.definition(for: definition.id) {
+        if definition.id == InputStateOverlayDefinition.definition.id {
+            baseSize.width = inputStateNativeBaseWidth(settings: overlaySettings, fullWidth: definition.defaultSize.width)
+        } else if let content = OverlayContentColumns.definition(for: definition.id) {
             baseSize = contentDrivenNativeBaseSize(
                 definition: definition,
                 content: content,
@@ -2225,6 +2230,34 @@ final class OverlayManager {
             size.width = debugWidth
         }
         return size
+    }
+
+    private func inputStateNativeBaseWidth(settings overlaySettings: OverlaySettings, fullWidth: CGFloat) -> CGFloat {
+        let hasGraph = inputStateBlockEnabled(OverlayContentColumns.inputThrottleTraceBlockId, settings: overlaySettings)
+            || inputStateBlockEnabled(OverlayContentColumns.inputBrakeTraceBlockId, settings: overlaySettings)
+            || inputStateBlockEnabled(OverlayContentColumns.inputClutchTraceBlockId, settings: overlaySettings)
+        let hasRail = inputStateBlockEnabled(OverlayContentColumns.inputThrottleBlockId, settings: overlaySettings)
+            || inputStateBlockEnabled(OverlayContentColumns.inputBrakeBlockId, settings: overlaySettings)
+            || inputStateBlockEnabled(OverlayContentColumns.inputClutchBlockId, settings: overlaySettings)
+            || inputStateBlockEnabled(OverlayContentColumns.inputSteeringBlockId, settings: overlaySettings)
+            || inputStateBlockEnabled(OverlayContentColumns.inputGearBlockId, settings: overlaySettings)
+            || inputStateBlockEnabled(OverlayContentColumns.inputSpeedBlockId, settings: overlaySettings)
+
+        if hasGraph && hasRail {
+            return fullWidth
+        }
+        if hasGraph {
+            return 380
+        }
+        return 276
+    }
+
+    private func inputStateBlockEnabled(_ id: String, settings overlaySettings: OverlaySettings) -> Bool {
+        guard let block = OverlayContentColumns.inputState.blocks.first(where: { $0.id == id }) else {
+            return true
+        }
+
+        return OverlayContentColumns.blockEnabled(block, settings: overlaySettings)
     }
 
     private func contentDrivenNativeBaseSize(

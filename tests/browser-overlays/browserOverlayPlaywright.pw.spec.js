@@ -123,6 +123,65 @@ test.describe('browser overlay Playwright integration', () => {
     expect(violations).toEqual([]);
   });
 
+  test('shrinks input overlay width when only the right rail is enabled', async ({ page }) => {
+    await installBrowserOverlayRoutes(page, 'input-state', {
+      live: inputStateLiveSnapshot(0, 0.72),
+      settings: {
+        showThrottleTrace: false,
+        showBrakeTrace: false,
+        showClutchTrace: false,
+        showThrottle: true,
+        showBrake: true,
+        showClutch: false,
+        showSteering: true,
+        showGear: true,
+        showSpeed: true
+      }
+    });
+
+    await page.setViewportSize({ width: 520, height: 260 });
+    await page.goto('http://localhost:8765/overlays/input-state');
+
+    await expect(page.locator('.input-rail')).toBeVisible();
+    await expect(page.locator('.input-graph')).toHaveCount(0);
+    await expect(page.locator('.overlay')).toHaveClass(/input-rail-only/);
+
+    const overlayBox = await page.locator('.overlay').boundingBox();
+    expect(overlayBox?.width).toBeGreaterThanOrEqual(270);
+    expect(overlayBox?.width).toBeLessThanOrEqual(282);
+
+    const railBox = await page.locator('.input-rail').boundingBox();
+    expect(railBox?.width).toBeGreaterThan(220);
+  });
+
+  test('shrinks input overlay width when only the graph is enabled', async ({ page }) => {
+    await installBrowserOverlayRoutes(page, 'input-state', {
+      live: inputStateLiveSnapshot(0, 0.72),
+      settings: {
+        showThrottleTrace: true,
+        showBrakeTrace: true,
+        showClutchTrace: false,
+        showThrottle: false,
+        showBrake: false,
+        showClutch: false,
+        showSteering: false,
+        showGear: false,
+        showSpeed: false
+      }
+    });
+
+    await page.setViewportSize({ width: 520, height: 260 });
+    await page.goto('http://localhost:8765/overlays/input-state');
+
+    await expect(page.locator('.input-graph')).toBeVisible();
+    await expect(page.locator('.input-rail')).toHaveCount(0);
+    await expect(page.locator('.overlay')).toHaveClass(/input-graph-only/);
+
+    const overlayBox = await page.locator('.overlay').boundingBox();
+    expect(overlayBox?.width).toBeGreaterThanOrEqual(374);
+    expect(overlayBox?.width).toBeLessThanOrEqual(386);
+  });
+
   test('renders General settings preview controls without forcing hidden overlays', async ({ page }) => {
     await page.route('**/*', async (route) => {
       const url = new URL(route.request().url());
@@ -228,11 +287,14 @@ async function installBrowserOverlayRoutes(page, overlayId, fixture) {
       return;
     }
 
+    const advancesLiveFrame = overlayId === 'input-state'
+      ? url.pathname === '/api/overlay-model/input-state'
+      : url.pathname === '/api/snapshot';
     const payload = browserOverlayApiResponse(overlayId, url.pathname, {
       ...fixture,
-      live: resolveLiveFixture(fixture.live, url.pathname, liveFrameIndex)
+      live: resolveLiveFixture(fixture.live, advancesLiveFrame ? '/api/snapshot' : url.pathname, liveFrameIndex)
     });
-    if (url.pathname === '/api/snapshot') {
+    if (advancesLiveFrame) {
       liveFrameIndex += 1;
     }
     if (payload) {
@@ -288,7 +350,13 @@ function inputStateLiveSnapshot(index, throttle) {
         steeringWheelAngle: 0,
         gear: 3,
         speedMetersPerSecond: 60,
-        brakeAbsActive: false
+        brakeAbsActive: false,
+        trace: Array.from({ length: index + 2 }, (_, pointIndex) => ({
+          throttle: pointIndex === index + 1 ? throttle : pointIndex % 2 === 0 ? 0.12 : 1,
+          brake: pointIndex % 2 === 0 ? 0.88 : 0.12,
+          clutch: 0,
+          brakeAbsActive: false
+        }))
       }
     }),
     sequence: 100 + index

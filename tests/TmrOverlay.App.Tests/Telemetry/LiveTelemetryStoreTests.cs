@@ -2016,7 +2016,7 @@ QualifyResultsInfo:
     }
 
     [Fact]
-    public void RecordFrame_UsesClutchRawWhenNormalizedClutchIsFlatZero()
+    public void RecordFrame_InvertsClutchRawForControlInput()
     {
         var store = new LiveTelemetryStore();
 
@@ -2029,7 +2029,22 @@ QualifyResultsInfo:
         var inputs = store.Snapshot().Models.Inputs;
 
         Assert.Equal(1d, inputs.Brake);
-        Assert.Equal(0.82d, inputs.Clutch);
+        Assert.Equal(0.18d, inputs.Clutch, precision: 6);
+    }
+
+    [Fact]
+    public void RecordFrame_InvertsNormalizedClutchWhenRawIsMissing()
+    {
+        var store = new LiveTelemetryStore();
+
+        store.RecordFrame(CreateSample(
+            playerCarIdx: 10,
+            clutch: 1d,
+            clutchRaw: null));
+
+        var inputs = store.Snapshot().Models.Inputs;
+
+        Assert.Equal(0d, inputs.Clutch);
     }
 
     [Fact]

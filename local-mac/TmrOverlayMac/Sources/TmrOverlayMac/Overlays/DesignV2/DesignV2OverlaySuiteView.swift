@@ -588,14 +588,14 @@ final class DesignV2OverlaySuiteView: NSView {
         let graph = NSRect(x: content.minX, y: content.minY + 6, width: max(160, content.width - railWidth - 18), height: content.height - 12)
         rounded(graph, radius: 5, fill: theme.colors.surfaceInset, stroke: theme.colors.borderMuted)
         drawInputGrid(in: graph)
-        if inputBlockEnabled(OverlayContentColumns.inputThrottleBlockId) {
+        if inputBlockEnabled(OverlayContentColumns.inputThrottleTraceBlockId) {
             drawInputTrace(model.trace, in: graph, color: theme.colors.live) { $0.throttle }
         }
-        if inputBlockEnabled(OverlayContentColumns.inputBrakeBlockId) {
+        if inputBlockEnabled(OverlayContentColumns.inputBrakeTraceBlockId) {
             drawInputTrace(model.trace, in: graph, color: theme.colors.error) { $0.brake }
             drawInputAbsTrace(model.trace, in: graph)
         }
-        if inputBlockEnabled(OverlayContentColumns.inputClutchBlockId) {
+        if inputBlockEnabled(OverlayContentColumns.inputClutchTraceBlockId) {
             drawInputTrace(model.trace, in: graph, color: theme.colors.accentPrimary) { $0.clutch }
         }
 

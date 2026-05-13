@@ -667,7 +667,8 @@ internal sealed class OverlayManager : IDisposable
                 var overlayLiveTelemetryAvailable = liveTelemetryAvailable || settingsPreview;
                 var contextAvailability = EvaluateOverlayContext(registration.Definition, liveSnapshot);
                 var contextAllowed = settingsPreview || contextAvailability.IsAvailable;
-                var shouldShow = settingsPreview || (settings.Enabled && sessionAllowed && contextAllowed);
+                var contentAllowed = HasEnabledOverlayContent(registration.Definition, settings);
+                var shouldShow = settingsPreview || (settings.Enabled && sessionAllowed && contextAllowed && contentAllowed);
 
                 if (string.Equals(registration.Definition.Id, FlagsOverlayDefinition.Definition.Id, StringComparison.Ordinal))
                 {
@@ -1162,6 +1163,11 @@ internal sealed class OverlayManager : IDisposable
         var baseWidth = definition.DefaultWidth;
         var baseHeight = definition.DefaultHeight;
 
+        if (string.Equals(definition.Id, InputStateOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            baseWidth = InputStateRenderModelBuilder.BaseWidthForEnabledContent(settings, definition.DefaultWidth);
+        }
+
         if (OverlayContentColumnSettings.TryGetContentDefinition(definition.Id, out var contentDefinition)
             && contentDefinition.Columns.Count > 0)
         {
@@ -1173,6 +1179,13 @@ internal sealed class OverlayManager : IDisposable
         return new Size(
             ScaleDimension(baseWidth, settings.Scale),
             ScaleDimension(baseHeight, settings.Scale));
+    }
+
+    private static bool HasEnabledOverlayContent(OverlayDefinition definition, OverlaySettings settings)
+    {
+        return string.Equals(definition.Id, InputStateOverlayDefinition.Definition.Id, StringComparison.Ordinal)
+            ? InputStateRenderModelBuilder.HasEnabledContent(settings)
+            : true;
     }
 
     private static Size OverlayContentBaseSize(

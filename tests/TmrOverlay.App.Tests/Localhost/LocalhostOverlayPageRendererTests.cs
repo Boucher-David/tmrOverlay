@@ -93,9 +93,9 @@ public sealed class BrowserOverlayPageRendererTests
         if (expectedId == "input-state")
         {
             Assert.Contains("waiting for player in car", html);
-            Assert.Contains("const inputModel = window.TmrBrowserModel", html);
-            Assert.Contains("inputModel.inputs(live)", html);
-            Assert.Contains("inputModel.isPlayerInCar(live)", html);
+            Assert.Contains("fetchOverlayModel('input-state')", html);
+            Assert.Contains("inputDisplayModel", html);
+            Assert.Contains("model?.inputs", html);
             Assert.Contains("brakeAbsActive", html);
             Assert.Contains("var(--tmr-green)", html);
             Assert.Contains("themeColor('--tmr-green'", html);

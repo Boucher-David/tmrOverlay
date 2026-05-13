@@ -103,6 +103,9 @@ internal static class OverlayContentColumnSettings
     public const string RelativeGapColumnId = "relative.gap";
     public const string RelativePitColumnId = "relative.pit";
     public const string StandingsClassSeparatorBlockId = "standings.class-separators";
+    public const string InputThrottleTraceBlockId = "input-state.trace-throttle";
+    public const string InputBrakeTraceBlockId = "input-state.trace-brake";
+    public const string InputClutchTraceBlockId = "input-state.trace-clutch";
     public const string InputThrottleBlockId = "input-state.throttle";
     public const string InputBrakeBlockId = "input-state.brake";
     public const string InputClutchBlockId = "input-state.clutch";
@@ -173,20 +176,38 @@ internal static class OverlayContentColumnSettings
         Blocks:
     [
         new(
+            InputThrottleTraceBlockId,
+            "Throttle trace",
+            "Show the throttle line in the input graph.",
+            OverlayOptionKeys.InputShowThrottleTrace,
+            DefaultEnabled: true),
+        new(
+            InputBrakeTraceBlockId,
+            "Brake trace",
+            "Show the brake line and ABS segments in the input graph.",
+            OverlayOptionKeys.InputShowBrakeTrace,
+            DefaultEnabled: true),
+        new(
+            InputClutchTraceBlockId,
+            "Clutch trace",
+            "Show the clutch line in the input graph.",
+            OverlayOptionKeys.InputShowClutchTrace,
+            DefaultEnabled: true),
+        new(
             InputThrottleBlockId,
-            "Throttle",
+            "Throttle %",
             "Show the live throttle percentage in the right-side input rail.",
             OverlayOptionKeys.InputShowThrottle,
             DefaultEnabled: true),
         new(
             InputBrakeBlockId,
-            "Brake",
+            "Brake %",
             "Show the live brake percentage in the right-side input rail.",
             OverlayOptionKeys.InputShowBrake,
             DefaultEnabled: true),
         new(
             InputClutchBlockId,
-            "Clutch",
+            "Clutch %",
             "Show the live clutch percentage in the right-side input rail.",
             OverlayOptionKeys.InputShowClutch,
             DefaultEnabled: true),

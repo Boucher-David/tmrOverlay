@@ -48,7 +48,7 @@ internal enum DesignV2LiveOverlayKind
 
 internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 {
-    private const int RefreshIntervalMilliseconds = 250;
+    private const int DefaultRefreshIntervalMilliseconds = 250;
     private const int PaddingSize = 16;
     private const int HeaderHeight = 38;
     private const int FooterHeight = 32;
@@ -161,7 +161,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private readonly List<DesignV2GapLeaderChangeMarker> _gapLeaderChangeMarkers = [];
     private readonly Dictionary<int, DesignV2GapCarRenderState> _gapCarRenderStates = [];
     private readonly Dictionary<int, DesignV2GapDriverIdentity> _gapDriverIdentities = [];
-    private readonly List<DesignV2InputPoint> _inputTrace = [];
+    private readonly List<InputStateTracePoint> _inputTrace = [];
     private readonly List<StreamChatMessage> _chatMessages = [];
     private readonly Dictionary<int, double> _smoothedTrackMarkerProgress = new();
     private readonly Button? _closeButton;
@@ -235,15 +235,16 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             | ControlStyles.UserPaint,
             true);
 
+        var refreshIntervalMilliseconds = RefreshIntervalFor(kind);
         _refreshTimer = new System.Windows.Forms.Timer
         {
-            Interval = RefreshIntervalMilliseconds
+            Interval = refreshIntervalMilliseconds
         };
         _refreshTimer.Tick += (_, _) =>
         {
             _performanceState.RecordOverlayTimerTick(
                 _definition.Id,
-                RefreshIntervalMilliseconds,
+                refreshIntervalMilliseconds,
                 Visible,
                 !Visible || Opacity <= 0.001d);
             RefreshOverlay();
@@ -267,6 +268,13 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
         _settingsPreviewVisible = previewVisible;
         Invalidate();
+    }
+
+    private static int RefreshIntervalFor(DesignV2LiveOverlayKind kind)
+    {
+        return kind == DesignV2LiveOverlayKind.InputState
+            ? InputStateRenderModelBuilder.RefreshIntervalMilliseconds
+            : DefaultRefreshIntervalMilliseconds;
     }
 
     public override bool IsIntrinsicallyInputTransparentOverlay => IsInputTransparentKind(_kind);
@@ -405,6 +413,15 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     private DesignV2OverlayModel ApplyChromeSettings(DesignV2OverlayModel model, LiveTelemetrySnapshot snapshot)
     {
+        if (_kind == DesignV2LiveOverlayKind.InputState)
+        {
+            return model with
+            {
+                HeaderText = string.Empty,
+                ShowFooter = false
+            };
+        }
+
         var headerText = BuildHeaderText(_settings, snapshot, HeaderStatusFor(_kind, model.Status));
         var showFooter = ShowFooterForSettings(_kind, _settings, snapshot);
         return model with
@@ -657,42 +674,37 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     private DesignV2OverlayModel BuildInputModel(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
     {
-        var inputs = snapshot.Models.Inputs;
-        if (inputs.HasData)
-        {
-            _inputTrace.Add(new DesignV2InputPoint(
-                Math.Clamp(inputs.Throttle ?? 0d, 0d, 1d),
-                Math.Clamp(inputs.Brake ?? 0d, 0d, 1d),
-                Math.Clamp(inputs.Clutch ?? 0d, 0d, 1d),
-                inputs.BrakeAbsActive == true));
-            if (_inputTrace.Count > 180)
-            {
-                _inputTrace.RemoveRange(0, _inputTrace.Count - 180);
-            }
-        }
-
-        var viewModel = InputStateOverlayViewModel.From(snapshot, now, _unitSystem);
+        var inputModel = InputStateRenderModelBuilder.Build(snapshot, now, _unitSystem, _settings, _inputTrace);
         return new DesignV2OverlayModel(
             "Inputs",
-            viewModel.Status,
-            viewModel.Source,
-            EvidenceFor(viewModel.Tone),
+            inputModel.Status,
+            inputModel.Source,
+            EvidenceFor(inputModel.Tone),
             new DesignV2InputsBody(
-                inputs.Throttle,
-                inputs.Brake,
-                inputs.Clutch,
-                inputs.SteeringWheelAngle,
-                inputs.SpeedMetersPerSecond,
-                inputs.Gear,
-                inputs.BrakeAbsActive == true,
-                inputs.HasData,
-                InputBlockEnabled(OverlayContentColumnSettings.InputThrottleBlockId),
-                InputBlockEnabled(OverlayContentColumnSettings.InputBrakeBlockId),
-                InputBlockEnabled(OverlayContentColumnSettings.InputClutchBlockId),
-                InputBlockEnabled(OverlayContentColumnSettings.InputSteeringBlockId),
-                InputBlockEnabled(OverlayContentColumnSettings.InputGearBlockId),
-                InputBlockEnabled(OverlayContentColumnSettings.InputSpeedBlockId),
-                _inputTrace.ToArray()));
+                inputModel.Throttle,
+                inputModel.Brake,
+                inputModel.Clutch,
+                inputModel.SteeringWheelAngle,
+                inputModel.SpeedMetersPerSecond,
+                inputModel.Gear,
+                inputModel.SpeedText,
+                inputModel.GearText,
+                inputModel.SteeringText,
+                inputModel.BrakeAbsActive,
+                inputModel.ShowThrottleTrace,
+                inputModel.ShowBrakeTrace,
+                inputModel.ShowClutchTrace,
+                inputModel.IsAvailable,
+                inputModel.ShowThrottle,
+                inputModel.ShowBrake,
+                inputModel.ShowClutch,
+                inputModel.ShowSteering,
+                inputModel.ShowGear,
+                inputModel.ShowSpeed,
+                inputModel.HasGraph,
+                inputModel.HasRail,
+                inputModel.HasContent,
+                inputModel.Trace));
     }
 
     private DesignV2OverlayModel BuildRadarModel(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
@@ -2701,13 +2713,6 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         return _cachedHistory;
     }
 
-    private bool InputBlockEnabled(string blockId)
-    {
-        var block = OverlayContentColumnSettings.InputState.Blocks?.FirstOrDefault(
-            block => string.Equals(block.Id, blockId, StringComparison.Ordinal));
-        return block is null || OverlayContentColumnSettings.BlockEnabled(_settings, block);
-    }
-
     private bool IsFlagCategoryEnabled(FlagDisplayCategory category)
     {
         return category switch
@@ -4236,37 +4241,56 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         DrawText(graphics, "Inputs", titleFont, TextPrimary, new RectangleF(rect.Left + 14, rect.Top + 10, 100, 16));
 
         var content = new RectangleF(rect.Left + 18, header.Bottom + 18, Math.Max(1, rect.Width - 36), Math.Max(1, rect.Height - HeaderHeight - 34));
-        var railVisible = body.ShowThrottle || body.ShowBrake || body.ShowClutch || body.ShowSteering || body.ShowGear || body.ShowSpeed;
-        var railWidth = railVisible ? Math.Min(204f, Math.Max(136f, content.Width * 0.40f)) : 0f;
-        var graph = new RectangleF(
-            content.Left,
-            content.Top + 6,
-            Math.Max(160, content.Width - railWidth - (railVisible ? 18 : 0)),
-            Math.Max(40, content.Height - 12));
-        FillRounded(graphics, graph, 5, SurfaceInset, BorderMuted);
-        DrawInputGrid(graphics, graph);
-        if (body.ShowThrottle)
-        {
-            DrawInputTrace(graphics, body.Trace, graph, Green, point => point.Throttle);
-        }
-        if (body.ShowBrake)
-        {
-            DrawInputTrace(graphics, body.Trace, graph, Error, point => point.Brake);
-            DrawInputAbsTrace(graphics, body.Trace, graph);
-        }
-        if (body.ShowClutch)
-        {
-            DrawInputTrace(graphics, body.Trace, graph, Cyan, point => point.Clutch);
-        }
-        if (body.Trace.Count < 2 && !body.IsAvailable)
+        if (!body.HasContent)
         {
             using var waitingFont = FontOf(11, FontStyle.Bold);
-            DrawText(graphics, "waiting for inputs", waitingFont, TextMuted, graph, ContentAlignment.MiddleCenter);
+            DrawText(graphics, "no input content enabled", waitingFont, TextMuted, content, ContentAlignment.MiddleCenter);
+            return;
         }
 
-        if (railVisible)
+        var railWidth = body.HasRail
+            ? body.HasGraph
+                ? Math.Min(204f, Math.Max(136f, content.Width * 0.40f))
+                : Math.Min(240f, content.Width)
+            : 0f;
+        RectangleF? graph = body.HasGraph
+            ? new RectangleF(
+                content.Left,
+                content.Top + 6,
+                Math.Max(160, content.Width - railWidth - (body.HasRail ? 18 : 0)),
+                Math.Max(40, content.Height - 12))
+            : null;
+        if (graph is { } graphRect)
         {
-            var rail = new RectangleF(graph.Right + 18, content.Top, railWidth, content.Height);
+            FillRounded(graphics, graphRect, 5, SurfaceInset, BorderMuted);
+            DrawInputGrid(graphics, graphRect);
+        }
+
+        if (body.ShowThrottleTrace && graph is { } throttleGraph)
+        {
+            DrawInputTrace(graphics, body.Trace, throttleGraph, Green, point => point.Throttle);
+        }
+        if (body.ShowBrakeTrace && graph is { } brakeGraph)
+        {
+            DrawInputTrace(graphics, body.Trace, brakeGraph, Error, point => point.Brake);
+            DrawInputAbsTrace(graphics, body.Trace, brakeGraph);
+        }
+        if (body.ShowClutchTrace && graph is { } clutchGraph)
+        {
+            DrawInputTrace(graphics, body.Trace, clutchGraph, Cyan, point => point.Clutch);
+        }
+        if (graph is { } waitingGraph && body.Trace.Count < 2 && !body.IsAvailable)
+        {
+            using var waitingFont = FontOf(11, FontStyle.Bold);
+            DrawText(graphics, "waiting for inputs", waitingFont, TextMuted, waitingGraph, ContentAlignment.MiddleCenter);
+        }
+
+        if (body.HasRail)
+        {
+            var railLeft = graph is { } railGraph
+                ? railGraph.Right + 18
+                : content.Left + (content.Width - railWidth) / 2f;
+            var rail = new RectangleF(railLeft, content.Top, railWidth, content.Height);
             DrawInputRail(graphics, body, rail);
         }
     }
@@ -4283,10 +4307,10 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     private static void DrawInputTrace(
         Graphics graphics,
-        IReadOnlyList<DesignV2InputPoint> trace,
+        IReadOnlyList<InputStateTracePoint> trace,
         RectangleF rect,
         Color color,
-        Func<DesignV2InputPoint, double> select)
+        Func<InputStateTracePoint, double> select)
     {
         if (trace.Count < 2)
         {
@@ -4340,7 +4364,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         return Math.Clamp(value, min, max);
     }
 
-    private static void DrawInputAbsTrace(Graphics graphics, IReadOnlyList<DesignV2InputPoint> trace, RectangleF rect)
+    private static void DrawInputAbsTrace(Graphics graphics, IReadOnlyList<InputStateTracePoint> trace, RectangleF rect)
     {
         if (trace.Count < 2)
         {
@@ -4393,13 +4417,13 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                     DrawInputBar(graphics, "CLT", body.Clutch, Cyan, item.Bounds);
                     break;
                 case DesignV2InputRailItemKind.SteeringWheel:
-                    DrawInputWheel(graphics, body.SteeringWheelAngle, item.Bounds);
+                    DrawInputWheel(graphics, body.SteeringWheelAngle, body.SteeringText, item.Bounds);
                     break;
                 case DesignV2InputRailItemKind.Gear:
-                    DrawInputReadout(graphics, "GEAR", FormatGear(body.Gear), item.Bounds);
+                    DrawInputReadout(graphics, "GEAR", body.GearText, item.Bounds);
                     break;
                 case DesignV2InputRailItemKind.Speed:
-                    DrawInputReadout(graphics, "SPD", SimpleTelemetryOverlayViewModel.FormatSpeed(body.SpeedMetersPerSecond, _unitSystem), item.Bounds);
+                    DrawInputReadout(graphics, "SPD", body.SpeedText, item.Bounds);
                     break;
             }
         }
@@ -4502,12 +4526,12 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         DrawText(graphics, value, valueFont, TextPrimary, new RectangleF(rect.Left + 50, rect.Top, rect.Width - 50, 18), ContentAlignment.MiddleRight);
     }
 
-    private void DrawInputWheel(Graphics graphics, double? angleRadians, RectangleF rect)
+    private void DrawInputWheel(Graphics graphics, double? angleRadians, string angleText, RectangleF rect)
     {
         using var labelFont = FontOf(8.5f, FontStyle.Bold);
         using var valueFont = FontOf(10.5f, FontStyle.Bold);
         DrawText(graphics, "WHEEL", labelFont, TextMuted, new RectangleF(rect.Left, rect.Top, 54, 14));
-        DrawText(graphics, FormatSteering(angleRadians), valueFont, TextPrimary, new RectangleF(rect.Left + 58, rect.Top - 1, rect.Width - 58, 16), ContentAlignment.MiddleRight);
+        DrawText(graphics, angleText, valueFont, TextPrimary, new RectangleF(rect.Left + 58, rect.Top - 1, rect.Width - 58, 16), ContentAlignment.MiddleRight);
 
         var wheelSlot = new RectangleF(
             rect.Left + 2,
@@ -6096,7 +6120,13 @@ internal sealed record DesignV2InputsBody(
     double? SteeringWheelAngle,
     double? SpeedMetersPerSecond,
     int? Gear,
+    string SpeedText,
+    string GearText,
+    string SteeringText,
     bool BrakeAbsActive,
+    bool ShowThrottleTrace,
+    bool ShowBrakeTrace,
+    bool ShowClutchTrace,
     bool IsAvailable,
     bool ShowThrottle,
     bool ShowBrake,
@@ -6104,7 +6134,10 @@ internal sealed record DesignV2InputsBody(
     bool ShowSteering,
     bool ShowGear,
     bool ShowSpeed,
-    IReadOnlyList<DesignV2InputPoint> Trace) : DesignV2Body;
+    bool HasGraph,
+    bool HasRail,
+    bool HasContent,
+    IReadOnlyList<InputStateTracePoint> Trace) : DesignV2Body;
 
 internal sealed record DesignV2RadarBody(
     bool IsAvailable,
@@ -6184,12 +6217,6 @@ internal sealed record DesignV2ChatRow(
     string Author,
     string Message,
     DesignV2Evidence Evidence);
-
-internal sealed record DesignV2InputPoint(
-    double Throttle,
-    double Brake,
-    double Clutch,
-    bool BrakeAbsActive);
 
 internal sealed record DesignV2InputRailLayout(
     IReadOnlyList<DesignV2InputRailItem> Items);

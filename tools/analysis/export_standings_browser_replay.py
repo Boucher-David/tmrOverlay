@@ -322,6 +322,13 @@ def unit_interval(value: Any) -> float | None:
     return max(0.0, min(1.0, float(value)))
 
 
+def clutch_control_input(raw: dict[str, Any]) -> float | None:
+    engagement = unit_interval(raw.get("ClutchRaw"))
+    if engagement is None:
+        engagement = unit_interval(raw.get("Clutch"))
+    return None if engagement is None else 1.0 - engagement
+
+
 def positive(value: Any) -> float | None:
     if finite(value) and float(value) > 0:
         return float(value)
@@ -552,7 +559,7 @@ def build_live_snapshot(
     relative_live = live_relative_rows(timing_rows, drivers, focus_idx, player_idx)
     track_length = track_length_meters(session_data)
     track_wetness = raw.get("TrackWetness") if isinstance(raw.get("TrackWetness"), int) else None
-    clutch = unit_interval(raw.get("ClutchRaw")) if unit_interval(raw.get("Clutch")) in (None, 0.0) else unit_interval(raw.get("Clutch"))
+    clutch = clutch_control_input(raw)
     fuel_level = positive(raw.get("FuelLevel"))
     fuel_pct = unit_interval(raw.get("FuelLevelPct"))
     on_pit_road = bool(raw.get("OnPitRoad") or raw.get("PlayerCarInPitStall") or (reference or {}).get("onPitRoad"))

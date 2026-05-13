@@ -325,15 +325,26 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
             graphics.DrawLine(gridPen, graph.Left, y, graph.Right, y);
         }
 
-        DrawTrace(graphics, graph, point => point.Throttle, ThrottleTraceColor);
-        DrawTrace(graphics, graph, point => point.Brake, BrakeTraceColor);
-        DrawTrace(graphics, graph, point => point.Clutch, ClutchTraceColor);
-        DrawActiveTraceSegments(
-            graphics,
-            graph,
-            point => point.Brake,
-            point => point.BrakeAbsActive,
-            AbsActiveTraceColor);
+        if (TraceEnabled(OverlayOptionKeys.InputShowThrottleTrace))
+        {
+            DrawTrace(graphics, graph, point => point.Throttle, ThrottleTraceColor);
+        }
+
+        if (TraceEnabled(OverlayOptionKeys.InputShowBrakeTrace))
+        {
+            DrawTrace(graphics, graph, point => point.Brake, BrakeTraceColor);
+            DrawActiveTraceSegments(
+                graphics,
+                graph,
+                point => point.Brake,
+                point => point.BrakeAbsActive,
+                AbsActiveTraceColor);
+        }
+
+        if (TraceEnabled(OverlayOptionKeys.InputShowClutchTrace))
+        {
+            DrawTrace(graphics, graph, point => point.Clutch, ClutchTraceColor);
+        }
 
         using var font = OverlayTheme.Font(_fontFamily, 8.6f, FontStyle.Bold);
         DrawLegend(graphics, graph, font);
@@ -775,15 +786,26 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
     private void DrawLegend(Graphics graphics, Rectangle graph, Font font)
     {
         var x = graph.Left + 8;
-        DrawLegendItem(graphics, "Throttle", ThrottleTraceColor, font, ref x, graph.Top + 8);
-        DrawLegendItem(
-            graphics,
-            _latestInputs.BrakeAbsActive == true ? "Brake ABS" : "Brake",
-            _latestInputs.BrakeAbsActive == true ? AbsActiveTraceColor : BrakeTraceColor,
-            font,
-            ref x,
-            graph.Top + 8);
-        DrawLegendItem(graphics, "Clutch", ClutchTraceColor, font, ref x, graph.Top + 8);
+        if (TraceEnabled(OverlayOptionKeys.InputShowThrottleTrace))
+        {
+            DrawLegendItem(graphics, "Throttle", ThrottleTraceColor, font, ref x, graph.Top + 8);
+        }
+
+        if (TraceEnabled(OverlayOptionKeys.InputShowBrakeTrace))
+        {
+            DrawLegendItem(
+                graphics,
+                _latestInputs.BrakeAbsActive == true ? "Brake ABS" : "Brake",
+                _latestInputs.BrakeAbsActive == true ? AbsActiveTraceColor : BrakeTraceColor,
+                font,
+                ref x,
+                graph.Top + 8);
+        }
+
+        if (TraceEnabled(OverlayOptionKeys.InputShowClutchTrace))
+        {
+            DrawLegendItem(graphics, "Clutch", ClutchTraceColor, font, ref x, graph.Top + 8);
+        }
     }
 
     private void DrawLegendItem(Graphics graphics, string label, Color color, Font font, ref int x, int y)
@@ -866,6 +888,11 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
     }
 
     private bool CurrentValueEnabled(string optionKey)
+    {
+        return _settings.GetBooleanOption(optionKey, defaultValue: true);
+    }
+
+    private bool TraceEnabled(string optionKey)
     {
         return _settings.GetBooleanOption(optionKey, defaultValue: true);
     }

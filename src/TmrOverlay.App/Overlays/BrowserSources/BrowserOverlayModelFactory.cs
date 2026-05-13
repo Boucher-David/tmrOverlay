@@ -63,6 +63,7 @@ internal sealed class BrowserOverlayModelFactory
     private readonly List<BrowserGapDriverChangeMarker> _gapDriverChanges = [];
     private readonly Dictionary<int, BrowserGapCarRenderState> _gapCarRenderStates = [];
     private readonly Dictionary<int, BrowserGapDriverIdentity> _gapDriverIdentities = [];
+    private readonly List<InputStateTracePoint> _inputTrace = [];
     private HistoricalComboIdentity? _cachedHistoryCombo;
     private SessionHistoryLookupResult? _cachedHistory;
     private DateTimeOffset _cachedHistoryAtUtc;
@@ -128,14 +129,7 @@ internal sealed class BrowserOverlayModelFactory
         }
         else if (string.Equals(overlayId, InputStateOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
-            var viewModel = InputStateOverlayViewModel.From(snapshot, now, unitSystem);
-            var overlay = FindOverlay(settings, InputStateOverlayDefinition.Definition.Id);
-            var headerItems = HeaderItems(overlay, snapshot, viewModel.Status);
-            model = FromSimple(
-                InputStateOverlayDefinition.Definition.Id,
-                viewModel,
-                headerItems,
-                SourceText(overlay, snapshot, viewModel.Source));
+            model = BuildInputState(snapshot, settings, unitSystem, now);
         }
         else if (string.Equals(overlayId, CarRadarOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
@@ -481,6 +475,29 @@ internal sealed class BrowserOverlayModelFactory
                 viewModel.ShowMulticlassWarning,
                 viewModel.PreviewVisible,
                 viewModel.HasCurrentSignal));
+    }
+
+    private BrowserOverlayDisplayModel BuildInputState(
+        LiveTelemetrySnapshot snapshot,
+        ApplicationSettings settings,
+        string unitSystem,
+        DateTimeOffset now)
+    {
+        var overlay = FindOverlay(settings, InputStateOverlayDefinition.Definition.Id)
+            ?? new OverlaySettings { Id = InputStateOverlayDefinition.Definition.Id };
+        var inputModel = InputStateRenderModelBuilder.Build(snapshot, now, unitSystem, overlay, _inputTrace);
+        return new BrowserOverlayDisplayModel(
+            InputStateOverlayDefinition.Definition.Id,
+            InputStateOverlayDefinition.Definition.DisplayName,
+            inputModel.Status,
+            string.Empty,
+            "inputs",
+            Columns: [],
+            Rows: [],
+            Metrics: [],
+            Points: [],
+            HeaderItems: Array.Empty<BrowserOverlayHeaderItem>(),
+            Inputs: inputModel);
     }
 
     private static BrowserOverlayDisplayModel BuildTrackMap(
@@ -2189,6 +2206,7 @@ internal sealed record BrowserOverlayDisplayModel(
     BrowserTrackMapModel? TrackMap = null,
     BrowserGarageCoverModel? GarageCover = null,
     BrowserStreamChatModel? StreamChat = null,
+    InputStateRenderModel? Inputs = null,
     IReadOnlyList<BrowserOverlayGridSection>? GridSections = null,
     IReadOnlyList<BrowserOverlayMetricSection>? MetricSections = null)
 {

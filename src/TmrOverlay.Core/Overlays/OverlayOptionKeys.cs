@@ -30,6 +30,9 @@ internal static class OverlayOptionKeys
     public const string RelativeCarsEachSide = "relative.cars-each-side";
     public const string RelativeCarsAhead = "relative.cars-ahead";
     public const string RelativeCarsBehind = "relative.cars-behind";
+    public const string InputShowThrottleTrace = "input-state.trace.throttle";
+    public const string InputShowBrakeTrace = "input-state.trace.brake";
+    public const string InputShowClutchTrace = "input-state.trace.clutch";
     public const string InputShowThrottle = "input-state.current.throttle";
     public const string InputShowBrake = "input-state.current.brake";
     public const string InputShowClutch = "input-state.current.clutch";

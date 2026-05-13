@@ -91,7 +91,7 @@ It displays:
 
 - speed in the selected unit system
 - gear and RPM
-- throttle/brake/clutch percentages
+- throttle/brake/clutch-control percentages
 - steering angle
 - ABS activity when `BrakeABSactive` explicitly reports that ABS is reducing brake pressure
 - raw engine warning bits
@@ -99,6 +99,6 @@ It displays:
 - water temperature
 - oil temperature plus oil/fuel pressure
 
-The default native and browser input overlays are graph-first. The line graph remains the primary surface, while current-value widgets live in a right-side content rail. Pedals are shown as vertical percentage bars, steering remains a wheel visualization, and gear/speed are numeric. Steering telemetry is treated as radians from iRacing and formatted to degrees only for display. The graph trace uses a smoothed path for readability without changing the underlying 0..1 pedal samples. Throttle, brake, clutch, steering, gear, and speed are independent Content-tab options that can be turned on or off. Input / Car State does not expose Header/Footer settings in this branch.
+The default native and browser input overlays are graph-first. The line graph remains the primary surface, while current-value widgets live in a right-side content rail. Pedals are shown as vertical percentage bars, steering remains a wheel visualization, and gear/speed are numeric. Steering telemetry is treated as radians from iRacing and formatted to degrees only for display. iRacing `Clutch`/`ClutchRaw` report clutch engagement (`1` means fully engaged), so `LiveInputTelemetryModel.Clutch` inverts the preferred raw channel and displays driver clutch control input (`1` means pressed/disengaging). The graph trace uses a smoothed path for readability without changing the underlying 0..1 pedal/control samples. Throttle, brake, clutch, steering, gear, and speed are independent Content-tab options that can be turned on or off. Input / Car State does not expose Header/Footer settings in this branch.
 
 Engine warning bits use a warning tone. Otherwise this overlay stays neutral and acts as a compact local-driver input surface. TC firing is deliberately not shown yet: current captures expose TC toggle/adjustment-style fields, but not a proven traction-control intervention signal equivalent to `BrakeABSactive`. Current captures also expose `Clutch` and `ClutchRaw`, while future clutch-like schema fields such as dual-clutch channels are watched diagnostically before being promoted into the production overlay.

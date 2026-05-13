@@ -3,6 +3,7 @@ using System.Reflection;
 using TmrOverlay.App.Overlays;
 using TmrOverlay.App.Overlays.BrowserSources;
 using TmrOverlay.App.Overlays.Content;
+using TmrOverlay.App.Overlays.InputState;
 using TmrOverlay.App.Overlays.Relative;
 using TmrOverlay.App.Overlays.Standings;
 using TmrOverlay.Core.Overlays;
@@ -152,6 +153,35 @@ public sealed class OverlayContentColumnSettingsTests
     }
 
     [Fact]
+    public void InputStateOverlaySizesShrinkToEnabledContent()
+    {
+        var method = typeof(OverlayManager).GetMethod(
+            "ScaledOverlaySize",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var full = NewInputStateSettings();
+        Assert.Equal(new Size(520, 260), ScaledInputStateSize(method, full));
+        Assert.Equal(new Size(520, 260), BrowserOverlayRecommendedSize.For(InputStateOverlayDefinition.Definition, full));
+
+        var railOnly = NewInputStateSettings();
+        SetInputBlocks(railOnly, InputGraphBlockIds, false);
+        Assert.Equal(new Size(276, 260), ScaledInputStateSize(method, railOnly));
+        Assert.Equal(new Size(276, 260), BrowserOverlayRecommendedSize.For(InputStateOverlayDefinition.Definition, railOnly));
+
+        var graphOnly = NewInputStateSettings();
+        SetInputBlocks(graphOnly, InputRailBlockIds, false);
+        Assert.Equal(new Size(380, 260), ScaledInputStateSize(method, graphOnly));
+        Assert.Equal(new Size(380, 260), BrowserOverlayRecommendedSize.For(InputStateOverlayDefinition.Definition, graphOnly));
+
+        var empty = NewInputStateSettings();
+        SetInputBlocks(empty, InputGraphBlockIds, false);
+        SetInputBlocks(empty, InputRailBlockIds, false);
+        Assert.Equal(new Size(276, 260), ScaledInputStateSize(method, empty));
+        Assert.False(InputStateRenderModelBuilder.HasEnabledContent(empty));
+    }
+
+    [Fact]
     public void OverlayManagerPreservesExpandedStandingsHeightWithoutFreezingOtherSizes()
     {
         Assert.True(OverlayManager.ShouldPreserveExpandedOverlayHeight(
@@ -226,5 +256,46 @@ public sealed class OverlayContentColumnSettingsTests
     private static OverlayContentColumnDefinition Column(string id)
     {
         return OverlayContentColumnSettings.Standings.Columns.Single(column => column.Id == id);
+    }
+
+    private static readonly string[] InputGraphBlockIds =
+    [
+        OverlayContentColumnSettings.InputThrottleTraceBlockId,
+        OverlayContentColumnSettings.InputBrakeTraceBlockId,
+        OverlayContentColumnSettings.InputClutchTraceBlockId
+    ];
+
+    private static readonly string[] InputRailBlockIds =
+    [
+        OverlayContentColumnSettings.InputThrottleBlockId,
+        OverlayContentColumnSettings.InputBrakeBlockId,
+        OverlayContentColumnSettings.InputClutchBlockId,
+        OverlayContentColumnSettings.InputSteeringBlockId,
+        OverlayContentColumnSettings.InputGearBlockId,
+        OverlayContentColumnSettings.InputSpeedBlockId
+    ];
+
+    private static OverlaySettings NewInputStateSettings()
+    {
+        return new ApplicationSettings().GetOrAddOverlay(
+            InputStateOverlayDefinition.Definition.Id,
+            InputStateOverlayDefinition.Definition.DefaultWidth,
+            InputStateOverlayDefinition.Definition.DefaultHeight);
+    }
+
+    private static Size ScaledInputStateSize(MethodInfo method, OverlaySettings settings)
+    {
+        return (Size)method.Invoke(null, [InputStateOverlayDefinition.Definition, settings])!;
+    }
+
+    private static void SetInputBlocks(OverlaySettings settings, IEnumerable<string> blockIds, bool enabled)
+    {
+        Assert.NotNull(OverlayContentColumnSettings.InputState.Blocks);
+        var blocks = OverlayContentColumnSettings.InputState.Blocks!;
+        foreach (var blockId in blockIds)
+        {
+            var block = blocks.Single(block => block.Id == blockId);
+            settings.SetBooleanOption(block.EnabledOptionKey, enabled);
+        }
     }
 }

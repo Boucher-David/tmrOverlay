@@ -1,74 +1,49 @@
-const defaultInputSettings = {
-  showThrottle: true,
-  showBrake: true,
-  showClutch: true,
-  showSteering: true,
-  showGear: true,
-  showSpeed: true
-};
-let inputSettings = defaultInputSettings;
-let nextInputSettingsFetchAt = 0;
-const inputTrace = [];
-const maximumInputTracePoints = 180;
+let inputDisplayModel = null;
+let inputTrace = [];
 ensureInputStyle();
-const inputModel = window.TmrBrowserModel;
 
 TmrBrowserOverlay.register({
   async beforeRefresh() {
-    await refreshInputSettings();
+    inputDisplayModel = await fetchOverlayModel('input-state');
   },
-  render(live) {
-    const inputs = inputModel.inputs(live);
-    if (!inputModel.isPlayerInCar(live)) {
-      contentEl.innerHTML = '<div class="empty">Waiting for player in car.</div>';
-      setStatus(live, 'waiting for player in car');
+  render() {
+    const model = inputDisplayModel;
+    const inputs = model?.inputs || {};
+    inputTrace = Array.isArray(inputs.trace) ? inputs.trace : [];
+    const hasGraph = inputGraphEnabled(inputs);
+    const railEnabled = inputRailEnabled(inputs);
+    const hasContent = inputs.hasContent ?? (hasGraph || railEnabled);
+    applyInputOverlayLayoutClasses(hasGraph, railEnabled, hasContent);
+    if (!inputs.isAvailable || !hasContent) {
+      overlayEl.style.opacity = '0';
+      contentEl.innerHTML = `<div class="empty">${escapeHtml(model?.status || 'Waiting for player in car.')}</div>`;
+      renderHeaderItems(model, '');
+      renderFooterSource(model);
       return;
     }
 
-    if (inputs.hasData) {
-      appendInputTrace(inputs);
-    }
-
+    overlayEl.style.opacity = '1';
     const brakeAbsActive = inputs.brakeAbsActive === true;
-    const railEnabled = inputRailEnabled();
+    const layoutClass = [
+      'input-layout',
+      hasGraph ? '' : 'rail-only',
+      railEnabled ? '' : 'no-rail'
+    ].filter(Boolean).join(' ');
     contentEl.innerHTML = `
-      <div class="input-layout${railEnabled ? '' : ' no-rail'}">
-        <div class="input-graph-panel">
-          <canvas class="input-graph" aria-label="Input trace graph"></canvas>
-        </div>
+      <div class="${layoutClass}">
+        ${hasGraph ? `
+          <div class="input-graph-panel">
+            <canvas class="input-graph" aria-label="Input trace graph"></canvas>
+          </div>` : ''}
         ${railEnabled ? renderInputRail(inputs, brakeAbsActive) : ''}
       </div>`;
-    drawInputGraph(contentEl.querySelector('.input-graph'), inputs, brakeAbsActive);
-    setStatus(live, inputs.hasData ? `live | ${quality(inputs)}${brakeAbsActive ? ' | ABS' : ''}` : 'waiting for inputs');
+    if (hasGraph) {
+      drawInputGraph(contentEl.querySelector('.input-graph'), inputs);
+    }
+    renderHeaderItems(model, '');
+    renderFooterSource(model);
   }
 });
-
-async function refreshInputSettings() {
-  if (Date.now() < nextInputSettingsFetchAt) {
-    return;
-  }
-
-  nextInputSettingsFetchAt = Date.now() + 2000;
-  try {
-    const response = await fetch(TmrBrowserApiPath('/api/input-state'), { cache: 'no-store' });
-    if (!response.ok) return;
-    const payload = await response.json();
-    inputSettings = normalizeInputSettings(payload.inputStateSettings || inputSettings);
-  } catch {
-    inputSettings = defaultInputSettings;
-  }
-}
-
-function normalizeInputSettings(settings) {
-  return {
-    showThrottle: settings?.showThrottle ?? defaultInputSettings.showThrottle,
-    showBrake: settings?.showBrake ?? defaultInputSettings.showBrake,
-    showClutch: settings?.showClutch ?? defaultInputSettings.showClutch,
-    showSteering: settings?.showSteering ?? defaultInputSettings.showSteering,
-    showGear: settings?.showGear ?? defaultInputSettings.showGear,
-    showSpeed: settings?.showSpeed ?? defaultInputSettings.showSpeed
-  };
-}
 
 function ensureInputStyle() {
   if (document.getElementById('input-state-browser-style')) {
@@ -79,10 +54,19 @@ function ensureInputStyle() {
   style.id = 'input-state-browser-style';
   style.textContent = `
     body.input-state-page .overlay {
-      width: calc(100vw - 16px);
-      height: calc(100vh - 16px);
+      width: min(520px, calc(100vw - 16px));
+      height: min(260px, calc(100vh - 16px));
       min-width: 0;
-      max-width: none;
+      max-width: calc(100vw - 16px);
+    }
+
+    body.input-state-page .overlay.input-graph-only {
+      width: min(380px, calc(100vw - 16px));
+    }
+
+    body.input-state-page .overlay.input-rail-only,
+    body.input-state-page .overlay.input-empty {
+      width: min(276px, calc(100vw - 16px));
     }
 
     body.input-state-page .content {
@@ -93,8 +77,8 @@ function ensureInputStyle() {
 
     .input-layout {
       display: grid;
-      grid-template-columns: minmax(220px, 1fr) minmax(126px, 30%);
-      gap: 12px;
+      grid-template-columns: minmax(160px, 1fr) minmax(136px, 40%);
+      gap: 18px;
       width: 100%;
       height: 100%;
       min-width: 0;
@@ -102,6 +86,10 @@ function ensureInputStyle() {
 
     .input-layout.no-rail {
       grid-template-columns: minmax(220px, 1fr);
+    }
+
+    .input-layout.rail-only {
+      grid-template-columns: minmax(0, 1fr);
     }
 
     .input-graph-panel,
@@ -121,32 +109,49 @@ function ensureInputStyle() {
 
     .input-rail {
       display: grid;
-      grid-template-rows: auto auto minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr) auto;
       gap: 8px;
       padding: 8px;
       overflow: hidden;
       background: var(--tmr-surface-raised);
     }
 
-    .input-numbers {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(50px, 1fr));
-      gap: 6px;
+    .input-layout.rail-only .input-rail {
+      width: 100%;
+      justify-self: stretch;
     }
 
-    .input-number {
+    .input-bars,
+    .input-readouts {
       display: grid;
-      gap: 2px;
+      gap: 7px;
+    }
+
+    .input-readouts {
+      gap: 5px;
+    }
+
+    .input-bar,
+    .input-readout {
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr);
+      column-gap: 6px;
       min-width: 0;
-      padding: 4px 5px;
-      border: 1px solid var(--tmr-border-muted);
-      border-radius: 4px;
-      background: var(--tmr-surface-inset);
     }
 
-    .input-number .label,
-    .input-wheel-label,
-    .input-pedal-label {
+    .input-bar {
+      grid-template-rows: 15px 11px;
+      min-height: 25px;
+    }
+
+    .input-readout {
+      align-items: center;
+      min-height: 20px;
+    }
+
+    .input-bar-label,
+    .input-readout-label,
+    .input-wheel-label {
       color: var(--tmr-text-muted);
       font-size: 9px;
       font-weight: 800;
@@ -154,14 +159,42 @@ function ensureInputStyle() {
       white-space: nowrap;
     }
 
-    .input-number .value,
-    .input-wheel-value,
-    .input-pedal-value {
+    .input-bar-value,
+    .input-readout-value,
+    .input-wheel-value {
       color: var(--tmr-text);
       font-family: Consolas, "Courier New", monospace;
       font-size: 12px;
       font-weight: 800;
       white-space: nowrap;
+    }
+
+    .input-bar-track {
+      align-self: center;
+      position: relative;
+      height: 12px;
+      border-radius: 6px;
+      background: var(--tmr-surface-inset);
+      overflow: hidden;
+    }
+
+    .input-bar-track span {
+      position: absolute;
+      left: 0;
+      top: 0;
+      height: 100%;
+      border-radius: inherit;
+    }
+
+    .input-bar-value {
+      grid-column: 2;
+      color: var(--tmr-text-muted);
+      font-size: 9px;
+      text-align: right;
+    }
+
+    .input-readout-value {
+      text-align: right;
     }
 
     .input-wheel {
@@ -170,7 +203,7 @@ function ensureInputStyle() {
       grid-template-rows: 14px minmax(0, 1fr);
       column-gap: 8px;
       align-items: center;
-      min-height: 48px;
+      min-height: 0;
       overflow: hidden;
     }
 
@@ -183,104 +216,83 @@ function ensureInputStyle() {
       height: min(52px, 100%);
       max-height: 100%;
     }
-
-    .input-pedals {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(30px, 1fr));
-      gap: 6px;
-      min-height: 44px;
-    }
-
-    .input-pedal {
-      display: grid;
-      grid-template-rows: 15px minmax(20px, 1fr) 15px;
-      justify-items: center;
-      min-width: 0;
-    }
-
-    .input-pedal-track {
-      position: relative;
-      width: 14px;
-      min-height: 18px;
-      border-radius: 7px;
-      background: var(--tmr-surface-inset);
-      overflow: hidden;
-    }
-
-    .input-pedal-track span {
-      position: absolute;
-      left: 0;
-      bottom: 0;
-      width: 100%;
-    }
   `;
   document.head.appendChild(style);
 }
 
-function appendInputTrace(inputs) {
-  inputTrace.push({
-    throttle: clamp01(inputs.throttle),
-    brake: clamp01(inputs.brake),
-    clutch: clamp01(inputs.clutch),
-    brakeAbsActive: inputs.brakeAbsActive === true
-  });
-  if (inputTrace.length > maximumInputTracePoints) {
-    inputTrace.splice(0, inputTrace.length - maximumInputTracePoints);
-  }
+function applyInputOverlayLayoutClasses(hasGraph, hasRail, hasContent) {
+  overlayEl.classList.toggle('input-full', hasContent && hasGraph && hasRail);
+  overlayEl.classList.toggle('input-graph-only', hasContent && hasGraph && !hasRail);
+  overlayEl.classList.toggle('input-rail-only', hasContent && !hasGraph && hasRail);
+  overlayEl.classList.toggle('input-empty', !hasContent);
 }
 
-function inputRailEnabled() {
-  return inputSettings.showThrottle
-    || inputSettings.showBrake
-    || inputSettings.showClutch
-    || inputSettings.showSteering
-    || inputSettings.showGear
-    || inputSettings.showSpeed;
+function inputRailEnabled(inputs) {
+  if (typeof inputs.hasRail === 'boolean') {
+    return inputs.hasRail;
+  }
+
+  return inputs.showThrottle
+    || inputs.showBrake
+    || inputs.showClutch
+    || inputs.showSteering
+    || inputs.showGear
+    || inputs.showSpeed;
+}
+
+function inputGraphEnabled(inputs) {
+  if (typeof inputs.hasGraph === 'boolean') {
+    return inputs.hasGraph;
+  }
+
+  return inputs.showThrottleTrace
+    || inputs.showBrakeTrace
+    || inputs.showClutchTrace;
 }
 
 function renderInputRail(inputs, brakeAbsActive) {
-  const numbers = [
-    inputSettings.showGear ? railNumber('Gear', formatGear(inputs.gear)) : '',
-    inputSettings.showSpeed ? railNumber('Speed', formatSpeed(inputs.speedMetersPerSecond)) : ''
+  const bars = [
+    inputs.showThrottle ? railBar('THR', inputs.throttle, 'var(--tmr-green)') : '',
+    inputs.showBrake ? railBar(brakeAbsActive ? 'ABS' : 'BRK', inputs.brake, brakeAbsActive ? 'var(--tmr-amber)' : 'var(--tmr-error)') : '',
+    inputs.showClutch ? railBar('CLT', inputs.clutch, 'var(--tmr-cyan)') : ''
   ].filter(Boolean).join('');
-  const pedals = [
-    inputSettings.showThrottle ? railPedal('T', inputs.throttle, 'var(--tmr-green)') : '',
-    inputSettings.showBrake ? railPedal(brakeAbsActive ? 'ABS' : 'B', inputs.brake, brakeAbsActive ? 'var(--tmr-amber)' : 'var(--tmr-error)') : '',
-    inputSettings.showClutch ? railPedal('C', inputs.clutch, 'var(--tmr-cyan)') : ''
+  const readouts = [
+    inputs.showGear ? railReadout('GEAR', inputs.gearText || formatGear(inputs.gear)) : '',
+    inputs.showSpeed ? railReadout('SPD', inputs.speedText || '--') : ''
   ].filter(Boolean).join('');
   return `
     <div class="input-rail">
-      ${numbers ? `<div class="input-numbers">${numbers}</div>` : '<div></div>'}
-      ${inputSettings.showSteering ? renderWheel(inputs.steeringWheelAngle) : '<div></div>'}
-      ${pedals ? `<div class="input-pedals">${pedals}</div>` : '<div></div>'}
+      ${bars ? `<div class="input-bars">${bars}</div>` : ''}
+      ${inputs.showSteering ? renderWheel(inputs.steeringWheelAngle, inputs.steeringText) : ''}
+      ${readouts ? `<div class="input-readouts">${readouts}</div>` : ''}
     </div>`;
 }
 
-function railNumber(label, value) {
+function railReadout(label, value) {
   return `
-    <div class="input-number">
-      <div class="label">${escapeHtml(label)}</div>
-      <div class="value">${escapeHtml(value)}</div>
+    <div class="input-readout">
+      <div class="input-readout-label">${escapeHtml(label)}</div>
+      <div class="input-readout-value">${escapeHtml(value)}</div>
     </div>`;
 }
 
-function railPedal(label, value, color) {
+function railBar(label, value, color) {
   const normalized = clamp01(value);
   return `
-    <div class="input-pedal">
-      <div class="input-pedal-label">${escapeHtml(label)}</div>
-      <div class="input-pedal-track"><span style="height:${(normalized * 100).toFixed(0)}%; background:${color};"></span></div>
-      <div class="input-pedal-value">${formatPercent(Number.isFinite(value) ? normalized : null)}</div>
+    <div class="input-bar">
+      <div class="input-bar-label">${escapeHtml(label)}</div>
+      <div class="input-bar-track"><span style="width:${(normalized * 100).toFixed(0)}%; background:${color};"></span></div>
+      <div class="input-bar-value">${formatPercent(Number.isFinite(value) ? normalized : null)}</div>
     </div>`;
 }
 
-function renderWheel(angleRadians) {
+function renderWheel(angleRadians, angleText) {
   const angleDegrees = Number.isFinite(angleRadians) ? angleRadians * 180 / Math.PI : null;
   const displayDegrees = Number.isFinite(angleDegrees) ? angleDegrees : 0;
   return `
     <div class="input-wheel">
       <div class="input-wheel-label">Wheel</div>
-      <div class="input-wheel-value">${Number.isFinite(angleDegrees) ? `${formatSignedDegrees(angleDegrees)} deg` : '--'}</div>
+      <div class="input-wheel-value">${escapeHtml(angleText || (Number.isFinite(angleDegrees) ? `${formatSignedDegrees(angleDegrees)} deg` : '--'))}</div>
       <svg viewBox="0 0 64 64" aria-hidden="true">
         <circle cx="32" cy="32" r="25" fill="none" stroke="var(--tmr-text-secondary)" stroke-width="4"></circle>
         <g transform="rotate(${escapeAttribute(displayDegrees)} 32 32)" stroke="var(--tmr-cyan)" stroke-width="3" stroke-linecap="round">
@@ -292,7 +304,7 @@ function renderWheel(angleRadians) {
     </div>`;
 }
 
-function drawInputGraph(canvas, inputs, brakeAbsActive) {
+function drawInputGraph(canvas, inputs) {
   if (!canvas) {
     return;
   }
@@ -317,13 +329,15 @@ function drawInputGraph(canvas, inputs, brakeAbsActive) {
     ctx.stroke();
   }
 
-  drawTraceLine(ctx, width, height, 'throttle', themeColor('--tmr-green', '#62ff9f'), 2);
-  drawTraceLine(ctx, width, height, 'brake', themeColor('--tmr-error', '#ff6274'), 2);
-  drawTraceLine(ctx, width, height, 'clutch', themeColor('--tmr-cyan', '#00e8ff'), 2);
-  drawAbsSegments(ctx, width, height);
-  drawInputLegend(ctx, brakeAbsActive);
+  const series = inputGraphSeries(inputs);
+  for (const item of series) {
+    drawTraceLine(ctx, width, height, item.key, item.color, item.lineWidth);
+  }
+  if (inputs.showBrakeTrace) {
+    drawAbsSegments(ctx, width, height);
+  }
 
-  if (inputTrace.length < 2 && !inputs.hasData) {
+  if (inputTrace.length < 2 && !inputs.isAvailable) {
     ctx.fillStyle = themeColor('--tmr-text-muted', '#8caed4');
     ctx.font = '700 13px "Segoe UI", Arial, sans-serif';
     ctx.textAlign = 'center';
@@ -404,22 +418,12 @@ function drawAbsSegments(ctx, width, height) {
   }
 }
 
-function drawInputLegend(ctx, brakeAbsActive) {
-  const items = [
-    ['Throttle', themeColor('--tmr-green', '#62ff9f')],
-    [brakeAbsActive ? 'Brake ABS' : 'Brake', brakeAbsActive ? themeColor('--tmr-amber', '#ffd15b') : themeColor('--tmr-error', '#ff6274')],
-    ['Clutch', themeColor('--tmr-cyan', '#00e8ff')]
-  ];
-  let x = 8;
-  ctx.font = '700 11px "Segoe UI", Arial, sans-serif';
-  ctx.textBaseline = 'top';
-  for (const [label, color] of items) {
-    ctx.fillStyle = color;
-    ctx.fillRect(x, 14, 14, 3);
-    x += 18;
-    ctx.fillText(label, x, 7);
-    x += ctx.measureText(label).width + 14;
-  }
+function inputGraphSeries(inputs) {
+  return [
+    inputs.showThrottleTrace ? { key: 'throttle', label: 'Throttle', color: themeColor('--tmr-green', '#62ff9f'), lineWidth: 2 } : null,
+    inputs.showBrakeTrace ? { key: 'brake', label: 'Brake', color: themeColor('--tmr-error', '#ff6274'), lineWidth: 2 } : null,
+    inputs.showClutchTrace ? { key: 'clutch', label: 'Clutch', color: themeColor('--tmr-cyan', '#00e8ff'), lineWidth: 2 } : null
+  ].filter(Boolean);
 }
 
 function xForTracePoint(index, width) {

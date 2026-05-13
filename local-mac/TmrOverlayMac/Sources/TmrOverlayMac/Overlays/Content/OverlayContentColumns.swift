@@ -80,6 +80,9 @@ enum OverlayContentColumns {
     static let relativeGapColumnId = "relative.gap"
     static let relativePitColumnId = "relative.pit"
     static let standingsClassSeparatorBlockId = "standings.class-separators"
+    static let inputThrottleTraceBlockId = "input-state.trace-throttle"
+    static let inputBrakeTraceBlockId = "input-state.trace-brake"
+    static let inputClutchTraceBlockId = "input-state.trace-clutch"
     static let inputThrottleBlockId = "input-state.throttle"
     static let inputBrakeBlockId = "input-state.brake"
     static let inputClutchBlockId = "input-state.clutch"
@@ -149,8 +152,44 @@ enum OverlayContentColumns {
         fallbackColumnId: "",
         blocks: [
             OverlayContentBlockDefinition(
+                id: inputThrottleTraceBlockId,
+                label: "Throttle trace",
+                description: "Show the throttle line in the input graph.",
+                enabledOptionKey: "input-state.trace.throttle",
+                defaultEnabled: true,
+                countOptionKey: nil,
+                countLabel: nil,
+                defaultCount: 0,
+                minimumCount: 0,
+                maximumCount: 0
+            ),
+            OverlayContentBlockDefinition(
+                id: inputBrakeTraceBlockId,
+                label: "Brake trace",
+                description: "Show the brake line and ABS segments in the input graph.",
+                enabledOptionKey: "input-state.trace.brake",
+                defaultEnabled: true,
+                countOptionKey: nil,
+                countLabel: nil,
+                defaultCount: 0,
+                minimumCount: 0,
+                maximumCount: 0
+            ),
+            OverlayContentBlockDefinition(
+                id: inputClutchTraceBlockId,
+                label: "Clutch trace",
+                description: "Show the clutch line in the input graph.",
+                enabledOptionKey: "input-state.trace.clutch",
+                defaultEnabled: true,
+                countOptionKey: nil,
+                countLabel: nil,
+                defaultCount: 0,
+                minimumCount: 0,
+                maximumCount: 0
+            ),
+            OverlayContentBlockDefinition(
                 id: inputThrottleBlockId,
-                label: "Throttle",
+                label: "Throttle %",
                 description: "Show the live throttle percentage in the right-side input rail.",
                 enabledOptionKey: "input-state.current.throttle",
                 defaultEnabled: true,
@@ -162,7 +201,7 @@ enum OverlayContentColumns {
             ),
             OverlayContentBlockDefinition(
                 id: inputBrakeBlockId,
-                label: "Brake",
+                label: "Brake %",
                 description: "Show the live brake percentage in the right-side input rail.",
                 enabledOptionKey: "input-state.current.brake",
                 defaultEnabled: true,
@@ -174,7 +213,7 @@ enum OverlayContentColumns {
             ),
             OverlayContentBlockDefinition(
                 id: inputClutchBlockId,
-                label: "Clutch",
+                label: "Clutch %",
                 description: "Show the live clutch percentage in the right-side input rail.",
                 enabledOptionKey: "input-state.current.clutch",
                 defaultEnabled: true,

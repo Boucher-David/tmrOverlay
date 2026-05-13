@@ -34,7 +34,9 @@ export const pages = {
   'input-state': pageDefinition('input-state', 'Inputs', '/overlays/input-state', {
     aliases: ['/overlays/inputs'],
     bodyClass: 'input-state-page',
+    renderWhenTelemetryUnavailable: true,
     fadeWhenTelemetryUnavailable: true,
+    refreshIntervalMilliseconds: 50,
     modelRoute: '/api/overlay-model/input-state',
     settingsRoute: '/api/input-state',
     settingsProperty: 'inputStateSettings'
@@ -219,7 +221,7 @@ function pageDefinition(id, title, route, options = {}) {
       renderWhenTelemetryUnavailable: options.renderWhenTelemetryUnavailable ?? false,
       fadeWhenTelemetryUnavailable: options.fadeWhenTelemetryUnavailable ?? false,
       refreshIntervalMilliseconds: options.refreshIntervalMilliseconds ?? 250,
-      forwardQueryParameters: options.forwardQueryParameters ?? ['preview', 'frame', 'rel', 'spoofFocus', 'focus', 'pitService']
+      forwardQueryParameters: options.forwardQueryParameters ?? ['preview', 'frame', 'rel', 'spoofFocus', 'focus', 'pitService', 'sourceStart', 'sourceEnd', 'frameStart', 'frameEnd', 'replaySpeed']
     }
   };
 }
@@ -247,9 +249,108 @@ function defaultDisplayModel(page, live, settings) {
       return garageCoverDisplayModel(page, live, settings);
     case 'stream-chat':
       return streamChatDisplayModel(page, settings);
+    case 'input-state':
+      return inputStateDisplayModel(page, live, settings);
     default:
       return emptyDisplayModel(page.page.id, page.title);
   }
+}
+
+function inputStateDisplayModel(page, live, settings) {
+  const inputs = live?.models?.inputs || {};
+  const unitSystem = normalizeUnitSystem(settings?.unitSystem ?? settings?.general?.unitSystem);
+  const inCar = isPlayerInCar(live);
+  const isAvailable = inCar && inputs.hasData === true;
+  const brakeAbsActive = inputs.brakeAbsActive === true;
+  const gearText = formatInputGear(inputs.gear);
+  const showThrottleTrace = settings.showThrottleTrace ?? true;
+  const showBrakeTrace = settings.showBrakeTrace ?? true;
+  const showClutchTrace = settings.showClutchTrace ?? true;
+  const showThrottle = settings.showThrottle ?? true;
+  const showBrake = settings.showBrake ?? true;
+  const showClutch = settings.showClutch ?? true;
+  const showSteering = settings.showSteering ?? true;
+  const showGear = settings.showGear ?? true;
+  const showSpeed = settings.showSpeed ?? true;
+  const hasGraph = showThrottleTrace || showBrakeTrace || showClutchTrace;
+  const hasRail = showThrottle || showBrake || showClutch || showSteering || showGear || showSpeed;
+  const hasContent = hasGraph || hasRail;
+  const status = !inCar
+    ? 'waiting for player in car'
+    : !inputs.hasData
+      ? 'waiting for car telemetry'
+      : hasContent
+        ? [gearText, brakeAbsActive ? 'ABS' : null].filter(Boolean).join(' | ')
+        : 'no input content enabled';
+  return {
+    ...emptyDisplayModel(page.page.id, page.title),
+    status,
+    source: '',
+    headerItems: [],
+    bodyKind: 'inputs',
+    inputs: {
+      isAvailable,
+      throttle: inputs.throttle,
+      brake: inputs.brake,
+      clutch: inputs.clutch,
+      steeringWheelAngle: inputs.steeringWheelAngle,
+      speedMetersPerSecond: inputs.speedMetersPerSecond,
+      gear: inputs.gear,
+      speedText: formatInputSpeed(inputs.speedMetersPerSecond, unitSystem),
+      gearText,
+      steeringText: Number.isFinite(inputs.steeringWheelAngle)
+        ? `${Math.round(inputs.steeringWheelAngle * 180 / Math.PI)} deg`
+        : '--',
+      brakeAbsActive,
+      showThrottleTrace,
+      showBrakeTrace,
+      showClutchTrace,
+      showThrottle,
+      showBrake,
+      showClutch,
+      showSteering,
+      showGear,
+      showSpeed,
+      hasGraph,
+      hasRail,
+      hasContent,
+      sampleIntervalMilliseconds: 50,
+      maximumTracePoints: 180,
+      trace: isAvailable
+        ? Array.isArray(inputs.trace)
+          ? inputs.trace
+          : [{
+            throttle: clamp01(inputs.throttle),
+            brake: clamp01(inputs.brake),
+            clutch: clamp01(inputs.clutch),
+            brakeAbsActive
+          }]
+        : []
+    }
+  };
+}
+
+function normalizeUnitSystem(value) {
+  return String(value || '').trim().toLowerCase() === 'imperial'
+    ? 'Imperial'
+    : 'Metric';
+}
+
+function formatInputSpeed(metersPerSecond, unitSystem) {
+  if (!Number.isFinite(metersPerSecond)) return '--';
+  return unitSystem === 'Imperial'
+    ? `${Math.round(metersPerSecond * 2.2369362921)} mph`
+    : `${Math.round(metersPerSecond * 3.6)} km/h`;
+}
+
+function formatInputGear(value) {
+  if (value === -1) return 'R';
+  if (value === 0) return 'N';
+  return Number.isFinite(value) ? String(value) : '--';
+}
+
+function clamp01(value) {
+  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
 }
 
 function carRadarDisplayModel(page, live) {

@@ -357,7 +357,46 @@ function browserScenarios() {
       assert: ({ document }) => {
         expect(document.querySelector('.input-graph')).not.toBeNull();
         expect(document.body.textContent).toContain('ABS');
-        expect(document.getElementById('status').textContent).toContain('ABS');
+        expect(document.getElementById('status').textContent).toBe('');
+      }
+    },
+    {
+      id: 'input-state',
+      fixture: () => ({
+        live: freshLiveSnapshot({
+          raceEvents: { hasData: true, isOnTrack: true, isInGarage: false },
+          inputs: {
+            hasData: true,
+            quality: 'raw',
+            throttle: 0.72,
+            brake: 1,
+            clutch: 0.4,
+            steeringWheelAngle: 0.25,
+            gear: 3,
+            speedMetersPerSecond: 64,
+            brakeAbsActive: true
+          }
+        }),
+        settings: {
+          showThrottleTrace: true,
+          showBrakeTrace: false,
+          showClutchTrace: true,
+          showThrottle: false,
+          showBrake: false,
+          showClutch: false,
+          showSteering: true,
+          showGear: false,
+          showSpeed: true
+        },
+        waitForSelector: '.input-layout'
+      }),
+      assert: ({ document }) => {
+        expect(document.querySelector('.input-graph')).not.toBeNull();
+        expect(document.querySelector('.input-rail')).not.toBeNull();
+        expect(document.querySelectorAll('.input-bar')).toHaveLength(0);
+        expect(contentText(document)).toContain('Wheel');
+        expect(contentText(document)).toContain('SPD');
+        expect(contentText(document)).not.toContain('ABS');
       }
     },
     {

@@ -52,6 +52,9 @@ internal static class AppSettingsMigrator
         OverlayOptionKeys.RelativeCarsEachSide,
         OverlayOptionKeys.RelativeCarsAhead,
         OverlayOptionKeys.RelativeCarsBehind,
+        OverlayOptionKeys.InputShowThrottleTrace,
+        OverlayOptionKeys.InputShowBrakeTrace,
+        OverlayOptionKeys.InputShowClutchTrace,
         OverlayOptionKeys.InputShowThrottle,
         OverlayOptionKeys.InputShowBrake,
         OverlayOptionKeys.InputShowClutch,
@@ -187,6 +190,9 @@ internal static class AppSettingsMigrator
                 NormalizeRelativeCarsEachSide(overlay);
                 break;
             case "input-state":
+                EnsureOption(overlay, OverlayOptionKeys.InputShowThrottleTrace, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.InputShowBrakeTrace, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.InputShowClutchTrace, defaultValue: true);
                 EnsureOption(overlay, OverlayOptionKeys.InputShowThrottle, defaultValue: true);
                 EnsureOption(overlay, OverlayOptionKeys.InputShowBrake, defaultValue: true);
                 EnsureOption(overlay, OverlayOptionKeys.InputShowClutch, defaultValue: true);
@@ -251,7 +257,10 @@ internal static class AppSettingsMigrator
                 or OverlayOptionKeys.RelativeCarsAhead
                 or OverlayOptionKeys.RelativeCarsBehind,
             "input-state" => key is
-                OverlayOptionKeys.InputShowThrottle
+                OverlayOptionKeys.InputShowThrottleTrace
+                or OverlayOptionKeys.InputShowBrakeTrace
+                or OverlayOptionKeys.InputShowClutchTrace
+                or OverlayOptionKeys.InputShowThrottle
                 or OverlayOptionKeys.InputShowBrake
                 or OverlayOptionKeys.InputShowClutch
                 or OverlayOptionKeys.InputShowSteering

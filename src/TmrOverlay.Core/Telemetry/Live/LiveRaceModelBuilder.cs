@@ -1580,7 +1580,7 @@ internal static class LiveRaceModelBuilder
         var speed = IsFinite(sample.SpeedMetersPerSecond) ? sample.SpeedMetersPerSecond : (double?)null;
         var throttle = ValidUnitInterval(sample.Throttle);
         var brake = ValidUnitInterval(sample.Brake);
-        var clutch = SelectClutchInput(sample.Clutch, sample.ClutchRaw);
+        var clutch = SelectClutchControlInput(sample.Clutch, sample.ClutchRaw);
         var steering = sample.SteeringWheelAngle is { } steeringValue && IsFinite(steeringValue) ? steeringValue : (double?)null;
         var gear = sample.Gear is >= -1 and <= 20 ? sample.Gear : null;
         var rpm = ValidNonNegative(sample.Rpm);
@@ -1626,13 +1626,14 @@ internal static class LiveRaceModelBuilder
             OilPressureBar: oilPressure);
     }
 
-    private static double? SelectClutchInput(double? normalizedClutch, double? rawClutch)
+    private static double? SelectClutchControlInput(double? normalizedClutch, double? rawClutch)
     {
         var raw = ValidUnitInterval(rawClutch);
         var normalized = ValidUnitInterval(normalizedClutch);
-        return raw is > 0.001d
-            ? raw
-            : normalized ?? raw;
+        var engagement = raw ?? normalized;
+        return engagement is null
+            ? null
+            : 1d - engagement.Value;
     }
 
     private static void AddKnownRow(
