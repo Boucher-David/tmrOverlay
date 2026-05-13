@@ -55,7 +55,7 @@ internal sealed class BrowserOverlayModelFactory
     private const int GapOnTrackSurface = 3;
     private readonly SessionHistoryQueryService _historyQueryService;
     private readonly Func<LiveTelemetrySnapshot, DateTimeOffset, string, SimpleTelemetryOverlayViewModel> _sessionWeatherBuilder;
-    private readonly Func<LiveTelemetrySnapshot, DateTimeOffset, string, SimpleTelemetryOverlayViewModel> _pitServiceBuilder;
+    private readonly PitServiceOverlayViewModel.StatefulBuilder _pitServiceBuilder;
     private readonly List<double> _gapPoints = [];
     private readonly Dictionary<int, List<BrowserGapTrendPoint>> _gapSeries = [];
     private readonly List<BrowserGapWeatherPoint> _gapWeather = [];
@@ -80,7 +80,7 @@ internal sealed class BrowserOverlayModelFactory
     {
         _historyQueryService = historyQueryService;
         _sessionWeatherBuilder = SessionWeatherOverlayViewModel.CreateBuilder();
-        _pitServiceBuilder = PitServiceOverlayViewModel.CreateBuilder();
+        _pitServiceBuilder = PitServiceOverlayViewModel.CreateStatefulBuilder();
     }
 
     public bool TryBuild(
@@ -117,8 +117,8 @@ internal sealed class BrowserOverlayModelFactory
         }
         else if (string.Equals(overlayId, PitServiceOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
-            var viewModel = _pitServiceBuilder(snapshot, now, unitSystem);
             var overlay = FindOverlay(settings, PitServiceOverlayDefinition.Definition.Id);
+            var viewModel = _pitServiceBuilder.Build(snapshot, now, unitSystem, overlay);
             var headerItems = HeaderItems(overlay, snapshot, viewModel.Status);
             model = FromSimple(
                 PitServiceOverlayDefinition.Definition.Id,
@@ -359,7 +359,25 @@ internal sealed class BrowserOverlayModelFactory
                     row.Value,
                     ToneName(row.Tone)))
                 .ToArray(),
-            headerItems);
+            headerItems,
+            GridSectionsFrom(viewModel.Sections));
+    }
+
+    private static IReadOnlyList<BrowserOverlayGridSection> GridSectionsFrom(
+        IReadOnlyList<SimpleTelemetryGridSectionViewModel> sections)
+    {
+        return sections
+            .Where(section => section.Rows.Count > 0)
+            .Select(section => new BrowserOverlayGridSection(
+                section.Title,
+                section.Headers,
+                section.Rows.Select(row => new BrowserOverlayGridRow(
+                    row.Label,
+                    row.Cells.Select(cell => new BrowserOverlayGridCell(
+                        cell.Value,
+                        ToneName(cell.Tone))).ToArray(),
+                    ToneName(row.Tone))).ToArray()))
+            .ToArray();
     }
 
     private BrowserOverlayDisplayModel BuildGapToLeader(LiveTelemetrySnapshot snapshot, ApplicationSettings settings, DateTimeOffset now)
@@ -2136,7 +2154,8 @@ internal sealed record BrowserOverlayDisplayModel(
     BrowserCarRadarModel? CarRadar = null,
     BrowserTrackMapModel? TrackMap = null,
     BrowserGarageCoverModel? GarageCover = null,
-    BrowserStreamChatModel? StreamChat = null)
+    BrowserStreamChatModel? StreamChat = null,
+    IReadOnlyList<BrowserOverlayGridSection>? GridSections = null)
 {
     public static BrowserOverlayDisplayModel Table(
         string overlayId,
@@ -2166,7 +2185,8 @@ internal sealed record BrowserOverlayDisplayModel(
         string status,
         string source,
         IReadOnlyList<BrowserOverlayMetricRow> metrics,
-        IReadOnlyList<BrowserOverlayHeaderItem>? headerItems = null)
+        IReadOnlyList<BrowserOverlayHeaderItem>? headerItems = null,
+        IReadOnlyList<BrowserOverlayGridSection>? gridSections = null)
     {
         return new BrowserOverlayDisplayModel(
             overlayId,
@@ -2178,7 +2198,8 @@ internal sealed record BrowserOverlayDisplayModel(
             [],
             metrics,
             [],
-            headerItems ?? []);
+            headerItems ?? [],
+            GridSections: gridSections);
     }
 }
 
@@ -2448,6 +2469,20 @@ internal sealed record BrowserOverlayHeaderItem(
 
 internal sealed record BrowserOverlayMetricRow(
     string Label,
+    string Value,
+    string Tone);
+
+internal sealed record BrowserOverlayGridSection(
+    string Title,
+    IReadOnlyList<string> Headers,
+    IReadOnlyList<BrowserOverlayGridRow> Rows);
+
+internal sealed record BrowserOverlayGridRow(
+    string Label,
+    IReadOnlyList<BrowserOverlayGridCell> Cells,
+    string Tone);
+
+internal sealed record BrowserOverlayGridCell(
     string Value,
     string Tone);
 

@@ -746,8 +746,28 @@ internal sealed record LiveFuelPitModel(
     double? PitServiceFuelLiters,
     double? PitRepairLeftSeconds,
     double? PitOptRepairLeftSeconds,
+    int? PlayerCarDryTireSetLimit,
     int? TireSetsUsed,
+    int? TireSetsAvailable,
+    int? LeftTireSetsUsed,
+    int? RightTireSetsUsed,
+    int? FrontTireSetsUsed,
+    int? RearTireSetsUsed,
+    int? LeftTireSetsAvailable,
+    int? RightTireSetsAvailable,
+    int? FrontTireSetsAvailable,
+    int? RearTireSetsAvailable,
+    int? LeftFrontTiresUsed,
+    int? RightFrontTiresUsed,
+    int? LeftRearTiresUsed,
+    int? RightRearTiresUsed,
+    int? LeftFrontTiresAvailable,
+    int? RightFrontTiresAvailable,
+    int? LeftRearTiresAvailable,
+    int? RightRearTiresAvailable,
+    int? RequestedTireCompound,
     int? FastRepairUsed,
+    int? FastRepairAvailable,
     int? TeamFastRepairsUsed)
 {
     public static LiveFuelPitModel Empty { get; } = new(
@@ -767,8 +787,28 @@ internal sealed record LiveFuelPitModel(
         PitServiceFuelLiters: null,
         PitRepairLeftSeconds: null,
         PitOptRepairLeftSeconds: null,
+        PlayerCarDryTireSetLimit: null,
         TireSetsUsed: null,
+        TireSetsAvailable: null,
+        LeftTireSetsUsed: null,
+        RightTireSetsUsed: null,
+        FrontTireSetsUsed: null,
+        RearTireSetsUsed: null,
+        LeftTireSetsAvailable: null,
+        RightTireSetsAvailable: null,
+        FrontTireSetsAvailable: null,
+        RearTireSetsAvailable: null,
+        LeftFrontTiresUsed: null,
+        RightFrontTiresUsed: null,
+        LeftRearTiresUsed: null,
+        RightRearTiresUsed: null,
+        LeftFrontTiresAvailable: null,
+        RightFrontTiresAvailable: null,
+        LeftRearTiresAvailable: null,
+        RightRearTiresAvailable: null,
+        RequestedTireCompound: null,
         FastRepairUsed: null,
+        FastRepairAvailable: null,
         TeamFastRepairsUsed: null);
 }
 
@@ -807,24 +847,33 @@ internal sealed record LivePitServiceModel(
         var request = LivePitServiceRequest.FromFlags(
             fuelPit.PitServiceFlags,
             fuelPit.PitServiceFuelLiters,
-            requestedTireCompoundIndex: null,
-            requestedTireCompoundLabel: null,
-            requestedTireCompoundShortLabel: null);
+            fuelPit.RequestedTireCompound,
+            LabelFor(tireCompounds, fuelPit.RequestedTireCompound),
+            ShortLabelFor(tireCompounds, fuelPit.RequestedTireCompound));
         var tires = new LivePitServiceTireState(
             RequestedTireCount: request.RequestedTireCount,
+            DryTireSetLimit: ValidNonNegative(fuelPit.PlayerCarDryTireSetLimit),
             TireSetsUsed: ValidNonNegative(fuelPit.TireSetsUsed),
-            TireSetsAvailable: null,
-            LeftTireSetsUsed: null,
-            RightTireSetsUsed: null,
-            FrontTireSetsUsed: null,
-            RearTireSetsUsed: null,
-            LeftFrontTiresUsed: null,
-            RightFrontTiresUsed: null,
-            LeftRearTiresUsed: null,
-            RightRearTiresUsed: null,
-            RequestedCompoundIndex: null,
-            RequestedCompoundLabel: null,
-            RequestedCompoundShortLabel: null,
+            TireSetsAvailable: ValidNonNegative(fuelPit.TireSetsAvailable),
+            LeftTireSetsUsed: ValidNonNegative(fuelPit.LeftTireSetsUsed),
+            RightTireSetsUsed: ValidNonNegative(fuelPit.RightTireSetsUsed),
+            FrontTireSetsUsed: ValidNonNegative(fuelPit.FrontTireSetsUsed),
+            RearTireSetsUsed: ValidNonNegative(fuelPit.RearTireSetsUsed),
+            LeftTireSetsAvailable: ValidNonNegative(fuelPit.LeftTireSetsAvailable),
+            RightTireSetsAvailable: ValidNonNegative(fuelPit.RightTireSetsAvailable),
+            FrontTireSetsAvailable: ValidNonNegative(fuelPit.FrontTireSetsAvailable),
+            RearTireSetsAvailable: ValidNonNegative(fuelPit.RearTireSetsAvailable),
+            LeftFrontTiresUsed: ValidNonNegative(fuelPit.LeftFrontTiresUsed),
+            RightFrontTiresUsed: ValidNonNegative(fuelPit.RightFrontTiresUsed),
+            LeftRearTiresUsed: ValidNonNegative(fuelPit.LeftRearTiresUsed),
+            RightRearTiresUsed: ValidNonNegative(fuelPit.RightRearTiresUsed),
+            LeftFrontTiresAvailable: ValidNonNegative(fuelPit.LeftFrontTiresAvailable),
+            RightFrontTiresAvailable: ValidNonNegative(fuelPit.RightFrontTiresAvailable),
+            LeftRearTiresAvailable: ValidNonNegative(fuelPit.LeftRearTiresAvailable),
+            RightRearTiresAvailable: ValidNonNegative(fuelPit.RightRearTiresAvailable),
+            RequestedCompoundIndex: request.RequestedTireCompoundIndex,
+            RequestedCompoundLabel: request.RequestedTireCompoundLabel,
+            RequestedCompoundShortLabel: request.RequestedTireCompoundShortLabel,
             CurrentCompoundIndex: tireCompounds.PlayerCar?.CompoundIndex,
             CurrentCompoundLabel: tireCompounds.PlayerCar?.Label,
             CurrentCompoundShortLabel: tireCompounds.PlayerCar?.ShortLabel,
@@ -854,13 +903,27 @@ internal sealed record LivePitServiceModel(
             FastRepair: new LivePitServiceFastRepairState(
                 Selected: request.FastRepair,
                 LocalUsed: ValidNonNegative(fuelPit.FastRepairUsed),
-                LocalAvailable: null,
+                LocalAvailable: ValidNonNegative(fuelPit.FastRepairAvailable),
                 TeamUsed: ValidNonNegative(fuelPit.TeamFastRepairsUsed)));
     }
 
     private static int? ValidNonNegative(int? value)
     {
         return value is >= 0 ? value : null;
+    }
+
+    private static string? LabelFor(LiveTireCompoundModel tireCompounds, int? index)
+    {
+        return index is { } value
+            ? tireCompounds.Definitions.FirstOrDefault(definition => definition.Index == value)?.Label
+            : null;
+    }
+
+    private static string? ShortLabelFor(LiveTireCompoundModel tireCompounds, int? index)
+    {
+        return index is { } value
+            ? tireCompounds.Definitions.FirstOrDefault(definition => definition.Index == value)?.ShortLabel
+            : null;
     }
 }
 
@@ -945,16 +1008,25 @@ internal sealed record LivePitServiceRepairState(
 
 internal sealed record LivePitServiceTireState(
     int RequestedTireCount,
+    int? DryTireSetLimit,
     int? TireSetsUsed,
     int? TireSetsAvailable,
     int? LeftTireSetsUsed,
     int? RightTireSetsUsed,
     int? FrontTireSetsUsed,
     int? RearTireSetsUsed,
+    int? LeftTireSetsAvailable,
+    int? RightTireSetsAvailable,
+    int? FrontTireSetsAvailable,
+    int? RearTireSetsAvailable,
     int? LeftFrontTiresUsed,
     int? RightFrontTiresUsed,
     int? LeftRearTiresUsed,
     int? RightRearTiresUsed,
+    int? LeftFrontTiresAvailable,
+    int? RightFrontTiresAvailable,
+    int? LeftRearTiresAvailable,
+    int? RightRearTiresAvailable,
     int? RequestedCompoundIndex,
     string? RequestedCompoundLabel,
     string? RequestedCompoundShortLabel,
@@ -972,16 +1044,25 @@ internal sealed record LivePitServiceTireState(
 {
     public static LivePitServiceTireState Empty { get; } = new(
         RequestedTireCount: 0,
+        DryTireSetLimit: null,
         TireSetsUsed: null,
         TireSetsAvailable: null,
         LeftTireSetsUsed: null,
         RightTireSetsUsed: null,
         FrontTireSetsUsed: null,
         RearTireSetsUsed: null,
+        LeftTireSetsAvailable: null,
+        RightTireSetsAvailable: null,
+        FrontTireSetsAvailable: null,
+        RearTireSetsAvailable: null,
         LeftFrontTiresUsed: null,
         RightFrontTiresUsed: null,
         LeftRearTiresUsed: null,
         RightRearTiresUsed: null,
+        LeftFrontTiresAvailable: null,
+        RightFrontTiresAvailable: null,
+        LeftRearTiresAvailable: null,
+        RightRearTiresAvailable: null,
         RequestedCompoundIndex: null,
         RequestedCompoundLabel: null,
         RequestedCompoundShortLabel: null,

@@ -5,6 +5,7 @@ using TmrOverlay.App.Overlays.BrowserSources;
 using TmrOverlay.App.Overlays.Content;
 using TmrOverlay.App.Overlays.Relative;
 using TmrOverlay.App.Overlays.Standings;
+using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 using Xunit;
 
@@ -201,6 +202,25 @@ public sealed class OverlayContentColumnSettingsTests
             dataKey => Assert.Equal(OverlayContentColumnSettings.DataRelativePosition, dataKey),
             dataKey => Assert.Equal(OverlayContentColumnSettings.DataDriver, dataKey),
             dataKey => Assert.Equal(OverlayContentColumnSettings.DataGap, dataKey));
+    }
+
+    [Fact]
+    public void PitServiceContentDefinitionExposesTireAnalysisToggles()
+    {
+        Assert.True(OverlayContentColumnSettings.TryGetContentDefinition("pit-service", out var definition));
+        Assert.Empty(definition.Columns);
+        Assert.Contains(OverlayContentColumnSettings.All, item => item.OverlayId == "pit-service");
+        Assert.Collection(
+            definition.Blocks ?? [],
+            block => Assert.Equal(OverlayOptionKeys.PitServiceShowTireCompound, block.EnabledOptionKey),
+            block => Assert.Equal(OverlayOptionKeys.PitServiceShowTireChange, block.EnabledOptionKey),
+            block => Assert.Equal(OverlayOptionKeys.PitServiceShowTireSetLimit, block.EnabledOptionKey),
+            block => Assert.Equal(OverlayOptionKeys.PitServiceShowTireSetsAvailable, block.EnabledOptionKey),
+            block => Assert.Equal(OverlayOptionKeys.PitServiceShowTireSetsUsed, block.EnabledOptionKey),
+            block => Assert.Equal(OverlayOptionKeys.PitServiceShowTirePressure, block.EnabledOptionKey),
+            block => Assert.Equal(OverlayOptionKeys.PitServiceShowTireTemperature, block.EnabledOptionKey),
+            block => Assert.Equal(OverlayOptionKeys.PitServiceShowTireWear, block.EnabledOptionKey),
+            block => Assert.Equal(OverlayOptionKeys.PitServiceShowTireDistance, block.EnabledOptionKey));
     }
 
     private static OverlayContentColumnDefinition Column(string id)

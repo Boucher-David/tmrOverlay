@@ -107,8 +107,27 @@ internal static class LiveModelParityAnalyzer
         CompareNullableDouble(observations, "pit", "pit-service-fuel-liters", ValidNonNegative(sample.PitServiceFuelLiters), model.Request.FuelLiters, FuelTolerance);
         CompareNullableDouble(observations, "pit", "pit-repair-left-seconds", ValidNonNegative(sample.PitRepairLeftSeconds), model.Repair.RequiredSeconds, SecondsTolerance);
         CompareNullableDouble(observations, "pit", "pit-opt-repair-left-seconds", ValidNonNegative(sample.PitOptRepairLeftSeconds), model.Repair.OptionalSeconds, SecondsTolerance);
+        CompareNullableInt(observations, "pit", "player-car-dry-tire-set-limit", sample.PlayerCarDryTireSetLimit is >= 0 ? sample.PlayerCarDryTireSetLimit : null, model.Tires.DryTireSetLimit);
         CompareNullableInt(observations, "pit", "tire-sets-used", sample.TireSetsUsed is >= 0 ? sample.TireSetsUsed : null, model.Tires.TireSetsUsed);
+        CompareNullableInt(observations, "pit", "tire-sets-available", sample.TireSetsAvailable is >= 0 ? sample.TireSetsAvailable : null, model.Tires.TireSetsAvailable);
+        CompareNullableInt(observations, "pit", "left-tire-sets-used", sample.LeftTireSetsUsed is >= 0 ? sample.LeftTireSetsUsed : null, model.Tires.LeftTireSetsUsed);
+        CompareNullableInt(observations, "pit", "right-tire-sets-used", sample.RightTireSetsUsed is >= 0 ? sample.RightTireSetsUsed : null, model.Tires.RightTireSetsUsed);
+        CompareNullableInt(observations, "pit", "front-tire-sets-used", sample.FrontTireSetsUsed is >= 0 ? sample.FrontTireSetsUsed : null, model.Tires.FrontTireSetsUsed);
+        CompareNullableInt(observations, "pit", "rear-tire-sets-used", sample.RearTireSetsUsed is >= 0 ? sample.RearTireSetsUsed : null, model.Tires.RearTireSetsUsed);
+        CompareNullableInt(observations, "pit", "left-tire-sets-available", sample.LeftTireSetsAvailable is >= 0 ? sample.LeftTireSetsAvailable : null, model.Tires.LeftTireSetsAvailable);
+        CompareNullableInt(observations, "pit", "right-tire-sets-available", sample.RightTireSetsAvailable is >= 0 ? sample.RightTireSetsAvailable : null, model.Tires.RightTireSetsAvailable);
+        CompareNullableInt(observations, "pit", "front-tire-sets-available", sample.FrontTireSetsAvailable is >= 0 ? sample.FrontTireSetsAvailable : null, model.Tires.FrontTireSetsAvailable);
+        CompareNullableInt(observations, "pit", "rear-tire-sets-available", sample.RearTireSetsAvailable is >= 0 ? sample.RearTireSetsAvailable : null, model.Tires.RearTireSetsAvailable);
+        CompareNullableInt(observations, "pit", "left-front-tires-used", sample.LeftFrontTiresUsed is >= 0 ? sample.LeftFrontTiresUsed : null, model.Tires.LeftFrontTiresUsed);
+        CompareNullableInt(observations, "pit", "right-front-tires-used", sample.RightFrontTiresUsed is >= 0 ? sample.RightFrontTiresUsed : null, model.Tires.RightFrontTiresUsed);
+        CompareNullableInt(observations, "pit", "left-rear-tires-used", sample.LeftRearTiresUsed is >= 0 ? sample.LeftRearTiresUsed : null, model.Tires.LeftRearTiresUsed);
+        CompareNullableInt(observations, "pit", "right-rear-tires-used", sample.RightRearTiresUsed is >= 0 ? sample.RightRearTiresUsed : null, model.Tires.RightRearTiresUsed);
+        CompareNullableInt(observations, "pit", "left-front-tires-available", sample.LeftFrontTiresAvailable is >= 0 ? sample.LeftFrontTiresAvailable : null, model.Tires.LeftFrontTiresAvailable);
+        CompareNullableInt(observations, "pit", "right-front-tires-available", sample.RightFrontTiresAvailable is >= 0 ? sample.RightFrontTiresAvailable : null, model.Tires.RightFrontTiresAvailable);
+        CompareNullableInt(observations, "pit", "left-rear-tires-available", sample.LeftRearTiresAvailable is >= 0 ? sample.LeftRearTiresAvailable : null, model.Tires.LeftRearTiresAvailable);
+        CompareNullableInt(observations, "pit", "right-rear-tires-available", sample.RightRearTiresAvailable is >= 0 ? sample.RightRearTiresAvailable : null, model.Tires.RightRearTiresAvailable);
         CompareNullableInt(observations, "pit", "fast-repair-used", sample.FastRepairUsed is >= 0 ? sample.FastRepairUsed : null, model.FastRepair.LocalUsed);
+        CompareNullableInt(observations, "pit", "fast-repair-available", sample.FastRepairAvailable is >= 0 ? sample.FastRepairAvailable : null, model.FastRepair.LocalAvailable);
         CompareNullableInt(observations, "pit", "team-fast-repairs-used", sample.TeamFastRepairsUsed is >= 0 ? sample.TeamFastRepairsUsed : null, model.FastRepair.TeamUsed);
     }
 

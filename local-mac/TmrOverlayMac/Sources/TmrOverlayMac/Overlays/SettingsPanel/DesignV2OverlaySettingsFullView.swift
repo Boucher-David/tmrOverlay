@@ -387,6 +387,13 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
                 rowHeight: 22,
                 rowGap: 3
             )
+        case "pit-service":
+            addContentBlockToggleControls(
+                definition: OverlayContentColumns.pitService,
+                rect: NSRect(x: 306, y: 272, width: 834, height: 304),
+                rowHeight: 22,
+                rowGap: 3
+            )
         case "car-radar":
             addMatrixCheckControl(
                 rowIndex: 1,
@@ -771,6 +778,8 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
             drawStreamChatContentRegion()
         case "input-state":
             drawInputStateContentRegion()
+        case "pit-service":
+            drawPitServiceContentRegion()
         case "car-radar":
             drawCarRadarContentRegion()
         case "flags":
@@ -864,6 +873,16 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
             title: "Content Display",
             rows: contentBlockRows(definition: OverlayContentColumns.inputState),
             rect: NSRect(x: 306, y: 272, width: 834, height: 236),
+            rowHeight: 22,
+            rowGap: 3
+        )
+    }
+
+    private func drawPitServiceContentRegion() {
+        drawContentMatrix(
+            title: "Tire Analysis Rows",
+            rows: contentBlockRows(definition: OverlayContentColumns.pitService),
+            rect: NSRect(x: 306, y: 272, width: 834, height: 304),
             rowHeight: 22,
             rowGap: 3
         )

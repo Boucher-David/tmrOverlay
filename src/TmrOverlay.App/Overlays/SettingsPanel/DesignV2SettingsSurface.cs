@@ -655,6 +655,9 @@ internal sealed class DesignV2SettingsSurface : Control
             case "input-state":
                 AddBlockToggleControls(settings, OverlayContentColumnSettings.InputState, new Rectangle(306, 272, 834, 236), rowHeight: 22, rowGap: 3);
                 break;
+            case "pit-service":
+                AddBlockToggleControls(settings, OverlayContentColumnSettings.PitService, new Rectangle(306, 272, 834, 304), rowHeight: 22, rowGap: 3);
+                break;
             case "car-radar":
                 AddMatrixCheck(new Rectangle(306, 272, 834, 150), 1, settings.GetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, true), isOn => settings.SetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, isOn));
                 break;
@@ -1154,6 +1157,9 @@ internal sealed class DesignV2SettingsSurface : Control
                 break;
             case "input-state":
                 DrawContentMatrix(graphics, "Content Display", BlockContentRows(settings, OverlayContentColumnSettings.InputState), new Rectangle(306, 272, 834, 236), rowHeight: 22, rowGap: 3);
+                break;
+            case "pit-service":
+                DrawContentMatrix(graphics, "Tire Analysis Rows", BlockContentRows(settings, OverlayContentColumnSettings.PitService), new Rectangle(306, 272, 834, 304), rowHeight: 22, rowGap: 3);
                 break;
             case "car-radar":
                 DrawContentMatrix(

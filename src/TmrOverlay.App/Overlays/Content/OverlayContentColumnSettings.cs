@@ -1,6 +1,7 @@
 using TmrOverlay.App.Overlays.Relative;
 using TmrOverlay.App.Overlays.Standings;
 using TmrOverlay.App.Overlays.InputState;
+using TmrOverlay.App.Overlays.PitService;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 
@@ -108,6 +109,15 @@ internal static class OverlayContentColumnSettings
     public const string InputSteeringBlockId = "input-state.steering";
     public const string InputGearBlockId = "input-state.gear";
     public const string InputSpeedBlockId = "input-state.speed";
+    public const string PitServiceTireCompoundBlockId = "pit-service.tire-compound";
+    public const string PitServiceTireChangeBlockId = "pit-service.tire-change";
+    public const string PitServiceTireSetLimitBlockId = "pit-service.tire-set-limit";
+    public const string PitServiceTireSetsAvailableBlockId = "pit-service.tire-sets-available";
+    public const string PitServiceTireSetsUsedBlockId = "pit-service.tire-sets-used";
+    public const string PitServiceTirePressureBlockId = "pit-service.tire-pressure";
+    public const string PitServiceTireTemperatureBlockId = "pit-service.tire-temperature";
+    public const string PitServiceTireWearBlockId = "pit-service.tire-wear";
+    public const string PitServiceTireDistanceBlockId = "pit-service.tire-distance";
 
     public static OverlayContentDefinition Standings { get; } = new(
         OverlayId: StandingsOverlayDefinition.Definition.Id,
@@ -200,11 +210,76 @@ internal static class OverlayContentColumnSettings
             DefaultEnabled: true)
     ]);
 
+    public static OverlayContentDefinition PitService { get; } = new(
+        OverlayId: PitServiceOverlayDefinition.Definition.Id,
+        BrowserWidthPadding: 42,
+        BrowserMinimumHeight: 360,
+        NativeMinimumTableHeight: 260,
+        FallbackColumnId: string.Empty,
+        Columns: [],
+        Blocks:
+    [
+        new(
+            PitServiceTireCompoundBlockId,
+            "Compound",
+            "Show current and requested tire compound when compound telemetry is available.",
+            OverlayOptionKeys.PitServiceShowTireCompound,
+            DefaultEnabled: true),
+        new(
+            PitServiceTireChangeBlockId,
+            "Change request",
+            "Show requested tire changes by corner when pit-service tire commands are available.",
+            OverlayOptionKeys.PitServiceShowTireChange,
+            DefaultEnabled: true),
+        new(
+            PitServiceTireSetLimitBlockId,
+            "Set limit",
+            "Show the session tire-set limit when the SDK reports a representative limit.",
+            OverlayOptionKeys.PitServiceShowTireSetLimit,
+            DefaultEnabled: true),
+        new(
+            PitServiceTireSetsAvailableBlockId,
+            "Sets available",
+            "Show remaining tire sets by corner or axle when representative availability data exists.",
+            OverlayOptionKeys.PitServiceShowTireSetsAvailable,
+            DefaultEnabled: true),
+        new(
+            PitServiceTireSetsUsedBlockId,
+            "Sets used",
+            "Show tire sets or corner tires used when counters have moved from zero.",
+            OverlayOptionKeys.PitServiceShowTireSetsUsed,
+            DefaultEnabled: true),
+        new(
+            PitServiceTirePressureBlockId,
+            "Pressure",
+            "Show tire pressure from tire condition or pit-service pressure channels.",
+            OverlayOptionKeys.PitServiceShowTirePressure,
+            DefaultEnabled: true),
+        new(
+            PitServiceTireTemperatureBlockId,
+            "Temperature",
+            "Show tire temperatures when tire condition telemetry is populated.",
+            OverlayOptionKeys.PitServiceShowTireTemperature,
+            DefaultEnabled: true),
+        new(
+            PitServiceTireWearBlockId,
+            "Wear",
+            "Show tire wear percentages when tire condition telemetry is populated.",
+            OverlayOptionKeys.PitServiceShowTireWear,
+            DefaultEnabled: true),
+        new(
+            PitServiceTireDistanceBlockId,
+            "Distance",
+            "Show tire odometer values when tire distance telemetry is populated.",
+            OverlayOptionKeys.PitServiceShowTireDistance,
+            DefaultEnabled: true)
+    ]);
+
     public static IReadOnlyList<OverlayContentColumnDefinition> StandingsColumns => Standings.Columns;
 
     public static IReadOnlyList<OverlayContentColumnDefinition> RelativeColumns => Relative.Columns;
 
-    public static IReadOnlyList<OverlayContentDefinition> All { get; } = [Standings, Relative, InputState];
+    public static IReadOnlyList<OverlayContentDefinition> All { get; } = [Standings, Relative, InputState, PitService];
 
     public static bool TryGetContentDefinition(string overlayId, out OverlayContentDefinition definition)
     {

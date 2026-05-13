@@ -9,8 +9,19 @@ internal sealed record SimpleTelemetryOverlayViewModel(
     string Status,
     string Source,
     SimpleTelemetryTone Tone,
-    IReadOnlyList<SimpleTelemetryRowViewModel> Rows)
+    IReadOnlyList<SimpleTelemetryRowViewModel> Rows,
+    IReadOnlyList<SimpleTelemetryGridSectionViewModel> Sections)
 {
+    public SimpleTelemetryOverlayViewModel(
+        string Title,
+        string Status,
+        string Source,
+        SimpleTelemetryTone Tone,
+        IReadOnlyList<SimpleTelemetryRowViewModel> Rows)
+        : this(Title, Status, Source, Tone, Rows, [])
+    {
+    }
+
     public static SimpleTelemetryOverlayViewModel Waiting(string title, string status)
     {
         return new SimpleTelemetryOverlayViewModel(
@@ -129,6 +140,20 @@ internal sealed record SimpleTelemetryOverlayViewModel(
 
 internal sealed record SimpleTelemetryRowViewModel(
     string Label,
+    string Value,
+    SimpleTelemetryTone Tone = SimpleTelemetryTone.Normal);
+
+internal sealed record SimpleTelemetryGridSectionViewModel(
+    string Title,
+    IReadOnlyList<string> Headers,
+    IReadOnlyList<SimpleTelemetryGridRowViewModel> Rows);
+
+internal sealed record SimpleTelemetryGridRowViewModel(
+    string Label,
+    IReadOnlyList<SimpleTelemetryGridCellViewModel> Cells,
+    SimpleTelemetryTone Tone = SimpleTelemetryTone.Normal);
+
+internal sealed record SimpleTelemetryGridCellViewModel(
     string Value,
     SimpleTelemetryTone Tone = SimpleTelemetryTone.Normal);
 

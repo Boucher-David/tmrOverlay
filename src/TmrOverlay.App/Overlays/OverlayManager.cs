@@ -410,7 +410,7 @@ internal sealed class OverlayManager : IDisposable
                         AppPerformanceMetricIds.OverlayPitServiceApplyUi,
                         AppPerformanceMetricIds.OverlayPitServiceRows,
                         AppPerformanceMetricIds.OverlayPitServicePaint),
-                    PitServiceOverlayViewModel.CreateBuilder(),
+                    PitServiceOverlayViewModel.CreateBuilder(settings),
                     SaveSettings)),
             1070,
             320),

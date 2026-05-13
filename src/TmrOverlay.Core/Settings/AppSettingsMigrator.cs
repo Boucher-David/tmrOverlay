@@ -58,6 +58,15 @@ internal static class AppSettingsMigrator
         OverlayOptionKeys.InputShowSteering,
         OverlayOptionKeys.InputShowGear,
         OverlayOptionKeys.InputShowSpeed,
+        OverlayOptionKeys.PitServiceShowTireCompound,
+        OverlayOptionKeys.PitServiceShowTireChange,
+        OverlayOptionKeys.PitServiceShowTireSetLimit,
+        OverlayOptionKeys.PitServiceShowTireSetsAvailable,
+        OverlayOptionKeys.PitServiceShowTireSetsUsed,
+        OverlayOptionKeys.PitServiceShowTirePressure,
+        OverlayOptionKeys.PitServiceShowTireTemperature,
+        OverlayOptionKeys.PitServiceShowTireWear,
+        OverlayOptionKeys.PitServiceShowTireDistance,
         OverlayOptionKeys.GapCarsAhead,
         OverlayOptionKeys.GapCarsBehind,
         OverlayOptionKeys.GapRaceOnlyDefaultApplied,
@@ -185,6 +194,17 @@ internal static class AppSettingsMigrator
                 EnsureOption(overlay, OverlayOptionKeys.InputShowGear, defaultValue: true);
                 EnsureOption(overlay, OverlayOptionKeys.InputShowSpeed, defaultValue: true);
                 break;
+            case "pit-service":
+                EnsureOption(overlay, OverlayOptionKeys.PitServiceShowTireCompound, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.PitServiceShowTireChange, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.PitServiceShowTireSetLimit, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.PitServiceShowTireSetsAvailable, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.PitServiceShowTireSetsUsed, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.PitServiceShowTirePressure, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.PitServiceShowTireTemperature, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.PitServiceShowTireWear, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.PitServiceShowTireDistance, defaultValue: true);
+                break;
             case "gap-to-leader":
                 EnsureOption(overlay, OverlayOptionKeys.GapCarsAhead, defaultValue: 5, minimum: 0, maximum: 12);
                 EnsureOption(overlay, OverlayOptionKeys.GapCarsBehind, defaultValue: 5, minimum: 0, maximum: 12);
@@ -237,6 +257,16 @@ internal static class AppSettingsMigrator
                 or OverlayOptionKeys.InputShowSteering
                 or OverlayOptionKeys.InputShowGear
                 or OverlayOptionKeys.InputShowSpeed,
+            "pit-service" => key is
+                OverlayOptionKeys.PitServiceShowTireCompound
+                or OverlayOptionKeys.PitServiceShowTireChange
+                or OverlayOptionKeys.PitServiceShowTireSetLimit
+                or OverlayOptionKeys.PitServiceShowTireSetsAvailable
+                or OverlayOptionKeys.PitServiceShowTireSetsUsed
+                or OverlayOptionKeys.PitServiceShowTirePressure
+                or OverlayOptionKeys.PitServiceShowTireTemperature
+                or OverlayOptionKeys.PitServiceShowTireWear
+                or OverlayOptionKeys.PitServiceShowTireDistance,
             "gap-to-leader" => key is
                 OverlayOptionKeys.GapCarsAhead
                 or OverlayOptionKeys.GapCarsBehind

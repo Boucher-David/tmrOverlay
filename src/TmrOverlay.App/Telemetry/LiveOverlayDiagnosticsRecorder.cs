@@ -2039,7 +2039,10 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             + $"fuel {FormatPitServiceValue(previous.FuelLiters)} -> {FormatPitServiceValue(current.FuelLiters)}, "
             + $"repair {FormatPitServiceValue(previous.RequiredRepairSeconds)} -> {FormatPitServiceValue(current.RequiredRepairSeconds)}, "
             + $"optional {FormatPitServiceValue(previous.OptionalRepairSeconds)} -> {FormatPitServiceValue(current.OptionalRepairSeconds)}, "
+            + $"tireLimit {FormatPitServiceValue(previous.PlayerCarDryTireSetLimit)} -> {FormatPitServiceValue(current.PlayerCarDryTireSetLimit)}, "
             + $"fastRepair {FormatPitServiceValue(previous.FastRepairUsed)} -> {FormatPitServiceValue(current.FastRepairUsed)}, "
+            + $"fastRepairAvailable {FormatPitServiceValue(previous.FastRepairAvailable)} -> {FormatPitServiceValue(current.FastRepairAvailable)}, "
+            + $"tireSetsAvailable {FormatPitServiceValue(previous.TireSetsAvailable)} -> {FormatPitServiceValue(current.TireSetsAvailable)}, "
             + $"teamFastRepair {FormatPitServiceValue(previous.TeamFastRepairsUsed)} -> {FormatPitServiceValue(current.TeamFastRepairsUsed)}";
     }
 
@@ -2185,8 +2188,28 @@ internal sealed class LiveOverlayDiagnosticsRecorder
         double? FuelLiters,
         double? RequiredRepairSeconds,
         double? OptionalRepairSeconds,
+        int? PlayerCarDryTireSetLimit,
         int? TireSetsUsed,
+        int? TireSetsAvailable,
+        int? LeftTireSetsUsed,
+        int? RightTireSetsUsed,
+        int? FrontTireSetsUsed,
+        int? RearTireSetsUsed,
+        int? LeftTireSetsAvailable,
+        int? RightTireSetsAvailable,
+        int? FrontTireSetsAvailable,
+        int? RearTireSetsAvailable,
+        int? LeftFrontTiresUsed,
+        int? RightFrontTiresUsed,
+        int? LeftRearTiresUsed,
+        int? RightRearTiresUsed,
+        int? LeftFrontTiresAvailable,
+        int? RightFrontTiresAvailable,
+        int? LeftRearTiresAvailable,
+        int? RightRearTiresAvailable,
+        int? RequestedTireCompound,
         int? FastRepairUsed,
+        int? FastRepairAvailable,
         int? TeamFastRepairsUsed,
         bool OnPitRoad,
         bool PitstopActive,
@@ -2201,8 +2224,28 @@ internal sealed class LiveOverlayDiagnosticsRecorder
                 FuelLiters: pit.PitServiceFuelLiters,
                 RequiredRepairSeconds: pit.PitRepairLeftSeconds,
                 OptionalRepairSeconds: pit.PitOptRepairLeftSeconds,
+                PlayerCarDryTireSetLimit: pit.PlayerCarDryTireSetLimit,
                 TireSetsUsed: pit.TireSetsUsed,
+                TireSetsAvailable: pit.TireSetsAvailable,
+                LeftTireSetsUsed: pit.LeftTireSetsUsed,
+                RightTireSetsUsed: pit.RightTireSetsUsed,
+                FrontTireSetsUsed: pit.FrontTireSetsUsed,
+                RearTireSetsUsed: pit.RearTireSetsUsed,
+                LeftTireSetsAvailable: pit.LeftTireSetsAvailable,
+                RightTireSetsAvailable: pit.RightTireSetsAvailable,
+                FrontTireSetsAvailable: pit.FrontTireSetsAvailable,
+                RearTireSetsAvailable: pit.RearTireSetsAvailable,
+                LeftFrontTiresUsed: pit.LeftFrontTiresUsed,
+                RightFrontTiresUsed: pit.RightFrontTiresUsed,
+                LeftRearTiresUsed: pit.LeftRearTiresUsed,
+                RightRearTiresUsed: pit.RightRearTiresUsed,
+                LeftFrontTiresAvailable: pit.LeftFrontTiresAvailable,
+                RightFrontTiresAvailable: pit.RightFrontTiresAvailable,
+                LeftRearTiresAvailable: pit.LeftRearTiresAvailable,
+                RightRearTiresAvailable: pit.RightRearTiresAvailable,
+                RequestedTireCompound: pit.RequestedTireCompound,
                 FastRepairUsed: pit.FastRepairUsed,
+                FastRepairAvailable: pit.FastRepairAvailable,
                 TeamFastRepairsUsed: pit.TeamFastRepairsUsed,
                 OnPitRoad: pit.OnPitRoad,
                 PitstopActive: pit.PitstopActive,
@@ -2216,8 +2259,28 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             || FuelLiters is not null
             || RequiredRepairSeconds is not null
             || OptionalRepairSeconds is not null
+            || PlayerCarDryTireSetLimit is not null
             || TireSetsUsed is not null
+            || TireSetsAvailable is not null
+            || LeftTireSetsUsed is not null
+            || RightTireSetsUsed is not null
+            || FrontTireSetsUsed is not null
+            || RearTireSetsUsed is not null
+            || LeftTireSetsAvailable is not null
+            || RightTireSetsAvailable is not null
+            || FrontTireSetsAvailable is not null
+            || RearTireSetsAvailable is not null
+            || LeftFrontTiresUsed is not null
+            || RightFrontTiresUsed is not null
+            || LeftRearTiresUsed is not null
+            || RightRearTiresUsed is not null
+            || LeftFrontTiresAvailable is not null
+            || RightFrontTiresAvailable is not null
+            || LeftRearTiresAvailable is not null
+            || RightRearTiresAvailable is not null
+            || RequestedTireCompound is not null
             || FastRepairUsed is not null
+            || FastRepairAvailable is not null
             || TeamFastRepairsUsed is not null
             || OnPitRoad
             || PitstopActive

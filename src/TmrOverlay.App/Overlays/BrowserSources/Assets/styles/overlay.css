@@ -352,6 +352,96 @@
       color: var(--tmr-cyan);
     }
 
+    .metric-section {
+      margin-top: 10px;
+      min-width: 420px;
+    }
+
+    .metric-section-title {
+      margin: 0 0 6px;
+      color: var(--tmr-text-muted);
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .tire-grid {
+      display: grid;
+      gap: 3px;
+      border: 1px solid var(--tmr-border-muted);
+      border-radius: 5px;
+      background: var(--tmr-surface-inset);
+      padding: 6px;
+    }
+
+    .tire-grid-head,
+    .tire-grid-row {
+      display: grid;
+      grid-template-columns: var(--tmr-grid-columns);
+      gap: 3px;
+      min-height: 24px;
+    }
+
+    .tire-grid-header,
+    .tire-grid-label,
+    .tire-grid-cell {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      border-radius: 3px;
+      padding: 5px 6px;
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 14px;
+    }
+
+    .tire-grid-header {
+      color: var(--tmr-text-muted);
+      text-align: right;
+      text-transform: uppercase;
+    }
+
+    .tire-grid-header:first-child,
+    .tire-grid-label {
+      text-align: left;
+    }
+
+    .tire-grid-label,
+    .tire-grid-cell {
+      background: var(--tmr-surface-raised);
+    }
+
+    .tire-grid-label {
+      color: var(--tmr-text-secondary);
+    }
+
+    .tire-grid-cell {
+      color: var(--tmr-text);
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .tire-grid-cell.info,
+    .tire-grid-row.info .tire-grid-label {
+      color: var(--tmr-cyan);
+    }
+
+    .tire-grid-cell.success,
+    .tire-grid-row.success .tire-grid-label {
+      color: var(--tmr-green);
+    }
+
+    .tire-grid-cell.warning,
+    .tire-grid-row.warning .tire-grid-label {
+      color: var(--tmr-amber);
+    }
+
+    .tire-grid-cell.error,
+    .tire-grid-row.error .tire-grid-label {
+      color: var(--tmr-error);
+    }
+
     .graph-metrics {
       margin-bottom: 10px;
       grid-template-columns: repeat(2, minmax(120px, 1fr));

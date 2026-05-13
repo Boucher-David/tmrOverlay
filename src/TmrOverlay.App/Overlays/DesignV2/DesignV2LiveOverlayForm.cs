@@ -153,7 +153,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private readonly string _fontFamily;
     private readonly string _unitSystem;
     private readonly System.Windows.Forms.Timer _refreshTimer;
-    private readonly Func<LiveTelemetrySnapshot, DateTimeOffset, string, SimpleTelemetryOverlayViewModel> _pitServiceBuilder;
+    private readonly PitServiceOverlayViewModel.StatefulBuilder _pitServiceBuilder;
     private readonly List<double> _gapPoints = [];
     private readonly Dictionary<int, List<DesignV2GapTrendPoint>> _gapSeries = [];
     private readonly List<DesignV2GapWeatherPoint> _gapWeather = [];
@@ -219,7 +219,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         _settings = settings;
         _fontFamily = fontFamily;
         _unitSystem = unitSystem;
-        _pitServiceBuilder = PitServiceOverlayViewModel.CreateBuilder();
+        _pitServiceBuilder = PitServiceOverlayViewModel.CreateStatefulBuilder();
         _model = WaitingModel(TitleFor(kind), "waiting");
 
         BackColor = UsesTransparentBackground(kind) ? TransparentColor : Color.Black;
@@ -391,7 +391,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             DesignV2LiveOverlayKind.Relative => BuildRelativeModel(snapshot, now),
             DesignV2LiveOverlayKind.FuelCalculator => BuildFuelModel(snapshot, now),
             DesignV2LiveOverlayKind.SessionWeather => FromSimple(SessionWeatherOverlayViewModel.From(snapshot, now, _unitSystem)),
-            DesignV2LiveOverlayKind.PitService => FromSimple(_pitServiceBuilder(snapshot, now, _unitSystem)),
+            DesignV2LiveOverlayKind.PitService => FromSimple(_pitServiceBuilder.Build(snapshot, now, _unitSystem, _settings)),
             DesignV2LiveOverlayKind.InputState => BuildInputModel(snapshot, now),
             DesignV2LiveOverlayKind.Flags => BuildFlagsModel(snapshot, now),
             DesignV2LiveOverlayKind.CarRadar => BuildRadarModel(snapshot, now),
@@ -2643,7 +2643,16 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             new DesignV2MetricRowsBody(viewModel.Rows.Select(row => new DesignV2MetricRow(
                 row.Label,
                 row.Value,
-                EvidenceFor(row.Tone))).ToArray()));
+                EvidenceFor(row.Tone))).ToArray(),
+                viewModel.Sections.Select(section => new DesignV2MetricGridSection(
+                    section.Title,
+                    section.Headers,
+                    section.Rows.Select(row => new DesignV2MetricGridRow(
+                        row.Label,
+                        row.Cells.Select(cell => new DesignV2MetricGridCell(
+                            cell.Value,
+                            EvidenceFor(cell.Tone))).ToArray(),
+                        EvidenceFor(row.Tone))).ToArray())).ToArray()));
     }
 
     private SessionHistoryLookupResult LookupHistory(HistoricalComboIdentity combo)
@@ -2833,7 +2842,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                 DrawTable(graphics, rect, table);
                 break;
             case DesignV2MetricRowsBody metrics:
-                DrawMetricRows(graphics, rect, metrics.Rows);
+                DrawMetricRows(graphics, rect, metrics.Rows, metrics.Sections);
                 break;
             case DesignV2GraphBody graph:
                 DrawGraph(graphics, rect, graph);
@@ -2978,9 +2987,13 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         };
     }
 
-    private void DrawMetricRows(Graphics graphics, RectangleF rect, IReadOnlyList<DesignV2MetricRow> rows)
+    private void DrawMetricRows(
+        Graphics graphics,
+        RectangleF rect,
+        IReadOnlyList<DesignV2MetricRow> rows,
+        IReadOnlyList<DesignV2MetricGridSection> sections)
     {
-        if (rows.Count == 0)
+        if (rows.Count == 0 && sections.Count == 0)
         {
             FillRounded(graphics, rect, 5, SurfaceInset, BorderMuted);
             using var waitingFont = FontOf(11, FontStyle.Bold);
@@ -2990,13 +3003,106 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
         using var labelFont = FontOf(9.8f, FontStyle.Bold);
         using var valueFont = FontOf(10.5f, FontStyle.Bold);
-        var maximumRows = Math.Max(1, (int)(rect.Height / (RowHeight + RowGap)));
+        var gridHeight = sections.Count == 0
+            ? 0f
+            : Math.Min(116f, Math.Max(80f, sections.Sum(section => 26f + Math.Min(6, section.Rows.Count) * 25f) + Math.Max(0, sections.Count - 1) * 8f));
+        var rowsRect = sections.Count == 0
+            ? rect
+            : new RectangleF(rect.Left, rect.Top, rect.Width, Math.Max(RowHeight, rect.Height - gridHeight - 8f));
+        var maximumRows = Math.Max(1, (int)(rowsRect.Height / (RowHeight + RowGap)));
         foreach (var (row, index) in rows.Take(maximumRows).Select((row, index) => (row, index)))
         {
-            var rowRect = new RectangleF(rect.Left, rect.Top + index * (RowHeight + RowGap), rect.Width, RowHeight);
+            var rowRect = new RectangleF(rowsRect.Left, rowsRect.Top + index * (RowHeight + RowGap), rowsRect.Width, RowHeight);
             FillRounded(graphics, rowRect, 5, SurfaceRaised, Color.FromArgb(90, BorderMuted));
             DrawText(graphics, row.Label, labelFont, TextMuted, new RectangleF(rowRect.Left + 10, rowRect.Top + 7, MetricLabelWidth, 16));
             DrawText(graphics, row.Value, valueFont, EvidenceColor(row.Evidence), new RectangleF(rowRect.Left + MetricLabelWidth + 12, rowRect.Top + 7, rowRect.Width - MetricLabelWidth - 22, 16), ContentAlignment.MiddleRight);
+        }
+
+        if (sections.Count == 0)
+        {
+            return;
+        }
+
+        var sectionTop = Math.Min(rect.Bottom - 72f, rowsRect.Bottom + 8f);
+        foreach (var section in sections)
+        {
+            if (sectionTop >= rect.Bottom - 34f)
+            {
+                break;
+            }
+
+            var maxRows = Math.Max(1, Math.Min(section.Rows.Count, (int)((rect.Bottom - sectionTop - 28f) / 25f)));
+            var sectionHeight = 26f + maxRows * 25f;
+            var sectionRect = new RectangleF(rect.Left, sectionTop, rect.Width, Math.Min(sectionHeight, rect.Bottom - sectionTop));
+            DrawMetricGridSection(graphics, sectionRect, section, maxRows);
+            sectionTop += sectionRect.Height + 8f;
+        }
+    }
+
+    private void DrawMetricGridSection(
+        Graphics graphics,
+        RectangleF rect,
+        DesignV2MetricGridSection section,
+        int maximumRows)
+    {
+        FillRounded(graphics, rect, 5, SurfaceInset, BorderMuted);
+        using var titleFont = FontOf(8.8f, FontStyle.Bold);
+        using var headerFont = FontOf(8.6f, FontStyle.Bold);
+        using var cellFont = FontOf(9.2f, FontStyle.Bold);
+
+        DrawText(graphics, section.Title, titleFont, TextMuted, new RectangleF(rect.Left + 8, rect.Top + 5, rect.Width - 16, 12));
+        var headers = section.Headers.Count == 0
+            ? new[] { "Info", "FL", "FR", "RL", "RR" }
+            : section.Headers.Take(5).ToArray();
+        var columns = headers.Length;
+        var gap = 3f;
+        var usableWidth = rect.Width - 16f - Math.Max(0, columns - 1) * gap;
+        var infoWidth = Math.Min(92f, usableWidth * 0.30f);
+        var cornerWidth = columns <= 1
+            ? usableWidth
+            : Math.Max(42f, (usableWidth - infoWidth) / (columns - 1));
+        var widths = Enumerable.Range(0, columns)
+            .Select(index => index == 0 ? infoWidth : cornerWidth)
+            .ToArray();
+        var y = rect.Top + 22f;
+        var x = rect.Left + 8f;
+        for (var index = 0; index < columns; index++)
+        {
+            var headerRect = new RectangleF(x, y, widths[index], 12f);
+            DrawText(
+                graphics,
+                headers[index],
+                headerFont,
+                TextMuted,
+                headerRect,
+                index == 0 ? ContentAlignment.MiddleLeft : ContentAlignment.MiddleRight);
+            x += widths[index] + gap;
+        }
+
+        y += 16f;
+        foreach (var row in section.Rows.Take(maximumRows))
+        {
+            if (y + 21f > rect.Bottom - 4f)
+            {
+                break;
+            }
+
+            x = rect.Left + 8f;
+            var labelRect = new RectangleF(x, y, widths[0], 21f);
+            FillRounded(graphics, labelRect, 3, SurfaceRaised, null);
+            DrawText(graphics, row.Label, cellFont, TextSecondary, RectangleF.Inflate(labelRect, -5, -3), ContentAlignment.MiddleLeft);
+            x += widths[0] + gap;
+
+            for (var index = 1; index < columns; index++)
+            {
+                var cell = index - 1 < row.Cells.Count ? row.Cells[index - 1] : new DesignV2MetricGridCell("--", DesignV2Evidence.Unavailable);
+                var cellRect = new RectangleF(x, y, widths[index], 21f);
+                FillRounded(graphics, cellRect, 3, SurfaceRaised, null);
+                DrawText(graphics, cell.Value, cellFont, EvidenceColor(cell.Evidence), RectangleF.Inflate(cellRect, -5, -3), ContentAlignment.MiddleRight);
+                x += widths[index] + gap;
+            }
+
+            y += 25f;
         }
     }
 
@@ -5598,7 +5704,14 @@ internal sealed record DesignV2TableBody(
     IReadOnlyList<DesignV2TableRow> Rows) : DesignV2Body;
 
 internal sealed record DesignV2MetricRowsBody(
-    IReadOnlyList<DesignV2MetricRow> Rows) : DesignV2Body;
+    IReadOnlyList<DesignV2MetricRow> Rows,
+    IReadOnlyList<DesignV2MetricGridSection> Sections) : DesignV2Body
+{
+    public DesignV2MetricRowsBody(IReadOnlyList<DesignV2MetricRow> rows)
+        : this(rows, [])
+    {
+    }
+}
 
 internal sealed record DesignV2GraphBody(
     IReadOnlyList<double> Points,
@@ -5880,6 +5993,20 @@ internal sealed record DesignV2TableRow(
 
 internal sealed record DesignV2MetricRow(
     string Label,
+    string Value,
+    DesignV2Evidence Evidence);
+
+internal sealed record DesignV2MetricGridSection(
+    string Title,
+    IReadOnlyList<string> Headers,
+    IReadOnlyList<DesignV2MetricGridRow> Rows);
+
+internal sealed record DesignV2MetricGridRow(
+    string Label,
+    IReadOnlyList<DesignV2MetricGridCell> Cells,
+    DesignV2Evidence Evidence);
+
+internal sealed record DesignV2MetricGridCell(
     string Value,
     DesignV2Evidence Evidence);
 

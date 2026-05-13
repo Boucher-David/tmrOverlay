@@ -36,6 +36,15 @@ internal static class OverlayOptionKeys
     public const string InputShowSteering = "input-state.current.steering";
     public const string InputShowGear = "input-state.current.gear";
     public const string InputShowSpeed = "input-state.current.speed";
+    public const string PitServiceShowTireCompound = "pit-service.tire-analysis.compound";
+    public const string PitServiceShowTireChange = "pit-service.tire-analysis.change";
+    public const string PitServiceShowTireSetLimit = "pit-service.tire-analysis.set-limit";
+    public const string PitServiceShowTireSetsAvailable = "pit-service.tire-analysis.sets-available";
+    public const string PitServiceShowTireSetsUsed = "pit-service.tire-analysis.sets-used";
+    public const string PitServiceShowTirePressure = "pit-service.tire-analysis.pressure";
+    public const string PitServiceShowTireTemperature = "pit-service.tire-analysis.temperature";
+    public const string PitServiceShowTireWear = "pit-service.tire-analysis.wear";
+    public const string PitServiceShowTireDistance = "pit-service.tire-analysis.distance";
     public const string GapCarsAhead = "gap.cars-ahead";
     public const string GapCarsBehind = "gap.cars-behind";
     public const string GapRaceOnlyDefaultApplied = "gap.race-only-default-applied";

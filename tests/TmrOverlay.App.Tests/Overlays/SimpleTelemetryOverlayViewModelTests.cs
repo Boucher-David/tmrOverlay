@@ -3,6 +3,8 @@ using TmrOverlay.App.Overlays.InputState;
 using TmrOverlay.App.Overlays.PitService;
 using TmrOverlay.App.Overlays.SessionWeather;
 using TmrOverlay.App.Overlays.SimpleTelemetry;
+using TmrOverlay.Core.Overlays;
+using TmrOverlay.Core.Settings;
 using TmrOverlay.Core.Telemetry.Live;
 using Xunit;
 
@@ -556,6 +558,103 @@ public sealed class SimpleTelemetryOverlayViewModelTests
     }
 
     [Fact]
+    public void PitService_FromTelemetry_HidesTireAnalysisWhenCountersAreNotRepresentative()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = Snapshot(now, LiveRaceModels.Empty with
+        {
+            FuelPit = LiveFuelPitModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                PlayerCarDryTireSetLimit = 0,
+                TireSetsAvailable = 0,
+                TireSetsUsed = 0,
+                LeftFrontTiresAvailable = 0,
+                RightFrontTiresAvailable = 0,
+                LeftRearTiresAvailable = 0,
+                RightRearTiresAvailable = 0
+            }
+        });
+
+        var viewModel = PitServiceOverlayViewModel.From(snapshot, now, "Metric");
+
+        Assert.Empty(viewModel.Sections);
+        Assert.Contains(viewModel.Rows, row => row.Label == "Tires" && row.Value == "--");
+    }
+
+    [Fact]
+    public void PitService_FromTelemetry_ShowsRepresentativeTireAnalysisRows()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = TireAnalysisSnapshot(now);
+
+        var viewModel = PitServiceOverlayViewModel.From(snapshot, now, "Imperial");
+
+        var section = Assert.Single(viewModel.Sections);
+        Assert.Equal("Tire Analysis", section.Title);
+        Assert.Collection(
+            section.Headers,
+            header => Assert.Equal("Info", header),
+            header => Assert.Equal("FL", header),
+            header => Assert.Equal("FR", header),
+            header => Assert.Equal("RL", header),
+            header => Assert.Equal("RR", header));
+        Assert.Contains(section.Rows, row => row.Label == "Set limit" && row.Cells.All(cell => cell.Value == "4 sets"));
+        Assert.Contains(section.Rows, row => row.Label == "Available" && row.Cells[0].Value == "2");
+        Assert.Contains(section.Rows, row => row.Label == "Used" && row.Cells[0].Value == "1");
+        Assert.Contains(section.Rows, row => row.Label == "Wear" && row.Cells[0].Value == "92/91/90%");
+        Assert.Contains(section.Rows, row => row.Label == "Temp" && row.Cells[0].Value == "176/178/180 F");
+        Assert.Contains(section.Rows, row => row.Label == "Pressure" && row.Cells[0].Value == "30 psi");
+        Assert.Contains(section.Rows, row => row.Label == "Distance" && row.Cells[0].Value == "12.4 mi");
+    }
+
+    [Fact]
+    public void PitService_FromTelemetry_ShowsZeroAvailableWhenSetLimitIsKnown()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = Snapshot(now, LiveRaceModels.Empty with
+        {
+            FuelPit = LiveFuelPitModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                PlayerCarDryTireSetLimit = 4,
+                TireSetsAvailable = 0,
+                LeftFrontTiresAvailable = 0,
+                RightFrontTiresAvailable = 0,
+                LeftRearTiresAvailable = 0,
+                RightRearTiresAvailable = 0
+            }
+        });
+
+        var viewModel = PitServiceOverlayViewModel.From(snapshot, now, "Metric");
+
+        var section = Assert.Single(viewModel.Sections);
+        Assert.Contains(section.Rows, row => row.Label == "Set limit" && row.Cells.All(cell => cell.Value == "4 sets"));
+        Assert.Contains(section.Rows, row => row.Label == "Available" && row.Cells.All(cell => cell.Value == "0"));
+    }
+
+    [Fact]
+    public void PitService_FromTelemetry_HonorsTireAnalysisContentToggles()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = TireAnalysisSnapshot(now);
+        var settings = new OverlaySettings { Id = "pit-service" };
+        settings.SetBooleanOption(OverlayOptionKeys.PitServiceShowTireSetsAvailable, false);
+        settings.SetBooleanOption(OverlayOptionKeys.PitServiceShowTireWear, false);
+        settings.SetBooleanOption(OverlayOptionKeys.PitServiceShowTireTemperature, false);
+
+        var viewModel = PitServiceOverlayViewModel.From(snapshot, now, "Metric", settings);
+
+        var section = Assert.Single(viewModel.Sections);
+        Assert.DoesNotContain(section.Rows, row => row.Label == "Available");
+        Assert.DoesNotContain(section.Rows, row => row.Label == "Wear");
+        Assert.DoesNotContain(section.Rows, row => row.Label == "Temp");
+        Assert.Contains(section.Rows, row => row.Label == "Set limit");
+    }
+
+    [Fact]
     public void InputState_FromTelemetry_FormatsLocalCarState()
     {
         var now = DateTimeOffset.UtcNow;
@@ -654,5 +753,79 @@ public sealed class SimpleTelemetryOverlayViewModelTests
             Sequence = 1,
             Models = normalizedModels
         };
+    }
+
+    private static LiveTelemetrySnapshot TireAnalysisSnapshot(DateTimeOffset now)
+    {
+        return Snapshot(now, LiveRaceModels.Empty with
+        {
+            TireCompounds = LiveTireCompoundModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                Definitions =
+                [
+                    new LiveTireCompoundDefinition(0, "Dry", "Dry", IsWet: false)
+                ],
+                PlayerCar = new LiveCarTireCompound(
+                    CarIdx: 10,
+                    CompoundIndex: 0,
+                    Label: "Dry",
+                    ShortLabel: "Dry",
+                    IsWet: false,
+                    IsPlayer: true,
+                    IsFocus: true,
+                    Evidence: LiveSignalEvidence.Reliable("CarIdxTireCompound"))
+            },
+            FuelPit = LiveFuelPitModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                PitServiceFlags = 0x01,
+                PlayerCarDryTireSetLimit = 4,
+                TireSetsAvailable = 2,
+                TireSetsUsed = 1,
+                LeftFrontTiresAvailable = 2,
+                RightFrontTiresAvailable = 2,
+                LeftRearTiresAvailable = 2,
+                RightRearTiresAvailable = 2,
+                LeftFrontTiresUsed = 1,
+                RightFrontTiresUsed = 1,
+                LeftRearTiresUsed = 1,
+                RightRearTiresUsed = 1,
+                RequestedTireCompound = 0
+            },
+            TireCondition = LiveTireConditionModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Partial,
+                LeftFront = TireCorner("LF", 0.92d, 0.91d, 0.90d, 80d, 81d, 82d, 206.8d, 20_000d),
+                RightFront = TireCorner("RF", 0.93d, 0.92d, 0.91d, 79d, 80d, 81d, 203.4d, 19_750d),
+                LeftRear = TireCorner("LR", 0.96d, 0.95d, 0.94d, 72d, 73d, 74d, 196.5d, 20_000d),
+                RightRear = TireCorner("RR", 0.97d, 0.96d, 0.95d, 73d, 74d, 75d, 198.6d, 19_750d)
+            }
+        });
+    }
+
+    private static LiveTireCornerCondition TireCorner(
+        string corner,
+        double wearLeft,
+        double wearMiddle,
+        double wearRight,
+        double tempLeft,
+        double tempMiddle,
+        double tempRight,
+        double coldPressureKpa,
+        double odometerMeters)
+    {
+        return new LiveTireCornerCondition(
+            Corner: corner,
+            Wear: new LiveTireAcrossTreadValues(wearLeft, wearMiddle, wearRight),
+            TemperatureC: new LiveTireAcrossTreadValues(tempLeft, tempMiddle, tempRight),
+            ColdPressureKpa: coldPressureKpa,
+            OdometerMeters: odometerMeters,
+            PitServicePressureKpa: null,
+            BlackBoxColdPressurePa: null,
+            ChangeRequested: null);
     }
 }

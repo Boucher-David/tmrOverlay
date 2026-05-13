@@ -522,6 +522,39 @@
         </div>`;
     }
 
+    function gridSection(section) {
+      const headers = Array.isArray(section?.headers) && section.headers.length
+        ? section.headers
+        : ['Info', 'FL', 'FR', 'RL', 'RR'];
+      const rows = Array.isArray(section?.rows) ? section.rows : [];
+      if (!rows.length) return '';
+      const columns = `repeat(${Math.max(1, headers.length)}, minmax(44px, 1fr))`;
+      const headerHtml = headers
+        .map((header) => `<div class="tire-grid-header">${escapeHtml(header || '')}</div>`)
+        .join('');
+      const rowHtml = rows.map((row) => {
+        const rowTone = toneClass(row?.tone);
+        const cells = Array.isArray(row?.cells) ? row.cells : [];
+        const cellHtml = cells
+          .slice(0, Math.max(0, headers.length - 1))
+          .map((cell) => `<div class="tire-grid-cell ${toneClass(cell?.tone)}">${escapeHtml(cell?.value || '--')}</div>`)
+          .join('');
+        return `
+          <div class="tire-grid-row ${rowTone}">
+            <div class="tire-grid-label">${escapeHtml(row?.label || '')}</div>
+            ${cellHtml}
+          </div>`;
+      }).join('');
+      return `
+        <section class="metric-section">
+          <div class="metric-section-title">${escapeHtml(section?.title || 'Details')}</div>
+          <div class="tire-grid" style="--tmr-grid-columns: ${escapeHtml(columns)};">
+            <div class="tire-grid-head">${headerHtml}</div>
+            ${rowHtml}
+          </div>
+        </section>`;
+    }
+
     async function fetchOverlayModel(overlayId) {
       const response = await fetch(apiPath(`/api/overlay-model/${encodeURIComponent(overlayId)}`), { cache: 'no-store' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -538,7 +571,9 @@
       }
 
       const metrics = Array.isArray(model.metrics) ? model.metrics : [];
+      const gridSections = Array.isArray(model.gridSections) ? model.gridSections : [];
       const rows = Array.isArray(model.rows) ? model.rows : [];
+      const sectionHtml = gridSections.map(gridSection).join('');
       if (model.bodyKind === 'summary-table') {
         const summary = metrics.length
           ? `<div class="grid" style="margin-bottom: 10px;">${metrics.map(metricRow).join('')}</div>`
@@ -552,8 +587,11 @@
         contentEl.innerHTML = `${summary}<div class="model-graph-panel"><canvas class="model-graph" aria-label="Gap trend graph"></canvas></div>`;
         drawOverlayGraph(contentEl.querySelector('.model-graph'), model);
       } else if (model.bodyKind === 'metrics') {
-        contentEl.innerHTML = metrics.length
+        const metricsHtml = metrics.length
           ? `<div class="grid">${metrics.map(metricRow).join('')}</div>`
+          : '';
+        contentEl.innerHTML = metricsHtml || sectionHtml
+          ? `${metricsHtml}${sectionHtml}`
           : '<div class="empty">Waiting for live values.</div>';
       } else {
         contentEl.innerHTML = rowsTable(displayModelHeaders(model), rows);

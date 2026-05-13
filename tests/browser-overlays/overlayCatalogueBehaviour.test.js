@@ -161,12 +161,25 @@ function browserScenarios() {
           metric('Repair', '12s required', 'error'),
           metric('Tires', 'four tires | 2 sets used', 'normal'),
           metric('Fast repair', 'local 0 | team 1', 'normal')
-        ], 'source: player/team pit service telemetry'),
-        waitForSelector: '.metric'
+        ], 'source: player/team pit service telemetry', [
+          {
+            title: 'Tire Analysis',
+            headers: ['Info', 'FL', 'FR', 'RL', 'RR'],
+            rows: [
+              gridRow('Set limit', ['4 sets', '4 sets', '4 sets', '4 sets']),
+              gridRow('Available', ['2', '2', '2', '2']),
+              gridRow('Wear', ['92/91/90%', '93/92/91%', '96/95/94%', '97/96/95%'])
+            ]
+          }
+        ]),
+        waitForSelector: '.tire-grid'
       }),
       assert: ({ document }) => {
         expect(metricText(document)).toContain('Release RED - service active');
         expect(metricText(document)).toContain('Pit status in progress');
+        expect(document.querySelector('.metric-section').textContent).toContain('Tire Analysis');
+        expect(document.querySelector('.tire-grid').textContent).toContain('Set limit');
+        expect(document.querySelector('.tire-grid').textContent).toContain('92/91/90%');
         expect(document.getElementById('status').textContent).toBe('hold');
       }
     },
@@ -456,7 +469,7 @@ function tableModel(overlayId, title, status, columns, rows) {
   };
 }
 
-function metricsModel(overlayId, title, status, metrics, source = 'source: catalogue behaviour') {
+function metricsModel(overlayId, title, status, metrics, source = 'source: catalogue behaviour', gridSections = []) {
   return {
     overlayId,
     title,
@@ -465,7 +478,8 @@ function metricsModel(overlayId, title, status, metrics, source = 'source: catal
     bodyKind: 'metrics',
     columns: [],
     rows: [],
-    metrics
+    metrics,
+    gridSections
   };
 }
 
@@ -509,6 +523,14 @@ function row(cells, extra = {}) {
 
 function metric(label, value, tone) {
   return { label, value, tone };
+}
+
+function gridRow(label, values, tone = 'normal') {
+  return {
+    label,
+    tone,
+    cells: values.map((value) => ({ value, tone }))
+  };
 }
 
 function rowText(document) {

@@ -86,6 +86,15 @@ enum OverlayContentColumns {
     static let inputSteeringBlockId = "input-state.steering"
     static let inputGearBlockId = "input-state.gear"
     static let inputSpeedBlockId = "input-state.speed"
+    static let pitServiceTireCompoundBlockId = "pit-service.tire-compound"
+    static let pitServiceTireChangeBlockId = "pit-service.tire-change"
+    static let pitServiceTireSetLimitBlockId = "pit-service.tire-set-limit"
+    static let pitServiceTireSetsAvailableBlockId = "pit-service.tire-sets-available"
+    static let pitServiceTireSetsUsedBlockId = "pit-service.tire-sets-used"
+    static let pitServiceTirePressureBlockId = "pit-service.tire-pressure"
+    static let pitServiceTireTemperatureBlockId = "pit-service.tire-temperature"
+    static let pitServiceTireWearBlockId = "pit-service.tire-wear"
+    static let pitServiceTireDistanceBlockId = "pit-service.tire-distance"
 
     static let standings = OverlayContentDefinition(
         overlayId: StandingsOverlayDefinition.definition.id,
@@ -214,8 +223,127 @@ enum OverlayContentColumns {
         ]
     )
 
+    static let pitService = OverlayContentDefinition(
+        overlayId: PitServiceOverlayDefinition.definition.id,
+        columns: [],
+        browserWidthPadding: 42,
+        browserMinimumHeight: 360,
+        nativeMinimumTableHeight: 260,
+        fallbackColumnId: "",
+        blocks: [
+            OverlayContentBlockDefinition(
+                id: pitServiceTireCompoundBlockId,
+                label: "Compound",
+                description: "Show current and requested tire compound when compound telemetry is available.",
+                enabledOptionKey: "pit-service.tire-analysis.compound",
+                defaultEnabled: true,
+                countOptionKey: nil,
+                countLabel: nil,
+                defaultCount: 0,
+                minimumCount: 0,
+                maximumCount: 0
+            ),
+            OverlayContentBlockDefinition(
+                id: pitServiceTireChangeBlockId,
+                label: "Change request",
+                description: "Show requested tire changes by corner when pit-service tire commands are available.",
+                enabledOptionKey: "pit-service.tire-analysis.change",
+                defaultEnabled: true,
+                countOptionKey: nil,
+                countLabel: nil,
+                defaultCount: 0,
+                minimumCount: 0,
+                maximumCount: 0
+            ),
+            OverlayContentBlockDefinition(
+                id: pitServiceTireSetLimitBlockId,
+                label: "Set limit",
+                description: "Show the session tire-set limit when the SDK reports a representative limit.",
+                enabledOptionKey: "pit-service.tire-analysis.set-limit",
+                defaultEnabled: true,
+                countOptionKey: nil,
+                countLabel: nil,
+                defaultCount: 0,
+                minimumCount: 0,
+                maximumCount: 0
+            ),
+            OverlayContentBlockDefinition(
+                id: pitServiceTireSetsAvailableBlockId,
+                label: "Sets available",
+                description: "Show remaining tire sets by corner or axle when representative availability data exists.",
+                enabledOptionKey: "pit-service.tire-analysis.sets-available",
+                defaultEnabled: true,
+                countOptionKey: nil,
+                countLabel: nil,
+                defaultCount: 0,
+                minimumCount: 0,
+                maximumCount: 0
+            ),
+            OverlayContentBlockDefinition(
+                id: pitServiceTireSetsUsedBlockId,
+                label: "Sets used",
+                description: "Show tire sets or corner tires used when counters have moved from zero.",
+                enabledOptionKey: "pit-service.tire-analysis.sets-used",
+                defaultEnabled: true,
+                countOptionKey: nil,
+                countLabel: nil,
+                defaultCount: 0,
+                minimumCount: 0,
+                maximumCount: 0
+            ),
+            OverlayContentBlockDefinition(
+                id: pitServiceTirePressureBlockId,
+                label: "Pressure",
+                description: "Show tire pressure from tire condition or pit-service pressure channels.",
+                enabledOptionKey: "pit-service.tire-analysis.pressure",
+                defaultEnabled: true,
+                countOptionKey: nil,
+                countLabel: nil,
+                defaultCount: 0,
+                minimumCount: 0,
+                maximumCount: 0
+            ),
+            OverlayContentBlockDefinition(
+                id: pitServiceTireTemperatureBlockId,
+                label: "Temperature",
+                description: "Show tire temperatures when tire condition telemetry is populated.",
+                enabledOptionKey: "pit-service.tire-analysis.temperature",
+                defaultEnabled: true,
+                countOptionKey: nil,
+                countLabel: nil,
+                defaultCount: 0,
+                minimumCount: 0,
+                maximumCount: 0
+            ),
+            OverlayContentBlockDefinition(
+                id: pitServiceTireWearBlockId,
+                label: "Wear",
+                description: "Show tire wear percentages when tire condition telemetry is populated.",
+                enabledOptionKey: "pit-service.tire-analysis.wear",
+                defaultEnabled: true,
+                countOptionKey: nil,
+                countLabel: nil,
+                defaultCount: 0,
+                minimumCount: 0,
+                maximumCount: 0
+            ),
+            OverlayContentBlockDefinition(
+                id: pitServiceTireDistanceBlockId,
+                label: "Distance",
+                description: "Show tire odometer values when tire distance telemetry is populated.",
+                enabledOptionKey: "pit-service.tire-analysis.distance",
+                defaultEnabled: true,
+                countOptionKey: nil,
+                countLabel: nil,
+                defaultCount: 0,
+                minimumCount: 0,
+                maximumCount: 0
+            )
+        ]
+    )
+
     static func definition(for overlayId: String) -> OverlayContentDefinition? {
-        [standings, relative, inputState].first { $0.overlayId == overlayId }
+        [standings, relative, inputState, pitService].first { $0.overlayId == overlayId }
     }
 
     static func columnStates(

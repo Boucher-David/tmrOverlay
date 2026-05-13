@@ -1466,8 +1466,27 @@ internal static class LiveRaceModelBuilder
             || sample.PitServiceFuelLiters is not null
             || sample.PitRepairLeftSeconds is not null
             || sample.PitOptRepairLeftSeconds is not null
+            || sample.PlayerCarDryTireSetLimit is not null
             || sample.TireSetsUsed is not null
+            || sample.TireSetsAvailable is not null
+            || sample.LeftTireSetsUsed is not null
+            || sample.RightTireSetsUsed is not null
+            || sample.FrontTireSetsUsed is not null
+            || sample.RearTireSetsUsed is not null
+            || sample.LeftTireSetsAvailable is not null
+            || sample.RightTireSetsAvailable is not null
+            || sample.FrontTireSetsAvailable is not null
+            || sample.RearTireSetsAvailable is not null
+            || sample.LeftFrontTiresUsed is not null
+            || sample.RightFrontTiresUsed is not null
+            || sample.LeftRearTiresUsed is not null
+            || sample.RightRearTiresUsed is not null
+            || sample.LeftFrontTiresAvailable is not null
+            || sample.RightFrontTiresAvailable is not null
+            || sample.LeftRearTiresAvailable is not null
+            || sample.RightRearTiresAvailable is not null
             || sample.FastRepairUsed is not null
+            || sample.FastRepairAvailable is not null
             || sample.TeamFastRepairsUsed is not null;
 
         return new LiveFuelPitModel(
@@ -1491,8 +1510,28 @@ internal static class LiveRaceModelBuilder
             PitServiceFuelLiters: ValidNonNegative(sample.PitServiceFuelLiters),
             PitRepairLeftSeconds: ValidNonNegative(sample.PitRepairLeftSeconds),
             PitOptRepairLeftSeconds: ValidNonNegative(sample.PitOptRepairLeftSeconds),
+            PlayerCarDryTireSetLimit: sample.PlayerCarDryTireSetLimit,
             TireSetsUsed: sample.TireSetsUsed,
+            TireSetsAvailable: sample.TireSetsAvailable,
+            LeftTireSetsUsed: sample.LeftTireSetsUsed,
+            RightTireSetsUsed: sample.RightTireSetsUsed,
+            FrontTireSetsUsed: sample.FrontTireSetsUsed,
+            RearTireSetsUsed: sample.RearTireSetsUsed,
+            LeftTireSetsAvailable: sample.LeftTireSetsAvailable,
+            RightTireSetsAvailable: sample.RightTireSetsAvailable,
+            FrontTireSetsAvailable: sample.FrontTireSetsAvailable,
+            RearTireSetsAvailable: sample.RearTireSetsAvailable,
+            LeftFrontTiresUsed: sample.LeftFrontTiresUsed,
+            RightFrontTiresUsed: sample.RightFrontTiresUsed,
+            LeftRearTiresUsed: sample.LeftRearTiresUsed,
+            RightRearTiresUsed: sample.RightRearTiresUsed,
+            LeftFrontTiresAvailable: sample.LeftFrontTiresAvailable,
+            RightFrontTiresAvailable: sample.RightFrontTiresAvailable,
+            LeftRearTiresAvailable: sample.LeftRearTiresAvailable,
+            RightRearTiresAvailable: sample.RightRearTiresAvailable,
+            RequestedTireCompound: sample.PitServiceTireRequest?.RequestedTireCompound,
             FastRepairUsed: sample.FastRepairUsed,
+            FastRepairAvailable: sample.FastRepairAvailable,
             TeamFastRepairsUsed: sample.TeamFastRepairsUsed);
     }
 
