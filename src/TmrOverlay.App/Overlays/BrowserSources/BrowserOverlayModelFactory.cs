@@ -1305,9 +1305,10 @@ internal sealed class BrowserOverlayModelFactory
         }
 
         if (BrowserGapSeconds(car, lapReferenceSeconds) is { } seconds
-            && IsValidLapReference(lapReferenceSeconds))
+            && lapReferenceSeconds is { } lapSeconds
+            && IsValidLapReference(lapSeconds))
         {
-            return seconds / lapReferenceSeconds.Value;
+            return seconds / lapSeconds;
         }
 
         return null;
@@ -1388,7 +1389,9 @@ internal sealed class BrowserOverlayModelFactory
 
     private static double ChartLapReferenceSeconds(double? lapReferenceSeconds)
     {
-        return IsValidLapReference(lapReferenceSeconds) ? lapReferenceSeconds.Value : GapDefaultLapReferenceSeconds;
+        return lapReferenceSeconds is { } value && IsValidLapReference(value)
+            ? value
+            : GapDefaultLapReferenceSeconds;
     }
 
     private static bool IsValidLapReference(double? seconds)

@@ -1695,6 +1695,25 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         return null;
     }
 
+    private static bool IsValidLapReference(double? seconds)
+    {
+        return seconds is { } value && value is > 20d and < 1800d && IsFinite(value);
+    }
+
+    private static bool ReferenceUsesPlayerCar(LiveTelemetrySnapshot snapshot)
+    {
+        var reference = snapshot.Models.Reference;
+        if (reference.HasData)
+        {
+            return reference.FocusIsPlayer;
+        }
+
+        var directory = snapshot.Models.DriverDirectory;
+        return directory.FocusCarIdx is not null
+            && directory.PlayerCarIdx is not null
+            && directory.FocusCarIdx == directory.PlayerCarIdx;
+    }
+
     private static DesignV2GapDriverIdentity? ToGapDriverIdentity(HistoricalSessionDriver driver)
     {
         if (driver.CarIdx is not { } carIdx || driver.IsSpectator == true)
