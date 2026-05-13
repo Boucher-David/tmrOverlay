@@ -499,7 +499,8 @@ internal sealed record LiveRelativeRow(
     double? RelativeSeconds,
     double? RelativeLaps,
     double? RelativeMeters,
-    bool? OnPitRoad);
+    bool? OnPitRoad,
+    int? LapDeltaToReference = null);
 
 internal sealed record LiveSpatialModel(
     bool HasData,

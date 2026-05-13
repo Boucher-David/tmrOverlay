@@ -367,6 +367,9 @@
           (row.isPit || row.onPitRoad) && !(row.isFocus || row.isReference || row.isReferenceCar) ? 'pit' : '',
           row.isPendingGrid ? 'pending-grid' : '',
           row.isPartial ? 'partial' : '',
+          row.isPlaceholder ? 'placeholder' : '',
+          lapRelationshipClass(row),
+          row.carClassColorHex && !isClassHeaderRow(row) ? 'class-colored' : '',
           isClassHeaderRow(row) ? 'class-header' : ''
         ].filter(Boolean).join(' ');
         if (isClassHeaderRow(row)) {
@@ -374,13 +377,23 @@
         }
 
         const cells = headers.map((header) => `<td${cellStyle(header)}>${header.value(row)}</td>`).join('');
-        return `<tr class="${classes}"${classHeaderStyle(row)}>${cells}</tr>`;
+        return `<tr class="${classes}"${rowStyle(row)}>${cells}</tr>`;
       }).join('');
       return `<table${tableStyle}>${colGroup}<thead><tr>${headerHtml}</tr></thead><tbody>${rowHtml}</tbody></table>`;
     }
 
     function isClassHeaderRow(row) {
       return row?.rowKind === 'header' || row?.isClassHeader === true;
+    }
+
+    function lapRelationshipClass(row) {
+      const delta = Number(row?.relativeLapDelta ?? row?.lapDeltaToReference);
+      if (!Number.isFinite(delta) || delta === 0) return '';
+      if (delta >= 2) return 'lap-ahead-2';
+      if (delta === 1) return 'lap-ahead-1';
+      if (delta === -1) return 'lap-behind-1';
+      if (delta <= -2) return 'lap-behind-2';
+      return '';
     }
 
     function classHeaderContent(row) {
@@ -416,6 +429,14 @@
     function classHeaderStyle(row) {
       if (!isClassHeaderRow(row)) return '';
       return classColorStyle(row?.carClassColorHex);
+    }
+
+    function rowStyle(row) {
+      if (isClassHeaderRow(row)) return classHeaderStyle(row);
+      const color = parseHexColor(row?.carClassColorHex);
+      return color
+        ? ` style="--row-class-accent: #${color.key}; --row-class-bg: rgba(${color.r}, ${color.g}, ${color.b}, 0.13);"`
+        : '';
     }
 
     function classColorStyle(value) {

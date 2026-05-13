@@ -114,6 +114,7 @@ Last updated: 2026-05-10
   - uses model-v2 relative rows from proximity first and timing/class-gap fallback when proximity is unavailable; when proximity has lap-distance placement but no direct relative seconds, the relative model can infer display seconds from live lap distance times the current lap-time signal while leaving radar timing stricter
   - uses scoring/results data only to enrich cars already present in relative telemetry; scoring-only cars are deliberately not added to Relative because they do not have honest live relative placement
   - keeps pit-road relative rows visible, but de-emphasizes them so passing cars in the pits remain useful context without reading as active on-track threats
+  - colors whole-lap-ahead/behind rows through text color independent of car-class row accents
   - normalizes gap signs by row direction so cars ahead display negative gaps and cars behind display positive gaps regardless of source sign
   - keeps configured ahead/reference/behind row slots stable during live telemetry so nearby-car churn updates labels in place instead of causing table-height and reference-row jumps
   - keeps source/evidence chrome quiet in the normal case; the footer only calls out live proximity, model-v2 timing fallback, partial timing, or waiting

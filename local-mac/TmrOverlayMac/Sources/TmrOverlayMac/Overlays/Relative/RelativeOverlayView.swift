@@ -15,6 +15,7 @@ final class RelativeOverlayView: NSView {
     private let sourceLabel = NSTextField(labelWithString: "source: waiting")
     private var rowLabels: [[NSTextField]] = []
     private var tableRect = NSRect.zero
+    private var renderedRows: [RelativeDisplayRow?] = [nil]
     private var renderedRowCount = 1
     private var overlayError: String?
     private var showHeaderStatus = true
@@ -111,6 +112,7 @@ final class RelativeOverlayView: NSView {
         bounds.insetBy(dx: 0.5, dy: 0.5).frame()
         OverlayTheme.Colors.panelBackground.setFill()
         tableRect.fill()
+        fillRowBackgrounds()
         OverlayTheme.Colors.windowBorder.setStroke()
         tableRect.frame()
 
@@ -175,13 +177,14 @@ final class RelativeOverlayView: NSView {
             driver: referenceDriver(snapshot.latestFrame),
             gap: "0.000",
             detail: referenceClass(snapshot.latestFrame),
-            classColorHex: "#FFDA59",
+            classColorHex: snapshot.latestFrame?.capturedReferenceCar?.carClassColorHex ?? "#FFDA59",
             isReference: true,
             isAhead: false,
             isBehind: false,
             isSameClass: true,
             isPit: snapshot.latestFrame?.onPitRoad == true,
-            isPartial: false
+            isPartial: false,
+            lapDeltaToReference: 0
         )
 
         let ahead = proximity.nearbyCars
@@ -221,15 +224,18 @@ final class RelativeOverlayView: NSView {
             isBehind: direction == .behind,
             isSameClass: sameClass,
             isPit: car.onPitRoad == true,
-            isPartial: car.relativeSeconds == nil && car.relativeMeters == nil
+            isPartial: car.relativeSeconds == nil && car.relativeMeters == nil,
+            lapDeltaToReference: car.lapDeltaToReference
         )
     }
 
     private func applyRows(_ rows: [RelativeDisplayRow]) {
+        let rows = stableRows(from: rows)
+        renderedRows = rows
         renderedRowCount = max(1, min(Layout.maximumRows, rows.count))
         for index in 0..<Layout.maximumRows {
-            if index < rows.count {
-                applyRow(rows[index], index: index)
+            if index < rows.count, let row = rows[index] {
+                applyRow(row, index: index)
             } else {
                 applyBlank(index: index, placeholder: "")
             }
@@ -237,21 +243,97 @@ final class RelativeOverlayView: NSView {
     }
 
     private func clearRows(placeholder: String) {
+        renderedRows = [nil]
         renderedRowCount = 1
         for index in 0..<Layout.maximumRows {
             applyBlank(index: index, placeholder: index == 0 ? placeholder : "")
         }
     }
 
+    private func stableRows(from rows: [RelativeDisplayRow]) -> [RelativeDisplayRow?] {
+        guard !rows.isEmpty else {
+            return [nil]
+        }
+
+        let aheadCapacity = clampedCarsAhead
+        let behindCapacity = clampedCarsBehind
+        let reference = rows.first { $0.isReference }
+        let hasReference = reference != nil
+        let visibleRows = max(1, min(Layout.maximumRows, aheadCapacity + behindCapacity + (hasReference ? 1 : 0)))
+        var stableRows = Array<RelativeDisplayRow?>(repeating: nil, count: visibleRows)
+
+        let ahead = rows.filter(\.isAhead)
+        let aheadStart = max(0, aheadCapacity - ahead.count)
+        for (offset, row) in ahead.enumerated() where aheadStart + offset < stableRows.count {
+            stableRows[aheadStart + offset] = row
+        }
+
+        let behindStart = hasReference ? aheadCapacity + 1 : aheadCapacity
+        if let reference, aheadCapacity < stableRows.count {
+            stableRows[aheadCapacity] = reference
+        }
+
+        let behind = rows.filter(\.isBehind)
+        for (offset, row) in behind.enumerated() where behindStart + offset < stableRows.count {
+            stableRows[behindStart + offset] = row
+        }
+
+        return !hasReference && ahead.isEmpty && behind.isEmpty ? [nil] : stableRows
+    }
+
+    private func fillRowBackgrounds() {
+        let visibleRows = max(1, renderedRowCount)
+        let rowHeight = tableRect.height / CGFloat(visibleRows)
+        for index in 0..<min(visibleRows, Layout.maximumRows) {
+            let rowY = tableRect.maxY - CGFloat(index + 1) * rowHeight
+            let rect = NSRect(x: tableRect.minX, y: rowY, width: tableRect.width, height: rowHeight)
+            let row = index < renderedRows.count ? renderedRows[index] : nil
+            rowFill(row).setFill()
+            rect.fill()
+        }
+    }
+
+    private func rowFill(_ row: RelativeDisplayRow?) -> NSColor {
+        guard let row else {
+            return OverlayClassColor.blend(
+                panel: OverlayTheme.Colors.panelBackground,
+                accent: OverlayTheme.Colors.windowBorder,
+                panelWeight: 10,
+                accentWeight: 1
+            )
+        }
+
+        let base: NSColor
+        if row.isReference {
+            base = OverlayTheme.Colors.infoBackground
+        } else if row.isPit {
+            base = OverlayTheme.Colors.warningStrongBackground
+        } else {
+            base = OverlayTheme.Colors.panelBackground
+        }
+
+        guard let classColor = OverlayClassColor.color(row.classColorHex) else {
+            return base
+        }
+
+        return OverlayClassColor.blend(
+            panel: base,
+            accent: classColor,
+            panelWeight: row.isReference ? 10 : 8,
+            accentWeight: 1
+        )
+    }
+
     private func applyRow(_ row: RelativeDisplayRow, index: Int) {
         let columns = displayColumns
 
-        let textColor = row.isPartial
-            ? OverlayTheme.Colors.textMuted
-            : row.isReference ? OverlayTheme.Colors.textPrimary : OverlayTheme.Colors.textSecondary
+        let lappedColor = lappedTextColor(row.lapDeltaToReference)
+        let textColor = row.isReference
+            ? OverlayTheme.Colors.textPrimary
+            : lappedColor ?? (row.isPartial ? OverlayTheme.Colors.textMuted : OverlayTheme.Colors.textSecondary)
         let gapColor = row.isReference
             ? OverlayTheme.Colors.textPrimary
-            : row.isPartial ? OverlayTheme.Colors.textMuted : (row.isAhead ? OverlayTheme.Colors.textSubtle : OverlayTheme.Colors.successText)
+            : lappedColor ?? (row.isPartial ? OverlayTheme.Colors.textMuted : (row.isAhead ? OverlayTheme.Colors.textSubtle : OverlayTheme.Colors.successText))
         for columnIndex in 0..<maximumColumns {
             let label = rowLabels[index][columnIndex]
             guard columnIndex < columns.count else {
@@ -306,6 +388,21 @@ final class RelativeOverlayView: NSView {
         }
 
         return textColor
+    }
+
+    private func lappedTextColor(_ lapDeltaToReference: Int?) -> NSColor? {
+        switch lapDeltaToReference {
+        case let value? where value >= 2:
+            return OverlayTheme.Colors.errorIndicator
+        case 1:
+            return NSColor(red255: 255, green: 155, blue: 164)
+        case -1:
+            return NSColor(red255: 150, green: 210, blue: 255)
+        case let value? where value <= -2:
+            return NSColor(red255: 82, green: 158, blue: 255)
+        default:
+            return nil
+        }
     }
 
     private func setup() {
@@ -602,6 +699,7 @@ private struct RelativeDisplayRow {
     var isSameClass: Bool
     var isPit: Bool
     var isPartial: Bool
+    var lapDeltaToReference: Int?
 }
 
 private enum RelativeDirection {

@@ -901,7 +901,8 @@ internal static class LiveRaceModelBuilder
                 RelativeSeconds: inferredRelativeSeconds,
                 RelativeLaps: car.RelativeLaps,
                 RelativeMeters: car.RelativeMeters,
-                OnPitRoad: car.OnPitRoad ?? timingRow?.OnPitRoad));
+                OnPitRoad: car.OnPitRoad ?? timingRow?.OnPitRoad,
+                LapDeltaToReference: LapDeltaToReference(timingRow, reference)));
         }
 
         foreach (var car in sample.NearbyCars ?? [])
@@ -932,7 +933,8 @@ internal static class LiveRaceModelBuilder
                 RelativeSeconds: inferredRelativeSeconds,
                 RelativeLaps: relativeLaps,
                 RelativeMeters: null,
-                OnPitRoad: true));
+                OnPitRoad: true,
+                LapDeltaToReference: LapDeltaToReference(car.LapCompleted, timingRow.ProgressLaps, reference)));
         }
 
         rows.AddRange(timing.OverallRows
@@ -955,7 +957,8 @@ internal static class LiveRaceModelBuilder
                 RelativeSeconds: row.DeltaSecondsToFocus,
                 RelativeLaps: null,
                 RelativeMeters: null,
-                OnPitRoad: row.OnPitRoad)));
+                OnPitRoad: row.OnPitRoad,
+                LapDeltaToReference: LapDeltaToReference(row, reference))));
 
         if (AllowsEstimatedRelativeTiming(context, sample))
         {
@@ -1056,7 +1059,8 @@ internal static class LiveRaceModelBuilder
                     RelativeSeconds: relativeSeconds,
                     RelativeLaps: relativeLaps,
                     RelativeMeters: null,
-                    OnPitRoad: row.OnPitRoad);
+                    OnPitRoad: row.OnPitRoad,
+                    LapDeltaToReference: LapDeltaToReference(row, reference));
             })
             .Where(row => row is not null)
             .Select(row => row!)
@@ -1082,6 +1086,32 @@ internal static class LiveRaceModelBuilder
         }
 
         return relativeLaps;
+    }
+
+    private static int? LapDeltaToReference(LiveTimingRow? row, LiveReferenceModel reference)
+    {
+        return LapDeltaToReference(row?.LapCompleted, row?.ProgressLaps, reference);
+    }
+
+    private static int? LapDeltaToReference(int? carLapCompleted, double? carProgressLaps, LiveReferenceModel reference)
+    {
+        var carLap = ValidCompletedLap(carLapCompleted) ?? CompletedLapFromProgress(carProgressLaps);
+        var referenceLap = ValidCompletedLap(reference.LapCompleted) ?? CompletedLapFromProgress(reference.ProgressLaps);
+        return carLap is { } car && referenceLap is { } focus
+            ? car - focus
+            : null;
+    }
+
+    private static int? ValidCompletedLap(int? lapCompleted)
+    {
+        return lapCompleted is >= 0 ? lapCompleted : null;
+    }
+
+    private static int? CompletedLapFromProgress(double? progressLaps)
+    {
+        return progressLaps is { } progress && IsFinite(progress) && progress >= 0d
+            ? (int)Math.Floor(progress)
+            : null;
     }
 
     private static double? InferRelativeSecondsFromLapDistance(double relativeLaps, HistoricalTelemetrySample sample)

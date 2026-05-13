@@ -15,6 +15,15 @@ import {
 
 const port = Number.parseInt(process.env.TMR_BROWSER_REVIEW_PORT || '5177', 10);
 const clients = new Set();
+const productionOverlayModelIds = new Set([
+  'standings',
+  'relative',
+  'fuel-calculator',
+  'session-weather',
+  'pit-service',
+  'input-state',
+  'gap-to-leader'
+]);
 let reloadTimer = null;
 
 const server = createServer((request, response) => {
@@ -79,7 +88,11 @@ function reviewApiResponse(path, searchParams = new URLSearchParams()) {
   }
 
   if (path.startsWith('/api/overlay-model/')) {
-    const overlayId = decodeURIComponent(path.slice('/api/overlay-model/'.length));
+    const overlayId = decodeURIComponent(path.slice('/api/overlay-model/'.length)).trim().toLowerCase();
+    if (!productionOverlayModelIds.has(overlayId)) {
+      return null;
+    }
+
     const page = browserOverlayPage(overlayId);
     return { model: reviewDisplayModel(page.page.id, previewMode) };
   }
@@ -92,7 +105,9 @@ function reviewApiResponse(path, searchParams = new URLSearchParams()) {
   return browserOverlayApiResponse(page.page.id, path, {
     live: reviewLiveSnapshot(previewMode),
     settings: reviewSettings(page.page.id, previewMode),
-    model: reviewDisplayModel(page.page.id, previewMode)
+    model: productionOverlayModelIds.has(page.page.id)
+      ? reviewDisplayModel(page.page.id, previewMode)
+      : null
   });
 }
 
@@ -274,47 +289,90 @@ function reviewDisplayModel(overlayId, previewMode = 'off') {
     case 'standings':
       return standingsDisplayModel(previewLabel);
     case 'relative':
-      return tableModel('relative', 'Relative', `live | ${previewLabel}`, [
-        ['AHEAD', 'Kousuke Konishi', '-2.400', 'LMP2'],
-        ['YOU', 'Tech Mates Racing', '0.000', 'GT3'],
-        ['BEHIND', 'Tommie Wittens', '+3.182', 'GT3']
-      ]);
+      return relativeDisplayModel(previewLabel);
     case 'fuel-calculator':
-      return metricsModel('fuel-calculator', 'Fuel Calculator', `live | ${previewLabel}`, [
-        ['Fuel', '104.94 L', 'info'],
-        ['Laps Left', '12.4', 'normal'],
-        ['Target', '3.07 L/lap', 'normal'],
-        ['Pit Window', '8 laps', 'warning']
-      ]);
+      return metricsModel('fuel-calculator', 'Fuel Calculator', '3 stints / 2 stops', [
+        ['Plan', '31 laps | 3 stints | final 7', 'modeled'],
+        ['Strategy', '12-lap rhythm avoids +1 stop | ~52s | save 0.2 L/lap', 'modeled'],
+        ['Stint 1', '12 laps | target 3.1 L/lap | tires free (36.8 L)', 'modeled'],
+        ['Stint 2', '12 laps | target 3.1 L/lap | tires free (36.8 L)', 'modeled'],
+        ['Stint 3', '7 laps final | target 3.1 L/lap | --', 'modeled']
+      ], 'burn 3.1 L/lap (live burn) | 34.2 laps/tank | history user | tires user pit history | gap O0.18 C0.04');
     case 'session-weather':
-      return metricsModel('session-weather', 'Session / Weather', `live | ${previewLabel}`, [
-        ['Track', '31 C', 'normal'],
-        ['Air', '22 C', 'normal'],
-        ['Wind', '9 km/h', 'normal'],
-        ['Humidity', '48%', 'normal']
-      ]);
+      return metricsModel('session-weather', 'Session / Weather', 'Race', [
+        ['Session', `Race | ${previewLabel} | team`, 'normal'],
+        ['Clock', '17:22 elapsed | 6:37:08 left', 'normal'],
+        ['Laps', '-- left | 179 total', 'normal'],
+        ['Track', 'Gesamtstrecke 24h | 25.38 km', 'normal'],
+        ['Temps', 'air 22 C | track 31 C', 'normal'],
+        ['Surface', 'dry | rubber moderate usage', 'normal'],
+        ['Sky', 'partly cloudy | constant | rain:0%', 'normal'],
+        ['Wind', 'S | 15 km/h | hum 48% | fog 0%', 'normal']
+      ], 'source: session + live weather telemetry');
     case 'pit-service':
-      return metricsModel('pit-service', 'Pit Service', `live | ${previewLabel}`, [
-        ['Fuel Add', '104.94 L', 'info'],
-        ['Tires', 'Lefts', 'normal'],
-        ['Fast Repair', 'Available', 'success'],
-        ['Box', 'Open', 'warning']
-      ]);
+      return metricsModel('pit-service', 'Pit Service', 'hold', [
+        ['Release', 'RED - service active', 'error'],
+        ['Location', 'player on pit road', 'error'],
+        ['Service', 'active | tires, fuel, tearoff', 'error'],
+        ['Pit status', 'in progress', 'error'],
+        ['Fuel request', '31.6 L', 'normal'],
+        ['Repair', '12s required', 'error'],
+        ['Tires', 'four tires | 2 sets used', 'normal'],
+        ['Fast repair', 'local 0 | team 1', 'normal']
+      ], 'source: player/team pit service telemetry');
+    case 'input-state':
+      return metricsModel('input-state', 'Inputs', '4 | 7250 rpm | ABS', [
+        ['Speed', '231 km/h', 'normal'],
+        ['Gear / RPM', '4 | 7250 rpm', 'normal'],
+        ['Pedals', 'T 78% | B 16% ABS | C 0%', 'normal'],
+        ['Steering', '-10 deg', 'normal'],
+        ['Warnings', 'none', 'normal'],
+        ['Electrical', '13.8 V', 'normal'],
+        ['Cooling', '88 C', 'normal'],
+        ['Oil / Fuel', 'oil 96 C | oil 5.4 bar | fuel 4.1 bar', 'normal']
+      ], 'source: local car telemetry');
     case 'gap-to-leader':
       return {
         overlayId,
         title: 'Gap To Leader',
-        status: `live | ${previewLabel}`,
-        source: 'source: review fixture',
+        status: 'live | race gap',
+        source: 'source: live gap telemetry | cars 4',
         bodyKind: 'graph',
         columns: [],
         rows: [],
-        metrics: [],
-        points: [74, 72, 70, 68, 66, 65, 63, 61, 60, 58, 55, 53]
+        metrics: [
+          { label: 'Class pos', value: '2', tone: 'live' },
+          { label: 'Class leader', value: '+53.0', tone: 'live' }
+        ],
+        points: [74, 72, 70, 68, 66, 65, 63, 61, 60, 58, 55, 53],
+        headerItems: [{ key: 'status', value: 'live | race gap' }]
       };
     default:
       return tableModel(overlayId, browserOverlayPage(overlayId).title, `live | ${previewLabel}`, []);
   }
+}
+
+function relativeDisplayModel(previewLabel = 'review fixture') {
+  return {
+    overlayId: 'relative',
+    title: 'Relative',
+    status: `5 - 2/4 cars | ${previewLabel}`,
+    source: 'source: review fixture',
+    bodyKind: 'table',
+    columns: [
+      { id: 'relative.position', label: 'Pos', dataKey: 'relative-position', width: 38, alignment: 'right' },
+      { id: 'relative.driver', label: 'Driver', dataKey: 'driver', width: 180, alignment: 'left' },
+      { id: 'relative.gap', label: 'Delta', dataKey: 'gap', width: 70, alignment: 'right' }
+    ],
+    rows: [
+      relativeRow(['3', '#34 Near Ahead', '-2.350'], { carClassColorHex: '#33CEFF', relativeLapDelta: 1 }),
+      relativeRow(['5', '#55 Focus Driver', '0.000'], { isReference: true, carClassColorHex: '#FFDA59', relativeLapDelta: 0 }),
+      relativeRow(['6', '#61 Near Behind', '+1.200'], { carClassColorHex: '#FF4FD8', relativeLapDelta: -2 })
+    ],
+    metrics: [],
+    points: [],
+    headerItems: [{ key: 'status', value: `5 - 2/4 cars | ${previewLabel}` }]
+  };
 }
 
 function tableModel(overlayId, title, status, rows) {
@@ -344,16 +402,32 @@ function tableModel(overlayId, title, status, rows) {
   };
 }
 
-function metricsModel(overlayId, title, status, metrics) {
+function relativeRow(cells, extra = {}) {
+  return {
+    cells,
+    isClassHeader: false,
+    isReference: false,
+    isPit: false,
+    isPartial: false,
+    carClassColorHex: null,
+    headerTitle: null,
+    headerDetail: null,
+    ...extra
+  };
+}
+
+function metricsModel(overlayId, title, status, metrics, source = 'source: review fixture') {
   return {
     overlayId,
     title,
     status,
-    source: 'source: review fixture',
+    source,
     bodyKind: 'metrics',
     columns: [],
     rows: [],
-    metrics: metrics.map(([label, value, tone]) => ({ label, value, tone }))
+    metrics: metrics.map(([label, value, tone]) => ({ label, value, tone })),
+    points: [],
+    headerItems: [{ key: 'status', value: status }]
   };
 }
 

@@ -166,7 +166,8 @@ struct LiveProximitySnapshot {
                 classPosition: 1,
                 carClass: 4099,
                 carClassColorHex: "#33CEFF",
-                onPitRoad: false
+                onPitRoad: false,
+                lapDeltaToReference: -1
             )
         ].sorted { abs($0.relativeLaps) < abs($1.relativeLaps) }
         let approaches = cars
@@ -238,7 +239,8 @@ struct LiveProximitySnapshot {
                     onPitRoad: car.onPitRoad,
                     driverName: car.driverName,
                     carNumber: car.carNumber,
-                    carClassName: car.carClassName
+                    carClassName: car.carClassName,
+                    lapDeltaToReference: lapDelta(car, reference)
                 )
             }
             .filter {
@@ -307,6 +309,29 @@ struct LiveProximitySnapshot {
         return value
     }
 
+    private static func lapDelta(_ car: CapturedReplayCar, _ reference: CapturedReplayCar) -> Int? {
+        guard let carLap = completedLap(car),
+              let referenceLap = completedLap(reference) else {
+            return nil
+        }
+
+        return carLap - referenceLap
+    }
+
+    private static func completedLap(_ car: CapturedReplayCar) -> Int? {
+        if let lapCompleted = car.lapCompleted, lapCompleted >= 0 {
+            return lapCompleted
+        }
+
+        guard let progress = car.trackProgress,
+              progress.isFinite,
+              progress >= 0 else {
+            return nil
+        }
+
+        return Int(progress.rounded(.down))
+    }
+
     private static func sideStatus(_ carLeftRight: Int?) -> String {
         switch carLeftRight {
         case 2:
@@ -350,6 +375,7 @@ struct LiveProximityCar {
     var driverName: String?
     var carNumber: String?
     var carClassName: String?
+    var lapDeltaToReference: Int?
 
     init(
         carIdx: Int,
@@ -363,7 +389,8 @@ struct LiveProximityCar {
         onPitRoad: Bool?,
         driverName: String? = nil,
         carNumber: String? = nil,
-        carClassName: String? = nil
+        carClassName: String? = nil,
+        lapDeltaToReference: Int? = nil
     ) {
         self.carIdx = carIdx
         self.relativeLaps = relativeLaps
@@ -377,6 +404,7 @@ struct LiveProximityCar {
         self.driverName = driverName
         self.carNumber = carNumber
         self.carClassName = carClassName
+        self.lapDeltaToReference = lapDeltaToReference
     }
 }
 

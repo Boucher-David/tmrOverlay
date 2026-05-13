@@ -9,7 +9,7 @@ afterEach(() => {
 });
 
 describe('relative browser rendering', () => {
-  it('renders nearest configured cars around the reference row with stable gap signs', async () => {
+  it('renders stable configured row slots around the reference row with class-colour accents', async () => {
     currentOverlay = await renderBrowserOverlay('relative', {
       live: freshLiveSnapshot({}),
       model: relativeDisplayModel()
@@ -19,11 +19,20 @@ describe('relative browser rendering', () => {
     const rowText = rows.map(rowCells);
 
     expect(rowText).toEqual([
+      '',
+      '',
       '3 #34 Near Ahead -2.350',
       '5 #55 Focus Driver 0.000',
-      '6 #61 Near Behind +1.200 IN'
+      '6 #61 Near Behind +1.200 IN',
+      '',
+      ''
     ]);
-    expect(rows[1].classList.contains('focus')).toBe(true);
+    expect(rows[0].classList.contains('placeholder')).toBe(true);
+    expect(rows[2].classList.contains('class-colored')).toBe(true);
+    expect(rows[2].classList.contains('lap-ahead-1')).toBe(true);
+    expect(rows[3].classList.contains('focus')).toBe(true);
+    expect(rows[3].classList.contains('class-colored')).toBe(true);
+    expect(rows[4].classList.contains('lap-behind-2')).toBe(true);
     expect(currentOverlay.document.getElementById('status').textContent).toBe('5 - 2/4 cars');
     expect(currentOverlay.document.body.textContent).not.toContain('Far Ahead');
     expect(currentOverlay.document.body.textContent).not.toContain('Far Behind');
@@ -44,9 +53,13 @@ function relativeDisplayModel() {
       { id: 'relative.pit', label: 'Pit', dataKey: 'pit', width: 30, alignment: 'right' }
     ],
     rows: [
-      row(['3', '#34 Near Ahead', '-2.350']),
-      row(['5', '#55 Focus Driver', '0.000'], { isReference: true }),
-      row(['6', '#61 Near Behind', '+1.200', 'IN'], { isPit: true })
+      row(['', '', '', ''], { isPlaceholder: true }),
+      row(['', '', '', ''], { isPlaceholder: true }),
+      row(['3', '#34 Near Ahead', '-2.350'], { carClassColorHex: '#FFDA59', relativeLapDelta: 1 }),
+      row(['5', '#55 Focus Driver', '0.000'], { isReference: true, carClassColorHex: '#33CEFF' }),
+      row(['6', '#61 Near Behind', '+1.200', 'IN'], { isPit: true, carClassColorHex: '#FF4FD8', relativeLapDelta: -2 }),
+      row(['', '', '', ''], { isPlaceholder: true }),
+      row(['', '', '', ''], { isPlaceholder: true })
     ],
     metrics: []
   };
@@ -63,6 +76,8 @@ function row(cells, extra = {}) {
     isClassHeader: false,
     isPit: false,
     isPartial: false,
+    isPlaceholder: false,
+    relativeLapDelta: null,
     carClassColorHex: null,
     headerTitle: null,
     headerDetail: null,

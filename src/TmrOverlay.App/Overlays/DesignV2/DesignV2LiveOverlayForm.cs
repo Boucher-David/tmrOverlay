@@ -90,6 +90,10 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private static Color Green => OverlayTheme.DesignV2.Green;
     private static Color Orange => OverlayTheme.DesignV2.Orange;
     private static Color Error => OverlayTheme.DesignV2.Error;
+    private static Color OneLapAheadText => Color.FromArgb(255, 155, 164);
+    private static Color MultipleLapsAheadText => Error;
+    private static Color OneLapBehindText => Color.FromArgb(150, 210, 255);
+    private static Color MultipleLapsBehindText => Color.FromArgb(82, 158, 255);
     private static Color TrackInterior => OverlayTheme.DesignV2.TrackInterior;
     private static Color TrackHalo => OverlayTheme.DesignV2.TrackHalo;
     private static Color TrackLine => OverlayTheme.DesignV2.TrackLine;
@@ -517,7 +521,8 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                     row.IsReference,
                     IsClassHeader: false,
                     row.IsPartial ? DesignV2Evidence.Partial : DesignV2Evidence.Measured,
-                    row.ClassColorHex))
+                    row.ClassColorHex,
+                    RelativeLapDelta: row.LapDeltaToReference))
             .ToArray();
         return new DesignV2OverlayModel(
             "Relative",
@@ -532,42 +537,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         int carsAhead,
         int carsBehind)
     {
-        if (viewModel.Rows.Count == 0)
-        {
-            return [null];
-        }
-
-        var aheadCapacity = Math.Clamp(carsAhead, 0, 8);
-        var behindCapacity = Math.Clamp(carsBehind, 0, 8);
-        var reference = viewModel.Rows.FirstOrDefault(row => row.IsReference);
-        var hasReference = reference is not null;
-        var visibleRows = Math.Clamp(
-            aheadCapacity + behindCapacity + (hasReference ? 1 : 0),
-            1,
-            17);
-        var stableRows = new RelativeOverlayRowViewModel?[visibleRows];
-        var ahead = viewModel.Rows.Where(row => row.IsAhead).ToArray();
-        var aheadStart = Math.Max(0, aheadCapacity - ahead.Length);
-        for (var index = 0; index < ahead.Length && aheadStart + index < stableRows.Length; index++)
-        {
-            stableRows[aheadStart + index] = ahead[index];
-        }
-
-        var behindStart = hasReference ? aheadCapacity + 1 : aheadCapacity;
-        if (hasReference && aheadCapacity < stableRows.Length)
-        {
-            stableRows[aheadCapacity] = reference;
-        }
-
-        var behind = viewModel.Rows.Where(row => row.IsBehind).ToArray();
-        for (var index = 0; index < behind.Length && behindStart + index < stableRows.Length; index++)
-        {
-            stableRows[behindStart + index] = behind[index];
-        }
-
-        return !hasReference && ahead.Length == 0 && behind.Length == 0
-            ? [null]
-            : stableRows;
+        return viewModel.StableRows(carsAhead, carsBehind, maximumRows: 17);
     }
 
     private static DesignV2TableRow BlankTableRow(int columnCount)
@@ -1896,12 +1866,17 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                 break;
             }
 
-            var fill = row.IsReference
-                ? Blend(SurfaceRaised, Cyan, 10, 1)
-                : SurfaceRaised;
+            var fill = row.Evidence == DesignV2Evidence.Unavailable
+                ? SurfaceInset
+                : TryParseHexColor(row.ClassColorHex, out var rowClassColor)
+                    ? Blend(SurfaceRaised, rowClassColor, row.IsReference ? 10 : 12, 1)
+                    : row.IsReference
+                        ? Blend(SurfaceRaised, Cyan, 10, 1)
+                        : SurfaceRaised;
             FillRounded(graphics, rowRect, 5, fill, Color.FromArgb(90, BorderMuted));
 
             x = rowRect.Left + 8;
+            var rowTextColor = TableTextColor(row);
             for (var columnIndex = 0; columnIndex < table.Columns.Count; columnIndex++)
             {
                 var column = table.Columns[columnIndex];
@@ -1911,7 +1886,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                     graphics,
                     value,
                     row.IsReference || columnIndex == 0 ? rowBoldFont : rowFont,
-                    row.IsReference ? TextPrimary : TextSecondary,
+                    row.IsReference ? TextPrimary : rowTextColor,
                     new RectangleF(x, rowRect.Top + 7, width, 16),
                     column.Alignment);
                 x += width + ColumnGap;
@@ -1920,6 +1895,23 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             y += RowHeight + RowGap;
             drawnRows++;
         }
+    }
+
+    private static Color TableTextColor(DesignV2TableRow row)
+    {
+        if (row.Evidence == DesignV2Evidence.Unavailable)
+        {
+            return TextMuted;
+        }
+
+        return row.RelativeLapDelta switch
+        {
+            >= 2 => MultipleLapsAheadText,
+            1 => OneLapAheadText,
+            -1 => OneLapBehindText,
+            <= -2 => MultipleLapsBehindText,
+            _ => TextSecondary
+        };
     }
 
     private void DrawMetricRows(Graphics graphics, RectangleF rect, IReadOnlyList<DesignV2MetricRow> rows)
@@ -3811,7 +3803,8 @@ internal sealed record DesignV2TableRow(
     DesignV2Evidence Evidence,
     string? ClassColorHex,
     string ClassHeaderTitle = "",
-    string ClassHeaderDetail = "");
+    string ClassHeaderDetail = "",
+    int? RelativeLapDelta = null);
 
 internal sealed record DesignV2MetricRow(
     string Label,

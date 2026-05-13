@@ -206,11 +206,13 @@ final class RelativeDesignV2OverlayView: NSView {
             position: referencePosition(snapshot.latestFrame),
             driver: referenceDriver(snapshot.latestFrame),
             gap: "0.000",
+            classColorHex: snapshot.latestFrame?.capturedReferenceCar?.carClassColorHex ?? "#FFDA59",
             isReference: true,
             isAhead: false,
             isBehind: false,
             isPit: snapshot.latestFrame?.onPitRoad == true,
-            isPartial: false
+            isPartial: false,
+            lapDeltaToReference: 0
         )
 
         let ahead = proximity.nearbyCars
@@ -238,11 +240,13 @@ final class RelativeDesignV2OverlayView: NSView {
             position: car.classPosition.map { "\($0)" } ?? car.overallPosition.map { "\($0)" } ?? "--",
             driver: car.driverName ?? MockDriverNames.displayName(for: car.carIdx),
             gap: relativeGap(car: car, direction: direction),
+            classColorHex: car.carClassColorHex,
             isReference: false,
             isAhead: direction == .ahead,
             isBehind: direction == .behind,
             isPit: car.onPitRoad == true,
-            isPartial: car.relativeSeconds == nil && car.relativeMeters == nil
+            isPartial: car.relativeSeconds == nil && car.relativeMeters == nil,
+            lapDeltaToReference: car.lapDeltaToReference
         )
     }
 
@@ -306,7 +310,7 @@ final class RelativeDesignV2OverlayView: NSView {
                 row.position,
                 in: rect,
                 font: overlayFont(ofSize: 10 * scale, weight: .semibold),
-                color: row.isReference ? theme.colors.accentPrimary : theme.colors.textSecondary,
+                color: row.isReference ? theme.colors.accentPrimary : textColor(row),
                 alignment: textAlignment(column.definition.alignment)
             )
         case OverlayContentColumns.dataDriver:
@@ -314,7 +318,7 @@ final class RelativeDesignV2OverlayView: NSView {
                 row.driver,
                 in: rect,
                 font: overlayFont(ofSize: (designRows().count > 9 ? 11.5 : 13) * scale, weight: .bold),
-                color: row.isPartial || row.isPit ? theme.colors.textMuted : theme.colors.textPrimary,
+                color: textColor(row),
                 alignment: textAlignment(column.definition.alignment)
             )
         case OverlayContentColumns.dataGap:
@@ -385,11 +389,17 @@ final class RelativeDesignV2OverlayView: NSView {
 
     private func rowFill(_ row: RelativeDesignV2Row) -> NSColor {
         if row.isReference {
-            return OverlayClassColor.blend(panel: theme.colors.surfaceInset, accent: theme.colors.accentPrimary, panelWeight: 10, accentWeight: 1)
+            let accent = OverlayClassColor.color(row.classColorHex) ?? theme.colors.accentPrimary
+            return OverlayClassColor.blend(panel: theme.colors.surfaceInset, accent: accent, panelWeight: 10, accentWeight: 1)
         }
 
         if row.isPit {
-            return OverlayClassColor.blend(panel: theme.colors.surfaceRaised, accent: theme.colors.partial, panelWeight: 13, accentWeight: 1)
+            let accent = OverlayClassColor.color(row.classColorHex) ?? theme.colors.partial
+            return OverlayClassColor.blend(panel: theme.colors.surfaceRaised, accent: accent, panelWeight: 13, accentWeight: 1)
+        }
+
+        if let classColor = OverlayClassColor.color(row.classColorHex) {
+            return OverlayClassColor.blend(panel: theme.colors.surfaceRaised, accent: classColor, panelWeight: 12, accentWeight: 1)
         }
 
         return row.isPartial ? theme.colors.surfaceInset : theme.colors.surfaceRaised
@@ -412,11 +422,42 @@ final class RelativeDesignV2OverlayView: NSView {
             return theme.colors.textPrimary
         }
 
+        if let color = lappedTextColor(row.lapDeltaToReference) {
+            return color
+        }
+
         if row.isPartial || row.isPit {
             return theme.colors.textMuted
         }
 
         return timingColor(row)
+    }
+
+    private func textColor(_ row: RelativeDesignV2Row) -> NSColor {
+        if row.isReference {
+            return theme.colors.textPrimary
+        }
+
+        if let color = lappedTextColor(row.lapDeltaToReference) {
+            return color
+        }
+
+        return row.isPartial || row.isPit ? theme.colors.textMuted : theme.colors.textPrimary
+    }
+
+    private func lappedTextColor(_ lapDeltaToReference: Int?) -> NSColor? {
+        switch lapDeltaToReference {
+        case let value? where value >= 2:
+            return theme.colors.error
+        case 1:
+            return NSColor(red255: 255, green: 155, blue: 164)
+        case -1:
+            return NSColor(red255: 150, green: 210, blue: 255)
+        case let value? where value <= -2:
+            return NSColor(red255: 82, green: 158, blue: 255)
+        default:
+            return nil
+        }
     }
 
     private func timingColor(_ row: RelativeDesignV2Row) -> NSColor {
@@ -474,16 +515,11 @@ final class RelativeDesignV2OverlayView: NSView {
     }
 
     private func relativeGap(car: LiveProximityCar, direction: RelativeDesignV2Direction) -> String {
-        let sign = direction == .ahead ? "-" : "+"
-        if let seconds = car.relativeSeconds, seconds.isFinite {
-            return String(format: "%@%.3f", sign, abs(seconds))
-        }
-
-        if let meters = car.relativeMeters, meters.isFinite {
-            return String(format: "%@%.0fm", sign, abs(meters))
-        }
-
-        return String(format: "%@%.3fL", sign, abs(car.relativeLaps))
+        RelativeDisplayFormatting.gap(
+            seconds: car.relativeSeconds,
+            meters: car.relativeMeters,
+            laps: car.relativeLaps,
+            direction: direction == .ahead ? .ahead : .behind)
     }
 
     private func sortKey(_ car: LiveProximityCar) -> Double {
@@ -659,11 +695,13 @@ private struct RelativeDesignV2Row {
     var position: String
     var driver: String
     var gap: String
+    var classColorHex: String?
     var isReference: Bool
     var isAhead: Bool
     var isBehind: Bool
     var isPit: Bool
     var isPartial: Bool
+    var lapDeltaToReference: Int?
 }
 
 private enum RelativeDesignV2Direction {

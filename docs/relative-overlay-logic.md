@@ -69,6 +69,8 @@ Relative uses the shared content-column manager. Columns have Relative-owned opt
 
 Normal rows are quiet. Reference rows are visually emphasized; pit rows remain visible but are de-emphasized with muted text/background so the driver can see they are being passed in pit lane rather than treated as an on-track threat. Fully degraded rows are muted.
 
+Whole-lap relationships are visual text states, not extra columns. A car one lap ahead of the reference uses light red text, two or more laps ahead uses the stronger error red, one lap behind uses light blue text, and two or more laps behind uses stronger blue text. This text color is independent of car class; class color remains a row accent/background cue.
+
 Relative seconds come from live proximity timing when available. If proximity has only lap-distance placement, the model-v2 relative row can infer a display seconds gap from live lap-distance delta multiplied by the current local/focus lap-time signal. Radar does not consume that inferred seconds value; it remains stricter and uses only live proximity seconds or physical distance for proximity placement.
 
 Race `SessionState == 3` can use model-v2 timing fallback from positive `CarIdxEstTime` plus valid `CarIdxLapDistPct` so Relative can update during the pre-green roll to the line. This fallback is not created from grid rows alone. It also remains useful when the local player tows or sits in pit lane with valid timing/progress facts, because iRacing itself continues showing estimated relative gaps in those contexts. Radar remains stricter and still requires local in-car spatial context.
@@ -105,4 +107,4 @@ Unexpected refresh/render failures are logged through the overlay logger and sur
 - Settings expose cars ahead, cars behind, and Content-tab column controls.
 - Theme font, visibility, scale, opacity, session filters, and persistence follow the same managed-overlay behavior as the other product overlays.
 
-The localhost browser-source route also reads `/api/relative` so it can honor the same cars-ahead, cars-behind, and content-column settings as the native overlay.
+The localhost browser-source route also reads `/api/relative` so it can honor the same cars-ahead, cars-behind, and content-column settings as the native overlay. Browser replay validation should spoof settings/API options when testing column and header/footer states, while keeping relative row values, lap relationships, class positions, and timing evidence capture-derived when available.

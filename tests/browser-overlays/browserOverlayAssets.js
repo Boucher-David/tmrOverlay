@@ -31,10 +31,11 @@ export const pages = {
     fadeWhenTelemetryUnavailable: true,
     modelRoute: '/api/overlay-model/pit-service'
   }),
-  'input-state': pageDefinition('input-state', 'Input / Car State', '/overlays/input-state', {
+  'input-state': pageDefinition('input-state', 'Inputs', '/overlays/input-state', {
     aliases: ['/overlays/inputs'],
     bodyClass: 'input-state-page',
     fadeWhenTelemetryUnavailable: true,
+    modelRoute: '/api/overlay-model/input-state',
     settingsRoute: '/api/input-state',
     settingsProperty: 'inputStateSettings'
   }),

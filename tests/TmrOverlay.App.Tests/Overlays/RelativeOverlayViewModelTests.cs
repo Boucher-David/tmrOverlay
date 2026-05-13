@@ -110,6 +110,81 @@ public sealed class RelativeOverlayViewModelTests
     }
 
     [Fact]
+    public void StableRows_CentersReferenceAndKeepsConfiguredDisplaySlots()
+    {
+        var ahead = new RelativeOverlayRowViewModel("4", "#4 Ahead", "-0.400", "GT3", "#FFDA59", false, true, false, true, false, false);
+        var reference = new RelativeOverlayRowViewModel("5", "#5 Focus", "0.000", "GT3", "#33CEFF", true, false, false, true, false, false);
+        var behind = new RelativeOverlayRowViewModel("6", "#6 Behind", "+0.500", "GT3", "#FF4FD8", false, false, true, true, false, false);
+        var viewModel = new RelativeOverlayViewModel("live relative", "source: test", [ahead, reference, behind]);
+
+        var rows = viewModel.StableRows(carsAhead: 3, carsBehind: 3, maximumRows: 17);
+
+        Assert.Equal(7, rows.Count);
+        Assert.Null(rows[0]);
+        Assert.Null(rows[1]);
+        Assert.Same(ahead, rows[2]);
+        Assert.Same(reference, rows[3]);
+        Assert.Same(behind, rows[4]);
+        Assert.Null(rows[5]);
+        Assert.Null(rows[6]);
+    }
+
+    [Theory]
+    [InlineData("Practice")]
+    [InlineData("Qualify")]
+    [InlineData("Race")]
+    public void StableRows_UseSameCenteredSlotsAcrossSessionTypes(string sessionType)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = Snapshot(
+            now,
+            RelativeRow(carIdx: 11, isAhead: true, seconds: 0.4d, classPosition: 5),
+            RelativeRow(carIdx: 12, isAhead: false, seconds: -0.5d, classPosition: 7)) with
+        {
+            Models = Snapshot(now).Models with
+            {
+                Session = LiveSessionModel.Empty with
+                {
+                    HasData = true,
+                    Quality = LiveModelQuality.Reliable,
+                    SessionType = sessionType,
+                    SessionName = sessionType,
+                    EventType = sessionType
+                },
+                DriverDirectory = Snapshot(now).Models.DriverDirectory,
+                Timing = Snapshot(now).Models.Timing,
+                Scoring = Snapshot(now).Models.Scoring,
+                Relative = new LiveRelativeModel(
+                    HasData: true,
+                    Quality: LiveModelQuality.Reliable,
+                    ReferenceCarIdx: 10,
+                    Rows:
+                    [
+                        RelativeRow(carIdx: 11, isAhead: true, seconds: 0.4d, classPosition: 5),
+                        RelativeRow(carIdx: 12, isAhead: false, seconds: -0.5d, classPosition: 7)
+                    ])
+            }
+        };
+
+        var viewModel = RelativeOverlayViewModel.From(
+            snapshot,
+            now,
+            carsAhead: 3,
+            carsBehind: 3);
+
+        var rows = viewModel.StableRows(carsAhead: 3, carsBehind: 3, maximumRows: 17);
+
+        Assert.Equal(7, rows.Count);
+        Assert.Null(rows[0]);
+        Assert.Null(rows[1]);
+        Assert.True(rows[2]?.IsAhead);
+        Assert.True(rows[3]?.IsReference);
+        Assert.True(rows[4]?.IsBehind);
+        Assert.Null(rows[5]);
+        Assert.Null(rows[6]);
+    }
+
+    [Fact]
     public void From_PrefersClassPositionWhenOverallPositionDiffers()
     {
         var now = DateTimeOffset.UtcNow;
@@ -167,6 +242,24 @@ public sealed class RelativeOverlayViewModelTests
 
         Assert.Equal(new[] { "14", "15" }, viewModel.Rows.Select(row => row.Position));
         Assert.Equal("15 - 1 cars", viewModel.Status);
+    }
+
+    [Fact]
+    public void From_CarriesWholeLapRelationshipForLappedRows()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = Snapshot(
+            now,
+            RelativeRow(carIdx: 11, isAhead: true, seconds: 8.4d, classPosition: 4, lapDeltaToReference: 1),
+            RelativeRow(carIdx: 12, isAhead: false, seconds: 12.1d, classPosition: 8, lapDeltaToReference: -2));
+
+        var viewModel = RelativeOverlayViewModel.From(
+            snapshot,
+            now,
+            carsAhead: 5,
+            carsBehind: 5);
+
+        Assert.Equal(new int?[] { 1, 0, -2 }, viewModel.Rows.Select(row => row.LapDeltaToReference));
     }
 
     [Fact]
@@ -496,7 +589,8 @@ public sealed class RelativeOverlayViewModelTests
         LiveSignalEvidence? timingEvidence = null,
         LiveSignalEvidence? placementEvidence = null,
         string? driverName = "default",
-        bool onPitRoad = false)
+        bool onPitRoad = false,
+        int? lapDeltaToReference = null)
     {
         var resolvedDriverName = string.Equals(driverName, "default", StringComparison.Ordinal)
             ? $"Driver {carIdx}"
@@ -517,7 +611,8 @@ public sealed class RelativeOverlayViewModelTests
             RelativeSeconds: seconds,
             RelativeLaps: seconds is { } value ? value / 120d : null,
             RelativeMeters: seconds is { } meters ? meters * 45d : null,
-            OnPitRoad: onPitRoad);
+            OnPitRoad: onPitRoad,
+            LapDeltaToReference: lapDeltaToReference);
     }
 
     private static LiveTimingRow TimingRow(

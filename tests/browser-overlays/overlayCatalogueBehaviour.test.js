@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { browserOverlayPages, freshLiveSnapshot, renderBrowserOverlay } from './browserOverlayTestHost.js';
+import {
+  browserOverlayApiResponse,
+  browserOverlayPages,
+  freshLiveSnapshot,
+  renderBrowserOverlay
+} from './browserOverlayTestHost.js';
 
 let currentOverlay;
 
@@ -23,6 +28,31 @@ describe('browser overlay catalogue behaviour', () => {
       'stream-chat',
       'track-map'
     ]);
+  });
+
+  it('exposes only production-backed overlay model routes in unit API fixtures', () => {
+    const live = freshLiveSnapshot({});
+    const modeledOverlayIds = [
+      'standings',
+      'relative',
+      'fuel-calculator',
+      'session-weather',
+      'pit-service',
+      'input-state',
+      'gap-to-leader'
+    ];
+    const noModelOverlayIds = ['car-radar', 'track-map', 'garage-cover', 'stream-chat'];
+
+    for (const overlayId of modeledOverlayIds) {
+      const response = browserOverlayApiResponse(overlayId, `/api/overlay-model/${overlayId}`, { live });
+      expect(response?.model?.overlayId).toBe(overlayId);
+    }
+
+    for (const overlayId of noModelOverlayIds) {
+      expect(browserOverlayApiResponse(overlayId, `/api/overlay-model/${overlayId}`, { live })).toBeNull();
+    }
+
+    expect(browserOverlayPages().find((page) => page.page.id === 'input-state')?.title).toBe('Inputs');
   });
 
   for (const scenario of browserScenarios()) {
@@ -78,16 +108,18 @@ function browserScenarios() {
       id: 'fuel-calculator',
       fixture: () => ({
         live: freshLiveSnapshot({}),
-        model: metricsModel('fuel-calculator', 'Fuel Calculator', 'fuel live | 31.2 laps', [
-          metric('Fuel', '73.4 L', 'info'),
-          metric('Burn', '2.35 L/lap', 'normal'),
-          metric('Window', '24 laps', 'success')
-        ]),
+        model: metricsModel('fuel-calculator', 'Fuel Calculator', '3 stints / 2 stops', [
+          metric('Plan', '31 laps | 3 stints | final 7', 'modeled'),
+          metric('Strategy', '12-lap rhythm avoids +1 stop | ~52s | save 0.2 L/lap', 'modeled'),
+          metric('Stint 1', '12 laps | target 3.1 L/lap | tires free (36.8 L)', 'modeled')
+        ], 'burn 3.1 L/lap (live burn) | 34.2 laps/tank | history user'),
         waitForSelector: '.metric'
       }),
       assert: ({ document }) => {
-        expect(metricText(document)).toContain('Fuel 73.4 L');
-        expect(document.getElementById('status').textContent).toBe('fuel live | 31.2 laps');
+        expect(metricText(document)).toContain('Plan 31 laps | 3 stints | final 7');
+        expect(metricText(document)).toContain('Stint 1 12 laps | target 3.1 L/lap | tires free (36.8 L)');
+        expect(document.body.textContent).not.toContain('Laps Left');
+        expect(document.getElementById('status').textContent).toBe('3 stints / 2 stops');
       }
     },
     {
@@ -96,13 +128,19 @@ function browserScenarios() {
         live: freshLiveSnapshot({}),
         model: metricsModel('session-weather', 'Session / Weather', 'Race', [
           metric('Session', 'Race | team', 'info'),
-          metric('Surface', 'Dry | rubber moderate', 'success'),
-          metric('Wind', 'NW 13 km/h', 'normal')
-        ]),
+          metric('Clock', '17:22 elapsed | 6:37:08 left', 'normal'),
+          metric('Laps', '-- left | 179 total', 'normal'),
+          metric('Track', 'Gesamtstrecke 24h | 25.38 km', 'normal'),
+          metric('Temps', 'air 22 C | track 31 C', 'normal'),
+          metric('Surface', 'dry | rubber moderate usage', 'normal'),
+          metric('Sky', 'partly cloudy | constant | rain:0%', 'normal'),
+          metric('Wind', 'S | 15 km/h | hum 48% | fog 0%', 'normal')
+        ], 'source: session + live weather telemetry'),
         waitForSelector: '.metric'
       }),
       assert: ({ document }) => {
-        expect(metricText(document)).toContain('Surface Dry | rubber moderate');
+        expect(metricText(document)).toContain('Temps air 22 C | track 31 C');
+        expect(metricText(document)).toContain('Wind S | 15 km/h | hum 48% | fog 0%');
         expect(document.getElementById('status').textContent).toBe('Race');
       }
     },
@@ -112,13 +150,19 @@ function browserScenarios() {
         live: freshLiveSnapshot({}),
         model: metricsModel('pit-service', 'Pit Service', 'hold', [
           metric('Release', 'RED - service active', 'error'),
+          metric('Location', 'player on pit road', 'error'),
+          metric('Service', 'active | tires, fuel, tearoff', 'error'),
+          metric('Pit status', 'in progress', 'error'),
           metric('Fuel request', '31.6 L', 'normal'),
-          metric('Tires', 'four tires', 'warning')
-        ]),
+          metric('Repair', '12s required', 'error'),
+          metric('Tires', 'four tires | 2 sets used', 'normal'),
+          metric('Fast repair', 'local 0 | team 1', 'normal')
+        ], 'source: player/team pit service telemetry'),
         waitForSelector: '.metric'
       }),
       assert: ({ document }) => {
         expect(metricText(document)).toContain('Release RED - service active');
+        expect(metricText(document)).toContain('Pit status in progress');
         expect(document.getElementById('status').textContent).toBe('hold');
       }
     },
@@ -129,19 +173,23 @@ function browserScenarios() {
         model: {
           overlayId: 'gap-to-leader',
           title: 'Gap To Leader',
-          status: 'P2 +4.2',
-          source: 'source: race-progress',
+          status: 'live | race gap',
+          source: 'source: live gap telemetry | cars 4',
           bodyKind: 'graph',
           columns: [],
           rows: [],
-          metrics: [],
+          metrics: [
+            metric('Class pos', '2', 'live'),
+            metric('Class leader', '+4.2', 'live')
+          ],
           points: [8, 6, 4.2]
         },
         waitForSelector: '.model-graph'
       }),
       assert: ({ document }) => {
         expect(document.querySelector('.model-graph')).not.toBeNull();
-        expect(document.getElementById('status').textContent).toBe('P2 +4.2');
+        expect(document.getElementById('status').textContent).toBe('live | race gap');
+        expect(document.getElementById('source').textContent).toBe('source: live gap telemetry | cars 4');
       }
     },
     {
@@ -187,7 +235,7 @@ function browserScenarios() {
             sideStatus: 'left',
             hasCarLeft: true,
             hasCarRight: false,
-            strongestMulticlassApproach: { relativeSeconds: -8.4 },
+            strongestMulticlassApproach: { relativeSeconds: -2.8 },
             cars: [
               { carIdx: 12, relativeSeconds: -1.2, relativeMeters: -8, carClassColorHex: '#FFDA59' },
               { carIdx: 14, relativeSeconds: 1.7, relativeMeters: 12, carClassColorHex: '#33CEFF' }
@@ -198,7 +246,30 @@ function browserScenarios() {
       }),
       assert: ({ document }) => {
         expect(document.querySelector('.radar-v2')).not.toBeNull();
-        expect(document.body.textContent).toContain('8.4s');
+        expect(document.body.textContent).toContain('2.8s');
+      }
+    },
+    {
+      id: 'car-radar',
+      fixture: () => ({
+        live: freshLiveSnapshot({
+          raceEvents: { hasData: true, isOnTrack: true, isInGarage: false },
+          spatial: {
+            hasData: false,
+            sideStatus: 'waiting',
+            hasCarLeft: false,
+            hasCarRight: false,
+            strongestMulticlassApproach: null,
+            cars: []
+          }
+        }),
+        waitForSelector: '.radar-v2'
+      }),
+      assert: ({ document }) => {
+        expect(document.querySelector('.radar-v2')).not.toBeNull();
+        expect(document.querySelector('.radar-multiclass-label')).toBeNull();
+        expect(document.body.textContent).toContain('WAIT');
+        expect(document.getElementById('status').textContent).toBe('waiting for radar');
       }
     },
     {
@@ -211,7 +282,7 @@ function browserScenarios() {
             sideStatus: 'left',
             hasCarLeft: true,
             hasCarRight: false,
-            strongestMulticlassApproach: { relativeSeconds: -8.4 },
+            strongestMulticlassApproach: { relativeSeconds: -3.4 },
             cars: [
               { carIdx: 12, relativeSeconds: -1.2, relativeMeters: -8, carClassColorHex: '#FFDA59' }
             ]
@@ -320,12 +391,12 @@ function tableModel(overlayId, title, status, columns, rows) {
   };
 }
 
-function metricsModel(overlayId, title, status, metrics) {
+function metricsModel(overlayId, title, status, metrics, source = 'source: catalogue behaviour') {
   return {
     overlayId,
     title,
     status,
-    source: 'source: catalogue behaviour',
+    source,
     bodyKind: 'metrics',
     columns: [],
     rows: [],

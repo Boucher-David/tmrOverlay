@@ -61,10 +61,12 @@ async function validateOverlayFrame(context, overlay, frameSeconds, requireCaptu
     await page.waitForSelector('.overlay', { timeout: 5000 });
     await page.waitForTimeout(800);
 
-    const modelResponse = await page.evaluate(async (overlayId) => {
-      const response = await fetch(`/api/overlay-model/${encodeURIComponent(overlayId)}`);
-      return response.ok ? response.json() : { error: `${response.status} ${response.statusText}` };
-    }, overlay.page.id);
+    const modelResponse = overlay.modelRoute
+      ? await page.evaluate(async (modelRoute) => {
+        const response = await fetch(modelRoute);
+        return response.ok ? response.json() : { error: `${response.status} ${response.statusText}` };
+      }, overlay.modelRoute)
+      : null;
     const snapshotResponse = await page.evaluate(async () => {
       const response = await fetch('/api/snapshot');
       return response.ok ? response.json() : { error: `${response.status} ${response.statusText}` };
@@ -99,6 +101,7 @@ async function validateOverlayFrame(context, overlay, frameSeconds, requireCaptu
         hasTrackMap: Boolean(document.querySelector('.track svg')),
         hasChatLine: Boolean(document.querySelector('.chat-line')),
         hasGarageCover: Boolean(document.querySelector('.garage-cover')),
+        tableRowClasses: [...document.querySelectorAll('tbody tr')].map((row) => [...row.classList]),
         hasWaitingText: (document.body.innerText || '').toLowerCase().includes('waiting')
       };
 
@@ -132,7 +135,7 @@ async function validateOverlayFrame(context, overlay, frameSeconds, requireCaptu
     });
     const canvasPixels = await canvasHasVisiblePixels(page);
     const failures = validateMetrics(overlay.page.id, metrics, canvasPixels)
-      .concat(validateModel(overlay.page.id, modelResponse))
+      .concat(overlay.modelRoute ? validateModel(overlay.page.id, modelResponse, metrics) : [])
       .concat(validateCaptureLiveSnapshot(snapshotResponse, requireCaptureLive))
       .concat(screenshotArtifact.failures)
       .concat(consoleErrors.map((error) => `console error: ${error}`))
@@ -273,7 +276,7 @@ function localStrategyContextUnavailable(metrics) {
     || status.includes('waiting for local ');
 }
 
-function validateModel(overlayId, response) {
+function validateModel(overlayId, response, metrics = null) {
   const failures = [];
   if (!response || response.error) {
     return [`overlay model fetch failed: ${response?.error || 'missing response'}`];
@@ -302,6 +305,67 @@ function validateModel(overlayId, response) {
   }
 
   if (overlayId === 'relative') {
+    const columns = Array.isArray(model.columns) ? model.columns : [];
+    const relativeContract = [
+      ['relative.position', 'Pos', 'relative-position'],
+      ['relative.driver', 'Driver', 'driver'],
+      ['relative.gap', 'Delta', 'gap']
+    ];
+    const pitColumn = columns[relativeContract.length];
+    const hasOnlyAllowedPitColumn = columns.length === relativeContract.length
+      || (columns.length === relativeContract.length + 1
+        && pitColumn?.id === 'relative.pit'
+        && pitColumn?.label === 'Pit'
+        && pitColumn?.dataKey === 'pit');
+    if (!hasOnlyAllowedPitColumn
+      || relativeContract.some(([id, label, dataKey], index) =>
+        columns[index]?.id !== id
+        || columns[index]?.label !== label
+        || columns[index]?.dataKey !== dataKey)) {
+      failures.push('relative replay model columns do not match production Relative contract');
+    }
+
+    if (columns.some((column) => String(column?.label || '').toLowerCase() === 'class')) {
+      failures.push('relative replay model exposed a visible Class column');
+    }
+
+    const directionLabels = new Set(['ahead', 'behind', 'you']);
+    const directionValue = (Array.isArray(model.rows) ? model.rows : [])
+      .map((row) => String(row?.cells?.[0] || '').trim().toLowerCase())
+      .find((value) => directionLabels.has(value));
+    if (directionValue) {
+      failures.push(`relative replay model used direction text in Pos column (${directionValue})`);
+    }
+
+    const rows = Array.isArray(model.rows) ? model.rows : [];
+    if (rows.length > 0) {
+      const referenceIndexes = rows
+        .map((row, index) => row?.isReference === true ? index : -1)
+        .filter((index) => index >= 0);
+      if (referenceIndexes.length !== 1) {
+        failures.push(`relative replay model expected one reference row, found ${referenceIndexes.length}`);
+      } else if (rows.length % 2 !== 1 || referenceIndexes[0] !== Math.floor(rows.length / 2)) {
+        failures.push(`relative replay model did not keep the reference row centered in ${rows.length} stable rows`);
+      }
+    }
+
+    const lapClasses = new Set(['lap-ahead-1', 'lap-ahead-2', 'lap-behind-1', 'lap-behind-2']);
+    const renderedLapClasses = (metrics?.tableRowClasses || [])
+      .flat()
+      .filter((className) => lapClasses.has(className));
+    const modelLapDeltas = rows
+      .map((row) => Number(row?.relativeLapDelta ?? row?.lapDeltaToReference))
+      .filter((value) => Number.isFinite(value) && value !== 0);
+    if (modelLapDeltas.length > 0 && renderedLapClasses.length === 0) {
+      failures.push('relative replay model had lap relationships but rendered no lapped-car text class');
+    }
+    if (modelLapDeltas.some((value) => value === 1) && !renderedLapClasses.includes('lap-ahead-1')) {
+      failures.push('relative replay did not render one-lap-ahead text class');
+    }
+    if (modelLapDeltas.some((value) => value <= -2) && !renderedLapClasses.includes('lap-behind-2')) {
+      failures.push('relative replay did not render two-plus-laps-behind text class');
+    }
+
     for (const value of tableValuesForKeys(model, ['gap'])) {
       if (/\d(?:\.\d+)?L$/i.test(value)) {
         failures.push(`relative rendered lap-distance gap value "${value}"`);

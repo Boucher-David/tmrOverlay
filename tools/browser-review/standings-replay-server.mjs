@@ -13,6 +13,20 @@ import {
 const replayPath = resolve(process.argv[2] || process.env.TMR_STANDINGS_REPLAY_JSON || '');
 const port = Number.parseInt(process.env.TMR_STANDINGS_REPLAY_PORT || '5187', 10);
 const frameMilliseconds = Number.parseInt(process.env.TMR_STANDINGS_REPLAY_FRAME_MS || '500', 10);
+const relativeCarsEachSide = clampInteger(process.env.TMR_RELATIVE_CARS_EACH_SIDE, 3, 0, 8);
+const relativeShowPitColumn = parseBoolean(process.env.TMR_RELATIVE_SHOW_PIT_COLUMN, false);
+const relativeShowHeaderStatus = parseBoolean(process.env.TMR_RELATIVE_SHOW_HEADER_STATUS, true);
+const relativeShowHeaderTimeRemaining = parseBoolean(process.env.TMR_RELATIVE_SHOW_TIME_REMAINING, true);
+const relativeShowFooterSource = parseBoolean(process.env.TMR_RELATIVE_SHOW_FOOTER_SOURCE, true);
+const productionOverlayModelIds = new Set([
+  'standings',
+  'relative',
+  'fuel-calculator',
+  'session-weather',
+  'pit-service',
+  'input-state',
+  'gap-to-leader'
+]);
 const replay = loadReplay(replayPath);
 const startedAtMs = Date.now();
 
@@ -39,7 +53,12 @@ const server = createServer((request, response) => {
     }
 
     if (path.startsWith('/api/overlay-model/')) {
-      const overlayId = decodeURIComponent(path.slice('/api/overlay-model/'.length));
+      const overlayId = decodeURIComponent(path.slice('/api/overlay-model/'.length)).trim().toLowerCase();
+      if (!productionOverlayModelIds.has(overlayId)) {
+        serveText(response, 404, 'Overlay model not configured');
+        return;
+      }
+
       const { frame, index } = currentFrame(url, request);
       serveJson(response, {
         generatedAtUtc: new Date().toISOString(),
@@ -84,6 +103,7 @@ server.listen(port, '127.0.0.1', () => {
   console.log(`Replay source:         ${replayPath}`);
   console.log(`Replay frames:         ${replay.frames.length}`);
   console.log(`Frame interval:        ${frameMilliseconds}ms`);
+  console.log(`Relative rows:         ${relativeCarsEachSide * 2 + 1}`);
 });
 
 function loadReplay(path) {
@@ -311,15 +331,19 @@ function displayModel(overlayId, frame, index) {
     : 0;
   const isPreGreen = Number.isFinite(frame.sessionState) && frame.sessionState < 4;
   const status = `${isPreGreen ? 'pre-green' : 'green'} | ${relativeSeconds >= 0 ? '+' : ''}${relativeSeconds}s`;
-  const headerItems = replayHeaderItems(frame, status);
 
   if (overlayId === 'relative') {
-    return tableModel(overlayId, 'Relative', status, headerItems, [
-      ['AHEAD', 'Race Start Leader', isPreGreen ? '--' : '-2.412', 'GT3'],
-      ['YOU', referenceDisplayRow(frame)?.cells?.[2] || 'Replay focus', '0.000', 'GT3'],
-      ['BEHIND', 'Following Car', isPreGreen ? '--' : '+3.184', 'GT3']
-    ]);
+    const relative = relativeSettings();
+    const relativeModel = syntheticRelativeRows(frame, isPreGreen, relative.carsAhead, relative.carsBehind);
+    return relativeTableModel(
+      relativeModel.status,
+      replayHeaderItems(frame, relativeModel.status, relative),
+      relativeModel.rows,
+      sourceFromSettings(relative, 'source: race-start replay'),
+      relative.columns);
   }
+
+  const headerItems = replayHeaderItems(frame, status);
 
   if (overlayId === 'fuel-calculator') {
     return metricsModel(overlayId, 'Fuel Calculator', status, headerItems, [
@@ -376,12 +400,19 @@ function captureDisplayModel(overlayId, frame, index) {
   const status = relativeSeconds == null
     ? `${phase} | frame ${frame.frameIndex}`
     : `${phase} | ${relativeSeconds >= 0 ? '+' : ''}${relativeSeconds}s`;
-  const headerItems = captureHeaderItems(models, status);
 
   if (overlayId === 'relative') {
-    const rows = relativeRows(models, 8);
-    return tableModel(overlayId, 'Relative', status, headerItems, rows, 'source: capture-derived live replay');
+    const relative = relativeSettings();
+    const relativeModel = relativeRows(models, relative.carsAhead, relative.carsBehind);
+    return relativeTableModel(
+      relativeModel.status,
+      captureHeaderItems(models, relativeModel.status, relative),
+      relativeModel.rows,
+      sourceFromSettings(relative, 'source: capture-derived live replay'),
+      relative.columns);
   }
+
+  const headerItems = captureHeaderItems(models, status);
 
   if (overlayId === 'fuel-calculator') {
     const localContext = localInCarOrPitContext(models, 'waiting for local fuel context');
@@ -484,29 +515,221 @@ function localInCarOrPitContext(models, statusText) {
   return { isAvailable: false, reason: 'not_in_car', statusText };
 }
 
-function captureHeaderItems(models, status) {
-  const items = [{ key: 'status', value: status }];
+function captureHeaderItems(models, status, overlaySettings = null) {
+  const items = overlaySettings?.showHeaderStatus === false
+    ? []
+    : [{ key: 'status', value: status }];
   const seconds = models.session?.sessionTimeRemainSeconds;
-  if (Number.isFinite(seconds) && seconds >= 0) {
+  if (overlaySettings?.showHeaderTimeRemaining !== false && Number.isFinite(seconds) && seconds >= 0) {
     items.push({ key: 'timeRemaining', value: formatDuration(seconds, models.session?.sessionPhase) });
   }
   return items;
 }
 
-function relativeRows(models, limit) {
+function syntheticRelativeRows(frame, isPreGreen, carsAhead, carsBehind) {
+  const rows = [
+    relativeDisplayRow('2', 'Lap Ahead LMP2', isPreGreen ? '--' : '-8.940', false, '#33CEFF', 'ahead', 1),
+    relativeDisplayRow('3', 'Race Start Leader', isPreGreen ? '--' : '-2.412', false, '#FFDA59', 'ahead'),
+    relativeDisplayRow('5', referenceDisplayRow(frame)?.cells?.[2] || 'Replay focus', '0.000', true, '#33CEFF', null, 0),
+    relativeDisplayRow('6', 'Following GT3', isPreGreen ? '--' : '+3.184', false, '#FFDA59', 'behind'),
+    relativeDisplayRow('12', 'Lap Behind GT4', isPreGreen ? '--' : '+11.720', false, '#FF4FD8', 'behind', -2)
+  ];
+  const ahead = rows.filter((row) => row.isAhead === true).slice(-clamp(carsAhead, 0, 8));
+  const reference = rows.find((row) => row.isReference === true);
+  const behind = rows.filter((row) => row.isBehind === true).slice(0, clamp(carsBehind, 0, 8));
+  const actualRows = [
+    ...ahead,
+    ...(reference ? [reference] : []),
+    ...behind
+  ];
+  return {
+    rows: stableRelativeRows(actualRows, carsAhead, carsBehind),
+    status: relativeStatus(reference?.valuesByKey?.['relative-position'], actualRows.filter((row) => !row.isReference).length, rows.length - 1)
+  };
+}
+
+function relativeRows(models, carsAhead, carsBehind) {
   const referenceCarIdx = models.reference?.focusCarIdx ?? models.relative?.referenceCarIdx;
   const timingByCarIdx = new Map((models.timing?.overallRows || []).map((row) => [row.carIdx, row]));
-  const reference = timingByCarIdx.get(referenceCarIdx);
+  const scoringByCarIdx = new Map((models.scoring?.rows || []).map((row) => [row.carIdx, row]));
+  const driverByCarIdx = new Map((models.driverDirectory?.drivers || []).map((row) => [row.carIdx, row]));
+  const reference = timingByCarIdx.get(referenceCarIdx) || scoringByCarIdx.get(referenceCarIdx) || driverByCarIdx.get(referenceCarIdx);
   const rows = (models.relative?.rows || [])
-    .filter((row) => Number.isFinite(row.relativeSeconds))
-    .sort((a, b) => a.relativeSeconds - b.relativeSeconds);
-  const ahead = rows.filter((row) => row.relativeSeconds < 0).slice(-Math.floor(limit / 2));
-  const behind = rows.filter((row) => row.relativeSeconds > 0).slice(0, Math.floor(limit / 2));
-  return [
-    ...ahead.map((row) => ['AHEAD', displayDriver(row), formatSigned(row.relativeSeconds, 3), row.carClassName || '']),
-    reference ? ['YOU', displayDriver(reference), '0.000', reference.carClassName || ''] : ['YOU', 'Replay focus', '0.000', ''],
-    ...behind.map((row) => ['BEHIND', displayDriver(row), formatSigned(row.relativeSeconds, 3), row.carClassName || ''])
+    .filter((row) => hasRelativeDisplayEvidence(row));
+  const ahead = rows
+    .filter((row) => isRelativeAhead(row))
+    .sort((a, b) => relativeSortKey(a) - relativeSortKey(b) || (a.carIdx ?? 0) - (b.carIdx ?? 0))
+    .slice(0, clamp(carsAhead, 0, 8))
+    .sort((a, b) => relativeSortKey(b) - relativeSortKey(a) || (a.carIdx ?? 0) - (b.carIdx ?? 0));
+  const behind = rows
+    .filter((row) => isRelativeBehind(row))
+    .sort((a, b) => relativeSortKey(a) - relativeSortKey(b) || (a.carIdx ?? 0) - (b.carIdx ?? 0))
+    .slice(0, clamp(carsBehind, 0, 8));
+  const referencePosition = reference
+    ? positionLabel(reference, scoringByCarIdx.get(referenceCarIdx))
+    : null;
+  const actualRows = [
+    ...ahead.map((row) => relativeDisplayRow(
+      positionLabel(row, scoringByCarIdx.get(row.carIdx)),
+      displayDriver(row, scoringByCarIdx.get(row.carIdx), driverByCarIdx.get(row.carIdx)),
+      relativeDelta(row, 'ahead'),
+      false,
+      row.carClassColorHex || scoringByCarIdx.get(row.carIdx)?.carClassColorHex || driverByCarIdx.get(row.carIdx)?.carClassColorHex,
+      'ahead',
+      relativeLapDelta(row, timingByCarIdx.get(row.carIdx), reference))),
+    reference
+      ? relativeDisplayRow(
+        positionLabel(reference, scoringByCarIdx.get(referenceCarIdx)),
+        displayDriver(reference, scoringByCarIdx.get(referenceCarIdx), driverByCarIdx.get(referenceCarIdx)),
+        '0.000',
+        true,
+        reference.carClassColorHex || scoringByCarIdx.get(referenceCarIdx)?.carClassColorHex || driverByCarIdx.get(referenceCarIdx)?.carClassColorHex,
+        null,
+        0)
+      : relativeDisplayRow('--', 'Replay focus', '0.000', true, null, null, 0),
+    ...behind.map((row) => relativeDisplayRow(
+      positionLabel(row, scoringByCarIdx.get(row.carIdx)),
+      displayDriver(row, scoringByCarIdx.get(row.carIdx), driverByCarIdx.get(row.carIdx)),
+      relativeDelta(row, 'behind'),
+      false,
+      row.carClassColorHex || scoringByCarIdx.get(row.carIdx)?.carClassColorHex || driverByCarIdx.get(row.carIdx)?.carClassColorHex,
+      'behind',
+      relativeLapDelta(row, timingByCarIdx.get(row.carIdx), reference)))
   ];
+  return {
+    rows: stableRelativeRows(actualRows, carsAhead, carsBehind),
+    status: relativeStatus(referencePosition, actualRows.filter((row) => !row.isReference).length, rows.length)
+  };
+}
+
+function stableRelativeRows(rows, carsAhead, carsBehind = carsAhead) {
+  const aheadCapacity = clamp(carsAhead, 0, 8);
+  const behindCapacity = clamp(carsBehind, 0, 8);
+  const reference = rows.find((row) => row.isReference === true);
+  const hasReference = Boolean(reference);
+  const visibleRows = Math.max(1, Math.min(17, aheadCapacity + behindCapacity + (hasReference ? 1 : 0)));
+  const stableRows = Array.from({ length: visibleRows }, () => relativePlaceholderRow());
+  const ahead = rows.filter((row) => row.isAhead === true);
+  const aheadStart = Math.max(0, aheadCapacity - ahead.length);
+  ahead.forEach((row, index) => {
+    if (aheadStart + index < stableRows.length) {
+      stableRows[aheadStart + index] = row;
+    }
+  });
+
+  if (hasReference && aheadCapacity < stableRows.length) {
+    stableRows[aheadCapacity] = reference;
+  }
+
+  const behindStart = hasReference ? aheadCapacity + 1 : aheadCapacity;
+  rows.filter((row) => row.isBehind === true).forEach((row, index) => {
+    if (behindStart + index < stableRows.length) {
+      stableRows[behindStart + index] = row;
+    }
+  });
+
+  return stableRows;
+}
+
+function relativeStatus(referencePosition, shownRows, availableRows) {
+  const position = String(referencePosition || '').trim();
+  const prefix = position && position !== '--' ? position : 'live relative';
+  return availableRows > shownRows
+    ? `${prefix} - ${shownRows}/${availableRows} cars`
+    : `${prefix} - ${shownRows} cars`;
+}
+
+function relativeDisplayRow(position, driver, delta, isReference, carClassColorHex, direction = null, relativeLapDelta = null) {
+  return {
+    cells: [position || '--', driver || 'Replay focus', delta || '--'],
+    valuesByKey: {
+      'relative-position': position || '--',
+      driver: driver || 'Replay focus',
+      gap: delta || '--',
+      pit: ''
+    },
+    isReference,
+    isAhead: direction === 'ahead',
+    isBehind: direction === 'behind',
+    carClassColorHex: carClassColorHex || null,
+    isPlaceholder: false,
+    relativeLapDelta
+  };
+}
+
+function relativePlaceholderRow() {
+  return {
+    cells: ['', '', ''],
+    valuesByKey: {},
+    isReference: false,
+    isAhead: false,
+    isBehind: false,
+    carClassColorHex: null,
+    isPlaceholder: true,
+    relativeLapDelta: null
+  };
+}
+
+function relativeLapDelta(row, timingRow = null, referenceRow = null) {
+  const value = row?.lapDeltaToReference ?? row?.relativeLapDelta;
+  if (Number.isFinite(value)) return value;
+  const carLap = completedLap(timingRow) ?? completedLap(row);
+  const referenceLap = completedLap(referenceRow);
+  return Number.isFinite(carLap) && Number.isFinite(referenceLap)
+    ? carLap - referenceLap
+    : null;
+}
+
+function completedLap(row) {
+  if (Number.isFinite(row?.lapCompleted) && row.lapCompleted >= 0) return row.lapCompleted;
+  if (Number.isFinite(row?.progressLaps) && row.progressLaps >= 0) return Math.floor(row.progressLaps);
+  return null;
+}
+
+function hasRelativeDisplayEvidence(row) {
+  return Number.isFinite(row?.relativeSeconds)
+    || Number.isFinite(row?.relativeMeters)
+    || Number.isFinite(row?.relativeLaps);
+}
+
+function isRelativeAhead(row) {
+  if (row?.isAhead === true) return true;
+  if (row?.isBehind === true) return false;
+  return Number.isFinite(row?.relativeSeconds) && row.relativeSeconds < 0;
+}
+
+function isRelativeBehind(row) {
+  if (row?.isBehind === true) return true;
+  if (row?.isAhead === true) return false;
+  return Number.isFinite(row?.relativeSeconds) && row.relativeSeconds > 0;
+}
+
+function relativeSortKey(row) {
+  if (Number.isFinite(row?.relativeSeconds)) return Math.abs(row.relativeSeconds);
+  if (Number.isFinite(row?.relativeMeters)) return Math.abs(row.relativeMeters);
+  if (Number.isFinite(row?.relativeLaps)) return Math.abs(row.relativeLaps);
+  return Number.MAX_VALUE;
+}
+
+function relativeDelta(row, direction) {
+  const sign = direction === 'ahead' ? '-' : '+';
+  if (Number.isFinite(row?.relativeSeconds)) {
+    return `${sign}${Math.abs(row.relativeSeconds).toFixed(3)}`;
+  }
+  if (Number.isFinite(row?.relativeMeters)) {
+    return `${sign}${Math.abs(row.relativeMeters).toFixed(0)}m`;
+  }
+  return '--';
+}
+
+function positionLabel(row, fallbackRow = null) {
+  const classPosition = Number(row?.classPosition ?? fallbackRow?.classPosition);
+  if (Number.isFinite(classPosition) && classPosition > 0) {
+    return `${classPosition}`;
+  }
+
+  const overallPosition = Number(row?.overallPosition ?? fallbackRow?.overallPosition);
+  return Number.isFinite(overallPosition) && overallPosition > 0 ? `${overallPosition}` : '--';
 }
 
 function gapTrendPoints(index) {
@@ -530,8 +753,14 @@ function gapTrendPoints(index) {
   return values;
 }
 
-function displayDriver(row) {
-  return row?.driverName || row?.teamName || `Car ${row?.carIdx ?? '--'}`;
+function displayDriver(row, scoringRow = null, driverRow = null) {
+  return row?.driverName
+    || row?.teamName
+    || scoringRow?.driverName
+    || scoringRow?.teamName
+    || driverRow?.driverName
+    || driverRow?.teamName
+    || `Car ${row?.carIdx ?? scoringRow?.carIdx ?? driverRow?.carIdx ?? '--'}`;
 }
 
 function formatSigned(value, digits = 1) {
@@ -577,12 +806,7 @@ function tableModel(overlayId, title, status, headerItems, rows, source = 'sourc
     status,
     source,
     bodyKind: 'table',
-    columns: [
-      { label: 'POS', dataKey: 'position', width: 52, alignment: 'left' },
-      { label: 'Driver', dataKey: 'driver', width: 190, alignment: 'left' },
-      { label: 'GAP', dataKey: 'gap', width: 70, alignment: 'right' },
-      { label: 'Class', dataKey: 'class', width: 70, alignment: 'left' }
-    ],
+    columns: [],
     rows: rows.map((cells, rowIndex) => ({
       cells,
       isClassHeader: false,
@@ -598,6 +822,43 @@ function tableModel(overlayId, title, status, headerItems, rows, source = 'sourc
     points: [],
     headerItems
   };
+}
+
+function relativeTableModel(status, headerItems, rows, source = 'source: race-start replay', columns = relativeColumns()) {
+  return {
+    overlayId: 'relative',
+    title: 'Relative',
+    status,
+    source,
+    bodyKind: 'table',
+    columns,
+    rows: rows.map((row) => ({
+      cells: relativeCells(row, columns),
+      isClassHeader: false,
+      isReference: row.isReference === true,
+      isPlaceholder: row.isPlaceholder === true,
+      isAhead: row.isAhead === true,
+      isBehind: row.isBehind === true,
+      isPit: false,
+      isPartial: false,
+      isPendingGrid: false,
+      carClassColorHex: row.carClassColorHex || null,
+      headerTitle: null,
+      headerDetail: null,
+      relativeLapDelta: row.relativeLapDelta ?? null
+    })),
+    metrics: [],
+    points: [],
+    headerItems
+  };
+}
+
+function relativeCells(row, columns) {
+  if (row?.valuesByKey) {
+    return columns.map((column) => row.valuesByKey[column.dataKey] ?? '');
+  }
+
+  return row?.cells || row || [];
 }
 
 function metricsModel(overlayId, title, status, headerItems, metrics, source = 'source: race-start replay') {
@@ -623,6 +884,10 @@ function settings(overlayId, frame) {
       otherClassRowsPerClass: 2,
       columns: replay.frames[0]?.model?.columns || []
     };
+  }
+
+  if (overlayId === 'relative') {
+    return relativeSettings();
   }
 
   if (overlayId === 'stream-chat') {
@@ -668,6 +933,32 @@ function settings(overlayId, frame) {
   return {};
 }
 
+function relativeSettings() {
+  return {
+    carsAhead: relativeCarsEachSide,
+    carsBehind: relativeCarsEachSide,
+    showHeaderStatus: relativeShowHeaderStatus,
+    showHeaderTimeRemaining: relativeShowHeaderTimeRemaining,
+    showFooterSource: relativeShowFooterSource,
+    columns: relativeColumns()
+  };
+}
+
+function relativeColumns() {
+  return [
+    { id: 'relative.position', label: 'Pos', dataKey: 'relative-position', width: 38, alignment: 'right' },
+    { id: 'relative.driver', label: 'Driver', dataKey: 'driver', width: 250, alignment: 'left' },
+    { id: 'relative.gap', label: 'Delta', dataKey: 'gap', width: 70, alignment: 'right' },
+    ...(relativeShowPitColumn
+      ? [{ id: 'relative.pit', label: 'Pit', dataKey: 'pit', width: 30, alignment: 'right' }]
+      : [])
+  ];
+}
+
+function sourceFromSettings(overlaySettings, source) {
+  return overlaySettings?.showFooterSource === false ? '' : source;
+}
+
 function spatialModel(lapProgress, relativeSeconds) {
   return {
     hasData: true,
@@ -696,21 +987,53 @@ function relativeModel(relativeSeconds) {
     rows: [
       {
         carIdx: 21,
-        driverName: 'Race Start Leader',
+        driverName: 'Lap Ahead LMP2',
         carNumber: '21',
+        carClass: 4099,
+        carClassColorHex: '#33CEFF',
+        overallPosition: 2,
+        classPosition: 2,
+        relativeSeconds: relativeSeconds < 0 ? null : 8.94,
+        relativeLaps: 1.02,
+        isAhead: true,
+        isBehind: false
+      },
+      {
+        carIdx: 22,
+        driverName: 'Race Start Leader',
+        carNumber: '22',
         carClass: 4098,
-        relativeSeconds: relativeSeconds < 0 ? null : -2.412,
-        relativeLaps: -0.01,
+        carClassColorHex: '#FFDA59',
+        overallPosition: 3,
+        classPosition: 3,
+        relativeSeconds: relativeSeconds < 0 ? null : 2.412,
+        relativeLaps: 0.01,
         isAhead: true,
         isBehind: false
       },
       {
         carIdx: 44,
-        driverName: 'Following Car',
+        driverName: 'Following GT3',
         carNumber: '44',
         carClass: 4098,
+        carClassColorHex: '#FFDA59',
+        overallPosition: 6,
+        classPosition: 6,
         relativeSeconds: relativeSeconds < 0 ? null : 3.184,
         relativeLaps: 0.014,
+        isAhead: false,
+        isBehind: true
+      },
+      {
+        carIdx: 63,
+        driverName: 'Lap Behind GT4',
+        carNumber: '63',
+        carClass: 4100,
+        carClassColorHex: '#FF4FD8',
+        overallPosition: 18,
+        classPosition: 12,
+        relativeSeconds: relativeSeconds < 0 ? null : 11.72,
+        relativeLaps: -1.03,
         isAhead: false,
         isBehind: true
       }
@@ -758,10 +1081,12 @@ function referenceDisplayRow(frame) {
   return (frame.model?.rows || []).find((row) => row && row.isReference === true && !row.isClassHeader);
 }
 
-function replayHeaderItems(frame, status) {
-  const items = [{ key: 'status', value: status }];
+function replayHeaderItems(frame, status, overlaySettings = null) {
+  const items = overlaySettings?.showHeaderStatus === false
+    ? []
+    : [{ key: 'status', value: status }];
   const timeRemaining = headerTimeRemaining(frame)?.value;
-  if (timeRemaining) {
+  if (overlaySettings?.showHeaderTimeRemaining !== false && timeRemaining) {
     items.push({ key: 'timeRemaining', value: timeRemaining });
   }
   return items;
@@ -792,6 +1117,28 @@ function normalizeProgress(value) {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function clampInteger(value, fallback, min, max) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Math.max(min, Math.min(max, Number.isFinite(parsed) ? parsed : fallback));
+}
+
+function parseBoolean(value, fallback) {
+  if (value == null || value === '') {
+    return fallback;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+    return true;
+  }
+
+  if (['0', 'false', 'no', 'off'].includes(normalized)) {
+    return false;
+  }
+
+  return fallback;
 }
 
 function overlayIdFromPath(path) {

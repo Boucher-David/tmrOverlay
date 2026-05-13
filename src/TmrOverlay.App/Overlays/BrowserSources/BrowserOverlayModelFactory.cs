@@ -19,6 +19,7 @@ namespace TmrOverlay.App.Overlays.BrowserSources;
 
 internal sealed class BrowserOverlayModelFactory
 {
+    private const int MaximumRelativeRows = 17;
     private readonly SessionHistoryQueryService _historyQueryService;
     private readonly Func<LiveTelemetrySnapshot, DateTimeOffset, string, SimpleTelemetryOverlayViewModel> _sessionWeatherBuilder;
     private readonly Func<LiveTelemetrySnapshot, DateTimeOffset, string, SimpleTelemetryOverlayViewModel> _pitServiceBuilder;
@@ -168,20 +169,28 @@ internal sealed class BrowserOverlayModelFactory
             now,
             browserSettings.CarsAhead,
             browserSettings.CarsBehind);
-        var rows = viewModel.Rows
-            .Select(row => new BrowserOverlayDisplayRow(
-                Cells: browserSettings.Columns
-                    .Select(column => RelativeCell(row, column.DataKey))
-                    .ToArray(),
-                IsReference: row.IsReference,
-                IsClassHeader: false,
-                IsPit: row.IsPit,
-                IsPartial: row.IsPartial,
-                IsPendingGrid: false,
-                CarClassColorHex: row.ClassColorHex,
-                HeaderTitle: null,
-                HeaderDetail: null))
-            .ToArray();
+        BrowserOverlayDisplayRow[] rows = viewModel.Rows.Count == 0
+            ? []
+            : viewModel.StableRows(
+                    browserSettings.CarsAhead,
+                    browserSettings.CarsBehind,
+                    MaximumRelativeRows)
+                .Select(row => row is null
+                    ? BrowserPlaceholderRow(browserSettings.Columns.Count)
+                    : new BrowserOverlayDisplayRow(
+                        Cells: browserSettings.Columns
+                            .Select(column => RelativeCell(row, column.DataKey))
+                            .ToArray(),
+                        IsReference: row.IsReference,
+                        IsClassHeader: false,
+                        IsPit: row.IsPit,
+                        IsPartial: row.IsPartial,
+                        IsPendingGrid: false,
+                        CarClassColorHex: row.ClassColorHex,
+                        HeaderTitle: null,
+                        HeaderDetail: null,
+                        RelativeLapDelta: row.LapDeltaToReference))
+                .ToArray();
         var headerItems = HeaderItems(overlay, snapshot, viewModel.Status);
 
         return BrowserOverlayDisplayModel.Table(
@@ -192,6 +201,21 @@ internal sealed class BrowserOverlayModelFactory
             browserSettings.Columns,
             rows,
             headerItems);
+    }
+
+    private static BrowserOverlayDisplayRow BrowserPlaceholderRow(int cellCount)
+    {
+        return new BrowserOverlayDisplayRow(
+            Cells: Enumerable.Repeat(string.Empty, Math.Max(0, cellCount)).ToArray(),
+            IsReference: false,
+            IsClassHeader: false,
+            IsPit: false,
+            IsPartial: false,
+            IsPendingGrid: false,
+            CarClassColorHex: null,
+            HeaderTitle: null,
+            HeaderDetail: null,
+            IsPlaceholder: true);
     }
 
     private static string RelativeCell(RelativeOverlayRowViewModel row, string dataKey)
@@ -521,7 +545,9 @@ internal sealed record BrowserOverlayDisplayRow(
     bool IsPendingGrid,
     string? CarClassColorHex,
     string? HeaderTitle,
-    string? HeaderDetail);
+    string? HeaderDetail,
+    bool IsPlaceholder = false,
+    int? RelativeLapDelta = null);
 
 internal sealed record BrowserOverlayHeaderItem(
     string Key,
