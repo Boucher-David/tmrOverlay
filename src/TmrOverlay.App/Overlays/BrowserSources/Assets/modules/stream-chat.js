@@ -1,318 +1,278 @@
 const streamChatState = {
   initialized: false,
-  settings: null,
-  socket: null,
-  messages: [],
-  reconnectTimer: null,
-  replayTimer: null,
-  replayPollActive: false,
-  reconnectAllowed: true,
-  twitchChannel: null,
-  connectedAnnounced: false
+  pollTimer: null,
+  pollActive: false,
+  lastModel: null,
+  badgeRegistry: {
+    global: null,
+    channels: new Map(),
+    pending: new Set()
+  }
 };
 
 TmrBrowserOverlay.register({
   start() {
-    initStreamChat();
+    startStreamChatPolling();
   },
-  render() {
-    initStreamChat();
+  render(model) {
+    if (model?.streamChat) {
+      renderStreamChatModel(model);
+      return;
+    }
+
+    startStreamChatPolling();
   }
 });
 
-async function initStreamChat() {
+function startStreamChatPolling() {
   if (streamChatState.initialized) {
     return;
   }
 
   streamChatState.initialized = true;
+  pollStreamChatModel();
+  const refreshInterval = Math.max(250, Number(page.refreshIntervalMilliseconds) || 250);
+  streamChatState.pollTimer = setInterval(pollStreamChatModel, refreshInterval);
+  window.addEventListener('resize', () => {
+    if (streamChatState.lastModel) {
+      renderStreamChatModel(streamChatState.lastModel);
+    }
+  });
+}
+
+async function pollStreamChatModel() {
+  if (streamChatState.pollActive) {
+    return;
+  }
+
+  streamChatState.pollActive = true;
   try {
     const model = await fetchOverlayModel('stream-chat');
-    const settings = model?.streamChat?.settings || {};
-    const initialRows = model?.streamChat?.rows || [];
-    streamChatState.settings = settings;
-    if (!settings.isConfigured) {
-      renderChatLines(initialRows.length ? initialRows : [
-        { name: 'TMR', text: streamChatStatusText(settings.status), kind: 'system' }
-      ]);
-      renderHeaderItems(model, model?.status || 'waiting for chat source');
-      renderFooterSource(model);
-      if (settings.status === 'replay_static') {
-        startReplayChatPolling();
-      }
-      return;
-    }
-
-    if (settings.provider === 'streamlabs') {
-      stopReplayChatPolling();
-      renderStreamlabsChat(settings.streamlabsWidgetUrl);
-      return;
-    }
-
-    if (settings.provider === 'twitch') {
-      stopReplayChatPolling();
-      if (initialRows.length) {
-        renderChatLines(initialRows);
-        renderHeaderItems(model, model?.status || 'connecting | twitch');
-        renderFooterSource(model);
-      }
-      connectTwitchChat(settings.twitchChannel);
-      return;
-    }
-
-    renderChatLines([{ name: 'TMR', text: 'Stream chat provider is not supported.', kind: 'error' }]);
-    stopReplayChatPolling();
-    statusEl.textContent = 'chat provider unavailable';
+    renderStreamChatModel(model);
   } catch (error) {
-    renderChatLines([{ name: 'TMR', text: `Chat settings unavailable: ${error.message}`, kind: 'error' }]);
-    statusEl.textContent = 'chat settings unavailable';
+    renderStreamChatLines([
+      { name: 'TMR', text: `Chat model unavailable: ${error.message}`, kind: 'error' }
+    ]);
+    clearStreamChatChrome();
+  } finally {
+    streamChatState.pollActive = false;
   }
 }
 
-function startReplayChatPolling() {
-  stopReplayChatPolling();
-  streamChatState.replayTimer = setInterval(async () => {
-    if (streamChatState.replayPollActive) {
-      return;
-    }
-
-    streamChatState.replayPollActive = true;
-    try {
-      const model = await fetchOverlayModel('stream-chat');
-      const rows = model?.streamChat?.rows || [];
-      if (rows.length) {
-        renderChatLines(rows);
-      }
-      renderHeaderItems(model, model?.status || 'replay chat');
-      renderFooterSource(model);
-    } catch {
-      // Keep the last replay rows visible if a single polling request fails.
-    } finally {
-      streamChatState.replayPollActive = false;
-    }
-  }, 500);
+function renderStreamChatModel(model) {
+  streamChatState.lastModel = model;
+  const rows = model?.streamChat?.rows || [];
+  scheduleBadgeRegistryLoads(rows);
+  renderStreamChatLines(rows.length ? rows : [
+    { name: 'TMR', text: 'Choose Streamlabs or Twitch in the Stream Chat settings tab.', kind: 'system' }
+  ]);
+  renderStreamChatChrome(model);
 }
 
-function stopReplayChatPolling() {
-  clearInterval(streamChatState.replayTimer);
-  streamChatState.replayTimer = null;
-  streamChatState.replayPollActive = false;
-}
-
-function renderStreamlabsChat(url) {
-  if (!url) {
-    renderChatLines([{ name: 'TMR', text: 'Streamlabs Chat Box URL is missing.', kind: 'error' }]);
-    statusEl.textContent = 'streamlabs not configured';
-    return;
-  }
-
+function renderStreamChatLines(lines) {
+  const visibleLines = latestVisibleChatLines(lines);
   contentEl.innerHTML = `
     <div class="chat">
-      <div class="chat-line system">
-        <div class="chat-name">TMR</div>
-        <div class="chat-text">Connecting to Streamlabs chat...</div>
-      </div>
-      <iframe class="chat-frame" title="Streamlabs Chat Box" src="${escapeAttribute(url)}" allowtransparency="true"></iframe>
+      ${visibleLines.map((line) => `
+        <div class="chat-line ${escapeAttribute(line.kind || 'message')}">
+          <div class="chat-head">
+            ${badgesHtml(line)}
+            <span class="chat-name"${authorColorStyle(line)}>${escapeHtml(line.name)}</span>
+            ${metadataHtml(line)}
+          </div>
+          <div class="chat-text">${segmentsHtml(line)}</div>
+        </div>`).join('')}
     </div>`;
-  const frame = contentEl.querySelector('iframe');
-  const statusLine = contentEl.querySelector('.chat-line');
-  const statusText = contentEl.querySelector('.chat-text');
-  frame.addEventListener('load', () => {
-    statusLine.className = 'chat-line system';
-    statusText.textContent = 'Chat connected through Streamlabs.';
-    statusEl.textContent = 'chat connected | streamlabs';
-  });
-  frame.addEventListener('error', () => {
-    statusLine.className = 'chat-line error';
-    statusText.textContent = 'Streamlabs chat frame failed to load.';
-    statusEl.textContent = 'chat error | streamlabs';
-  });
-  statusEl.textContent = 'connecting | streamlabs';
+  pruneOverflowingChatLines();
 }
 
-function connectTwitchChat(channel) {
-  const normalized = normalizeTwitchChannel(channel);
-  if (!normalized) {
-    renderChatLines([{ name: 'TMR', text: 'Twitch channel is missing or invalid.', kind: 'error' }]);
-    statusEl.textContent = 'twitch not configured';
+function latestVisibleChatLines(lines) {
+  const rows = Array.isArray(lines) ? lines : [];
+  const availableHeight = Math.max(48, contentEl?.clientHeight || window.innerHeight - 42);
+  const budget = Math.max(1, Math.min(36, Math.floor((availableHeight + 8) / 52)));
+  return rows.slice(-budget);
+}
+
+function pruneOverflowingChatLines() {
+  const chat = contentEl.querySelector('.chat');
+  if (!chat) {
     return;
   }
 
-  clearTimeout(streamChatState.reconnectTimer);
-  if (streamChatState.socket) {
-    streamChatState.socket.close();
-  }
-
-  renderChatLines([{ name: 'TMR', text: `Connecting to #${normalized}...`, kind: 'system' }]);
-  statusEl.textContent = 'connecting | twitch';
-  const socket = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
-  streamChatState.socket = socket;
-  streamChatState.reconnectAllowed = true;
-  streamChatState.twitchChannel = normalized;
-  streamChatState.connectedAnnounced = false;
-  socket.addEventListener('open', () => {
-    const nick = `justinfan${Math.floor(10000 + Math.random() * 89999)}`;
-    socket.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
-    socket.send('PASS SCHMOOPIIE');
-    socket.send(`NICK ${nick}`);
-    socket.send(`JOIN #${normalized}`);
-    statusEl.textContent = 'joining | twitch';
-  });
-  socket.addEventListener('message', (event) => handleTwitchIrcMessage(socket, String(event.data || '')));
-  socket.addEventListener('error', () => {
-    confirmChatLine('TMR', 'Twitch chat connection error.', 'error');
-    statusEl.textContent = 'chat error | twitch';
-  });
-  socket.addEventListener('close', () => {
-    if (streamChatState.socket !== socket) {
-      return;
-    }
-    if (!streamChatState.reconnectAllowed) {
-      streamChatState.socket = null;
-      return;
+  while (chat.scrollHeight - chat.clientHeight > 1) {
+    const firstLine = chat.querySelector('.chat-line');
+    const lineCount = chat.querySelectorAll('.chat-line').length;
+    if (!firstLine || lineCount <= 1) {
+      break;
     }
 
-    if (!streamChatState.connectedAnnounced) {
-      confirmChatLine('TMR', 'Twitch chat disconnected before joining.', 'error');
-    }
-    statusEl.textContent = 'chat reconnecting | twitch';
-    streamChatState.reconnectTimer = setTimeout(() => connectTwitchChat(normalized), 3500);
-  });
-}
-
-function handleTwitchIrcMessage(socket, payload) {
-  for (const rawLine of payload.split('\r\n')) {
-    const line = rawLine.trim();
-    if (!line) continue;
-    if (line.startsWith('PING')) {
-      socket.send(`PONG ${line.slice(5)}`);
-      continue;
-    }
-    if (isTwitchAuthFailure(line)) {
-      streamChatState.reconnectAllowed = false;
-      confirmChatLine('TMR', 'Twitch rejected the chat connection.', 'error');
-      statusEl.textContent = 'twitch auth rejected';
-      socket.close();
-      continue;
-    }
-    if (line.includes(' RECONNECT ')) {
-      socket.close();
-      continue;
-    }
-    if (isTwitchJoined(line)) {
-      announceTwitchConnected();
-      continue;
-    }
-    if (!line.includes(' PRIVMSG ')) {
-      continue;
-    }
-
-    const parsed = parseTwitchPrivMsg(line);
-    if (parsed) {
-      pushChatLine(parsed.name, parsed.text, 'message');
-    }
+    firstLine.remove();
   }
 }
 
-function isTwitchAuthFailure(line) {
-  return line.includes(' NOTICE * :Login authentication failed')
-    || line.includes(' NOTICE * :Improperly formatted auth');
+function clearStreamChatChrome() {
+  renderHeaderItems({ headerItems: [] }, '');
+  clearFooterSource();
 }
 
-function isTwitchJoined(line) {
-  const channel = streamChatState.twitchChannel;
-  return line.includes(' 001 ')
-    || (channel && line.includes(` ROOMSTATE #${channel}`));
+function renderStreamChatChrome(model) {
+  renderHeaderItems(model, model?.status || 'Stream Chat');
+  clearFooterSource();
 }
 
-function announceTwitchConnected() {
-  if (streamChatState.connectedAnnounced) {
-    return;
+function metadataHtml(line) {
+  const metadata = Array.isArray(line?.metadata) ? line.metadata.filter(Boolean) : [];
+  if (!metadata.length) {
+    return '';
   }
 
-  streamChatState.connectedAnnounced = true;
-  const channel = streamChatState.twitchChannel || 'channel';
-  confirmChatLine('TMR', `Chat connected to #${channel}.`, 'system');
-  statusEl.textContent = 'chat connected | twitch';
+  return `<span class="chat-meta">${metadata
+    .map((item) => `<span class="chat-chip">${escapeHtml(item)}</span>`)
+    .join('')}</span>`;
 }
 
-function parseTwitchPrivMsg(line) {
-  const messageIndex = line.indexOf(' PRIVMSG ');
-  const textIndex = line.indexOf(' :', messageIndex);
-  if (messageIndex < 0 || textIndex < 0) {
+function badgesHtml(line) {
+  const badges = Array.isArray(line?.badges) ? line.badges.filter((badge) => badge?.label) : [];
+  if (!badges.length) {
+    return '';
+  }
+
+  return `<span class="chat-badges">${badges
+    .map((badge) => badgeImageHtml(badge) || `<span class="chat-badge fallback" title="${escapeAttribute(badgeTitle(badge))}">${escapeHtml(shortBadgeFallback(badge.label))}</span>`)
+    .join('')}</span>`;
+}
+
+function badgeTitle(badge) {
+  const id = String(badge?.id || '').trim();
+  const version = String(badge?.version || '').trim();
+  return version ? `${id} ${version}` : id;
+}
+
+function badgeImageHtml(badge) {
+  const imageUrl = badgeImageUrl(badge);
+  if (!imageUrl) {
+    return '';
+  }
+
+  return `<img class="chat-badge image" src="${escapeAttribute(imageUrl)}" alt="${escapeAttribute(badge.label || badge.id || 'badge')}" title="${escapeAttribute(badgeTitle(badge))}" loading="lazy" decoding="async">`;
+}
+
+function badgeImageUrl(badge) {
+  const id = String(badge?.id || '').trim();
+  const version = String(badge?.version || '').trim();
+  const roomId = String(badge?.roomId || '').trim();
+  return lookupBadgeImage(streamChatState.badgeRegistry.channels.get(roomId), id, version)
+    || lookupBadgeImage(streamChatState.badgeRegistry.global, id, version);
+}
+
+function lookupBadgeImage(registry, id, version) {
+  if (!registry || !id) {
     return null;
   }
 
-  const prefixAndTags = line.slice(0, messageIndex);
-  const tags = parseTwitchTags(prefixAndTags);
-  const text = decodeTwitchTag(line.slice(textIndex + 2));
-  const fallbackName = prefixAndTags.match(/:([^! ]+)/)?.[1] || 'chat';
-  return {
-    name: tags['display-name'] || fallbackName,
-    text
-  };
+  const versions = registry.get(id);
+  return versions?.get(version) || versions?.get('0') || versions?.values().next().value || null;
 }
 
-function parseTwitchTags(prefixAndTags) {
-  if (!prefixAndTags.startsWith('@')) {
-    return {};
+function shortBadgeFallback(label) {
+  const compact = String(label || '').trim();
+  if (!compact) {
+    return '';
   }
 
-  const tagText = prefixAndTags.slice(1, prefixAndTags.indexOf(' '));
-  return Object.fromEntries(tagText.split(';').map((pair) => {
-    const splitAt = pair.indexOf('=');
-    if (splitAt < 0) return [pair, ''];
-    return [pair.slice(0, splitAt), decodeTwitchTag(pair.slice(splitAt + 1))];
-  }));
+  return compact.length <= 3 ? compact : compact.slice(0, 3);
 }
 
-function decodeTwitchTag(value) {
-  return String(value || '')
-    .replace(/\\s/g, ' ')
-    .replace(/\\:/g, ';')
-    .replace(/\\\\/g, '\\');
-}
-
-function pushChatLine(name, text, kind) {
-  streamChatState.messages.push({ name, text, kind });
-  if (streamChatState.messages.length > 48) {
-    streamChatState.messages.splice(0, streamChatState.messages.length - 48);
-  }
-  renderChatLines(streamChatState.messages);
-}
-
-function confirmChatLine(name, text, kind) {
-  if (streamChatState.messages.length === 1 && streamChatState.messages[0].kind === 'system') {
-    streamChatState.messages[0] = { name, text, kind };
-    renderChatLines(streamChatState.messages);
+function scheduleBadgeRegistryLoads(rows) {
+  const badges = rows.flatMap((row) => Array.isArray(row?.badges) ? row.badges : []);
+  if (!badges.length) {
     return;
   }
 
-  pushChatLine(name, text, kind);
-}
-
-function renderChatLines(lines) {
-  contentEl.innerHTML = `
-    <div class="chat">
-      ${lines.map((line) => `
-        <div class="chat-line ${escapeAttribute(line.kind || 'message')}">
-          <div class="chat-name">${escapeHtml(line.name)}</div>
-          <div class="chat-text">${escapeHtml(line.text)}</div>
-        </div>`).join('')}
-    </div>`;
-}
-
-function streamChatStatusText(status) {
-  switch (status) {
-    case 'missing_or_invalid_streamlabs_url':
-      return 'Choose Streamlabs and paste a valid Streamlabs Chat Box widget URL.';
-    case 'missing_or_invalid_twitch_channel':
-      return 'Choose Twitch and enter a valid public channel name.';
-    default:
-      return 'Choose Streamlabs or Twitch in the Stream Chat settings tab.';
+  loadBadgeRegistry('global');
+  for (const badge of badges) {
+    const roomId = String(badge?.roomId || '').trim();
+    if (roomId) {
+      loadBadgeRegistry(roomId);
+    }
   }
 }
 
-function normalizeTwitchChannel(channel) {
-  return String(channel || '').trim().replace(/^@/, '').toLowerCase();
+function loadBadgeRegistry(scope) {
+  const registry = streamChatState.badgeRegistry;
+  if ((scope === 'global' && registry.global) || (scope !== 'global' && registry.channels.has(scope)) || registry.pending.has(scope)) {
+    return;
+  }
+
+  registry.pending.add(scope);
+  const url = scope === 'global'
+    ? 'https://badges.twitch.tv/v1/badges/global/display'
+    : `https://badges.twitch.tv/v1/badges/channels/${encodeURIComponent(scope)}/display`;
+  fetch(url)
+    .then((response) => response.ok ? response.json() : null)
+    .then((payload) => {
+      const parsed = parseBadgeRegistry(payload);
+      if (scope === 'global') {
+        registry.global = parsed;
+      } else {
+        registry.channels.set(scope, parsed);
+      }
+
+      if (streamChatState.lastModel) {
+        renderStreamChatModel(streamChatState.lastModel);
+      }
+    })
+    .catch(() => {
+      if (scope === 'global') {
+        registry.global = new Map();
+      } else {
+        registry.channels.set(scope, new Map());
+      }
+    })
+    .finally(() => registry.pending.delete(scope));
+}
+
+function parseBadgeRegistry(payload) {
+  const registry = new Map();
+  const badgeSets = payload?.badge_sets || {};
+  for (const [id, badgeSet] of Object.entries(badgeSets)) {
+    const versions = new Map();
+    for (const [version, entry] of Object.entries(badgeSet?.versions || {})) {
+      const url = entry?.image_url_2x || entry?.image_url_1x || entry?.image_url_4x;
+      if (typeof url === 'string' && /^https:\/\/static-cdn\.jtvnw\.net\/badges\/v1\//i.test(url)) {
+        versions.set(version, url);
+      }
+    }
+    if (versions.size) {
+      registry.set(id, versions);
+    }
+  }
+  return registry;
+}
+
+function segmentsHtml(line) {
+  const segments = Array.isArray(line?.segments) ? line.segments : [];
+  if (!segments.length) {
+    return escapeHtml(line?.text || '');
+  }
+
+  return segments.map((segment) => {
+    if (segment?.kind === 'emote' && validHttpImageUrl(segment.imageUrl)) {
+      return `<img class="chat-emote" src="${escapeAttribute(segment.imageUrl)}" alt="${escapeAttribute(segment.text || 'emote')}" title="${escapeAttribute(segment.text || 'emote')}" loading="lazy" decoding="async">`;
+    }
+
+    return escapeHtml(segment?.text || '');
+  }).join('');
+}
+
+function validHttpImageUrl(value) {
+  const url = String(value || '').trim();
+  return /^https:\/\/static-cdn\.jtvnw\.net\/emoticons\/v2\/[^/]+\/[^/]+\/[^/]+\/[^/]+$/i.test(url);
+}
+
+function authorColorStyle(line) {
+  const color = typeof line?.authorColorHex === 'string' ? line.authorColorHex.trim() : '';
+  return /^#[0-9a-f]{6}$/i.test(color)
+    ? ` style="color: ${escapeAttribute(color)}"`
+    : '';
 }

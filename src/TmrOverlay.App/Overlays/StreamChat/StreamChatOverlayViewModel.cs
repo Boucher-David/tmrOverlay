@@ -16,22 +16,30 @@ internal sealed record StreamChatOverlayViewModel(
     public static StreamChatOverlayViewModel From(
         string status,
         IReadOnlyList<StreamChatMessage> messages,
-        int visibleMessageBudget = VisibleMessageBudget)
+        int visibleMessageBudget = VisibleMessageBudget,
+        string source = "",
+        StreamChatContentOptions? contentOptions = null)
     {
-        var rows = messages
-            .Skip(Math.Max(0, messages.Count - Math.Max(1, visibleMessageBudget)))
+        var options = contentOptions ?? StreamChatContentOptions.Default;
+        var visibleMessages = messages
+            .Where(options.ShouldShow)
+            .ToArray();
+        var rows = visibleMessages
+            .Skip(Math.Max(0, visibleMessages.Length - Math.Max(1, visibleMessageBudget)))
             .ToArray();
         if (rows.Length == 0)
         {
-            rows = [new StreamChatMessage("TMR", "Choose Twitch or Streamlabs in settings.", StreamChatMessageKind.System)];
+            rows = messages.Count > 0
+                ? [new StreamChatMessage("TMR", "No visible Twitch chat rows with current content settings.", StreamChatMessageKind.System)]
+                : [new StreamChatMessage("TMR", "Choose Twitch or Streamlabs in settings.", StreamChatMessageKind.System)];
         }
 
         return new StreamChatOverlayViewModel(
             Title: "Stream Chat",
             Status: status,
-            Source: "source: stream chat settings",
+            Source: source,
             Rows: rows,
-            HasLiveRows: rows.Any(row => row.Kind == StreamChatMessageKind.Message),
+            HasLiveRows: rows.Any(row => row.Kind is StreamChatMessageKind.Message or StreamChatMessageKind.Notice),
             HasErrorRows: rows.Any(row => row.Kind == StreamChatMessageKind.Error));
     }
 

@@ -70,6 +70,7 @@ export const pages = {
     settingsProperty: 'garageCover'
   }),
   'stream-chat': pageDefinition('stream-chat', 'Stream Chat', '/overlays/stream-chat', {
+    bodyClass: 'stream-chat-page',
     requiresTelemetry: false,
     modelRoute: '/api/overlay-model/stream-chat',
     settingsRoute: '/api/stream-chat',
@@ -223,7 +224,7 @@ function pageDefinition(id, title, route, options = {}) {
       renderWhenTelemetryUnavailable: options.renderWhenTelemetryUnavailable ?? false,
       fadeWhenTelemetryUnavailable: options.fadeWhenTelemetryUnavailable ?? false,
       refreshIntervalMilliseconds: options.refreshIntervalMilliseconds ?? 250,
-      forwardQueryParameters: options.forwardQueryParameters ?? ['preview', 'frame', 'rel', 'spoofFocus', 'focus', 'pitService', 'sourceStart', 'sourceEnd', 'frameStart', 'frameEnd', 'replaySpeed']
+      forwardQueryParameters: options.forwardQueryParameters ?? ['preview', 'frame', 'rel', 'spoofFocus', 'focus', 'pitService', 'streamChatFixture', 'sourceStart', 'sourceEnd', 'frameStart', 'frameEnd', 'replaySpeed']
     }
   };
 }
@@ -255,7 +256,7 @@ function defaultDisplayModel(page, live, settings) {
     case 'garage-cover':
       return garageCoverDisplayModel(page, live, settings);
     case 'stream-chat':
-      return streamChatDisplayModel(page, settings);
+      return streamChatDisplayModel(page, live, settings);
     case 'input-state':
       return inputStateDisplayModel(page, live, settings);
     default:
@@ -1447,14 +1448,15 @@ function garageCoverDisplayModel(page, live, settings) {
   };
 }
 
-function streamChatDisplayModel(page, settings) {
+function streamChatDisplayModel(page, live, settings) {
   const streamSettings = settings?.streamChat || settings || {};
   const browserSettings = {
     provider: streamSettings.provider || 'none',
     isConfigured: streamSettings.isConfigured === true,
     streamlabsWidgetUrl: streamSettings.streamlabsWidgetUrl ?? null,
     twitchChannel: streamSettings.twitchChannel ?? null,
-    status: streamSettings.status || 'not_configured'
+    status: streamSettings.status || 'not_configured',
+    contentOptions: streamSettings.contentOptions || defaultStreamChatContentOptions()
   };
   const replayRows = normalizeStreamChatRows(streamSettings.replayRows || streamSettings.rows);
   const isTwitch = browserSettings.isConfigured && browserSettings.provider === 'twitch' && browserSettings.twitchChannel;
@@ -1482,7 +1484,7 @@ function streamChatDisplayModel(page, settings) {
     ...emptyDisplayModel(page.page.id, page.title),
     status,
     headerItems: [{ key: 'status', value: status }],
-    source: streamSettings.replaySource || 'source: stream chat settings',
+    source: '',
     bodyKind: 'stream-chat',
     streamChat: {
       settings: browserSettings,
@@ -1491,17 +1493,82 @@ function streamChatDisplayModel(page, settings) {
   };
 }
 
+function browserStatus(headerItems, fallback) {
+  return headerItems.find((item) => String(item.key || '').toLowerCase() === 'status')?.value
+    || headerItems[0]?.value
+    || fallback;
+}
+
 function normalizeStreamChatRows(rows) {
   return (Array.isArray(rows) ? rows : [])
-    .map((row) => ({
-      name: String(row?.name || 'chat'),
-      text: String(row?.text || ''),
-      kind: ['message', 'system', 'error'].includes(String(row?.kind || '').toLowerCase())
-        ? String(row.kind).toLowerCase()
-        : 'message'
-    }))
+    .map((row) => {
+      const normalized = {
+        name: String(row?.name || 'chat'),
+        text: String(row?.text || ''),
+        kind: ['message', 'notice', 'system', 'error'].includes(String(row?.kind || '').toLowerCase())
+          ? String(row.kind).toLowerCase()
+          : 'message',
+        source: String(row?.source || ''),
+        authorColorHex: /^#[0-9a-f]{6}$/i.test(String(row?.authorColorHex || ''))
+          ? String(row.authorColorHex).toUpperCase()
+          : null,
+        metadata: Array.isArray(row?.metadata)
+          ? row.metadata.map((item) => String(item)).filter(Boolean)
+          : [],
+        badges: Array.isArray(row?.badges)
+          ? row.badges
+              .map((badge) => ({
+                id: String(badge?.id || badge?.label || '').trim(),
+                version: String(badge?.version || '').trim(),
+                label: String(badge?.label || badge?.id || '').trim(),
+                roomId: badge?.roomId == null ? null : String(badge.roomId).trim()
+              }))
+              .filter((badge) => badge.label.length > 0)
+          : [],
+        segments: Array.isArray(row?.segments)
+          ? row.segments
+              .map((segment) => ({
+                kind: String(segment?.kind || 'text').toLowerCase() === 'emote' ? 'emote' : 'text',
+                text: String(segment?.text || ''),
+                imageUrl: typeof segment?.imageUrl === 'string' ? segment.imageUrl : null
+              }))
+              .filter((segment) => segment.text.length > 0 || segment.imageUrl)
+          : [{ kind: 'text', text: String(row?.text || ''), imageUrl: null }]
+      };
+      const twitch = normalizeStreamChatTwitchPayload(row?.twitch);
+      if (twitch) {
+        normalized.twitch = twitch;
+      }
+      return normalized;
+    })
     .filter((row) => row.text.length > 0)
     .slice(-36);
+}
+
+function normalizeStreamChatTwitchPayload(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return null;
+  }
+}
+
+function defaultStreamChatContentOptions() {
+  return {
+    showAuthorColor: true,
+    showBadges: true,
+    showBits: true,
+    showFirstMessage: true,
+    showReplies: true,
+    showTimestamps: true,
+    showEmotes: true,
+    showAlerts: true,
+    showMessageIds: false
+  };
 }
 
 function garageCoverDetection(live, garageVisible) {

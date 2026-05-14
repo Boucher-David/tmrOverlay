@@ -2,6 +2,7 @@ using TmrOverlay.App.Overlays.Relative;
 using TmrOverlay.App.Overlays.Standings;
 using TmrOverlay.App.Overlays.InputState;
 using TmrOverlay.App.Overlays.PitService;
+using TmrOverlay.App.Overlays.StreamChat;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 
@@ -121,6 +122,15 @@ internal static class OverlayContentColumnSettings
     public const string PitServiceTireTemperatureBlockId = "pit-service.tire-temperature";
     public const string PitServiceTireWearBlockId = "pit-service.tire-wear";
     public const string PitServiceTireDistanceBlockId = "pit-service.tire-distance";
+    public const string StreamChatAuthorColorBlockId = "stream-chat.twitch.author-color";
+    public const string StreamChatBadgesBlockId = "stream-chat.twitch.badges";
+    public const string StreamChatBitsBlockId = "stream-chat.twitch.bits";
+    public const string StreamChatFirstMessageBlockId = "stream-chat.twitch.first-message";
+    public const string StreamChatRepliesBlockId = "stream-chat.twitch.replies";
+    public const string StreamChatTimestampsBlockId = "stream-chat.twitch.timestamps";
+    public const string StreamChatEmotesBlockId = "stream-chat.twitch.emotes";
+    public const string StreamChatAlertsBlockId = "stream-chat.twitch.alerts";
+    public const string StreamChatMessageIdsBlockId = "stream-chat.twitch.message-ids";
 
     public static OverlayContentDefinition Standings { get; } = new(
         OverlayId: StandingsOverlayDefinition.Definition.Id,
@@ -296,11 +306,76 @@ internal static class OverlayContentColumnSettings
             DefaultEnabled: true)
     ]);
 
+    public static OverlayContentDefinition StreamChat { get; } = new(
+        OverlayId: StreamChatOverlayDefinition.Definition.Id,
+        BrowserWidthPadding: 42,
+        BrowserMinimumHeight: 520,
+        NativeMinimumTableHeight: 420,
+        FallbackColumnId: string.Empty,
+        Columns: [],
+        Blocks:
+    [
+        new(
+            StreamChatAuthorColorBlockId,
+            "Author color",
+            "Use Twitch's author color tag when it is present.",
+            OverlayOptionKeys.StreamChatShowAuthorColor,
+            DefaultEnabled: true),
+        new(
+            StreamChatBadgesBlockId,
+            "Badges",
+            "Show Twitch badge chips such as mod, VIP, subscriber, and broadcaster.",
+            OverlayOptionKeys.StreamChatShowBadges,
+            DefaultEnabled: true),
+        new(
+            StreamChatBitsBlockId,
+            "Bits",
+            "Show cheer/bits metadata when Twitch sends it with the message.",
+            OverlayOptionKeys.StreamChatShowBits,
+            DefaultEnabled: true),
+        new(
+            StreamChatFirstMessageBlockId,
+            "First message",
+            "Mark a viewer's first message when Twitch reports that signal.",
+            OverlayOptionKeys.StreamChatShowFirstMessage,
+            DefaultEnabled: true),
+        new(
+            StreamChatRepliesBlockId,
+            "Replies",
+            "Show the replied-to chatter when Twitch sends reply tags.",
+            OverlayOptionKeys.StreamChatShowReplies,
+            DefaultEnabled: true),
+        new(
+            StreamChatTimestampsBlockId,
+            "Timestamps",
+            "Show Twitch's sent timestamp as a compact local time.",
+            OverlayOptionKeys.StreamChatShowTimestamps,
+            DefaultEnabled: true),
+        new(
+            StreamChatEmotesBlockId,
+            "Emotes",
+            "Show compact Twitch emote metadata when emote ranges are available.",
+            OverlayOptionKeys.StreamChatShowEmotes,
+            DefaultEnabled: true),
+        new(
+            StreamChatAlertsBlockId,
+            "Alerts",
+            "Show Twitch USERNOTICE rows such as subs, resubs, gifts, and raids.",
+            OverlayOptionKeys.StreamChatShowAlerts,
+            DefaultEnabled: true),
+        new(
+            StreamChatMessageIdsBlockId,
+            "Message IDs",
+            "Show a short Twitch message ID for debugging chat delivery.",
+            OverlayOptionKeys.StreamChatShowMessageIds,
+            DefaultEnabled: false)
+    ]);
+
     public static IReadOnlyList<OverlayContentColumnDefinition> StandingsColumns => Standings.Columns;
 
     public static IReadOnlyList<OverlayContentColumnDefinition> RelativeColumns => Relative.Columns;
 
-    public static IReadOnlyList<OverlayContentDefinition> All { get; } = [Standings, Relative, InputState, PitService];
+    public static IReadOnlyList<OverlayContentDefinition> All { get; } = [Standings, Relative, InputState, PitService, StreamChat];
 
     public static bool TryGetContentDefinition(string overlayId, out OverlayContentDefinition definition)
     {

@@ -1,8 +1,6 @@
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
-using System.Net.WebSockets;
-using System.Text;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.App.History;
 using TmrOverlay.App.Overlays.Abstractions;
@@ -63,8 +61,6 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private const float TrackSectorBoundaryTickLength = 17f;
     private const float TrackPitLineWidth = 2.2f;
     private const double TrackMapReloadIntervalSeconds = 10d;
-    private const int MaximumChatMessages = StreamChatOverlayViewModel.MaximumMessages;
-    private const int VisibleChatMessageBudget = StreamChatOverlayViewModel.VisibleMessageBudget;
     private const int GapMaxTrendPointsPerCar = 36_000;
     private const int GapMaxWeatherPoints = 36_000;
     private const int GapMaxDriverChangeMarkers = 64;
@@ -109,7 +105,6 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private const double FocusedCarLengthMeters = 4.746d;
     private const double RadarRangeMeters = FocusedCarLengthMeters * 6d;
 
-    private static readonly Uri TwitchChatUri = new("wss://irc-ws.chat.twitch.tv:443");
     private static readonly Color TransparentColor = Color.FromArgb(1, 2, 3);
     private static Color Surface => OverlayTheme.DesignV2.Surface;
     private static Color SurfaceInset => OverlayTheme.DesignV2.SurfaceInset;
@@ -147,6 +142,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly TrackMapStore _trackMapStore;
     private readonly SessionHistoryQueryService _historyQueryService;
+    private readonly StreamChatOverlaySource _streamChatSource;
     private readonly AppPerformanceState _performanceState;
     private readonly ILogger _logger;
     private readonly OverlaySettings _settings;
@@ -162,7 +158,6 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private readonly Dictionary<int, DesignV2GapCarRenderState> _gapCarRenderStates = [];
     private readonly Dictionary<int, DesignV2GapDriverIdentity> _gapDriverIdentities = [];
     private readonly List<InputStateTracePoint> _inputTrace = [];
-    private readonly List<StreamChatMessage> _chatMessages = [];
     private readonly TrackMapRenderModelBuilder _trackMapRenderBuilder = new();
     private readonly Dictionary<int, double> _smoothedTrackMarkerProgress = new();
     private readonly Button? _closeButton;
@@ -177,11 +172,6 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private DateTimeOffset _cachedRadarCalibrationAtUtc;
     private string? _lastLoggedError;
     private DateTimeOffset? _lastLoggedErrorAtUtc;
-    private CancellationTokenSource? _chatConnectionCancellation;
-    private Task? _chatConnectionTask;
-    private string _streamChatStatus = "waiting for chat source";
-    private string? _activeStreamChatSettingsKey;
-    private string? _lastChatLoggedError;
     private DateTimeOffset? _lastTrackMarkerSmoothingAtUtc;
     private DateTimeOffset _nextTrackMapReloadAtUtc = DateTimeOffset.MinValue;
     private long? _lastGapSequence;
@@ -199,8 +189,6 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private bool _settingsPreviewVisible;
     private bool _flagsManagedEnabled = true;
     private bool _flagsSettingsOverlayActive;
-    private bool _chatConnectedAnnounced;
-    private bool _disposed;
 
     public DesignV2LiveOverlayForm(
         DesignV2LiveOverlayKind kind,
@@ -208,6 +196,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         ILiveTelemetrySource liveTelemetrySource,
         TrackMapStore trackMapStore,
         SessionHistoryQueryService historyQueryService,
+        StreamChatOverlaySource streamChatSource,
         AppPerformanceState performanceState,
         ILogger logger,
         OverlaySettings settings,
@@ -221,6 +210,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         _liveTelemetrySource = liveTelemetrySource;
         _trackMapStore = trackMapStore;
         _historyQueryService = historyQueryService;
+        _streamChatSource = streamChatSource;
         _performanceState = performanceState;
         _logger = logger;
         _settings = settings;
@@ -258,12 +248,6 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         };
         _refreshTimer.Start();
 
-        if (_kind == DesignV2LiveOverlayKind.StreamChat)
-        {
-            _closeButton = CreateStreamChatCloseButton();
-            Controls.Add(_closeButton);
-            LayoutStreamChatCloseButton();
-        }
     }
 
     public void SetSettingsPreviewVisible(bool previewVisible)
@@ -307,11 +291,9 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     {
         if (disposing)
         {
-            _disposed = true;
             _refreshTimer.Stop();
             _refreshTimer.Dispose();
             _closeButton?.Dispose();
-            StopChatConnection();
         }
 
         base.Dispose(disposing);
@@ -337,8 +319,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     protected override bool ShouldReceiveInputWhileTransparent(Point clientPoint)
     {
-        return IsStreamChatCloseButtonHit(clientPoint)
-            || IsStreamChatDragHit(clientPoint, ClientSize);
+        return IsStreamChatCloseButtonHit(clientPoint);
     }
 
     protected override void OnMouseUp(MouseEventArgs e)
@@ -395,6 +376,15 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                 Trim(exception.Message, 96),
                 DesignV2Evidence.Error,
                 new DesignV2MetricRowsBody([new DesignV2MetricRow("Error", Trim(exception.Message, 120), DesignV2Evidence.Error)]));
+            if (_kind == DesignV2LiveOverlayKind.StreamChat)
+            {
+                _model = _model with
+                {
+                    HeaderText = "overlay error",
+                    ShowFooter = false,
+                    ShowHeader = true
+                };
+            }
             ApplyModelVisibility(_model);
             Invalidate();
         }
@@ -432,6 +422,16 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             {
                 HeaderText = string.Empty,
                 ShowFooter = false
+            };
+        }
+
+        if (_kind == DesignV2LiveOverlayKind.StreamChat)
+        {
+            return model with
+            {
+                HeaderText = model.Status,
+                ShowFooter = false,
+                ShowHeader = true
             };
         }
 
@@ -2338,10 +2338,19 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     private DesignV2OverlayModel BuildStreamChatModel()
     {
-        RefreshStreamChatSettings();
-        var viewModel = StreamChatOverlayViewModel.From(_streamChatStatus, _chatMessages, VisibleChatMessageBudget);
+        var viewModel = _streamChatSource.Snapshot(_settings);
+        var contentOptions = StreamChatContentOptions.From(_settings);
         var rows = viewModel.Rows
-            .Select(message => new DesignV2ChatRow(message.Name, message.Text, ChatEvidence(message.Kind)))
+            .Select(message => new DesignV2ChatRow(
+                message.Name,
+                message.Text,
+                ChatEvidence(message.Kind),
+                StreamChatMessageDisplay.AuthorColorHex(message, contentOptions),
+                StreamChatMessageDisplay.MetadataParts(message, contentOptions),
+                StreamChatMessageDisplay.BadgeParts(message, contentOptions)
+                    .Select(badge => badge.Label)
+                    .ToArray(),
+                StreamChatMessageDisplay.MessageSegments(message, contentOptions)))
             .ToArray();
 
         return new DesignV2OverlayModel(
@@ -2354,338 +2363,6 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                     ? DesignV2Evidence.Error
                     : DesignV2Evidence.Unavailable,
             new DesignV2ChatBody(rows));
-    }
-
-    private void RefreshStreamChatSettings()
-    {
-        var settings = StreamChatSettingsFromOverlay();
-        var settingsKey = $"{settings.Provider}|{settings.StreamlabsWidgetUrl}|{settings.TwitchChannel}|{settings.Status}";
-        if (string.Equals(_activeStreamChatSettingsKey, settingsKey, StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        _activeStreamChatSettingsKey = settingsKey;
-        _chatConnectedAnnounced = false;
-        StopChatConnection();
-
-        if (!settings.IsConfigured)
-        {
-            ReplaceChatMessages(StreamChatOverlayViewModel.InitialMessage(settings));
-            SetChatStatus(StreamChatOverlayViewModel.InitialStatus(settings));
-            return;
-        }
-
-        if (string.Equals(settings.Provider, StreamChatOverlaySettings.ProviderTwitch, StringComparison.Ordinal)
-            && settings.TwitchChannel is { Length: > 0 } channel)
-        {
-            ReplaceChatMessages(StreamChatOverlayViewModel.InitialMessage(settings));
-            SetChatStatus(StreamChatOverlayViewModel.InitialStatus(settings));
-            StartTwitchConnection(channel);
-            return;
-        }
-
-        ReplaceChatMessages(StreamChatOverlayViewModel.InitialMessage(settings));
-        SetChatStatus(StreamChatOverlayViewModel.InitialStatus(settings));
-    }
-
-    private StreamChatBrowserSettings StreamChatSettingsFromOverlay()
-    {
-        return StreamChatOverlaySettings.FromOverlay(_settings);
-    }
-
-    private void StartTwitchConnection(string channel)
-    {
-        StopChatConnection();
-        var cancellation = new CancellationTokenSource();
-        _chatConnectionCancellation = cancellation;
-        _chatConnectionTask = Task.Run(() => RunTwitchConnectionLoopAsync(channel, cancellation.Token), CancellationToken.None);
-    }
-
-    private void StopChatConnection()
-    {
-        var cancellation = _chatConnectionCancellation;
-        var task = _chatConnectionTask;
-        _chatConnectionCancellation = null;
-        _chatConnectionTask = null;
-        if (cancellation is null)
-        {
-            return;
-        }
-
-        cancellation.Cancel();
-        _ = (task ?? Task.CompletedTask).ContinueWith(
-            _ => cancellation.Dispose(),
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
-    }
-
-    private async Task RunTwitchConnectionLoopAsync(string channel, CancellationToken cancellationToken)
-    {
-        var attempt = 0;
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            var shouldReconnect = true;
-            try
-            {
-                shouldReconnect = await ConnectAndReadTwitchAsync(channel, cancellationToken).ConfigureAwait(false);
-                attempt = shouldReconnect ? attempt + 1 : 0;
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
-            catch (Exception exception)
-            {
-                attempt++;
-                LogChatWarningOnce(exception, "connection");
-                RunOnUiThread(() =>
-                {
-                    ConfirmChatMessage(new StreamChatMessage("TMR", "Twitch chat connection error.", StreamChatMessageKind.Error));
-                    SetChatStatus("chat reconnecting | twitch");
-                });
-            }
-
-            if (!shouldReconnect || cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
-
-            var delay = TimeSpan.FromSeconds(Math.Min(15, 3 + attempt * 2));
-            try
-            {
-                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
-        }
-    }
-
-    private async Task<bool> ConnectAndReadTwitchAsync(string channel, CancellationToken cancellationToken)
-    {
-        var started = Stopwatch.GetTimestamp();
-        var succeeded = false;
-        using var socket = new ClientWebSocket();
-        try
-        {
-            RunOnUiThread(() => SetChatStatus("connecting | twitch"));
-            await socket.ConnectAsync(TwitchChatUri, cancellationToken).ConfigureAwait(false);
-            await SendRawAsync(socket, "CAP REQ :twitch.tv/tags twitch.tv/commands", cancellationToken).ConfigureAwait(false);
-            await SendRawAsync(socket, "PASS SCHMOOPIIE", cancellationToken).ConfigureAwait(false);
-            await SendRawAsync(socket, $"NICK justinfan{Random.Shared.Next(10000, 99999)}", cancellationToken).ConfigureAwait(false);
-            await SendRawAsync(socket, $"JOIN #{channel}", cancellationToken).ConfigureAwait(false);
-            RunOnUiThread(() => SetChatStatus("joining | twitch"));
-            succeeded = true;
-        }
-        finally
-        {
-            _performanceState.RecordOperation(AppPerformanceMetricIds.OverlayStreamChatConnect, started, succeeded);
-        }
-
-        return await ReceiveTwitchMessagesAsync(socket, channel, cancellationToken).ConfigureAwait(false);
-    }
-
-    private async Task<bool> ReceiveTwitchMessagesAsync(
-        ClientWebSocket socket,
-        string channel,
-        CancellationToken cancellationToken)
-    {
-        var buffer = new byte[4096];
-        var builder = new StringBuilder();
-        while (!cancellationToken.IsCancellationRequested && socket.State == WebSocketState.Open)
-        {
-            var result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken).ConfigureAwait(false);
-            if (result.MessageType == WebSocketMessageType.Close)
-            {
-                HandleChatSocketClosed();
-                return true;
-            }
-
-            builder.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
-            if (!result.EndOfMessage)
-            {
-                continue;
-            }
-
-            var shouldContinue = await ProcessTwitchPayloadAsync(
-                socket,
-                channel,
-                builder.ToString(),
-                cancellationToken).ConfigureAwait(false);
-            builder.Clear();
-            if (!shouldContinue)
-            {
-                return false;
-            }
-        }
-
-        HandleChatSocketClosed();
-        return true;
-    }
-
-    private async Task<bool> ProcessTwitchPayloadAsync(
-        ClientWebSocket socket,
-        string channel,
-        string payload,
-        CancellationToken cancellationToken)
-    {
-        foreach (var rawLine in payload.Split("\r\n", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            if (StreamChatIrcParser.TryGetPingResponse(rawLine, out var pong))
-            {
-                await SendRawAsync(socket, pong, cancellationToken).ConfigureAwait(false);
-                continue;
-            }
-
-            if (StreamChatIrcParser.IsAuthFailure(rawLine))
-            {
-                RunOnUiThread(() =>
-                {
-                    ConfirmChatMessage(new StreamChatMessage("TMR", "Twitch rejected the chat connection.", StreamChatMessageKind.Error));
-                    SetChatStatus("twitch auth rejected");
-                });
-                return false;
-            }
-
-            if (StreamChatIrcParser.IsReconnect(rawLine))
-            {
-                RunOnUiThread(() => SetChatStatus("chat reconnecting | twitch"));
-                return true;
-            }
-
-            if (StreamChatIrcParser.IsJoined(rawLine, channel))
-            {
-                AnnounceChatConnected(channel);
-                continue;
-            }
-
-            var message = StreamChatIrcParser.TryParsePrivMsg(rawLine);
-            if (message is not null)
-            {
-                RunOnUiThread(() => AddChatMessage(message));
-            }
-        }
-
-        return true;
-    }
-
-    private static async Task SendRawAsync(ClientWebSocket socket, string line, CancellationToken cancellationToken)
-    {
-        var bytes = Encoding.UTF8.GetBytes(line + "\r\n");
-        await socket.SendAsync(
-            new ArraySegment<byte>(bytes),
-            WebSocketMessageType.Text,
-            endOfMessage: true,
-            cancellationToken).ConfigureAwait(false);
-    }
-
-    private void AnnounceChatConnected(string channel)
-    {
-        RunOnUiThread(() =>
-        {
-            if (_chatConnectedAnnounced)
-            {
-                return;
-            }
-
-            _chatConnectedAnnounced = true;
-            ConfirmChatMessage(new StreamChatMessage("TMR", $"Chat connected to #{channel}.", StreamChatMessageKind.System));
-            SetChatStatus("chat connected | twitch");
-        });
-    }
-
-    private void HandleChatSocketClosed()
-    {
-        RunOnUiThread(() =>
-        {
-            if (_chatConnectedAnnounced)
-            {
-                SetChatStatus("chat reconnecting | twitch");
-                return;
-            }
-
-            ConfirmChatMessage(new StreamChatMessage("TMR", "Twitch chat disconnected before joining.", StreamChatMessageKind.Error));
-            SetChatStatus("chat reconnecting | twitch");
-        });
-    }
-
-    private void ReplaceChatMessages(params StreamChatMessage[] messages)
-    {
-        _chatMessages.Clear();
-        _chatMessages.AddRange(messages);
-        Invalidate();
-    }
-
-    private void AddChatMessage(StreamChatMessage message)
-    {
-        _chatMessages.Add(message);
-        if (_chatMessages.Count > MaximumChatMessages)
-        {
-            _chatMessages.RemoveRange(0, _chatMessages.Count - MaximumChatMessages);
-        }
-
-        Invalidate();
-    }
-
-    private void ConfirmChatMessage(StreamChatMessage message)
-    {
-        if (_chatMessages.Count == 1 && _chatMessages[0].Kind == StreamChatMessageKind.System)
-        {
-            _chatMessages[0] = message;
-            Invalidate();
-            return;
-        }
-
-        AddChatMessage(message);
-    }
-
-    private void SetChatStatus(string status)
-    {
-        if (string.Equals(_streamChatStatus, status, StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        _streamChatStatus = status;
-        Invalidate();
-    }
-
-    private void RunOnUiThread(Action action)
-    {
-        if (_disposed || IsDisposed)
-        {
-            return;
-        }
-
-        try
-        {
-            if (InvokeRequired)
-            {
-                BeginInvoke(action);
-                return;
-            }
-
-            action();
-        }
-        catch (InvalidOperationException)
-        {
-            // The overlay can close while the chat socket is unwinding.
-        }
-    }
-
-    private void LogChatWarningOnce(Exception exception, string phase)
-    {
-        var key = $"{phase}:{exception.GetType().FullName}:{exception.Message}";
-        if (string.Equals(_lastChatLoggedError, key, StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        _lastChatLoggedError = key;
-        _logger.LogWarning(exception, "Design V2 stream chat overlay {Phase} failed.", phase);
     }
 
     private static string KindName(DesignV2LiveOverlayKind kind)
@@ -2728,6 +2405,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         return kind switch
         {
             StreamChatMessageKind.Message => DesignV2Evidence.Live,
+            StreamChatMessageKind.Notice => DesignV2Evidence.Live,
             StreamChatMessageKind.Error => DesignV2Evidence.Error,
             _ => DesignV2Evidence.Partial
         };
@@ -2946,32 +2624,40 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     {
         var outer = RectangleF.Inflate(bounds, -0.5f, -0.5f);
         FillRounded(graphics, outer, 8, Surface, Border);
-        var header = new RectangleF(outer.Left + 1, outer.Top + 1, outer.Width - 2, HeaderHeight);
-        FillRounded(graphics, header, 7, TitleBar, null);
         FillRounded(graphics, new RectangleF(outer.Left, outer.Top + 7, 3, Math.Max(1, outer.Height - 14)), 2, EvidenceColor(model.Evidence), null);
-        using (var accent = new SolidBrush(Cyan))
+        var headerBottom = outer.Top;
+        if (model.ShowHeader)
         {
-            graphics.FillRectangle(accent, outer.Left, header.Bottom - 1, outer.Width, 2);
+            var header = new RectangleF(outer.Left + 1, outer.Top + 1, outer.Width - 2, HeaderHeight);
+            FillRounded(graphics, header, 7, TitleBar, null);
+            using (var accent = new SolidBrush(Cyan))
+            {
+                graphics.FillRectangle(accent, outer.Left, header.Bottom - 1, outer.Width, 2);
+            }
+
+            using var titleFont = FontOf(14, FontStyle.Bold);
+            using var statusFont = FontOf(11, FontStyle.Bold);
+            DrawText(graphics, model.Title, titleFont, TextPrimary, new RectangleF(outer.Left + 14, header.Top + 10, Math.Min(230, outer.Width * 0.55f), 18));
+            var closeButtonSpace = _closeButton is not null ? 34 : 0;
+            DrawText(
+                graphics,
+                model.HeaderText ?? model.Status,
+                statusFont,
+                EvidenceColor(model.Evidence),
+                new RectangleF(outer.Left + 230, header.Top + 10, Math.Max(1, outer.Width - 244 - closeButtonSpace), 18),
+                ContentAlignment.MiddleRight);
+            headerBottom = header.Bottom;
         }
 
-        using var titleFont = FontOf(14, FontStyle.Bold);
-        using var statusFont = FontOf(11, FontStyle.Bold);
-        DrawText(graphics, model.Title, titleFont, TextPrimary, new RectangleF(outer.Left + 14, header.Top + 10, Math.Min(230, outer.Width * 0.55f), 18));
-        var closeButtonSpace = _closeButton is not null ? 34 : 0;
-        DrawText(
-            graphics,
-            model.HeaderText ?? model.Status,
-            statusFont,
-            EvidenceColor(model.Evidence),
-            new RectangleF(outer.Left + 230, header.Top + 10, Math.Max(1, outer.Width - 244 - closeButtonSpace), 18),
-            ContentAlignment.MiddleRight);
-
         var footerReserve = model.ShowFooter ? FooterHeight : 8;
+        var bodyTop = model.ShowHeader
+            ? headerBottom + BodyGap
+            : outer.Top + PaddingSize;
         var body = new RectangleF(
             outer.Left + PaddingSize,
-            header.Bottom + BodyGap,
+            bodyTop,
             outer.Width - PaddingSize * 2,
-            Math.Max(1, outer.Height - HeaderHeight - footerReserve - BodyGap - 1));
+            Math.Max(1, outer.Bottom - bodyTop - footerReserve));
         DrawBody(graphics, body, model.Body);
 
         if (model.ShowFooter)
@@ -4317,16 +4003,140 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         FillRounded(graphics, rect, 5, SurfaceInset, BorderMuted);
         using var authorFont = FontOf(9.8f, FontStyle.Bold);
         using var messageFont = FontOf(10.5f);
-        var maximumRows = Math.Max(1, (int)(rect.Height / 48f));
-        foreach (var (row, index) in rows
-            .Skip(Math.Max(0, rows.Count - maximumRows))
-            .Select((row, index) => (row, index)))
+        var innerHeight = Math.Max(1f, rect.Height - 16f);
+        var rowWidth = Math.Max(1f, rect.Width - 16f);
+        var visibleRows = VisibleChatRows(graphics, rows, messageFont, rowWidth, innerHeight);
+        var totalRowsHeight = visibleRows.Sum(row => row.Height) + Math.Max(0, visibleRows.Count - 1) * 8f;
+        var y = Math.Max(rect.Top + 8f, rect.Bottom - 8f - totalRowsHeight);
+        foreach (var row in visibleRows)
         {
-            var rowRect = new RectangleF(rect.Left + 8, rect.Top + 8 + index * 48f, rect.Width - 16, 40);
+            var rowRect = new RectangleF(rect.Left + 8, y, rowWidth, row.Height);
             FillRounded(graphics, rowRect, 5, SurfaceRaised, Color.FromArgb(76, BorderMuted));
-            DrawText(graphics, row.Author, authorFont, EvidenceColor(row.Evidence), new RectangleF(rowRect.Left + 10, rowRect.Top + 5, rowRect.Width - 20, 13));
-            DrawText(graphics, row.Message, messageFont, TextSecondary, new RectangleF(rowRect.Left + 10, rowRect.Top + 20, rowRect.Width - 20, 15));
+            var authorColor = TryParseHexColor(row.Row.AuthorColorHex, out var twitchColor)
+                ? twitchColor
+                : EvidenceColor(row.Row.Evidence);
+            var authorLeft = rowRect.Left + 10f + DrawChatBadges(graphics, row.Row.Badges, authorFont, rowRect);
+            DrawText(graphics, row.Row.Author, authorFont, authorColor, new RectangleF(authorLeft, rowRect.Top + 6, rowRect.Width * 0.42f, 14));
+            if (row.Row.Metadata is { Count: > 0 })
+            {
+                StreamChatGdiRenderer.DrawMetadataChips(
+                    graphics,
+                    row.Row.Metadata,
+                    authorFont,
+                    new RectangleF(rowRect.Left + rowRect.Width * 0.44f, rowRect.Top + 6, rowRect.Width * 0.52f, 16),
+                    TextSecondary,
+                    Color.FromArgb(32, Cyan),
+                    Color.FromArgb(58, Cyan));
+            }
+
+            StreamChatGdiRenderer.DrawSegments(
+                graphics,
+                StreamChatGdiRenderer.EffectiveSegments(row.Row.Message, row.Row.Segments),
+                messageFont,
+                TextSecondary,
+                new RectangleF(rowRect.Left + 10, rowRect.Top + 23, rowRect.Width - 20, rowRect.Height - 29),
+                Color.FromArgb(40, 145, 71, 255),
+                Color.FromArgb(96, 145, 71, 255),
+                TextPrimary);
+            y += row.Height + 8f;
         }
+    }
+
+    private static IReadOnlyList<DesignV2MeasuredChatRow> VisibleChatRows(
+        Graphics graphics,
+        IReadOnlyList<DesignV2ChatRow> rows,
+        Font messageFont,
+        float rowWidth,
+        float availableHeight)
+    {
+        var measuredRows = new List<DesignV2MeasuredChatRow>();
+        var usedHeight = 0f;
+        foreach (var row in rows.Reverse())
+        {
+            var height = MeasureChatRowHeight(graphics, row, messageFont, rowWidth, availableHeight);
+            var nextHeight = usedHeight + height + (measuredRows.Count == 0 ? 0f : 8f);
+            if (measuredRows.Count > 0 && nextHeight > availableHeight)
+            {
+                break;
+            }
+
+            if (measuredRows.Count == 0 && height > availableHeight)
+            {
+                height = availableHeight;
+            }
+
+            measuredRows.Add(new DesignV2MeasuredChatRow(row, height));
+            usedHeight += height + (measuredRows.Count == 1 ? 0f : 8f);
+        }
+
+        measuredRows.Reverse();
+        return measuredRows;
+    }
+
+    private static float MeasureChatRowHeight(
+        Graphics graphics,
+        DesignV2ChatRow row,
+        Font messageFont,
+        float rowWidth,
+        float availableHeight)
+    {
+        var messageWidth = Math.Max(80, (int)Math.Floor(rowWidth - 20f));
+        var measuredHeight = StreamChatGdiRenderer.MeasureSegmentsHeight(
+            graphics,
+            StreamChatGdiRenderer.EffectiveSegments(row.Message, row.Segments),
+            messageFont,
+            messageWidth);
+        var height = Math.Max(44f, 30f + measuredHeight);
+        return Math.Min(Math.Max(44f, availableHeight), height);
+    }
+
+    private static float DrawChatBadges(
+        Graphics graphics,
+        IReadOnlyList<string>? badges,
+        Font font,
+        RectangleF rowRect)
+    {
+        if (badges is not { Count: > 0 })
+        {
+            return 0f;
+        }
+
+        var x = rowRect.Left + 10f;
+        var maxRight = rowRect.Left + rowRect.Width * 0.34f;
+        foreach (var badge in badges.Take(3))
+        {
+            var label = badge.ToUpperInvariant();
+            var width = Math.Clamp(graphics.MeasureString(label, font).Width + 8f, 18f, 58f);
+            if (x + width > maxRight)
+            {
+                break;
+            }
+
+            var badgeRect = new RectangleF(x, rowRect.Top + 7, width, 12);
+            FillRounded(graphics, badgeRect, 2, Color.FromArgb(112, 145, 71, 255), Color.Transparent);
+            DrawText(graphics, label, font, Color.White, badgeRect, ContentAlignment.MiddleCenter);
+            x += width + 4f;
+        }
+
+        return Math.Max(0f, x - (rowRect.Left + 10f));
+    }
+
+    private static void DrawWrappedText(Graphics graphics, string text, Font font, Color color, RectangleF bounds)
+    {
+        using var brush = new SolidBrush(color);
+        using var format = ChatWrapFormat();
+        graphics.DrawString(text, font, brush, bounds, format);
+    }
+
+    private static StringFormat ChatWrapFormat()
+    {
+        return new StringFormat
+        {
+            Trimming = StringTrimming.EllipsisCharacter,
+            FormatFlags = 0,
+            Alignment = StringAlignment.Near,
+            LineAlignment = StringAlignment.Near
+        };
     }
 
     private void DrawInputs(Graphics graphics, RectangleF rect, DesignV2InputsBody body)
@@ -5779,6 +5589,16 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                     0d));
         }
 
+        if (kind == DesignV2LiveOverlayKind.StreamChat)
+        {
+            return WaitingModel(TitleFor(kind), "waiting") with
+            {
+                HeaderText = "waiting",
+                ShowFooter = false,
+                ShowHeader = true
+            };
+        }
+
         return WaitingModel(TitleFor(kind), "waiting");
     }
 
@@ -5885,10 +5705,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     internal static bool IsStreamChatDragHit(Point clientPoint, Size clientSize)
     {
-        return clientPoint.X >= 0
-            && clientPoint.X < clientSize.Width
-            && clientPoint.Y >= 0
-            && clientPoint.Y < Math.Min(HeaderHeight, clientSize.Height);
+        return false;
     }
 
     private static bool HasTrackMapHighlight(LiveTrackSectorSegment sector)
@@ -6285,7 +6102,8 @@ internal sealed record DesignV2OverlayModel(
     DesignV2Body Body,
     string? HeaderText = null,
     bool ShowFooter = true,
-    bool ShouldRender = true);
+    bool ShouldRender = true,
+    bool ShowHeader = true);
 
 internal abstract record DesignV2Body;
 
@@ -6634,7 +6452,15 @@ internal sealed record DesignV2MetricGridCell(
 internal sealed record DesignV2ChatRow(
     string Author,
     string Message,
-    DesignV2Evidence Evidence);
+    DesignV2Evidence Evidence,
+    string? AuthorColorHex = null,
+    IReadOnlyList<string>? Metadata = null,
+    IReadOnlyList<string>? Badges = null,
+    IReadOnlyList<StreamChatDisplaySegment>? Segments = null);
+
+internal sealed record DesignV2MeasuredChatRow(
+    DesignV2ChatRow Row,
+    float Height);
 
 internal sealed record DesignV2InputRailLayout(
     IReadOnlyList<DesignV2InputRailItem> Items);

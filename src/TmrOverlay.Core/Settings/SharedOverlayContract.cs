@@ -173,7 +173,16 @@ internal static class SharedOverlayContract
         var streamChatDefaults = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             [OverlayOptionKeys.StreamChatProvider] = StreamChatProviderTwitch,
-            [OverlayOptionKeys.StreamChatTwitchChannel] = FallbackTwitchChannel
+            [OverlayOptionKeys.StreamChatTwitchChannel] = FallbackTwitchChannel,
+            [OverlayOptionKeys.StreamChatShowAuthorColor] = "true",
+            [OverlayOptionKeys.StreamChatShowBadges] = "true",
+            [OverlayOptionKeys.StreamChatShowBits] = "true",
+            [OverlayOptionKeys.StreamChatShowFirstMessage] = "true",
+            [OverlayOptionKeys.StreamChatShowReplies] = "true",
+            [OverlayOptionKeys.StreamChatShowTimestamps] = "true",
+            [OverlayOptionKeys.StreamChatShowEmotes] = "true",
+            [OverlayOptionKeys.StreamChatShowAlerts] = "true",
+            [OverlayOptionKeys.StreamChatShowMessageIds] = "false"
         };
         var overlayDefaults = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.OrdinalIgnoreCase)
         {

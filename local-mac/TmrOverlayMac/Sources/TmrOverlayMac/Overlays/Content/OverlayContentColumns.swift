@@ -98,6 +98,15 @@ enum OverlayContentColumns {
     static let pitServiceTireTemperatureBlockId = "pit-service.tire-temperature"
     static let pitServiceTireWearBlockId = "pit-service.tire-wear"
     static let pitServiceTireDistanceBlockId = "pit-service.tire-distance"
+    static let streamChatAuthorColorBlockId = "stream-chat.twitch.author-color"
+    static let streamChatBadgesBlockId = "stream-chat.twitch.badges"
+    static let streamChatBitsBlockId = "stream-chat.twitch.bits"
+    static let streamChatFirstMessageBlockId = "stream-chat.twitch.first-message"
+    static let streamChatRepliesBlockId = "stream-chat.twitch.replies"
+    static let streamChatTimestampsBlockId = "stream-chat.twitch.timestamps"
+    static let streamChatEmotesBlockId = "stream-chat.twitch.emotes"
+    static let streamChatAlertsBlockId = "stream-chat.twitch.alerts"
+    static let streamChatMessageIdsBlockId = "stream-chat.twitch.message-ids"
 
     static let standings = OverlayContentDefinition(
         overlayId: StandingsOverlayDefinition.definition.id,
@@ -381,8 +390,28 @@ enum OverlayContentColumns {
         ]
     )
 
+    static let streamChat = OverlayContentDefinition(
+        overlayId: StreamChatOverlayDefinition.definition.id,
+        columns: [],
+        browserWidthPadding: 42,
+        browserMinimumHeight: 520,
+        nativeMinimumTableHeight: 420,
+        fallbackColumnId: "",
+        blocks: [
+            OverlayContentBlockDefinition(id: streamChatAuthorColorBlockId, label: "Author color", description: "Use Twitch's author color tag when it is present.", enabledOptionKey: SharedOverlayContract.streamChatShowAuthorColorKey, defaultEnabled: true, countOptionKey: nil, countLabel: nil, defaultCount: 0, minimumCount: 0, maximumCount: 0),
+            OverlayContentBlockDefinition(id: streamChatBadgesBlockId, label: "Badges", description: "Show Twitch badge chips such as mod, VIP, subscriber, and broadcaster.", enabledOptionKey: SharedOverlayContract.streamChatShowBadgesKey, defaultEnabled: true, countOptionKey: nil, countLabel: nil, defaultCount: 0, minimumCount: 0, maximumCount: 0),
+            OverlayContentBlockDefinition(id: streamChatBitsBlockId, label: "Bits", description: "Show cheer/bits metadata when Twitch sends it with the message.", enabledOptionKey: SharedOverlayContract.streamChatShowBitsKey, defaultEnabled: true, countOptionKey: nil, countLabel: nil, defaultCount: 0, minimumCount: 0, maximumCount: 0),
+            OverlayContentBlockDefinition(id: streamChatFirstMessageBlockId, label: "First message", description: "Mark a viewer's first message when Twitch reports that signal.", enabledOptionKey: SharedOverlayContract.streamChatShowFirstMessageKey, defaultEnabled: true, countOptionKey: nil, countLabel: nil, defaultCount: 0, minimumCount: 0, maximumCount: 0),
+            OverlayContentBlockDefinition(id: streamChatRepliesBlockId, label: "Replies", description: "Show the replied-to chatter when Twitch sends reply tags.", enabledOptionKey: SharedOverlayContract.streamChatShowRepliesKey, defaultEnabled: true, countOptionKey: nil, countLabel: nil, defaultCount: 0, minimumCount: 0, maximumCount: 0),
+            OverlayContentBlockDefinition(id: streamChatTimestampsBlockId, label: "Timestamps", description: "Show Twitch's sent timestamp as a compact local time.", enabledOptionKey: SharedOverlayContract.streamChatShowTimestampsKey, defaultEnabled: true, countOptionKey: nil, countLabel: nil, defaultCount: 0, minimumCount: 0, maximumCount: 0),
+            OverlayContentBlockDefinition(id: streamChatEmotesBlockId, label: "Emotes", description: "Show compact Twitch emote metadata when emote ranges are available.", enabledOptionKey: SharedOverlayContract.streamChatShowEmotesKey, defaultEnabled: true, countOptionKey: nil, countLabel: nil, defaultCount: 0, minimumCount: 0, maximumCount: 0),
+            OverlayContentBlockDefinition(id: streamChatAlertsBlockId, label: "Alerts", description: "Show Twitch USERNOTICE rows such as subs, gifts, and raids.", enabledOptionKey: SharedOverlayContract.streamChatShowAlertsKey, defaultEnabled: true, countOptionKey: nil, countLabel: nil, defaultCount: 0, minimumCount: 0, maximumCount: 0),
+            OverlayContentBlockDefinition(id: streamChatMessageIdsBlockId, label: "Message IDs", description: "Show a short Twitch message ID for debugging chat delivery.", enabledOptionKey: SharedOverlayContract.streamChatShowMessageIdsKey, defaultEnabled: false, countOptionKey: nil, countLabel: nil, defaultCount: 0, minimumCount: 0, maximumCount: 0)
+        ]
+    )
+
     static func definition(for overlayId: String) -> OverlayContentDefinition? {
-        [standings, relative, inputState, pitService].first { $0.overlayId == overlayId }
+        [standings, relative, inputState, pitService, streamChat].first { $0.overlayId == overlayId }
     }
 
     static func columnStates(

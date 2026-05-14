@@ -876,7 +876,23 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         saveButton.identifier = NSUserInterfaceItemIdentifier(overlay.id)
         content.addSubview(saveButton)
         content.addSubview(label("Open the localhost URL in a browser or OBS after saving.", frame: NSRect(x: 274, y: top - 246, width: 560, height: 24)))
+        addStreamChatMetadataOptions(to: content, overlay: overlay, top: top - 292)
         syncStreamChatFields(in: content, overlayId: overlay.id, provider: provider)
+    }
+
+    private func addStreamChatMetadataOptions(to content: NSView, overlay: OverlaySettings, top: CGFloat) {
+        content.addSubview(label("Twitch metadata", frame: NSRect(x: 18, y: top, width: 520, height: 24), bold: true))
+        content.addSubview(label("These controls apply only to Twitch chat until Streamlabs payloads are verified.", frame: NSRect(x: 22, y: top - 30, width: 620, height: 24)))
+        for (index, block) in OverlayContentColumns.streamChat.blocks.enumerated() {
+            let column = index < 5 ? 0 : 1
+            let row = column == 0 ? index : index - 5
+            content.addSubview(checkbox(
+                title: block.label,
+                state: OverlayContentColumns.blockEnabled(block, settings: overlay),
+                frame: NSRect(x: 22 + CGFloat(column) * 260, y: top - 62 - CGFloat(row) * 30, width: 230, height: 24),
+                identifier: "\(overlay.id)|\(block.enabledOptionKey)"
+            ))
+        }
     }
 
     private func addGarageCoverOptions(to content: NSView, overlay: OverlaySettings, top: CGFloat) {

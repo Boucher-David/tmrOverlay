@@ -56,9 +56,124 @@ test.describe('browser overlay Playwright integration', () => {
     await expect(page.locator('.chat-line')).toHaveCount(1);
     await expect(page.locator('.chat-name')).toHaveText('TMR');
     await expect(page.locator('.chat-text')).toHaveText('Choose Streamlabs or Twitch in the Stream Chat settings tab.');
-    await expect(page.locator('#status')).toHaveText('waiting for chat source');
+    await expect(page.locator('.header')).toBeVisible();
+    await expect(page.locator('.title')).toHaveText('Stream Chat');
     await expect(page.locator('.overlay')).toHaveCSS('opacity', '1');
+    const overlayBox = await page.locator('.overlay').boundingBox();
+    expect(overlayBox?.width).toBe(380);
+    expect(overlayBox?.height).toBe(520);
     expect(requests).toContain('/api/overlay-model/stream-chat');
+  });
+
+  test('renders latest stream chat rows inside narrow browser sources', async ({ page }) => {
+    await installBrowserOverlayRoutes(page, 'stream-chat', {
+      live: {
+        isConnected: false,
+        isCollecting: false,
+        lastUpdatedAtUtc: null,
+        sequence: 0,
+        models: {}
+      },
+      settings: {
+        provider: 'none',
+        isConfigured: false,
+        streamlabsWidgetUrl: null,
+        twitchChannel: null,
+        status: 'replay_static',
+        replayRows: Array.from({ length: 12 }, (_, index) => ({
+          name: `viewer${index + 1}`,
+          text: `message ${index + 1}`,
+          kind: 'message'
+        }))
+      }
+    });
+
+    await page.setViewportSize({ width: 360, height: 260 });
+    await page.goto('http://localhost:8765/overlays/stream-chat');
+
+    await expect(page.locator('.chat-line')).toHaveCount(4);
+    await expect(page.locator('.chat-text').last()).toHaveText('message 12');
+    await expect(page.locator('.chat-text').first()).toHaveText('message 9');
+    await expect(page.locator('.chat-text', { hasText: /^message 1$/ })).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
+
+  test('wraps long stream chat messages and prunes older rows to fit', async ({ page }) => {
+    await installBrowserOverlayRoutes(page, 'stream-chat', {
+      live: {
+        isConnected: false,
+        isCollecting: false,
+        lastUpdatedAtUtc: null,
+        sequence: 0,
+        models: {}
+      },
+      settings: {
+        provider: 'none',
+        isConfigured: false,
+        streamlabsWidgetUrl: null,
+        twitchChannel: null,
+        status: 'replay_static',
+        replayRows: [
+          { name: 'viewer1', text: 'older message', kind: 'message' },
+          { name: 'viewer2', text: 'another older message', kind: 'message' },
+          {
+            name: 'viewer3',
+            text: 'this is a much longer Twitch chat message that should wrap onto multiple lines instead of clipping the lower half of the text or overflowing horizontally',
+            kind: 'message'
+          }
+        ]
+      }
+    });
+
+    await page.setViewportSize({ width: 300, height: 170 });
+    await page.goto('http://localhost:8765/overlays/stream-chat');
+
+    const lastRowHeight = await page.locator('.chat-line').last().evaluate((el) => el.getBoundingClientRect().height);
+    expect(lastRowHeight).toBeGreaterThan(44);
+    expect(await page.evaluate(() => {
+      const chat = document.querySelector('.chat');
+      return chat.scrollHeight <= chat.clientHeight + 1;
+    })).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
+
+  test('renders twitch stream chat metadata without replacing row styling', async ({ page }) => {
+    await installBrowserOverlayRoutes(page, 'stream-chat', {
+      live: {
+        isConnected: false,
+        isCollecting: false,
+        lastUpdatedAtUtc: null,
+        sequence: 0,
+        models: {}
+      },
+      settings: {
+        provider: 'twitch',
+        isConfigured: true,
+        streamlabsWidgetUrl: null,
+        twitchChannel: 'techmatesracing',
+        status: 'configured_twitch',
+        replayRows: [{
+          name: 'viewer42',
+          text: 'Kappa',
+          kind: 'message',
+          source: 'twitch',
+          authorColorHex: '#62C7FF',
+          metadata: ['100 bits'],
+          badges: [{ id: 'subscriber', version: '12', label: 'sub 12' }],
+          segments: [{ kind: 'emote', text: 'Kappa', imageUrl: 'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/1.0' }]
+        }]
+      }
+    });
+
+    await page.setViewportSize({ width: 380, height: 520 });
+    await page.goto('http://localhost:8765/overlays/stream-chat');
+
+    await expect(page.locator('.chat-name')).toHaveCSS('color', 'rgb(98, 199, 255)');
+    await expect(page.locator('.chat-chip')).toHaveCount(1);
+    await expect(page.locator('.chat-badge')).toHaveText('sub');
+    await expect(page.locator('.chat-badge')).toHaveAttribute('title', 'subscriber 12');
+    await expect(page.locator('.chat-emote')).toHaveAttribute('alt', 'Kappa');
+    await expect(page.locator('.chat-line')).toHaveCSS('background-color', /rgb\(18, 31, 60\)|rgba\(18, 31, 60/);
   });
 
   test('keeps input graph smoothing inside each trace segment', async ({ page }) => {

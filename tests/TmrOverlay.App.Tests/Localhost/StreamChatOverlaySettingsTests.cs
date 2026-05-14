@@ -19,6 +19,10 @@ public sealed class StreamChatOverlaySettingsTests
         Assert.Null(result.StreamlabsWidgetUrl);
         Assert.Equal("techmatesracing", result.TwitchChannel);
         Assert.Equal("configured_twitch", result.Status);
+        Assert.True(result.ContentOptions.ShowAuthorColor);
+        Assert.True(result.ContentOptions.ShowBadges);
+        Assert.True(result.ContentOptions.ShowAlerts);
+        Assert.False(result.ContentOptions.ShowMessageIds);
     }
 
     [Fact]
@@ -78,6 +82,26 @@ public sealed class StreamChatOverlaySettingsTests
         Assert.Equal(StreamChatOverlaySettings.ProviderTwitch, result.Provider);
         Assert.Null(result.StreamlabsWidgetUrl);
         Assert.Equal("tmracing", result.TwitchChannel);
+    }
+
+    [Fact]
+    public void From_RespectsTwitchContentOptions()
+    {
+        var settings = new ApplicationSettings();
+        var overlay = settings.GetOrAddOverlay(
+            StreamChatOverlayDefinition.Definition.Id,
+            StreamChatOverlayDefinition.Definition.DefaultWidth,
+            StreamChatOverlayDefinition.Definition.DefaultHeight);
+        overlay.SetStringOption(OverlayOptionKeys.StreamChatProvider, StreamChatOverlaySettings.ProviderTwitch);
+        overlay.SetBooleanOption(OverlayOptionKeys.StreamChatShowBadges, false);
+        overlay.SetBooleanOption(OverlayOptionKeys.StreamChatShowAlerts, false);
+        overlay.SetBooleanOption(OverlayOptionKeys.StreamChatShowMessageIds, true);
+
+        var result = StreamChatOverlaySettings.From(settings);
+
+        Assert.False(result.ContentOptions.ShowBadges);
+        Assert.False(result.ContentOptions.ShowAlerts);
+        Assert.True(result.ContentOptions.ShowMessageIds);
     }
 
     [Theory]

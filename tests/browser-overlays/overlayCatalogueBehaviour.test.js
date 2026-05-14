@@ -108,18 +108,88 @@ describe('browser overlay catalogue behaviour', () => {
     });
 
     expect(response?.model?.status).toBe('replay chat | spoofed');
-    expect(response?.model?.source).toBe('source: spoofed stream replay');
+    expect(response?.model?.source).toBe('');
     expect(response?.model?.streamChat?.settings).toEqual({
       provider: 'none',
       isConfigured: false,
       streamlabsWidgetUrl: null,
       twitchChannel: null,
-      status: 'replay_static'
+      status: 'replay_static',
+      contentOptions: defaultStreamChatContentOptions()
     });
     expect(response?.model?.streamChat?.rows).toEqual([
-      { name: 'TMR', text: 'Replay chat fixture.', kind: 'system' },
-      { name: 'viewer42', text: 'Fuel window is open.', kind: 'message' }
+      { name: 'TMR', text: 'Replay chat fixture.', kind: 'system', source: '', authorColorHex: null, metadata: [], badges: [], segments: [{ kind: 'text', text: 'Replay chat fixture.', imageUrl: null }] },
+      { name: 'viewer42', text: 'Fuel window is open.', kind: 'message', source: '', authorColorHex: null, metadata: [], badges: [], segments: [{ kind: 'text', text: 'Fuel window is open.', imageUrl: null }] }
     ]);
+  });
+
+  it('keeps stream chat footer off while rendering the shared title shell', () => {
+    const response = browserOverlayApiResponse('stream-chat', '/api/overlay-model/stream-chat', {
+      live: freshLiveSnapshot({
+        session: { sessionTimeRemainSeconds: 3672 }
+      }),
+      settings: {
+        provider: 'none',
+        isConfigured: false,
+        streamlabsWidgetUrl: null,
+        twitchChannel: null,
+        status: 'replay_static',
+        replayStatus: 'replay chat | spoofed',
+        replaySource: 'source: spoofed stream replay',
+        replayRows: [{ name: 'viewer42', text: 'Fuel window is open.', kind: 'message' }],
+        showHeaderStatus: false,
+        showHeaderTimeRemaining: true,
+        showFooterSource: true
+      }
+    });
+
+    expect(response?.model?.status).toBe('replay chat | spoofed');
+    expect(response?.model?.headerItems).toEqual([{ key: 'status', value: 'replay chat | spoofed' }]);
+    expect(response?.model?.source).toBe('');
+  });
+
+  it('preserves rich Twitch replay payloads for stream chat review fixtures', () => {
+    const response = browserOverlayApiResponse('stream-chat', '/api/overlay-model/stream-chat', {
+      live: freshLiveSnapshot({}),
+      settings: {
+        provider: 'twitch',
+        isConfigured: true,
+        twitchChannel: 'techmatesracing',
+        status: 'configured_twitch',
+        replayStatus: 'fixture chat | all twitch features',
+        replayRows: [{
+          name: 'reply_viewer',
+          text: 'that pit call was perfect',
+          kind: 'message',
+          source: 'twitch',
+          twitch: {
+            command: 'PRIVMSG',
+            tags: {
+              id: 'message-1',
+              'reply-parent-msg-id': 'parent-1',
+              'reply-parent-msg-body': 'Box this lap.'
+            },
+            reply: {
+              parentMessageId: 'parent-1',
+              parentMessageBody: 'Box this lap.'
+            }
+          }
+        }]
+      }
+    });
+
+    expect(response?.model?.streamChat?.rows[0]?.twitch).toEqual({
+      command: 'PRIVMSG',
+      tags: {
+        id: 'message-1',
+        'reply-parent-msg-id': 'parent-1',
+        'reply-parent-msg-body': 'Box this lap.'
+      },
+      reply: {
+        parentMessageId: 'parent-1',
+        parentMessageBody: 'Box this lap.'
+      }
+    });
   });
 
   it('keeps distinct pre-grid distance rows from overlapping vertically', () => {
@@ -146,6 +216,20 @@ describe('browser overlay catalogue behaviour', () => {
     expect(Math.min(...distinctRowGaps)).toBeGreaterThanOrEqual(47.9);
   });
 });
+
+function defaultStreamChatContentOptions() {
+  return {
+    showAuthorColor: true,
+    showBadges: true,
+    showBits: true,
+    showFirstMessage: true,
+    showReplies: true,
+    showTimestamps: true,
+    showEmotes: true,
+    showAlerts: true,
+    showMessageIds: false
+  };
+}
 
 function browserScenarios() {
   return [
@@ -659,8 +743,10 @@ function browserScenarios() {
         waitForSelector: '.chat-line'
       }),
       assert: ({ document }) => {
+        expect(document.body.classList.contains('stream-chat-page')).toBe(true);
         expect(document.querySelector('.chat-line')).not.toBeNull();
         expect(document.querySelector('.chat-name').textContent).toBe('TMR');
+        expect(document.querySelector('.title').textContent).toBe('Stream Chat');
         expect(document.getElementById('status').textContent).toBe('waiting for chat source');
       }
     }

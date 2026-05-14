@@ -13,6 +13,7 @@ using TmrOverlay.App.Localhost;
 using TmrOverlay.App.Logging;
 using TmrOverlay.App.Overlays;
 using TmrOverlay.App.Overlays.BrowserSources;
+using TmrOverlay.App.Overlays.StreamChat;
 using TmrOverlay.App.Overlays.Styling;
 using TmrOverlay.App.Performance;
 using TmrOverlay.App.Replay;
@@ -139,6 +140,7 @@ internal static class Program
                 services.AddSingleton<AppSettingsStore>();
                 services.AddSingleton<SessionHistoryStore>();
                 services.AddSingleton<SessionHistoryQueryService>();
+                services.AddSingleton<StreamChatOverlaySource>();
                 services.AddSingleton<BrowserOverlayModelFactory>();
                 services.AddSingleton<PostRaceAnalysisStore>();
                 services.AddSingleton<PostRaceAnalysisPipeline>();

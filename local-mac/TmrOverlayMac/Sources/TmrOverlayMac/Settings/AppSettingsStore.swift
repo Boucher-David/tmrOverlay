@@ -347,6 +347,23 @@ enum AppSettingsMigrator {
         let channel = normalizeTwitchChannel(channelSource) ?? StreamChatProviderOptions.defaultTwitchChannel
         overlay.streamChatTwitchChannel = channel
         overlay.options[SharedOverlayContract.streamChatTwitchChannelKey] = channel
+
+        ensureBoolOption(&overlay, key: SharedOverlayContract.streamChatShowAuthorColorKey, defaultValue: true)
+        ensureBoolOption(&overlay, key: SharedOverlayContract.streamChatShowBadgesKey, defaultValue: true)
+        ensureBoolOption(&overlay, key: SharedOverlayContract.streamChatShowBitsKey, defaultValue: true)
+        ensureBoolOption(&overlay, key: SharedOverlayContract.streamChatShowFirstMessageKey, defaultValue: true)
+        ensureBoolOption(&overlay, key: SharedOverlayContract.streamChatShowRepliesKey, defaultValue: true)
+        ensureBoolOption(&overlay, key: SharedOverlayContract.streamChatShowTimestampsKey, defaultValue: true)
+        ensureBoolOption(&overlay, key: SharedOverlayContract.streamChatShowEmotesKey, defaultValue: true)
+        ensureBoolOption(&overlay, key: SharedOverlayContract.streamChatShowAlertsKey, defaultValue: true)
+        ensureBoolOption(&overlay, key: SharedOverlayContract.streamChatShowMessageIdsKey, defaultValue: false)
+    }
+
+    private static func ensureBoolOption(_ overlay: inout OverlaySettings, key: String, defaultValue: Bool) {
+        let value = overlay.options[key]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        overlay.options[key] = (value == "true" || value == "false")
+            ? value
+            : (defaultValue ? "true" : "false")
     }
 
     private static func normalizeTwitchChannel(_ value: String) -> String? {

@@ -36,6 +36,7 @@ Current evidence/tooling shape:
 - 2026-05-13: Pit Service first-pass parity should show fuel request as Requested/Selected only. Do not add a production Pit Service estimated/recommended fuel field yet; Fuel Calculator v2 should own a future pit-service fuel recommendation model, which Pit Service can surface later after that source exists.
 - 2026-05-13: Hide Pit Service in-car setup rows for the first pass. ARB/wing-style pit-request telemetry probably exists somewhere in the SDK, but it needs a deliberate raw capture where the driver changes those values before it becomes production overlay content. Track this as a V1.x Pit Service v2 investigation, not as browser spoof data or unsupported native rows.
 - 2026-05-14: Fuel Calculator first-pass parity should keep shared/Core fuel work to the low-risk `LiveFuelStrategyModel` contract that centralizes local-context gating, history lookup, and existing `FuelStrategyCalculator` output for native and browser consumers. Do not pull rolling measured-burn windows, pit-service refuel recommendations, or team-stint intelligence into this branch; those belong to Fuel Calculator v2. Neutral fuel facts such as Race, Remain, Laps, Target, Tank, Stints, and Stops should use data-presentation tones, not magenta/modelled warning-looking tones.
+- 2026-05-14: Stream Chat first-pass parity should keep the practical V1 enhancements only: Design V2 shell, fixed-height chat history, wrapping rows, author color, visible badges, inline Twitch emotes, and browser/native/replay parity. The richer Twitch IRC/EventSub and Streamlabs API/widget analysis is parked in `docs/stream-v2.md` as a dedicated V1.x Stream Chat V2 branch/tag candidate, not as required V1 branch-complete scope.
 
 ## Current v0.19.0 Branch Focus
 
@@ -243,6 +244,26 @@ Detailed performance backlog:
 13. Shared font/theme cache: centralize `OverlayTheme` font/resource creation by family, size, style, theme, and scale so paint/layout paths do not recreate stable objects.
 14. Layout churn reduction: use set-if-changed helpers and suspend/resume layout patterns across overlay forms, not only the settings panel, and avoid rebuilding controls when value updates are enough.
 15. Performance harness: create a repeatable long-run profile for all overlays hidden, all overlays visible, static telemetry, replay/active telemetry, and browser clients connected/disconnected; capture UI-thread time, paint counts, timer counts, disk writes, memory, and GDI handle pressure.
+
+### V1.x Feature Addition - Stream Chat V2
+
+Goal: turn Stream Chat into a deliberately richer stream-facing overlay after the V1 parity pass, without expanding the current branch's finish line.
+
+Dedicated branch/tag candidate: Stream Chat V2 / `stream-v2` in the V1.x line.
+
+Design handoff: `docs/stream-v2.md`.
+
+Likely scope:
+
+- Promote the current Twitch IRC row parsing into a richer stream message/event model that can preserve raw tags plus normalized display fields.
+- Treat Twitch `PRIVMSG` and `USERNOTICE` as first-class row types so replies, bits/cheers, first messages, badges, resubs, raids, and other notice events can get purpose-built presentation.
+- Decide whether Twitch EventSub `channel.chat.notification` joins or replaces the IRC notice path for richer alert semantics.
+- Add deterministic rich fixtures for broadcaster/partner/premium rows, moderators, first-time chatters, inline emotes, bits, resubs, raids, and replies with parent message previews.
+- Keep Streamlabs as two different product paths: an opaque Chat Box widget URL mode and a future authenticated Socket API event-feed mode.
+- Model Streamlabs Socket API output as stream events/alerts, not as Twitch-style chat rows, unless a real payload proves structured row-level chat data is available.
+- Add Streamlabs-specific toggles for donations/tips, follows, subs/resubs/gifts, bits, raids/hosts, YouTube superchats, amounts, viewer messages, source platform, and debug event IDs.
+- Keep Twitch-only toggles, such as author color, Twitch badges, Twitch emote ranges, first-message, replies, and Twitch message IDs, scoped to Twitch until Streamlabs supplies equivalent verified payloads.
+- Define native/browser badge and emote image caching, failure fallbacks, and privacy-safe diagnostics for stream payloads.
 
 ### V1.x Feature Addition - Timing Tower Overlay
 

@@ -408,6 +408,7 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
                 }
             ))
             addStreamChatControls()
+            addStreamChatMetadataControls()
             addDynamic(DesignV2SettingsActionButtonControl(
                 frame: NSRect(x: 950, y: 552, width: 70, height: 30),
                 title: "Copy",
@@ -488,6 +489,24 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
                 self?.saveStreamChatFields()
             }
         ))
+    }
+
+    private func addStreamChatMetadataControls() {
+        for (index, block) in OverlayContentColumns.streamChat.blocks.enumerated() {
+            let column = index < 5 ? 0 : 1
+            let row = column == 0 ? index : index - 5
+            addDynamic(DesignV2SettingsCheckControl(
+                frame: NSRect(x: 454 + CGFloat(column) * 236, y: 516 + CGFloat(row) * 24, width: 218, height: 22),
+                title: block.label,
+                isOn: OverlayContentColumns.blockEnabled(block, settings: overlay),
+                theme: theme,
+                font: font(size: 12, weight: .semibold),
+                onChange: { [weak self] isOn in
+                    self?.overlay.options[block.enabledOptionKey] = isOn ? "true" : "false"
+                    self?.saveOverlay()
+                }
+            ))
+        }
     }
 
     private func addColumnToggleControls(
@@ -851,11 +870,9 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
         drawText("Streamlabs URL", in: NSRect(x: 328, y: 412, width: 120, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
         drawText("Twitch channel", in: NSRect(x: 328, y: 450, width: 120, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
 
-        drawPanel(NSRect(x: 306, y: 500, width: 834, height: 92), title: "Localhost")
-        fillRounded(NSRect(x: 462, y: 552, width: 470, height: 30), radius: 8, color: NSColor(red255: 4, green: 9, blue: 20))
-        strokeRounded(NSRect(x: 462, y: 552, width: 470, height: 30), radius: 8, color: DesignV2SettingsPalette.borderDim, lineWidth: 1)
-        drawText(localhostURLText(), in: NSRect(x: 478, y: 560, width: 430, height: 18), size: 12, color: NSColor(red255: 159, green: 220, blue: 255), monospaced: true)
-        drawText("OBS browser source", in: NSRect(x: 328, y: 560, width: 120, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
+        drawPanel(NSRect(x: 306, y: 500, width: 834, height: 132), title: "Twitch Metadata")
+        drawText("These controls apply only to Twitch IRC metadata until Streamlabs payloads are verified.", in: NSRect(x: 328, y: 532, width: 500, height: 18), size: 12, color: DesignV2SettingsPalette.muted)
+        drawText("OBS URL", in: NSRect(x: 862, y: 532, width: 70, height: 18), size: 12, color: DesignV2SettingsPalette.secondary)
     }
 
     private func drawInputStateContentRegion() {

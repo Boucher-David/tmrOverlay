@@ -36,6 +36,11 @@ const gapShowFooterSource = parseBoolean(process.env.TMR_GAP_SHOW_FOOTER_SOURCE,
 const fuelShowHeaderStatus = parseBoolean(process.env.TMR_FUEL_SHOW_HEADER_STATUS, true);
 const fuelShowHeaderTimeRemaining = parseBoolean(process.env.TMR_FUEL_SHOW_TIME_REMAINING, true);
 const fuelShowFooterSource = parseBoolean(process.env.TMR_FUEL_SHOW_FOOTER_SOURCE, true);
+const streamChatProvider = normalizeStreamChatProvider(process.env.TMR_STREAM_CHAT_PROVIDER || process.env.TMR_REVIEW_STREAM_CHAT_PROVIDER || 'live-review');
+const streamChatTwitchChannel = normalizeTwitchChannel(process.env.TMR_STREAM_CHAT_TWITCH_CHANNEL || process.env.TMR_STREAM_CHAT_CHANNEL || 'techmatesracing');
+const streamChatStreamlabsUrl = normalizeStreamlabsUrl(process.env.TMR_STREAM_CHAT_STREAMLABS_URL || '');
+const streamChatFixtureMode = String(process.env.TMR_STREAM_CHAT_FIXTURE || '').trim().toLowerCase();
+const streamChatLiveSource = createStreamChatLiveSource();
 const reviewUnitSystem = normalizeUnitSystem(process.env.TMR_REVIEW_UNIT_SYSTEM || process.env.TMR_UNIT_SYSTEM || 'Metric');
 const inputStateReviewSettings = {
   showThrottleTrace: parseBoolean(process.env.TMR_INPUT_SHOW_THROTTLE_TRACE, true),
@@ -63,6 +68,7 @@ const replayTiming = analyzeReplayTiming(replay);
 const replayTrackMapTiming = buildReplayTrackMapTiming(replay, replayCaptureSessionInfo);
 const replayTrackMapMarkerAlerts = buildReplayTrackMapMarkerAlerts(replay);
 const startedAtMs = Date.now();
+startStreamChatLiveSource();
 
 const server = createServer((request, response) => {
   const url = new URL(request.url || '/', `http://${request.headers.host || `localhost:${port}`}`);
@@ -107,7 +113,7 @@ const server = createServer((request, response) => {
       const { frame, index } = currentFrame(url, request);
       serveJson(response, browserOverlayApiResponse(settingsPage.page.id, path, {
         live: liveSnapshot(frame, index, url.searchParams),
-        settings: settings(settingsPage.page.id, frame),
+        settings: settings(settingsPage.page.id, frame, url.searchParams),
         model: displayModel(settingsPage.page.id, frame, index, url.searchParams)
       }));
       return;
@@ -1729,7 +1735,7 @@ function replayAssetBackedDisplayModel(overlayId, frame, index, searchParams = n
   const page = browserOverlayPage(overlayId);
   return browserOverlayApiResponse(overlayId, page.modelRoute, {
     live: live ?? liveSnapshot(frame, index, searchParams),
-    settings: settings(overlayId, frame)
+    settings: settings(overlayId, frame, searchParams)
   }).model;
 }
 
@@ -4244,7 +4250,7 @@ function metricModelSegment(segment) {
   };
 }
 
-function settings(overlayId, frame) {
+function settings(overlayId, frame, searchParams = null) {
   if (overlayId === 'standings') {
     return {
       maximumRows: 14,
@@ -4267,16 +4273,7 @@ function settings(overlayId, frame) {
   }
 
   if (overlayId === 'stream-chat') {
-    return {
-      provider: 'none',
-      isConfigured: false,
-      streamlabsWidgetUrl: null,
-      twitchChannel: null,
-      status: 'replay_static',
-      replayStatus: 'replay chat | spoofed',
-      replaySource: 'source: spoofed stream replay',
-      replayRows: streamChatReplayRows(frame)
-    };
+    return streamChatSettingsModel(frame, searchParams);
   }
 
   if (overlayId === 'garage-cover') {
@@ -4335,23 +4332,866 @@ function fuelSettingsModel() {
   };
 }
 
+function streamChatSettingsModel(frame, searchParams = null) {
+  if (streamChatFixtureModeFor(searchParams) === 'all') {
+    return streamChatFixtureSettingsModel();
+  }
+
+  if (streamChatProvider === 'local-twitch' || streamChatProvider === 'live-review') {
+    return streamChatLocalTwitchSettingsModel(frame);
+  }
+
+  if (streamChatProvider === 'twitch') {
+    return streamChatTwitchChannel
+      ? streamChatLocalTwitchSettingsModel(frame)
+      : streamChatUnconfigured('twitch', 'missing_or_invalid_twitch_channel');
+  }
+
+  if (streamChatProvider === 'streamlabs') {
+    return streamChatStreamlabsUrl
+      ? withStreamChatChrome({
+          provider: 'streamlabs',
+          isConfigured: true,
+          streamlabsWidgetUrl: streamChatStreamlabsUrl,
+          twitchChannel: null,
+          status: 'configured_streamlabs'
+        })
+      : streamChatUnconfigured('streamlabs', 'missing_or_invalid_streamlabs_url');
+  }
+
+  if (streamChatProvider === 'none') {
+    return streamChatUnconfigured('none', 'not_configured');
+  }
+
+  return streamChatReplaySettingsModel(frame);
+}
+
+function streamChatLocalTwitchSettingsModel(frame) {
+  if (streamChatProvider === 'live-review' && shouldUseStreamChatReviewFallback()) {
+    return streamChatReplaySettingsModel(frame, 'replay chat | live unavailable');
+  }
+
+  return withStreamChatChrome({
+    provider: streamChatLiveSource.channel ? 'twitch' : 'none',
+    isConfigured: Boolean(streamChatLiveSource.channel),
+    streamlabsWidgetUrl: null,
+    twitchChannel: streamChatLiveSource.channel,
+    status: streamChatLiveSource.channel ? 'configured_twitch' : 'missing_or_invalid_twitch_channel',
+    replayStatus: streamChatLiveSource.status,
+    replaySource: streamChatLiveSource.source,
+    replayRows: streamChatLiveSource.rows
+  });
+}
+
+function streamChatReplaySettingsModel(frame, status = 'replay chat | spoofed') {
+  return withStreamChatChrome({
+    provider: 'none',
+    isConfigured: false,
+    streamlabsWidgetUrl: null,
+    twitchChannel: null,
+    status: 'replay_static',
+    replayStatus: status,
+    replaySource: 'source: spoofed stream replay',
+    replayRows: streamChatReplayRows(frame)
+  });
+}
+
+function streamChatFixtureSettingsModel() {
+  return withStreamChatChrome({
+    provider: 'twitch',
+    isConfigured: true,
+    streamlabsWidgetUrl: null,
+    twitchChannel: streamChatTwitchChannel || 'techmatesracing',
+    status: 'configured_twitch',
+    contentOptions: streamChatFixtureContentOptions(),
+    replayStatus: 'fixture chat | all twitch features',
+    replaySource: 'source: spoofed twitch feature fixture',
+    replayRows: streamChatFixtureRows()
+  });
+}
+
+function streamChatFixtureModeFor(searchParams = null) {
+  const queryMode = String(searchParams?.get?.('streamChatFixture') || '').trim().toLowerCase();
+  return queryMode || streamChatFixtureMode;
+}
+
+function shouldUseStreamChatReviewFallback() {
+  return !streamChatLiveSource.channel
+    || (streamChatLiveSource.connectionState === 'failed' && !streamChatLiveSource.hasEverConnected);
+}
+
+function streamChatUnconfigured(provider, status) {
+  return withStreamChatChrome({
+    provider,
+    isConfigured: false,
+    streamlabsWidgetUrl: null,
+    twitchChannel: null,
+    status
+  });
+}
+
+function withStreamChatChrome(settings) {
+  return { ...settings };
+}
+
+function streamChatFixtureContentOptions() {
+  return {
+    showAuthorColor: true,
+    showBadges: true,
+    showBits: true,
+    showFirstMessage: true,
+    showReplies: true,
+    showTimestamps: true,
+    showEmotes: true,
+    showAlerts: true,
+    showMessageIds: true
+  };
+}
+
 function streamChatReplayRows(frame) {
   const frameIndex = replay.frames.indexOf(frame);
   const position = replayProgress(frame, frameIndex >= 0 ? frameIndex : 0);
   const allRows = [
     { name: 'TMR', text: 'Stream replay fixture: spoofed chat source.', kind: 'system' },
-    { name: 'race_control', text: 'Green flag. Settle in and hit your marks.', kind: 'message' },
-    { name: 'crew_chief', text: 'Fuel window is open if the caution falls our way.', kind: 'message' },
-    { name: 'viewer42', text: 'That GT3 traffic through esses is getting spicy.', kind: 'message' },
-    { name: 'pit_wall', text: 'Box call is ready. No tires unless pace drops.', kind: 'message' },
+    { name: 'race_control', text: 'Green flag. Settle in and hit your marks.', kind: 'message', source: 'twitch', authorColorHex: '#62C7FF', metadata: ['14:02'], badges: [{ id: 'moderator', version: '1', label: 'mod' }], segments: [{ kind: 'text', text: 'Green flag. Settle in and hit your marks.', imageUrl: null }] },
+    { name: 'crew_chief', text: 'Fuel window is open if the caution falls our way.', kind: 'message', source: 'twitch', authorColorHex: '#FFD15B', metadata: ['reply @race control'], badges: [{ id: 'vip', version: '1', label: 'vip' }], segments: [{ kind: 'text', text: 'Fuel window is open if the caution falls our way.', imageUrl: null }] },
+    { name: 'viewer42', text: 'That GT3 traffic through esses is getting spicy. Kappa', kind: 'message', source: 'twitch', authorColorHex: '#B65CFF', metadata: ['first'], badges: [], segments: [{ kind: 'text', text: 'That GT3 traffic through esses is getting spicy. ', imageUrl: null }, { kind: 'emote', text: 'Kappa', imageUrl: 'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/1.0' }] },
+    { name: 'pit_wall', text: 'Box call is ready. No tires unless pace drops.', kind: 'notice', source: 'twitch', authorColorHex: '#62FF9F', metadata: ['alert resub'], badges: [{ id: 'subscriber', version: '12', label: 'sub 12' }], segments: [{ kind: 'text', text: 'Box call is ready. No tires unless pace drops.', imageUrl: null }] },
     { name: 'mod_bot', text: 'Replay chat is local test data, not a live channel.', kind: 'system' },
-    { name: 'spotter', text: 'Faster class approaching behind.', kind: 'message' },
-    { name: 'crew_chief', text: 'Nice save. Keep the brake temps under control.', kind: 'message' },
-    { name: 'viewer_amy', text: 'Map overlay looks clear with the smaller car dots.', kind: 'message' },
+    { name: 'spotter', text: 'Faster class approaching behind.', kind: 'message', source: 'twitch', authorColorHex: '#FF7D49', metadata: ['100 bits'], badges: [], segments: [{ kind: 'text', text: 'Faster class approaching behind.', imageUrl: null }] },
+    { name: 'crew_chief', text: 'Nice save. Keep the brake temps under control.', kind: 'message', source: 'twitch', authorColorHex: '#FFD15B', metadata: [], badges: [{ id: 'vip', version: '1', label: 'vip' }], segments: [{ kind: 'text', text: 'Nice save. Keep the brake temps under control.', imageUrl: null }] },
+    { name: 'viewer_amy', text: 'Map overlay looks clear with the smaller car dots.', kind: 'message', source: 'twitch', authorColorHex: '#00E8FF', metadata: [], badges: [{ id: 'subscriber', version: '6', label: 'sub 6' }], segments: [{ kind: 'text', text: 'Map overlay looks clear with the smaller car dots.', imageUrl: null }] },
     { name: 'TMR', text: 'Replay source disconnected from external chat services.', kind: 'system' }
   ];
   const visibleCount = Math.max(3, Math.min(allRows.length, Math.floor(position * allRows.length) + 3));
   return allRows.slice(0, visibleCount);
+}
+
+function streamChatFixtureRows() {
+  const roomId = '105433958';
+  const channel = streamChatTwitchChannel || 'techmatesracing';
+  return [
+    {
+      name: 'DuraKitty',
+      text: 'leader is 6.6k',
+      kind: 'message',
+      source: 'twitch',
+      authorColorHex: '#0000FF',
+      metadata: ['11:46'],
+      badges: [
+        { id: 'broadcaster', version: '1', label: 'broadcaster', roomId },
+        { id: 'partner', version: '1', label: 'partner', roomId: null },
+        { id: 'premium', version: '1', label: 'premium', roomId: null }
+      ],
+      segments: [{ kind: 'text', text: 'leader is 6.6k', imageUrl: null }],
+      twitch: {
+        transport: 'irc',
+        command: 'PRIVMSG',
+        channel,
+        tags: {
+          'badge-info': '',
+          badges: 'broadcaster/1,partner/1,premium/1',
+          color: '#0000FF',
+          'display-name': 'DuraKitty',
+          emotes: '',
+          'first-msg': '0',
+          flags: '',
+          id: '8f4a92c1-9f8b-4f52-9e42-000000000001',
+          mod: '0',
+          'returning-chatter': '1',
+          'room-id': roomId,
+          subscriber: '0',
+          'tmi-sent-ts': '1778762700000',
+          turbo: '0',
+          'user-id': '700000001',
+          'user-type': '',
+          vip: '0'
+        },
+        badgeInfo: [],
+        roles: {
+          broadcaster: true,
+          moderator: false,
+          subscriber: false,
+          vip: false,
+          turbo: false,
+          returningChatter: true
+        }
+      }
+    },
+    {
+      name: 'sandman417',
+      text: "oh you're in hell, good luck and don't spend 1/3 of the race in the pits",
+      kind: 'message',
+      source: 'twitch',
+      authorColorHex: '#66CC44',
+      metadata: ['11:48'],
+      badges: [
+        { id: 'moderator', version: '1', label: 'mod', roomId },
+        { id: 'premium', version: '1', label: 'premium', roomId: null }
+      ],
+      segments: [{ kind: 'text', text: "oh you're in hell, good luck and don't spend 1/3 of the race in the pits", imageUrl: null }],
+      twitch: {
+        transport: 'irc',
+        command: 'PRIVMSG',
+        channel,
+        tags: {
+          'badge-info': '',
+          badges: 'moderator/1,premium/1',
+          color: '#66CC44',
+          'display-name': 'sandman417',
+          emotes: '',
+          'first-msg': '0',
+          flags: '',
+          id: '8f4a92c1-9f8b-4f52-9e42-000000000002',
+          mod: '1',
+          'returning-chatter': '1',
+          'room-id': roomId,
+          subscriber: '0',
+          'tmi-sent-ts': '1778762880000',
+          turbo: '0',
+          'user-id': '700000002',
+          'user-type': 'mod',
+          vip: '0'
+        },
+        roles: {
+          broadcaster: false,
+          moderator: true,
+          subscriber: false,
+          vip: false,
+          turbo: false,
+          returningChatter: true
+        }
+      }
+    },
+    {
+      name: 'new_viewer',
+      text: 'First time here and this overlay is clean! PogChamp',
+      kind: 'message',
+      source: 'twitch',
+      authorColorHex: '#FF7D49',
+      metadata: ['first', 'id c0ffee42', '11:49'],
+      badges: [],
+      segments: [
+        { kind: 'text', text: 'First time here and this overlay is clean! ', imageUrl: null },
+        { kind: 'emote', text: 'PogChamp', imageUrl: 'https://static-cdn.jtvnw.net/emoticons/v2/305954156/default/dark/1.0' }
+      ],
+      twitch: {
+        transport: 'irc',
+        command: 'PRIVMSG',
+        channel,
+        tags: {
+          'badge-info': '',
+          badges: '',
+          color: '#FF7D49',
+          'display-name': 'new_viewer',
+          emotes: '305954156:43-50',
+          'first-msg': '1',
+          flags: '',
+          id: '8f4a92c1-9f8b-4f52-9e42-000000000003',
+          mod: '0',
+          'returning-chatter': '0',
+          'room-id': roomId,
+          subscriber: '0',
+          'tmi-sent-ts': '1778762940000',
+          turbo: '0',
+          'user-id': '700000003',
+          'user-type': '',
+          vip: '0'
+        },
+        roles: {
+          broadcaster: false,
+          moderator: false,
+          subscriber: false,
+          vip: false,
+          turbo: false,
+          returningChatter: false
+        },
+        message: {
+          emoteOnly: false,
+          emotes: [
+            { id: '305954156', token: 'PogChamp', start: 43, end: 50 }
+          ]
+        }
+      }
+    },
+    {
+      name: 'cheer_wall',
+      text: '100 bits for surviving that stint Kappa',
+      kind: 'message',
+      source: 'twitch',
+      authorColorHex: '#FFD15B',
+      metadata: ['100 bits', '11:51'],
+      badges: [{ id: 'bits', version: '100', label: 'bits', roomId: null }],
+      segments: [
+        { kind: 'text', text: '100 bits for surviving that stint ', imageUrl: null },
+        { kind: 'emote', text: 'Kappa', imageUrl: 'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/1.0' }
+      ],
+      twitch: {
+        transport: 'irc',
+        command: 'PRIVMSG',
+        channel,
+        tags: {
+          'badge-info': 'bits/100',
+          badges: 'bits/100',
+          bits: '100',
+          color: '#FFD15B',
+          'display-name': 'cheer_wall',
+          emotes: '25:34-38',
+          'first-msg': '0',
+          flags: '',
+          id: '8f4a92c1-9f8b-4f52-9e42-000000000004',
+          mod: '0',
+          'returning-chatter': '1',
+          'room-id': roomId,
+          subscriber: '0',
+          'tmi-sent-ts': '1778763060000',
+          turbo: '0',
+          'user-id': '700000004',
+          'user-type': '',
+          vip: '0'
+        },
+        badgeInfo: [{ id: 'bits', value: '100' }],
+        message: {
+          bits: 100,
+          cheermotes: [{ prefix: 'cheer', bits: 100 }],
+          emotes: [{ id: '25', token: 'Kappa', start: 34, end: 38 }]
+        }
+      }
+    },
+    {
+      name: 'sub_event',
+      text: 'sub_event subscribed for 12 months Keep pushing.',
+      kind: 'notice',
+      source: 'twitch',
+      authorColorHex: '#B65CFF',
+      metadata: ['alert resub', '11:52'],
+      badges: [{ id: 'subscriber', version: '12', label: 'sub 12', roomId }],
+      segments: [{ kind: 'text', text: 'sub_event subscribed for 12 months Keep pushing.', imageUrl: null }],
+      twitch: {
+        transport: 'irc',
+        command: 'USERNOTICE',
+        channel,
+        tags: {
+          'badge-info': 'subscriber/12',
+          badges: 'subscriber/12',
+          color: '#B65CFF',
+          'display-name': 'sub_event',
+          emotes: '',
+          id: '8f4a92c1-9f8b-4f52-9e42-000000000005',
+          login: 'sub_event',
+          mod: '0',
+          'msg-id': 'resub',
+          'msg-param-cumulative-months': '12',
+          'msg-param-streak-months': '3',
+          'msg-param-should-share-streak': '1',
+          'msg-param-sub-plan': '1000',
+          'msg-param-sub-plan-name': 'Tier 1',
+          'room-id': roomId,
+          subscriber: '1',
+          'system-msg': 'sub_event\\shas\\ssubscribed\\sfor\\s12\\smonths!',
+          'tmi-sent-ts': '1778763120000',
+          turbo: '0',
+          'user-id': '700000005',
+          'user-type': ''
+        },
+        badgeInfo: [{ id: 'subscriber', value: '12' }],
+        notice: {
+          type: 'resub',
+          systemMessage: 'sub_event has subscribed for 12 months!',
+          cumulativeMonths: 12,
+          streakMonths: 3,
+          shouldShareStreak: true,
+          subPlan: '1000',
+          subPlanName: 'Tier 1',
+          userMessage: 'Keep pushing.'
+        },
+        eventSub: {
+          subscriptionType: 'channel.chat.notification',
+          noticeType: 'resub',
+          systemMessage: 'sub_event has subscribed for 12 months!',
+          resub: {
+            cumulativeMonths: 12,
+            streakMonths: 3,
+            durationMonths: 1,
+            subTier: '1000',
+            isPrime: false,
+            isGift: false,
+            gifterIsAnonymous: null,
+            gifterUserId: null,
+            gifterUserName: null,
+            gifterUserLogin: null
+          }
+        }
+      }
+    },
+    {
+      name: 'raid_alert',
+      text: 'FastPitCrew is raiding with 24 viewers. Welcome in.',
+      kind: 'notice',
+      source: 'twitch',
+      authorColorHex: '#9147FF',
+      metadata: ['alert raid', '11:53'],
+      badges: [
+        { id: 'vip', version: '1', label: 'vip', roomId: null },
+        { id: 'turbo', version: '1', label: 'turbo', roomId: null }
+      ],
+      segments: [{ kind: 'text', text: 'FastPitCrew is raiding with 24 viewers. Welcome in.', imageUrl: null }],
+      twitch: {
+        transport: 'irc',
+        command: 'USERNOTICE',
+        channel,
+        tags: {
+          'badge-info': '',
+          badges: 'vip/1,turbo/1',
+          color: '#9147FF',
+          'display-name': 'raid_alert',
+          emotes: '',
+          id: '8f4a92c1-9f8b-4f52-9e42-000000000006',
+          login: 'raid_alert',
+          mod: '0',
+          'msg-id': 'raid',
+          'msg-param-displayName': 'FastPitCrew',
+          'msg-param-login': 'fastpitcrew',
+          'msg-param-profileImageURL': 'https://static-cdn.jtvnw.net/jtv_user_pictures/fastpitcrew-profile_image-70x70.png',
+          'msg-param-viewerCount': '24',
+          'room-id': roomId,
+          subscriber: '0',
+          'system-msg': '24\\sraiders\\sfrom\\sFastPitCrew\\shave\\sjoined!',
+          'tmi-sent-ts': '1778763180000',
+          turbo: '1',
+          'user-id': '700000006',
+          'user-type': ''
+        },
+        notice: {
+          type: 'raid',
+          systemMessage: '24 raiders from FastPitCrew have joined!',
+          raiderDisplayName: 'FastPitCrew',
+          raiderLogin: 'fastpitcrew',
+          viewerCount: 24,
+          profileImageUrl: 'https://static-cdn.jtvnw.net/jtv_user_pictures/fastpitcrew-profile_image-70x70.png'
+        },
+        eventSub: {
+          subscriptionType: 'channel.chat.notification',
+          noticeType: 'raid',
+          systemMessage: '24 raiders from FastPitCrew have joined!',
+          raid: {
+            userId: '700090024',
+            userName: 'FastPitCrew',
+            userLogin: 'fastpitcrew',
+            viewerCount: 24,
+            profileImageUrl: 'https://static-cdn.jtvnw.net/jtv_user_pictures/fastpitcrew-profile_image-70x70.png'
+          }
+        }
+      }
+    },
+    {
+      name: 'long_viewer_name_here',
+      text: 'this is a much longer Twitch chat message that should wrap onto multiple lines instead of clipping the lower half of the text or overflowing horizontally inside the stream chat row cell',
+      kind: 'message',
+      source: 'twitch',
+      authorColorHex: '#00E8FF',
+      metadata: ['reply @crew_chief', 'id 9272af30', '11:54'],
+      badges: [
+        { id: 'vip', version: '1', label: 'vip', roomId: null },
+        { id: 'premium', version: '1', label: 'premium', roomId: null }
+      ],
+      segments: [{ kind: 'text', text: 'this is a much longer Twitch chat message that should wrap onto multiple lines instead of clipping the lower half of the text or overflowing horizontally inside the stream chat row cell', imageUrl: null }],
+      twitch: {
+        transport: 'irc',
+        command: 'PRIVMSG',
+        channel,
+        tags: {
+          'badge-info': '',
+          badges: 'vip/1,premium/1',
+          color: '#00E8FF',
+          'display-name': 'long_viewer_name_here',
+          emotes: '',
+          'first-msg': '0',
+          flags: '',
+          id: '8f4a92c1-9f8b-4f52-9e42-000000000007',
+          mod: '0',
+          'reply-parent-msg-id': '8f4a92c1-9f8b-4f52-9e42-000000000004',
+          'reply-parent-user-id': '700000004',
+          'reply-parent-user-login': 'crew_chief',
+          'reply-parent-display-name': 'crew_chief',
+          'reply-parent-msg-body': 'Box this lap if traffic stays this bad.',
+          'reply-thread-parent-msg-id': '8f4a92c1-9f8b-4f52-9e42-000000000004',
+          'reply-thread-parent-user-login': 'crew_chief',
+          'returning-chatter': '1',
+          'room-id': roomId,
+          subscriber: '0',
+          'tmi-sent-ts': '1778763240000',
+          turbo: '0',
+          'user-id': '700000007',
+          'user-type': '',
+          vip: '1'
+        },
+        reply: {
+          parentMessageId: '8f4a92c1-9f8b-4f52-9e42-000000000004',
+          parentUserId: '700000004',
+          parentUserLogin: 'crew_chief',
+          parentDisplayName: 'crew_chief',
+          parentMessageBody: 'Box this lap if traffic stays this bad.',
+          threadParentMessageId: '8f4a92c1-9f8b-4f52-9e42-000000000004',
+          threadParentUserLogin: 'crew_chief'
+        },
+        roles: {
+          broadcaster: false,
+          moderator: false,
+          subscriber: false,
+          vip: true,
+          turbo: false,
+          returningChatter: true
+        }
+      }
+    }
+  ];
+}
+
+function normalizeStreamChatProvider(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return ['live-review', 'replay', 'none', 'streamlabs', 'twitch', 'local-twitch'].includes(normalized)
+    ? normalized
+    : 'live-review';
+}
+
+function normalizeTwitchChannel(channel) {
+  const raw = String(channel || '').trim();
+  const withoutUrl = raw.replace(/^https?:\/\/(www\.)?twitch\.tv\//i, '');
+  const value = withoutUrl.trim().replace(/^@/, '').split('/').filter(Boolean)[0]?.toLowerCase() || '';
+  return /^[a-z0-9_]{3,25}$/.test(value) ? value : null;
+}
+
+function normalizeStreamlabsUrl(url) {
+  const value = String(url || '').trim();
+  if (!value) return null;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'https:'
+      && (parsed.hostname === 'streamlabs.com' || parsed.hostname.endsWith('.streamlabs.com'))
+      && (parsed.pathname === '/widgets/chat-box' || parsed.pathname.startsWith('/widgets/chat-box/'))
+      ? parsed.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function createStreamChatLiveSource() {
+  return {
+    channel: streamChatTwitchChannel,
+    status: streamChatTwitchChannel ? 'connecting | twitch' : 'twitch not configured',
+    source: streamChatTwitchChannel ? `source: live twitch chat #${streamChatTwitchChannel}` : 'source: live twitch chat unavailable',
+    rows: [
+      streamChatTwitchChannel
+        ? { name: 'TMR', text: `Connecting to #${streamChatTwitchChannel}...`, kind: 'system' }
+        : { name: 'TMR', text: 'Twitch channel is missing or invalid.', kind: 'error' }
+    ],
+    socket: null,
+    reconnectTimer: null,
+    connectedAnnounced: false,
+    hasEverConnected: false,
+    connectionState: streamChatTwitchChannel ? 'connecting' : 'unavailable'
+  };
+}
+
+function startStreamChatLiveSource() {
+  if (streamChatFixtureMode === 'all'
+    || !['local-twitch', 'live-review', 'twitch'].includes(streamChatProvider)
+    || !streamChatLiveSource.channel) {
+    return;
+  }
+
+  connectStreamChatLiveSource();
+}
+
+function connectStreamChatLiveSource() {
+  clearTimeout(streamChatLiveSource.reconnectTimer);
+  const socket = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
+  streamChatLiveSource.socket = socket;
+  streamChatLiveSource.status = 'connecting | twitch';
+  streamChatLiveSource.connectedAnnounced = false;
+  streamChatLiveSource.connectionState = 'connecting';
+  socket.addEventListener('open', () => {
+    const nick = `justinfan${Math.floor(10000 + Math.random() * 89999)}`;
+    socket.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
+    socket.send('PASS SCHMOOPIIE');
+    socket.send(`NICK ${nick}`);
+    socket.send(`JOIN #${streamChatLiveSource.channel}`);
+    streamChatLiveSource.status = 'joining | twitch';
+    streamChatLiveSource.connectionState = 'joining';
+  });
+  socket.addEventListener('message', (event) => processStreamChatLivePayload(socket, String(event.data || '')));
+  socket.addEventListener('error', () => {
+    confirmStreamChatLiveRow('TMR', 'Twitch chat connection error.', 'error');
+    streamChatLiveSource.status = 'chat reconnecting | twitch';
+    streamChatLiveSource.connectionState = 'failed';
+  });
+  socket.addEventListener('close', () => {
+    if (streamChatLiveSource.socket !== socket) {
+      return;
+    }
+
+    if (!streamChatLiveSource.connectedAnnounced) {
+      confirmStreamChatLiveRow('TMR', 'Twitch chat disconnected before joining.', 'error');
+      streamChatLiveSource.connectionState = 'failed';
+    } else {
+      streamChatLiveSource.connectionState = 'reconnecting';
+    }
+    streamChatLiveSource.status = 'chat reconnecting | twitch';
+    streamChatLiveSource.reconnectTimer = setTimeout(connectStreamChatLiveSource, 3500);
+  });
+}
+
+function processStreamChatLivePayload(socket, payload) {
+  for (const rawLine of payload.split('\r\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (line.startsWith('PING')) {
+      socket.send(`PONG ${line.slice(5)}`);
+      continue;
+    }
+    if (line.includes(' NOTICE * :Login authentication failed')
+      || line.includes(' NOTICE * :Improperly formatted auth')) {
+      confirmStreamChatLiveRow('TMR', 'Twitch rejected the chat connection.', 'error');
+      streamChatLiveSource.status = 'twitch auth rejected';
+      streamChatLiveSource.connectionState = 'failed';
+      socket.close();
+      continue;
+    }
+    if (line.includes(' RECONNECT ')) {
+      socket.close();
+      continue;
+    }
+    if (isStreamChatLiveJoined(line)) {
+      announceStreamChatLiveConnected();
+      continue;
+    }
+    if (line.includes(' USERNOTICE ')) {
+      const notice = parseStreamChatLiveUserNotice(line);
+      if (notice) {
+        pushStreamChatLiveRow(notice.name, notice.text, notice.kind, notice);
+      }
+      continue;
+    }
+    if (!line.includes(' PRIVMSG ')) {
+      continue;
+    }
+
+    const message = parseStreamChatLivePrivMsg(line);
+    if (message) {
+      pushStreamChatLiveRow(message.name, message.text, message.kind, message);
+    }
+  }
+}
+
+function isStreamChatLiveJoined(line) {
+  const channel = streamChatLiveSource.channel;
+  return line.includes(' 001 ')
+    || (channel && line.includes(` ROOMSTATE #${channel}`));
+}
+
+function announceStreamChatLiveConnected() {
+  if (streamChatLiveSource.connectedAnnounced) {
+    return;
+  }
+
+  streamChatLiveSource.connectedAnnounced = true;
+  streamChatLiveSource.hasEverConnected = true;
+  streamChatLiveSource.connectionState = 'connected';
+  confirmStreamChatLiveRow('TMR', `Chat connected to #${streamChatLiveSource.channel}.`, 'system');
+  streamChatLiveSource.status = 'chat connected | twitch';
+}
+
+function parseStreamChatLivePrivMsg(line) {
+  const messageIndex = line.indexOf(' PRIVMSG ');
+  const textIndex = line.indexOf(' :', messageIndex);
+  if (messageIndex < 0 || textIndex < 0) {
+    return null;
+  }
+
+  const prefixAndTags = line.slice(0, messageIndex);
+  const tags = parseStreamChatLiveTags(prefixAndTags);
+  const fallbackName = prefixAndTags.match(/:([^! ]+)/)?.[1] || 'chat';
+  const text = decodeStreamChatLiveTag(line.slice(textIndex + 2));
+  return {
+    name: tags['display-name'] || fallbackName,
+    text,
+    kind: 'message',
+    source: 'twitch',
+    authorColorHex: validStreamChatColor(tags.color),
+    metadata: streamChatLiveMetadata(tags, false),
+    badges: streamChatLiveBadges(tags),
+    segments: streamChatLiveSegments(tags, text)
+  };
+}
+
+function parseStreamChatLiveUserNotice(line) {
+  const noticeIndex = line.indexOf(' USERNOTICE ');
+  if (noticeIndex < 0) {
+    return null;
+  }
+
+  const prefixAndTags = line.slice(0, noticeIndex);
+  const tags = parseStreamChatLiveTags(prefixAndTags);
+  const fallbackName = prefixAndTags.match(/:([^! ]+)/)?.[1] || 'chat';
+  const textIndex = line.indexOf(' :', noticeIndex);
+  const userText = textIndex >= 0 ? decodeStreamChatLiveTag(line.slice(textIndex + 2)) : '';
+  const systemText = tags['system-msg'] || '';
+  const text = [systemText, userText].filter(Boolean).join(' ') || 'Twitch chat event.';
+  const segments = userText
+    ? [
+        ...(systemText ? [{ kind: 'text', text: `${systemText} `, imageUrl: null }] : []),
+        ...streamChatLiveSegments(tags, userText)
+      ]
+    : [{ kind: 'text', text, imageUrl: null }];
+  return {
+    name: tags['display-name'] || fallbackName,
+    text,
+    kind: 'notice',
+    source: 'twitch',
+    authorColorHex: validStreamChatColor(tags.color),
+    metadata: streamChatLiveMetadata(tags, true),
+    badges: streamChatLiveBadges(tags),
+    segments
+  };
+}
+
+function parseStreamChatLiveTags(prefixAndTags) {
+  if (!prefixAndTags.startsWith('@')) {
+    return {};
+  }
+
+  const tagText = prefixAndTags.slice(1, prefixAndTags.indexOf(' '));
+  return Object.fromEntries(tagText.split(';').map((pair) => {
+    const splitAt = pair.indexOf('=');
+    if (splitAt < 0) return [pair, ''];
+    return [pair.slice(0, splitAt), decodeStreamChatLiveTag(pair.slice(splitAt + 1))];
+  }));
+}
+
+function decodeStreamChatLiveTag(value) {
+  return String(value || '')
+    .replace(/\\s/g, ' ')
+    .replace(/\\:/g, ';')
+    .replace(/\\\\/g, '\\');
+}
+
+function validStreamChatColor(value) {
+  const color = String(value || '').trim();
+  return /^#[0-9a-f]{6}$/i.test(color) ? color.toUpperCase() : null;
+}
+
+function streamChatLiveMetadata(tags, isNotice) {
+  const parts = [];
+  if (isNotice && tags['msg-id']) {
+    parts.push(`alert ${compactStreamChatToken(tags['msg-id'])}`);
+  }
+  const bits = Number(tags.bits || 0);
+  if (bits > 0) {
+    parts.push(`${bits} bits`);
+  }
+  if (tags['first-msg'] === '1') {
+    parts.push('first');
+  }
+  const replyTo = tags['reply-parent-display-name'] || tags['reply-parent-user-login'];
+  if (replyTo) {
+    parts.push(`reply @${compactStreamChatToken(replyTo)}`);
+  }
+  const timestamp = Number(tags['tmi-sent-ts'] || 0);
+  if (timestamp > 0) {
+    parts.push(new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }));
+  }
+  return parts;
+}
+
+function streamChatLiveBadges(tags) {
+  const roomId = String(tags['room-id'] || '').trim();
+  return String(tags.badges || '')
+    .split(',')
+    .filter(Boolean)
+    .map((badge) => {
+      const [id, version = ''] = badge.split('/');
+      const label = id === 'moderator'
+        ? 'mod'
+        : id === 'subscriber'
+          ? (version ? `sub ${version}` : 'sub')
+          : compactStreamChatToken(id);
+      return { id, version, label, roomId: roomId || null };
+    })
+    .filter((badge) => badge.id && badge.label);
+}
+
+function streamChatLiveSegments(tags, text) {
+  const message = String(text || '');
+  const emotes = [];
+  for (const emoteGroup of String(tags.emotes || '').split('/').filter(Boolean)) {
+    const splitAt = emoteGroup.indexOf(':');
+    if (splitAt <= 0) continue;
+    const id = emoteGroup.slice(0, splitAt);
+    for (const range of emoteGroup.slice(splitAt + 1).split(',').filter(Boolean)) {
+      const [startText, endText] = range.split('-');
+      const start = Number(startText);
+      const end = Number(endText);
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || end >= message.length) {
+        continue;
+      }
+      emotes.push({ id, start, end, token: message.slice(start, end + 1) });
+    }
+  }
+
+  if (!emotes.length) {
+    return [{ kind: 'text', text: message, imageUrl: null }];
+  }
+
+  const segments = [];
+  let offset = 0;
+  for (const emote of emotes.sort((a, b) => a.start - b.start || a.end - b.end)) {
+    if (emote.start < offset) continue;
+    if (emote.start > offset) {
+      segments.push({ kind: 'text', text: message.slice(offset, emote.start), imageUrl: null });
+    }
+    segments.push({ kind: 'emote', text: emote.token, imageUrl: streamChatEmoteUrl(emote.id) });
+    offset = emote.end + 1;
+  }
+  if (offset < message.length) {
+    segments.push({ kind: 'text', text: message.slice(offset), imageUrl: null });
+  }
+  return segments.length ? segments : [{ kind: 'text', text: message, imageUrl: null }];
+}
+
+function streamChatEmoteUrl(id) {
+  return `https://static-cdn.jtvnw.net/emoticons/v2/${encodeURIComponent(String(id || ''))}/default/dark/1.0`;
+}
+
+function compactStreamChatToken(value) {
+  const compact = String(value || '').trim().replace(/-/g, ' ');
+  return compact.length <= 18 ? compact : compact.slice(0, 18);
+}
+
+function pushStreamChatLiveRow(name, text, kind, metadata = null) {
+  streamChatLiveSource.rows.push({
+    name,
+    text,
+    kind,
+    source: metadata?.source || '',
+    authorColorHex: metadata?.authorColorHex || null,
+    metadata: Array.isArray(metadata?.metadata) ? metadata.metadata : [],
+    badges: Array.isArray(metadata?.badges) ? metadata.badges : [],
+    segments: Array.isArray(metadata?.segments) ? metadata.segments : [{ kind: 'text', text, imageUrl: null }]
+  });
+  if (streamChatLiveSource.rows.length > 64) {
+    streamChatLiveSource.rows.splice(0, streamChatLiveSource.rows.length - 64);
+  }
+}
+
+function confirmStreamChatLiveRow(name, text, kind) {
+  if (streamChatLiveSource.rows.length === 1 && streamChatLiveSource.rows[0].kind === 'system') {
+    streamChatLiveSource.rows[0] = { name, text, kind };
+    return;
+  }
+
+  pushStreamChatLiveRow(name, text, kind);
 }
 
 function relativeColumns() {

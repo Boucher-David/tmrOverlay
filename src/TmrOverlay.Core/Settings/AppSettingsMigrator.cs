@@ -78,6 +78,15 @@ internal static class AppSettingsMigrator
         OverlayOptionKeys.StreamChatProvider,
         OverlayOptionKeys.StreamChatStreamlabsUrl,
         OverlayOptionKeys.StreamChatTwitchChannel,
+        OverlayOptionKeys.StreamChatShowAuthorColor,
+        OverlayOptionKeys.StreamChatShowBadges,
+        OverlayOptionKeys.StreamChatShowBits,
+        OverlayOptionKeys.StreamChatShowFirstMessage,
+        OverlayOptionKeys.StreamChatShowReplies,
+        OverlayOptionKeys.StreamChatShowTimestamps,
+        OverlayOptionKeys.StreamChatShowEmotes,
+        OverlayOptionKeys.StreamChatShowAlerts,
+        OverlayOptionKeys.StreamChatShowMessageIds,
         OverlayOptionKeys.GarageCoverImagePath,
         OverlayOptionKeys.GarageCoverPreviewUntilUtc,
         OverlayOptionKeys.FlagsShowGreen,
@@ -220,6 +229,15 @@ internal static class AppSettingsMigrator
                 break;
             case "stream-chat":
                 NormalizeStreamChatOptions(overlay);
+                EnsureOption(overlay, OverlayOptionKeys.StreamChatShowAuthorColor, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.StreamChatShowBadges, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.StreamChatShowBits, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.StreamChatShowFirstMessage, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.StreamChatShowReplies, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.StreamChatShowTimestamps, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.StreamChatShowEmotes, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.StreamChatShowAlerts, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.StreamChatShowMessageIds, defaultValue: false);
                 break;
             case "flags":
                 EnsureOption(overlay, OverlayOptionKeys.FlagsShowGreen, defaultValue: true);
@@ -285,7 +303,16 @@ internal static class AppSettingsMigrator
             "stream-chat" => key is
                 OverlayOptionKeys.StreamChatProvider
                 or OverlayOptionKeys.StreamChatStreamlabsUrl
-                or OverlayOptionKeys.StreamChatTwitchChannel,
+                or OverlayOptionKeys.StreamChatTwitchChannel
+                or OverlayOptionKeys.StreamChatShowAuthorColor
+                or OverlayOptionKeys.StreamChatShowBadges
+                or OverlayOptionKeys.StreamChatShowBits
+                or OverlayOptionKeys.StreamChatShowFirstMessage
+                or OverlayOptionKeys.StreamChatShowReplies
+                or OverlayOptionKeys.StreamChatShowTimestamps
+                or OverlayOptionKeys.StreamChatShowEmotes
+                or OverlayOptionKeys.StreamChatShowAlerts
+                or OverlayOptionKeys.StreamChatShowMessageIds,
             "garage-cover" => key is
                 OverlayOptionKeys.GarageCoverImagePath
                 or OverlayOptionKeys.GarageCoverPreviewUntilUtc,

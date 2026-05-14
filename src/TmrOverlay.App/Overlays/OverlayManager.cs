@@ -51,6 +51,7 @@ internal sealed class OverlayManager : IDisposable
     private readonly LocalhostOverlayOptions _localhostOverlayOptions;
     private readonly LocalhostOverlayState _localhostOverlayState;
     private readonly TrackMapStore _trackMapStore;
+    private readonly StreamChatOverlaySource _streamChatSource;
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly SessionHistoryQueryService _historyQueryService;
     private readonly AppEventRecorder _events;
@@ -93,6 +94,7 @@ internal sealed class OverlayManager : IDisposable
         LocalhostOverlayOptions localhostOverlayOptions,
         LocalhostOverlayState localhostOverlayState,
         TrackMapStore trackMapStore,
+        StreamChatOverlaySource streamChatSource,
         ILiveTelemetrySource liveTelemetrySource,
         SessionHistoryQueryService historyQueryService,
         AppEventRecorder events,
@@ -119,6 +121,7 @@ internal sealed class OverlayManager : IDisposable
         _localhostOverlayOptions = localhostOverlayOptions;
         _localhostOverlayState = localhostOverlayState;
         _trackMapStore = trackMapStore;
+        _streamChatSource = streamChatSource;
         _liveTelemetrySource = liveTelemetrySource;
         _historyQueryService = historyQueryService;
         _events = events;
@@ -340,6 +343,7 @@ internal sealed class OverlayManager : IDisposable
                 _streamChatLogger,
                 () => new StreamChatForm(
                     _settingsStore,
+                    _streamChatSource,
                     _streamChatLogger,
                     _performanceState,
                     settings,
@@ -483,6 +487,7 @@ internal sealed class OverlayManager : IDisposable
             _liveTelemetrySource,
             _trackMapStore,
             _historyQueryService,
+            _streamChatSource,
             _performanceState,
             logger,
             settings,

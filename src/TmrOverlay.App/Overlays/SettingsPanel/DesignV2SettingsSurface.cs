@@ -683,7 +683,29 @@ internal sealed class DesignV2SettingsSurface : Control
                     Invalidate();
                 }));
                 BuildStreamChatControls(definition, settings);
+                AddStreamChatMetadataControls(settings);
                 break;
+        }
+    }
+
+    private void AddStreamChatMetadataControls(OverlaySettings settings)
+    {
+        var blocks = OverlayContentColumnSettings.StreamChat.Blocks ?? [];
+        for (var index = 0; index < blocks.Count; index++)
+        {
+            var block = blocks[index];
+            var column = index < 5 ? 0 : 1;
+            var row = column == 0 ? index : index - 5;
+            AddDynamic(new V2CheckControl(
+                new Rectangle(454 + column * 236, 516 + row * 24, 218, 22),
+                block.Label,
+                OverlayContentColumnSettings.BlockEnabled(settings, block),
+                isOn =>
+                {
+                    settings.SetBooleanOption(block.EnabledOptionKey, isOn);
+                    _callbacks.SaveAndApply();
+                    Invalidate();
+                }));
         }
     }
 
@@ -726,7 +748,7 @@ internal sealed class DesignV2SettingsSurface : Control
         if (BrowserOverlayCatalog.TryGetRouteForOverlayId(definition.Id, out var route))
         {
             var url = $"{_localhostOverlayOptions.Prefix.TrimEnd('/')}{route}";
-            AddActionButton(new Rectangle(862, 552, 70, 30), "Copy", () => _callbacks.CopyTextToClipboard(url));
+            AddActionButton(new Rectangle(950, 552, 70, 30), "Copy", () => _callbacks.CopyTextToClipboard(url));
         }
     }
 
@@ -1196,9 +1218,9 @@ internal sealed class DesignV2SettingsSurface : Control
         DrawText(graphics, "Mode", new Rectangle(328, 374, 90, 18), 13f, FontStyle.Regular, TextSecondary);
         DrawText(graphics, "Streamlabs URL", new Rectangle(328, 412, 120, 18), 13f, FontStyle.Regular, TextSecondary);
         DrawText(graphics, "Twitch channel", new Rectangle(328, 450, 120, 18), 13f, FontStyle.Regular, TextSecondary);
-        DrawPanel(graphics, new Rectangle(306, 500, 834, 92), "Localhost");
-        DrawLocalhostBox(graphics, definition, new Rectangle(462, 552, 380, 30));
-        DrawText(graphics, "OBS browser source", new Rectangle(328, 560, 120, 18), 13f, FontStyle.Regular, TextSecondary);
+        DrawPanel(graphics, new Rectangle(306, 500, 834, 132), "Twitch Metadata");
+        DrawText(graphics, "These controls apply only to Twitch IRC metadata until Streamlabs payloads are verified.", new Rectangle(328, 532, 500, 18), 12f, FontStyle.Regular, TextMuted);
+        DrawText(graphics, "OBS URL", new Rectangle(862, 532, 70, 18), 12f, FontStyle.Regular, TextSecondary);
     }
 
     private void DrawChromePage(

@@ -79,7 +79,7 @@ enum DesignV2OverlayMockKind: CaseIterable {
         case .sessionWeather:
             return NSSize(width: 450, height: 300)
         case .streamChat:
-            return NSSize(width: 390, height: 520)
+            return StreamChatOverlayDefinition.definition.defaultSize
         case .garageCover:
             return NSSize(width: 960, height: 540)
         case .carRadar:
@@ -161,6 +161,27 @@ struct DesignV2ChatRow {
     var author: String
     var message: String
     var evidence: DesignV2EvidenceKind = .live
+    var authorColorHex: String? = nil
+    var metadata: [String] = []
+    var badges: [String] = []
+    var segments: [DesignV2ChatSegment] = []
+
+    var displayMessage: String {
+        segments.isEmpty ? message : segments.map(\.text).joined()
+    }
+}
+
+struct DesignV2ChatSegment {
+    var kind: String
+    var text: String
+
+    static func text(_ value: String) -> DesignV2ChatSegment {
+        DesignV2ChatSegment(kind: "text", text: value)
+    }
+
+    static func emote(_ value: String) -> DesignV2ChatSegment {
+        DesignV2ChatSegment(kind: "emote", text: value)
+    }
 }
 
 struct DesignV2FuelRow {

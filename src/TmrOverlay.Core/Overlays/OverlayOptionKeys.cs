@@ -56,6 +56,15 @@ internal static class OverlayOptionKeys
     public const string StreamChatProvider = "stream-chat.provider";
     public const string StreamChatStreamlabsUrl = "stream-chat.streamlabs-url";
     public const string StreamChatTwitchChannel = "stream-chat.twitch-channel";
+    public const string StreamChatShowAuthorColor = "stream-chat.twitch.author-color";
+    public const string StreamChatShowBadges = "stream-chat.twitch.badges";
+    public const string StreamChatShowBits = "stream-chat.twitch.bits";
+    public const string StreamChatShowFirstMessage = "stream-chat.twitch.first-message";
+    public const string StreamChatShowReplies = "stream-chat.twitch.replies";
+    public const string StreamChatShowTimestamps = "stream-chat.twitch.timestamps";
+    public const string StreamChatShowEmotes = "stream-chat.twitch.emotes";
+    public const string StreamChatShowAlerts = "stream-chat.twitch.alerts";
+    public const string StreamChatShowMessageIds = "stream-chat.twitch.message-ids";
     public const string GarageCoverImagePath = "garage-cover.image-path";
     public const string GarageCoverPreviewUntilUtc = "garage-cover.preview-until-utc";
     public const string FlagsShowGreen = "flags.show-green";

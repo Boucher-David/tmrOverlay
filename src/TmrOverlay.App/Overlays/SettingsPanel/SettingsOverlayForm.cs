@@ -1672,6 +1672,37 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         saveButton.Click += (_, _) => SaveStreamChatSettings(settings, providerCombo, streamlabsBox, twitchBox);
         page.Controls.Add(saveButton);
         page.Controls.Add(CreateMutedLabel("Open the localhost URL in a browser or OBS after saving. The overlay will show connected status, then append messages as they arrive.", 274, top + 242, 560));
+        AddStreamChatContentToggles(page, settings, top + 292);
+    }
+
+    private void AddStreamChatContentToggles(TabPage page, OverlaySettings settings, int top)
+    {
+        var blocks = OverlayContentColumnSettings.StreamChat.Blocks ?? [];
+        page.Controls.Add(CreateSectionLabel("Twitch metadata", 18, top, 500));
+        page.Controls.Add(CreateMutedLabel(
+            "These controls apply only to Twitch chat until Streamlabs payloads are verified.",
+            22,
+            top + 30,
+            620));
+
+        for (var index = 0; index < blocks.Count; index++)
+        {
+            var block = blocks[index];
+            var column = index < 5 ? 0 : 1;
+            var row = column == 0 ? index : index - 5;
+            var checkBox = CreateCheckBox(
+                block.Label,
+                OverlayContentColumnSettings.BlockEnabled(settings, block),
+                22 + column * 260,
+                top + 62 + row * 30,
+                230);
+            checkBox.CheckedChanged += (_, _) =>
+            {
+                settings.SetBooleanOption(block.EnabledOptionKey, checkBox.Checked);
+                SaveAndApply();
+            };
+            page.Controls.Add(checkBox);
+        }
     }
 
     private void SaveStreamChatSettings(

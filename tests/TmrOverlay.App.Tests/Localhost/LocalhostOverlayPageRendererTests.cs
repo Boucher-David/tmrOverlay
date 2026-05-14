@@ -122,7 +122,7 @@ public sealed class BrowserOverlayPageRendererTests
         if (expectedId == "stream-chat")
         {
             Assert.Contains("fetchOverlayModel('stream-chat')", html);
-            Assert.Contains("connectTwitchChat", html);
+            Assert.Contains("authorColorHex", html);
             Assert.Contains("chat connected", html);
         }
         if (expectedId == "garage-cover")

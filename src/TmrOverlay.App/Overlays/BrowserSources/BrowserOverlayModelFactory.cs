@@ -63,6 +63,7 @@ internal sealed class BrowserOverlayModelFactory
     private const double TrackMapReloadIntervalSeconds = 10d;
     private readonly SessionHistoryQueryService _historyQueryService;
     private readonly TrackMapStore? _trackMapStore;
+    private readonly StreamChatOverlaySource? _streamChatSource;
     private readonly Func<LiveTelemetrySnapshot, DateTimeOffset, string, SimpleTelemetryOverlayViewModel> _sessionWeatherBuilder;
     private readonly PitServiceOverlayViewModel.StatefulBuilder _pitServiceBuilder;
     private readonly TrackMapRenderModelBuilder _trackMapRenderBuilder = new();
@@ -94,10 +95,14 @@ internal sealed class BrowserOverlayModelFactory
     private int? _lastGapDriversSoFar;
     private int? _lastGapClassLeaderCarIdx;
 
-    public BrowserOverlayModelFactory(SessionHistoryQueryService historyQueryService, TrackMapStore? trackMapStore = null)
+    public BrowserOverlayModelFactory(
+        SessionHistoryQueryService historyQueryService,
+        TrackMapStore? trackMapStore = null,
+        StreamChatOverlaySource? streamChatSource = null)
     {
         _historyQueryService = historyQueryService;
         _trackMapStore = trackMapStore;
+        _streamChatSource = streamChatSource;
         _sessionWeatherBuilder = SessionWeatherOverlayViewModel.CreateBuilder();
         _pitServiceBuilder = PitServiceOverlayViewModel.CreateStatefulBuilder();
     }
@@ -603,23 +608,23 @@ internal sealed class BrowserOverlayModelFactory
                 viewModel.Detection));
     }
 
-    private static BrowserOverlayDisplayModel BuildStreamChat(
+    private BrowserOverlayDisplayModel BuildStreamChat(
         LiveTelemetrySnapshot snapshot,
         ApplicationSettings settings,
         DateTimeOffset now)
     {
         var browserSettings = StreamChatOverlayViewModel.BrowserSettingsFrom(settings);
-        var initialMessage = StreamChatOverlayViewModel.InitialMessage(browserSettings);
-        var viewModel = StreamChatOverlayViewModel.From(
-            StreamChatOverlayViewModel.InitialStatus(browserSettings),
-            [initialMessage]);
-        var overlay = FindOverlay(settings, StreamChatOverlayDefinition.Definition.Id);
-        var headerItems = HeaderItems(overlay, snapshot, viewModel.Status);
+        var viewModel = _streamChatSource?.Snapshot(browserSettings)
+            ?? StreamChatOverlayViewModel.From(
+                StreamChatOverlayViewModel.InitialStatus(browserSettings),
+                [StreamChatOverlayViewModel.InitialMessage(browserSettings)],
+                contentOptions: browserSettings.ContentOptions);
+        var headerItems = Array.Empty<BrowserOverlayHeaderItem>();
         return new BrowserOverlayDisplayModel(
             StreamChatOverlayDefinition.Definition.Id,
             viewModel.Title,
             BrowserStatus(headerItems, viewModel.Status),
-            SourceText(overlay, snapshot, viewModel.Source),
+            string.Empty,
             "stream-chat",
             Columns: [],
             Rows: [],
@@ -628,7 +633,7 @@ internal sealed class BrowserOverlayModelFactory
             HeaderItems: headerItems,
             StreamChat: new BrowserStreamChatModel(
                 browserSettings,
-                viewModel.Rows.Select(BrowserStreamChatMessage.From).ToArray()));
+                viewModel.Rows.Select(message => BrowserStreamChatMessage.From(message, browserSettings.ContentOptions)).ToArray()));
     }
 
     private bool ShouldAcceptGapPoint(LiveTelemetrySnapshot snapshot, double seconds)
@@ -2364,9 +2369,14 @@ internal sealed record BrowserStreamChatModel(
 internal sealed record BrowserStreamChatMessage(
     string Name,
     string Text,
-    string Kind)
+    string Kind,
+    string Source,
+    string? AuthorColorHex,
+    IReadOnlyList<string> Metadata,
+    IReadOnlyList<BrowserStreamChatBadge> Badges,
+    IReadOnlyList<BrowserStreamChatSegment> Segments)
 {
-    public static BrowserStreamChatMessage From(StreamChatMessage message)
+    public static BrowserStreamChatMessage From(StreamChatMessage message, StreamChatContentOptions options)
     {
         return new BrowserStreamChatMessage(
             message.Name,
@@ -2375,10 +2385,31 @@ internal sealed record BrowserStreamChatMessage(
             {
                 StreamChatMessageKind.Error => "error",
                 StreamChatMessageKind.System => "system",
+                StreamChatMessageKind.Notice => "notice",
                 _ => "message"
-            });
+            },
+            message.Source,
+            StreamChatMessageDisplay.AuthorColorHex(message, options),
+            StreamChatMessageDisplay.MetadataParts(message, options),
+            StreamChatMessageDisplay.BadgeParts(message, options)
+                .Select(badge => new BrowserStreamChatBadge(badge.Id, badge.Version, badge.Label, badge.RoomId))
+                .ToArray(),
+            StreamChatMessageDisplay.MessageSegments(message, options)
+                .Select(segment => new BrowserStreamChatSegment(segment.Kind, segment.Text, segment.ImageUrl))
+                .ToArray());
     }
 }
+
+internal sealed record BrowserStreamChatBadge(
+    string Id,
+    string Version,
+    string Label,
+    string? RoomId);
+
+internal sealed record BrowserStreamChatSegment(
+    string Kind,
+    string Text,
+    string? ImageUrl);
 
 internal sealed record BrowserGapGraph(
     IReadOnlyList<BrowserGapSeries> Series,
