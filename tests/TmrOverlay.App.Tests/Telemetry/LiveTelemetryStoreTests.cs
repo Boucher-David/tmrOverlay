@@ -1817,7 +1817,7 @@ DriverInfo:
 """);
 
         store.RecordFrame(CreateSample(
-            sessionState: 4,
+            sessionState: 3,
             playerCarIdx: 10,
             focusCarIdx: 10,
             teamPosition: 2,
@@ -1837,6 +1837,28 @@ DriverInfo:
                 Car(11, position: 1, classPosition: 1, lapDistPct: -1d, f2TimeSeconds: 0d, lapCompleted: -1, estimatedTimeSeconds: 90d),
                 Car(10, position: 2, classPosition: 2, lapDistPct: -1d, f2TimeSeconds: 0.001d, lapCompleted: -1, estimatedTimeSeconds: 88d),
                 Car(12, position: 3, classPosition: 3, lapDistPct: -1d, f2TimeSeconds: 0.002d, lapCompleted: -1, estimatedTimeSeconds: 86d)
+            ]));
+
+        store.RecordFrame(CreateSample(
+            sessionState: 4,
+            playerCarIdx: 10,
+            focusCarIdx: 10,
+            teamPosition: 2,
+            teamClassPosition: 2,
+            teamCarClass: 4098,
+            teamLapCompleted: -1,
+            teamLapDistPct: -1d,
+            teamF2TimeSeconds: 0.001d,
+            teamEstimatedTimeSeconds: 88d,
+            teamLastLapTimeSeconds: 90d,
+            classLeaderCarIdx: 11,
+            classLeaderLapDistPct: -1d,
+            classLeaderF2TimeSeconds: 0d,
+            allCars:
+            [
+                Car(11, position: 1, classPosition: 1, lapDistPct: -1d, f2TimeSeconds: 0d, lapCompleted: -1, estimatedTimeSeconds: 90d, trackSurface: null),
+                Car(10, position: 2, classPosition: 2, lapDistPct: -1d, f2TimeSeconds: 0.001d, lapCompleted: -1, estimatedTimeSeconds: 88d, trackSurface: null),
+                Car(12, position: 3, classPosition: 3, lapDistPct: -1d, f2TimeSeconds: 0.002d, lapCompleted: -1, estimatedTimeSeconds: 86d, trackSurface: null)
             ]));
 
         var reference = Assert.Single(store.Snapshot().Models.Timing.OverallRows, row => row.CarIdx == 10);

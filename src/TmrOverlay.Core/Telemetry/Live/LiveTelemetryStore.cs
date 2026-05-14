@@ -175,7 +175,6 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
 
         if (sample.SessionState is null or >= 4)
         {
-            _griddedCarIdxs.Clear();
             return;
         }
 
