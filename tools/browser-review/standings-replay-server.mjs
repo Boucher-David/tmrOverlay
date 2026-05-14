@@ -53,7 +53,8 @@ const productionOverlayModelIds = new Set([
   'pit-service',
   'car-radar',
   'input-state',
-  'gap-to-leader'
+  'gap-to-leader',
+  'track-map'
 ]);
 const replay = loadReplay(replayPath);
 const replayTiming = analyzeReplayTiming(replay);
@@ -908,6 +909,13 @@ function displayModel(overlayId, frame, index, searchParams = null) {
     };
   }
 
+  if (overlayId === 'track-map') {
+    return browserOverlayApiResponse('track-map', browserOverlayPage('track-map').modelRoute, {
+      live: liveSnapshot(frame, 0, searchParams),
+      settings: settings('track-map', frame)
+    }).model;
+  }
+
   return tableModel(overlayId, browserOverlayPage(overlayId).title, status, headerItems, []);
 }
 
@@ -979,6 +987,13 @@ function captureDisplayModel(overlayId, frame, index, searchParams = null) {
 
   if (overlayId === 'input-state') {
     return captureInputStateModel(models, status, index, searchParams);
+  }
+
+  if (overlayId === 'track-map') {
+    return browserOverlayApiResponse('track-map', browserOverlayPage('track-map').modelRoute, {
+      live,
+      settings: settings('track-map', frame)
+    }).model;
   }
 
   return tableModel(overlayId, browserOverlayPage(overlayId).title, status, headerItems, [], 'source: capture-derived live replay');

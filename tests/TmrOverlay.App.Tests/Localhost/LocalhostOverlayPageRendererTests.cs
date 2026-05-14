@@ -119,21 +119,20 @@ public sealed class BrowserOverlayPageRendererTests
         }
         if (expectedId == "stream-chat")
         {
-            Assert.Contains("TmrBrowserApiPath('/api/stream-chat')", html);
+            Assert.Contains("fetchOverlayModel('stream-chat')", html);
             Assert.Contains("connectTwitchChat", html);
             Assert.Contains("chat connected", html);
         }
         if (expectedId == "garage-cover")
         {
             Assert.Contains("garage-cover-page", html);
-            Assert.Contains("TmrBrowserApiPath('/api/garage-cover')", html);
+            Assert.Contains("fetchOverlayModel('garage-cover')", html);
             Assert.Contains("/api/garage-cover/image", html);
             Assert.Contains("preview visible", html);
-            Assert.Contains("const garageCoverModel = window.TmrBrowserModel", html);
-            Assert.Contains("garageCoverModel.isLiveTelemetryAvailable(live)", html);
-            Assert.Contains("garageCoverModel.raceEvents(live)", html);
-            Assert.Contains("shouldFailClosed", html);
-            Assert.Contains("isGarageVisible", html);
+            Assert.Contains("garageCoverDisplayModel", html);
+            Assert.Contains("model?.garageCover", html);
+            Assert.Contains("browserSettings", html);
+            Assert.Contains("shouldCover", html);
         }
     }
 

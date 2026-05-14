@@ -25,7 +25,8 @@ const productionOverlayModelIds = new Set([
   'pit-service',
   'input-state',
   'car-radar',
-  'gap-to-leader'
+  'gap-to-leader',
+  'track-map'
 ]);
 let reloadTimer = null;
 
@@ -412,6 +413,11 @@ function reviewDisplayModel(overlayId, previewMode = 'off') {
         points: [74, 72, 70, 68, 66, 65, 63, 61, 60, 58, 55, 53],
         headerItems: [{ key: 'status', value: 'live | race gap' }]
       };
+    case 'track-map':
+      return browserOverlayApiResponse('track-map', browserOverlayPage('track-map').modelRoute, {
+        live: reviewLiveSnapshot(previewMode),
+        settings: reviewSettings('track-map', previewMode)
+      }).model;
     default:
       return tableModel(overlayId, browserOverlayPage(overlayId).title, `live | ${previewLabel}`, []);
   }
