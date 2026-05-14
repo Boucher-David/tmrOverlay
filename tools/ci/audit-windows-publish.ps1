@@ -44,6 +44,7 @@ $allowedAssetFiles = @(
 )
 
 $allowedAssetPatterns = @(
+    '^Assets\\CarSpecs\\[^\\]+\.json$',
     '^Assets\\TrackMaps\\[^\\]+\.json$'
 )
 
