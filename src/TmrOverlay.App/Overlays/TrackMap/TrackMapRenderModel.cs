@@ -7,13 +7,21 @@ namespace TmrOverlay.App.Overlays.TrackMap;
 
 internal sealed class TrackMapRenderModelBuilder
 {
+    private const int OffTrackSurface = 0;
+    private const int OnTrackSurface = 3;
+    private static readonly TimeSpan OffTrackFlashDuration = TimeSpan.FromSeconds(2.5d);
+
     private readonly Dictionary<int, double> _smoothedMarkerProgress = [];
+    private readonly Dictionary<int, int?> _lastMarkerTrackSurface = [];
+    private readonly Dictionary<int, DateTimeOffset> _offTrackFlashUntilUtc = [];
     private DateTimeOffset? _lastSmoothingAtUtc;
     private string? _lastTrackMapKey;
 
     public void ResetSmoothing()
     {
         _smoothedMarkerProgress.Clear();
+        _lastMarkerTrackSurface.Clear();
+        _offTrackFlashUntilUtc.Clear();
         _lastSmoothingAtUtc = null;
         _lastTrackMapKey = null;
     }
@@ -24,11 +32,14 @@ internal sealed class TrackMapRenderModelBuilder
         if (!string.Equals(trackMapKey, _lastTrackMapKey, StringComparison.Ordinal))
         {
             _smoothedMarkerProgress.Clear();
+            _lastMarkerTrackSurface.Clear();
+            _offTrackFlashUntilUtc.Clear();
             _lastSmoothingAtUtc = null;
             _lastTrackMapKey = trackMapKey;
         }
 
         var markers = SmoothMarkers(viewModel.Markers, now);
+        markers = ApplyOffTrackFlash(markers, now);
         return TrackMapRenderModel.FromViewModel(viewModel, markers);
     }
 
@@ -37,6 +48,8 @@ internal sealed class TrackMapRenderModelBuilder
         if (markers.Count == 0)
         {
             _smoothedMarkerProgress.Clear();
+            _lastMarkerTrackSurface.Clear();
+            _offTrackFlashUntilUtc.Clear();
             _lastSmoothingAtUtc = null;
             return markers;
         }
@@ -50,6 +63,8 @@ internal sealed class TrackMapRenderModelBuilder
         foreach (var carIdx in _smoothedMarkerProgress.Keys.Where(carIdx => !activeCarIdxs.Contains(carIdx)).ToArray())
         {
             _smoothedMarkerProgress.Remove(carIdx);
+            _lastMarkerTrackSurface.Remove(carIdx);
+            _offTrackFlashUntilUtc.Remove(carIdx);
         }
 
         return markers
@@ -64,6 +79,50 @@ internal sealed class TrackMapRenderModelBuilder
                 var smoothed = NormalizeProgress(current + ProgressDelta(current, marker.LapDistPct) * Math.Clamp(alpha, 0d, 1d));
                 _smoothedMarkerProgress[marker.CarIdx] = smoothed;
                 return marker with { LapDistPct = smoothed };
+            })
+            .ToArray();
+    }
+
+    private IReadOnlyList<TrackMapOverlayMarker> ApplyOffTrackFlash(IReadOnlyList<TrackMapOverlayMarker> markers, DateTimeOffset now)
+    {
+        if (markers.Count == 0)
+        {
+            return markers;
+        }
+
+        foreach (var marker in markers)
+        {
+            if (!marker.IsFocus
+                && _lastMarkerTrackSurface.TryGetValue(marker.CarIdx, out var previous)
+                && previous == OnTrackSurface
+                && marker.TrackSurface == OffTrackSurface)
+            {
+                _offTrackFlashUntilUtc[marker.CarIdx] = now.Add(OffTrackFlashDuration);
+            }
+
+            _lastMarkerTrackSurface[marker.CarIdx] = marker.TrackSurface;
+        }
+
+        foreach (var carIdx in _offTrackFlashUntilUtc.Keys.Where(carIdx => _offTrackFlashUntilUtc[carIdx] <= now).ToArray())
+        {
+            _offTrackFlashUntilUtc.Remove(carIdx);
+        }
+
+        return markers
+            .Select(marker =>
+            {
+                if (marker.IsFocus || !_offTrackFlashUntilUtc.TryGetValue(marker.CarIdx, out var flashUntil))
+                {
+                    return marker;
+                }
+
+                var remaining = Math.Clamp((flashUntil - now).TotalSeconds, 0d, OffTrackFlashDuration.TotalSeconds);
+                var progress = 1d - remaining / OffTrackFlashDuration.TotalSeconds;
+                return marker with
+                {
+                    AlertKind = TrackMapMarkerAlertKind.OffTrack,
+                    AlertPulseProgress = Math.Clamp(progress, 0d, 1d)
+                };
             })
             .ToArray();
     }
@@ -119,8 +178,17 @@ internal sealed record TrackMapRenderModel(
     private const double StartFinishHighlightWidth = 1.2d;
     private const double PitLineWidth = 2.2d;
     private const double MarkerRadius = 3.6d;
+    private const double MarkerLabelRadius = 4.8d;
     private const double FocusMarkerRadius = 5.7d;
+    private const double NonFocusMarkerLabelRadius = 5.7d;
+    private const double NonFocusMarkerRadiusReduction = 2d;
+    private const double MarkerTextSize = 5.4d;
     private const double FocusMarkerTextSize = 7.6d;
+    private const double OffTrackAlertRingMinimumGap = 3.2d;
+    private const double OffTrackAlertRingExpansion = 5.2d;
+    private const double OffTrackAlertRingStrokeWidth = 2.3d;
+    private static readonly Color OffTrackAlertMarkerColor = Color.FromArgb(255, 255, 218, 89);
+    private static readonly Color OffTrackAlertRingColor = Color.FromArgb(255, 255, 247, 210);
     private const int TrackInteriorMaximumAlpha = 150;
     private static readonly TrackMapRenderRect TrackRect = new(
         MapPadding,
@@ -223,11 +291,16 @@ internal sealed record TrackMapRenderModel(
 
         if (showSectorBoundaries)
         {
-            foreach (var progress in BoundaryProgresses(sectors))
+            foreach (var boundary in BoundaryMarkers(sectors))
             {
-                if (GeometryBoundaryTick(document.RacingLine, transform, progress) is { } tick)
+                if (GeometryBoundaryTick(document.RacingLine, transform, boundary.Progress) is { } tick)
                 {
-                    AddBoundaryLines(primitives, tick.Start, tick.End, IsStartFinishProgress(progress));
+                    AddBoundaryLines(
+                        primitives,
+                        tick.Start,
+                        tick.End,
+                        IsStartFinishProgress(boundary.Progress),
+                        boundary.Highlight);
                 }
             }
         }
@@ -284,8 +357,9 @@ internal sealed record TrackMapRenderModel(
             var center = new TrackMapRenderPoint(
                 TrackRect.X + TrackRect.Width / 2d,
                 TrackRect.Y + TrackRect.Height / 2d);
-            foreach (var progress in BoundaryProgresses(sectors))
+            foreach (var boundary in BoundaryMarkers(sectors))
             {
+                var progress = boundary.Progress;
                 var point = PointOnEllipse(progress);
                 var dx = point.X - center.X;
                 var dy = point.Y - center.Y;
@@ -297,7 +371,8 @@ internal sealed record TrackMapRenderModel(
                     primitives,
                     new TrackMapRenderPoint(point.X - unitX * half, point.Y - unitY * half),
                     new TrackMapRenderPoint(point.X + unitX * half, point.Y + unitY * half),
-                    IsStartFinishProgress(progress));
+                    IsStartFinishProgress(progress),
+                    boundary.Highlight);
             }
         }
 
@@ -312,12 +387,23 @@ internal sealed record TrackMapRenderModel(
         var point = document?.RacingLine.Points is { Count: >= 3 } && transform is not null
             ? PointOnGeometry(document.RacingLine, transform, marker.LapDistPct) ?? PointOnEllipse(marker.LapDistPct)
             : PointOnEllipse(marker.LapDistPct);
-        var label = marker.IsFocus && marker.Position is > 0
+        var label = marker.Position is > 0
             ? marker.Position.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
             : null;
         var radius = label is { Length: > 0 }
-            ? FocusMarkerRadiusForLabel(label)
-            : marker.IsFocus ? FocusMarkerRadius : MarkerRadius;
+            ? MarkerRadiusForLabel(label, marker.IsFocus)
+            : marker.IsFocus ? FocusMarkerRadius : Math.Max(1.2d, MarkerRadius - NonFocusMarkerRadiusReduction);
+        var labelFontSize = marker.IsFocus ? FocusMarkerTextSize : MarkerTextSize;
+        var alertActive = marker.AlertKind == TrackMapMarkerAlertKind.OffTrack;
+        var alertPulseProgress = alertActive
+            ? Math.Clamp(marker.AlertPulseProgress, 0d, 1d)
+            : 0d;
+        var alertRingRadius = alertActive
+            ? radius + OffTrackAlertRingMinimumGap + OffTrackAlertRingExpansion * alertPulseProgress
+            : 0d;
+        var alertRingAlpha = alertActive
+            ? (int)Math.Round(230d - alertPulseProgress * 140d)
+            : 0;
 
         return new TrackMapRenderMarker(
             marker.CarIdx,
@@ -325,12 +411,19 @@ internal sealed record TrackMapRenderModel(
             point.Y,
             radius,
             marker.IsFocus,
-            Fill: MarkerColor(marker.ClassColorHex, marker.IsFocus),
+            Fill: MarkerColor(marker.ClassColorHex, marker.IsFocus, marker.AlertKind),
             Stroke: ColorOf(OverlayTheme.DesignV2.TrackMarkerBorder),
             StrokeWidth: marker.IsFocus ? 2d : 1.4d,
             Label: label,
             LabelColor: ColorOf(Color.FromArgb(255, 5, 13, 17)),
-            LabelFontSize: FocusMarkerTextSize);
+            LabelFontSize: labelFontSize,
+            AlertKind: alertActive ? "off-track" : null,
+            AlertPulseProgress: alertPulseProgress,
+            AlertRingRadius: alertRingRadius,
+            AlertRingStroke: alertActive
+                ? ColorOf(Color.FromArgb(Math.Clamp(alertRingAlpha, 0, 255), OffTrackAlertRingColor))
+                : null,
+            AlertRingStrokeWidth: OffTrackAlertRingStrokeWidth);
     }
 
     private static IReadOnlyList<TrackMapRenderPoint> RenderPath(TrackMapGeometry geometry, TrackMapTransform transform)
@@ -395,10 +488,13 @@ internal sealed record TrackMapRenderModel(
         List<TrackMapRenderPrimitive> primitives,
         TrackMapRenderPoint start,
         TrackMapRenderPoint end,
-        bool isStartFinish)
+        bool isStartFinish,
+        string highlight)
     {
         if (isStartFinish)
         {
+            var mainColor = BoundaryHighlightColor(highlight)
+                ?? ColorOf(OverlayTheme.DesignV2.StartFinishBoundary);
             primitives.Add(TrackMapRenderPrimitive.Line(
                 start,
                 end,
@@ -407,7 +503,7 @@ internal sealed record TrackMapRenderModel(
             primitives.Add(TrackMapRenderPrimitive.Line(
                 start,
                 end,
-                ColorOf(OverlayTheme.DesignV2.StartFinishBoundary),
+                mainColor,
                 StartFinishMainWidth));
             primitives.Add(TrackMapRenderPrimitive.Line(
                 start,
@@ -420,7 +516,7 @@ internal sealed record TrackMapRenderModel(
         primitives.Add(TrackMapRenderPrimitive.Line(
             start,
             end,
-            ColorOf(OverlayTheme.DesignV2.Cyan),
+            BoundaryHighlightColor(highlight) ?? ColorOf(OverlayTheme.DesignV2.Cyan),
             NormalBoundaryTickWidth));
     }
 
@@ -498,7 +594,7 @@ internal sealed record TrackMapRenderModel(
         yield return new TrackMapProgressRange(start, Math.Clamp(end, 0d, 1d));
     }
 
-    private static IEnumerable<double> BoundaryProgresses(IReadOnlyList<LiveTrackSectorSegment> sectors)
+    private static IEnumerable<TrackMapBoundaryMarker> BoundaryMarkers(IReadOnlyList<LiveTrackSectorSegment> sectors)
     {
         if (sectors.Count < 2)
         {
@@ -508,11 +604,11 @@ internal sealed record TrackMapRenderModel(
         var seen = new HashSet<int>();
         foreach (var sector in sectors)
         {
-            var progress = NormalizeProgress(sector.StartPct);
-            var key = (int)Math.Round(progress * 100_000d);
+            var progress = sector.EndPct >= 1d ? 1d : NormalizeProgress(sector.EndPct);
+            var key = (int)Math.Round(NormalizeProgress(progress) * 100_000d);
             if (seen.Add(key))
             {
-                yield return progress;
+                yield return new TrackMapBoundaryMarker(progress, sector.BoundaryHighlight);
             }
         }
     }
@@ -530,8 +626,25 @@ internal sealed record TrackMapRenderModel(
             : ColorOf(OverlayTheme.DesignV2.PersonalBestSector);
     }
 
-    private static TrackMapRenderColor MarkerColor(string? classColorHex, bool isFocus)
+    private static TrackMapRenderColor? BoundaryHighlightColor(string? highlight)
     {
+        if (string.Equals(highlight, LiveTrackSectorHighlights.PersonalBest, StringComparison.Ordinal))
+        {
+            return ColorOf(OverlayTheme.DesignV2.PersonalBestSector);
+        }
+
+        return string.Equals(highlight, LiveTrackSectorHighlights.BestLap, StringComparison.Ordinal)
+            ? ColorOf(OverlayTheme.DesignV2.BestLapSector)
+            : null;
+    }
+
+    private static TrackMapRenderColor MarkerColor(string? classColorHex, bool isFocus, TrackMapMarkerAlertKind alertKind)
+    {
+        if (alertKind == TrackMapMarkerAlertKind.OffTrack)
+        {
+            return ColorOf(OffTrackAlertMarkerColor);
+        }
+
         if (isFocus)
         {
             return ColorOf(OverlayTheme.DesignV2.Cyan);
@@ -554,9 +667,11 @@ internal sealed record TrackMapRenderModel(
         return new TrackMapRenderColor(color.R, color.G, color.B, color.A);
     }
 
-    private static double FocusMarkerRadiusForLabel(string label)
+    private static double MarkerRadiusForLabel(string label, bool isFocus)
     {
-        return Math.Max(FocusMarkerRadius, 5.1d + label.Length * 2.9d);
+        return isFocus
+            ? Math.Max(FocusMarkerRadius, 5.1d + label.Length * 2.9d)
+            : Math.Max(NonFocusMarkerLabelRadius, 3.9d + Math.Max(0, label.Length - 2) * 1.9d);
     }
 
     private static double BoundaryTickLength(double progress)
@@ -584,6 +699,8 @@ internal sealed record TrackMapRenderModel(
     }
 
     private readonly record struct TrackMapBoundaryTick(TrackMapRenderPoint Start, TrackMapRenderPoint End);
+
+    private readonly record struct TrackMapBoundaryMarker(double Progress, string Highlight);
 
     private readonly record struct TrackMapProgressRange(double StartPct, double EndPct);
 
@@ -705,6 +822,11 @@ internal sealed record TrackMapRenderMarker(
     double StrokeWidth,
     string? Label,
     TrackMapRenderColor LabelColor,
-    double LabelFontSize);
+    double LabelFontSize,
+    string? AlertKind = null,
+    double AlertPulseProgress = 0d,
+    double AlertRingRadius = 0d,
+    TrackMapRenderColor? AlertRingStroke = null,
+    double AlertRingStrokeWidth = 0d);
 
 internal sealed record TrackMapRenderColor(int Red, int Green, int Blue, int Alpha);

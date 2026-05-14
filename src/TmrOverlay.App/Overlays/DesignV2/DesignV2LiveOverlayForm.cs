@@ -283,6 +283,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         {
             DesignV2LiveOverlayKind.InputState => InputStateRenderModelBuilder.RefreshIntervalMilliseconds,
             DesignV2LiveOverlayKind.CarRadar => CarRadarRenderModel.RefreshIntervalMilliseconds,
+            DesignV2LiveOverlayKind.TrackMap => TrackMapRenderModel.RefreshIntervalMilliseconds,
             _ => DefaultRefreshIntervalMilliseconds
         };
     }
@@ -4997,6 +4998,20 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     {
         var center = ScalePoint(target, new TrackMapRenderPoint(marker.X, marker.Y), scaleX, scaleY);
         var radius = (float)marker.Radius * Math.Min(scaleX, scaleY);
+        if (marker.AlertRingStroke is { } ringStroke && marker.AlertRingRadius > 0d)
+        {
+            var ringRadius = (float)marker.AlertRingRadius * Math.Min(scaleX, scaleY);
+            var ringRect = new RectangleF(center.X - ringRadius, center.Y - ringRadius, ringRadius * 2f, ringRadius * 2f);
+            using var ringPen = new Pen(
+                RenderTrackMapColor(ringStroke),
+                Math.Max(1f, (float)marker.AlertRingStrokeWidth * Math.Min(scaleX, scaleY)))
+            {
+                StartCap = LineCap.Round,
+                EndCap = LineCap.Round
+            };
+            graphics.DrawEllipse(ringPen, ringRect);
+        }
+
         var markerRect = new RectangleF(center.X - radius, center.Y - radius, radius * 2f, radius * 2f);
         using (var brush = new SolidBrush(RenderTrackMapColor(marker.Fill)))
         {

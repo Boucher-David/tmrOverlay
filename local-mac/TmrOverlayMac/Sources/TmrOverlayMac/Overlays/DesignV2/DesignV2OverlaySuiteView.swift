@@ -790,8 +790,9 @@ final class DesignV2OverlaySuiteView: NSView {
             return
         }
 
-        theme.colors.accentPrimary.withAlphaComponent(0.92).setStroke()
-        for progress in trackMapBoundaryProgresses(sectors) {
+        for boundary in trackMapBoundaryMarkers(sectors) {
+            let progress = boundary.progress
+            trackMapBoundaryColor(boundary.highlight).setStroke()
             let point = trackMapPoint(on: rect, progress: progress)
             let dx = point.x - rect.midX
             let dy = point.y - rect.midY
@@ -1361,20 +1362,20 @@ final class DesignV2OverlaySuiteView: NSView {
         return [(start, min(max(end, 0), 1))]
     }
 
-    private func trackMapBoundaryProgresses(_ sectors: [LiveTrackSectorSegment]) -> [Double] {
+    private func trackMapBoundaryMarkers(_ sectors: [LiveTrackSectorSegment]) -> [(progress: Double, highlight: String)] {
         var seen: Set<Int> = []
-        var progresses: [Double] = []
+        var markers: [(progress: Double, highlight: String)] = []
         for sector in sectors {
-            let progress = normalizeTrackMapProgress(sector.startPct)
-            let key = Int((progress * 100_000).rounded())
+            let progress = sector.endPct >= 1 ? 1.0 : normalizeTrackMapProgress(sector.endPct)
+            let key = Int((normalizeTrackMapProgress(progress) * 100_000).rounded())
             guard !seen.contains(key) else {
                 continue
             }
 
             seen.insert(key)
-            progresses.append(progress)
+            markers.append((progress, sector.boundaryHighlight))
         }
-        return progresses
+        return markers
     }
 
     private func hasTrackMapHighlight(_ highlight: String) -> Bool {
@@ -1386,6 +1387,12 @@ final class DesignV2OverlaySuiteView: NSView {
         highlight == LiveTrackSectorHighlights.bestLap
             ? NSColor(red: 0.71, green: 0.36, blue: 1.0, alpha: 1.0)
             : NSColor(red: 0.18, green: 0.94, blue: 0.43, alpha: 1.0)
+    }
+
+    private func trackMapBoundaryColor(_ highlight: String) -> NSColor {
+        hasTrackMapHighlight(highlight)
+            ? trackMapSectorHighlightColor(highlight)
+            : theme.colors.accentPrimary.withAlphaComponent(0.92)
     }
 
     private var trackMapSectorBoundariesVisible: Bool {

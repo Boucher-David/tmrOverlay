@@ -763,14 +763,18 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
         {
             var fullLapHighlight = _fullLapHighlight;
             var segments = _sectors
-                .Select(sector => new LiveTrackSectorSegment(
-                    SectorNum: sector.SectorNum,
-                    StartPct: Math.Round(sector.StartPct, 6),
-                    EndPct: Math.Round(sector.EndPct, 6),
-                    Highlight: fullLapHighlight
-                        ?? (_activeSectorHighlights.TryGetValue(sector.SectorNum, out var highlight)
-                            ? highlight
-                            : LiveTrackSectorHighlights.None)))
+                .Select(sector =>
+                {
+                    var sectorHighlight = _activeSectorHighlights.TryGetValue(sector.SectorNum, out var highlight)
+                        ? highlight
+                        : LiveTrackSectorHighlights.None;
+                    return new LiveTrackSectorSegment(
+                        SectorNum: sector.SectorNum,
+                        StartPct: Math.Round(sector.StartPct, 6),
+                        EndPct: Math.Round(sector.EndPct, 6),
+                        Highlight: fullLapHighlight ?? sectorHighlight,
+                        BoundaryHighlight: sectorHighlight);
+                })
                 .ToArray();
 
             return new LiveTrackMapModel(

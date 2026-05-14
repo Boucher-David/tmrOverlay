@@ -2621,6 +2621,7 @@ internal static class LiveRaceModelBuilder
             || sample.SessionState is not >= 4
             || !IsRaceLaunchEstimatedRow(row, isRaceSession)
             || !IsRaceLaunchEstimatedRow(referenceAhead, isRaceSession)
+            || (row.LapDistPct is not null && referenceAhead.LapDistPct is not null)
             || !IsPositionBehind(row, referenceAhead)
             || ValidPositive(row.EstimatedTimeSeconds) is not { } rowEstimated
             || ValidPositive(referenceAhead.EstimatedTimeSeconds) is not { } referenceEstimated)
@@ -2640,7 +2641,6 @@ internal static class LiveRaceModelBuilder
     {
         return isRaceSession
             && row.HasTakenGrid
-            && row.LapDistPct is null
             && (row.ClassPosition == 1 || IsRaceF2Placeholder(row));
     }
 

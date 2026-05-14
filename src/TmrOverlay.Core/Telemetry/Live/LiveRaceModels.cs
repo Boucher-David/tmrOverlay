@@ -684,7 +684,8 @@ internal sealed record LiveTrackSectorSegment(
     int SectorNum,
     double StartPct,
     double EndPct,
-    string Highlight);
+    string Highlight,
+    string BoundaryHighlight = LiveTrackSectorHighlights.None);
 
 internal sealed record LiveWeatherModel(
     bool HasData,

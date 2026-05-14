@@ -506,6 +506,7 @@ struct LiveTrackSectorSegment {
     var startPct: Double
     var endPct: Double
     var highlight: String
+    var boundaryHighlight: String = LiveTrackSectorHighlights.none
 }
 
 struct LiveLeaderGapSnapshot {
@@ -1014,11 +1015,13 @@ private final class TrackMapSectorTracker {
         hasLiveTiming: Bool = true
     ) -> LiveTrackMapModel {
         let sectors = Self.sectors.map { sector in
-            LiveTrackSectorSegment(
+            let sectorHighlight = highlights[sector.sectorNum] ?? LiveTrackSectorHighlights.none
+            return LiveTrackSectorSegment(
                 sectorNum: sector.sectorNum,
                 startPct: sector.startPct,
                 endPct: sector.endPct,
-                highlight: fullLapHighlight ?? highlights[sector.sectorNum] ?? LiveTrackSectorHighlights.none
+                highlight: fullLapHighlight ?? sectorHighlight,
+                boundaryHighlight: sectorHighlight
             )
         }
         return LiveTrackMapModel(

@@ -57,7 +57,10 @@ const productionOverlayModelIds = new Set([
   'track-map'
 ]);
 const replay = loadReplay(replayPath);
+const replayCaptureSessionInfo = loadReplayCaptureSessionInfo(replay);
 const replayTiming = analyzeReplayTiming(replay);
+const replayTrackMapTiming = buildReplayTrackMapTiming(replay, replayCaptureSessionInfo);
+const replayTrackMapMarkerAlerts = buildReplayTrackMapMarkerAlerts(replay);
 const startedAtMs = Date.now();
 
 const server = createServer((request, response) => {
@@ -135,6 +138,12 @@ server.listen(port, '127.0.0.1', () => {
   console.log(`Replay frames:         ${replay.frames.length}`);
   console.log(`Replay timing:         ${replayStatusTiming().effectiveMode}${replayStatusTiming().effectiveMode === 'source-elapsed' ? ` @ ${replaySpeedMultiplier}x` : ` @ ${frameMilliseconds}ms/frame`}`);
   console.log(`Source cadence:        ${formatCadenceSummary(replayTiming.sourceCadence)}`);
+  if (replayCaptureSessionInfo) {
+    console.log(`Capture session data:  ${replayCaptureSessionInfo.drivers.size} drivers, ${replayCaptureSessionInfo.sectors.length} sectors`);
+  }
+  if (replayTrackMapTiming) {
+    console.log(`Track map timing:      ${replayTrackMapTiming.highlightEventCount} highlight events`);
+  }
   console.log(`Relative rows:         ${relativeCarsEachSide * 2 + 1}`);
   console.log(`Gap cars ahead/behind: ${gapCarsAhead}/${gapCarsBehind}`);
 });
@@ -152,6 +161,517 @@ function loadReplay(path) {
     throw new Error(`Replay has no frames: ${path}`);
   }
   return parsed;
+}
+
+function loadReplayCaptureSessionInfo(loadedReplay) {
+  const captureDirectory = loadedReplay?.source?.captureDirectory;
+  if (!captureDirectory) {
+    return null;
+  }
+
+  const sessionPath = resolve(captureDirectory, 'latest-session.yaml');
+  try {
+    const stats = statSync(sessionPath);
+    if (!stats.isFile()) {
+      return null;
+    }
+
+    const yaml = readFileSync(sessionPath, 'utf8');
+    return {
+      drivers: parseSessionDrivers(yaml),
+      sectors: parseSessionSectors(yaml)
+    };
+  } catch {
+    return null;
+  }
+}
+
+function parseSessionDrivers(yaml) {
+  const drivers = new Map();
+  const lines = yaml.split(/\r?\n/);
+  let inDrivers = false;
+  let current = null;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed === 'Drivers:') {
+      inDrivers = true;
+      continue;
+    }
+
+    if (!inDrivers) {
+      continue;
+    }
+
+    if (trimmed === 'SplitTimeInfo:' || trimmed === 'CarSetup:') {
+      addSessionDriver(drivers, current);
+      current = null;
+      break;
+    }
+
+    const carIdxMatch = /^-\s+CarIdx:\s*(-?\d+)/.exec(trimmed);
+    if (carIdxMatch) {
+      addSessionDriver(drivers, current);
+      current = { carIdx: Number.parseInt(carIdxMatch[1], 10) };
+      continue;
+    }
+
+    if (!current) {
+      continue;
+    }
+
+    const fieldMatch = /^([A-Za-z][A-Za-z0-9_]*):\s*(.*)$/.exec(trimmed);
+    if (!fieldMatch) {
+      continue;
+    }
+
+    const [, key, rawValue] = fieldMatch;
+    switch (key) {
+      case 'CarClassID':
+        current.carClass = optionalInteger(rawValue);
+        break;
+      case 'CarClassShortName':
+        current.carClassName = cleanYamlScalar(rawValue);
+        break;
+      case 'CarClassColor':
+        current.carClassColorHex = normalizeTelemetryHexColor(rawValue);
+        break;
+      default:
+        break;
+    }
+  }
+
+  addSessionDriver(drivers, current);
+  return drivers;
+}
+
+function addSessionDriver(drivers, driver) {
+  if (!driver || !Number.isInteger(driver.carIdx)) {
+    return;
+  }
+
+  drivers.set(driver.carIdx, driver);
+}
+
+function parseSessionSectors(yaml) {
+  const lines = yaml.split(/\r?\n/);
+  const sectors = [];
+  let inSplitTimeInfo = false;
+  let inSectors = false;
+  let current = null;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed === 'SplitTimeInfo:') {
+      inSplitTimeInfo = true;
+      continue;
+    }
+
+    if (!inSplitTimeInfo) {
+      continue;
+    }
+
+    if (trimmed === 'Sectors:') {
+      inSectors = true;
+      continue;
+    }
+
+    if (!inSectors) {
+      continue;
+    }
+
+    if (/^[A-Za-z][A-Za-z0-9_]*:\s*$/.test(trimmed)) {
+      addSessionSector(sectors, current);
+      current = null;
+      break;
+    }
+
+    const sectorNumMatch = /^-\s+SectorNum:\s*(-?\d+)/.exec(trimmed);
+    if (sectorNumMatch) {
+      addSessionSector(sectors, current);
+      current = { sectorNum: Number.parseInt(sectorNumMatch[1], 10) };
+      continue;
+    }
+
+    if (!current) {
+      continue;
+    }
+
+    const startPctMatch = /^SectorStartPct:\s*([-+]?\d*\.?\d+)/.exec(trimmed);
+    if (startPctMatch) {
+      current.startPct = Number.parseFloat(startPctMatch[1]);
+    }
+  }
+
+  addSessionSector(sectors, current);
+  const ordered = sectors
+    .filter((sector) => Number.isInteger(sector.sectorNum)
+      && Number.isFinite(sector.startPct)
+      && sector.startPct >= 0
+      && sector.startPct < 1)
+    .sort((left, right) => left.startPct - right.startPct || left.sectorNum - right.sectorNum);
+  if (ordered.length < 2) {
+    return [];
+  }
+
+  return ordered.map((sector, index) => ({
+    sectorNum: sector.sectorNum,
+    startPct: roundProgress(sector.startPct),
+    endPct: roundProgress(index + 1 < ordered.length ? ordered[index + 1].startPct : 1),
+    highlight: 'none'
+  }));
+}
+
+function addSessionSector(sectors, sector) {
+  if (!sector || !Number.isInteger(sector.sectorNum)) {
+    return;
+  }
+
+  sectors.push(sector);
+}
+
+function cleanYamlScalar(value) {
+  const text = String(value ?? '').trim();
+  if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
+    return text.slice(1, -1);
+  }
+
+  return text;
+}
+
+function normalizeTelemetryHexColor(value) {
+  const text = cleanYamlScalar(value);
+  const match = /^(?:0x|#)?([0-9a-f]{6})$/i.exec(text);
+  return match ? `#${match[1].toUpperCase()}` : null;
+}
+
+function roundProgress(value) {
+  return Math.round(value * 1_000_000) / 1_000_000;
+}
+
+function buildReplayTrackMapTiming(loadedReplay, sessionInfo) {
+  const sectors = sessionInfo?.sectors || [];
+  if (!Array.isArray(loadedReplay?.frames) || sectors.length < 2) {
+    return null;
+  }
+
+  const bestSectorSeconds = new Map();
+  const activeSectorHighlights = new Map();
+  const sectorsByIndex = [];
+  let state = null;
+  let fullLapHighlight = null;
+  let fullLapCompleted = null;
+  let bestLapSeconds = null;
+  let highlightEventCount = 0;
+
+  for (let index = 0; index < loadedReplay.frames.length; index += 1) {
+    const frame = loadedReplay.frames[index];
+    const observation = replayTrackMapObservation(frame);
+    if (!observation) {
+      state = null;
+      fullLapHighlight = null;
+      fullLapCompleted = null;
+      activeSectorHighlights.clear();
+      sectorsByIndex[index] = replayTrackMapSectors(sectors, activeSectorHighlights, fullLapHighlight);
+      continue;
+    }
+
+    if (!state) {
+      state = seedReplayTrackMapState(observation, sectors);
+      sectorsByIndex[index] = replayTrackMapSectors(sectors, activeSectorHighlights, fullLapHighlight);
+      continue;
+    }
+
+    const previousProgress = state.lapCompleted + state.lapDistPct;
+    const currentProgress = observation.lapCompleted + observation.lapDistPct;
+    const progressDelta = currentProgress - previousProgress;
+    if (progressDelta < 0
+      || progressDelta > 0.12
+      || !Number.isFinite(progressDelta)
+      || observation.sessionTimeSeconds <= state.sessionTimeSeconds) {
+      state = seedReplayTrackMapState(observation, sectors);
+      fullLapHighlight = null;
+      fullLapCompleted = null;
+      activeSectorHighlights.clear();
+      sectorsByIndex[index] = replayTrackMapSectors(sectors, activeSectorHighlights, fullLapHighlight);
+      continue;
+    }
+
+    let nextState = { ...state };
+    for (const crossing of replayTrackMapSectorCrossings(sectors, state, observation)) {
+      if (crossing.sectorIndex === 1
+        && fullLapCompleted != null
+        && crossing.boundaryLapCompleted > fullLapCompleted) {
+        fullLapHighlight = null;
+        fullLapCompleted = null;
+        activeSectorHighlights.clear();
+      }
+
+      if (nextState.lastBoundarySectorIndex != null
+        && nextState.lastBoundarySessionTimeSeconds != null) {
+        const elapsed = crossing.sessionTimeSeconds - nextState.lastBoundarySessionTimeSeconds;
+        if (elapsed > 0 && elapsed < 900) {
+          const completedSector = sectors[nextState.lastBoundarySectorIndex];
+          const highlight = replayTrackMapSectorHighlight(bestSectorSeconds, completedSector, elapsed);
+          if (highlight === 'none') {
+            activeSectorHighlights.delete(completedSector.sectorNum);
+          } else {
+            activeSectorHighlights.set(completedSector.sectorNum, highlight);
+            highlightEventCount += 1;
+          }
+        }
+      }
+
+      if (crossing.sectorIndex === 0) {
+        const lapSeconds = nextState.lastLapStartSessionTimeSeconds != null
+          ? crossing.sessionTimeSeconds - nextState.lastLapStartSessionTimeSeconds
+          : observation.lastLapTimeSeconds;
+        const lapHighlight = replayTrackMapLapHighlight(lapSeconds, bestLapSeconds, observation);
+        if (lapHighlight.highlight === 'none') {
+          fullLapHighlight = null;
+          fullLapCompleted = null;
+        } else {
+          fullLapHighlight = lapHighlight.highlight;
+          fullLapCompleted = crossing.boundaryLapCompleted - 1;
+          bestLapSeconds = lapHighlight.bestLapSeconds;
+          highlightEventCount += 1;
+        }
+
+        nextState.lastLapStartSessionTimeSeconds = crossing.sessionTimeSeconds;
+      }
+
+      nextState.lastBoundarySectorIndex = crossing.sectorIndex;
+      nextState.lastBoundarySessionTimeSeconds = crossing.sessionTimeSeconds;
+    }
+
+    state = {
+      ...nextState,
+      lapCompleted: observation.lapCompleted,
+      lapDistPct: observation.lapDistPct,
+      sessionTimeSeconds: observation.sessionTimeSeconds
+    };
+    sectorsByIndex[index] = replayTrackMapSectors(sectors, activeSectorHighlights, fullLapHighlight);
+  }
+
+  return {
+    sectorsByIndex,
+    highlightEventCount
+  };
+}
+
+function buildReplayTrackMapMarkerAlerts(loadedReplay) {
+  const frames = Array.isArray(loadedReplay?.frames) ? loadedReplay.frames : [];
+  const alertsByIndex = [];
+  const lastSurfaceByCarIdx = new Map();
+  const flashUntilByCarIdx = new Map();
+  const offTrackFlashSeconds = 2.5;
+  const offTrackSurface = 0;
+  const onTrackSurface = 3;
+
+  for (let index = 0; index < frames.length; index += 1) {
+    const frame = frames[index];
+    const elapsedSeconds = replayFrameElapsedSeconds(frame, index);
+    for (const [carIdx, flashUntil] of [...flashUntilByCarIdx.entries()]) {
+      if (flashUntil <= elapsedSeconds) {
+        flashUntilByCarIdx.delete(carIdx);
+      }
+    }
+
+    for (const row of replayTrackMapMarkerRows(frame)) {
+      const carIdx = optionalInteger(row?.carIdx);
+      if (carIdx === null) {
+        continue;
+      }
+
+      const trackSurface = optionalInteger(row?.trackSurface);
+      if (trackSurface === null) {
+        continue;
+      }
+
+      const previousSurface = lastSurfaceByCarIdx.get(carIdx);
+      if (previousSurface === onTrackSurface && trackSurface === offTrackSurface) {
+        flashUntilByCarIdx.set(carIdx, elapsedSeconds + offTrackFlashSeconds);
+      }
+
+      lastSurfaceByCarIdx.set(carIdx, trackSurface);
+    }
+
+    const alerts = new Map();
+    for (const [carIdx, flashUntil] of flashUntilByCarIdx.entries()) {
+      const remainingSeconds = Math.max(0, Math.min(offTrackFlashSeconds, flashUntil - elapsedSeconds));
+      alerts.set(carIdx, Math.max(0, Math.min(1, 1 - remainingSeconds / offTrackFlashSeconds)));
+    }
+
+    alertsByIndex[index] = alerts;
+  }
+
+  return alertsByIndex;
+}
+
+function replayFrameElapsedSeconds(frame, index) {
+  return finiteNumber(frame?.sourceElapsedSeconds)
+    ?? finiteNumber(frame?.sessionTimeSeconds)
+    ?? index * 0.1;
+}
+
+function replayTrackMapMarkerRows(frame) {
+  const timing = frame?.live?.models?.timing || {};
+  return [
+    ...(Array.isArray(timing.overallRows) ? timing.overallRows : []),
+    ...(Array.isArray(timing.classRows) ? timing.classRows : [])
+  ];
+}
+
+function replayTrackMapObservation(frame) {
+  const row = frame?.live?.models?.timing?.focusRow;
+  if (!row || typeof row !== 'object') {
+    return null;
+  }
+
+  const lapCompleted = Number(row.lapCompleted);
+  const lapDistPct = Number(row.lapDistPct);
+  const sessionTimeSeconds = Number(frame.sessionTimeSeconds);
+  if (!Number.isFinite(lapCompleted)
+    || !Number.isFinite(lapDistPct)
+    || !Number.isFinite(sessionTimeSeconds)
+    || lapCompleted < 0
+    || lapDistPct < 0
+    || lapDistPct > 1.000001) {
+    return null;
+  }
+
+  return {
+    lapCompleted,
+    lapDistPct: Math.min(Math.max(lapDistPct, 0), 1),
+    sessionTimeSeconds,
+    lastLapTimeSeconds: positiveNumberOrNull(row.lastLapTimeSeconds),
+    lapDeltaToSessionBestLapSeconds: replayTrackMapLapDeltaToSessionBestLapSeconds(frame, row),
+    lapDeltaToSessionBestLapOk: replayTrackMapLapDeltaToSessionBestLapOk(frame, row)
+  };
+}
+
+function replayTrackMapLapDeltaToSessionBestLapSeconds(frame, row) {
+  return optionalNumber(
+    row.lapDeltaToSessionBestLapSeconds
+      ?? row.lapDeltaToSessionBestLap
+      ?? frame?.live?.latestSample?.lapDeltaToSessionBestLapSeconds
+      ?? frame?.live?.latestSample?.lapDeltaToSessionBestLap);
+}
+
+function replayTrackMapLapDeltaToSessionBestLapOk(frame, row) {
+  return optionalBoolean(
+    row.lapDeltaToSessionBestLapOk
+      ?? row.lapDeltaToSessionBestLap_OK
+      ?? frame?.live?.latestSample?.lapDeltaToSessionBestLapOk
+      ?? frame?.live?.latestSample?.lapDeltaToSessionBestLap_OK);
+}
+
+function seedReplayTrackMapState(observation, sectors) {
+  const boundaryIndex = seedReplayTrackMapBoundaryIndex(observation.lapDistPct, sectors);
+  return {
+    lapCompleted: observation.lapCompleted,
+    lapDistPct: observation.lapDistPct,
+    sessionTimeSeconds: observation.sessionTimeSeconds,
+    lastBoundarySectorIndex: boundaryIndex,
+    lastBoundarySessionTimeSeconds: boundaryIndex == null ? null : observation.sessionTimeSeconds,
+    lastLapStartSessionTimeSeconds: boundaryIndex === 0 ? observation.sessionTimeSeconds : null
+  };
+}
+
+function seedReplayTrackMapBoundaryIndex(lapDistPct, sectors) {
+  if (lapDistPct <= 0.02) {
+    return 0;
+  }
+
+  const nearest = sectors
+    .map((sector, sectorIndex) => ({
+      sectorIndex,
+      distance: lapDistPct - sector.startPct
+    }))
+    .filter((candidate) => candidate.distance >= 0)
+    .sort((left, right) => left.distance - right.distance)[0];
+  return nearest && nearest.distance <= 0.0125 ? nearest.sectorIndex : null;
+}
+
+function replayTrackMapSectorCrossings(sectors, previous, current) {
+  const crossings = [];
+  const previousProgress = previous.lapCompleted + previous.lapDistPct;
+  const currentProgress = current.lapCompleted + current.lapDistPct;
+  const progressDelta = currentProgress - previousProgress;
+  const timeDelta = current.sessionTimeSeconds - previous.sessionTimeSeconds;
+
+  for (let lap = previous.lapCompleted; lap <= current.lapCompleted; lap += 1) {
+    for (let sectorIndex = 0; sectorIndex < sectors.length; sectorIndex += 1) {
+      const sector = sectors[sectorIndex];
+      const boundaryProgress = lap + sector.startPct;
+      if (boundaryProgress <= previousProgress || boundaryProgress > currentProgress) {
+        continue;
+      }
+
+      const interpolation = (boundaryProgress - previousProgress) / progressDelta;
+      if (!Number.isFinite(interpolation) || interpolation < 0 || interpolation > 1) {
+        continue;
+      }
+
+      crossings.push({
+        sectorIndex,
+        boundaryLapCompleted: lap,
+        sessionTimeSeconds: previous.sessionTimeSeconds + timeDelta * interpolation
+      });
+    }
+  }
+
+  return crossings;
+}
+
+function replayTrackMapSectorHighlight(bestSectorSeconds, sector, elapsedSeconds) {
+  const best = bestSectorSeconds.get(sector.sectorNum);
+  if (best == null || elapsedSeconds < best - 0.001) {
+    bestSectorSeconds.set(sector.sectorNum, elapsedSeconds);
+    return 'personal-best';
+  }
+
+  return 'none';
+}
+
+function replayTrackMapLapHighlight(lapSeconds, bestLapSeconds, observation) {
+  if (!Number.isFinite(lapSeconds) || lapSeconds <= 0 || lapSeconds >= 3600) {
+    return { highlight: 'none', bestLapSeconds };
+  }
+
+  if (bestLapSeconds == null || lapSeconds < bestLapSeconds - 0.001) {
+    const nextBestLapSeconds = lapSeconds;
+    return {
+      highlight: replayTrackMapIsSessionBestLapSignal(observation)
+        || observation?.lapDeltaToSessionBestLapOk !== true
+        ? 'best-lap'
+        : 'personal-best',
+      bestLapSeconds: nextBestLapSeconds
+    };
+  }
+
+  return { highlight: 'none', bestLapSeconds };
+}
+
+function replayTrackMapIsSessionBestLapSignal(observation) {
+  return observation?.lapDeltaToSessionBestLapOk === true
+    && Number.isFinite(observation.lapDeltaToSessionBestLapSeconds)
+    && observation.lapDeltaToSessionBestLapSeconds <= 0.001;
+}
+
+function replayTrackMapSectors(sectors, activeSectorHighlights, fullLapHighlight) {
+  return sectors.map((sector) => ({
+    ...sector,
+    highlight: fullLapHighlight
+      ?? activeSectorHighlights.get(sector.sectorNum)
+      ?? 'none',
+    boundaryHighlight: activeSectorHighlights.get(sector.sectorNum) ?? 'none'
+  }));
+}
+
+function positiveNumberOrNull(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : null;
 }
 
 function analyzeReplayTiming(replayDocument) {
@@ -542,11 +1062,12 @@ function frameMetadata(frame, index, searchParams = null) {
 
 function liveSnapshot(frame, index, searchParams = null) {
   if (frame.live && typeof frame.live === 'object') {
+    const enrichedLive = enrichReplayLiveSnapshot(frame.live, index);
     return {
-      ...frame.live,
-      models: spoofLiveModels(frame.live.models || {}, frame, index, searchParams),
-      sourceId: frame.live.sourceId || replay.source?.captureId || 'capture-replay',
-      startedAtUtc: frame.live.startedAtUtc || replay.source?.startedAtUtc || null,
+      ...enrichedLive,
+      models: spoofLiveModels(enrichedLive.models || {}, frame, index, searchParams),
+      sourceId: enrichedLive.sourceId || replay.source?.captureId || 'capture-replay',
+      startedAtUtc: enrichedLive.startedAtUtc || replay.source?.startedAtUtc || null,
       lastUpdatedAtUtc: new Date().toISOString(),
       sequence: index + 1
     };
@@ -678,6 +1199,143 @@ function liveSnapshot(frame, index, searchParams = null) {
       }
     }
   };
+}
+
+function enrichReplayLiveSnapshot(live, index) {
+  if (!replayCaptureSessionInfo || !live || typeof live !== 'object') {
+    return live;
+  }
+
+  const models = live.models && typeof live.models === 'object'
+    ? { ...live.models }
+    : {};
+  models.trackMap = enrichTrackMapModel(models.trackMap, index);
+  models.timing = enrichTimingModel(models.timing, index);
+  models.scoring = enrichRowsModel(models.scoring, 'rows');
+  models.driverDirectory = enrichRowsModel(models.driverDirectory, 'drivers');
+  models.relative = enrichRowsModel(models.relative, 'rows');
+  models.spatial = enrichRowsModel(models.spatial, 'cars');
+
+  return {
+    ...live,
+    models
+  };
+}
+
+function enrichTrackMapModel(trackMap, index) {
+  const timedSectors = replayTrackMapTiming?.sectorsByIndex?.[index] || null;
+  const sectors = timedSectors || replayCaptureSessionInfo?.sectors || [];
+  if (!sectors.length) {
+    return trackMap;
+  }
+
+  const existing = trackMap && typeof trackMap === 'object' ? trackMap : {};
+  if (!timedSectors && Array.isArray(existing.sectors) && existing.sectors.length >= 2) {
+    return existing;
+  }
+
+  return {
+    ...existing,
+    hasData: existing.hasData ?? true,
+    hasSectors: true,
+    hasLiveTiming: timedSectors ? true : existing.hasLiveTiming ?? false,
+    quality: existing.quality || 'capture-session-info',
+    sectors
+  };
+}
+
+function enrichTimingModel(timing, index) {
+  if (!timing || typeof timing !== 'object') {
+    return timing;
+  }
+
+  const focusCarIdx = optionalInteger(timing.focusCarIdx ?? timing.focusRow?.carIdx);
+  return {
+    ...timing,
+    overallRows: enrichTimingRows(timing.overallRows, index, focusCarIdx),
+    classRows: enrichTimingRows(timing.classRows, index, focusCarIdx),
+    focusRow: enrichCarIdentity(timing.focusRow),
+    playerRow: enrichCarIdentity(timing.playerRow)
+  };
+}
+
+function enrichTimingRows(rows, index, focusCarIdx) {
+  const enriched = enrichCarIdentityRows(rows);
+  if (!Array.isArray(enriched)) {
+    return enriched;
+  }
+
+  return enriched.map((row) => enrichTrackMapMarkerAlert(row, index, focusCarIdx));
+}
+
+function enrichTrackMapMarkerAlert(row, index, focusCarIdx) {
+  if (!row || typeof row !== 'object') {
+    return row;
+  }
+
+  const carIdx = optionalInteger(row.carIdx);
+  if (carIdx === null) {
+    return row;
+  }
+
+  const { trackMapAlertKind, trackMapAlertPulseProgress, alertKind, ...withoutAlert } = row;
+  if (row.isFocus === true || carIdx === focusCarIdx) {
+    return withoutAlert;
+  }
+
+  const activeAlerts = replayTrackMapMarkerAlerts?.[index];
+  if (activeAlerts?.has(carIdx)) {
+    return {
+      ...withoutAlert,
+      trackMapAlertKind: 'off-track',
+      trackMapAlertPulseProgress: activeAlerts.get(carIdx)
+    };
+  }
+
+  return withoutAlert;
+}
+
+function enrichRowsModel(model, rowsProperty) {
+  if (!model || typeof model !== 'object') {
+    return model;
+  }
+
+  return {
+    ...model,
+    [rowsProperty]: enrichCarIdentityRows(model[rowsProperty])
+  };
+}
+
+function enrichCarIdentityRows(rows) {
+  return Array.isArray(rows)
+    ? rows.map(enrichCarIdentity)
+    : rows;
+}
+
+function enrichCarIdentity(row) {
+  if (!row || typeof row !== 'object' || !Number.isFinite(row.carIdx)) {
+    return row;
+  }
+
+  const driver = replayCaptureSessionInfo?.drivers.get(row.carIdx);
+  if (!driver) {
+    return row;
+  }
+
+  const next = { ...row };
+  if (Number.isInteger(driver.carClass)) {
+    next.carClass = driver.carClass;
+  }
+
+  if (driver.carClassName) {
+    next.carClassName = driver.carClassName;
+  }
+
+  if (driver.carClassColorHex) {
+    next.carClassColorHex = driver.carClassColorHex;
+  }
+
+  return next;
 }
 
 function liveModelsForReplayFrame(index, searchParams = null) {
@@ -3793,6 +4451,31 @@ function optionalNumber(value) {
 function optionalInteger(value) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
   return Number.isInteger(parsed) ? parsed : null;
+}
+
+function optionalBoolean(value) {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'number') {
+    return value === 1 ? true : value === 0 ? false : null;
+  }
+
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+    return true;
+  }
+
+  if (['0', 'false', 'no', 'off'].includes(normalized)) {
+    return false;
+  }
+
+  return null;
 }
 
 function normalizeReplayTimingMode(value) {

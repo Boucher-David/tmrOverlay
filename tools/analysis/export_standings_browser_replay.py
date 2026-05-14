@@ -66,9 +66,28 @@ REPLAY_SCALAR_FIELDS = list(
             "RPM",
             "EngineWarnings",
             "PlayerTireCompound",
+            "LapDeltaToSessionBestLap",
+            "LapDeltaToSessionBestLap_DD",
+            "LapDeltaToSessionBestLap_OK",
+            "LapDeltaToBestLap",
+            "LapDeltaToBestLap_DD",
+            "LapDeltaToBestLap_OK",
+            "LapDeltaToOptimalLap",
+            "LapDeltaToOptimalLap_DD",
+            "LapDeltaToOptimalLap_OK",
+            "LapDeltaToSessionOptimalLap",
+            "LapDeltaToSessionOptimalLap_DD",
+            "LapDeltaToSessionOptimalLap_OK",
+            "LapDeltaToSessionLastlLap",
+            "LapDeltaToSessionLastlLap_DD",
+            "LapDeltaToSessionLastlLap_OK",
+            "LapCurrentLapTime",
             "FuelLevel",
             "FuelLevelPct",
             "FuelUsePerHour",
+            "AirPressure",
+            "SolarAltitude",
+            "SolarAzimuth",
             "Voltage",
             "WaterTemp",
             "FuelPress",
@@ -86,13 +105,80 @@ REPLAY_SCALAR_FIELDS = list(
             "RelativeHumidity",
             "FogLevel",
             "PlayerCarPitSvStatus",
+            "PlayerCarDryTireSetLimit",
+            "PitSvTireCompound",
+            "PitSvLFP",
+            "PitSvRFP",
+            "PitSvLRP",
+            "PitSvRRP",
+            "dpLFTireChange",
+            "dpRFTireChange",
+            "dpLRTireChange",
+            "dpRRTireChange",
+            "dpLFTireColdPress",
+            "dpRFTireColdPress",
+            "dpLRTireColdPress",
+            "dpRRTireColdPress",
             "TireSetsUsed",
+            "TireSetsAvailable",
+            "LeftTireSetsUsed",
+            "RightTireSetsUsed",
+            "FrontTireSetsUsed",
+            "RearTireSetsUsed",
+            "LeftTireSetsAvailable",
+            "RightTireSetsAvailable",
+            "FrontTireSetsAvailable",
+            "RearTireSetsAvailable",
+            "LFTiresUsed",
+            "RFTiresUsed",
+            "LRTiresUsed",
+            "RRTiresUsed",
+            "LFTiresAvailable",
+            "RFTiresAvailable",
+            "LRTiresAvailable",
+            "RRTiresAvailable",
+            "LFwearL",
+            "LFwearM",
+            "LFwearR",
+            "RFwearL",
+            "RFwearM",
+            "RFwearR",
+            "LRwearL",
+            "LRwearM",
+            "LRwearR",
+            "RRwearL",
+            "RRwearM",
+            "RRwearR",
+            "LFtempCL",
+            "LFtempCM",
+            "LFtempCR",
+            "RFtempCL",
+            "RFtempCM",
+            "RFtempCR",
+            "LRtempCL",
+            "LRtempCM",
+            "LRtempCR",
+            "RRtempCL",
+            "RRtempCM",
+            "RRtempCR",
+            "LFcoldPressure",
+            "RFcoldPressure",
+            "LRcoldPressure",
+            "RRcoldPressure",
+            "LFodometer",
+            "RFodometer",
+            "LRodometer",
+            "RRodometer",
             "FastRepairUsed",
+            "FastRepairAvailable",
+            "PlayerFastRepairsUsed",
+            "DCDriversSoFar",
+            "DCLapStatus",
         ]
     )
 )
 
-REPLAY_ARRAY_FIELDS = list(dict.fromkeys([*ARRAY_FIELDS, "CarIdxFastRepairsUsed"]))
+REPLAY_ARRAY_FIELDS = list(dict.fromkeys([*ARRAY_FIELDS, "CarIdxFastRepairsUsed", "CarIdxSessionFlags", "CarIdxTireCompound"]))
 
 ON_TRACK_SURFACE = 3
 GAP_TO_LEADER_MISSING_SEGMENT_THRESHOLD_SECONDS = 10.0
@@ -311,6 +397,8 @@ def timing_lookup(values: dict[str, list[Any]], gridded_car_idxs: set[int] | Non
             "bestLapTimeSeconds": valid_lap_time(car.best_lap_time),
             "trackSurface": car.track_surface,
             "onPitRoad": car.on_pit_road,
+            "sessionFlags": array_value(values, "CarIdxSessionFlags", car.car_idx) if isinstance(array_value(values, "CarIdxSessionFlags", car.car_idx), int) else None,
+            "tireCompound": array_value(values, "CarIdxTireCompound", car.car_idx) if isinstance(array_value(values, "CarIdxTireCompound", car.car_idx), int) else None,
             "hasTakenGrid": has_taken_grid(car.car_idx, car.track_surface, car.on_pit_road, gridded_car_idxs),
         }
     return rows
@@ -345,6 +433,501 @@ def track_length_meters(session_data: dict[str, Any]) -> float | None:
             value = float(match.group(1))
             return value * (1609.344 if "mi" in raw_length.lower() else 1000.0)
     return None
+
+
+def live_track_map_sectors(session_data: dict[str, Any]) -> list[dict[str, Any]]:
+    source_sectors = (session_data.get("SplitTimeInfo") or {}).get("Sectors") or []
+    sectors = []
+    for sector in source_sectors:
+        sector_num = sector.get("SectorNum") if isinstance(sector, dict) else None
+        start_pct = sector.get("SectorStartPct") if isinstance(sector, dict) else None
+        if not isinstance(sector_num, int) or not finite(start_pct):
+            continue
+        start = float(start_pct)
+        if start < 0.0 or start >= 1.0:
+            continue
+        sectors.append({"sectorNum": sector_num, "startPct": round(start, 6)})
+
+    ordered = sorted(sectors, key=lambda item: (item["startPct"], item["sectorNum"]))
+    if len(ordered) < 2:
+        return []
+
+    result = []
+    for index, sector in enumerate(ordered):
+        end_pct = ordered[index + 1]["startPct"] if index + 1 < len(ordered) else 1.0
+        result.append({
+            "sectorNum": sector["sectorNum"],
+            "startPct": sector["startPct"],
+            "endPct": round(max(sector["startPct"], min(1.0, end_pct)), 6),
+            "highlight": "none",
+        })
+    return result
+
+
+def raw_int(raw: dict[str, Any], name: str) -> int | None:
+    value = raw.get(name)
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def raw_non_negative_int(raw: dict[str, Any], name: str) -> int | None:
+    value = raw_int(raw, name)
+    return value if value is not None and value >= 0 else None
+
+
+def raw_finite(raw: dict[str, Any], name: str) -> float | None:
+    value = raw.get(name)
+    return float(value) if finite(value) else None
+
+
+def raw_non_negative(raw: dict[str, Any], name: str) -> float | None:
+    return valid_non_negative(raw.get(name))
+
+
+def raw_boolish(raw: dict[str, Any], name: str) -> bool | None:
+    value = raw.get(name)
+    if isinstance(value, bool):
+        return value
+    if finite(value):
+        return float(value) != 0.0
+    return None
+
+
+def array_boolish(values: dict[str, list[Any]], name: str, index: int | None) -> bool | None:
+    if index is None:
+        return None
+    value = array_value(values, name, index)
+    if isinstance(value, bool):
+        return value
+    if finite(value):
+        return float(value) != 0.0
+    return None
+
+
+def signal_evidence(source: str, quality: str, is_usable: bool, missing_reason: str | None = None) -> dict[str, Any]:
+    return {
+        "source": source,
+        "quality": quality,
+        "isUsable": is_usable,
+        "missingReason": missing_reason,
+    }
+
+
+def tire_compound_short_label(label: str, index: int) -> str:
+    normalized = label.strip()
+    if not normalized:
+        return str(index)
+    first = normalized[0].upper()
+    if first.isalnum():
+        return first
+    return str(index)
+
+
+def tire_compound_definition(index: int, raw_label: Any = None) -> dict[str, Any]:
+    label = str(raw_label or "").strip().strip('"') or f"Compound {index}"
+    return {
+        "index": index,
+        "label": label,
+        "shortLabel": tire_compound_short_label(label, index),
+        "isWet": "wet" in label.lower(),
+    }
+
+
+def live_tire_compounds(
+    session_data: dict[str, Any],
+    timing_rows: dict[int, dict[str, Any]],
+    focus_idx: int | None,
+    player_idx: int | None,
+    raw: dict[str, Any],
+) -> dict[str, Any]:
+    source_definitions = (session_data.get("DriverInfo") or {}).get("DriverTires") or []
+    definitions = []
+    seen_definitions = set()
+    for tire in source_definitions:
+        index = tire.get("TireIndex") if isinstance(tire, dict) else None
+        if not isinstance(index, int) or index < 0 or index in seen_definitions:
+            continue
+        seen_definitions.add(index)
+        definitions.append(tire_compound_definition(index, tire.get("TireCompoundType")))
+
+    definitions_by_index = {definition["index"]: definition for definition in definitions}
+    cars = []
+    for car_idx, row in sorted(timing_rows.items()):
+        compound = row.get("tireCompound")
+        if not isinstance(compound, int) or compound < 0:
+            continue
+        definition = definitions_by_index.get(compound) or tire_compound_definition(compound)
+        cars.append({
+            "carIdx": car_idx,
+            "compoundIndex": compound,
+            "label": definition["label"],
+            "shortLabel": definition["shortLabel"],
+            "isWet": definition["isWet"],
+            "isPlayer": player_idx is not None and car_idx == player_idx,
+            "isFocus": focus_idx is not None and car_idx == focus_idx,
+            "evidence": {"quality": "reliable", "source": "CarIdxTireCompound", "detail": None},
+        })
+
+    player_compound = raw_int(raw, "PlayerTireCompound")
+    if player_idx is not None and isinstance(player_compound, int) and player_compound >= 0 and not any(car["carIdx"] == player_idx for car in cars):
+        definition = definitions_by_index.get(player_compound) or tire_compound_definition(player_compound)
+        cars.append({
+            "carIdx": player_idx,
+            "compoundIndex": player_compound,
+            "label": definition["label"],
+            "shortLabel": definition["shortLabel"],
+            "isWet": definition["isWet"],
+            "isPlayer": True,
+            "isFocus": focus_idx is not None and player_idx == focus_idx,
+            "evidence": {"quality": "reliable", "source": "PlayerTireCompound", "detail": None},
+        })
+
+    cars = sorted(cars, key=lambda car: car["carIdx"])
+    player = next((car for car in cars if car.get("isPlayer")), None)
+    focus = next((car for car in cars if car.get("isFocus")), None)
+    has_data = bool(definitions or cars)
+    return {
+        "hasData": has_data,
+        "quality": "reliable" if definitions and cars else "partial" if has_data else "unavailable",
+        "definitions": definitions,
+        "playerCar": player,
+        "focusCar": focus,
+        "cars": cars,
+    }
+
+
+def tire_corner(raw: dict[str, Any], key: str, corner: str) -> dict[str, Any]:
+    pressure_prefix = {"LF": "LFP", "RF": "RFP", "LR": "LRP", "RR": "RRP"}[key]
+    values = {
+        "corner": corner,
+        "wear": {
+            "left": unit_interval(raw.get(f"{key}wearL")),
+            "middle": unit_interval(raw.get(f"{key}wearM")),
+            "right": unit_interval(raw.get(f"{key}wearR")),
+        },
+        "temperatureC": {
+            "left": raw_finite(raw, f"{key}tempCL"),
+            "middle": raw_finite(raw, f"{key}tempCM"),
+            "right": raw_finite(raw, f"{key}tempCR"),
+        },
+        "coldPressureKpa": raw_non_negative(raw, f"{key}coldPressure"),
+        "odometerMeters": raw_non_negative(raw, f"{key}odometer"),
+        "pitServicePressureKpa": raw_non_negative(raw, f"PitSv{pressure_prefix}"),
+        "blackBoxColdPressurePa": raw_non_negative(raw, f"dp{key}TireColdPress"),
+        "changeRequested": raw_boolish(raw, f"dp{key}TireChange"),
+    }
+    return values
+
+
+def corner_has_data(corner: dict[str, Any]) -> bool:
+    wear = corner.get("wear") or {}
+    temperature = corner.get("temperatureC") or {}
+    return any(value is not None for value in [
+        *wear.values(),
+        *temperature.values(),
+        corner.get("coldPressureKpa"),
+        corner.get("odometerMeters"),
+        corner.get("pitServicePressureKpa"),
+        corner.get("blackBoxColdPressurePa"),
+        corner.get("changeRequested"),
+    ])
+
+
+def live_tire_condition(raw: dict[str, Any]) -> dict[str, Any]:
+    left_front = tire_corner(raw, "LF", "LF")
+    right_front = tire_corner(raw, "RF", "RF")
+    left_rear = tire_corner(raw, "LR", "LR")
+    right_rear = tire_corner(raw, "RR", "RR")
+    has_data = any(corner_has_data(corner) for corner in [left_front, right_front, left_rear, right_rear])
+    return {
+        "hasData": has_data,
+        "quality": "partial" if has_data else "unavailable",
+        "evidence": {
+            "quality": "diagnostic-only" if has_data else "unavailable",
+            "source": "tire telemetry",
+            "detail": "tire condition channels are inspection/service-adjacent and may be stale" if has_data else "tire condition signals missing",
+        },
+        "leftFront": left_front,
+        "rightFront": right_front,
+        "leftRear": left_rear,
+        "rightRear": right_rear,
+    }
+
+
+def driver_info(session_data: dict[str, Any]) -> dict[str, Any]:
+    return session_data.get("DriverInfo") or {}
+
+
+def weekend_info(session_data: dict[str, Any]) -> dict[str, Any]:
+    return session_data.get("WeekendInfo") or {}
+
+
+def session_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if finite(value):
+        return float(value) != 0.0
+    return None
+
+
+def session_laps_remain(raw: dict[str, Any]) -> int | None:
+    value = raw.get("SessionLapsRemainEx")
+    if not finite(value):
+        return None
+    laps = int(round(float(value)))
+    return laps if 0 <= laps <= 1000 else None
+
+
+def session_laps_total(raw: dict[str, Any]) -> int | None:
+    value = raw.get("SessionLapsTotal")
+    if not finite(value):
+        return None
+    laps = int(round(float(value)))
+    return laps if 0 < laps <= 1000 else None
+
+
+def selected_lap_time_seconds(session_data: dict[str, Any], raw: dict[str, Any]) -> tuple[float | None, str]:
+    for name, source in (
+        ("LapLastLapTime", "player-last-lap"),
+        ("LapBestLapTime", "player-best-lap"),
+    ):
+        seconds = valid_lap_time(raw.get(name))
+        if seconds is not None:
+            return seconds, source
+
+    driver_estimate = valid_lap_time(driver_info(session_data).get("DriverCarEstLapTime"))
+    if driver_estimate is not None:
+        return driver_estimate, "driver-estimate"
+
+    return None, "unavailable"
+
+
+def live_fuel_snapshot(session_data: dict[str, Any], raw: dict[str, Any]) -> dict[str, Any]:
+    fuel_level = positive(raw.get("FuelLevel"))
+    if fuel_level is None:
+        return {
+            "hasValidFuel": False,
+            "source": "unavailable",
+            "fuelLevelLiters": None,
+            "fuelLevelPercent": None,
+            "fuelUsePerHourKg": None,
+            "fuelUsePerHourLiters": None,
+            "fuelPerLapLiters": None,
+            "lapTimeSeconds": None,
+            "lapTimeSource": "unavailable",
+            "estimatedMinutesRemaining": None,
+            "estimatedLapsRemaining": None,
+            "confidence": "none",
+        }
+
+    fuel_pct = unit_interval(raw.get("FuelLevelPct"))
+    fuel_use_kg = positive(raw.get("FuelUsePerHour"))
+    fuel_density = positive(driver_info(session_data).get("DriverCarFuelKgPerLtr"))
+    fuel_use_liters = fuel_use_kg / fuel_density if fuel_use_kg is not None and fuel_density is not None else None
+    lap_time, lap_time_source = selected_lap_time_seconds(session_data, raw)
+    fuel_per_lap = fuel_use_liters * lap_time / 3600.0 if fuel_use_liters is not None and lap_time is not None else None
+    estimated_minutes = fuel_level / fuel_use_liters * 60.0 if fuel_use_liters is not None and fuel_use_liters > 0.0 else None
+    estimated_laps = fuel_level / fuel_per_lap if fuel_per_lap is not None and fuel_per_lap > 0.0 else None
+    return {
+        "hasValidFuel": True,
+        "source": "local-driver-scalar",
+        "fuelLevelLiters": fuel_level,
+        "fuelLevelPercent": fuel_pct,
+        "fuelUsePerHourKg": fuel_use_kg,
+        "fuelUsePerHourLiters": fuel_use_liters,
+        "fuelPerLapLiters": fuel_per_lap,
+        "lapTimeSeconds": lap_time,
+        "lapTimeSource": lap_time_source,
+        "estimatedMinutesRemaining": estimated_minutes,
+        "estimatedLapsRemaining": estimated_laps,
+        "confidence": "live" if fuel_use_liters is not None else "level-only",
+    }
+
+
+def live_fuel_pit_model(
+    raw: dict[str, Any],
+    values: dict[str, list[Any]],
+    player_idx: int | None,
+    on_pit_road: bool,
+    fuel: dict[str, Any],
+) -> dict[str, Any]:
+    pitstop_active = raw_boolish(raw, "PitstopActive") is True
+    player_in_stall = raw_boolish(raw, "PlayerCarInPitStall") is True
+    team_on_pit_road = array_boolish(values, "CarIdxOnPitRoad", player_idx)
+    has_pit_data = any(
+        raw.get(name) is not None
+        for name in (
+            "PitSvFlags",
+            "PitSvFuel",
+            "PitRepairLeft",
+            "PitOptRepairLeft",
+            "PlayerCarPitSvStatus",
+            "PlayerCarDryTireSetLimit",
+            "TireSetsUsed",
+            "TireSetsAvailable",
+            "LeftTireSetsUsed",
+            "RightTireSetsUsed",
+            "FrontTireSetsUsed",
+            "RearTireSetsUsed",
+            "LeftTireSetsAvailable",
+            "RightTireSetsAvailable",
+            "FrontTireSetsAvailable",
+            "RearTireSetsAvailable",
+            "LFTiresUsed",
+            "RFTiresUsed",
+            "LRTiresUsed",
+            "RRTiresUsed",
+            "LFTiresAvailable",
+            "RFTiresAvailable",
+            "LRTiresAvailable",
+            "RRTiresAvailable",
+            "FastRepairUsed",
+            "FastRepairAvailable",
+            "PlayerFastRepairsUsed",
+        )
+    ) or on_pit_road or pitstop_active or player_in_stall or team_on_pit_road is not None
+    has_fuel = fuel.get("hasValidFuel") is True
+    return {
+        "hasData": has_fuel or has_pit_data,
+        "quality": "reliable" if has_fuel else "partial" if has_pit_data else "unavailable",
+        "fuel": fuel,
+        "onPitRoad": on_pit_road,
+        "pitstopActive": pitstop_active,
+        "playerCarInPitStall": player_in_stall,
+        "teamOnPitRoad": team_on_pit_road,
+        "fuelLevelEvidence": signal_evidence(
+            "FuelLevel",
+            "reliable" if has_fuel else "unavailable",
+            has_fuel,
+            None if has_fuel else "missing_or_zero_fuel_level"),
+        "instantaneousBurnEvidence": signal_evidence(
+            "FuelUsePerHour",
+            "partial" if fuel.get("fuelUsePerHourKg") is not None else "unavailable",
+            False,
+            "instantaneous_burn_requires_smoothing" if fuel.get("fuelUsePerHourKg") is not None else "missing_or_zero_fuel_use"),
+        "measuredBurnEvidence": signal_evidence("rolling-local-fuel-delta", "unavailable", False, "requires_two_green_distance_samples"),
+        "baselineEligibilityEvidence": signal_evidence("measured-local-fuel-baseline", "unavailable", False, "requires_rolling_local_driver_window"),
+        "pitServiceStatus": raw_int(raw, "PlayerCarPitSvStatus"),
+        "pitServiceFlags": raw_int(raw, "PitSvFlags"),
+        "pitServiceFuelLiters": raw_non_negative(raw, "PitSvFuel"),
+        "pitRepairLeftSeconds": raw_non_negative(raw, "PitRepairLeft"),
+        "pitOptRepairLeftSeconds": raw_non_negative(raw, "PitOptRepairLeft"),
+        "playerCarDryTireSetLimit": raw_non_negative_int(raw, "PlayerCarDryTireSetLimit"),
+        "tireSetsUsed": raw_non_negative_int(raw, "TireSetsUsed"),
+        "tireSetsAvailable": raw_non_negative_int(raw, "TireSetsAvailable"),
+        "leftTireSetsUsed": raw_non_negative_int(raw, "LeftTireSetsUsed"),
+        "rightTireSetsUsed": raw_non_negative_int(raw, "RightTireSetsUsed"),
+        "frontTireSetsUsed": raw_non_negative_int(raw, "FrontTireSetsUsed"),
+        "rearTireSetsUsed": raw_non_negative_int(raw, "RearTireSetsUsed"),
+        "leftTireSetsAvailable": raw_non_negative_int(raw, "LeftTireSetsAvailable"),
+        "rightTireSetsAvailable": raw_non_negative_int(raw, "RightTireSetsAvailable"),
+        "frontTireSetsAvailable": raw_non_negative_int(raw, "FrontTireSetsAvailable"),
+        "rearTireSetsAvailable": raw_non_negative_int(raw, "RearTireSetsAvailable"),
+        "leftFrontTiresUsed": raw_non_negative_int(raw, "LFTiresUsed"),
+        "rightFrontTiresUsed": raw_non_negative_int(raw, "RFTiresUsed"),
+        "leftRearTiresUsed": raw_non_negative_int(raw, "LRTiresUsed"),
+        "rightRearTiresUsed": raw_non_negative_int(raw, "RRTiresUsed"),
+        "leftFrontTiresAvailable": raw_non_negative_int(raw, "LFTiresAvailable"),
+        "rightFrontTiresAvailable": raw_non_negative_int(raw, "RFTiresAvailable"),
+        "leftRearTiresAvailable": raw_non_negative_int(raw, "LRTiresAvailable"),
+        "rightRearTiresAvailable": raw_non_negative_int(raw, "RRTiresAvailable"),
+        "requestedTireCompound": raw_non_negative_int(raw, "PitSvTireCompound"),
+        "fastRepairUsed": raw_non_negative_int(raw, "FastRepairUsed"),
+        "fastRepairAvailable": raw_non_negative_int(raw, "FastRepairAvailable"),
+        "teamFastRepairsUsed": (
+            array_value(values, "CarIdxFastRepairsUsed", player_idx)
+            if player_idx is not None and isinstance(array_value(values, "CarIdxFastRepairsUsed", player_idx), int)
+            else raw_non_negative_int(raw, "PlayerFastRepairsUsed")
+        ),
+    }
+
+
+def pit_service_request_from_flags(pit: dict[str, Any], tire_compounds: dict[str, Any]) -> dict[str, Any]:
+    flags = pit.get("pitServiceFlags") if isinstance(pit.get("pitServiceFlags"), int) else 0
+    requested_compound = pit.get("requestedTireCompound") if isinstance(pit.get("requestedTireCompound"), int) else None
+    definition = next(
+        (
+            item
+            for item in tire_compounds.get("definitions", [])
+            if isinstance(item, dict) and item.get("index") == requested_compound
+        ),
+        None,
+    )
+    return {
+        "leftFrontTire": (flags & 0x01) != 0,
+        "rightFrontTire": (flags & 0x02) != 0,
+        "leftRearTire": (flags & 0x04) != 0,
+        "rightRearTire": (flags & 0x08) != 0,
+        "fuel": (flags & 0x10) != 0,
+        "tearoff": (flags & 0x20) != 0,
+        "fastRepair": (flags & 0x40) != 0,
+        "fuelLiters": pit.get("pitServiceFuelLiters") if finite(pit.get("pitServiceFuelLiters")) and pit.get("pitServiceFuelLiters") >= 0 else None,
+        "requestedTireCompoundIndex": requested_compound,
+        "requestedTireCompoundLabel": (definition or {}).get("label"),
+        "requestedTireCompoundShortLabel": (definition or {}).get("shortLabel"),
+    }
+
+
+def live_pit_service_model(pit: dict[str, Any], tire_compounds: dict[str, Any]) -> dict[str, Any]:
+    request = pit_service_request_from_flags(pit, tire_compounds)
+    requested_tire_count = sum(1 for key in ("leftFrontTire", "rightFrontTire", "leftRearTire", "rightRearTire") if request.get(key) is True)
+    tires = {
+        "requestedTireCount": requested_tire_count,
+        "dryTireSetLimit": pit.get("playerCarDryTireSetLimit"),
+        "tireSetsUsed": pit.get("tireSetsUsed"),
+        "tireSetsAvailable": pit.get("tireSetsAvailable"),
+        "leftTireSetsUsed": pit.get("leftTireSetsUsed"),
+        "rightTireSetsUsed": pit.get("rightTireSetsUsed"),
+        "frontTireSetsUsed": pit.get("frontTireSetsUsed"),
+        "rearTireSetsUsed": pit.get("rearTireSetsUsed"),
+        "leftTireSetsAvailable": pit.get("leftTireSetsAvailable"),
+        "rightTireSetsAvailable": pit.get("rightTireSetsAvailable"),
+        "frontTireSetsAvailable": pit.get("frontTireSetsAvailable"),
+        "rearTireSetsAvailable": pit.get("rearTireSetsAvailable"),
+        "leftFrontTiresUsed": pit.get("leftFrontTiresUsed"),
+        "rightFrontTiresUsed": pit.get("rightFrontTiresUsed"),
+        "leftRearTiresUsed": pit.get("leftRearTiresUsed"),
+        "rightRearTiresUsed": pit.get("rightRearTiresUsed"),
+        "leftFrontTiresAvailable": pit.get("leftFrontTiresAvailable"),
+        "rightFrontTiresAvailable": pit.get("rightFrontTiresAvailable"),
+        "leftRearTiresAvailable": pit.get("leftRearTiresAvailable"),
+        "rightRearTiresAvailable": pit.get("rightRearTiresAvailable"),
+        "requestedCompoundIndex": request.get("requestedTireCompoundIndex"),
+        "requestedCompoundLabel": request.get("requestedTireCompoundLabel"),
+        "requestedCompoundShortLabel": request.get("requestedTireCompoundShortLabel"),
+        "currentCompoundIndex": (tire_compounds.get("playerCar") or {}).get("compoundIndex"),
+        "currentCompoundLabel": (tire_compounds.get("playerCar") or {}).get("label"),
+        "currentCompoundShortLabel": (tire_compounds.get("playerCar") or {}).get("shortLabel"),
+        "leftFrontChangeRequested": request.get("leftFrontTire"),
+        "rightFrontChangeRequested": request.get("rightFrontTire"),
+        "leftRearChangeRequested": request.get("leftRearTire"),
+        "rightRearChangeRequested": request.get("rightRearTire"),
+        "leftFrontPressureKpa": None,
+        "rightFrontPressureKpa": None,
+        "leftRearPressureKpa": None,
+        "rightRearPressureKpa": None,
+    }
+    return {
+        "hasData": pit.get("hasData") is True,
+        "quality": pit.get("quality") or "unavailable",
+        "onPitRoad": pit.get("onPitRoad") is True,
+        "pitstopActive": pit.get("pitstopActive") is True,
+        "playerCarInPitStall": pit.get("playerCarInPitStall") is True,
+        "teamOnPitRoad": pit.get("teamOnPitRoad"),
+        "status": pit.get("pitServiceStatus"),
+        "flags": pit.get("pitServiceFlags"),
+        "request": request,
+        "repair": {
+            "requiredSeconds": pit.get("pitRepairLeftSeconds"),
+            "optionalSeconds": pit.get("pitOptRepairLeftSeconds"),
+        },
+        "tires": tires,
+        "fastRepair": {
+            "selected": request.get("fastRepair") is True,
+            "localUsed": pit.get("fastRepairUsed"),
+            "localAvailable": pit.get("fastRepairAvailable"),
+            "teamUsed": pit.get("teamFastRepairsUsed"),
+        },
+    }
 
 
 def session_type_label(session_kind: str | None, selected: dict[str, Any] | None) -> str:
@@ -612,12 +1195,17 @@ def build_live_snapshot(
     track_length = track_length_meters(session_data)
     track_wetness = raw.get("TrackWetness") if isinstance(raw.get("TrackWetness"), int) else None
     clutch = clutch_control_input(raw)
-    fuel_level = positive(raw.get("FuelLevel"))
-    fuel_pct = unit_interval(raw.get("FuelLevelPct"))
     on_pit_road = bool(raw.get("OnPitRoad") or raw.get("PlayerCarInPitStall") or (reference or {}).get("onPitRoad"))
     session_time_remain = valid_non_negative(raw.get("SessionTimeRemain"))
     car_screen_name = str(((session_data.get("DriverInfo") or {}).get("DriverCarScreenName") or "")).strip()
-    track_display_name = str(((session_data.get("WeekendInfo") or {}).get("TrackDisplayName") or "")).strip()
+    weekend = weekend_info(session_data)
+    track_display_name = str((weekend.get("TrackDisplayName") or "")).strip()
+    sectors = live_track_map_sectors(session_data)
+    fuel_snapshot = live_fuel_snapshot(session_data, raw)
+    tire_compounds = live_tire_compounds(session_data, timing_rows, focus_idx, player_idx, raw)
+    tire_condition = live_tire_condition(raw)
+    fuel_pit = live_fuel_pit_model(raw, values, player_idx, on_pit_road, fuel_snapshot)
+    pit_service = live_pit_service_model(fuel_pit, tire_compounds)
     return {
         "isConnected": True,
         "isCollecting": True,
@@ -630,7 +1218,16 @@ def build_live_snapshot(
                 "sessionType": session_type,
                 "sessionName": str((selected or {}).get("SessionName") or session_type),
                 "eventType": session_type,
-            }
+                "teamRacing": session_bool(weekend.get("TeamRacing")),
+            },
+            "track": {
+                "trackId": weekend.get("TrackID") if isinstance(weekend.get("TrackID"), int) else None,
+                "trackName": str((weekend.get("TrackName") or "")).strip() or None,
+                "trackDisplayName": track_display_name or None,
+                "trackConfigName": str((weekend.get("TrackConfigName") or "")).strip() or None,
+                "trackLengthKm": (float(track_length) / 1000.0) if positive(track_length) is not None else None,
+                "trackVersion": str((weekend.get("TrackVersion") or "")).strip() or None,
+            },
         },
         "combo": {
             "trackDisplayName": track_display_name or None,
@@ -638,17 +1235,27 @@ def build_live_snapshot(
         },
         "latestSample": {
             "focusCarIdx": focus_idx,
+            "playerCarIdx": player_idx,
+            "focusLapCompleted": (reference or {}).get("lapCompleted"),
             "focusLapDistPct": (reference or {}).get("lapDistPct"),
             "focusPosition": (reference or {}).get("overallPosition"),
             "focusClassPosition": (reference or {}).get("classPosition"),
             "sessionTime": raw.get("SessionTime"),
             "sessionState": raw.get("SessionState"),
+            "sessionFlags": raw.get("SessionFlags"),
+            "onPitRoad": raw.get("OnPitRoad"),
+            "playerTrackSurface": raw.get("PlayerTrackSurface"),
             "carLeftRight": raw.get("CarLeftRight"),
+            "lapDeltaToSessionBestLapSeconds": raw.get("LapDeltaToSessionBestLap") if finite(raw.get("LapDeltaToSessionBestLap")) else None,
+            "lapDeltaToSessionBestLapRate": raw.get("LapDeltaToSessionBestLap_DD") if finite(raw.get("LapDeltaToSessionBestLap_DD")) else None,
+            "lapDeltaToSessionBestLapOk": raw.get("LapDeltaToSessionBestLap_OK"),
         },
         "fuel": {
-            "fuelLevelLiters": fuel_level,
-            "fuelLevelPercent": fuel_pct,
-            "fuelUsePerHourKg": positive(raw.get("FuelUsePerHour")),
+            "fuelLevelLiters": fuel_snapshot.get("fuelLevelLiters"),
+            "fuelLevelPercent": fuel_snapshot.get("fuelLevelPercent"),
+            "fuelUsePerHourKg": fuel_snapshot.get("fuelUsePerHourKg"),
+            "fuelUsePerHourLiters": fuel_snapshot.get("fuelUsePerHourLiters"),
+            "fuelPerLapLiters": fuel_snapshot.get("fuelPerLapLiters"),
         },
         "proximity": {},
         "leaderGap": {},
@@ -673,15 +1280,21 @@ def build_live_snapshot(
                 "sessionType": session_type,
                 "sessionName": str((selected or {}).get("SessionName") or session_type),
                 "eventType": session_type,
+                "teamRacing": session_bool(weekend.get("TeamRacing")),
                 "currentSessionNum": raw.get("SessionNum"),
                 "sessionState": raw.get("SessionState"),
                 "sessionPhase": replay_frame.get("sessionPhase"),
                 "sessionTimeSeconds": raw.get("SessionTime"),
                 "sessionTimeRemainSeconds": session_time_remain,
+                "sessionTimeTotalSeconds": raw_non_negative(raw, "SessionTimeTotal"),
+                "sessionLapsRemain": session_laps_remain(raw),
                 "sessionLapsRemainEx": raw.get("SessionLapsRemainEx"),
-                "sessionLapsTotal": raw.get("SessionLapsTotal"),
+                "sessionLapsTotal": session_laps_total(raw),
+                "raceLaps": raw_non_negative_int(raw, "RaceLaps"),
                 "trackDisplayName": track_display_name or None,
+                "trackLengthKm": (float(track_length) / 1000.0) if positive(track_length) is not None else None,
                 "carScreenName": car_screen_name or None,
+                "carDisplayName": car_screen_name or None,
             },
             "driverDirectory": {
                 "hasData": bool(drivers),
@@ -726,42 +1339,24 @@ def build_live_snapshot(
                 "isOnTrack": raw.get("IsOnTrack"),
                 "isInGarage": raw.get("IsInGarage"),
                 "isGarageVisible": raw.get("IsInGarage"),
+                "lap": raw_int(raw, "Lap"),
+                "lapCompleted": raw_int(raw, "LapCompleted"),
                 "lapDistPct": (reference or {}).get("lapDistPct") or raw.get("LapDistPct"),
                 "onPitRoad": on_pit_road,
+                "driversSoFar": raw_non_negative_int(raw, "DCDriversSoFar"),
+                "driverChangeLapStatus": raw_int(raw, "DCLapStatus"),
             },
-            "trackMap": {"hasData": True, "quality": "capture-derived", "sectors": []},
-            "fuelPit": {
-                "hasData": any(raw.get(name) is not None for name in (
-                    "FuelLevel",
-                    "FuelLevelPct",
-                    "FuelUsePerHour",
-                    "PitSvFlags",
-                    "PitSvFuel",
-                    "PitRepairLeft",
-                    "PitOptRepairLeft",
-                    "PlayerCarPitSvStatus",
-                    "TireSetsUsed",
-                    "FastRepairUsed",
-                )) or on_pit_road,
-                "quality": "capture-derived",
-                "fuel": {
-                    "fuelLevelLiters": fuel_level,
-                    "fuelLevelPercent": fuel_pct,
-                    "fuelUsePerHourKg": positive(raw.get("FuelUsePerHour")),
-                },
-                "onPitRoad": on_pit_road,
-                "pitstopActive": raw.get("PitstopActive") is True,
-                "playerCarInPitStall": raw.get("PlayerCarInPitStall") is True,
-                "teamOnPitRoad": array_value(values, "CarIdxOnPitRoad", player_idx) if player_idx is not None else None,
-                "pitServiceStatus": raw.get("PlayerCarPitSvStatus") if isinstance(raw.get("PlayerCarPitSvStatus"), int) else None,
-                "pitServiceFlags": raw.get("PitSvFlags") if isinstance(raw.get("PitSvFlags"), int) else None,
-                "pitServiceFuelLiters": positive(raw.get("PitSvFuel")),
-                "pitRepairLeftSeconds": valid_non_negative(raw.get("PitRepairLeft")),
-                "pitOptRepairLeftSeconds": valid_non_negative(raw.get("PitOptRepairLeft")),
-                "tireSetsUsed": raw.get("TireSetsUsed") if isinstance(raw.get("TireSetsUsed"), int) else None,
-                "fastRepairUsed": raw.get("FastRepairUsed") if isinstance(raw.get("FastRepairUsed"), int) else None,
-                "teamFastRepairsUsed": array_value(values, "CarIdxFastRepairsUsed", player_idx) if player_idx is not None else None,
+            "trackMap": {
+                "hasData": bool(sectors),
+                "hasSectors": len(sectors) >= 2,
+                "hasLiveTiming": False,
+                "quality": "capture-derived" if sectors else "unavailable",
+                "sectors": sectors,
             },
+            "fuelPit": fuel_pit,
+            "pitService": pit_service,
+            "tireCompounds": tire_compounds,
+            "tireCondition": tire_condition,
             "raceProgress": {
                 "hasData": reference is not None,
                 "quality": "capture-derived" if reference is not None else "unavailable",
@@ -773,13 +1368,15 @@ def build_live_snapshot(
             },
             "raceProjection": {"hasData": reference is not None, "quality": "capture-derived" if reference is not None else "unavailable"},
             "weather": {
-                "hasData": any(raw.get(name) is not None for name in ("AirTemp", "TrackTempCrew", "TrackTemp", "TrackWetness", "WeatherDeclaredWet", "Skies", "Precipitation", "WindVel", "WindDir", "RelativeHumidity", "FogLevel")),
+                "hasData": any(raw.get(name) is not None for name in ("AirTemp", "TrackTempCrew", "TrackTemp", "TrackWetness", "WeatherDeclaredWet", "Skies", "Precipitation", "WindVel", "WindDir", "RelativeHumidity", "FogLevel", "AirPressure", "SolarAltitude", "SolarAzimuth")) or any(weekend.get(name) for name in ("TrackWeatherType", "TrackSkies", "TrackPrecipitation")),
                 "quality": "capture-derived",
                 "airTempC": raw.get("AirTemp") if finite(raw.get("AirTemp")) else None,
                 "trackTempCrewC": raw.get("TrackTempCrew") if finite(raw.get("TrackTempCrew")) else raw.get("TrackTemp") if finite(raw.get("TrackTemp")) else None,
                 "trackWetness": track_wetness,
                 "weatherDeclaredWet": raw.get("WeatherDeclaredWet") if isinstance(raw.get("WeatherDeclaredWet"), bool) else None,
+                "declaredWetSurfaceMismatch": raw.get("WeatherDeclaredWet") is True and track_wetness is not None and track_wetness <= 1,
                 "trackWetnessLabel": track_wetness_label(track_wetness),
+                "weatherType": str(weekend.get("TrackWeatherType") or "").strip() or None,
                 "skies": raw.get("Skies") if isinstance(raw.get("Skies"), int) else None,
                 "skiesLabel": skies_label(raw.get("Skies"), session_data),
                 "precipitationPercent": valid_non_negative(raw.get("Precipitation")),
@@ -787,6 +1384,9 @@ def build_live_snapshot(
                 "windDirectionRadians": raw.get("WindDir") if finite(raw.get("WindDir")) else None,
                 "relativeHumidityPercent": valid_non_negative(raw.get("RelativeHumidity")),
                 "fogLevelPercent": valid_non_negative(raw.get("FogLevel")),
+                "airPressurePa": valid_non_negative(raw.get("AirPressure")),
+                "solarAltitudeRadians": raw.get("SolarAltitude") if finite(raw.get("SolarAltitude")) else None,
+                "solarAzimuthRadians": raw.get("SolarAzimuth") if finite(raw.get("SolarAzimuth")) else None,
                 "rubberState": str((selected or {}).get("SessionTrackRubberState") or "").strip() or None,
             },
             "inputs": {

@@ -92,16 +92,26 @@ function markerMarkup(marker) {
   const fill = colorCss(marker?.fill);
   const stroke = colorCss(marker?.stroke);
   if (!fill || !stroke) return '';
+  const alertRing = alertRingMarkup(marker);
   const circle = `<circle cx="${number(marker.x)}" cy="${number(marker.y)}" r="${number(marker.radius)}" fill="${fill}" stroke="${stroke}" stroke-width="${number(marker.strokeWidth)}"></circle>`;
   if (!marker.label) {
-    return circle;
+    return `${alertRing}${circle}`;
   }
 
   return `
     <g>
+      ${alertRing}
       ${circle}
       <text x="${number(marker.x)}" y="${number(finiteOr(marker.y, 0) + finiteOr(marker.labelFontSize, 7.6) * 0.38)}" text-anchor="middle" font-size="${number(marker.labelFontSize)}" font-weight="800" fill="${colorCss(marker.labelColor) || 'rgba(5,13,17,1)'}">${escapeHtml(marker.label)}</text>
     </g>`;
+}
+
+function alertRingMarkup(marker) {
+  const stroke = colorCss(marker?.alertRingStroke);
+  const radius = finiteOr(marker?.alertRingRadius, 0);
+  const strokeWidth = finiteOr(marker?.alertRingStrokeWidth, 0);
+  if (!stroke || radius <= 0 || strokeWidth <= 0) return '';
+  return `<circle cx="${number(marker.x)}" cy="${number(marker.y)}" r="${number(radius)}" fill="none" stroke="${stroke}" stroke-width="${number(strokeWidth)}"></circle>`;
 }
 
 function paintAttributes(primitive) {

@@ -93,7 +93,8 @@ internal sealed record TrackMapOverlayViewModel(
                 NormalizeProgress(lapDistPct),
                 isFocus,
                 scoringRow?.CarClassColorHex ?? row.CarClassColorHex,
-                Position(row, scoringRow, referenceCarIdx));
+                Position(row, scoringRow),
+                row.TrackSurface);
             if (!markers.TryGetValue(row.CarIdx, out var existing)
                 || marker.IsFocus
                 || !existing.IsFocus)
@@ -112,7 +113,8 @@ internal sealed record TrackMapOverlayViewModel(
                 NormalizeProgress(progress),
                 IsFocus: true,
                 ClassColorHex: null,
-                Position: FocusPosition(snapshot, scoringByCarIdx, focusMarkerCarIdx));
+                Position: FocusPosition(snapshot, scoringByCarIdx, focusMarkerCarIdx),
+                TrackSurface: snapshot.LatestSample?.PlayerTrackSurface);
         }
 
         return markers.Values
@@ -121,17 +123,7 @@ internal sealed record TrackMapOverlayViewModel(
             .ToArray();
     }
 
-    private static int? Position(LiveTimingRow row, LiveScoringRow? scoringRow, int? referenceCarIdx)
-    {
-        if (!row.IsFocus
-            && row.CarIdx != referenceCarIdx
-            && scoringRow?.IsFocus != true)
-        {
-            return null;
-        }
-
-        return Position(scoringRow) ?? Position(row);
-    }
+    private static int? Position(LiveTimingRow row, LiveScoringRow? scoringRow) => Position(scoringRow) ?? Position(row);
 
     private static int? Position(LiveTimingRow? row)
     {
@@ -193,4 +185,13 @@ internal sealed record TrackMapOverlayMarker(
     double LapDistPct,
     bool IsFocus,
     string? ClassColorHex,
-    int? Position);
+    int? Position,
+    int? TrackSurface = null,
+    TrackMapMarkerAlertKind AlertKind = TrackMapMarkerAlertKind.None,
+    double AlertPulseProgress = 0d);
+
+internal enum TrackMapMarkerAlertKind
+{
+    None = 0,
+    OffTrack = 1
+}

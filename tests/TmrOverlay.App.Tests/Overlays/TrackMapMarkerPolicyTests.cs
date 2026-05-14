@@ -76,7 +76,7 @@ public sealed class TrackMapMarkerPolicyTests
             Markers:
             [
                 new TrackMapOverlayMarker(10, 0.25d, IsFocus: true, ClassColorHex: null, Position: 5),
-                new TrackMapOverlayMarker(11, 0.50d, IsFocus: false, ClassColorHex: "#FFDA59", Position: null)
+                new TrackMapOverlayMarker(11, 0.50d, IsFocus: false, ClassColorHex: "#FFDA59", Position: 12)
             ],
             Sectors:
             [
@@ -102,6 +102,109 @@ public sealed class TrackMapMarkerPolicyTests
         Assert.Equal(218, opponent.Fill.Green);
         Assert.Equal(89, opponent.Fill.Blue);
         Assert.Equal(245, opponent.Fill.Alpha);
+        Assert.Equal("12", opponent.Label);
+        Assert.True(opponent.LabelFontSize < focus.LabelFontSize);
+        Assert.True(opponent.Radius < focus.Radius);
+    }
+
+    [Fact]
+    public void TrackMapRenderModel_UsesUniformNonFocusLabelRadius()
+    {
+        var viewModel = ViewModel(
+            Markers:
+            [
+                new TrackMapOverlayMarker(10, 0.25d, IsFocus: true, ClassColorHex: null, Position: 5),
+                new TrackMapOverlayMarker(11, 0.50d, IsFocus: false, ClassColorHex: "#FFDA59", Position: 4),
+                new TrackMapOverlayMarker(12, 0.75d, IsFocus: false, ClassColorHex: "#A66CFF", Position: 12)
+            ],
+            Sectors: []);
+
+        var renderModel = TrackMapRenderModel.FromViewModel(viewModel);
+
+        var focus = Assert.Single(renderModel.Markers, marker => marker.IsFocus);
+        var singleDigit = Assert.Single(renderModel.Markers, marker => marker.CarIdx == 11);
+        var doubleDigit = Assert.Single(renderModel.Markers, marker => marker.CarIdx == 12);
+        Assert.Equal(singleDigit.Radius, doubleDigit.Radius, precision: 6);
+        Assert.True(focus.Radius > singleDigit.Radius);
+    }
+
+    [Fact]
+    public void TrackMapRenderModel_ColorsBoundaryOnlyFromIndividualSectorHighlight()
+    {
+        var viewModel = ViewModel(
+            Markers: [],
+            Sectors:
+            [
+                new LiveTrackSectorSegment(
+                    0,
+                    0d,
+                    0.33d,
+                    LiveTrackSectorHighlights.BestLap,
+                    BoundaryHighlight: LiveTrackSectorHighlights.PersonalBest),
+                new LiveTrackSectorSegment(
+                    1,
+                    0.33d,
+                    0.66d,
+                    LiveTrackSectorHighlights.BestLap),
+                new LiveTrackSectorSegment(
+                    2,
+                    0.66d,
+                    1d,
+                    LiveTrackSectorHighlights.BestLap)
+            ]);
+
+        var renderModel = TrackMapRenderModel.FromViewModel(viewModel);
+        var boundaryLines = renderModel.Primitives
+            .Where(primitive => primitive.Kind == "line" && Math.Abs(primitive.StrokeWidth - 2.2d) < 0.001d)
+            .ToArray();
+
+        Assert.Contains(boundaryLines, primitive => IsColor(primitive.Stroke, red: 80, green: 214, blue: 124));
+        Assert.Contains(boundaryLines, primitive => IsColor(primitive.Stroke, red: 0, green: 232, blue: 255));
+        Assert.DoesNotContain(boundaryLines, primitive => IsColor(primitive.Stroke, red: 182, green: 92, blue: 255));
+    }
+
+    [Fact]
+    public void TrackMapRenderModelBuilder_FlashesNonFocusMarkerOnOffTrackTransition()
+    {
+        var builder = new TrackMapRenderModelBuilder();
+        var startedAt = DateTimeOffset.Parse("2026-05-14T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
+
+        _ = builder.Build(ViewModel(
+            Markers:
+            [
+                new TrackMapOverlayMarker(10, 0.25d, IsFocus: true, ClassColorHex: null, Position: 5, TrackSurface: 3),
+                new TrackMapOverlayMarker(11, 0.50d, IsFocus: false, ClassColorHex: "#FFDA59", Position: 12, TrackSurface: 3)
+            ],
+            Sectors: []), startedAt);
+
+        var flashing = builder.Build(ViewModel(
+            Markers:
+            [
+                new TrackMapOverlayMarker(10, 0.25d, IsFocus: true, ClassColorHex: null, Position: 5, TrackSurface: 0),
+                new TrackMapOverlayMarker(11, 0.50d, IsFocus: false, ClassColorHex: "#FFDA59", Position: 12, TrackSurface: 0)
+            ],
+            Sectors: []), startedAt.AddMilliseconds(100));
+
+        var focus = Assert.Single(flashing.Markers, marker => marker.IsFocus);
+        Assert.False(IsColor(focus.Fill, red: 255, green: 218, blue: 89));
+        var opponent = Assert.Single(flashing.Markers, marker => !marker.IsFocus);
+        Assert.True(IsColor(opponent.Fill, red: 255, green: 218, blue: 89));
+        Assert.Equal("off-track", opponent.AlertKind);
+        Assert.NotNull(opponent.AlertRingStroke);
+        Assert.True(opponent.AlertRingRadius > opponent.Radius);
+
+        var expired = builder.Build(ViewModel(
+            Markers:
+            [
+                new TrackMapOverlayMarker(10, 0.25d, IsFocus: true, ClassColorHex: null, Position: 5, TrackSurface: 0),
+                new TrackMapOverlayMarker(11, 0.50d, IsFocus: false, ClassColorHex: "#FFDA59", Position: 12, TrackSurface: 0)
+            ],
+            Sectors: []), startedAt.AddSeconds(3));
+
+        opponent = Assert.Single(expired.Markers, marker => !marker.IsFocus);
+        Assert.False(IsColor(opponent.Fill, red: 255, green: 218, blue: 89));
+        Assert.Null(opponent.AlertKind);
+        Assert.Null(opponent.AlertRingStroke);
     }
 
     private static LiveTimingRow Row(int carIdx, bool hasTakenGrid)
@@ -206,6 +309,32 @@ public sealed class TrackMapMarkerPolicyTests
             FocusLapCompleted: 0,
             FocusLapDistPct: 0.20d,
             PlayerTrackSurface: playerTrackSurface);
+    }
+
+    private static TrackMapOverlayViewModel ViewModel(
+        IReadOnlyList<TrackMapOverlayMarker> Markers,
+        IReadOnlyList<LiveTrackSectorSegment> Sectors,
+        TrackMapDocument? TrackMap = null)
+    {
+        return new TrackMapOverlayViewModel(
+            Title: "Track Map",
+            Status: "live",
+            Source: "source: live position telemetry",
+            IsAvailable: true,
+            Markers,
+            Sectors,
+            ShowSectorBoundaries: true,
+            InternalOpacity: 0.88d,
+            IncludeUserMaps: true,
+            TrackMap);
+    }
+
+    private static bool IsColor(TrackMapRenderColor? color, int red, int green, int blue)
+    {
+        return color is { } actual
+            && actual.Red == red
+            && actual.Green == green
+            && actual.Blue == blue;
     }
 
     private static TrackMapDocument TestTrackMapDocument()

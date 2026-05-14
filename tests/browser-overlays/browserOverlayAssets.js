@@ -1026,7 +1026,10 @@ function trackMapMarkers(live) {
       lapDistPct: normalizeProgress(row.lapDistPct),
       isFocus,
       classColorHex: row.carClassColorHex || null,
-      position: isFocus ? row.classPosition ?? row.overallPosition ?? null : null
+      position: row.classPosition ?? row.overallPosition ?? null,
+      trackSurface: Number.isFinite(row.trackSurface) ? row.trackSurface : null,
+      alertKind: isFocus ? null : row.trackMapAlertKind ?? row.alertKind ?? null,
+      alertPulseProgress: isFocus ? 0 : row.trackMapAlertPulseProgress ?? row.alertPulseProgress ?? 0
     });
   }
 
@@ -1049,7 +1052,10 @@ function trackMapMarkers(live) {
         ?? focusRow?.overallPosition
         ?? latest.focusClassPosition
         ?? latest.focusPosition
-        ?? null
+        ?? null,
+      trackSurface: Number.isFinite(latest.playerTrackSurface) ? latest.playerTrackSurface : null,
+      alertKind: null,
+      alertPulseProgress: 0
     });
   }
 
@@ -1095,9 +1101,9 @@ function generatedTrackMapPrimitives(trackMap, sectors, internalOpacity, showSec
     }
   }
   if (showSectorBoundaries) {
-    for (const progress of boundaryProgresses(sectors)) {
-      const tick = geometryBoundaryTick(trackMap.racingLine, transform, progress);
-      if (tick) addBoundaryPrimitives(primitives, tick.start, tick.end, isStartFinish(progress));
+    for (const boundary of boundaryMarkers(sectors)) {
+      const tick = geometryBoundaryTick(trackMap.racingLine, transform, boundary.progress);
+      if (tick) addBoundaryPrimitives(primitives, tick.start, tick.end, isStartFinish(boundary.progress), boundary.highlight);
     }
   }
   if (trackMap?.pitLane?.points?.length >= 2) {
@@ -1129,7 +1135,8 @@ function circleTrackMapPrimitives(sectors, internalOpacity, showSectorBoundaries
     }
   }
   if (showSectorBoundaries) {
-    for (const progress of boundaryProgresses(sectors)) {
+    for (const boundary of boundaryMarkers(sectors)) {
+      const progress = boundary.progress;
       const point = pointOnCircle(progress);
       const dx = point.x - 180;
       const dy = point.y - 180;
@@ -1139,7 +1146,8 @@ function circleTrackMapPrimitives(sectors, internalOpacity, showSectorBoundaries
         primitives,
         { x: point.x - dx / length * half, y: point.y - dy / length * half },
         { x: point.x + dx / length * half, y: point.y + dy / length * half },
-        isStartFinish(progress));
+        isStartFinish(progress),
+        boundary.highlight);
     }
   }
   return primitives;
@@ -1148,19 +1156,38 @@ function circleTrackMapPrimitives(sectors, internalOpacity, showSectorBoundaries
 function trackMapRenderMarker(marker, trackMap) {
   const transform = trackMap?.racingLine?.points?.length >= 3 ? trackMapTransform(trackMap) : null;
   const point = transform ? pointOnGeometry(trackMap.racingLine, transform, marker.lapDistPct) : pointOnCircle(marker.lapDistPct);
-  const label = marker.isFocus && Number.isFinite(marker.position) && marker.position > 0 ? String(marker.position) : null;
+  const label = Number.isFinite(marker.position) && marker.position > 0 ? String(marker.position) : null;
+  const labelFontSize = marker.isFocus ? 7.6 : 5.4;
+  const radius = label
+    ? marker.isFocus
+      ? Math.max(5.7, 5.1 + label.length * 2.9)
+      : Math.max(5.7, 3.9 + Math.max(0, label.length - 2) * 1.9)
+    : marker.isFocus ? 5.7 : Math.max(1.2, 3.6 - 2);
+  const alertPulseProgress = marker.alertKind === 'off-track'
+    ? Math.max(0, Math.min(1, finiteNumberOr(marker.alertPulseProgress, 0.25)))
+    : 0;
+  const alertActive = marker.alertKind === 'off-track';
+  const alertRingRadius = alertActive ? radius + 3.2 + 5.2 * alertPulseProgress : 0;
+  const alertRingAlpha = alertActive ? Math.round(230 - alertPulseProgress * 140) : 0;
   return {
     carIdx: marker.carIdx,
     x: point.x,
     y: point.y,
-    radius: label ? Math.max(5.7, 5.1 + label.length * 2.9) : marker.isFocus ? 5.7 : 3.6,
+    radius,
     isFocus: marker.isFocus,
-    fill: marker.isFocus ? rgba(0, 232, 255, 255) : classBorderColor(marker.classColorHex, 1),
+    fill: marker.alertKind === 'off-track'
+      ? rgba(255, 218, 89, 255)
+      : marker.isFocus ? rgba(0, 232, 255, 255) : classBorderColor(marker.classColorHex, 1),
     stroke: rgba(8, 14, 18, 230),
     strokeWidth: marker.isFocus ? 2 : 1.4,
     label,
     labelColor: rgba(5, 13, 17, 255),
-    labelFontSize: 7.6
+    labelFontSize,
+    alertKind: alertActive ? 'off-track' : null,
+    alertPulseProgress,
+    alertRingRadius,
+    alertRingStroke: alertActive ? rgba(255, 247, 210, alertRingAlpha) : null,
+    alertRingStrokeWidth: 2.3
   };
 }
 
@@ -1184,6 +1211,11 @@ function trackMapTransform(trackMap) {
     left: 20 + (320 - width * scale) / 2,
     top: 20 + (320 - height * scale) / 2
   };
+}
+
+function finiteNumberOr(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
 }
 
 function mapTrackPoint(point, transform) {
@@ -1268,14 +1300,14 @@ function primitiveEllipse(rect, fill, stroke, strokeWidth) {
   return { kind: 'ellipse', points: [], closed: false, rect, startDegrees: 0, sweepDegrees: 0, fill, stroke, strokeWidth };
 }
 
-function addBoundaryPrimitives(primitives, start, end, isStartFinishLine) {
+function addBoundaryPrimitives(primitives, start, end, isStartFinishLine, highlight = 'none') {
   if (isStartFinishLine) {
     primitives.push(primitiveLine(start, end, rgba(5, 9, 14, 210), 5.8));
-    primitives.push(primitiveLine(start, end, rgba(255, 209, 91, 255), 3.2));
+    primitives.push(primitiveLine(start, end, boundaryHighlightColor(highlight) || rgba(255, 209, 91, 255), 3.2));
     primitives.push(primitiveLine(start, end, rgba(255, 247, 255, 235), 1.2));
     return;
   }
-  primitives.push(primitiveLine(start, end, rgba(0, 232, 255, 255), 2.2));
+  primitives.push(primitiveLine(start, end, boundaryHighlightColor(highlight) || rgba(0, 232, 255, 255), 2.2));
 }
 
 function primitiveLine(start, end, stroke, strokeWidth) {
@@ -1289,10 +1321,14 @@ function segmentRanges(startPct, endPct) {
   return [{ startPct: start, endPct: Math.max(0, Math.min(1, end)) }];
 }
 
-function boundaryProgresses(sectors) {
+function boundaryMarkers(sectors) {
   if (!Array.isArray(sectors) || sectors.length < 2) return [];
   const seen = new Set();
-  return sectors.map((sector) => normalizeProgress(sector.startPct)).filter((progress) => {
+  return sectors.map((sector) => ({
+    progress: sector.endPct >= 1 ? 1 : normalizeProgress(sector.endPct),
+    highlight: sector.boundaryHighlight || 'none'
+  })).filter((boundary) => {
+    const progress = normalizeProgress(boundary.progress);
     const key = Math.round(progress * 100000);
     if (seen.has(key)) return false;
     seen.add(key);
@@ -1306,6 +1342,10 @@ function hasTrackMapHighlight(sector) {
 
 function sectorHighlightColor(highlight) {
   return highlight === 'best-lap' ? rgba(182, 92, 255, 255) : rgba(80, 214, 124, 255);
+}
+
+function boundaryHighlightColor(highlight) {
+  return hasTrackMapHighlight({ highlight }) ? sectorHighlightColor(highlight) : null;
 }
 
 function trackInteriorFill(opacity) {
