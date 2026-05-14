@@ -71,6 +71,9 @@ final class OverlayCatalogueBehaviourTests: XCTestCase {
     func testGarageCoverVisibilityFollowsGarageSignal() {
         let cover = GarageCoverView()
 
+        cover.update(with: .empty)
+        XCTAssertFalse(cover.isHidden)
+
         cover.update(with: liveSnapshot(sessionTime: 1_200, isGarageVisible: false))
         XCTAssertTrue(cover.isHidden)
 

@@ -302,6 +302,13 @@ public sealed class AppSettingsStoreTests
                         "relative.cars-each-side": "7",
                         "track-map.build-from-telemetry": "false"
                       }
+                    },
+                    {
+                      "id": "session-weather",
+                      "options": {
+                        "chrome.header.status.race": "false",
+                        "chrome.footer.source.race": "false"
+                      }
                     }
                   ]
                 }
@@ -310,6 +317,7 @@ public sealed class AppSettingsStoreTests
             var settings = new AppSettingsStore(storage).Load();
             var relative = settings.Overlays.Single(overlay => overlay.Id == "relative");
             var fuel = settings.Overlays.Single(overlay => overlay.Id == "fuel-calculator");
+            var sessionWeather = settings.Overlays.Single(overlay => overlay.Id == "session-weather");
 
             Assert.Equal(3, relative.GetIntegerOption(OverlayOptionKeys.RelativeCarsEachSide, 5, 0, 8));
             Assert.False(relative.Options.ContainsKey(OverlayOptionKeys.FuelAdvice));
@@ -317,6 +325,8 @@ public sealed class AppSettingsStoreTests
             Assert.False(fuel.GetBooleanOption(OverlayOptionKeys.FuelAdvice, defaultValue: true));
             Assert.False(fuel.Options.ContainsKey(OverlayOptionKeys.RelativeCarsEachSide));
             Assert.False(fuel.Options.ContainsKey(OverlayOptionKeys.TrackMapBuildFromTelemetry));
+            Assert.False(sessionWeather.GetBooleanOption(OverlayOptionKeys.ChromeHeaderStatusRace, defaultValue: true));
+            Assert.False(sessionWeather.Options.ContainsKey(OverlayOptionKeys.ChromeFooterSourceRace));
         }
         finally
         {

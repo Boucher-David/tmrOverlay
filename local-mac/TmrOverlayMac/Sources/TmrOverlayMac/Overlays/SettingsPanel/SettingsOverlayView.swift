@@ -1,6 +1,11 @@
 import AppKit
 
 final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate {
+    private struct ChromeSettingsRow {
+        var label: String
+        var keys: [String]
+    }
+
     private static let designV2Theme = DesignV2Theme.outrun
     private var settings: ApplicationSettings
     private var captureSnapshot: TelemetryCaptureStatusSnapshot
@@ -418,24 +423,12 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
             tabs.addTabViewItem(regionTab("Header", view: overlayChromeRegion(
                 overlayId: definition.id,
                 title: "Header",
-                itemLabel: "Status",
-                keys: [
-                    "chrome.header.status.test",
-                    "chrome.header.status.practice",
-                    "chrome.header.status.qualifying",
-                    "chrome.header.status.race"
-                ]
+                rows: Self.headerChromeRows
             )))
             tabs.addTabViewItem(regionTab("Footer", view: overlayChromeRegion(
                 overlayId: definition.id,
                 title: "Footer",
-                itemLabel: "Source",
-                keys: [
-                    "chrome.footer.source.test",
-                    "chrome.footer.source.practice",
-                    "chrome.footer.source.qualifying",
-                    "chrome.footer.source.race"
-                ]
+                rows: Self.footerChromeRows(for: definition.id)
             )))
         }
         return tabs
@@ -517,8 +510,7 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
     private func overlayChromeRegion(
         overlayId: String,
         title: String,
-        itemLabel: String,
-        keys: [String]
+        rows: [ChromeSettingsRow]
     ) -> NSView {
         let content = regionContentView()
         guard supportsSharedChromeSettings(overlayId) else {
@@ -528,25 +520,61 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         }
 
         content.addSubview(label(title, frame: NSRect(x: 18, y: 376, width: 520, height: 24), bold: true))
+        if rows.isEmpty {
+            content.addSubview(label("No \(title.lowercased()) controls for this overlay.", frame: NSRect(x: 22, y: 334, width: 420, height: 24)))
+            return content
+        }
+
         content.addSubview(label("Item", frame: NSRect(x: 22, y: 334, width: 120, height: 24)))
         content.addSubview(label("Test", frame: NSRect(x: 196, y: 334, width: 90, height: 24)))
         content.addSubview(label("Practice", frame: NSRect(x: 296, y: 334, width: 110, height: 24)))
         content.addSubview(label("Qualifying", frame: NSRect(x: 416, y: 334, width: 120, height: 24)))
         content.addSubview(label("Race", frame: NSRect(x: 548, y: 334, width: 90, height: 24)))
-        content.addSubview(label(itemLabel, frame: NSRect(x: 22, y: 292, width: 150, height: 24)))
         let overlay = settings.overlay(id: overlayId, defaultSize: .zero)
-        for (index, key) in keys.enumerated() {
-            let x = [196, 296, 416, 548][index]
-            let checked = optionBool(overlay, key: key, defaultValue: true)
-            content.addSubview(checkbox(
-                title: "",
-                state: checked,
-                frame: NSRect(x: CGFloat(x), y: 292, width: 32, height: 24),
-                identifier: "\(overlayId)|\(key)"
-            ))
+        for (rowIndex, row) in rows.enumerated() {
+            let y = 292 - CGFloat(rowIndex) * 42
+            content.addSubview(label(row.label, frame: NSRect(x: 22, y: y, width: 150, height: 24)))
+            for (index, key) in row.keys.enumerated() {
+                let x = [196, 296, 416, 548][index]
+                let checked = optionBool(overlay, key: key, defaultValue: true)
+                content.addSubview(checkbox(
+                    title: "",
+                    state: checked,
+                    frame: NSRect(x: CGFloat(x), y: y, width: 32, height: 24),
+                    identifier: "\(overlayId)|\(key)"
+                ))
+            }
         }
 
         return content
+    }
+
+    private static let headerChromeRows = [
+        ChromeSettingsRow(label: "Status", keys: [
+            "chrome.header.status.test",
+            "chrome.header.status.practice",
+            "chrome.header.status.qualifying",
+            "chrome.header.status.race"
+        ]),
+        ChromeSettingsRow(label: "Time remaining", keys: [
+            "chrome.header.time-remaining.test",
+            "chrome.header.time-remaining.practice",
+            "chrome.header.time-remaining.qualifying",
+            "chrome.header.time-remaining.race"
+        ])
+    ]
+
+    private static let footerChromeRows = [
+        ChromeSettingsRow(label: "Source", keys: [
+            "chrome.footer.source.test",
+            "chrome.footer.source.practice",
+            "chrome.footer.source.qualifying",
+            "chrome.footer.source.race"
+        ])
+    ]
+
+    private static func footerChromeRows(for overlayId: String) -> [ChromeSettingsRow] {
+        overlayId.lowercased() == "session-weather" ? [] : footerChromeRows
     }
 
     private func supportsSharedChromeSettings(_ overlayId: String) -> Bool {

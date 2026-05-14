@@ -45,6 +45,11 @@ internal static class OverlayChromeSettings
 
     public static bool ShowFooterSource(OverlaySettings settings, LiveTelemetrySnapshot snapshot)
     {
+        if (!SupportsFooterSource(settings))
+        {
+            return false;
+        }
+
         return IsEnabledForSession(
             settings,
             OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot),
@@ -52,6 +57,11 @@ internal static class OverlayChromeSettings
             OverlayOptionKeys.ChromeFooterSourcePractice,
             OverlayOptionKeys.ChromeFooterSourceQualifying,
             OverlayOptionKeys.ChromeFooterSourceRace);
+    }
+
+    public static bool SupportsFooterSource(OverlaySettings settings)
+    {
+        return settings.Id.Trim().ToLowerInvariant() is not "session-weather";
     }
 
     public static string SettingsSignature(OverlaySettings settings)

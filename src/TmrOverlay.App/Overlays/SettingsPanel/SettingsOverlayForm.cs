@@ -1179,6 +1179,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private TabPage CreateOverlayContentPage(OverlayDefinition definition, OverlaySettings settings)
     {
         var page = CreateTabPage("Content");
+        page.AutoScroll = true;
         var nextTop = 18;
         var hasContent = false;
 
@@ -1247,7 +1248,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
                 page,
                 settings,
                 "Footer",
-                FooterChromeRows,
+                FooterChromeRowsFor(definition.Id),
                 SaveAndApply);
             return page;
         }
@@ -1308,6 +1309,13 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             OverlayOptionKeys.ChromeFooterSourceQualifying,
             OverlayOptionKeys.ChromeFooterSourceRace)
     ];
+
+    private static IReadOnlyList<SettingsOverlayTabSections.OverlayChromeSettingsRow> FooterChromeRowsFor(string overlayId)
+    {
+        return string.Equals(overlayId, "session-weather", StringComparison.OrdinalIgnoreCase)
+            ? []
+            : FooterChromeRows;
+    }
 
     private static bool SuppressHeaderFooterTabs(string overlayId)
     {
@@ -1375,7 +1383,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         SyncGarageCoverStateLabel();
 
         page.Controls.Add(CreateMutedLabel(
-            "The browser source fails closed to the configured cover or TMR fallback while telemetry is unavailable or stale.",
+            "The browser source fails closed to the configured cover or stock fallback while telemetry is unavailable or stale.",
             22,
             top + 170,
             600));
@@ -1384,7 +1392,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         _garageCoverPreviewPanel = CreateGarageCoverPreviewPanel(imagePath, 650, top + 36, 220, 124);
         page.Controls.Add(_garageCoverPreviewPanel);
         _garageCoverPreviewCaptionLabel = CreateMutedLabel(
-            imageStatus.IsUsable ? "Selected cover image" : "Fallback cover",
+            imageStatus.IsUsable ? "Selected cover image" : "Stock fallback cover",
             650,
             top + 168,
             220);
@@ -1434,7 +1442,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             imageStatus.IsUsable ? imagePath ?? string.Empty : GarageCoverImageStatusText(imageStatus));
         SetTextIfChanged(
             _garageCoverPreviewCaptionLabel,
-            imageStatus.IsUsable ? "Selected cover image" : "Fallback cover");
+            imageStatus.IsUsable ? "Selected cover image" : "Stock fallback cover");
 
         if (_garageCoverPreviewPanel is not null)
         {
@@ -1482,10 +1490,10 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     {
         return status.Status switch
         {
-            "not_configured" => "No image imported; using TMR fallback",
+            "not_configured" => "No image imported; using stock fallback",
             "unsupported_extension" => "Saved image has an unsupported extension",
-            "file_missing" => "Saved image is missing; using TMR fallback",
-            _ => "Cover image unavailable; using TMR fallback"
+            "file_missing" => "Saved image is missing; using stock fallback",
+            _ => "Cover image unavailable; using stock fallback"
         };
     }
 
@@ -1517,6 +1525,20 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             var x = bounds.Left + (bounds.Width - width) / 2;
             var y = bounds.Top + (bounds.Height - height) / 2;
             graphics.DrawImage(image, new Rectangle(x, y, width, height));
+            return;
+        }
+
+        using var defaultImage = GarageCoverImageStore.TryLoadDefaultPreviewImage();
+        if (defaultImage is not null && defaultImage.Width > 0 && defaultImage.Height > 0)
+        {
+            var scale = Math.Max(
+                bounds.Width / (double)defaultImage.Width,
+                bounds.Height / (double)defaultImage.Height);
+            var width = (int)Math.Round(defaultImage.Width * scale);
+            var height = (int)Math.Round(defaultImage.Height * scale);
+            var x = bounds.Left + (bounds.Width - width) / 2;
+            var y = bounds.Top + (bounds.Height - height) / 2;
+            graphics.DrawImage(defaultImage, new Rectangle(x, y, width, height));
             return;
         }
 

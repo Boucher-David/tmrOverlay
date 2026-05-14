@@ -1,4 +1,4 @@
-import { readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { resolve } from 'node:path';
 import {
@@ -7,6 +7,7 @@ import {
   browserOverlayPage,
   browserOverlayPages,
   freshLiveSnapshot,
+  repoRoot,
   renderOverlayHtml,
   renderOverlayIndexHtml,
   renderAppValidatorReviewHtml,
@@ -35,6 +36,14 @@ const server = createServer((request, response) => {
   try {
     if (path === '/review/events') {
       serveEvents(request, response);
+      return;
+    }
+
+    if (path === '/api/garage-cover/default-image') {
+      serveBinary(
+        response,
+        'image/png',
+        readFileSync(resolve(repoRoot, 'assets/brand/Team_Logo_4k_TMRBRANDING.png')));
       return;
     }
 
@@ -367,16 +376,56 @@ function reviewDisplayModel(overlayId, previewMode = 'off') {
           metricSections);
       }
     case 'session-weather':
-      return metricsModel('session-weather', 'Session / Weather', 'Race', [
-        ['Session', `Race | ${previewLabel} | team`, 'normal'],
-        ['Clock', '17:22 elapsed | 6:37:08 left', 'normal'],
-        ['Laps', '-- left | 179 total', 'normal'],
-        ['Track', 'Gesamtstrecke 24h | 25.38 km', 'normal'],
-        ['Temps', `air ${formatTemperature(22)} | track ${formatTemperature(31)}`, 'normal'],
-        ['Surface', 'dry | rubber moderate usage', 'normal'],
-        ['Sky', 'partly cloudy | constant | rain:0%', 'normal'],
-        ['Wind', `S | ${formatSpeed(15 / 3.6)} | hum 48% | fog 0%`, 'normal']
-      ], 'source: session + live weather telemetry');
+      {
+        const reviewAirTempC = 19;
+        const reviewTrackTempC = 44;
+        const sessionRows = [
+          metricRow('Session', `Race | ${previewLabel} | team`, 'normal', [
+            metricSegment('Type', 'Race', 'normal'),
+            metricSegment('Name', previewLabel, 'normal'),
+            metricSegment('Mode', 'Team', 'normal')
+          ]),
+          metricRow('Clock', '17:22 elapsed | 6:37:08 left', 'normal', [
+            metricSegment('Elapsed', '17:22', 'normal'),
+            metricSegment('Left', '6:37:08', 'normal'),
+            metricSegment('Total', '--', 'waiting')
+          ]),
+          metricRow('Laps', '-- left | 179 total', 'normal', [
+            metricSegment('Remaining', '--', 'waiting'),
+            metricSegment('Total', '179', 'normal')
+          ]),
+          metricRow('Track', 'Gesamtstrecke 24h | 25.38 km', 'normal', [
+            metricSegment('Name', 'Gesamtstrecke 24h', 'normal'),
+            metricSegment('Length', '25.38 km', 'normal')
+          ])
+        ];
+        const weatherRows = [
+          metricRow('Surface', 'Dry | Rubber Moderate Usage', 'normal', [
+            metricSegment('Wetness', 'Dry', 'normal'),
+            metricSegment('Declared', 'Dry', 'normal'),
+            metricSegment('Rubber', 'Moderate Usage', 'normal')
+          ]),
+          metricRow('Sky', 'Partly Cloudy | constant | rain:0%', 'normal', [
+            metricSegment('Skies', 'Partly Cloudy', 'normal'),
+            metricSegment('Weather', 'constant', 'normal'),
+            metricSegment('Rain', '0%', 'normal')
+          ]),
+          metricRow('Wind', `S | ${formatSpeed(15 / 3.6)} | Head`, 'normal', [
+            metricSegment('Dir', 'S', 'normal'),
+            metricSegment('Speed', formatSpeed(15 / 3.6), 'normal'),
+            metricSegment('Facing', 'Head', 'normal', { rotationDegrees: 0 })
+          ]),
+          metricRow('Temps', `air ${formatTemperature(reviewAirTempC)} | track ${formatTemperature(reviewTrackTempC)}`, temperatureTone(reviewTrackTempC), [
+            metricSegment('Air', formatTemperature(reviewAirTempC), temperatureTone(reviewAirTempC), { accentHex: temperatureAccentHex(reviewAirTempC) }),
+            metricSegment('Track', formatTemperature(reviewTrackTempC), temperatureTone(reviewTrackTempC), { accentHex: temperatureAccentHex(reviewTrackTempC) })
+          ])
+        ];
+        const metricSections = [
+          { title: 'Session', rows: sessionRows },
+          { title: 'Weather', rows: weatherRows }
+        ];
+        return metricsModel('session-weather', 'Session / Weather', 'Race', metricSections.flatMap((section) => section.rows), '', [], metricSections);
+      }
     case 'pit-service':
       return metricsModel('pit-service', 'Pit Service', '', [
         ['Time / Laps', '03:58 | 148/179 laps', 'normal'],
@@ -455,7 +504,7 @@ function reviewDisplayModel(overlayId, previewMode = 'off') {
         }
       ], [
         { key: 'status', value: '' },
-        { key: 'timeRemaining', value: '03:58' }
+        { key: 'timeRemaining', value: '00:03:58' }
       ]);
     case 'gap-to-leader':
       return {
@@ -579,8 +628,8 @@ function metricRow(label, value, tone, segments = undefined, extra = {}) {
   return segments ? { label, value, tone, segments, ...extra } : { label, value, tone, ...extra };
 }
 
-function metricSegment(label, value, tone) {
-  return { label, value, tone };
+function metricSegment(label, value, tone, extra = {}) {
+  return { label, value, tone, ...extra };
 }
 
 function metricModelRow(row) {
@@ -680,6 +729,22 @@ function formatTemperature(celsius) {
     : `${Math.round(celsius)} C`;
 }
 
+function temperatureTone(celsius) {
+  if (!Number.isFinite(celsius)) return 'normal';
+  if (celsius >= 50) return 'error';
+  if (celsius >= 42) return 'warning';
+  if (celsius <= 20 || celsius >= 34) return 'info';
+  return 'normal';
+}
+
+function temperatureAccentHex(celsius) {
+  if (!Number.isFinite(celsius)) return null;
+  if (celsius >= 50) return '#FF6274';
+  if (celsius >= 42) return '#FF7D49';
+  if (celsius >= 34) return '#FFD15B';
+  return celsius <= 20 ? '#33CEFF' : '#62FF9F';
+}
+
 function formatSpeed(metersPerSecond) {
   if (!Number.isFinite(metersPerSecond)) return '--';
   return isImperial()
@@ -775,6 +840,11 @@ function serveHtml(response, body) {
 function serveJson(response, payload) {
   response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
   response.end(JSON.stringify(payload));
+}
+
+function serveBinary(response, contentType, body) {
+  response.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'no-store' });
+  response.end(body);
 }
 
 function serveText(response, status, body) {

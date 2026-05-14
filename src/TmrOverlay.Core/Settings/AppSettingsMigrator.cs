@@ -160,7 +160,7 @@ internal static class AppSettingsMigrator
 
     private static void EnsureScopedOverlayOptions(OverlaySettings overlay)
     {
-        if (SupportsSharedChromeSettings(overlay.Id))
+        if (SupportsSharedHeaderChromeSettings(overlay.Id))
         {
             EnsureOption(overlay, OverlayOptionKeys.ChromeHeaderStatusTest, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.ChromeHeaderStatusPractice, defaultValue: true);
@@ -170,6 +170,10 @@ internal static class AppSettingsMigrator
             EnsureOption(overlay, OverlayOptionKeys.ChromeHeaderTimeRemainingPractice, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.ChromeHeaderTimeRemainingQualifying, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.ChromeHeaderTimeRemainingRace, defaultValue: true);
+        }
+
+        if (SupportsFooterSourceChromeSettings(overlay.Id))
+        {
             EnsureOption(overlay, OverlayOptionKeys.ChromeFooterSourceTest, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.ChromeFooterSourcePractice, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.ChromeFooterSourceQualifying, defaultValue: true);
@@ -251,7 +255,12 @@ internal static class AppSettingsMigrator
 
     private static bool OverlayOwnsOption(string overlayId, string key)
     {
-        if (SupportsSharedChromeSettings(overlayId) && IsSharedChromeOption(key))
+        if (SupportsSharedHeaderChromeSettings(overlayId) && IsSharedHeaderChromeOption(key))
+        {
+            return true;
+        }
+
+        if (SupportsFooterSourceChromeSettings(overlayId) && IsFooterSourceChromeOption(key))
         {
             return true;
         }
@@ -326,7 +335,7 @@ internal static class AppSettingsMigrator
         };
     }
 
-    private static bool SupportsSharedChromeSettings(string overlayId)
+    private static bool SupportsSharedHeaderChromeSettings(string overlayId)
     {
         return overlayId.Trim().ToLowerInvariant() is
             "standings"
@@ -337,7 +346,17 @@ internal static class AppSettingsMigrator
             or "pit-service";
     }
 
-    private static bool IsSharedChromeOption(string key)
+    private static bool SupportsFooterSourceChromeSettings(string overlayId)
+    {
+        return overlayId.Trim().ToLowerInvariant() is
+            "standings"
+            or "relative"
+            or "fuel-calculator"
+            or "gap-to-leader"
+            or "pit-service";
+    }
+
+    private static bool IsSharedHeaderChromeOption(string key)
     {
         return key is
             OverlayOptionKeys.ChromeHeaderStatusTest
@@ -347,8 +366,13 @@ internal static class AppSettingsMigrator
             or OverlayOptionKeys.ChromeHeaderTimeRemainingTest
             or OverlayOptionKeys.ChromeHeaderTimeRemainingPractice
             or OverlayOptionKeys.ChromeHeaderTimeRemainingQualifying
-            or OverlayOptionKeys.ChromeHeaderTimeRemainingRace
-            or OverlayOptionKeys.ChromeFooterSourceTest
+            or OverlayOptionKeys.ChromeHeaderTimeRemainingRace;
+    }
+
+    private static bool IsFooterSourceChromeOption(string key)
+    {
+        return key is
+            OverlayOptionKeys.ChromeFooterSourceTest
             or OverlayOptionKeys.ChromeFooterSourcePractice
             or OverlayOptionKeys.ChromeFooterSourceQualifying
             or OverlayOptionKeys.ChromeFooterSourceRace;

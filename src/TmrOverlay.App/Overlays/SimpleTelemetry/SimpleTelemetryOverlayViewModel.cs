@@ -1,5 +1,7 @@
 using System.Globalization;
+using TmrOverlay.App.Overlays.Content;
 using TmrOverlay.Core.Overlays;
+using TmrOverlay.Core.Settings;
 using TmrOverlay.Core.Telemetry.Live;
 
 namespace TmrOverlay.App.Overlays.SimpleTelemetry;
@@ -45,6 +47,84 @@ internal sealed record SimpleTelemetryOverlayViewModel(
             Source: "source: waiting",
             Tone: SimpleTelemetryTone.Waiting,
             Rows: []);
+    }
+
+    public static SimpleTelemetryOverlayViewModel ApplyContentSettings(
+        SimpleTelemetryOverlayViewModel model,
+        OverlaySettings? settings,
+        OverlayContentDefinition contentDefinition)
+    {
+        if (settings is null || contentDefinition.Blocks is not { Count: > 0 } blocks)
+        {
+            return model;
+        }
+
+        if (blocks.All(block => OverlayContentColumnSettings.BlockEnabled(settings, block)))
+        {
+            return model;
+        }
+
+        var blockById = blocks.ToDictionary(block => block.Id, StringComparer.OrdinalIgnoreCase);
+        var rows = FilterRows(model.Rows).ToArray();
+        var metricSections = model.MetricSections
+            .Select(section => new SimpleTelemetryMetricSectionViewModel(section.Title, FilterRows(section.Rows).ToArray()))
+            .Where(section => section.Rows.Count > 0)
+            .ToArray();
+
+        return model with
+        {
+            Rows = rows,
+            MetricSections = metricSections
+        };
+
+        IEnumerable<SimpleTelemetryRowViewModel> FilterRows(IReadOnlyList<SimpleTelemetryRowViewModel> sourceRows)
+        {
+            foreach (var row in sourceRows)
+            {
+                if (FilterRow(row) is { } filtered)
+                {
+                    yield return filtered;
+                }
+            }
+        }
+
+        SimpleTelemetryRowViewModel? FilterRow(SimpleTelemetryRowViewModel row)
+        {
+            if (row.Segments.Count == 0)
+            {
+                return row;
+            }
+
+            var filteredSegments = row.Segments
+                .Where(SegmentEnabled)
+                .ToArray();
+            if (filteredSegments.Length == 0)
+            {
+                return null;
+            }
+
+            if (filteredSegments.Length == row.Segments.Count)
+            {
+                return row;
+            }
+
+            return row with
+            {
+                Value = JoinAvailable(filteredSegments.Select(segment => segment.Value).ToArray()),
+                Segments = filteredSegments
+            };
+        }
+
+        bool SegmentEnabled(SimpleTelemetryMetricSegmentViewModel segment)
+        {
+            if (string.IsNullOrWhiteSpace(segment.Key)
+                || !blockById.TryGetValue(segment.Key, out var block))
+            {
+                return true;
+            }
+
+            return OverlayContentColumnSettings.BlockEnabled(settings, block);
+        }
     }
 
     public static bool IsFresh(LiveTelemetrySnapshot snapshot, DateTimeOffset now, out string waitingStatus)
@@ -166,7 +246,10 @@ internal sealed record SimpleTelemetryRowViewModel(
 internal sealed record SimpleTelemetryMetricSegmentViewModel(
     string Label,
     string Value,
-    SimpleTelemetryTone Tone = SimpleTelemetryTone.Normal);
+    SimpleTelemetryTone Tone = SimpleTelemetryTone.Normal,
+    string? AccentHex = null,
+    double? RotationDegrees = null,
+    string? Key = null);
 
 internal sealed record SimpleTelemetryMetricSectionViewModel(
     string Title,

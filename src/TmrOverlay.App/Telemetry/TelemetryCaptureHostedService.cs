@@ -1672,6 +1672,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 Clutch: ReadNullableFiniteDouble(sdk, "Clutch"),
                 ClutchRaw: ReadNullableFiniteDouble(sdk, "ClutchRaw"),
                 SteeringWheelAngle: ReadNullableFiniteDouble(sdk, "SteeringWheelAngle"),
+                PlayerYawNorthRadians: ReadNullableFiniteDouble(sdk, "YawNorth"),
                 BrakeAbsActive: ReadNullableBoolean(sdk, "BrakeABSactive"),
                 EngineWarnings: ReadNullableInt32(sdk, "EngineWarnings"),
                 Voltage: ReadNullableFiniteDouble(sdk, "Voltage"),

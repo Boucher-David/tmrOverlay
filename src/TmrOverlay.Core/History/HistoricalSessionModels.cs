@@ -727,6 +727,7 @@ internal sealed record HistoricalTelemetrySample(
     double? Clutch = null,
     double? ClutchRaw = null,
     double? SteeringWheelAngle = null,
+    double? PlayerYawNorthRadians = null,
     int? EngineWarnings = null,
     double? Voltage = null,
     double? WaterTempC = null,

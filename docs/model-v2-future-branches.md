@@ -545,7 +545,7 @@ The reviewed iRon DDU is useful product research, but it should not be interpret
 
 iRon's fuel block is the clearest functional reference. It averages recent valid green laps, ignores laps affected by pit road or caution-style flags, and applies a safety factor before estimating remaining laps and fuel-to-finish. TMR's fuel work should keep the richer stint/history/strategy model in purpose-built fuel and future engineer surfaces, but the DDU confirms that a compact "what do I need now" dashboard row can be valuable once those model-v2 facts are stable.
 
-The iRon Cover overlay is deliberately just a blank rectangle. TMR's Garage Cover V1 is stronger as a streamer privacy feature because it keys off `IsGarageVisible`, stays opaque, uses app-owned imported artwork, and has a black TMR fallback. The V2 opportunity is separate: a stream-facing garage/broadcast state can show safe session, standings, stint, sponsor, or team-art context while still covering setup details.
+The iRon Cover overlay is deliberately just a blank rectangle. TMR's Garage Cover V1 is stronger as a streamer privacy feature because it keys off `IsGarageVisible`, stays opaque, uses app-owned imported artwork, and has bundled stock fallback art. The V2 opportunity is separate: a stream-facing garage/broadcast state can show safe session, standings, stint, sponsor, or team-art context while still covering setup details.
 
 Product implication: keep pit release and garage privacy in V1 because they solve direct user pain now. Keep DDU-style layout composition, richer pit/engineer context, garage broadcast content, and user layout profiles in V2/design-v2, after the underlying model contracts and layout primitives are stable enough to make custom surfaces reliable.
 

@@ -842,6 +842,9 @@ DriverInfo:
         store.RecordFrame(CreateSample(
             playerCarIdx: 10,
             carLeftRight: 4,
+            precipitationPercent: 0.12d,
+            relativeHumidityPercent: 0.95d,
+            fogLevelPercent: 0.05d,
             teamLapDistPct: 0.50d,
             teamEstimatedTimeSeconds: 50d,
             teamCarClass: 4098,
@@ -935,6 +938,9 @@ DriverInfo:
         Assert.Equal(3, models.Coverage.LiveSpatialRowCount);
         Assert.Equal(1, models.Coverage.LiveProximityRowCount);
         Assert.Equal("Partly Cloudy", models.Weather.SkiesLabel);
+        Assert.Equal(12d, models.Weather.PrecipitationPercent!.Value, precision: 6);
+        Assert.Equal(95d, models.Weather.RelativeHumidityPercent!.Value, precision: 6);
+        Assert.Equal(5d, models.Weather.FogLevelPercent!.Value, precision: 6);
         Assert.True(models.FuelPit.Fuel.HasValidFuel);
         Assert.True(models.Timing.ClassLeaderGapEvidence.IsUsable);
         Assert.True(models.Timing.FocusRow!.CanUseForRadarPlacement);
@@ -2691,6 +2697,9 @@ QualifyResultsInfo:
         bool playerCarInPitStall = false,
         bool? teamOnPitRoad = null,
         int? playerTrackSurface = null,
+        double? precipitationPercent = null,
+        double? relativeHumidityPercent = null,
+        double? fogLevelPercent = null,
         double? brake = null,
         double? clutch = null,
         double? clutchRaw = null,
@@ -2721,6 +2730,9 @@ QualifyResultsInfo:
             TrackWetness: 1,
             WeatherDeclaredWet: false,
             PlayerTireCompound: playerTireCompound,
+            PrecipitationPercent: precipitationPercent,
+            RelativeHumidityPercent: relativeHumidityPercent,
+            FogLevelPercent: fogLevelPercent,
             SessionTimeRemain: sessionTimeRemain,
             SessionState: sessionState,
             IsGarageVisible: isGarageVisible,

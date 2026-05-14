@@ -447,6 +447,7 @@
       border-radius: 3px;
       background: rgba(var(--tmr-text-muted-rgb), 0.08);
       color: var(--tmr-text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       line-height: 1.05;
       text-align: center;
       overflow: hidden;
@@ -473,6 +474,14 @@
       font-size: 11px;
       font-weight: 900;
       font-variant-numeric: tabular-nums;
+    }
+
+    .value-segment.long .segment-value {
+      font-size: 10px;
+    }
+
+    .value-segment.extra-long .segment-value {
+      font-size: 9px;
     }
 
     .value-segment.info {
@@ -502,6 +511,57 @@
 
     .value-segment.waiting {
       color: var(--tmr-text-muted);
+    }
+
+    .value-segment.custom-color {
+      background: rgba(var(--segment-accent-rgb), 0.15);
+      color: var(--segment-accent);
+    }
+
+    .value-segment.directional .segment-value {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+    }
+
+    .wind-arrow {
+      display: inline-block;
+      position: relative;
+      flex: 0 0 auto;
+      width: 11px;
+      height: 14px;
+      transform: rotate(var(--segment-rotation, 0deg));
+      transform-origin: 50% 50%;
+    }
+
+    .wind-arrow::before {
+      content: "";
+      position: absolute;
+      left: 4.5px;
+      top: 5px;
+      width: 2px;
+      height: 8px;
+      border-radius: 2px;
+      background: currentColor;
+    }
+
+    .wind-arrow::after {
+      content: "";
+      position: absolute;
+      left: 1px;
+      top: 0;
+      width: 0;
+      height: 0;
+      border-left: 4.5px solid transparent;
+      border-right: 4.5px solid transparent;
+      border-bottom: 6px solid currentColor;
+    }
+
+    .wind-label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .metric.highlight {

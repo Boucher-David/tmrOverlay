@@ -1,6 +1,8 @@
 import AppKit
 
 final class GarageCoverView: NSView {
+    private static let telemetryFreshnessSeconds: TimeInterval = 2.5
+
     var imagePath = "" {
         didSet {
             if imagePath != oldValue {
@@ -29,7 +31,13 @@ final class GarageCoverView: NSView {
     }
 
     func update(with snapshot: LiveTelemetrySnapshot) {
-        isHidden = !(snapshot.isConnected && snapshot.isCollecting && snapshot.latestFrame?.isGarageVisible == true)
+        let telemetryFresh = snapshot.lastUpdatedAtUtc.map { Date().timeIntervalSince($0) <= Self.telemetryFreshnessSeconds } ?? false
+        let shouldCover = !snapshot.isConnected
+            || !snapshot.isCollecting
+            || !telemetryFresh
+            || snapshot.latestFrame == nil
+            || snapshot.latestFrame?.isGarageVisible == true
+        isHidden = !shouldCover
         loadCoverImageIfNeeded()
         needsDisplay = !isHidden
     }
@@ -89,11 +97,11 @@ final class GarageCoverView: NSView {
 
     private func drawFallback() {
         if defaultCoverImage == nil {
-            defaultCoverImage = TmrBrandAssets.loadLogoImage()
+            defaultCoverImage = TmrBrandAssets.loadGarageCoverDefaultImage()
         }
 
         if let defaultCoverImage {
-            defaultCoverImage.draw(in: containRect(imageSize: defaultCoverImage.size, bounds: bounds, maxBoundsFraction: 0.58))
+            defaultCoverImage.draw(in: coverRect(imageSize: defaultCoverImage.size, bounds: bounds))
             return
         }
 
@@ -109,21 +117,4 @@ final class GarageCoverView: NSView {
         )
     }
 
-    private func containRect(imageSize: NSSize, bounds: NSRect, maxBoundsFraction: CGFloat) -> NSRect {
-        guard imageSize.width > 0, imageSize.height > 0, bounds.width > 0, bounds.height > 0 else {
-            return bounds
-        }
-
-        let targetWidth = max(1, bounds.width * maxBoundsFraction)
-        let targetHeight = max(1, bounds.height * maxBoundsFraction)
-        let scale = min(targetWidth / imageSize.width, targetHeight / imageSize.height)
-        let width = imageSize.width * scale
-        let height = imageSize.height * scale
-        return NSRect(
-            x: bounds.midX - width / 2,
-            y: bounds.midY - height / 2,
-            width: width,
-            height: height
-        )
-    }
 }

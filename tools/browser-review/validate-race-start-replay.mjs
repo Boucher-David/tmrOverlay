@@ -630,7 +630,7 @@ function readPngDimensions(data) {
 }
 
 function isTextlessOverlay(overlayId) {
-  return overlayId === 'track-map';
+  return overlayId === 'track-map' || overlayId === 'garage-cover';
 }
 
 async function canvasHasVisiblePixels(page) {

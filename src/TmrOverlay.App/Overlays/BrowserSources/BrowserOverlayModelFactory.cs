@@ -64,7 +64,7 @@ internal sealed class BrowserOverlayModelFactory
     private readonly SessionHistoryQueryService _historyQueryService;
     private readonly TrackMapStore? _trackMapStore;
     private readonly StreamChatOverlaySource? _streamChatSource;
-    private readonly Func<LiveTelemetrySnapshot, DateTimeOffset, string, SimpleTelemetryOverlayViewModel> _sessionWeatherBuilder;
+    private readonly SessionWeatherOverlayViewModel.StatefulBuilder _sessionWeatherBuilder;
     private readonly PitServiceOverlayViewModel.StatefulBuilder _pitServiceBuilder;
     private readonly TrackMapRenderModelBuilder _trackMapRenderBuilder = new();
     private readonly List<double> _gapPoints = [];
@@ -103,7 +103,7 @@ internal sealed class BrowserOverlayModelFactory
         _historyQueryService = historyQueryService;
         _trackMapStore = trackMapStore;
         _streamChatSource = streamChatSource;
-        _sessionWeatherBuilder = SessionWeatherOverlayViewModel.CreateBuilder();
+        _sessionWeatherBuilder = SessionWeatherOverlayViewModel.CreateStatefulBuilder();
         _pitServiceBuilder = PitServiceOverlayViewModel.CreateStatefulBuilder();
     }
 
@@ -130,14 +130,14 @@ internal sealed class BrowserOverlayModelFactory
         }
         else if (string.Equals(overlayId, SessionWeatherOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
-            var viewModel = _sessionWeatherBuilder(snapshot, now, unitSystem);
             var overlay = FindOverlay(settings, SessionWeatherOverlayDefinition.Definition.Id);
+            var viewModel = _sessionWeatherBuilder.Build(snapshot, now, unitSystem, overlay);
             var headerItems = HeaderItems(overlay, snapshot, viewModel.Status);
             model = FromSimple(
                 SessionWeatherOverlayDefinition.Definition.Id,
                 viewModel,
                 headerItems,
-                SourceText(overlay, snapshot, viewModel.Source));
+                string.Empty);
         }
         else if (string.Equals(overlayId, PitServiceOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
@@ -410,7 +410,9 @@ internal sealed class BrowserOverlayModelFactory
             .Select(segment => new BrowserOverlayMetricSegment(
                 segment.Label,
                 segment.Value,
-                ToneName(segment.Tone)))
+                ToneName(segment.Tone),
+                segment.AccentHex,
+                segment.RotationDegrees))
             .ToArray();
     }
 
@@ -2643,7 +2645,9 @@ internal sealed record BrowserOverlayMetricRow(
 internal sealed record BrowserOverlayMetricSegment(
     string Label,
     string Value,
-    string Tone);
+    string Tone,
+    string? AccentHex = null,
+    double? RotationDegrees = null);
 
 internal sealed record BrowserOverlayGridSection(
     string Title,

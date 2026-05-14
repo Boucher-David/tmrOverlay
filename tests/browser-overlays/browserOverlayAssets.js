@@ -722,12 +722,10 @@ function formatFuelHeaderTimeRemaining(session) {
   const seconds = session?.sessionTimeRemainSeconds;
   if (!Number.isFinite(seconds) || seconds < 0) return null;
   const totalSeconds = Math.ceil(seconds);
-  if (isRacePreGreen(session) || totalSeconds < 3600) {
-    return `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}`;
-  }
-
-  const totalMinutes = Math.ceil(totalSeconds / 60);
-  return `${String(Math.floor(totalMinutes / 60)).padStart(2, '0')}:${String(totalMinutes % 60).padStart(2, '0')}`;
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const remainingSeconds = totalSeconds % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
 }
 
 function fuelSourceFromSettings(settings, source) {
@@ -1578,6 +1576,15 @@ function garageCoverDetection(live, garageVisible) {
 
   if (live?.isCollecting === false || live?.models?.raceEvents?.hasData === false) {
     return { state: 'waiting_for_telemetry', displayText: 'waiting for telemetry', isFresh: false };
+  }
+
+  const lastUpdated = Date.parse(live?.lastUpdatedAtUtc || '');
+  if (!Number.isFinite(lastUpdated)) {
+    return { state: 'waiting_for_telemetry', displayText: 'waiting for telemetry', isFresh: false };
+  }
+
+  if (Date.now() - lastUpdated > 2500) {
+    return { state: 'telemetry_stale', displayText: 'telemetry stale', isFresh: false };
   }
 
   return {

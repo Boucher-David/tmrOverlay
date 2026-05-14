@@ -6,6 +6,11 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
         var enabled: Bool
     }
 
+    private struct ChromeSettingsRow {
+        var label: String
+        var keys: [String]
+    }
+
     private let theme = DesignV2Theme.outrun
     private let definition: OverlayDefinition
     private var overlay: OverlaySettings
@@ -176,9 +181,9 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
         case .content:
             buildContentControls()
         case .header:
-            buildChromeControls(keys: Self.headerChromeKeys)
+            buildChromeControls(rows: Self.headerChromeRows)
         case .footer:
-            buildChromeControls(keys: Self.footerChromeKeys)
+            buildChromeControls(rows: Self.footerChromeRows(for: definition.id))
         }
     }
 
@@ -378,11 +383,20 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
                 rowHeight: 22,
                 rowGap: 3
             )
+        case "session-weather":
+            addContentBlockGridToggleControls(
+                definition: OverlayContentColumns.sessionWeather,
+                rect: NSRect(x: 306, y: 272, width: 834, height: 344),
+                columns: 2,
+                rowHeight: 16,
+                rowGap: 2
+            )
         case "pit-service":
-            addContentBlockToggleControls(
+            addContentBlockGridToggleControls(
                 definition: OverlayContentColumns.pitService,
-                rect: NSRect(x: 306, y: 272, width: 834, height: 304),
-                rowHeight: 22,
+                rect: NSRect(x: 306, y: 272, width: 834, height: 344),
+                columns: 2,
+                rowHeight: 18,
                 rowGap: 3
             )
         case "car-radar":
@@ -551,6 +565,29 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
         }
     }
 
+    private func addContentBlockGridToggleControls(
+        definition contentDefinition: OverlayContentDefinition,
+        rect: NSRect,
+        columns: Int,
+        rowHeight: CGFloat,
+        rowGap: CGFloat
+    ) {
+        let rowsPerColumn = Int(ceil(Double(contentDefinition.blocks.count) / Double(max(1, columns))))
+        for (index, block) in contentDefinition.blocks.enumerated() {
+            addDynamic(DesignV2SettingsCheckControl(
+                frame: blockGridCheckFrame(index: index, rect: rect, columns: columns, rowsPerColumn: rowsPerColumn, rowHeight: rowHeight, rowGap: rowGap),
+                title: "",
+                isOn: OverlayContentColumns.blockEnabled(block, settings: overlay),
+                theme: theme,
+                font: font(size: 12, weight: .semibold),
+                onChange: { [weak self] isOn in
+                    self?.overlay.options[block.enabledOptionKey] = isOn ? "true" : "false"
+                    self?.saveOverlay()
+                }
+            ))
+        }
+    }
+
     private func addMatrixCheckControl(
         rowIndex: Int,
         rect: NSRect,
@@ -569,24 +606,26 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
         ))
     }
 
-    private func buildChromeControls(keys: [String]) {
+    private func buildChromeControls(rows: [ChromeSettingsRow]) {
         guard DesignV2SettingsOverlaySpecs.supportsSharedChromeSettings(definition.id) else {
             return
         }
 
-        for (index, key) in keys.enumerated() {
-            let x = 454 + CGFloat(index) * 116
-            addDynamic(DesignV2SettingsCheckControl(
-                frame: NSRect(x: x, y: 370, width: 38, height: 22),
-                title: "",
-                isOn: optionBool(key: key, defaultValue: true),
-                theme: theme,
-                font: font(size: 12, weight: .semibold),
-                onChange: { [weak self] isOn in
-                    self?.overlay.options[key] = isOn ? "true" : "false"
-                    self?.saveOverlay()
-                }
-            ))
+        for (rowIndex, row) in rows.enumerated() {
+            for (index, key) in row.keys.enumerated() {
+                let x = 454 + CGFloat(index) * 116
+                addDynamic(DesignV2SettingsCheckControl(
+                    frame: NSRect(x: x, y: 370 + CGFloat(rowIndex) * 48, width: 38, height: 22),
+                    title: "",
+                    isOn: optionBool(key: key, defaultValue: true),
+                    theme: theme,
+                    font: font(size: 12, weight: .semibold),
+                    onChange: { [weak self] isOn in
+                        self?.overlay.options[key] = isOn ? "true" : "false"
+                        self?.saveOverlay()
+                    }
+                ))
+            }
         }
     }
 
@@ -720,9 +759,9 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
         case .content:
             drawContentRegion()
         case .header:
-            drawChromeRegion(title: "Header", itemLabel: "Status")
+            drawChromeRegion(title: "Header", rows: Self.headerChromeRows)
         case .footer:
-            drawChromeRegion(title: "Footer", itemLabel: "Source")
+            drawChromeRegion(title: "Footer", rows: Self.footerChromeRows(for: definition.id))
         }
     }
 
@@ -788,6 +827,8 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
             drawStreamChatContentRegion()
         case "input-state":
             drawInputStateContentRegion()
+        case "session-weather":
+            drawSessionWeatherContentRegion()
         case "pit-service":
             drawPitServiceContentRegion()
         case "car-radar":
@@ -886,12 +927,24 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
     }
 
     private func drawPitServiceContentRegion() {
-        drawContentMatrix(
-            title: "Tire Analysis Rows",
+        drawBlockToggleGrid(
+            title: "Pit Service Cells",
             rows: contentBlockRows(definition: OverlayContentColumns.pitService),
-            rect: NSRect(x: 306, y: 272, width: 834, height: 304),
-            rowHeight: 22,
+            rect: NSRect(x: 306, y: 272, width: 834, height: 344),
+            columns: 2,
+            rowHeight: 18,
             rowGap: 3
+        )
+    }
+
+    private func drawSessionWeatherContentRegion() {
+        drawBlockToggleGrid(
+            title: "Session / Weather Cells",
+            rows: contentBlockRows(definition: OverlayContentColumns.sessionWeather),
+            rect: NSRect(x: 306, y: 272, width: 834, height: 344),
+            columns: 2,
+            rowHeight: 16,
+            rowGap: 2
         )
     }
 
@@ -932,7 +985,7 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
         drawText("This matches the current production settings surface for this overlay.", in: NSRect(x: 328, y: 410, width: 560, height: 18), size: 12, color: DesignV2SettingsPalette.muted)
     }
 
-    private func drawChromeRegion(title: String, itemLabel: String) {
+    private func drawChromeRegion(title: String, rows: [ChromeSettingsRow]) {
         drawPanel(NSRect(x: 306, y: 272, width: 834, height: 188), title: title)
         guard DesignV2SettingsOverlaySpecs.supportsSharedChromeSettings(definition.id) else {
             drawText("No \(title.lowercased()) controls yet.", in: NSRect(x: 328, y: 334, width: 420, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
@@ -940,13 +993,21 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
             return
         }
 
+        if rows.isEmpty {
+            drawText("No \(title.lowercased()) controls for this overlay.", in: NSRect(x: 328, y: 334, width: 420, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
+            return
+        }
+
         drawText("Item", in: NSRect(x: 328, y: 330, width: 110, height: 16), size: 10, weight: .bold, color: DesignV2SettingsPalette.muted)
         for (index, session) in ["Test", "Practice", "Qualifying", "Race"].enumerated() {
             drawText(session, in: NSRect(x: 454 + CGFloat(index) * 116, y: 330, width: 104, height: 16), size: 10, weight: .bold, color: DesignV2SettingsPalette.muted)
         }
-        fillRounded(NSRect(x: 328, y: 360, width: 768, height: 44), radius: 8, color: DesignV2SettingsPalette.panelRaised.withAlphaComponent(0.78))
-        strokeRounded(NSRect(x: 328, y: 360, width: 768, height: 44), radius: 8, color: DesignV2SettingsPalette.borderDim, lineWidth: 1)
-        drawText(itemLabel, in: NSRect(x: 346, y: 373, width: 110, height: 18), size: 13, weight: .semibold, color: DesignV2SettingsPalette.secondary)
+        for (rowIndex, row) in rows.enumerated() {
+            let rowY = 360 + CGFloat(rowIndex) * 48
+            fillRounded(NSRect(x: 328, y: rowY, width: 768, height: 44), radius: 8, color: DesignV2SettingsPalette.panelRaised.withAlphaComponent(0.78))
+            strokeRounded(NSRect(x: 328, y: rowY, width: 768, height: 44), radius: 8, color: DesignV2SettingsPalette.borderDim, lineWidth: 1)
+            drawText(row.label, in: NSRect(x: 346, y: rowY + 13, width: 110, height: 18), size: 13, weight: .semibold, color: DesignV2SettingsPalette.secondary)
+        }
     }
 
     private func drawContentMatrix(
@@ -983,9 +1044,60 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
         }
     }
 
+    private func drawBlockToggleGrid(
+        title: String,
+        rows: [ContentMatrixRow],
+        rect: NSRect,
+        columns: Int,
+        rowHeight: CGFloat,
+        rowGap: CGFloat
+    ) {
+        drawPanel(rect, title: title)
+        let columnGap: CGFloat = 18
+        let contentLeft = rect.minX + 22
+        let columnWidth = (rect.width - 44 - columnGap * CGFloat(columns - 1)) / CGFloat(columns)
+        for column in 0..<columns {
+            drawText("Item", in: NSRect(x: contentLeft + CGFloat(column) * (columnWidth + columnGap), y: rect.minY + 58, width: 110, height: 16), size: 10, weight: .bold, color: DesignV2SettingsPalette.muted)
+        }
+
+        let rowsPerColumn = Int(ceil(Double(rows.count) / Double(max(1, columns))))
+        for (index, row) in rows.enumerated() {
+            let column = index / max(1, rowsPerColumn)
+            let rowIndex = index % max(1, rowsPerColumn)
+            let rowX = contentLeft + CGFloat(column) * (columnWidth + columnGap)
+            let rowY = rect.minY + 78 + CGFloat(rowIndex) * (rowHeight + rowGap)
+            guard rowY + rowHeight <= rect.maxY - 10 else {
+                break
+            }
+
+            fillRounded(NSRect(x: rowX, y: rowY, width: columnWidth, height: rowHeight), radius: 7, color: DesignV2SettingsPalette.panelRaised.withAlphaComponent(0.78))
+            strokeRounded(NSRect(x: rowX, y: rowY, width: columnWidth, height: rowHeight), radius: 7, color: DesignV2SettingsPalette.borderDim, lineWidth: 1)
+            drawCheckBox(in: blockGridCheckFrame(index: index, rect: rect, columns: columns, rowsPerColumn: rowsPerColumn, rowHeight: rowHeight, rowGap: rowGap), checked: row.enabled)
+            drawText(row.label, in: NSRect(x: rowX + 34, y: rowY + max(2, (rowHeight - 13) / 2), width: columnWidth - 44, height: 14), size: 10.5, weight: .regular, color: row.enabled ? DesignV2SettingsPalette.secondary : DesignV2SettingsPalette.dim)
+        }
+    }
+
     private func matrixCheckFrame(rowIndex: Int, rect: NSRect, rowHeight: CGFloat = 24, rowGap: CGFloat = 5) -> NSRect {
         let rowY = rect.minY + 78 + CGFloat(rowIndex) * (rowHeight + rowGap)
         return NSRect(x: 344, y: rowY + max(2, (rowHeight - 19) / 2), width: 19, height: 19)
+    }
+
+    private func blockGridCheckFrame(
+        index: Int,
+        rect: NSRect,
+        columns: Int,
+        rowsPerColumn: Int,
+        rowHeight: CGFloat,
+        rowGap: CGFloat
+    ) -> NSRect {
+        let columnGap: CGFloat = 18
+        let contentLeft = rect.minX + 22
+        let columnWidth = (rect.width - 44 - columnGap * CGFloat(columns - 1)) / CGFloat(columns)
+        let column = index / max(1, rowsPerColumn)
+        let row = index % max(1, rowsPerColumn)
+        let rowX = contentLeft + CGFloat(column) * (columnWidth + columnGap)
+        let rowY = rect.minY + 78 + CGFloat(row) * (rowHeight + rowGap)
+        return NSRect(x: rowX + 10, y: rowY + max(1, (rowHeight - 15) / 2), width: 15, height: 15)
     }
 
     private func drawSituationBox(in rect: NSRect, enabled: Bool) {
@@ -1103,12 +1215,12 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
             return image
         }
 
-        return previewImage ?? TmrBrandAssets.loadLogoImage()
+        return TmrBrandAssets.loadGarageCoverDefaultImage() ?? previewImage ?? TmrBrandAssets.loadLogoImage()
     }
 
     private var garageCoverImageLabel: String {
         guard !overlay.garageCoverImagePath.isEmpty else {
-            return "No image imported"
+            return "Stock fallback cover"
         }
 
         return URL(fileURLWithPath: overlay.garageCoverImagePath).lastPathComponent
@@ -1143,17 +1255,31 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
         DesignV2Drawing.font(family: fontFamily, size: size, weight: weight)
     }
 
-    private static let headerChromeKeys = [
-        "chrome.header.status.test",
-        "chrome.header.status.practice",
-        "chrome.header.status.qualifying",
-        "chrome.header.status.race"
+    private static let headerChromeRows = [
+        ChromeSettingsRow(label: "Status", keys: [
+            "chrome.header.status.test",
+            "chrome.header.status.practice",
+            "chrome.header.status.qualifying",
+            "chrome.header.status.race"
+        ]),
+        ChromeSettingsRow(label: "Time remaining", keys: [
+            "chrome.header.time-remaining.test",
+            "chrome.header.time-remaining.practice",
+            "chrome.header.time-remaining.qualifying",
+            "chrome.header.time-remaining.race"
+        ])
     ]
 
-    private static let footerChromeKeys = [
-        "chrome.footer.source.test",
-        "chrome.footer.source.practice",
-        "chrome.footer.source.qualifying",
-        "chrome.footer.source.race"
+    private static let footerChromeRows = [
+        ChromeSettingsRow(label: "Source", keys: [
+            "chrome.footer.source.test",
+            "chrome.footer.source.practice",
+            "chrome.footer.source.qualifying",
+            "chrome.footer.source.race"
+        ])
     ]
+
+    private static func footerChromeRows(for overlayId: String) -> [ChromeSettingsRow] {
+        overlayId.lowercased() == "session-weather" ? [] : footerChromeRows
+    }
 }

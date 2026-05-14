@@ -98,7 +98,7 @@ WINDOWS_EXPECTED_PNGS = {
     "states/standings-live.png": (780, 520),
     "states/track-map-placeholder.png": (360, 360),
     "states/flags-blue.png": (360, 170),
-    "states/session-weather-live.png": (420, 330),
+    "states/session-weather-live.png": (480, 520),
     "states/pit-service-active.png": (420, 560),
     "states/input-state-trace.png": (520, 260),
     "states/car-radar-side-pressure.png": (300, 300),

@@ -24,6 +24,7 @@ final class DesignV2OverlaySuiteView: NSView {
     private var gapPoints: [Double] = []
     private var inputTrace: [DesignV2InputPoint] = []
     private lazy var garageCoverLogoImage = TmrBrandAssets.loadLogoImage()
+    private lazy var garageCoverDefaultImage = TmrBrandAssets.loadGarageCoverDefaultImage()
     var theme = DesignV2Theme.outrun {
         didSet { needsDisplay = true }
     }
@@ -134,28 +135,38 @@ final class DesignV2OverlaySuiteView: NSView {
             font: overlayFont(size: 14, weight: .bold),
             color: theme.colors.textPrimary
         )
-        drawText(
-            model.status,
-            in: NSRect(x: outer.minX + 232, y: header.midY - 8, width: outer.width - 248, height: 16),
-            font: overlayFont(size: 11, weight: .semibold),
-            color: theme.color(for: model.evidence),
-            alignment: .right
-        )
+        let headerValue = headerText(model: model)
+        if !headerValue.isEmpty {
+            drawText(
+                headerValue,
+                in: NSRect(x: outer.minX + 232, y: header.midY - 8, width: outer.width - 248, height: 16),
+                font: overlayFont(size: 11, weight: .semibold),
+                color: theme.color(for: model.evidence),
+                alignment: .right
+            )
+        }
 
+        let showFooter = overlayError != nil || DesignV2OverlayChromeVisibility.footerSourceEnabled(
+            settings: sourceSettings,
+            sessionKey: latestSnapshot.combo.sessionKey
+        )
+        let footerReserve = showFooter ? Layout.footerHeight : 8
         let bodyRect = NSRect(
             x: outer.minX + Layout.padding,
             y: header.maxY + Layout.bodyGap,
             width: outer.width - Layout.padding * 2,
-            height: max(1, outer.height - Layout.headerHeight - Layout.footerHeight - Layout.bodyGap - 1)
+            height: max(1, outer.height - Layout.headerHeight - footerReserve - Layout.bodyGap - 1)
         )
         drawBody(model.body, in: bodyRect)
 
-        drawText(
-            model.footer,
-            in: NSRect(x: outer.minX + 14, y: outer.maxY - 24, width: outer.width - 28, height: 14),
-            font: overlayFont(size: 10, weight: .regular),
-            color: theme.colors.textMuted
-        )
+        if showFooter {
+            drawText(
+                model.footer,
+                in: NSRect(x: outer.minX + 14, y: outer.maxY - 24, width: outer.width - 28, height: 14),
+                font: overlayFont(size: 10, weight: .regular),
+                color: theme.colors.textMuted
+            )
+        }
     }
 
     private func drawBody(_ body: DesignV2OverlayBody, in rect: NSRect) {
@@ -601,64 +612,25 @@ final class DesignV2OverlaySuiteView: NSView {
     }
 
     private func drawGarageCover(_ model: DesignV2GarageCoverModel, in rect: NSRect) {
-        let background = NSBezierPath(rect: rect)
-        theme.colors.surfaceInset.setFill()
-        background.fill()
+        NSColor.black.setFill()
+        rect.fill()
 
-        let horizonY = rect.minY + rect.height * 0.57
-        NSColor(red255: 73, green: 19, blue: 83, alpha: 0.68).setFill()
-        NSRect(x: rect.minX, y: horizonY, width: rect.width, height: rect.height * 0.13).fill()
-        NSColor(red255: 5, green: 19, blue: 32, alpha: 0.96).setFill()
-        NSRect(x: rect.minX, y: horizonY + rect.height * 0.13, width: rect.width, height: rect.maxY - horizonY).fill()
+        if let garageCoverDefaultImage {
+            drawImage(garageCoverDefaultImage, coveredIn: rect)
+            return
+        }
 
-        drawGarageGrid(in: rect, horizonY: horizonY)
-        drawOutrunSun(in: NSRect(x: rect.maxX - 206, y: rect.minY + 24, width: 136, height: 136))
-
-        let borderRect = rect.insetBy(dx: 18, dy: 18)
-        rounded(borderRect, radius: 12, fill: nil, stroke: theme.colors.accentPrimary.withAlphaComponent(0.92))
-        let logoRect = NSRect(x: borderRect.minX + 50, y: borderRect.minY + 54, width: 116, height: 64)
-        rounded(logoRect, radius: 7, fill: theme.colors.surfaceRaised, stroke: theme.colors.accentSecondary)
         if let garageCoverLogoImage {
-            drawImage(garageCoverLogoImage, containedIn: logoRect.insetBy(dx: 10, dy: 8))
-        } else {
-            drawText("TMR", in: logoRect.insetBy(dx: 14, dy: 8), font: overlayFont(size: 26, weight: .bold), color: theme.colors.textPrimary)
+            drawImage(garageCoverLogoImage, containedIn: rect.insetBy(dx: rect.width * 0.22, dy: rect.height * 0.22))
+            return
         }
 
         drawText(
-            "Tech Mates Racing",
-            in: NSRect(x: logoRect.maxX + 28, y: logoRect.minY + 1, width: min(500, borderRect.maxX - logoRect.maxX - 260), height: 24),
-            font: overlayFont(size: 18, weight: .semibold),
-            color: theme.colors.accentPrimary
-        )
-        drawText(
-            "Garage Cover",
-            in: NSRect(x: logoRect.maxX + 26, y: logoRect.minY + 24, width: min(500, borderRect.maxX - logoRect.maxX - 260), height: 42),
-            font: overlayFont(size: max(30, rect.width / 29), weight: .bold),
-            color: theme.colors.textPrimary
-        )
-        drawText(
-            "Setup screen privacy surface",
-            in: NSRect(x: logoRect.maxX + 30, y: logoRect.maxY + 4, width: 380, height: 18),
-            font: overlayFont(size: 15, weight: .semibold),
-            color: theme.colors.textSecondary
-        )
-
-        let alertY = rect.minY + rect.height * 0.70
-        NSColor(red255: 255, green: 42, blue: 167, alpha: model.isGarageVisible || model.shouldFailClosed ? 0.78 : 0.42).setFill()
-        NSRect(x: rect.minX, y: alertY, width: rect.width, height: 64).fill()
-        NSColor(red255: 255, green: 209, blue: 91, alpha: 0.95).setFill()
-        NSRect(x: rect.minX, y: alertY + 64, width: rect.width, height: 10).fill()
-        drawText(
-            model.state,
-            in: NSRect(x: borderRect.minX + 50, y: alertY + 17, width: borderRect.width - 100, height: 22),
-            font: overlayFont(size: 19, weight: .bold),
-            color: theme.colors.textPrimary
-        )
-        drawText(
-            model.detail,
-            in: NSRect(x: borderRect.minX + 50, y: alertY + 88, width: borderRect.width - 100, height: 18),
-            font: overlayFont(size: 14, weight: .semibold),
-            color: theme.colors.textSecondary
+            "TMR",
+            in: rect,
+            font: overlayFont(size: max(36, rect.height / 6), weight: .bold),
+            color: theme.colors.textPrimary,
+            alignment: .center
         )
     }
 
@@ -698,8 +670,36 @@ final class DesignV2OverlaySuiteView: NSView {
         )
     }
 
+    private func imageCoverRect(imageSize: NSSize, bounds: NSRect) -> NSRect {
+        guard imageSize.width > 0,
+              imageSize.height > 0,
+              bounds.width > 0,
+              bounds.height > 0 else {
+            return bounds
+        }
+
+        let scale = max(bounds.width / imageSize.width, bounds.height / imageSize.height)
+        let width = imageSize.width * scale
+        let height = imageSize.height * scale
+        return NSRect(
+            x: bounds.midX - width / 2,
+            y: bounds.midY - height / 2,
+            width: width,
+            height: height
+        )
+    }
+
     private func drawImage(_ image: NSImage, containedIn bounds: NSRect) {
         let target = imageContainRect(imageSize: image.size, bounds: bounds)
+        drawImage(image, in: target)
+    }
+
+    private func drawImage(_ image: NSImage, coveredIn bounds: NSRect) {
+        let target = imageCoverRect(imageSize: image.size, bounds: bounds)
+        drawImage(image, in: target)
+    }
+
+    private func drawImage(_ image: NSImage, in target: NSRect) {
         NSGraphicsContext.saveGraphicsState()
         if isFlipped {
             let transform = NSAffineTransform()
@@ -1352,7 +1352,7 @@ final class DesignV2OverlaySuiteView: NSView {
 
     private func sessionWeatherModel(_ snapshot: LiveTelemetrySnapshot) -> DesignV2OverlayModel {
         guard snapshot.isConnected, snapshot.isCollecting, let frame = snapshot.latestFrame else {
-            return DesignV2OverlayModel(title: "Session / Weather", status: "waiting for telemetry", footer: "source: waiting", evidence: .unavailable, body: .metricRows([]))
+            return DesignV2OverlayModel(title: "Session / Weather", status: "waiting for telemetry", footer: "", evidence: .unavailable, body: .metricRows([]))
         }
 
         let wet = frame.weatherDeclaredWet || frame.trackWetness > 1
@@ -1362,11 +1362,11 @@ final class DesignV2OverlaySuiteView: NSView {
             DesignV2OverlayMetricRow(label: "Laps", value: "\(max(0, 30 - frame.teamLapCompleted)) left | 30 total", evidence: .modeled),
             DesignV2OverlayMetricRow(label: "Track", value: "Nurburgring Combined | 24.36 km", evidence: .measured),
             DesignV2OverlayMetricRow(label: "Temps", value: "air \(temperature(21.5 + sin(frame.sessionTime / 300) * 2)) | track \(temperature(28 + sin(frame.sessionTime / 240) * 4))", evidence: .live),
-            DesignV2OverlayMetricRow(label: "Surface", value: wet ? "wet | declared wet | rubber moderate" : "dry | rubber moderate", evidence: wet ? .partial : .measured),
-            DesignV2OverlayMetricRow(label: "Sky", value: wet ? "overcast | rain 65%" : "partly cloudy | rain 12%", evidence: .live),
+            DesignV2OverlayMetricRow(label: "Surface", value: wet ? "Wet | Declared Wet | Rubber Moderate" : "Dry | Rubber Moderate", evidence: wet ? .partial : .measured),
+            DesignV2OverlayMetricRow(label: "Sky", value: wet ? "Overcast | rain 65%" : "Partly Cloudy | rain 12%", evidence: .live),
             DesignV2OverlayMetricRow(label: "Wind", value: "NW \(Int((3.6 + sin(frame.sessionTime / 420) * 1.2) * 3.6)) km/h", evidence: .live)
         ]
-        return DesignV2OverlayModel(title: "Session / Weather", status: wet ? "declared wet" : "Race", footer: "source: session + weather telemetry", evidence: wet ? .partial : .live, body: .metricRows(rows))
+        return DesignV2OverlayModel(title: "Session / Weather", status: wet ? "Declared Wet" : "Race", footer: "", evidence: wet ? .partial : .live, body: .metricRows(rows))
     }
 
     private func streamChatModel() -> DesignV2OverlayModel {
@@ -1410,7 +1410,8 @@ final class DesignV2OverlaySuiteView: NSView {
 
     private func garageCoverModel(_ snapshot: LiveTelemetrySnapshot) -> DesignV2OverlayModel {
         let isGarageVisible = snapshot.latestFrame?.isGarageVisible == true
-        let shouldFailClosed = !snapshot.isConnected || !snapshot.isCollecting || snapshot.latestFrame == nil
+        let telemetryFresh = snapshot.lastUpdatedAtUtc.map { Date().timeIntervalSince($0) <= 2.5 } ?? false
+        let shouldFailClosed = !snapshot.isConnected || !snapshot.isCollecting || !telemetryFresh || snapshot.latestFrame == nil
         let state: String
         let detail: String
         let evidence: DesignV2EvidenceKind
@@ -1504,6 +1505,23 @@ final class DesignV2OverlaySuiteView: NSView {
             evidence: available ? .live : .unavailable,
             body: .trackMap(DesignV2TrackMapModel(snapshot: snapshot, isAvailable: available))
         )
+    }
+
+    private func headerText(model: DesignV2OverlayModel) -> String {
+        let sessionKey = latestSnapshot.combo.sessionKey
+        var parts: [String] = []
+        if DesignV2OverlayChromeVisibility.headerStatusEnabled(settings: sourceSettings, sessionKey: sessionKey),
+           !model.status.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            parts.append(model.status)
+        }
+        if DesignV2OverlayChromeVisibility.headerTimeRemainingEnabled(settings: sourceSettings, sessionKey: sessionKey),
+           let seconds = latestSnapshot.latestFrame?.sessionTimeRemain {
+            let timeRemaining = formatHeaderDuration(seconds)
+            if !timeRemaining.isEmpty {
+                parts.append(timeRemaining)
+            }
+        }
+        return parts.joined(separator: " | ")
     }
 
     private func appendInputTrace(_ frame: MockLiveTelemetryFrame) {
@@ -1931,6 +1949,17 @@ final class DesignV2OverlaySuiteView: NSView {
         return hours > 0
             ? String(format: "%d:%02d:%02d", hours, minutes, secs)
             : String(format: "%d:%02d", minutes, secs)
+    }
+
+    private func formatHeaderDuration(_ seconds: TimeInterval) -> String {
+        guard seconds.isFinite, seconds >= 0 else {
+            return ""
+        }
+        let total = max(0, Int(ceil(seconds)))
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        let secs = total % 60
+        return String(format: "%02d:%02d:%02d", hours, minutes, secs)
     }
 
     private func textAlignment(_ alignment: OverlayContentColumnAlignment) -> NSTextAlignment {

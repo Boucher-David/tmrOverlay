@@ -18,9 +18,9 @@ The app does not manage desktop placement or size for Garage Cover. The user siz
 
 The cover is always opaque. It does not expose the normal opacity control because semi-transparent setup coverage can leak private setup information.
 
-The user can import a PNG, JPG, BMP, or GIF image. The app copies that file into app-owned settings storage under `garage-cover/cover.*` and stores that app-owned path in overlay settings. Runtime rendering loads from the app-owned copy, not the original selected file. The Garage Cover settings tab also renders a small static preview of the selected image, or the black TMR fallback when no usable image is configured.
+The user can import a PNG, JPG, BMP, or GIF image. The app copies that file into app-owned settings storage under `garage-cover/cover.*` and stores that app-owned path in overlay settings. Runtime rendering loads from the app-owned copy, not the original selected file. The Garage Cover settings tab also renders a small static preview of the selected image, or the bundled stock fallback cover when no usable image is configured.
 
-The localhost server exposes `GET /api/garage-cover` for image metadata and `GET /api/garage-cover/image` for the app-owned imported image. If no image is imported, the saved image cannot be loaded, or the browser cannot decode the image, the browser source paints a black fallback with centered `TMR` text. The fallback still covers setup details.
+The localhost server exposes `GET /api/garage-cover` for image metadata, `GET /api/garage-cover/image` for the app-owned imported image, and `GET /api/garage-cover/default-image` for the bundled stock fallback cover. If no image is imported, the saved image cannot be loaded, or the browser cannot decode the image, the browser source paints the stock fallback first and only drops to a black centered `TMR` text fallback if the bundled asset is unavailable. The fallback still covers setup details.
 
 Diagnostics bundles include `metadata/garage-cover.json` with localhost route state, image status/metadata, preview state, last Garage-visible detection state, and fallback reason. The imported image itself is not copied into diagnostics bundles.
 

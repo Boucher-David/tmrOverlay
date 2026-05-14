@@ -328,21 +328,80 @@ function browserScenarios() {
       id: 'session-weather',
       fixture: () => ({
         live: freshLiveSnapshot({}),
-        model: metricsModel('session-weather', 'Session / Weather', 'Race', [
-          metric('Session', 'Race | team', 'info'),
-          metric('Clock', '17:22 elapsed | 6:37:08 left', 'normal'),
-          metric('Laps', '-- left | 179 total', 'normal'),
-          metric('Track', 'Gesamtstrecke 24h | 25.38 km', 'normal'),
-          metric('Temps', 'air 22 C | track 31 C', 'normal'),
-          metric('Surface', 'dry | rubber moderate usage', 'normal'),
-          metric('Sky', 'partly cloudy | constant | rain:0%', 'normal'),
-          metric('Wind', 'S | 15 km/h | hum 48% | fog 0%', 'normal')
-        ], 'source: session + live weather telemetry'),
+        model: (() => {
+          const sessionRows = [
+            metric('Session', 'Race | team', 'info', [
+              segment('Type', 'Race', 'normal'),
+              segment('Name', '--', 'normal'),
+              segment('Mode', 'Team', 'normal')
+            ]),
+            metric('Event', 'Race | Mercedes-AMG GT3', 'normal', [
+              segment('Event', 'Race', 'normal'),
+              segment('Car', 'Mercedes-AMG GT3', 'normal')
+            ]),
+            metric('Clock', '17:22 elapsed | 6:37:08 left | 6:54:30 total', 'normal', [
+              segment('Elapsed', '17:22', 'normal'),
+              segment('Left', '6:37:08', 'normal'),
+              segment('Total', '6:54:30', 'normal')
+            ]),
+            metric('Laps', '-- left | 179 total', 'normal', [
+              segment('Remaining', '--', 'normal'),
+              segment('Total', '179', 'normal')
+            ]),
+            metric('Track', 'Gesamtstrecke 24h | 25.38 km', 'normal', [
+              segment('Name', 'Gesamtstrecke 24h', 'normal'),
+              segment('Length', '25.38 km', 'normal')
+            ])
+          ];
+          const weatherRows = [
+            metric('Temps', 'air 19 C | track 44 C', 'warning', [
+              segment('Air', '19 C', 'info', { accentHex: '#33CEFF' }),
+              segment('Track', '44 C', 'warning', { accentHex: '#FF7D49' })
+            ]),
+            metric('Surface', 'Dry | Rubber Moderate Usage', 'normal', [
+              segment('Wetness', 'Dry', 'normal'),
+              segment('Declared', 'Dry', 'normal'),
+              segment('Rubber', 'Moderate Usage', 'normal')
+            ]),
+            metric('Sky', 'Partly Cloudy | constant | rain:0%', 'normal', [
+              segment('Skies', 'Partly Cloudy', 'normal'),
+              segment('Weather', 'constant', 'normal'),
+              segment('Rain', '0%', 'normal')
+            ]),
+            metric('Wind', 'S | 15 km/h', 'normal', [
+              segment('Dir', 'S', 'normal'),
+              segment('Speed', '15 km/h', 'normal'),
+              segment('Facing', 'Head', 'normal', { rotationDegrees: 0 })
+            ]),
+            metric('Atmosphere', 'hum 48% | fog 0% | 1013 hPa', 'normal', [
+              segment('Hum', '48%', 'normal'),
+              segment('Fog', '0%', 'normal'),
+              segment('Pressure', '1013 hPa', 'normal')
+            ])
+          ];
+          return metricsModel('session-weather', 'Session / Weather', 'Race', [
+            ...sessionRows,
+            ...weatherRows
+          ], '', [], [
+            { title: 'Session', rows: sessionRows },
+            { title: 'Weather', rows: weatherRows }
+          ]);
+        })(),
         waitForSelector: '.metric'
       }),
       assert: ({ document }) => {
-        expect(metricText(document)).toContain('Temps air 22 C | track 31 C');
-        expect(metricText(document)).toContain('Wind S | 15 km/h | hum 48% | fog 0%');
+        expect(contentText(document)).toContain('Session');
+        expect(contentText(document)).toContain('Weather');
+        expect(metricText(document)).toContain('Temps Air 19 C Track 44 C');
+        expect(metricText(document)).toContain('Surface Wetness Dry Declared Dry Rubber Moderate Usage');
+        expect(metricText(document)).toContain('Sky Skies Partly Cloudy Weather constant Rain 0%');
+        expect(document.querySelectorAll('.metric .value-segment.custom-color')).toHaveLength(2);
+        expect(metricText(document).join(' ')).toContain('Wind Dir S Speed 15 km/h Facing');
+        expect(metricText(document).join(' ')).toContain('Head');
+        expect(document.querySelector('.wind-arrow')?.textContent).toBe('');
+        expect(metricText(document)).toContain('Atmosphere Hum 48% Fog 0% Pressure 1013 hPa');
+        expect(metricText(document).join(' ')).not.toContain('State state 4');
+        expect(metricText(document).join(' ')).not.toContain('Sun Alt');
         expect(document.getElementById('status').textContent).toBe('Race');
       }
     },
@@ -417,7 +476,7 @@ function browserScenarios() {
           }
         ], [
           { key: 'status', value: '' },
-          { key: 'timeRemaining', value: '03:58' }
+          { key: 'timeRemaining', value: '00:03:58' }
         ]),
         waitForSelector: '.metric.segmented'
       }),
@@ -435,7 +494,7 @@ function browserScenarios() {
         expect(document.querySelector('.tire-grid').textContent).toContain('Set limit');
         expect(document.querySelector('.tire-grid').textContent).toContain('92/91/90%');
         expect(document.getElementById('status').textContent).toBe('');
-        expect(document.getElementById('time-remaining').textContent).toBe('03:58');
+        expect(document.getElementById('time-remaining').textContent).toBe('00:03:58');
       }
     },
     {
@@ -725,7 +784,7 @@ function browserScenarios() {
       }),
       assert: ({ document }) => {
         expect(document.querySelector('.garage-cover')).not.toBeNull();
-        expect(document.body.textContent).toContain('TMR');
+        expect(document.querySelector('.garage-cover img')?.getAttribute('src')).toContain('/api/garage-cover/default-image');
         expect(document.getElementById('status').textContent).toBe('garage visible');
       }
     },
@@ -824,8 +883,8 @@ function metric(label, value, tone, segments = undefined, extra = {}) {
   return segments ? { label, value, tone, segments, ...extra } : { label, value, tone, ...extra };
 }
 
-function segment(label, value, tone) {
-  return { label, value, tone };
+function segment(label, value, tone, extra = {}) {
+  return { label, value, tone, ...extra };
 }
 
 function gridRow(label, values, tone = 'normal') {

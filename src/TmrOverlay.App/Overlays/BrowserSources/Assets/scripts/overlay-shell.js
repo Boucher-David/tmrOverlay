@@ -536,11 +536,32 @@
 
     function metricSegment(segment) {
       const tone = toneClass(segment?.tone);
+      const value = String(segment?.value || '--');
+      const rotation = Number(segment?.rotationDegrees);
+      const hasRotation = Number.isFinite(rotation);
+      const colorStyle = segmentColorStyle(segment?.accentHex);
+      const rotationStyle = hasRotation ? `--segment-rotation: ${rotation.toFixed(1)}deg;` : '';
+      const style = colorStyle || rotationStyle ? ` style="${colorStyle}${rotationStyle}"` : '';
+      const lengthClass = value.length > 14
+        ? ' extra-long'
+        : value.length > 11
+          ? ' long'
+          : '';
+      const valueHtml = hasRotation
+        ? `<span class="wind-arrow" aria-hidden="true"></span><span class="wind-label">${escapeHtml(value)}</span>`
+        : escapeHtml(value);
       return `
-        <div class="value-segment ${tone}">
+        <div class="value-segment ${tone}${colorStyle ? ' custom-color' : ''}${hasRotation ? ' directional' : ''}${lengthClass}"${style}>
           <span class="segment-label">${escapeHtml(segment?.label || '')}</span>
-          <span class="segment-value">${escapeHtml(segment?.value || '--')}</span>
+          <span class="segment-value">${valueHtml}</span>
         </div>`;
+    }
+
+    function segmentColorStyle(value) {
+      const color = parseHexColor(value);
+      return color
+        ? `--segment-accent: #${color.key}; --segment-accent-rgb: ${color.r}, ${color.g}, ${color.b};`
+        : '';
     }
 
     function metricSection(section) {

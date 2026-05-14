@@ -235,22 +235,38 @@ public sealed class OverlayContentColumnSettingsTests
     }
 
     [Fact]
-    public void PitServiceContentDefinitionExposesTireAnalysisToggles()
+    public void PitServiceContentDefinitionExposesMetricAndTireAnalysisToggles()
     {
         Assert.True(OverlayContentColumnSettings.TryGetContentDefinition("pit-service", out var definition));
         Assert.Empty(definition.Columns);
         Assert.Contains(OverlayContentColumnSettings.All, item => item.OverlayId == "pit-service");
-        Assert.Collection(
-            definition.Blocks ?? [],
-            block => Assert.Equal(OverlayOptionKeys.PitServiceShowTireCompound, block.EnabledOptionKey),
-            block => Assert.Equal(OverlayOptionKeys.PitServiceShowTireChange, block.EnabledOptionKey),
-            block => Assert.Equal(OverlayOptionKeys.PitServiceShowTireSetLimit, block.EnabledOptionKey),
-            block => Assert.Equal(OverlayOptionKeys.PitServiceShowTireSetsAvailable, block.EnabledOptionKey),
-            block => Assert.Equal(OverlayOptionKeys.PitServiceShowTireSetsUsed, block.EnabledOptionKey),
-            block => Assert.Equal(OverlayOptionKeys.PitServiceShowTirePressure, block.EnabledOptionKey),
-            block => Assert.Equal(OverlayOptionKeys.PitServiceShowTireTemperature, block.EnabledOptionKey),
-            block => Assert.Equal(OverlayOptionKeys.PitServiceShowTireWear, block.EnabledOptionKey),
-            block => Assert.Equal(OverlayOptionKeys.PitServiceShowTireDistance, block.EnabledOptionKey));
+        var blocks = definition.Blocks ?? [];
+        Assert.Contains(blocks, block => block.Id == OverlayContentColumnSettings.PitServiceReleaseBlockId);
+        Assert.Contains(blocks, block => block.Id == OverlayContentColumnSettings.PitServiceFuelSelectedBlockId);
+        Assert.Contains(blocks, block => block.Id == OverlayContentColumnSettings.PitServiceRepairRequiredBlockId);
+        Assert.Contains(blocks, block => block.EnabledOptionKey == OverlayOptionKeys.PitServiceShowTireCompound);
+        Assert.Contains(blocks, block => block.EnabledOptionKey == OverlayOptionKeys.PitServiceShowTireChange);
+        Assert.Contains(blocks, block => block.EnabledOptionKey == OverlayOptionKeys.PitServiceShowTireSetLimit);
+        Assert.Contains(blocks, block => block.EnabledOptionKey == OverlayOptionKeys.PitServiceShowTireSetsAvailable);
+        Assert.Contains(blocks, block => block.EnabledOptionKey == OverlayOptionKeys.PitServiceShowTireSetsUsed);
+        Assert.Contains(blocks, block => block.EnabledOptionKey == OverlayOptionKeys.PitServiceShowTirePressure);
+        Assert.Contains(blocks, block => block.EnabledOptionKey == OverlayOptionKeys.PitServiceShowTireTemperature);
+        Assert.Contains(blocks, block => block.EnabledOptionKey == OverlayOptionKeys.PitServiceShowTireWear);
+        Assert.Contains(blocks, block => block.EnabledOptionKey == OverlayOptionKeys.PitServiceShowTireDistance);
+    }
+
+    [Fact]
+    public void SessionWeatherContentDefinitionExposesMetricCellToggles()
+    {
+        Assert.True(OverlayContentColumnSettings.TryGetContentDefinition("session-weather", out var definition));
+        Assert.Empty(definition.Columns);
+        Assert.Contains(OverlayContentColumnSettings.All, item => item.OverlayId == "session-weather");
+        var blocks = definition.Blocks ?? [];
+        Assert.Contains(blocks, block => block.Id == OverlayContentColumnSettings.SessionWeatherSessionTypeBlockId);
+        Assert.Contains(blocks, block => block.Id == OverlayContentColumnSettings.SessionWeatherClockRemainingBlockId);
+        Assert.Contains(blocks, block => block.Id == OverlayContentColumnSettings.SessionWeatherSurfaceDeclaredBlockId);
+        Assert.Contains(blocks, block => block.Id == OverlayContentColumnSettings.SessionWeatherWindFacingBlockId);
+        Assert.Contains(blocks, block => block.Id == OverlayContentColumnSettings.SessionWeatherAtmospherePressureBlockId);
     }
 
     private static OverlayContentColumnDefinition Column(string id)

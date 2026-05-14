@@ -7,6 +7,7 @@ import {
   browserOverlayPage,
   browserOverlayPages,
   carRadarRenderModelFromState,
+  repoRoot,
   renderOverlayHtml,
   renderOverlayIndexHtml
 } from '../../tests/browser-overlays/browserOverlayAssets.js';
@@ -36,6 +37,13 @@ const gapShowFooterSource = parseBoolean(process.env.TMR_GAP_SHOW_FOOTER_SOURCE,
 const fuelShowHeaderStatus = parseBoolean(process.env.TMR_FUEL_SHOW_HEADER_STATUS, true);
 const fuelShowHeaderTimeRemaining = parseBoolean(process.env.TMR_FUEL_SHOW_TIME_REMAINING, true);
 const fuelShowFooterSource = parseBoolean(process.env.TMR_FUEL_SHOW_FOOTER_SOURCE, true);
+const sessionWeatherShowHeaderStatus = parseBoolean(process.env.TMR_SESSION_WEATHER_SHOW_HEADER_STATUS, true);
+const sessionWeatherShowHeaderTimeRemaining = parseBoolean(process.env.TMR_SESSION_WEATHER_SHOW_TIME_REMAINING, true);
+const sessionWeatherDisabledContent = csvSet(process.env.TMR_SESSION_WEATHER_DISABLED_CELLS || '');
+const pitServiceShowHeaderStatus = parseBoolean(process.env.TMR_PIT_SERVICE_SHOW_HEADER_STATUS, true);
+const pitServiceShowHeaderTimeRemaining = parseBoolean(process.env.TMR_PIT_SERVICE_SHOW_TIME_REMAINING, true);
+const pitServiceShowFooterSource = parseBoolean(process.env.TMR_PIT_SERVICE_SHOW_FOOTER_SOURCE, true);
+const pitServiceDisabledContent = csvSet(process.env.TMR_PIT_SERVICE_DISABLED_CELLS || '');
 const streamChatProvider = normalizeStreamChatProvider(process.env.TMR_STREAM_CHAT_PROVIDER || process.env.TMR_REVIEW_STREAM_CHAT_PROVIDER || 'live-review');
 const streamChatTwitchChannel = normalizeTwitchChannel(process.env.TMR_STREAM_CHAT_TWITCH_CHANNEL || process.env.TMR_STREAM_CHAT_CHANNEL || 'techmatesracing');
 const streamChatStreamlabsUrl = normalizeStreamlabsUrl(process.env.TMR_STREAM_CHAT_STREAMLABS_URL || '');
@@ -89,6 +97,14 @@ const server = createServer((request, response) => {
     if (path === '/api/snapshot') {
       const { frame, index } = currentFrame(url, request);
       serveJson(response, { live: liveSnapshot(frame, index, url.searchParams) });
+      return;
+    }
+
+    if (path === '/api/garage-cover/default-image') {
+      serveBinary(
+        response,
+        'image/png',
+        readFileSync(resolve(repoRoot, 'assets/brand/Team_Logo_4k_TMRBRANDING.png')));
       return;
     }
 
@@ -1140,7 +1156,8 @@ function liveSnapshot(frame, index, searchParams = null) {
         onPitRoad,
         isOnTrack: !isPreGreen || !onPitRoad,
         isInGarage: false,
-        playerCarInPitStall: false
+        playerCarInPitStall: false,
+        playerYawNorthRadians: Math.PI
       },
       session: {
         hasData: true,
@@ -1148,6 +1165,7 @@ function liveSnapshot(frame, index, searchParams = null) {
         sessionType: 'Race',
         sessionName: isPreGreen ? 'Race Grid' : 'Race',
         eventType: 'Race',
+        carDisplayName: referenceRow?.cells?.[2] || 'Replay car',
         currentSessionNum: 2,
         sessionState: frame.sessionState,
         sessionPhase: frame.sessionPhase,
@@ -1202,7 +1220,14 @@ function liveSnapshot(frame, index, searchParams = null) {
         airTempC: 21,
         trackTempCrewC: 29,
         trackWetness: 1,
-        weatherDeclaredWet: false
+        weatherDeclaredWet: false,
+        windVelocityMetersPerSecond: 4.2,
+        windDirectionRadians: Math.PI,
+        relativeHumidityPercent: 48,
+        fogLevelPercent: 0,
+        airPressurePa: 101325,
+        solarAltitudeRadians: 0.5,
+        solarAzimuthRadians: 2.2
       }
     }
   };
@@ -1516,43 +1541,96 @@ function displayModel(overlayId, frame, index, searchParams = null) {
   const headerItems = replayHeaderItems(frame, status);
 
   if (overlayId === 'session-weather') {
-    return metricsModel(overlayId, 'Session / Weather', status, headerItems, [
-      ['Session', isPreGreen ? 'Race Grid' : 'Race', 'info'],
-      ['Track', formatTemp(29), 'normal'],
-      ['Air', formatTemp(21), 'normal'],
-      ['Wetness', 'Dry', 'success']
-    ]);
+    const sessionWeatherSettings = sessionWeatherSettingsModel();
+    const session = {
+      sessionType: 'Race',
+      sessionName: isPreGreen ? 'Race Grid' : null,
+      carDisplayName: referenceDisplayRow(frame)?.cells?.[2] || 'Replay car',
+      teamRacing: true,
+      sessionTimeSeconds: Math.max(0, 240 + relativeSeconds),
+      sessionTimeRemainSeconds: Math.max(0, 14400 - 240 - relativeSeconds),
+      sessionTimeTotalSeconds: 14400,
+      sessionState: isPreGreen ? 3 : 4,
+      sessionFlags: isPreGreen ? 0 : 4,
+      sessionLapsTotal: 179,
+      trackDisplayName: 'Gesamtstrecke 24h',
+      trackLengthKm: 25.38
+    };
+    const weather = {
+      hasData: true,
+      airTempC: 21,
+      trackTempCrewC: 29,
+      trackWetness: 1,
+      trackWetnessLabel: 'dry',
+      weatherDeclaredWet: false,
+      weatherType: 'constant',
+      skiesLabel: 'partly cloudy',
+      precipitationPercent: 0,
+      windVelocityMetersPerSecond: 4.2,
+      windDirectionRadians: Math.PI,
+      relativeHumidityPercent: 48,
+      fogLevelPercent: 0,
+      airPressurePa: 101325,
+      solarAltitudeRadians: 0.5,
+      solarAzimuthRadians: 2.2,
+      rubberState: 'moderate usage'
+    };
+    return sessionWeatherMetricsModel(
+      session,
+      weather,
+      {},
+      {},
+      replayHeaderItems(frame, 'Race', sessionWeatherSettings),
+      '',
+      {
+        reference: {
+          hasData: true,
+          focusIsPlayer: true,
+          playerCarIdx: frame.playerCarIdx,
+          focusCarIdx: frame.playerCarIdx,
+          playerYawNorthRadians: Math.PI,
+          isInGarage: false
+        },
+        raceEvents: {
+          hasData: true,
+          isOnTrack: true,
+          isInGarage: false,
+          isGarageVisible: false
+        },
+        fuelPit: {}
+      });
   }
 
   if (overlayId === 'pit-service') {
-    const releaseRow = ['Release', referenceDisplayRow(frame)?.isPit ? 'pit road' : '--', referenceDisplayRow(frame)?.isPit ? 'info' : 'normal'];
-    const pitStatusRow = ['Pit status', status || '--', 'normal'];
+    const pitServiceSettings = pitServiceSettingsModel();
+    const releaseRow = pitSignalMetricRow('Release', referenceDisplayRow(frame)?.isPit ? 'pit road' : '--', referenceDisplayRow(frame)?.isPit ? 'info' : 'normal', 'pit-service.signal.release');
+    const pitStatusRow = pitSignalMetricRow('Pit status', status || '--', 'normal', 'pit-service.signal.status');
     const fuelRequestRow = ['Fuel request', '--', 'normal', [
-      pitSegment('Requested', '--', 'waiting'),
-      pitSegment('Selected', '--', 'waiting')
+      pitSegment('Requested', '--', 'waiting', 'pit-service.service.fuel-requested'),
+      pitSegment('Selected', '--', 'waiting', 'pit-service.service.fuel-selected')
     ]];
     const tearoffRow = ['Tearoff', '--', 'normal', [
-      pitSegment('Requested', '--', 'waiting')
+      pitSegment('Requested', '--', 'waiting', 'pit-service.service.tearoff-requested')
     ]];
     const repairRow = ['Repair', 'Available', 'success', [
-      pitSegment('Required', '--', 'success'),
-      pitSegment('Optional', '--', 'success')
+      pitSegment('Required', '--', 'success', 'pit-service.service.repair-required'),
+      pitSegment('Optional', '--', 'success', 'pit-service.service.repair-optional')
     ]];
     const fastRepairRow = ['Fast repair', '--', 'normal', [
-      pitSegment('Selected', '--', 'waiting'),
-      pitSegment('Available', '--', 'waiting')
+      pitSegment('Selected', '--', 'waiting', 'pit-service.service.fast-repair-selected'),
+      pitSegment('Available', '--', 'waiting', 'pit-service.service.fast-repair-available')
     ]];
-    const metricSections = [
+    const metricSections = filterMetricSectionsByContent([
       ['Pit Signal', [releaseRow, pitStatusRow]],
       ['Service Request', [fuelRequestRow, tearoffRow, repairRow, fastRepairRow]]
-    ];
+    ], pitServiceSettings.disabledContent);
     return metricsModel(
       overlayId,
       'Pit Service',
       status,
-      headerItems,
+      replayHeaderItems(frame, status, pitServiceSettings),
       metricSections.flatMap(([, rows]) => rows),
-      'source: race-start replay',
+      sourceFromSettings(pitServiceSettings, 'source: race-start replay'),
       [],
       metricSections);
   }
@@ -1613,22 +1691,24 @@ function captureDisplayModel(overlayId, frame, index, searchParams = null) {
   const headerItems = captureHeaderItems(models, status);
 
   if (overlayId === 'session-weather') {
-    return captureSessionWeatherModel(models, status, headerItems);
+    const sessionWeatherSettings = sessionWeatherSettingsModel();
+    return captureSessionWeatherModel(models, status, sessionWeatherSettings);
   }
 
   if (overlayId === 'pit-service') {
+    const pitServiceSettings = pitServiceSettingsModel();
     const localContext = localInCarOrPitContext(models, 'waiting for local pit-service context');
     if (!localContext.isAvailable) {
       return metricsModel(
         overlayId,
         'Pit Service',
         localContext.statusText,
-        captureHeaderItems(models, localContext.statusText),
+        captureHeaderItems(models, localContext.statusText, pitServiceSettings),
         [],
-        'source: waiting');
+        sourceFromSettings(pitServiceSettings, 'source: waiting'));
     }
 
-    return capturePitServiceModel(models, status, headerItems, searchParams);
+    return capturePitServiceModel(models, status, captureHeaderItems(models, status, pitServiceSettings), searchParams);
   }
 
   if (overlayId === 'car-radar') {
@@ -1850,27 +1930,198 @@ function localInCarOrPitContext(models, statusText) {
   return { isAvailable: false, reason: 'not_in_car', statusText };
 }
 
-function captureSessionWeatherModel(models, fallbackStatus, headerItems) {
+function captureSessionWeatherModel(models, fallbackStatus, overlaySettings = sessionWeatherSettingsModel()) {
   const session = models.session || {};
   const weather = models.weather || {};
   const hasWeather = weather.hasData === true;
   const status = hasWetSurfaceSignal(weather)
-    ? weather.trackWetnessLabel || 'wet declared'
+    ? titleCaseDisplay(weather.trackWetnessLabel) || 'Declared Wet'
     : session.sessionType || fallbackStatus || 'live session';
-  const source = hasWeather ? 'source: session + live weather telemetry' : 'source: session telemetry';
-  return metricsModel('session-weather', 'Session / Weather', status, headerItems, [
-    ['Session', joinAvailable(session.sessionType, session.sessionName, session.teamRacing === true ? 'team' : null), 'normal'],
-    ['Clock', formatSessionClock(session), 'normal'],
-    ['Laps', formatSessionLaps(session, models.raceProgress, models.raceProjection), 'normal'],
-    ['Track', joinAvailable(session.trackDisplayName, formatTrackLength(session.trackLengthKm)), 'normal'],
-    ['Temps', formatWeatherTemps(weather), 'normal'],
-    ['Surface', formatWeatherSurface(weather), hasWetSurfaceSignal(weather) ? 'info' : 'normal'],
-    ['Sky', formatWeatherSky(weather), 'normal'],
-    ['Wind', formatWindAtmosphere(weather), 'normal']
-  ], source);
+  const headerItems = captureHeaderItems(models, status, overlaySettings);
+  return sessionWeatherMetricsModel(
+    session,
+    weather,
+    models.raceProgress,
+    models.raceProjection,
+    headerItems,
+    '',
+    models,
+    overlaySettings.disabledContent);
+}
+
+function sessionWeatherMetricsModel(session, weather, raceProgress, raceProjection, headerItems, source, models = null, disabledContent = sessionWeatherDisabledContent) {
+  const sessionRow = sessionWeatherRow('Session', formatSessionSummary(session), 'normal', [
+    metricSegment('Type', session?.sessionType, 'normal', { key: 'session-weather.session.type' }),
+    ...availableMetricSegments(metricSegment('Name', meaningfulSessionName(session), 'normal', { key: 'session-weather.session.name' })),
+    metricSegment('Mode', session?.teamRacing === true ? 'Team' : session?.teamRacing === false ? 'Solo' : null, 'normal', { key: 'session-weather.session.mode' })
+  ]);
+  const eventRow = sessionWeatherRow('Event', formatSessionEvent(session), 'normal', [
+    metricSegment('Event', session?.eventType, 'normal', { key: 'session-weather.event.type' }),
+    metricSegment('Car', session?.carDisplayName, 'normal', { key: 'session-weather.event.car' })
+  ]);
+  const clock = sessionClockParts(session);
+  const clockRow = sessionWeatherRow('Clock', formatSessionClock(session), 'normal', [
+    metricSegment('Elapsed', clock.elapsed, 'normal', { key: 'session-weather.clock.elapsed' }),
+    metricSegment(clock.remainingLabel, clock.remaining, 'normal', { key: 'session-weather.clock.remaining' }),
+    metricSegment('Total', clock.total, 'normal', { key: 'session-weather.clock.total' })
+  ]);
+  const laps = sessionLapParts(session, raceProgress, raceProjection);
+  const lapsRow = sessionWeatherRow('Laps', formatSessionLaps(session, raceProgress, raceProjection), 'normal', [
+    metricSegment('Remaining', laps.remaining, 'normal', { key: 'session-weather.laps.remaining' }),
+    metricSegment('Total', laps.total, 'normal', { key: 'session-weather.laps.total' })
+  ]);
+  const trackRow = sessionWeatherRow('Track', joinAvailable(session?.trackDisplayName, formatTrackLength(session?.trackLengthKm)), 'normal', [
+    metricSegment('Name', session?.trackDisplayName, 'normal', { key: 'session-weather.track.name' }),
+    metricSegment('Length', formatTrackLength(session?.trackLengthKm), 'normal', { key: 'session-weather.track.length' })
+  ]);
+  const wetTone = hasWetSurfaceSignal(weather) ? 'info' : 'normal';
+  const tempsTone = strongestTone(temperatureTone(weather?.trackTempCrewC), 'normal');
+  const trackTempAccent = temperatureAccentHex(weather?.trackTempCrewC);
+  const tempsRow = sessionWeatherRow('Temps', formatWeatherTemps(weather), tempsTone, [
+    metricSegment('Air', formatTemp(weather?.airTempC), temperatureTone(weather?.airTempC), { accentHex: temperatureAccentHex(weather?.airTempC), key: 'session-weather.temps.air' }),
+    metricSegment('Track', formatTemp(weather?.trackTempCrewC), temperatureTone(weather?.trackTempCrewC), { accentHex: trackTempAccent, key: 'session-weather.temps.track' })
+  ]);
+  const wetnessToneValue = strongestTone(wetTone, wetnessTone(weather));
+  const wetnessAccent = wetnessAccentHex(weather);
+  const wetnessLabel = titleCaseDisplay(weather?.trackWetnessLabel) || trackWetnessLabel(weather?.trackWetness);
+  const surfaceRow = sessionWeatherRow('Surface', formatWeatherSurface(weather), wetnessToneValue, [
+    metricSegment('Wetness', wetnessLabel, wetnessToneValue, { accentHex: wetnessAccent, key: 'session-weather.surface.wetness' }),
+    metricSegment('Declared', weather?.weatherDeclaredWet === true ? 'Wet' : weather?.weatherDeclaredWet === false ? 'Dry' : null, weather?.declaredWetSurfaceMismatch === true ? 'warning' : declaredWetTone(weather), { accentHex: weather?.weatherDeclaredWet === true ? wetnessAccent || '#33CEFF' : null, key: 'session-weather.surface.declared' }),
+    metricSegment('Rubber', titleCaseDisplay(weather?.rubberState), 'normal', { key: 'session-weather.surface.rubber' })
+  ]);
+  const skyRow = sessionWeatherRow('Sky', formatWeatherSky(weather), rainTone(weather?.precipitationPercent), [
+    metricSegment('Skies', titleCaseDisplay(weather?.skiesLabel), 'normal', { key: 'session-weather.sky.skies' }),
+    metricSegment('Weather', weather?.weatherType, 'normal', { key: 'session-weather.sky.weather' }),
+    metricSegment('Rain', formatWeatherPercent(weather?.precipitationPercent), rainTone(weather?.precipitationPercent), { accentHex: rainAccentHex(weather?.precipitationPercent), key: 'session-weather.sky.rain' })
+  ]);
+  const localWind = formatLocalWind(models, weather);
+  const windSegments = [
+    metricSegment('Dir', cardinalDirection(weather?.windDirectionRadians), 'normal', { key: 'session-weather.wind.direction' }),
+    metricSegment('Speed', formatSpeed(weather?.windVelocityMetersPerSecond), 'normal', { key: 'session-weather.wind.speed' })
+  ];
+  if (localWind) {
+    windSegments.push(metricSegment('Facing', localWind.directionLabel, 'normal', { rotationDegrees: localWind.relativeDegrees, key: 'session-weather.wind.facing' }));
+  }
+  const windRow = sessionWeatherRow('Wind', formatWindAtmosphere(weather, localWind), 'normal', windSegments);
+  const atmosphereRow = sessionWeatherRow('Atmosphere', formatWeatherAtmosphere(weather), 'normal', [
+    metricSegment('Hum', formatWeatherPercent(weather?.relativeHumidityPercent), 'normal', { key: 'session-weather.atmosphere.humidity' }),
+    metricSegment('Fog', formatWeatherPercent(weather?.fogLevelPercent), 'normal', { key: 'session-weather.atmosphere.fog' }),
+    metricSegment('Pressure', formatAirPressure(weather?.airPressurePa), 'normal', { key: 'session-weather.atmosphere.pressure' })
+  ]);
+  const sessionRows = [sessionRow, clockRow, ...availableRows(eventRow), trackRow, lapsRow];
+  const weatherRows = [
+    surfaceRow,
+    skyRow,
+    windRow,
+    tempsRow,
+    ...availableRows(atmosphereRow)
+  ];
+  const metricSections = filterMetricSectionsByContent([
+    ['Session', sessionRows],
+    ['Weather', weatherRows]
+  ], disabledContent);
+  return metricsModel(
+    'session-weather',
+    'Session / Weather',
+    sessionWeatherStatus(session, weather),
+    headerItems,
+    metricSections.flatMap(([, rows]) => rows),
+    source,
+    [],
+    metricSections);
+}
+
+function availableRows(row) {
+  return row?.value && row.value !== '--' ? [row] : [];
+}
+
+function filterMetricSectionsByContent(metricSections, disabledContent = new Set()) {
+  if (!(disabledContent instanceof Set) || disabledContent.size === 0) {
+    return metricSections;
+  }
+
+  return metricSections
+    .map(([title, rows]) => [
+      title,
+      rows
+        .map((row) => filterMetricRowByContent(row, disabledContent))
+        .filter(Boolean)
+    ])
+    .filter(([, rows]) => rows.length > 0);
+}
+
+function filterMetricRowByContent(row, disabledContent) {
+  if (Array.isArray(row)) {
+    const [label, value, tone, segments] = row;
+    if (!Array.isArray(segments) || segments.length === 0) {
+      return row;
+    }
+
+    const filtered = segments.filter((segment) => !segment?.key || !disabledContent.has(segment.key));
+    if (filtered.length === 0) {
+      return null;
+    }
+
+    return [label, joinAvailable(...filtered.map((segment) => segment?.value)), tone, filtered];
+  }
+
+  if (!Array.isArray(row?.segments) || row.segments.length === 0) {
+    return row;
+  }
+
+  const filtered = row.segments.filter((segment) => !segment?.key || !disabledContent.has(segment.key));
+  if (filtered.length === 0) {
+    return null;
+  }
+
+  return {
+    ...row,
+    value: joinAvailable(...filtered.map((segment) => segment?.value)),
+    segments: filtered
+  };
+}
+
+function sessionWeatherStatus(session, weather) {
+  if (weather?.declaredWetSurfaceMismatch === true) return 'wet mismatch';
+  if (hasWetSurfaceSignal(weather)) return titleCaseDisplay(weather?.trackWetnessLabel) || 'Declared Wet';
+  return String(session?.sessionType || '').trim() || 'live session';
+}
+
+function sessionWeatherRow(label, value, tone = 'normal', segments = []) {
+  return {
+    label,
+    value: value || '--',
+    tone,
+    segments
+  };
+}
+
+function metricSegment(label, value, tone = 'normal', extra = {}) {
+  const text = String(value ?? '').trim();
+  return { label, value: text && text !== '--' ? text : '--', tone, ...extra };
+}
+
+function availableMetricSegments(segment) {
+  return segment?.value && segment.value !== '--' ? [segment] : [];
+}
+
+function strongestTone(left, right) {
+  return toneWeight(left) >= toneWeight(right) ? left : right;
+}
+
+function toneWeight(tone) {
+  switch (tone) {
+    case 'error': return 50;
+    case 'warning': return 40;
+    case 'info': return 30;
+    case 'success': return 20;
+    case 'waiting': return 10;
+    default: return 0;
+  }
 }
 
 function capturePitServiceModel(models, fallbackStatus, headerItems, searchParams = null) {
+  const pitServiceSettings = pitServiceSettingsModel();
   const spoofAllRows = pitServiceSpoofAllRowsEnabled(searchParams);
   const pitModels = spoofAllRows
     ? pitServiceAllRowsModels(models)
@@ -1879,23 +2130,23 @@ function capturePitServiceModel(models, fallbackStatus, headerItems, searchParam
   const release = pitReleaseState(pit);
   const status = pitStatus(pit, release) || fallbackStatus || 'pit ready';
   const effectiveHeaderItems = spoofAllRows
-    ? [
+      ? [
         { key: 'status', value: '' },
-        { key: 'timeRemaining', value: formatPitTimeRemaining(pitModels.session) || '' }
+        { key: 'timeRemaining', value: formatHeaderSessionTimeRemaining(pitModels.session) || '' }
       ]
     : headerItems;
-  const releaseRow = pitSignalMetricRow('Release', release.value, release.tone);
-  const pitStatusRow = pitSignalMetricRow('Pit status', pitServiceStatusText(pit.pitServiceStatus), pitServiceActivityTone(pit, release));
+  const releaseRow = pitSignalMetricRow('Release', release.value, release.tone, 'pit-service.signal.release');
+  const pitStatusRow = pitSignalMetricRow('Pit status', pitServiceStatusText(pit.pitServiceStatus), pitServiceActivityTone(pit, release), 'pit-service.signal.status');
   const timeLaps = pitTimeLaps(pitModels);
-  const fuelRequestRow = spoofAllRows ? pitFuelRequestSegmentedRow(pit) : ['Fuel request', pitFuelRequest(pit), 'normal'];
-  const tearoffRow = spoofAllRows ? pitTearoffSegmentedRow(pit) : ['Tearoff', pitTearoff(pit), 'normal'];
-  const repairRow = spoofAllRows ? pitRepairSegmentedRow(pit) : ['Repair', pitRepair(pit), pitRepairTone(pit)];
-  const fastRepairRow = spoofAllRows ? pitFastRepairSegmentedRow(pit) : ['Fast repair', pitFastRepair(pit), 'normal'];
-  const metricSections = [
-    ...(timeLaps === '--' ? [] : [['Session', [['Time / Laps', timeLaps, 'normal']]]]),
+  const fuelRequestRow = pitFuelRequestSegmentedRow(pit);
+  const tearoffRow = pitTearoffSegmentedRow(pit);
+  const repairRow = pitRepairSegmentedRow(pit);
+  const fastRepairRow = pitFastRepairSegmentedRow(pit);
+  const metricSections = filterMetricSectionsByContent([
+    ...(timeLaps === '--' ? [] : [['Session', [pitSessionTimeLapsSegmentedRow(pitModels)]]]),
     ['Pit Signal', [releaseRow, pitStatusRow]],
     ['Service Request', [fuelRequestRow, tearoffRow, repairRow, fastRepairRow]]
-  ];
+  ], pitServiceSettings.disabledContent);
   const metrics = metricSections.flatMap(([, rows]) => rows);
   return metricsModel(
     'pit-service',
@@ -1903,9 +2154,9 @@ function capturePitServiceModel(models, fallbackStatus, headerItems, searchParam
     status,
     effectiveHeaderItems,
     metrics,
-    spoofAllRows
-      ? 'source: spoofed pit service all-rows preview'
-      : 'source: player/team pit service telemetry',
+    sourceFromSettings(
+      pitServiceSettings,
+      spoofAllRows ? 'source: spoofed pit service all-rows preview' : 'source: player/team pit service telemetry'),
     spoofAllRows ? pitServiceGridSectionsFromData(pitModels, pit) : [],
     metricSections);
 }
@@ -3678,6 +3929,22 @@ function formatTemp(value) {
     : `${Math.round(value)} C`;
 }
 
+function temperatureTone(celsius) {
+  if (!Number.isFinite(celsius)) return 'normal';
+  if (celsius >= 50) return 'error';
+  if (celsius >= 42) return 'warning';
+  if (celsius <= 20 || celsius >= 34) return 'info';
+  return 'normal';
+}
+
+function temperatureAccentHex(celsius) {
+  if (!Number.isFinite(celsius)) return null;
+  if (celsius >= 50) return '#FF6274';
+  if (celsius >= 42) return '#FF7D49';
+  if (celsius >= 34) return '#FFD15B';
+  return celsius <= 20 ? '#33CEFF' : '#62FF9F';
+}
+
 function formatSpeed(value) {
   if (!Number.isFinite(value)) return '--';
   return isImperial()
@@ -3711,10 +3978,24 @@ function formatTrackLength(value) {
   return Number.isFinite(value) ? `${value.toFixed(2)} km` : null;
 }
 
-function trackWetnessLabel(value, declaredWet) {
-  if (declaredWet === true) return 'Declared wet';
+function trackWetnessLabel(value) {
   if (!Number.isFinite(value)) return '--';
-  return value <= 1 ? 'Dry' : value <= 3 ? 'Damp' : 'Wet';
+  if (value === 0) return 'Unknown';
+  if (value === 1) return 'Dry';
+  if (value === 2) return 'Mostly Dry';
+  if (value === 3) return 'Very Lightly Wet';
+  if (value === 4) return 'Lightly Wet';
+  if (value === 5) return 'Moderately Wet';
+  if (value === 6) return 'Very Wet';
+  if (value === 7) return 'Extremely Wet';
+  return `Value ${value}`;
+}
+
+function titleCaseDisplay(value) {
+  const text = String(value || '').trim();
+  return text
+    ? text.toLowerCase().replace(/\b\w/g, (match) => match.toUpperCase())
+    : null;
 }
 
 function hasWetSurfaceSignal(weather) {
@@ -3722,11 +4003,24 @@ function hasWetSurfaceSignal(weather) {
 }
 
 function formatSessionClock(session) {
+  const parts = sessionClockParts(session);
+  if (parts.elapsed === '--' && parts.remaining === '--' && parts.total === '--') return '--';
+  return joinAvailable(
+    parts.elapsed === '--' ? null : `${parts.elapsed} elapsed`,
+    parts.remaining === '--' ? null : `${parts.remaining} ${parts.remainingLabel.toLowerCase()}`,
+    parts.total === '--' ? null : `${parts.total} total`);
+}
+
+function sessionClockParts(session) {
   const elapsed = formatDurationCompact(session?.sessionTimeSeconds);
   const remain = formatDurationCompact(session?.sessionTimeRemainSeconds);
-  if (elapsed === '--' && remain === '--') return '--';
-  const suffix = isRacePreGreenSession(session) ? 'countdown' : 'left';
-  return `${elapsed} elapsed | ${remain} ${suffix}`;
+  const total = formatDurationCompact(session?.sessionTimeTotalSeconds);
+  return {
+    elapsed,
+    remaining: remain,
+    remainingLabel: isRacePreGreenSession(session) ? 'Countdown' : 'Left',
+    total
+  };
 }
 
 function isRacePreGreenSession(session) {
@@ -3737,6 +4031,11 @@ function isRacePreGreenSession(session) {
 }
 
 function formatSessionLaps(session, raceProgress = {}, raceProjection = {}) {
+  const laps = sessionLapParts(session, raceProgress, raceProjection);
+  return `${laps.remaining || '--'} left | ${laps.total || '--'} total`;
+}
+
+function sessionLapParts(session, raceProgress = {}, raceProjection = {}) {
   const remain = formatRemainingLapCount(session?.sessionLapsRemain ?? session?.sessionLapsRemainEx)
     || formatEstimatedLapCount(raceProjection?.estimatedTeamLapsRemaining)
     || formatEstimatedLapCount(raceProgress?.raceLapsRemaining);
@@ -3744,7 +4043,7 @@ function formatSessionLaps(session, raceProgress = {}, raceProjection = {}) {
     || formatEstimatedTotalLapCount(raceProjection?.estimatedFinishLap)
     || formatEstimatedRaceProgressTotalLaps(raceProgress)
     || formatLapCount(session?.raceLaps);
-  return `${remain || '--'} left | ${total || '--'} total`;
+  return { remaining: remain, total };
 }
 
 function formatLapCount(value) {
@@ -3780,6 +4079,16 @@ function pitTimeLaps(models) {
   return joinAvailable(timeRemaining, pitCompactLaps(session, models.raceProgress, models.raceProjection));
 }
 
+function pitSessionTimeLapsSegmentedRow(models) {
+  const session = models.session || {};
+  const timeRemaining = formatPitTimeRemaining(session) || '--';
+  const laps = pitCompactLaps(session, models.raceProgress, models.raceProjection) || '--';
+  return ['Time / Laps', joinAvailable(timeRemaining, laps), 'normal', [
+    pitSegment('Time', timeRemaining, 'normal', 'pit-service.session.time'),
+    pitSegment('Laps', laps, 'normal', 'pit-service.session.laps')
+  ]];
+}
+
 function pitCompactLaps(session, raceProgress = {}, raceProjection = {}) {
   const remain = formatRemainingLapCount(session?.sessionLapsRemain ?? session?.sessionLapsRemainEx)
     || formatEstimatedLapCount(raceProjection?.estimatedTeamLapsRemaining)
@@ -3805,6 +4114,12 @@ function formatPitTimeRemaining(session) {
   return `${String(Math.floor(totalMinutes / 60)).padStart(2, '0')}:${String(totalMinutes % 60).padStart(2, '0')}`;
 }
 
+function formatHeaderSessionTimeRemaining(session) {
+  const seconds = session?.sessionTimeRemainSeconds;
+  if (!Number.isFinite(seconds) || seconds < 0) return null;
+  return formatDuration(seconds);
+}
+
 function formatWeatherTemps(weather) {
   const air = formatTemp(weather?.airTempC);
   const track = formatTemp(weather?.trackTempCrewC);
@@ -3812,24 +4127,102 @@ function formatWeatherTemps(weather) {
 }
 
 function formatWeatherSurface(weather) {
-  const wetness = weather?.trackWetnessLabel || trackWetnessLabel(weather?.trackWetness, weather?.weatherDeclaredWet);
-  return joinAvailable(wetness, weather?.weatherDeclaredWet === true ? 'declared wet' : null, weather?.rubberState ? `rubber ${weather.rubberState}` : null);
+  const wetness = titleCaseDisplay(weather?.trackWetnessLabel) || trackWetnessLabel(weather?.trackWetness);
+  return joinAvailable(wetness, weather?.weatherDeclaredWet === true ? 'Declared Wet' : null, weather?.rubberState ? `Rubber ${titleCaseDisplay(weather.rubberState)}` : null);
 }
 
 function formatWeatherSky(weather) {
-  const precipitation = Number.isFinite(weather?.precipitationPercent)
-    ? `rain:${weather.precipitationPercent.toFixed(0)}%`
-    : null;
-  return joinAvailable(weather?.skiesLabel, weather?.weatherType, precipitation);
+  const precipitationPercent = formatWeatherPercent(weather?.precipitationPercent);
+  const precipitation = precipitationPercent ? `rain:${precipitationPercent}` : null;
+  return joinAvailable(titleCaseDisplay(weather?.skiesLabel), weather?.weatherType, precipitation);
 }
 
-function formatWindAtmosphere(weather) {
+function formatWindAtmosphere(weather, localWind = null) {
   const windSpeed = formatSpeed(weather?.windVelocityMetersPerSecond);
   const windDirection = cardinalDirection(weather?.windDirectionRadians);
-  const wind = windSpeed === '--' && !windDirection ? null : joinAvailable(windDirection, windSpeed === '--' ? null : windSpeed);
-  const humidity = Number.isFinite(weather?.relativeHumidityPercent) ? `hum ${weather.relativeHumidityPercent.toFixed(0)}%` : null;
-  const fog = Number.isFinite(weather?.fogLevelPercent) ? `fog ${weather.fogLevelPercent.toFixed(0)}%` : null;
-  return joinAvailable(wind, humidity, fog);
+  return windSpeed === '--' && !windDirection
+    ? '--'
+    : joinAvailable(windDirection, windSpeed === '--' ? null : windSpeed, localWind?.directionLabel);
+}
+
+function formatWeatherAtmosphere(weather) {
+  const humidity = formatWeatherPercent(weather?.relativeHumidityPercent, 'hum');
+  const fog = formatWeatherPercent(weather?.fogLevelPercent, 'fog');
+  return joinAvailable(humidity, fog, formatAirPressure(weather?.airPressurePa));
+}
+
+function formatSessionSummary(session) {
+  return joinAvailable(session?.sessionType, meaningfulSessionName(session), session?.teamRacing === true ? 'team' : null);
+}
+
+function meaningfulSessionName(session) {
+  const name = String(session?.sessionName || '').trim();
+  if (!name) return null;
+  const type = String(session?.sessionType || '').trim();
+  const event = String(session?.eventType || '').trim();
+  return name.toLowerCase() === type.toLowerCase() || name.toLowerCase() === event.toLowerCase()
+    ? null
+    : name;
+}
+
+function formatSessionEvent(session) {
+  return joinAvailable(session?.eventType, session?.carDisplayName);
+}
+
+function formatAirPressure(pascals) {
+  if (!Number.isFinite(pascals) || pascals <= 0) return null;
+  return isImperial()
+    ? `${(pascals / 3386.389).toFixed(2)} inHg`
+    : `${(pascals / 100).toFixed(0)} hPa`;
+}
+
+function normalizeWeatherPercent(value) {
+  if (!Number.isFinite(value) || value < 0) return null;
+  return Math.min(value <= 1 ? value * 100 : value, 100);
+}
+
+function formatWeatherPercent(value, label = null) {
+  const normalized = normalizeWeatherPercent(value);
+  if (!Number.isFinite(normalized)) return null;
+  const formatted = `${normalized.toFixed(0)}%`;
+  return label ? `${label} ${formatted}` : formatted;
+}
+
+function wetnessTone(weather) {
+  return Number.isFinite(weather?.trackWetness) && weather.trackWetness >= 2 || weather?.weatherDeclaredWet === true
+    ? 'info'
+    : 'normal';
+}
+
+function declaredWetTone(weather) {
+  return weather?.weatherDeclaredWet === true ? 'info' : 'normal';
+}
+
+function wetnessAccentHex(weather) {
+  const value = weather?.trackWetness;
+  if (!Number.isFinite(value)) {
+    return weather?.weatherDeclaredWet === true ? '#33CEFF' : null;
+  }
+
+  if (value >= 7) return '#7A6BFF';
+  if (value >= 5) return '#2F7DFF';
+  if (value >= 3) return '#33CEFF';
+  if (value >= 2) return '#8AD8FF';
+  return weather?.weatherDeclaredWet === true ? '#33CEFF' : null;
+}
+
+function rainTone(percent) {
+  const normalized = normalizeWeatherPercent(percent);
+  return Number.isFinite(normalized) && normalized > 0 ? 'info' : 'normal';
+}
+
+function rainAccentHex(percent) {
+  const normalized = normalizeWeatherPercent(percent);
+  if (!Number.isFinite(normalized) || normalized <= 0) return null;
+  if (normalized >= 70) return '#7A6BFF';
+  if (normalized >= 40) return '#2F7DFF';
+  if (normalized >= 15) return '#33CEFF';
+  return '#8AD8FF';
 }
 
 function cardinalDirection(radians) {
@@ -3839,6 +4232,51 @@ function cardinalDirection(radians) {
   if (degrees < 0) degrees += 360;
   const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
   return directions[Math.round(degrees / 45) % directions.length];
+}
+
+function formatLocalWind(models, weather) {
+  if (!models || !isPlayerInCar(models)) return null;
+  const reference = models.reference || {};
+  const windSpeed = weather?.windVelocityMetersPerSecond;
+  const windDirection = weather?.windDirectionRadians;
+  const heading = reference.playerYawNorthRadians;
+  if (!Number.isFinite(windSpeed)
+    || windSpeed < 0
+    || !Number.isFinite(windDirection)
+    || !Number.isFinite(heading)) {
+    return null;
+  }
+
+  const relativeRadians = normalizeSignedRadians(windDirection - heading);
+  const headMetersPerSecond = windSpeed * Math.cos(relativeRadians);
+  const crossMetersPerSecond = windSpeed * Math.sin(relativeRadians);
+  const headTail = `${headMetersPerSecond >= 0 ? 'Head' : 'Tail'} ${formatSpeed(Math.abs(headMetersPerSecond))}`;
+  const cross = Math.abs(crossMetersPerSecond) < 0.05
+    ? '0'
+    : `${crossMetersPerSecond >= 0 ? 'R' : 'L'} ${formatSpeed(Math.abs(crossMetersPerSecond))}`;
+  return {
+    value: joinAvailable(headTail, cross === '0' ? 'cross 0' : `cross ${cross}`),
+    headTail,
+    cross,
+    directionLabel: relativeWindLabel(relativeRadians),
+    relativeDegrees: relativeRadians * 180 / Math.PI
+  };
+}
+
+function relativeWindLabel(relativeRadians) {
+  const degrees = Math.abs(relativeRadians * 180 / Math.PI);
+  if (degrees <= 22.5) return 'Head';
+  if (degrees >= 157.5) return 'Tail';
+  const side = relativeRadians >= 0 ? 'R' : 'L';
+  if (degrees <= 67.5) return `Head ${side}`;
+  return degrees >= 112.5 ? `Tail ${side}` : side;
+}
+
+function normalizeSignedRadians(radians) {
+  let normalized = radians % (Math.PI * 2);
+  if (normalized > Math.PI) normalized -= Math.PI * 2;
+  if (normalized < -Math.PI) normalized += Math.PI * 2;
+  return normalized;
 }
 
 function pitServiceStatusText(status) {
@@ -3979,15 +4417,15 @@ function pitFuelRequestSegmentedRow(pit) {
     : null;
   const selected = Number.isFinite(selectedLiters) ? formatLiters(selectedLiters) : '--';
   return ['Fuel request', pitFuelRequest(pit), 'normal', [
-    pitSegment('Requested', requested ? 'Yes' : 'No', requested ? 'success' : 'error'),
-    pitSegment('Selected', selected, selected === '--' ? 'waiting' : 'info')
+    pitSegment('Requested', requested ? 'Yes' : 'No', requested ? 'success' : 'error', 'pit-service.service.fuel-requested'),
+    pitSegment('Selected', selected, selected === '--' ? 'waiting' : 'info', 'pit-service.service.fuel-selected')
   ]];
 }
 
 function pitTearoffSegmentedRow(pit) {
   const requested = pitTearoffRequested(pit);
   return ['Tearoff', pitTearoff(pit), 'normal', [
-    pitSegment('Requested', requested ? 'Yes' : 'No', requested ? 'success' : 'error')
+    pitSegment('Requested', requested ? 'Yes' : 'No', requested ? 'success' : 'error', 'pit-service.service.tearoff-requested')
   ]];
 }
 
@@ -3999,8 +4437,8 @@ function pitRepairSegmentedRow(pit) {
     ? `${pit.pitOptRepairLeftSeconds.toFixed(0)}s`
     : '--';
   return ['Repair', pitRepair(pit), pitRepairTone(pit), [
-    pitSegment('Required', required, required === '--' ? 'success' : 'error'),
-    pitSegment('Optional', optional, optional === '--' ? 'success' : 'warning')
+    pitSegment('Required', required, required === '--' ? 'success' : 'error', 'pit-service.service.repair-required'),
+    pitSegment('Optional', optional, optional === '--' ? 'success' : 'warning', 'pit-service.service.repair-optional')
   ]];
 }
 
@@ -4008,17 +4446,18 @@ function pitFastRepairSegmentedRow(pit) {
   const selected = pitFastRepairRequested(pit);
   const available = Number.isInteger(pit?.fastRepairAvailable) ? String(pit.fastRepairAvailable) : '--';
   return ['Fast repair', pitFastRepair(pit), 'normal', [
-    pitSegment('Selected', selected ? 'Yes' : 'No', selected ? 'success' : 'error'),
-    pitSegment('Available', available, Number.isInteger(pit?.fastRepairAvailable) && pit.fastRepairAvailable > 0 ? 'success' : 'warning')
+    pitSegment('Selected', selected ? 'Yes' : 'No', selected ? 'success' : 'error', 'pit-service.service.fast-repair-selected'),
+    pitSegment('Available', available, Number.isInteger(pit?.fastRepairAvailable) && pit.fastRepairAvailable > 0 ? 'success' : 'warning', 'pit-service.service.fast-repair-available')
   ]];
 }
 
-function pitSignalMetricRow(label, value, tone) {
+function pitSignalMetricRow(label, value, tone, key = null) {
   return {
     label,
     value: value || '--',
     tone: tone || 'normal',
-    rowColorHex: pitSignalColorHex(tone)
+    rowColorHex: pitSignalColorHex(tone),
+    segments: [pitSegment(label, value || '--', tone || 'normal', key)]
   };
 }
 
@@ -4037,8 +4476,8 @@ function pitSignalColorHex(tone) {
   }
 }
 
-function pitSegment(label, value, tone = 'normal') {
-  return { label, value, tone };
+function pitSegment(label, value, tone = 'normal', key = null) {
+  return { label, value, tone, key };
 }
 
 function pitFuelRequested(pit) {
@@ -4113,11 +4552,10 @@ function formatOilFuel(inputs) {
 
 function formatDuration(seconds, phase) {
   const totalSeconds = Math.ceil(Math.max(0, seconds));
-  if (phase === 'pre-green' || totalSeconds < 3600) {
-    return `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}`;
-  }
-  const totalMinutes = Math.ceil(totalSeconds / 60);
-  return `${String(Math.floor(totalMinutes / 60)).padStart(2, '0')}:${String(totalMinutes % 60).padStart(2, '0')}`;
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const remainingSeconds = totalSeconds % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
 }
 
 function tableModel(overlayId, title, status, headerItems, rows, source = 'source: race-start replay') {
@@ -4243,11 +4681,18 @@ function metricModelRow(row) {
 }
 
 function metricModelSegment(segment) {
-  return {
+  const model = {
     label: segment?.label || '',
     value: segment?.value || '--',
     tone: segment?.tone || 'normal'
   };
+  if (segment?.accentHex) {
+    model.accentHex = segment.accentHex;
+  }
+  if (Number.isFinite(segment?.rotationDegrees)) {
+    model.rotationDegrees = segment.rotationDegrees;
+  }
+  return model;
 }
 
 function settings(overlayId, frame, searchParams = null) {
@@ -4270,6 +4715,14 @@ function settings(overlayId, frame, searchParams = null) {
 
   if (overlayId === 'fuel-calculator') {
     return fuelSettingsModel();
+  }
+
+  if (overlayId === 'session-weather') {
+    return sessionWeatherSettingsModel();
+  }
+
+  if (overlayId === 'pit-service') {
+    return pitServiceSettingsModel();
   }
 
   if (overlayId === 'stream-chat') {
@@ -4329,6 +4782,25 @@ function fuelSettingsModel() {
     showHeaderStatus: fuelShowHeaderStatus,
     showHeaderTimeRemaining: fuelShowHeaderTimeRemaining,
     showFooterSource: fuelShowFooterSource
+  };
+}
+
+function sessionWeatherSettingsModel() {
+  return {
+    unitSystem: reviewUnitSystem,
+    showHeaderStatus: sessionWeatherShowHeaderStatus,
+    showHeaderTimeRemaining: sessionWeatherShowHeaderTimeRemaining,
+    disabledContent: sessionWeatherDisabledContent
+  };
+}
+
+function pitServiceSettingsModel() {
+  return {
+    unitSystem: reviewUnitSystem,
+    showHeaderStatus: pitServiceShowHeaderStatus,
+    showHeaderTimeRemaining: pitServiceShowHeaderTimeRemaining,
+    showFooterSource: pitServiceShowFooterSource,
+    disabledContent: pitServiceDisabledContent
   };
 }
 
@@ -5355,8 +5827,11 @@ function headerTimeRemaining(frame) {
 
 function parseDurationSeconds(value) {
   const parts = value.split(':').map((part) => Number.parseInt(part, 10));
-  if (parts.length !== 2 || parts.some((part) => !Number.isFinite(part))) {
+  if ((parts.length !== 2 && parts.length !== 3) || parts.some((part) => !Number.isFinite(part))) {
     return null;
+  }
+  if (parts.length === 3) {
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
   }
   return parts[0] * 60 + parts[1];
 }
@@ -5462,6 +5937,13 @@ function parseBoolean(value, fallback) {
   return fallback;
 }
 
+function csvSet(value) {
+  return new Set(String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean));
+}
+
 function normalizeUnitSystem(value) {
   return String(value || '').trim().toLowerCase() === 'imperial'
     ? 'Imperial'
@@ -5506,6 +5988,14 @@ function serveHtml(response, html) {
     'cache-control': 'no-store'
   });
   response.end(html);
+}
+
+function serveBinary(response, contentType, body) {
+  response.writeHead(200, {
+    'content-type': contentType,
+    'cache-control': 'no-store'
+  });
+  response.end(body);
 }
 
 function serveText(response, status, text) {

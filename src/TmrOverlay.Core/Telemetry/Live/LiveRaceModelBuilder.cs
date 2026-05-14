@@ -599,6 +599,7 @@ internal static class LiveRaceModelBuilder
             PlayerEstimatedTimeSeconds: playerCarIdx is null ? null : ValidNonNegative(sample.TeamEstimatedTimeSeconds),
             PlayerTrackSurface: sample.PlayerTrackSurface,
             PlayerOnPitRoad: playerCarIdx is null ? null : (sample.TeamOnPitRoad ?? sample.OnPitRoad),
+            PlayerYawNorthRadians: ValidFinite(sample.PlayerYawNorthRadians),
             IsOnTrack: sample.IsOnTrack,
             IsInGarage: sample.IsInGarage,
             PlayerCarInPitStall: sample.PlayerCarInPitStall,
@@ -3346,7 +3347,12 @@ internal static class LiveRaceModelBuilder
 
     private static double? ValidPercent(double? value)
     {
-        return value is { } number && IsFinite(number) && number >= 0d ? Math.Min(number, 100d) : null;
+        if (value is not { } number || !IsFinite(number) || number < 0d)
+        {
+            return null;
+        }
+
+        return Math.Min(number <= 1d ? number * 100d : number, 100d);
     }
 
     private static double? ValidUnitInterval(double? value)

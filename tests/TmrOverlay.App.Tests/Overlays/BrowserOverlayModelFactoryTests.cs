@@ -55,6 +55,59 @@ public sealed class BrowserOverlayModelFactoryTests
     }
 
     [Fact]
+    public void SessionWeatherModel_DoesNotExposeSourceFooter()
+    {
+        var factory = new BrowserOverlayModelFactory(new SessionHistoryQueryService(new SessionHistoryOptions
+        {
+            Enabled = false,
+            ResolvedUserHistoryRoot = Path.Combine(Path.GetTempPath(), "tmr-overlay-test-history"),
+            ResolvedBaselineHistoryRoot = Path.Combine(Path.GetTempPath(), "tmr-overlay-test-baseline-history")
+        }));
+        var settings = new ApplicationSettings();
+        var overlay = settings.GetOrAddOverlay("session-weather", 480, 520);
+        overlay.SetBooleanOption(OverlayOptionKeys.ChromeFooterSourceRace, true);
+        var now = DateTimeOffset.Parse("2026-05-13T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
+        var snapshot = LiveTelemetrySnapshot.Empty with
+        {
+            IsConnected = true,
+            IsCollecting = true,
+            LastUpdatedAtUtc = now,
+            Sequence = 1,
+            Models = LiveRaceModels.Empty with
+            {
+                Session = LiveSessionModel.Empty with
+                {
+                    HasData = true,
+                    Quality = LiveModelQuality.Reliable,
+                    SessionType = "Race",
+                    SessionTimeSeconds = 120d,
+                    SessionTimeRemainSeconds = 600d,
+                    TrackDisplayName = "Road Atlanta",
+                    TrackLengthKm = 4.088d
+                },
+                Weather = LiveWeatherModel.Empty with
+                {
+                    HasData = true,
+                    Quality = LiveModelQuality.Reliable,
+                    AirTempC = 23.5d,
+                    TrackTempCrewC = 34.2d,
+                    TrackWetnessLabel = "Dry",
+                    WeatherDeclaredWet = false,
+                    WindVelocityMetersPerSecond = 3.2d,
+                    WindDirectionRadians = 1.4d
+                }
+            }
+        };
+
+        var built = factory.TryBuild("session-weather", snapshot, settings, now, out var response);
+
+        Assert.True(built);
+        Assert.Equal(string.Empty, response.Model.Source);
+        Assert.Contains(response.Model.Metrics, row => row.Label == "Session");
+        Assert.DoesNotContain(response.Model.Metrics, row => row.Label == "Source");
+    }
+
+    [Fact]
     public void CarRadarModel_UsesTrustedHistoryCalibrationForBrowserRenderModel()
     {
         var root = Path.Combine(Path.GetTempPath(), "tmr-browser-radar-history-test", Guid.NewGuid().ToString("N"));
@@ -225,7 +278,7 @@ public sealed class BrowserOverlayModelFactoryTests
 
         Assert.True(built);
         Assert.Equal(string.Empty, response.Model.HeaderItems.First(item => item.Key == "status").Value);
-        Assert.Equal("03:58", response.Model.HeaderItems.First(item => item.Key == "timeRemaining").Value);
+        Assert.Equal("00:03:58", response.Model.HeaderItems.First(item => item.Key == "timeRemaining").Value);
         Assert.DoesNotContain(response.Model.Metrics, row => row.Label == "Location");
         Assert.DoesNotContain(response.Model.Metrics, row => row.Label == "Service");
         Assert.DoesNotContain(response.Model.Metrics, row => row.Label == "Tires");

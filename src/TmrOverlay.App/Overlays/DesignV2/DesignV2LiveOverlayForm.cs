@@ -150,6 +150,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private readonly string _unitSystem;
     private readonly System.Windows.Forms.Timer _refreshTimer;
     private readonly PitServiceOverlayViewModel.StatefulBuilder _pitServiceBuilder;
+    private readonly SessionWeatherOverlayViewModel.StatefulBuilder _sessionWeatherBuilder;
     private readonly List<double> _gapPoints = [];
     private readonly Dictionary<int, List<DesignV2GapTrendPoint>> _gapSeries = [];
     private readonly List<DesignV2GapWeatherPoint> _gapWeather = [];
@@ -217,6 +218,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         _fontFamily = fontFamily;
         _unitSystem = unitSystem;
         _pitServiceBuilder = PitServiceOverlayViewModel.CreateStatefulBuilder();
+        _sessionWeatherBuilder = SessionWeatherOverlayViewModel.CreateStatefulBuilder();
         _model = InitialModelFor(kind);
 
         BackColor = UsesTransparentBackground(kind) ? TransparentColor : Color.Black;
@@ -401,7 +403,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             DesignV2LiveOverlayKind.Standings => BuildStandingsModel(snapshot, now),
             DesignV2LiveOverlayKind.Relative => BuildRelativeModel(snapshot, now),
             DesignV2LiveOverlayKind.FuelCalculator => BuildFuelModel(snapshot, now),
-            DesignV2LiveOverlayKind.SessionWeather => FromSimple(SessionWeatherOverlayViewModel.From(snapshot, now, _unitSystem)),
+            DesignV2LiveOverlayKind.SessionWeather => FromSimple(_sessionWeatherBuilder.Build(snapshot, now, _unitSystem, _settings)),
             DesignV2LiveOverlayKind.PitService => FromSimple(_pitServiceBuilder.Build(snapshot, now, _unitSystem, _settings)),
             DesignV2LiveOverlayKind.InputState => BuildInputModel(snapshot, now),
             DesignV2LiveOverlayKind.Flags => BuildFlagsModel(snapshot, now),
@@ -473,6 +475,11 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     internal static bool ShowFooterForSettings(DesignV2LiveOverlayKind kind, OverlaySettings settings, LiveTelemetrySnapshot snapshot)
     {
+        if (kind == DesignV2LiveOverlayKind.SessionWeather)
+        {
+            return false;
+        }
+
         return OverlayChromeSettings.ShowFooterSource(settings, snapshot);
     }
 
@@ -683,7 +690,9 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                 Segments = row.Segments.Select(segment => new DesignV2MetricSegment(
                     segment.Label,
                     segment.Value,
-                    EvidenceFor(segment.Tone))).ToArray(),
+                    EvidenceFor(segment.Tone),
+                    segment.AccentHex,
+                    segment.RotationDegrees)).ToArray(),
                 RowColorHex = row.RowColorHex
             }).ToArray())).ToArray();
         var rows = metricSections.SelectMany(section => section.Rows).ToArray();
@@ -2444,7 +2453,9 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                 Segments = row.Segments.Select(segment => new DesignV2MetricSegment(
                     segment.Label,
                     segment.Value,
-                    EvidenceFor(segment.Tone))).ToArray(),
+                    EvidenceFor(segment.Tone),
+                    segment.AccentHex,
+                    segment.RotationDegrees)).ToArray(),
                 RowColorHex = row.RowColorHex
             }).ToArray(),
                 viewModel.MetricSections.Select(section => new DesignV2MetricSection(
@@ -2457,7 +2468,9 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                         Segments = row.Segments.Select(segment => new DesignV2MetricSegment(
                             segment.Label,
                             segment.Value,
-                            EvidenceFor(segment.Tone))).ToArray(),
+                            EvidenceFor(segment.Tone),
+                            segment.AccentHex,
+                            segment.RotationDegrees)).ToArray(),
                         RowColorHex = row.RowColorHex
                     }).ToArray())).ToArray(),
                 viewModel.Sections.Select(section => new DesignV2MetricGridSection(
@@ -2954,13 +2967,16 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
         using var segmentLabelFont = FontOf(7.2f, FontStyle.Bold);
         using var segmentValueFont = FontOf(9.2f, FontStyle.Bold);
+        using var segmentValueSmallFont = FontOf(8.4f, FontStyle.Bold);
+        using var segmentValueTinyFont = FontOf(7.6f, FontStyle.Bold);
         var gap = 3f;
         var width = Math.Max(1f, (rect.Width - gap * (count - 1)) / count);
         var x = rect.Left;
         foreach (var segment in segments.Take(count))
         {
             var segmentRect = new RectangleF(x, rect.Top, width, rect.Height);
-            FillRounded(graphics, segmentRect, 3, EvidenceBackground(segment.Evidence), null);
+            var segmentColor = SegmentColor(segment);
+            FillRounded(graphics, segmentRect, 3, SegmentBackground(segment), null);
             DrawText(
                 graphics,
                 segment.Label,
@@ -2968,15 +2984,90 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                 TextMuted,
                 new RectangleF(segmentRect.Left + 4, segmentRect.Top + 2, segmentRect.Width - 8, 9),
                 ContentAlignment.MiddleCenter);
+
+            var valueRect = new RectangleF(segmentRect.Left + 4, segmentRect.Top + 12, segmentRect.Width - 8, Math.Max(9, segmentRect.Height - 13));
+            if (segment.RotationDegrees is { } rotation && IsFinite(rotation))
+            {
+                var arrowSize = Math.Min(11f, Math.Max(8f, valueRect.Height - 2f));
+                var arrowRect = new RectangleF(valueRect.Left, valueRect.Top + (valueRect.Height - arrowSize) / 2f, arrowSize, arrowSize);
+                DrawDirectionalArrow(graphics, arrowRect, segmentColor, rotation);
+                valueRect = new RectangleF(valueRect.Left + arrowSize + 2f, valueRect.Top, Math.Max(1f, valueRect.Width - arrowSize - 2f), valueRect.Height);
+            }
+
             DrawText(
                 graphics,
                 segment.Value,
-                segmentValueFont,
-                EvidenceColor(segment.Evidence),
-                new RectangleF(segmentRect.Left + 4, segmentRect.Top + 12, segmentRect.Width - 8, Math.Max(9, segmentRect.Height - 13)),
+                SegmentValueFontFor(graphics, segment.Value, segmentRect.Width - 8, segmentValueFont, segmentValueSmallFont, segmentValueTinyFont),
+                segmentColor,
+                valueRect,
                 ContentAlignment.MiddleCenter);
             x += width + gap;
         }
+    }
+
+    private static Color SegmentColor(DesignV2MetricSegment segment)
+    {
+        return TryParseHexColor(segment.AccentHex, out var accent)
+            ? accent
+            : EvidenceColor(segment.Evidence);
+    }
+
+    private static Color SegmentBackground(DesignV2MetricSegment segment)
+    {
+        return TryParseHexColor(segment.AccentHex, out var accent)
+            ? Blend(SurfaceRaised, accent, 8, 1)
+            : EvidenceBackground(segment.Evidence);
+    }
+
+    private static void DrawDirectionalArrow(Graphics graphics, RectangleF rect, Color color, double rotationDegrees)
+    {
+        var state = graphics.Save();
+        try
+        {
+            graphics.TranslateTransform(rect.Left + rect.Width / 2f, rect.Top + rect.Height / 2f);
+            graphics.RotateTransform((float)rotationDegrees);
+            var half = rect.Width / 2f;
+            using var path = new GraphicsPath();
+            path.AddPolygon(
+            [
+                new PointF(0f, -half),
+                new PointF(half * 0.72f, half * 0.28f),
+                new PointF(half * 0.22f, half * 0.18f),
+                new PointF(half * 0.22f, half),
+                new PointF(-half * 0.22f, half),
+                new PointF(-half * 0.22f, half * 0.18f),
+                new PointF(-half * 0.72f, half * 0.28f)
+            ]);
+            using var brush = new SolidBrush(color);
+            graphics.FillPath(brush, path);
+        }
+        finally
+        {
+            graphics.Restore(state);
+        }
+    }
+
+    private static Font SegmentValueFontFor(
+        Graphics graphics,
+        string value,
+        float availableWidth,
+        Font normalFont,
+        Font smallFont,
+        Font tinyFont)
+    {
+        if (string.IsNullOrWhiteSpace(value) || availableWidth <= 1f)
+        {
+            return normalFont;
+        }
+
+        if (graphics.MeasureString(value, normalFont).Width <= availableWidth)
+        {
+            return normalFont;
+        }
+
+        return graphics.MeasureString(value, smallFont).Width <= availableWidth
+            ? smallFont
+            : tinyFont;
     }
 
     private void DrawMetricGridSection(
@@ -6429,7 +6520,9 @@ internal sealed record DesignV2MetricRow(
 internal sealed record DesignV2MetricSegment(
     string Label,
     string Value,
-    DesignV2Evidence Evidence);
+    DesignV2Evidence Evidence,
+    string? AccentHex = null,
+    double? RotationDegrees = null);
 
 internal sealed record DesignV2MetricSection(
     string Title,

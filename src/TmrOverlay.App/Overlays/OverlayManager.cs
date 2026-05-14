@@ -388,7 +388,7 @@ internal sealed class OverlayManager : IDisposable
                         AppPerformanceMetricIds.OverlaySessionWeatherApplyUi,
                         AppPerformanceMetricIds.OverlaySessionWeatherRows,
                         AppPerformanceMetricIds.OverlaySessionWeatherPaint),
-                    SessionWeatherOverlayViewModel.CreateBuilder(),
+                    SessionWeatherOverlayViewModel.CreateBuilder(settings),
                     SaveSettings)),
             1070,
             24),

@@ -4,7 +4,7 @@ enum SessionWeatherOverlayDefinition {
     static let definition = OverlayDefinition(
         id: "session-weather",
         displayName: "Session / Weather",
-        defaultSize: NSSize(width: 420, height: 260),
+        defaultSize: NSSize(width: 480, height: 520),
         fadeWhenLiveTelemetryUnavailable: true
     )
 }

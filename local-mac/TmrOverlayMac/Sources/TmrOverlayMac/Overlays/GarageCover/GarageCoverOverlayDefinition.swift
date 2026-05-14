@@ -5,7 +5,7 @@ enum GarageCoverOverlayDefinition {
         id: "garage-cover",
         displayName: "Garage Cover",
         defaultSize: NSSize(width: 1280, height: 720),
-        showScaleControl: false,
+        showScaleControl: true,
         showOpacityControl: false
     )
 }

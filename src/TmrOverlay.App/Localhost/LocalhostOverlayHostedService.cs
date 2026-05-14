@@ -344,6 +344,28 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
                     statusCode = (int)HttpStatusCode.OK;
                     break;
 
+                case "/api/garage-cover/default-image":
+                    route = "garage_cover_default_image";
+                    var defaultImagePath = GarageCoverImageStore.ResolveDefaultImagePath();
+                    if (defaultImagePath is null)
+                    {
+                        await WriteJsonAsync(context.Response, HttpStatusCode.NotFound, new
+                        {
+                            error = "garage_cover_default_image_not_found"
+                        }, cancellationToken).ConfigureAwait(false);
+                        statusCode = (int)HttpStatusCode.NotFound;
+                        break;
+                    }
+
+                    await WriteFileAsync(
+                        context.Response,
+                        HttpStatusCode.OK,
+                        GarageCoverImageContentType(defaultImagePath),
+                        defaultImagePath,
+                        cancellationToken).ConfigureAwait(false);
+                    statusCode = (int)HttpStatusCode.OK;
+                    break;
+
                 default:
                     if (BrowserOverlayPageRenderer.TryRender(path, out var html))
                     {

@@ -197,6 +197,12 @@ internal static class SettingsOverlayTabSections
         Action saveAndApply)
     {
         parent.Controls.Add(SettingsUi.CreateSectionLabel(title, 18, 18, 500));
+        if (rows.Count == 0)
+        {
+            parent.Controls.Add(SettingsUi.CreateMutedLabel($"No {title.ToLowerInvariant()} controls for this overlay.", 22, 62, 420));
+            return;
+        }
+
         parent.Controls.Add(SettingsUi.CreateLabel("Item", 22, 62, 120));
         parent.Controls.Add(SettingsUi.CreateLabel("Test", 196, 62, 90));
         parent.Controls.Add(SettingsUi.CreateLabel("Practice", 296, 62, 110));

@@ -336,17 +336,17 @@ final class SimpleTelemetryOverlayView: NSView {
         let surface = trackWetnessLabel(frame.trackWetness)
         let changed = Int(frame.sessionTime / 45).isMultiple(of: 5)
         let tone: Tone = frame.weatherDeclaredWet || frame.trackWetness > 1 ? .info : .normal
-        let status = frame.weatherDeclaredWet ? "declared wet" : "Race"
-        let sky = frame.weatherDeclaredWet ? "overcast | realistic | rain 65%" : "partly cloudy | realistic | rain 12%"
+        let status = frame.weatherDeclaredWet ? "Declared Wet" : "Race"
+        let sky = frame.weatherDeclaredWet ? "Overcast | realistic | rain 65%" : "Partly Cloudy | realistic | rain 12%"
         let windSpeed = 3.6 + sin(frame.sessionTime / 420) * 1.2
         let wind = "NW \(Int((windSpeed * 3.6).rounded())) km/h | hum \(frame.weatherDeclaredWet ? 82 : 67)% | fog \(frame.weatherDeclaredWet ? 9 : 0)%"
         let surfaceText = frame.weatherDeclaredWet
-            ? "\(surface) | declared wet | rubber moderate"
-            : "\(surface) | rubber \(frame.sessionTime > 3_600 ? "moderate" : "clean")"
+            ? "\(surface) | Declared Wet | Rubber Moderate"
+            : "\(surface) | Rubber \(frame.sessionTime > 3_600 ? "Moderate" : "Clean")"
         return (
             "Session / Weather",
             status,
-            "source: session + weather telemetry",
+            "",
             changed ? .info : tone,
             [
                 Row("Session", "Race | team"),
@@ -1509,15 +1509,23 @@ final class SimpleTelemetryOverlayView: NSView {
     private func trackWetnessLabel(_ wetness: Int) -> String {
         switch wetness {
         case 0:
-            return "dry"
+            return "Unknown"
         case 1:
-            return "mostly dry"
+            return "Dry"
         case 2:
-            return "damp"
+            return "Mostly Dry"
         case 3:
-            return "wet"
+            return "Very Lightly Wet"
+        case 4:
+            return "Lightly Wet"
+        case 5:
+            return "Moderately Wet"
+        case 6:
+            return "Very Wet"
+        case 7:
+            return "Extremely Wet"
         default:
-            return "wetness \(wetness)"
+            return "Value \(wetness)"
         }
     }
 

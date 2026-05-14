@@ -404,7 +404,7 @@ internal sealed class DesignV2SettingsSurface : Control
                 BuildChromeControls(settings, HeaderChromeRows);
                 break;
             case SettingsRegion.Footer:
-                BuildChromeControls(settings, FooterChromeRows);
+                BuildChromeControls(settings, FooterChromeRowsFor(settings.Id));
                 break;
         }
     }
@@ -654,8 +654,11 @@ internal sealed class DesignV2SettingsSurface : Control
             case "input-state":
                 AddBlockToggleControls(settings, OverlayContentColumnSettings.InputState, new Rectangle(306, 272, 834, 236), rowHeight: 22, rowGap: 3);
                 break;
+            case "session-weather":
+                AddBlockGridToggleControls(settings, OverlayContentColumnSettings.SessionWeather, new Rectangle(306, 272, 834, 344), columns: 2, rowHeight: 16, rowGap: 2);
+                break;
             case "pit-service":
-                AddBlockToggleControls(settings, OverlayContentColumnSettings.PitService, new Rectangle(306, 272, 834, 304), rowHeight: 22, rowGap: 3);
+                AddBlockGridToggleControls(settings, OverlayContentColumnSettings.PitService, new Rectangle(306, 272, 834, 344), columns: 2, rowHeight: 18, rowGap: 3);
                 break;
             case "car-radar":
                 AddMatrixCheck(new Rectangle(306, 272, 834, 150), 1, settings.GetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, true), isOn => settings.SetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, isOn));
@@ -817,6 +820,32 @@ internal sealed class DesignV2SettingsSurface : Control
             {
                 settings.SetBooleanOption(block.EnabledOptionKey, isOn);
             }, rowHeight, rowGap);
+        }
+    }
+
+    private void AddBlockGridToggleControls(
+        OverlaySettings settings,
+        OverlayContentDefinition contentDefinition,
+        Rectangle rect,
+        int columns,
+        int rowHeight,
+        int rowGap)
+    {
+        if (contentDefinition.Blocks is not { Count: > 0 } blocks)
+        {
+            return;
+        }
+
+        var rowsPerColumn = (int)Math.Ceiling(blocks.Count / (double)Math.Max(1, columns));
+        for (var index = 0; index < blocks.Count; index++)
+        {
+            var block = blocks[index];
+            AddDynamic(new V2CheckControl(BlockGridCheckBounds(index, rect, columns, rowsPerColumn, rowHeight, rowGap), string.Empty, OverlayContentColumnSettings.BlockEnabled(settings, block), isOn =>
+            {
+                settings.SetBooleanOption(block.EnabledOptionKey, isOn);
+                _callbacks.SaveAndApply();
+                Invalidate();
+            }));
         }
     }
 
@@ -1064,7 +1093,7 @@ internal sealed class DesignV2SettingsSurface : Control
                 DrawChromePage(graphics, definition, settings, "Header", HeaderChromeRows);
                 break;
             case SettingsRegion.Footer:
-                DrawChromePage(graphics, definition, settings, "Footer", FooterChromeRows);
+                DrawChromePage(graphics, definition, settings, "Footer", FooterChromeRowsFor(definition.Id));
                 break;
         }
     }
@@ -1178,8 +1207,11 @@ internal sealed class DesignV2SettingsSurface : Control
             case "input-state":
                 DrawContentMatrix(graphics, "Content Display", BlockContentRows(settings, OverlayContentColumnSettings.InputState), new Rectangle(306, 272, 834, 236), rowHeight: 22, rowGap: 3);
                 break;
+            case "session-weather":
+                DrawBlockToggleGrid(graphics, "Session / Weather Cells", BlockContentRows(settings, OverlayContentColumnSettings.SessionWeather), new Rectangle(306, 272, 834, 344), columns: 2, rowHeight: 16, rowGap: 2);
+                break;
             case "pit-service":
-                DrawContentMatrix(graphics, "Tire Analysis Rows", BlockContentRows(settings, OverlayContentColumnSettings.PitService), new Rectangle(306, 272, 834, 304), rowHeight: 22, rowGap: 3);
+                DrawBlockToggleGrid(graphics, "Pit Service Cells", BlockContentRows(settings, OverlayContentColumnSettings.PitService), new Rectangle(306, 272, 834, 344), columns: 2, rowHeight: 18, rowGap: 3);
                 break;
             case "car-radar":
                 DrawContentMatrix(
@@ -1238,6 +1270,12 @@ internal sealed class DesignV2SettingsSurface : Control
             return;
         }
 
+        if (rows.Count == 0)
+        {
+            DrawText(graphics, $"No {title.ToLowerInvariant()} controls for this overlay.", new Rectangle(328, 334, 420, 18), 13f, FontStyle.Regular, TextSecondary);
+            return;
+        }
+
         DrawText(graphics, "Item", new Rectangle(328, 330, 110, 16), 10f, FontStyle.Bold, TextMuted);
         for (var index = 0; index < SessionLabels.Length; index++)
         {
@@ -1288,6 +1326,50 @@ internal sealed class DesignV2SettingsSurface : Control
             {
                 DrawCheckBox(graphics, new Rectangle(556 + sessionIndex * 116, rowY + 3, 22, 18), situationStates[sessionIndex]);
             }
+        }
+    }
+
+    private void DrawBlockToggleGrid(
+        Graphics graphics,
+        string title,
+        IReadOnlyList<ContentMatrixRow> rows,
+        Rectangle rect,
+        int columns,
+        int rowHeight,
+        int rowGap)
+    {
+        DrawPanel(graphics, rect, title);
+        var columnGap = 18;
+        var contentLeft = rect.Left + 22;
+        var columnWidth = (rect.Width - 44 - columnGap * (columns - 1)) / columns;
+        for (var column = 0; column < columns; column++)
+        {
+            DrawText(
+                graphics,
+                "Item",
+                new Rectangle(contentLeft + column * (columnWidth + columnGap), rect.Top + 58, 110, 16),
+                10f,
+                FontStyle.Bold,
+                TextMuted);
+        }
+
+        var rowsPerColumn = (int)Math.Ceiling(rows.Count / (double)Math.Max(1, columns));
+        for (var index = 0; index < rows.Count; index++)
+        {
+            var column = index / rowsPerColumn;
+            var row = index % rowsPerColumn;
+            var rowX = contentLeft + column * (columnWidth + columnGap);
+            var rowY = rect.Top + 78 + row * (rowHeight + rowGap);
+            if (rowY + rowHeight > rect.Bottom - 10)
+            {
+                break;
+            }
+
+            var rowBounds = new Rectangle(rowX, rowY, columnWidth, rowHeight);
+            FillRounded(graphics, rowBounds, 7, Rgba(17, 28, 55, 200));
+            StrokeRounded(graphics, rowBounds, 7, BorderDim, 1f);
+            DrawCheckBox(graphics, BlockGridCheckBounds(index, rect, columns, rowsPerColumn, rowHeight, rowGap), rows[index].Enabled);
+            DrawText(graphics, rows[index].Label, new Rectangle(rowX + 34, rowY + Math.Max(2, (rowHeight - 13) / 2), columnWidth - 44, 14), 10.5f, FontStyle.Regular, rows[index].Enabled ? TextSecondary : TextDim);
         }
     }
 
@@ -1675,6 +1757,24 @@ internal sealed class DesignV2SettingsSurface : Control
         return new Rectangle(344, rowY + Math.Max(2, (rowHeight - 19) / 2), 19, 19);
     }
 
+    private static Rectangle BlockGridCheckBounds(
+        int index,
+        Rectangle rect,
+        int columns,
+        int rowsPerColumn,
+        int rowHeight,
+        int rowGap)
+    {
+        var columnGap = 18;
+        var contentLeft = rect.Left + 22;
+        var columnWidth = (rect.Width - 44 - columnGap * (columns - 1)) / columns;
+        var column = index / Math.Max(1, rowsPerColumn);
+        var row = index % Math.Max(1, rowsPerColumn);
+        var rowX = contentLeft + column * (columnWidth + columnGap);
+        var rowY = rect.Top + 78 + row * (rowHeight + rowGap);
+        return new Rectangle(rowX + 10, rowY + Math.Max(1, (rowHeight - 15) / 2), 15, 15);
+    }
+
     private static TextBox CreateTextBox(string text, Rectangle bounds, bool enabled)
     {
         return new TextBox
@@ -1892,6 +1992,13 @@ internal sealed class DesignV2SettingsSurface : Control
             OverlayOptionKeys.ChromeFooterSourceQualifying,
             OverlayOptionKeys.ChromeFooterSourceRace)
     ];
+
+    private static IReadOnlyList<SettingsOverlayTabSections.OverlayChromeSettingsRow> FooterChromeRowsFor(string overlayId)
+    {
+        return string.Equals(overlayId, "session-weather", StringComparison.OrdinalIgnoreCase)
+            ? []
+            : FooterChromeRows;
+    }
 
     private enum SettingsRegion
     {

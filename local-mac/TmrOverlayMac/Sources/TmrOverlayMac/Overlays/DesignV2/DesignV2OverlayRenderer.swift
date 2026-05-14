@@ -142,8 +142,23 @@ enum DesignV2OverlayChromeVisibility {
         )
     }
 
-    static func footerSourceEnabled(settings: OverlaySettings, sessionKey: String?) -> Bool {
+    static func headerTimeRemainingEnabled(settings: OverlaySettings, sessionKey: String?) -> Bool {
         chromeOption(
+            settings: settings,
+            sessionKey: sessionKey,
+            testKey: "chrome.header.time-remaining.test",
+            practiceKey: "chrome.header.time-remaining.practice",
+            qualifyingKey: "chrome.header.time-remaining.qualifying",
+            raceKey: "chrome.header.time-remaining.race"
+        )
+    }
+
+    static func footerSourceEnabled(settings: OverlaySettings, sessionKey: String?) -> Bool {
+        guard settings.id.lowercased() != "session-weather" else {
+            return false
+        }
+
+        return chromeOption(
             settings: settings,
             sessionKey: sessionKey,
             testKey: "chrome.footer.source.test",

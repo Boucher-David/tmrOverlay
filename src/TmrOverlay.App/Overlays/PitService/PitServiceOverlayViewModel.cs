@@ -1,5 +1,6 @@
 using System.Globalization;
 using TmrOverlay.App.Overlays.Abstractions;
+using TmrOverlay.App.Overlays.Content;
 using TmrOverlay.App.Overlays.SimpleTelemetry;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
@@ -76,8 +77,8 @@ internal static class PitServiceOverlayViewModel
         var tearoffChanged = IsChanged(changeTracker, "tearoff", tearoff, now);
         var repairChanged = IsChanged(changeTracker, "repair", repair, now);
         var fastRepairChanged = IsChanged(changeTracker, "fast-repair", fastRepair, now);
-        var releaseRow = PitSignalRow("Release", release.Value, release.Tone);
-        var pitStatusRow = PitSignalRow("Pit status", PitServiceStatusFormatter.Format(pit.Status), tone);
+        var releaseRow = PitSignalRow("Release", release.Value, release.Tone, OverlayContentColumnSettings.PitServiceReleaseBlockId);
+        var pitStatusRow = PitSignalRow("Pit status", PitServiceStatusFormatter.Format(pit.Status), tone, OverlayContentColumnSettings.PitServicePitStatusBlockId);
         var fuelRequestRow = new SimpleTelemetryRowViewModel("Fuel request", fuelRequest, HighlightTone(SimpleTelemetryTone.Normal, fuelRequestChanged))
         {
             Segments = FuelRequestSegments(pit, unitSystem)
@@ -106,10 +107,8 @@ internal static class PitServiceOverlayViewModel
                 new[] { raceContext }));
         }
 
-        var rows = metricSections
-            .SelectMany(section => section.Rows)
-            .ToArray();
-        var tireAnalysisRows = BuildTireAnalysisRows(pit, snapshot.Models.TireCondition, unitSystem, PitServiceContentOptions.From(settings));
+        var contentOptions = PitServiceContentOptions.From(settings);
+        var tireAnalysisRows = BuildTireAnalysisRows(pit, snapshot.Models.TireCondition, unitSystem, contentOptions);
         IReadOnlyList<SimpleTelemetryGridSectionViewModel> sections = tireAnalysisRows.Count == 0
             ? Array.Empty<SimpleTelemetryGridSectionViewModel>()
             : new[]
@@ -120,14 +119,18 @@ internal static class PitServiceOverlayViewModel
                     tireAnalysisRows)
             };
 
-        return new SimpleTelemetryOverlayViewModel(
+        var model = new SimpleTelemetryOverlayViewModel(
             Title: "Pit Service",
             Status: status,
             Source: BuildSource(),
             Tone: tone,
-            Rows: rows,
+            Rows: metricSections.SelectMany(section => section.Rows).ToArray(),
             MetricSections: metricSections,
             Sections: sections);
+        return SimpleTelemetryOverlayViewModel.ApplyContentSettings(
+            model,
+            settings,
+            OverlayContentColumnSettings.PitService);
     }
 
     private static string BuildSource()
@@ -234,10 +237,12 @@ internal static class PitServiceOverlayViewModel
     private static SimpleTelemetryRowViewModel PitSignalRow(
         string label,
         string value,
-        SimpleTelemetryTone tone)
+        SimpleTelemetryTone tone,
+        string segmentKey)
     {
         return new SimpleTelemetryRowViewModel(label, value, tone)
         {
+            Segments = [Segment(label, string.IsNullOrWhiteSpace(value) ? "--" : value, tone, segmentKey)],
             RowColorHex = AccentFor(tone)
         };
     }
@@ -253,13 +258,15 @@ internal static class PitServiceOverlayViewModel
             Segment(
                 "Requested",
                 RequestStateValue(requested, pit.Flags is not null || selectedLiters is not null),
-                RequestStateTone(requested, pit.Flags is not null || selectedLiters is not null)),
+                RequestStateTone(requested, pit.Flags is not null || selectedLiters is not null),
+                OverlayContentColumnSettings.PitServiceFuelRequestedBlockId),
             Segment(
                 "Selected",
                 selectedLiters is { } liters
                     ? SimpleTelemetryOverlayViewModel.FormatFuelVolume(liters, unitSystem)
                     : "--",
-                selectedLiters is null ? SimpleTelemetryTone.Waiting : SimpleTelemetryTone.Info)
+                selectedLiters is null ? SimpleTelemetryTone.Waiting : SimpleTelemetryTone.Info,
+                OverlayContentColumnSettings.PitServiceFuelSelectedBlockId)
         ];
     }
 
@@ -271,7 +278,8 @@ internal static class PitServiceOverlayViewModel
             Segment(
                 "Requested",
                 RequestStateValue(pit.Request.Tearoff, known),
-                RequestStateTone(pit.Request.Tearoff, known))
+                RequestStateTone(pit.Request.Tearoff, known),
+                OverlayContentColumnSettings.PitServiceTearoffRequestedBlockId)
         ];
     }
 
@@ -281,8 +289,8 @@ internal static class PitServiceOverlayViewModel
         var optional = FormatRepairSeconds(pit.Repair.OptionalSeconds);
         return
         [
-            Segment("Required", required ?? "--", required is null ? SimpleTelemetryTone.Success : SimpleTelemetryTone.Error),
-            Segment("Optional", optional ?? "--", optional is null ? SimpleTelemetryTone.Success : SimpleTelemetryTone.Warning)
+            Segment("Required", required ?? "--", required is null ? SimpleTelemetryTone.Success : SimpleTelemetryTone.Error, OverlayContentColumnSettings.PitServiceRepairRequiredBlockId),
+            Segment("Optional", optional ?? "--", optional is null ? SimpleTelemetryTone.Success : SimpleTelemetryTone.Warning, OverlayContentColumnSettings.PitServiceRepairOptionalBlockId)
         ];
     }
 
@@ -297,7 +305,8 @@ internal static class PitServiceOverlayViewModel
             Segment(
                 "Selected",
                 RequestStateValue(pit.FastRepair.Selected, known),
-                RequestStateTone(pit.FastRepair.Selected, known)),
+                RequestStateTone(pit.FastRepair.Selected, known),
+                OverlayContentColumnSettings.PitServiceFastRepairSelectedBlockId),
             Segment(
                 "Available",
                 available ?? "--",
@@ -305,16 +314,18 @@ internal static class PitServiceOverlayViewModel
                     ? SimpleTelemetryTone.Waiting
                     : pit.FastRepair.LocalAvailable is > 0
                         ? SimpleTelemetryTone.Success
-                        : SimpleTelemetryTone.Error)
+                        : SimpleTelemetryTone.Error,
+                OverlayContentColumnSettings.PitServiceFastRepairAvailableBlockId)
         ];
     }
 
     private static SimpleTelemetryMetricSegmentViewModel Segment(
         string label,
         string value,
-        SimpleTelemetryTone tone)
+        SimpleTelemetryTone tone,
+        string? key = null)
     {
-        return new SimpleTelemetryMetricSegmentViewModel(label, value, tone);
+        return new SimpleTelemetryMetricSegmentViewModel(label, value, tone, Key: key);
     }
 
     private static string RequestStateValue(bool requested, bool known)
@@ -347,7 +358,10 @@ internal static class PitServiceOverlayViewModel
     private static SimpleTelemetryRowViewModel? BuildRaceContextRow(LiveTelemetrySnapshot snapshot)
     {
         var session = snapshot.Models.Session;
-        var timeRemaining = OverlayHeaderTimeFormatter.FormatTimeRemaining(snapshot);
+        var timeRemaining = OverlayHeaderTimeFormatter.FormatCompactTimeRemaining(
+            session.SessionTimeRemainSeconds,
+            session.SessionState,
+            OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot));
         var time = string.IsNullOrWhiteSpace(timeRemaining)
             ? null
             : timeRemaining;
@@ -355,7 +369,16 @@ internal static class PitServiceOverlayViewModel
         var value = SimpleTelemetryOverlayViewModel.JoinAvailable(
             time,
             laps == "--" ? null : laps);
-        return value == "--" ? null : new SimpleTelemetryRowViewModel("Time / Laps", value);
+        return value == "--"
+            ? null
+            : new SimpleTelemetryRowViewModel("Time / Laps", value)
+            {
+                Segments =
+                [
+                    Segment("Time", time ?? "--", SimpleTelemetryTone.Normal, OverlayContentColumnSettings.PitServiceSessionTimeBlockId),
+                    Segment("Laps", laps, SimpleTelemetryTone.Normal, OverlayContentColumnSettings.PitServiceSessionLapsBlockId)
+                ]
+            };
     }
 
     private static string FormatRaceLaps(

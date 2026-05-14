@@ -4,6 +4,9 @@ namespace TmrOverlay.App.Overlays.GarageCover;
 
 internal static class GarageCoverImageStore
 {
+    private const string DefaultCoverOutputFileName = "GarageCoverDefault.png";
+    private const string DefaultCoverSourceRelativePath = "assets/brand/Team_Logo_4k_TMRBRANDING.png";
+
     private static readonly HashSet<string> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".png",
@@ -141,9 +144,59 @@ internal static class GarageCoverImageStore
         }
     }
 
+    public static string? ResolveDefaultImagePath()
+    {
+        var outputPath = Path.Combine(AppContext.BaseDirectory, "Assets", DefaultCoverOutputFileName);
+        if (File.Exists(outputPath))
+        {
+            return outputPath;
+        }
+
+        foreach (var ancestor in Ancestors(Directory.GetCurrentDirectory()))
+        {
+            var repositoryPath = Path.Combine(ancestor, DefaultCoverSourceRelativePath);
+            if (File.Exists(repositoryPath))
+            {
+                return repositoryPath;
+            }
+        }
+
+        return null;
+    }
+
+    public static Image? TryLoadDefaultPreviewImage()
+    {
+        var path = ResolveDefaultImagePath();
+        if (path is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var stream = File.OpenRead(path);
+            using var image = Image.FromStream(stream);
+            return new Bitmap(image);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private static string ImageDirectory(string settingsRoot)
     {
         return Path.Combine(settingsRoot, "garage-cover");
+    }
+
+    private static IEnumerable<string> Ancestors(string start)
+    {
+        var directory = new DirectoryInfo(start);
+        while (directory is not null)
+        {
+            yield return directory.FullName;
+            directory = directory.Parent;
+        }
     }
 }
 

@@ -571,7 +571,7 @@ public sealed class OverlayInputTransparencyTests
             settings,
             snapshot);
 
-        Assert.Equal("00:10", header);
+        Assert.Equal("00:10:00", header);
         Assert.False(showFooter);
     }
 
@@ -590,6 +590,25 @@ public sealed class OverlayInputTransparencyTests
 
         Assert.False(DesignV2LiveOverlayForm.ShowFooterForSettings(
             DesignV2LiveOverlayKind.FuelCalculator,
+            settings,
+            RaceSnapshot(timeRemainingSeconds: 600d)));
+    }
+
+    [Fact]
+    public void DesignV2Chrome_SessionWeatherDoesNotExposeSourceFooter()
+    {
+        var settings = new OverlaySettings { Id = "session-weather" };
+        settings.SetBooleanOption(OverlayOptionKeys.ChromeFooterSourceRace, true);
+
+        Assert.False(DesignV2LiveOverlayForm.ShowFooterForSettings(
+            DesignV2LiveOverlayKind.SessionWeather,
+            settings,
+            RaceSnapshot(timeRemainingSeconds: 600d)));
+
+        settings.SetBooleanOption(OverlayOptionKeys.ChromeFooterSourceRace, false);
+
+        Assert.False(DesignV2LiveOverlayForm.ShowFooterForSettings(
+            DesignV2LiveOverlayKind.SessionWeather,
             settings,
             RaceSnapshot(timeRemainingSeconds: 600d)));
     }

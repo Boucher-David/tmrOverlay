@@ -36,9 +36,23 @@ function garageCoverContent(settings) {
     const version = encodeURIComponent(settings.imageVersion || 'latest');
     return `
       <div class="garage-cover">
-        <img alt="" src="/api/garage-cover/image?v=${version}" onerror="const p=this.parentElement;p.classList.add('garage-cover-fallback');this.remove();p.innerHTML='<div>TMR</div>';">
+        <img alt="" src="/api/garage-cover/image?v=${version}" onerror="renderGarageCoverTextFallback(this);">
       </div>`;
   }
 
-  return '<div class="garage-cover garage-cover-fallback"><div>TMR</div></div>';
+  return `
+    <div class="garage-cover">
+      <img alt="" src="/api/garage-cover/default-image?v=stock" onerror="renderGarageCoverTextFallback(this);">
+    </div>`;
+}
+
+function renderGarageCoverTextFallback(image) {
+  const parent = image?.parentElement;
+  if (!parent) {
+    return;
+  }
+
+  parent.classList.add('garage-cover-fallback');
+  image.remove();
+  parent.innerHTML = '<div>TMR</div>';
 }

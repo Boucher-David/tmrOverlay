@@ -2,6 +2,7 @@ using TmrOverlay.App.Overlays.Relative;
 using TmrOverlay.App.Overlays.Standings;
 using TmrOverlay.App.Overlays.InputState;
 using TmrOverlay.App.Overlays.PitService;
+using TmrOverlay.App.Overlays.SessionWeather;
 using TmrOverlay.App.Overlays.StreamChat;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
@@ -122,6 +123,43 @@ internal static class OverlayContentColumnSettings
     public const string PitServiceTireTemperatureBlockId = "pit-service.tire-temperature";
     public const string PitServiceTireWearBlockId = "pit-service.tire-wear";
     public const string PitServiceTireDistanceBlockId = "pit-service.tire-distance";
+    public const string PitServiceSessionTimeBlockId = "pit-service.session.time";
+    public const string PitServiceSessionLapsBlockId = "pit-service.session.laps";
+    public const string PitServiceReleaseBlockId = "pit-service.signal.release";
+    public const string PitServicePitStatusBlockId = "pit-service.signal.status";
+    public const string PitServiceFuelRequestedBlockId = "pit-service.service.fuel-requested";
+    public const string PitServiceFuelSelectedBlockId = "pit-service.service.fuel-selected";
+    public const string PitServiceTearoffRequestedBlockId = "pit-service.service.tearoff-requested";
+    public const string PitServiceRepairRequiredBlockId = "pit-service.service.repair-required";
+    public const string PitServiceRepairOptionalBlockId = "pit-service.service.repair-optional";
+    public const string PitServiceFastRepairSelectedBlockId = "pit-service.service.fast-repair-selected";
+    public const string PitServiceFastRepairAvailableBlockId = "pit-service.service.fast-repair-available";
+    public const string SessionWeatherSessionTypeBlockId = "session-weather.session.type";
+    public const string SessionWeatherSessionNameBlockId = "session-weather.session.name";
+    public const string SessionWeatherSessionModeBlockId = "session-weather.session.mode";
+    public const string SessionWeatherClockElapsedBlockId = "session-weather.clock.elapsed";
+    public const string SessionWeatherClockRemainingBlockId = "session-weather.clock.remaining";
+    public const string SessionWeatherClockTotalBlockId = "session-weather.clock.total";
+    public const string SessionWeatherEventTypeBlockId = "session-weather.event.type";
+    public const string SessionWeatherEventCarBlockId = "session-weather.event.car";
+    public const string SessionWeatherTrackNameBlockId = "session-weather.track.name";
+    public const string SessionWeatherTrackLengthBlockId = "session-weather.track.length";
+    public const string SessionWeatherLapsRemainingBlockId = "session-weather.laps.remaining";
+    public const string SessionWeatherLapsTotalBlockId = "session-weather.laps.total";
+    public const string SessionWeatherSurfaceWetnessBlockId = "session-weather.surface.wetness";
+    public const string SessionWeatherSurfaceDeclaredBlockId = "session-weather.surface.declared";
+    public const string SessionWeatherSurfaceRubberBlockId = "session-weather.surface.rubber";
+    public const string SessionWeatherSkySkiesBlockId = "session-weather.sky.skies";
+    public const string SessionWeatherSkyWeatherBlockId = "session-weather.sky.weather";
+    public const string SessionWeatherSkyRainBlockId = "session-weather.sky.rain";
+    public const string SessionWeatherWindDirectionBlockId = "session-weather.wind.direction";
+    public const string SessionWeatherWindSpeedBlockId = "session-weather.wind.speed";
+    public const string SessionWeatherWindFacingBlockId = "session-weather.wind.facing";
+    public const string SessionWeatherTempsAirBlockId = "session-weather.temps.air";
+    public const string SessionWeatherTempsTrackBlockId = "session-weather.temps.track";
+    public const string SessionWeatherAtmosphereHumidityBlockId = "session-weather.atmosphere.humidity";
+    public const string SessionWeatherAtmosphereFogBlockId = "session-weather.atmosphere.fog";
+    public const string SessionWeatherAtmospherePressureBlockId = "session-weather.atmosphere.pressure";
     public const string StreamChatAuthorColorBlockId = "stream-chat.twitch.author-color";
     public const string StreamChatBadgesBlockId = "stream-chat.twitch.badges";
     public const string StreamChatBitsBlockId = "stream-chat.twitch.bits";
@@ -241,6 +279,43 @@ internal static class OverlayContentColumnSettings
             DefaultEnabled: true)
     ]);
 
+    public static OverlayContentDefinition SessionWeather { get; } = new(
+        OverlayId: SessionWeatherOverlayDefinition.Definition.Id,
+        BrowserWidthPadding: 42,
+        BrowserMinimumHeight: 360,
+        NativeMinimumTableHeight: 260,
+        FallbackColumnId: string.Empty,
+        Columns: [],
+        Blocks:
+    [
+        CellBlock(SessionWeatherSessionTypeBlockId, "Session type", "Show the iRacing session type."),
+        CellBlock(SessionWeatherSessionNameBlockId, "Session name", "Show a meaningful session name when it differs from the type/event."),
+        CellBlock(SessionWeatherSessionModeBlockId, "Session mode", "Show solo/team session mode."),
+        CellBlock(SessionWeatherClockElapsedBlockId, "Elapsed time", "Show elapsed session time."),
+        CellBlock(SessionWeatherClockRemainingBlockId, "Remaining time", "Show time left or pre-green countdown."),
+        CellBlock(SessionWeatherClockTotalBlockId, "Total time", "Show scheduled session length."),
+        CellBlock(SessionWeatherEventTypeBlockId, "Event type", "Show event type when session telemetry reports it."),
+        CellBlock(SessionWeatherEventCarBlockId, "Car", "Show the focused car display name."),
+        CellBlock(SessionWeatherTrackNameBlockId, "Track name", "Show track display name."),
+        CellBlock(SessionWeatherTrackLengthBlockId, "Track length", "Show track length using the selected units."),
+        CellBlock(SessionWeatherLapsRemainingBlockId, "Laps remaining", "Show remaining race laps when available or estimated."),
+        CellBlock(SessionWeatherLapsTotalBlockId, "Laps total", "Show total race laps when available or estimated."),
+        CellBlock(SessionWeatherSurfaceWetnessBlockId, "Wetness", "Show current track wetness."),
+        CellBlock(SessionWeatherSurfaceDeclaredBlockId, "Declared surface", "Show declared wet/dry surface state."),
+        CellBlock(SessionWeatherSurfaceRubberBlockId, "Rubber", "Show session rubber state."),
+        CellBlock(SessionWeatherSkySkiesBlockId, "Skies", "Show sky condition."),
+        CellBlock(SessionWeatherSkyWeatherBlockId, "Weather", "Show session weather type."),
+        CellBlock(SessionWeatherSkyRainBlockId, "Rain", "Show precipitation percentage."),
+        CellBlock(SessionWeatherWindDirectionBlockId, "Wind direction", "Show absolute wind direction."),
+        CellBlock(SessionWeatherWindSpeedBlockId, "Wind speed", "Show wind speed using the selected units."),
+        CellBlock(SessionWeatherWindFacingBlockId, "Facing wind", "Show wind direction relative to the local car heading."),
+        CellBlock(SessionWeatherTempsAirBlockId, "Air temp", "Show air temperature using the selected units."),
+        CellBlock(SessionWeatherTempsTrackBlockId, "Track temp", "Show track temperature using the selected units."),
+        CellBlock(SessionWeatherAtmosphereHumidityBlockId, "Humidity", "Show relative humidity."),
+        CellBlock(SessionWeatherAtmosphereFogBlockId, "Fog", "Show fog level."),
+        CellBlock(SessionWeatherAtmospherePressureBlockId, "Pressure", "Show air pressure using the selected units.")
+    ]);
+
     public static OverlayContentDefinition PitService { get; } = new(
         OverlayId: PitServiceOverlayDefinition.Definition.Id,
         BrowserWidthPadding: 42,
@@ -250,6 +325,17 @@ internal static class OverlayContentColumnSettings
         Columns: [],
         Blocks:
     [
+        CellBlock(PitServiceSessionTimeBlockId, "Session time", "Show remaining session time in the pit-service session row."),
+        CellBlock(PitServiceSessionLapsBlockId, "Session laps", "Show remaining/total race laps in the pit-service session row."),
+        CellBlock(PitServiceReleaseBlockId, "Release", "Show pit release state."),
+        CellBlock(PitServicePitStatusBlockId, "Pit status", "Show iRacing pit-service status."),
+        CellBlock(PitServiceFuelRequestedBlockId, "Fuel requested", "Show whether refuel service is requested."),
+        CellBlock(PitServiceFuelSelectedBlockId, "Fuel selected", "Show selected refuel amount using the selected units."),
+        CellBlock(PitServiceTearoffRequestedBlockId, "Tearoff requested", "Show tearoff service request."),
+        CellBlock(PitServiceRepairRequiredBlockId, "Required repair", "Show required repair time."),
+        CellBlock(PitServiceRepairOptionalBlockId, "Optional repair", "Show optional repair time."),
+        CellBlock(PitServiceFastRepairSelectedBlockId, "Fast repair selected", "Show fast repair selection."),
+        CellBlock(PitServiceFastRepairAvailableBlockId, "Fast repairs available", "Show local fast repairs available."),
         new(
             PitServiceTireCompoundBlockId,
             "Compound",
@@ -375,7 +461,21 @@ internal static class OverlayContentColumnSettings
 
     public static IReadOnlyList<OverlayContentColumnDefinition> RelativeColumns => Relative.Columns;
 
-    public static IReadOnlyList<OverlayContentDefinition> All { get; } = [Standings, Relative, InputState, PitService, StreamChat];
+    public static IReadOnlyList<OverlayContentDefinition> All { get; } = [Standings, Relative, InputState, SessionWeather, PitService, StreamChat];
+
+    private static OverlayContentBlockDefinition CellBlock(
+        string id,
+        string label,
+        string description,
+        bool defaultEnabled = true)
+    {
+        return new OverlayContentBlockDefinition(
+            id,
+            label,
+            description,
+            $"{id}.enabled",
+            defaultEnabled);
+    }
 
     public static bool TryGetContentDefinition(string overlayId, out OverlayContentDefinition definition)
     {

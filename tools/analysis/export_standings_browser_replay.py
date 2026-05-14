@@ -102,6 +102,7 @@ REPLAY_SCALAR_FIELDS = list(
             "Precipitation",
             "WindVel",
             "WindDir",
+            "YawNorth",
             "RelativeHumidity",
             "FogLevel",
             "PlayerCarPitSvStatus",
@@ -315,11 +316,23 @@ def class_color(driver: dict[str, Any] | None) -> str | None:
 def track_wetness_label(value: Any) -> str | None:
     if not isinstance(value, int):
         return None
-    if value <= 1:
+    if value == 0:
+        return "unknown"
+    if value == 1:
         return "dry"
-    if value <= 3:
-        return "damp"
-    return "wet"
+    if value == 2:
+        return "mostly dry"
+    if value == 3:
+        return "very lightly wet"
+    if value == 4:
+        return "lightly wet"
+    if value == 5:
+        return "moderately wet"
+    if value == 6:
+        return "very wet"
+    if value == 7:
+        return "extremely wet"
+    return f"value {value}"
 
 
 def skies_label(value: Any, session_data: dict[str, Any]) -> str | None:
@@ -1273,6 +1286,7 @@ def build_live_snapshot(
                 "isOnTrack": raw.get("IsOnTrack"),
                 "isInGarage": raw.get("IsInGarage"),
                 "playerCarInPitStall": raw.get("PlayerCarInPitStall"),
+                "playerYawNorthRadians": raw.get("YawNorth") if finite(raw.get("YawNorth")) else None,
             },
             "session": {
                 "hasData": True,
@@ -1338,7 +1352,7 @@ def build_live_snapshot(
                 "quality": "capture-derived",
                 "isOnTrack": raw.get("IsOnTrack"),
                 "isInGarage": raw.get("IsInGarage"),
-                "isGarageVisible": raw.get("IsInGarage"),
+                "isGarageVisible": raw.get("IsGarageVisible"),
                 "lap": raw_int(raw, "Lap"),
                 "lapCompleted": raw_int(raw, "LapCompleted"),
                 "lapDistPct": (reference or {}).get("lapDistPct") or raw.get("LapDistPct"),

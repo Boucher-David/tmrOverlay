@@ -47,6 +47,7 @@ SCALAR_FIELDS = [
     "CamCarIdx",
     "IsOnTrack",
     "IsInGarage",
+    "IsGarageVisible",
     "OnPitRoad",
     "PitstopActive",
     "PlayerCarInPitStall",

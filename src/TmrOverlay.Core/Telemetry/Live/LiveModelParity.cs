@@ -442,7 +442,12 @@ internal static class LiveModelParityAnalyzer
 
     private static double? ValidPercent(double? value)
     {
-        return value is { } number && IsFinite(number) && number >= 0d ? Math.Min(number, 100d) : null;
+        if (value is not { } number || !IsFinite(number) || number < 0d)
+        {
+            return null;
+        }
+
+        return Math.Min(number <= 1d ? number * 100d : number, 100d);
     }
 
     private static string? TrimToNull(string? value)

@@ -130,6 +130,7 @@ public sealed class BrowserOverlayPageRendererTests
             Assert.Contains("garage-cover-page", html);
             Assert.Contains("fetchOverlayModel('garage-cover')", html);
             Assert.Contains("/api/garage-cover/image", html);
+            Assert.Contains("/api/garage-cover/default-image", html);
             Assert.Contains("garageCoverDisplayModel", html);
             Assert.Contains("model?.garageCover", html);
             Assert.Contains("garageCoverContent(settings)", html);
