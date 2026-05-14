@@ -13,11 +13,13 @@ using TmrOverlay.App.Overlays.SimpleTelemetry;
 using TmrOverlay.App.Overlays.Standings;
 using TmrOverlay.App.Overlays.StreamChat;
 using TmrOverlay.App.Overlays.TrackMap;
+using TmrOverlay.App.TrackMaps;
 using TmrOverlay.Core.Fuel;
 using TmrOverlay.Core.History;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 using TmrOverlay.Core.Telemetry.Live;
+using TmrOverlay.Core.TrackMaps;
 
 namespace TmrOverlay.App.Overlays.BrowserSources;
 
@@ -53,9 +55,12 @@ internal sealed class BrowserOverlayModelFactory
     private const double GapThreatGainLapFraction = 0.005d;
     private const double GapFuelStintResetMinimumLiters = 5d;
     private const int GapOnTrackSurface = 3;
+    private const double TrackMapReloadIntervalSeconds = 10d;
     private readonly SessionHistoryQueryService _historyQueryService;
+    private readonly TrackMapStore? _trackMapStore;
     private readonly Func<LiveTelemetrySnapshot, DateTimeOffset, string, SimpleTelemetryOverlayViewModel> _sessionWeatherBuilder;
     private readonly PitServiceOverlayViewModel.StatefulBuilder _pitServiceBuilder;
+    private readonly TrackMapRenderModelBuilder _trackMapRenderBuilder = new();
     private readonly List<double> _gapPoints = [];
     private readonly Dictionary<int, List<BrowserGapTrendPoint>> _gapSeries = [];
     private readonly List<BrowserGapWeatherPoint> _gapWeather = [];
@@ -70,6 +75,10 @@ internal sealed class BrowserOverlayModelFactory
     private string? _cachedRadarCalibrationCarKey;
     private CarRadarCalibrationLookupResult? _cachedRadarCalibration;
     private DateTimeOffset _cachedRadarCalibrationAtUtc;
+    private TrackMapDocument? _cachedTrackMap;
+    private string? _cachedTrackMapIdentityKey;
+    private bool _cachedTrackMapIncludeUserMaps;
+    private DateTimeOffset _nextTrackMapReloadAtUtc;
     private BrowserGapReferenceContext? _lastGapReferenceContext;
     private long? _lastGapSequence;
     private double? _latestGapAxisSeconds;
@@ -80,9 +89,10 @@ internal sealed class BrowserOverlayModelFactory
     private int? _lastGapDriversSoFar;
     private int? _lastGapClassLeaderCarIdx;
 
-    public BrowserOverlayModelFactory(SessionHistoryQueryService historyQueryService)
+    public BrowserOverlayModelFactory(SessionHistoryQueryService historyQueryService, TrackMapStore? trackMapStore = null)
     {
         _historyQueryService = historyQueryService;
+        _trackMapStore = trackMapStore;
         _sessionWeatherBuilder = SessionWeatherOverlayViewModel.CreateBuilder();
         _pitServiceBuilder = PitServiceOverlayViewModel.CreateStatefulBuilder();
     }
@@ -506,13 +516,16 @@ internal sealed class BrowserOverlayModelFactory
             Inputs: inputModel);
     }
 
-    private static BrowserOverlayDisplayModel BuildTrackMap(
+    private BrowserOverlayDisplayModel BuildTrackMap(
         LiveTelemetrySnapshot snapshot,
         ApplicationSettings settings,
         DateTimeOffset now)
     {
         var overlay = OverlayOrDefault(settings, TrackMapOverlayDefinition.Definition);
-        var viewModel = TrackMapOverlayViewModel.From(snapshot, now, overlay, trackMap: null);
+        var includeUserMaps = overlay.GetBooleanOption(OverlayOptionKeys.TrackMapBuildFromTelemetry, defaultValue: true);
+        var trackMap = ReadTrackMap(snapshot.Context.Track, includeUserMaps, now);
+        var viewModel = TrackMapOverlayViewModel.From(snapshot, now, overlay, trackMap);
+        var renderModel = _trackMapRenderBuilder.Build(viewModel, now);
         var status = viewModel.IsAvailable ? "live | track map" : viewModel.Status;
         var headerItems = HeaderItems(overlay, snapshot, status);
         return new BrowserOverlayDisplayModel(
@@ -531,7 +544,33 @@ internal sealed class BrowserOverlayModelFactory
                 viewModel.Sectors,
                 viewModel.ShowSectorBoundaries,
                 viewModel.InternalOpacity,
-                viewModel.IncludeUserMaps));
+                viewModel.IncludeUserMaps,
+                renderModel));
+    }
+
+    private TrackMapDocument? ReadTrackMap(
+        HistoricalTrackIdentity track,
+        bool includeUserMaps,
+        DateTimeOffset now)
+    {
+        if (_trackMapStore is null)
+        {
+            return null;
+        }
+
+        var identity = TrackMapIdentity.From(track);
+        var identityChanged = !string.Equals(identity.Key, _cachedTrackMapIdentityKey, StringComparison.Ordinal)
+            || includeUserMaps != _cachedTrackMapIncludeUserMaps;
+        if (!identityChanged && now < _nextTrackMapReloadAtUtc)
+        {
+            return _cachedTrackMap;
+        }
+
+        _cachedTrackMapIdentityKey = identity.Key;
+        _cachedTrackMapIncludeUserMaps = includeUserMaps;
+        _nextTrackMapReloadAtUtc = now.AddSeconds(TrackMapReloadIntervalSeconds);
+        _cachedTrackMap = _trackMapStore.TryReadBest(track, includeUserMaps);
+        return _cachedTrackMap;
     }
 
     private static BrowserOverlayDisplayModel BuildGarageCover(
@@ -2296,7 +2335,8 @@ internal sealed record BrowserTrackMapModel(
     IReadOnlyList<LiveTrackSectorSegment> Sectors,
     bool ShowSectorBoundaries,
     double InternalOpacity,
-    bool IncludeUserMaps);
+    bool IncludeUserMaps,
+    TrackMapRenderModel RenderModel);
 
 internal sealed record BrowserGarageCoverModel(
     bool ShouldCover,

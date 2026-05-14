@@ -554,10 +554,11 @@ function browserScenarios() {
       }),
       assert: ({ document }) => {
         expect(document.querySelector('.track svg')).not.toBeNull();
-        expect(document.querySelectorAll('.track circle, .track path').length).toBeGreaterThan(2);
-        expect(document.querySelectorAll('.track circle[fill="#33CEFF"]').length).toBe(0);
-        expect(document.querySelectorAll('.track circle[fill="#FFDA59"]').length).toBe(1);
-        expect(document.querySelectorAll('.track circle[fill="var(--tmr-cyan)"]').length).toBe(1);
+        expect(document.querySelectorAll('.track ellipse, .track path, .track line').length).toBeGreaterThan(2);
+        expect(document.querySelectorAll('.track circle[fill="rgba(51,206,255,0.961)"]').length).toBe(0);
+        expect(document.querySelectorAll('.track circle[fill="rgba(255,218,89,0.961)"]').length).toBe(1);
+        expect(document.querySelectorAll('.track circle[fill="rgba(0,232,255,1.000)"]').length).toBe(1);
+        expect(document.querySelector('.track text')?.textContent).toBe('5');
         expect(document.getElementById('status').textContent).toBe('live | track map');
       }
     },

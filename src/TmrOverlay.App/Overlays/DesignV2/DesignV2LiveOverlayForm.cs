@@ -163,6 +163,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private readonly Dictionary<int, DesignV2GapDriverIdentity> _gapDriverIdentities = [];
     private readonly List<InputStateTracePoint> _inputTrace = [];
     private readonly List<StreamChatMessage> _chatMessages = [];
+    private readonly TrackMapRenderModelBuilder _trackMapRenderBuilder = new();
     private readonly Dictionary<int, double> _smoothedTrackMarkerProgress = new();
     private readonly Button? _closeButton;
     private DesignV2OverlayModel _model;
@@ -2292,13 +2293,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             viewModel.Status,
             viewModel.Source,
             viewModel.IsAvailable ? DesignV2Evidence.Live : DesignV2Evidence.Unavailable,
-            new DesignV2TrackMapBody(
-                SmoothTrackMapMarkers(viewModel.Markers.Select(ToDesignV2TrackMapMarker).ToArray()),
-                viewModel.Sectors,
-                viewModel.ShowSectorBoundaries,
-                viewModel.InternalOpacity,
-                viewModel.IsAvailable,
-                viewModel.TrackMap));
+            new DesignV2TrackMapBody(_trackMapRenderBuilder.Build(viewModel, now)));
     }
 
     private void RefreshTrackMap(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
@@ -2312,8 +2307,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
         if (identityChanged)
         {
-            _smoothedTrackMarkerProgress.Clear();
-            _lastTrackMarkerSmoothingAtUtc = null;
+            _trackMapRenderBuilder.ResetSmoothing();
         }
 
         _trackMapIdentityKey = identity.Key;
@@ -4828,22 +4822,216 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     private void DrawTrackMapOverlay(Graphics graphics, RectangleF rect, DesignV2TrackMapBody body)
     {
-        var size = Math.Max(20, Math.Min(rect.Width, rect.Height) - 40);
-        var trackRect = new RectangleF(
+        var model = body.RenderModel;
+        var size = Math.Max(20, Math.Min(rect.Width, rect.Height));
+        var target = new RectangleF(
             rect.Left + (rect.Width - size) / 2f,
             rect.Top + (rect.Height - size) / 2f,
             size,
             size);
-        var opacity = Math.Clamp(body.InternalOpacity, 0.2d, 1d);
-        using var interior = new SolidBrush(Color.FromArgb((int)Math.Round(150 * opacity), TrackInterior));
-        if (body.TrackMap?.RacingLine.Points is { Count: >= 3 }
-            && DesignV2TrackMapTransform.From(body.TrackMap, trackRect) is { } transform)
+        var scaleX = target.Width / (float)Math.Max(1d, model.Width);
+        var scaleY = target.Height / (float)Math.Max(1d, model.Height);
+
+        foreach (var primitive in model.Primitives)
         {
-            DrawGeneratedTrackMap(graphics, trackRect, body.TrackMap, transform, body.Markers, body.Sectors, interior, body.ShowSectorBoundaries);
+            DrawTrackMapPrimitive(graphics, target, primitive, scaleX, scaleY);
+        }
+
+        foreach (var marker in model.Markers)
+        {
+            DrawTrackMapMarker(graphics, target, marker, scaleX, scaleY);
+        }
+    }
+
+    private static void DrawTrackMapPrimitive(
+        Graphics graphics,
+        RectangleF target,
+        TrackMapRenderPrimitive primitive,
+        float scaleX,
+        float scaleY)
+    {
+        switch (primitive.Kind)
+        {
+            case "ellipse":
+                DrawTrackMapEllipsePrimitive(graphics, target, primitive, scaleX, scaleY);
+                return;
+            case "arc":
+                DrawTrackMapArcPrimitive(graphics, target, primitive, scaleX, scaleY);
+                return;
+            case "line":
+                DrawTrackMapLinePrimitive(graphics, target, primitive, scaleX, scaleY);
+                return;
+            default:
+                DrawTrackMapPathPrimitive(graphics, target, primitive, scaleX, scaleY);
+                return;
+        }
+    }
+
+    private static void DrawTrackMapPathPrimitive(
+        Graphics graphics,
+        RectangleF target,
+        TrackMapRenderPrimitive primitive,
+        float scaleX,
+        float scaleY)
+    {
+        if (primitive.Points.Count < 2)
+        {
             return;
         }
 
-        DrawCircleTrackMap(graphics, trackRect, body.Markers, body.Sectors, interior, body.ShowSectorBoundaries);
+        using var path = new GraphicsPath();
+        var previous = ScalePoint(target, primitive.Points[0], scaleX, scaleY);
+        for (var index = 1; index < primitive.Points.Count; index++)
+        {
+            var current = ScalePoint(target, primitive.Points[index], scaleX, scaleY);
+            path.AddLine(previous, current);
+            previous = current;
+        }
+
+        if (primitive.Closed)
+        {
+            path.CloseFigure();
+        }
+
+        if (primitive.Fill is { } fill)
+        {
+            using var brush = new SolidBrush(RenderTrackMapColor(fill));
+            graphics.FillPath(brush, path);
+        }
+
+        if (primitive.Stroke is { } stroke && primitive.StrokeWidth > 0d)
+        {
+            using var pen = new Pen(RenderTrackMapColor(stroke), Math.Max(1f, (float)primitive.StrokeWidth * Math.Min(scaleX, scaleY)))
+            {
+                StartCap = LineCap.Round,
+                EndCap = LineCap.Round,
+                LineJoin = LineJoin.Round
+            };
+            graphics.DrawPath(pen, path);
+        }
+    }
+
+    private static void DrawTrackMapEllipsePrimitive(
+        Graphics graphics,
+        RectangleF target,
+        TrackMapRenderPrimitive primitive,
+        float scaleX,
+        float scaleY)
+    {
+        if (primitive.Rect is not { } rect)
+        {
+            return;
+        }
+
+        var scaled = ScaleRect(target, rect.X, rect.Y, rect.Width, rect.Height, scaleX, scaleY);
+        if (primitive.Fill is { } fill)
+        {
+            using var brush = new SolidBrush(RenderTrackMapColor(fill));
+            graphics.FillEllipse(brush, scaled);
+        }
+
+        if (primitive.Stroke is { } stroke && primitive.StrokeWidth > 0d)
+        {
+            using var pen = new Pen(RenderTrackMapColor(stroke), Math.Max(1f, (float)primitive.StrokeWidth * Math.Min(scaleX, scaleY)))
+            {
+                StartCap = LineCap.Round,
+                EndCap = LineCap.Round
+            };
+            graphics.DrawEllipse(pen, scaled);
+        }
+    }
+
+    private static void DrawTrackMapArcPrimitive(
+        Graphics graphics,
+        RectangleF target,
+        TrackMapRenderPrimitive primitive,
+        float scaleX,
+        float scaleY)
+    {
+        if (primitive.Rect is not { } rect || primitive.Stroke is not { } stroke)
+        {
+            return;
+        }
+
+        using var pen = new Pen(RenderTrackMapColor(stroke), Math.Max(1f, (float)primitive.StrokeWidth * Math.Min(scaleX, scaleY)))
+        {
+            StartCap = LineCap.Round,
+            EndCap = LineCap.Round
+        };
+        graphics.DrawArc(
+            pen,
+            ScaleRect(target, rect.X, rect.Y, rect.Width, rect.Height, scaleX, scaleY),
+            (float)primitive.StartDegrees,
+            (float)primitive.SweepDegrees);
+    }
+
+    private static void DrawTrackMapLinePrimitive(
+        Graphics graphics,
+        RectangleF target,
+        TrackMapRenderPrimitive primitive,
+        float scaleX,
+        float scaleY)
+    {
+        if (primitive.Points.Count < 2 || primitive.Stroke is not { } stroke)
+        {
+            return;
+        }
+
+        using var pen = new Pen(RenderTrackMapColor(stroke), Math.Max(1f, (float)primitive.StrokeWidth * Math.Min(scaleX, scaleY)))
+        {
+            StartCap = LineCap.Round,
+            EndCap = LineCap.Round
+        };
+        graphics.DrawLine(
+            pen,
+            ScalePoint(target, primitive.Points[0], scaleX, scaleY),
+            ScalePoint(target, primitive.Points[1], scaleX, scaleY));
+    }
+
+    private void DrawTrackMapMarker(
+        Graphics graphics,
+        RectangleF target,
+        TrackMapRenderMarker marker,
+        float scaleX,
+        float scaleY)
+    {
+        var center = ScalePoint(target, new TrackMapRenderPoint(marker.X, marker.Y), scaleX, scaleY);
+        var radius = (float)marker.Radius * Math.Min(scaleX, scaleY);
+        var markerRect = new RectangleF(center.X - radius, center.Y - radius, radius * 2f, radius * 2f);
+        using (var brush = new SolidBrush(RenderTrackMapColor(marker.Fill)))
+        {
+            graphics.FillEllipse(brush, markerRect);
+        }
+        using (var pen = new Pen(RenderTrackMapColor(marker.Stroke), Math.Max(1f, (float)marker.StrokeWidth * Math.Min(scaleX, scaleY))))
+        {
+            graphics.DrawEllipse(pen, markerRect);
+        }
+
+        if (marker.Label is { Length: > 0 })
+        {
+            using var markerFont = FontOf((float)marker.LabelFontSize * Math.Min(scaleX, scaleY), FontStyle.Bold);
+            DrawText(graphics, marker.Label, markerFont, RenderTrackMapColor(marker.LabelColor), markerRect, ContentAlignment.MiddleCenter);
+        }
+    }
+
+    private static PointF ScalePoint(
+        RectangleF target,
+        TrackMapRenderPoint point,
+        float scaleX,
+        float scaleY)
+    {
+        return new PointF(
+            target.Left + (float)point.X * scaleX,
+            target.Top + (float)point.Y * scaleY);
+    }
+
+    private static Color RenderTrackMapColor(TrackMapRenderColor color)
+    {
+        return Color.FromArgb(
+            Math.Clamp(color.Alpha, 0, 255),
+            Math.Clamp(color.Red, 0, 255),
+            Math.Clamp(color.Green, 0, 255),
+            Math.Clamp(color.Blue, 0, 255));
     }
 
     private void DrawGeneratedTrackMap(
@@ -6359,13 +6547,7 @@ internal sealed record DesignV2FlagsBody(
     bool ManagedEnabled,
     bool SettingsOverlayActive) : DesignV2Body;
 
-internal sealed record DesignV2TrackMapBody(
-    IReadOnlyList<DesignV2TrackMapMarker> Markers,
-    IReadOnlyList<LiveTrackSectorSegment> Sectors,
-    bool ShowSectorBoundaries,
-    double InternalOpacity,
-    bool IsAvailable,
-    TrackMapDocument? TrackMap) : DesignV2Body;
+internal sealed record DesignV2TrackMapBody(TrackMapRenderModel RenderModel) : DesignV2Body;
 
 internal sealed record DesignV2Column(
     string Label,

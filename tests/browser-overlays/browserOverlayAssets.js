@@ -944,7 +944,8 @@ function trackMapDisplayModel(page, live, settings) {
       sectors: live?.models?.trackMap?.sectors || [],
       showSectorBoundaries: settings?.trackMapSettings?.showSectorBoundaries ?? settings?.showSectorBoundaries ?? true,
       internalOpacity: settings?.trackMapSettings?.internalOpacity ?? settings?.internalOpacity ?? 0.88,
-      includeUserMaps: true
+      includeUserMaps: true,
+      renderModel: trackMapRenderModel(live, settings)
     }
   };
 }
@@ -1036,16 +1037,288 @@ function trackMapMarkers(live) {
     && latest.onPitRoad !== true
     && latest.playerTrackSurface !== 1
     && latest.playerTrackSurface !== 2) {
+    const existing = markers.get(referenceCarIdx);
+    const focusRow = live?.models?.timing?.focusRow;
     markers.set(referenceCarIdx, {
       carIdx: referenceCarIdx,
       lapDistPct: normalizeProgress(latest.focusLapDistPct),
       isFocus: true,
       classColorHex: null,
-      position: null
+      position: existing?.position
+        ?? focusRow?.classPosition
+        ?? focusRow?.overallPosition
+        ?? latest.focusClassPosition
+        ?? latest.focusPosition
+        ?? null
     });
   }
 
   return [...markers.values()].sort((left, right) => Number(left.isFocus) - Number(right.isFocus) || left.carIdx - right.carIdx);
+}
+
+function trackMapRenderModel(live, settings) {
+  const markers = trackMapMarkers(live);
+  const sectors = live?.models?.trackMap?.sectors || [];
+  const trackMap = settings?.trackMap ?? null;
+  const internalOpacity = settings?.trackMapSettings?.internalOpacity ?? settings?.internalOpacity ?? 0.88;
+  const showSectorBoundaries = settings?.trackMapSettings?.showSectorBoundaries ?? settings?.showSectorBoundaries ?? true;
+  const primitives = trackMap?.racingLine?.points?.length >= 3
+    ? generatedTrackMapPrimitives(trackMap, sectors, internalOpacity, showSectorBoundaries)
+    : circleTrackMapPrimitives(sectors, internalOpacity, showSectorBoundaries);
+  return {
+    width: 360,
+    height: 360,
+    isAvailable: true,
+    mapKind: trackMap?.racingLine?.points?.length >= 3 ? 'generated' : 'circle',
+    primitives,
+    markers: markers.map((marker) => trackMapRenderMarker(marker, trackMap))
+  };
+}
+
+function generatedTrackMapPrimitives(trackMap, sectors, internalOpacity, showSectorBoundaries) {
+  const transform = trackMapTransform(trackMap);
+  if (!transform) return circleTrackMapPrimitives(sectors, internalOpacity, showSectorBoundaries);
+  const racing = renderPath(trackMap.racingLine, transform);
+  const primitives = [];
+  if (trackMap.racingLine?.closed === true && racing.length >= 3) {
+    primitives.push(primitivePath(racing, true, trackInteriorFill(internalOpacity), null, 0));
+  }
+  primitives.push(
+    primitivePath(racing, trackMap.racingLine?.closed === true, null, rgba(255, 255, 255, 82), 11),
+    primitivePath(racing, trackMap.racingLine?.closed === true, null, rgba(222, 237, 245, 255), 4.4));
+  for (const sector of sectors.filter(hasTrackMapHighlight)) {
+    for (const range of segmentRanges(sector.startPct, sector.endPct)) {
+      const points = renderSegment(trackMap.racingLine, transform, range.startPct, range.endPct);
+      if (points.length >= 2) {
+        primitives.push(primitivePath(points, false, null, sectorHighlightColor(sector.highlight), 5.8));
+      }
+    }
+  }
+  if (showSectorBoundaries) {
+    for (const progress of boundaryProgresses(sectors)) {
+      const tick = geometryBoundaryTick(trackMap.racingLine, transform, progress);
+      if (tick) addBoundaryPrimitives(primitives, tick.start, tick.end, isStartFinish(progress));
+    }
+  }
+  if (trackMap?.pitLane?.points?.length >= 2) {
+    primitives.push(primitivePath(renderPath(trackMap.pitLane, transform), false, null, rgba(98, 199, 255, 190), 2.2));
+  }
+  return primitives;
+}
+
+function circleTrackMapPrimitives(sectors, internalOpacity, showSectorBoundaries) {
+  const rect = { x: 20, y: 20, width: 320, height: 320 };
+  const primitives = [
+    primitiveEllipse(rect, trackInteriorFill(internalOpacity), null, 0),
+    primitiveEllipse(rect, null, rgba(255, 255, 255, 82), 11),
+    primitiveEllipse(rect, null, rgba(222, 237, 245, 255), 4.4)
+  ];
+  for (const sector of sectors.filter(hasTrackMapHighlight)) {
+    for (const range of segmentRanges(sector.startPct, sector.endPct)) {
+      primitives.push({
+        kind: 'arc',
+        points: [],
+        closed: false,
+        rect,
+        startDegrees: range.startPct * 360 - 90,
+        sweepDegrees: (range.endPct - range.startPct) * 360,
+        fill: null,
+        stroke: sectorHighlightColor(sector.highlight),
+        strokeWidth: 5.8
+      });
+    }
+  }
+  if (showSectorBoundaries) {
+    for (const progress of boundaryProgresses(sectors)) {
+      const point = pointOnCircle(progress);
+      const dx = point.x - 180;
+      const dy = point.y - 180;
+      const length = Math.max(0.001, Math.hypot(dx, dy));
+      const half = boundaryTickLength(progress) / 2;
+      addBoundaryPrimitives(
+        primitives,
+        { x: point.x - dx / length * half, y: point.y - dy / length * half },
+        { x: point.x + dx / length * half, y: point.y + dy / length * half },
+        isStartFinish(progress));
+    }
+  }
+  return primitives;
+}
+
+function trackMapRenderMarker(marker, trackMap) {
+  const transform = trackMap?.racingLine?.points?.length >= 3 ? trackMapTransform(trackMap) : null;
+  const point = transform ? pointOnGeometry(trackMap.racingLine, transform, marker.lapDistPct) : pointOnCircle(marker.lapDistPct);
+  const label = marker.isFocus && Number.isFinite(marker.position) && marker.position > 0 ? String(marker.position) : null;
+  return {
+    carIdx: marker.carIdx,
+    x: point.x,
+    y: point.y,
+    radius: label ? Math.max(5.7, 5.1 + label.length * 2.9) : marker.isFocus ? 5.7 : 3.6,
+    isFocus: marker.isFocus,
+    fill: marker.isFocus ? rgba(0, 232, 255, 255) : classBorderColor(marker.classColorHex, 1),
+    stroke: rgba(8, 14, 18, 230),
+    strokeWidth: marker.isFocus ? 2 : 1.4,
+    label,
+    labelColor: rgba(5, 13, 17, 255),
+    labelFontSize: 7.6
+  };
+}
+
+function trackMapTransform(trackMap) {
+  const points = [
+    ...(trackMap?.racingLine?.points || []),
+    ...(trackMap?.pitLane?.points || [])
+  ].filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+  if (!points.length) return null;
+  const minX = Math.min(...points.map((point) => point.x));
+  const maxX = Math.max(...points.map((point) => point.x));
+  const minY = Math.min(...points.map((point) => point.y));
+  const maxY = Math.max(...points.map((point) => point.y));
+  const width = Math.max(1, maxX - minX);
+  const height = Math.max(1, maxY - minY);
+  const scale = Math.min(320 / width, 320 / height);
+  return {
+    minX,
+    maxY,
+    scale,
+    left: 20 + (320 - width * scale) / 2,
+    top: 20 + (320 - height * scale) / 2
+  };
+}
+
+function mapTrackPoint(point, transform) {
+  return {
+    x: transform.left + (point.x - transform.minX) * transform.scale,
+    y: transform.top + (transform.maxY - point.y) * transform.scale
+  };
+}
+
+function renderPath(geometry, transform) {
+  return (geometry?.points || []).map((point) => mapTrackPoint(point, transform));
+}
+
+function renderSegment(geometry, transform, startPct, endPct) {
+  const start = pointOnGeometry(geometry, transform, startPct);
+  const end = pointOnGeometry(geometry, transform, endPct);
+  if (!start || !end) return [];
+  return [
+    start,
+    ...(geometry?.points || [])
+      .filter((point) => point.lapDistPct > startPct && point.lapDistPct < endPct)
+      .map((point) => mapTrackPoint(point, transform)),
+    end
+  ];
+}
+
+function pointOnGeometry(geometry, transform, progress) {
+  const points = geometry?.points || [];
+  if (!points.length) return pointOnCircle(progress);
+  const pct = normalizeProgress(progress);
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    if (pct >= previous.lapDistPct && pct <= current.lapDistPct) {
+      return interpolateTrackPoint(previous, current, pct, transform);
+    }
+  }
+  if (geometry.closed) {
+    const previous = points[points.length - 1];
+    const current = { ...points[0], lapDistPct: points[0].lapDistPct + 1 };
+    const target = pct < previous.lapDistPct ? pct + 1 : pct;
+    return interpolateTrackPoint(previous, current, target, transform);
+  }
+  return mapTrackPoint(points[0], transform);
+}
+
+function interpolateTrackPoint(previous, current, target, transform) {
+  const span = current.lapDistPct - previous.lapDistPct;
+  const ratio = span <= 0 ? 0 : Math.max(0, Math.min(1, (target - previous.lapDistPct) / span));
+  return mapTrackPoint({
+    x: previous.x + (current.x - previous.x) * ratio,
+    y: previous.y + (current.y - previous.y) * ratio
+  }, transform);
+}
+
+function geometryBoundaryTick(geometry, transform, progress) {
+  const center = pointOnGeometry(geometry, transform, progress);
+  const before = pointOnGeometry(geometry, transform, progress - 0.002);
+  const after = pointOnGeometry(geometry, transform, progress + 0.002);
+  const dx = after.x - before.x;
+  const dy = after.y - before.y;
+  const length = Math.max(0.001, Math.hypot(dx, dy));
+  const normalX = -dy / length;
+  const normalY = dx / length;
+  const half = boundaryTickLength(progress) / 2;
+  return {
+    start: { x: center.x - normalX * half, y: center.y - normalY * half },
+    end: { x: center.x + normalX * half, y: center.y + normalY * half }
+  };
+}
+
+function pointOnCircle(progress) {
+  const angle = normalizeProgress(progress) * Math.PI * 2 - Math.PI / 2;
+  return { x: 180 + Math.cos(angle) * 160, y: 180 + Math.sin(angle) * 160 };
+}
+
+function primitivePath(points, closed, fill, stroke, strokeWidth) {
+  return { kind: 'path', points, closed, rect: null, startDegrees: 0, sweepDegrees: 0, fill, stroke, strokeWidth };
+}
+
+function primitiveEllipse(rect, fill, stroke, strokeWidth) {
+  return { kind: 'ellipse', points: [], closed: false, rect, startDegrees: 0, sweepDegrees: 0, fill, stroke, strokeWidth };
+}
+
+function addBoundaryPrimitives(primitives, start, end, isStartFinishLine) {
+  if (isStartFinishLine) {
+    primitives.push(primitiveLine(start, end, rgba(5, 9, 14, 210), 5.8));
+    primitives.push(primitiveLine(start, end, rgba(255, 209, 91, 255), 3.2));
+    primitives.push(primitiveLine(start, end, rgba(255, 247, 255, 235), 1.2));
+    return;
+  }
+  primitives.push(primitiveLine(start, end, rgba(0, 232, 255, 255), 2.2));
+}
+
+function primitiveLine(start, end, stroke, strokeWidth) {
+  return { kind: 'line', points: [start, end], closed: false, rect: null, startDegrees: 0, sweepDegrees: 0, fill: null, stroke, strokeWidth };
+}
+
+function segmentRanges(startPct, endPct) {
+  const start = normalizeProgress(startPct);
+  const end = endPct >= 1 ? 1 : normalizeProgress(endPct);
+  if (end <= start && endPct < 1) return [{ startPct: start, endPct: 1 }, { startPct: 0, endPct: end }];
+  return [{ startPct: start, endPct: Math.max(0, Math.min(1, end)) }];
+}
+
+function boundaryProgresses(sectors) {
+  if (!Array.isArray(sectors) || sectors.length < 2) return [];
+  const seen = new Set();
+  return sectors.map((sector) => normalizeProgress(sector.startPct)).filter((progress) => {
+    const key = Math.round(progress * 100000);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function hasTrackMapHighlight(sector) {
+  return sector?.highlight === 'personal-best' || sector?.highlight === 'best-lap';
+}
+
+function sectorHighlightColor(highlight) {
+  return highlight === 'best-lap' ? rgba(182, 92, 255, 255) : rgba(80, 214, 124, 255);
+}
+
+function trackInteriorFill(opacity) {
+  return rgba(9, 14, 18, Math.round(150 * Math.max(0.2, Math.min(1, opacity))));
+}
+
+function boundaryTickLength(progress) {
+  return isStartFinish(progress) ? 17 * 1.45 : 17;
+}
+
+function isStartFinish(progress) {
+  const normalized = normalizeProgress(progress);
+  return normalized <= 0.0005 || normalized >= 0.9995;
 }
 
 function normalizeProgress(value) {

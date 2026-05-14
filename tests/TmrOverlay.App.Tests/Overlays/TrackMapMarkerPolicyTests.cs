@@ -2,6 +2,7 @@ using TmrOverlay.App.Overlays.DesignV2;
 using TmrOverlay.App.Overlays.TrackMap;
 using TmrOverlay.Core.History;
 using TmrOverlay.Core.Telemetry.Live;
+using TmrOverlay.Core.TrackMaps;
 using Xunit;
 
 namespace TmrOverlay.App.Tests.Overlays;
@@ -62,6 +63,45 @@ public sealed class TrackMapMarkerPolicyTests
         var markers = DesignV2LiveOverlayForm.BuildTrackMapMarkers(snapshot);
 
         Assert.Empty(markers);
+    }
+
+    [Fact]
+    public void TrackMapRenderModel_UsesGeneratedGeometryAndNativeFocusLabel()
+    {
+        var viewModel = new TrackMapOverlayViewModel(
+            Title: "Track Map",
+            Status: "live",
+            Source: "source: live position telemetry",
+            IsAvailable: true,
+            Markers:
+            [
+                new TrackMapOverlayMarker(10, 0.25d, IsFocus: true, ClassColorHex: null, Position: 5),
+                new TrackMapOverlayMarker(11, 0.50d, IsFocus: false, ClassColorHex: "#FFDA59", Position: null)
+            ],
+            Sectors:
+            [
+                new LiveTrackSectorSegment(0, 0d, 0.5d, LiveTrackSectorHighlights.PersonalBest),
+                new LiveTrackSectorSegment(1, 0.5d, 1d, LiveTrackSectorHighlights.None)
+            ],
+            ShowSectorBoundaries: true,
+            InternalOpacity: 0.88d,
+            IncludeUserMaps: true,
+            TrackMap: TestTrackMapDocument());
+
+        var renderModel = TrackMapRenderModel.FromViewModel(viewModel);
+
+        Assert.Equal("generated", renderModel.MapKind);
+        Assert.Contains(renderModel.Primitives, primitive => primitive.Kind == "path" && primitive.Fill is not null);
+        Assert.True(renderModel.Primitives.Count(primitive => primitive.Kind == "line") >= 4);
+
+        var focus = Assert.Single(renderModel.Markers, marker => marker.IsFocus);
+        Assert.Equal("5", focus.Label);
+
+        var opponent = Assert.Single(renderModel.Markers, marker => !marker.IsFocus);
+        Assert.Equal(255, opponent.Fill.Red);
+        Assert.Equal(218, opponent.Fill.Green);
+        Assert.Equal(89, opponent.Fill.Blue);
+        Assert.Equal(245, opponent.Fill.Alpha);
     }
 
     private static LiveTimingRow Row(int carIdx, bool hasTakenGrid)
@@ -166,5 +206,51 @@ public sealed class TrackMapMarkerPolicyTests
             FocusLapCompleted: 0,
             FocusLapDistPct: 0.20d,
             PlayerTrackSurface: playerTrackSurface);
+    }
+
+    private static TrackMapDocument TestTrackMapDocument()
+    {
+        return new TrackMapDocument(
+            SchemaVersion: TrackMapDocument.CurrentSchemaVersion,
+            GenerationVersion: TrackMapDocument.CurrentGenerationVersion,
+            GeneratedAtUtc: DateTimeOffset.UtcNow,
+            Identity: new TrackMapIdentity(
+                Key: "unit-test",
+                TrackId: 1,
+                TrackName: "Unit Test",
+                TrackDisplayName: "Unit Test",
+                TrackConfigName: "Road",
+                TrackLengthKm: 4d,
+                TrackVersion: null),
+            RacingLine: new TrackMapGeometry(
+                [
+                    new TrackMapPoint(0d, 0d, 0d),
+                    new TrackMapPoint(0.25d, 100d, 0d),
+                    new TrackMapPoint(0.5d, 100d, 100d),
+                    new TrackMapPoint(0.75d, 0d, 100d)
+                ],
+                Closed: true),
+            PitLane: new TrackMapGeometry(
+                [
+                    new TrackMapPoint(0.1d, 10d, 10d),
+                    new TrackMapPoint(0.2d, 40d, 10d)
+                ],
+                Closed: false),
+            Quality: new TrackMapQuality(
+                Confidence: TrackMapConfidence.High,
+                CompleteLapCount: 2,
+                SelectedPointCount: 4,
+                BinCount: 4,
+                MissingBinCount: 0,
+                MissingBinPercent: 0d,
+                ClosureMeters: 1d,
+                LengthDeltaPercent: 0d,
+                RepeatabilityMedianMeters: 0.5d,
+                RepeatabilityP95Meters: 1d,
+                PitLaneSampleCount: 2,
+                PitLanePassCount: 1,
+                PitLaneRepeatabilityP95Meters: 1d,
+                Reasons: []),
+            Provenance: new TrackMapProvenance("unit-test", null, null, null, null));
     }
 }
