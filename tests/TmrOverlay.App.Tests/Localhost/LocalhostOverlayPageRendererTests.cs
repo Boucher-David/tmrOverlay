@@ -53,18 +53,15 @@ public sealed class BrowserOverlayPageRendererTests
         if (expectedId == "track-map")
         {
             Assert.Contains("track-map-page", html);
-            Assert.Contains("TmrBrowserApiPath('/api/track-map')", html);
+            Assert.Contains("fetchOverlayModel('track-map')", html);
             Assert.Contains("renderOffline()", html);
-            Assert.Contains("let cachedTrackMapSettings", html);
-            Assert.Contains("row.hasSpatialProgress === false", html);
-            Assert.Contains("const trackMapModel = window.TmrBrowserModel", html);
-            Assert.Contains("trackMapModel.spatial(live)", html);
-            Assert.Contains("trackMapModel.referenceCarIdx", html);
-            Assert.Contains("trackMapModel.timingRows", html);
+            Assert.Contains("trackMapSvg(renderModel)", html);
+            Assert.Contains("renderModel.primitives", html);
+            Assert.Contains("renderModel.markers", html);
             Assert.Contains("\"refreshIntervalMilliseconds\":100", html);
-            Assert.Contains(": null", html);
-            Assert.Contains("stroke=\"var(--tmr-cyan)\"", html);
-            Assert.Contains("fill=\"var(--tmr-title)\"", html);
+            Assert.Contains("primitive.kind", html);
+            Assert.Contains("rgba(${red},${green},${blue},${alpha.toFixed(3)})", html);
+            Assert.Contains("aria-label=\"Track map\"", html);
         }
         if (expectedId == "standings")
         {
