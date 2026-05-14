@@ -144,6 +144,55 @@ public sealed class StreamChatIrcParserTests
     }
 
     [Fact]
+    public void StreamChatOverlaySource_DiagnosticsSnapshotSummarizesRuntimeStateWithoutWidgetUrl()
+    {
+        using var source = new StreamChatOverlaySource(
+            NullLogger<StreamChatOverlaySource>.Instance,
+            new AppPerformanceState());
+        var now = DateTimeOffset.Parse("2026-05-14T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
+        var settings = new StreamChatBrowserSettings(
+            Provider: StreamChatOverlaySettings.ProviderStreamlabs,
+            IsConfigured: true,
+            StreamlabsWidgetUrl: "https://streamlabs.com/widgets/chat-box/private-token",
+            TwitchChannel: null,
+            Status: "configured_streamlabs")
+        {
+            ContentOptions = StreamChatContentOptions.Default with { ShowAlerts = false }
+        };
+
+        _ = source.Snapshot(settings, now);
+        source.RecordMessage(new StreamChatMessage("viewer", "hello", StreamChatMessageKind.Message), now.AddSeconds(1));
+        source.RecordMessage(new StreamChatMessage("viewer", "subscribed", StreamChatMessageKind.Notice)
+        {
+            Source = "twitch",
+            NoticeKind = "sub"
+        }, now.AddSeconds(2));
+
+        var diagnostics = source.DiagnosticsSnapshot(settings, now.AddSeconds(3));
+
+        Assert.Equal(StreamChatOverlaySettings.ProviderStreamlabs, diagnostics.Provider);
+        Assert.True(diagnostics.IsConfigured);
+        Assert.False(diagnostics.HasValidTwitchChannel);
+        Assert.Equal("not_selected", diagnostics.TwitchChannelStatus);
+        Assert.True(diagnostics.HasValidStreamlabsUrl);
+        Assert.Equal("valid", diagnostics.StreamlabsUrlStatus);
+        Assert.True(diagnostics.ActiveSettingsMatch);
+        Assert.Equal(1, diagnostics.Generation);
+        Assert.Equal(3, diagnostics.RetainedMessageCount);
+        Assert.Equal(3, diagnostics.RecentRetainedMessageCount);
+        Assert.Equal(2, diagnostics.VisibleMessageCount);
+        Assert.Equal(1, diagnostics.MessageCountsByKind["message"]);
+        Assert.Equal(1, diagnostics.MessageCountsByKind["notice"]);
+        Assert.Equal(1, diagnostics.MessageCountsByKind["system"]);
+        Assert.Equal(1, diagnostics.VisibleMessageCountsByKind["message"]);
+        Assert.False(diagnostics.VisibleMessageCountsByKind.ContainsKey("notice"));
+        Assert.Equal(now.AddSeconds(2), diagnostics.LastReceivedAtUtc);
+        Assert.False(diagnostics.Connected);
+        Assert.False(diagnostics.Connecting);
+        Assert.False(diagnostics.Reconnecting);
+    }
+
+    [Fact]
     public void StreamChatOverlayViewModel_HidesTwitchNoticeRowsWhenAlertsAreDisabled()
     {
         var notice = new StreamChatMessage("viewer", "Viewer subscribed.", StreamChatMessageKind.Notice)

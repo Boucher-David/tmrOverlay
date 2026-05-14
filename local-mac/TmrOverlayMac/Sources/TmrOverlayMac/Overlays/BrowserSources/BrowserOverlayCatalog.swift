@@ -11,6 +11,7 @@ enum BrowserOverlayCatalog {
         "car-radar": "/overlays/car-radar",
         "gap-to-leader": "/overlays/gap-to-leader",
         "track-map": "/overlays/track-map",
+        "flags": "/overlays/flags",
         "stream-chat": "/overlays/stream-chat",
         "garage-cover": "/overlays/garage-cover"
     ]

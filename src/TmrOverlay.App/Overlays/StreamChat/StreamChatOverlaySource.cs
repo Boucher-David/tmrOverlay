@@ -22,6 +22,10 @@ internal sealed class StreamChatOverlaySource : IDisposable
     private string _source = string.Empty;
     private string? _activeSettingsKey;
     private string? _lastLoggedError;
+    private string? _lastErrorPhase;
+    private string? _lastErrorType;
+    private string? _lastErrorMessage;
+    private DateTimeOffset? _lastErrorAtUtc;
     private int _settingsGeneration;
     private bool _connectedAnnounced;
     private bool _disposed;
@@ -67,6 +71,64 @@ internal sealed class StreamChatOverlaySource : IDisposable
     internal void RecordMessage(StreamChatMessage message, DateTimeOffset receivedAtUtc)
     {
         AddMessage(_settingsGeneration, message, receivedAtUtc);
+    }
+
+    public StreamChatDiagnosticsSnapshot DiagnosticsSnapshot(StreamChatBrowserSettings settings)
+    {
+        return DiagnosticsSnapshot(settings, DateTimeOffset.UtcNow);
+    }
+
+    internal StreamChatDiagnosticsSnapshot DiagnosticsSnapshot(StreamChatBrowserSettings settings, DateTimeOffset now)
+    {
+        lock (_sync)
+        {
+            var retainedMessages = _messages.ToArray();
+            var visibleMessages = retainedMessages
+                .Where(message => settings.ContentOptions.ShouldShow(message.Message))
+                .ToArray();
+            var recentRetainedMessages = retainedMessages
+                .Where(message =>
+                    message.Message.Kind is not (StreamChatMessageKind.Message or StreamChatMessageKind.Notice)
+                    || now - message.ReceivedAtUtc <= ChatHistoryRetention)
+                .ToArray();
+            var status = _status;
+            return new StreamChatDiagnosticsSnapshot(
+                Provider: settings.Provider,
+                IsConfigured: settings.IsConfigured,
+                TwitchChannel: settings.TwitchChannel,
+                HasValidTwitchChannel: string.Equals(settings.Provider, StreamChatOverlaySettings.ProviderTwitch, StringComparison.Ordinal)
+                    && settings.TwitchChannel is not null,
+                TwitchChannelStatus: TwitchChannelStatus(settings),
+                HasValidStreamlabsUrl: string.Equals(settings.Provider, StreamChatOverlaySettings.ProviderStreamlabs, StringComparison.Ordinal)
+                    && settings.StreamlabsWidgetUrl is not null,
+                StreamlabsUrlStatus: StreamlabsUrlStatus(settings),
+                Generation: _settingsGeneration,
+                ActiveSettingsMatch: string.Equals(_activeSettingsKey, SettingsKey(settings), StringComparison.Ordinal),
+                Status: status,
+                Source: _source,
+                Connected: _connectedAnnounced && status.Contains("connected", StringComparison.OrdinalIgnoreCase),
+                Connecting: status.Contains("connecting", StringComparison.OrdinalIgnoreCase)
+                    || status.Contains("joining", StringComparison.OrdinalIgnoreCase),
+                Reconnecting: status.Contains("reconnecting", StringComparison.OrdinalIgnoreCase),
+                RetainedMessageCount: retainedMessages.Length,
+                RecentRetainedMessageCount: recentRetainedMessages.Length,
+                VisibleMessageCount: visibleMessages.Length,
+                MessageCountsByKind: retainedMessages
+                    .GroupBy(message => message.Message.Kind.ToString().ToLowerInvariant())
+                    .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase),
+                VisibleMessageCountsByKind: visibleMessages
+                    .GroupBy(message => message.Message.Kind.ToString().ToLowerInvariant())
+                    .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase),
+                LastReceivedAtUtc: retainedMessages.Length == 0
+                    ? null
+                    : retainedMessages.Max(message => message.ReceivedAtUtc),
+                LastErrorPhase: _lastErrorPhase,
+                LastErrorType: _lastErrorType,
+                LastErrorMessage: _lastErrorMessage,
+                LastErrorAtUtc: _lastErrorAtUtc);
+        }
     }
 
     public void Dispose()
@@ -122,6 +184,26 @@ internal sealed class StreamChatOverlaySource : IDisposable
     private static string SourceText(StreamChatBrowserSettings settings)
     {
         return string.Empty;
+    }
+
+    private static string TwitchChannelStatus(StreamChatBrowserSettings settings)
+    {
+        if (!string.Equals(settings.Provider, StreamChatOverlaySettings.ProviderTwitch, StringComparison.Ordinal))
+        {
+            return "not_selected";
+        }
+
+        return settings.TwitchChannel is null ? "missing_or_invalid" : "valid";
+    }
+
+    private static string StreamlabsUrlStatus(StreamChatBrowserSettings settings)
+    {
+        if (!string.Equals(settings.Provider, StreamChatOverlaySettings.ProviderStreamlabs, StringComparison.Ordinal))
+        {
+            return "not_selected";
+        }
+
+        return settings.StreamlabsWidgetUrl is null ? "missing_or_invalid" : "valid";
     }
 
     private void StartTwitchConnection(string channel, int generation)
@@ -461,6 +543,10 @@ internal sealed class StreamChatOverlaySource : IDisposable
         }
 
         _lastLoggedError = key;
+        _lastErrorPhase = phase;
+        _lastErrorType = exception.GetType().FullName;
+        _lastErrorMessage = exception.Message;
+        _lastErrorAtUtc = DateTimeOffset.UtcNow;
         _logger.LogWarning(exception, "Stream chat source {Phase} failed.", phase);
     }
 
@@ -468,3 +554,29 @@ internal sealed class StreamChatOverlaySource : IDisposable
         StreamChatMessage Message,
         DateTimeOffset ReceivedAtUtc);
 }
+
+internal sealed record StreamChatDiagnosticsSnapshot(
+    string Provider,
+    bool IsConfigured,
+    string? TwitchChannel,
+    bool HasValidTwitchChannel,
+    string TwitchChannelStatus,
+    bool HasValidStreamlabsUrl,
+    string StreamlabsUrlStatus,
+    int Generation,
+    bool ActiveSettingsMatch,
+    string Status,
+    string Source,
+    bool Connected,
+    bool Connecting,
+    bool Reconnecting,
+    int RetainedMessageCount,
+    int RecentRetainedMessageCount,
+    int VisibleMessageCount,
+    IReadOnlyDictionary<string, int> MessageCountsByKind,
+    IReadOnlyDictionary<string, int> VisibleMessageCountsByKind,
+    DateTimeOffset? LastReceivedAtUtc,
+    string? LastErrorPhase,
+    string? LastErrorType,
+    string? LastErrorMessage,
+    DateTimeOffset? LastErrorAtUtc);

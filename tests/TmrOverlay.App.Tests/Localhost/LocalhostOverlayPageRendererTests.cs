@@ -22,6 +22,7 @@ public sealed class BrowserOverlayPageRendererTests
     [InlineData("/overlays/car-radar", "car-radar")]
     [InlineData("/overlays/gap-to-leader", "gap-to-leader")]
     [InlineData("/overlays/track-map", "track-map")]
+    [InlineData("/overlays/flags", "flags")]
     [InlineData("/overlays/stream-chat", "stream-chat")]
     [InlineData("/overlays/garage-cover", "garage-cover")]
     public void TryRender_RendersKnownOverlayRoutes(string route, string expectedId)
@@ -62,6 +63,15 @@ public sealed class BrowserOverlayPageRendererTests
             Assert.Contains("primitive?.kind", html);
             Assert.Contains("rgba(${red},${green},${blue},${alpha.toFixed(3)})", html);
             Assert.Contains("aria-label=\"Track map\"", html);
+        }
+        if (expectedId == "flags")
+        {
+            Assert.Contains("flags-page", html);
+            Assert.Contains("fetchOverlayModel('flags')", html);
+            Assert.Contains("flags-v2", html);
+            Assert.Contains("flagCloth(flag, path, cloth)", html);
+            Assert.Contains("checkeredFlag(path, cloth)", html);
+            Assert.Contains("body.flags-page .overlay", html);
         }
         if (expectedId == "standings")
         {
@@ -194,15 +204,6 @@ public sealed class BrowserOverlayPageRendererTests
         Assert.Equal(string.Empty, html);
     }
 
-    [Fact]
-    public void TryRender_RejectsFlagsRouteWhileBrowserSourceIsDisabled()
-    {
-        var rendered = BrowserOverlayPageRenderer.TryRender("/overlays/flags", out var html);
-
-        Assert.False(rendered);
-        Assert.Equal(string.Empty, html);
-    }
-
     [Theory]
     [InlineData("standings", "/overlays/standings")]
     [InlineData("relative", "/overlays/relative")]
@@ -213,6 +214,7 @@ public sealed class BrowserOverlayPageRendererTests
     [InlineData("car-radar", "/overlays/car-radar")]
     [InlineData("gap-to-leader", "/overlays/gap-to-leader")]
     [InlineData("track-map", "/overlays/track-map")]
+    [InlineData("flags", "/overlays/flags")]
     [InlineData("stream-chat", "/overlays/stream-chat")]
     [InlineData("garage-cover", "/overlays/garage-cover")]
     public void TryGetRouteForOverlayId_ReturnsCanonicalRoute(string overlayId, string expectedRoute)
@@ -224,15 +226,6 @@ public sealed class BrowserOverlayPageRendererTests
     }
 
     [Fact]
-    public void TryGetRouteForOverlayId_ReturnsFalseForFlagsWhileBrowserSourceIsDisabled()
-    {
-        var found = BrowserOverlayPageRenderer.TryGetRouteForOverlayId("flags", out var route);
-
-        Assert.False(found);
-        Assert.Equal(string.Empty, route);
-    }
-
-    [Fact]
     public void RenderIndex_ListsCanonicalRoutes()
     {
         var html = BrowserOverlayPageRenderer.RenderIndex(8765);
@@ -240,7 +233,7 @@ public sealed class BrowserOverlayPageRendererTests
         Assert.Contains("TMR Localhost Overlays", html);
         Assert.Contains("/overlays/standings", html);
         Assert.Contains("/overlays/fuel-calculator", html);
-        Assert.DoesNotContain("/overlays/flags", html);
+        Assert.Contains("/overlays/flags", html);
         Assert.Contains("/overlays/session-weather", html);
         Assert.Contains("/overlays/pit-service", html);
         Assert.Contains("/overlays/input-state", html);

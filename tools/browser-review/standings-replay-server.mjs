@@ -1651,6 +1651,13 @@ function displayModel(overlayId, frame, index, searchParams = null) {
     };
   }
 
+  if (overlayId === 'flags') {
+    const flags = isPreGreen
+      ? [flagItem('green', 'green', relativeSeconds >= 0 ? 'Start' : 'Ready', null, 'success')]
+      : [flagItem('green', 'green', 'Green', 'held', 'success')];
+    return flagsModel(flags, isPreGreen ? 'race start' : 'green held');
+  }
+
   return tableModel(overlayId, browserOverlayPage(overlayId).title, status, headerItems, []);
 }
 
@@ -1719,11 +1726,24 @@ function captureDisplayModel(overlayId, frame, index, searchParams = null) {
     return captureGapToLeaderModel(models, frame, index, searchParams);
   }
 
+  if (overlayId === 'flags') {
+    return captureFlagsModel(models);
+  }
+
   if (overlayId === 'input-state') {
     return captureInputStateModel(models, status, index, searchParams);
   }
 
   return tableModel(overlayId, browserOverlayPage(overlayId).title, status, headerItems, [], 'source: capture-derived live replay');
+}
+
+function captureFlagsModel(models) {
+  const session = models?.session || {};
+  const flags = flagItemsFromSession(session.sessionFlags, session.sessionState);
+  const status = flags.length > 0
+    ? flags.map((flag) => flag.label).join(' + ').toLowerCase()
+    : 'none';
+  return flagsModel(flags, status, session.hasData !== true);
 }
 
 function embeddedReplayDisplayModel(overlayId, frame) {
@@ -4646,6 +4666,46 @@ function metricsModel(
       rows: rows.map(metricModelRow)
     }))
   };
+}
+
+function flagsModel(flags, status, isWaiting = false) {
+  const visibleFlags = Array.isArray(flags) ? flags : [];
+  return {
+    overlayId: 'flags',
+    title: 'Flags',
+    status,
+    source: 'source: session flags telemetry',
+    bodyKind: 'flags',
+    columns: [],
+    rows: [],
+    metrics: [],
+    points: [],
+    headerItems: [{ key: 'status', value: status }],
+    flags: {
+      flags: visibleFlags,
+      isWaiting
+    },
+    shouldRender: !isWaiting && visibleFlags.length > 0
+  };
+}
+
+function flagItemsFromSession(sessionFlags, sessionState) {
+  const value = Number.isInteger(sessionFlags) ? sessionFlags : 0;
+  const items = [];
+  if ((value & 0x00000010) !== 0) items.push(flagItem('red', 'critical', 'Red', null, 'error'));
+  if ((value & 0x00100000) !== 0) items.push(flagItem('meatball', 'critical', 'Repair', null, 'error'));
+  if ((value & 0x00010000) !== 0) items.push(flagItem('black', 'critical', 'Black', null, 'error'));
+  if ((value & 0x00008000) !== 0 || (value & 0x00004000) !== 0) items.push(flagItem('caution', 'yellow', 'Caution', (value & 0x00008000) !== 0 ? 'waving' : null, 'warning'));
+  else if ((value & 0x00000008) !== 0 || (value & 0x00000100) !== 0 || (value & 0x00000200) !== 0 || (value & 0x00000040) !== 0 || (value & 0x00002000) !== 0) items.push(flagItem('yellow', 'yellow', (value & 0x00000200) !== 0 ? 'One to green' : (value & 0x00000040) !== 0 ? 'Debris' : 'Yellow', (value & 0x00000100) !== 0 || (value & 0x00002000) !== 0 ? 'waving' : null, 'warning'));
+  if ((value & 0x00000020) !== 0) items.push(flagItem('blue', 'blue', 'Blue', null, 'info'));
+  if ((value & 0x00000001) !== 0 || sessionState === 5) items.push(flagItem('checkered', 'finish', 'Checkered', sessionState === 5 && (value & 0x00000001) === 0 ? 'session complete' : null, 'info'));
+  if ((value & 0x00000002) !== 0 || (value & 0x00001000) !== 0 || (value & 0x00000800) !== 0 || (value & 0x00000080) !== 0) items.push(flagItem('white', 'finish', (value & 0x00000002) !== 0 ? 'White' : (value & 0x00001000) !== 0 ? 'Five to go' : (value & 0x00000800) !== 0 ? 'Ten to go' : 'Crossed', null, 'info'));
+  if ((value & 0x00000400) !== 0 || (value & 0x20000000) !== 0 || (value & 0x40000000) !== 0 || (value & 0x80000000) !== 0) items.push(flagItem('green', 'green', (value & 0x80000000) !== 0 ? 'Start' : (value & 0x40000000) !== 0 ? 'Set' : (value & 0x20000000) !== 0 ? 'Ready' : 'Green', (value & 0x00000400) !== 0 ? 'held' : null, 'success'));
+  return items;
+}
+
+function flagItem(kind, category, label, detail, tone) {
+  return { kind, category, label, detail, tone };
 }
 
 function metricModelRow(row) {

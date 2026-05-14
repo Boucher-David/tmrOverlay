@@ -437,6 +437,9 @@ internal static class Program
             new LiveOverlayWindowCaptureStore(storage),
             new ForegroundWindowTracker(),
             releaseUpdates,
+            new StreamChatOverlaySource(
+                NullLogger<StreamChatOverlaySource>.Instance,
+                performanceState),
             NullLogger<DiagnosticsBundleService>.Instance);
         var settings = CreateApplicationSettings();
 

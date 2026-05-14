@@ -108,6 +108,49 @@ public sealed class BrowserOverlayModelFactoryTests
     }
 
     [Fact]
+    public void FlagsModel_UsesProductionDisplayFlagsAndHonorsCategorySettings()
+    {
+        var factory = new BrowserOverlayModelFactory(new SessionHistoryQueryService(new SessionHistoryOptions
+        {
+            Enabled = false,
+            ResolvedUserHistoryRoot = Path.Combine(Path.GetTempPath(), "tmr-overlay-test-history"),
+            ResolvedBaselineHistoryRoot = Path.Combine(Path.GetTempPath(), "tmr-overlay-test-baseline-history")
+        }));
+        var settings = new ApplicationSettings();
+        var overlay = settings.GetOrAddOverlay("flags", 360, 170);
+        overlay.SetBooleanOption(OverlayOptionKeys.FlagsShowBlue, false);
+        var now = DateTimeOffset.Parse("2026-05-13T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
+        var snapshot = LiveTelemetrySnapshot.Empty with
+        {
+            IsConnected = true,
+            IsCollecting = true,
+            LastUpdatedAtUtc = now,
+            Sequence = 1,
+            Models = LiveRaceModels.Empty with
+            {
+                Session = LiveSessionModel.Empty with
+                {
+                    HasData = true,
+                    Quality = LiveModelQuality.Reliable,
+                    SessionType = "Race",
+                    SessionState = 4,
+                    SessionFlags = 0x00000008 | 0x00000020 | 0x00000400
+                }
+            }
+        };
+
+        var built = factory.TryBuild("flags", snapshot, settings, now, out var response);
+
+        Assert.True(built);
+        Assert.Equal("flags", response.Model.BodyKind);
+        Assert.True(response.Model.ShouldRender);
+        Assert.NotNull(response.Model.Flags);
+        Assert.Equal(["yellow", "green"], response.Model.Flags.Flags.Select(flag => flag.Kind).ToArray());
+        Assert.DoesNotContain(response.Model.Flags.Flags, flag => flag.Kind == "blue");
+        Assert.Equal("source: session flags telemetry", response.Model.Source);
+    }
+
+    [Fact]
     public void CarRadarModel_UsesTrustedHistoryCalibrationForBrowserRenderModel()
     {
         var root = Path.Combine(Path.GetTempPath(), "tmr-browser-radar-history-test", Guid.NewGuid().ToString("N"));

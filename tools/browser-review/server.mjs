@@ -24,6 +24,7 @@ const assetBackedReviewOverlayModelIds = new Set([
   'input-state',
   'car-radar',
   'track-map',
+  'flags',
   'garage-cover',
   'stream-chat'
 ]);
@@ -293,6 +294,16 @@ function reviewSettings(overlayId, previewMode = 'off') {
       showSteering: true,
       showGear: true,
       showSpeed: true
+    };
+  }
+
+  if (overlayId === 'flags') {
+    return {
+      flags: [
+        { kind: 'yellow', category: 'yellow', label: 'Yellow', detail: 'waving', tone: 'warning' },
+        { kind: 'blue', category: 'blue', label: 'Blue', detail: null, tone: 'info' },
+        { kind: 'checkered', category: 'finish', label: 'Checkered', detail: null, tone: 'info' }
+      ]
     };
   }
 

@@ -103,6 +103,7 @@ async function validateOverlayFrame(context, overlay, frameSeconds, requireCaptu
         hasRadar: Boolean(document.querySelector('.radar-v2')),
         radarChromeVisible: radarChromeVisible(),
         hasTrackMap: Boolean(document.querySelector('.track svg')),
+        hasFlags: Boolean(document.querySelector('.flags-v2 .flag-cell')),
         hasChatLine: Boolean(document.querySelector('.chat-line')),
         hasGarageCover: Boolean(document.querySelector('.garage-cover')),
         tableRowClasses: [...document.querySelectorAll('tbody tr')].map((row) => [...row.classList]),
@@ -279,6 +280,9 @@ function validateMetrics(overlayId, metrics, canvasPixels) {
   }
   if (overlayId === 'garage-cover' && !metrics.hasGarageCover) {
     failures.push('garage cover body missing');
+  }
+  if (overlayId === 'flags' && !metrics.hasFlags) {
+    failures.push('flags body missing');
   }
 
   return failures;
@@ -630,7 +634,7 @@ function readPngDimensions(data) {
 }
 
 function isTextlessOverlay(overlayId) {
-  return overlayId === 'track-map' || overlayId === 'garage-cover';
+  return overlayId === 'track-map' || overlayId === 'garage-cover' || overlayId === 'flags';
 }
 
 async function canvasHasVisiblePixels(page) {

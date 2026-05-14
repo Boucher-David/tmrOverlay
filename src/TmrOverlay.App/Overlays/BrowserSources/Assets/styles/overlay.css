@@ -25,6 +25,7 @@
 
     body.car-radar-page,
     body.track-map-page,
+    body.flags-page,
     body.garage-cover-page,
     body.stream-chat-page {
       padding: 0;
@@ -59,6 +60,7 @@
 
     body.car-radar-page .overlay,
     body.track-map-page .overlay,
+    body.flags-page .overlay,
     body.garage-cover-page .overlay {
       width: 100vw;
       height: 100vh;
@@ -70,7 +72,8 @@
     }
 
     body.car-radar-page .overlay,
-    body.track-map-page .overlay {
+    body.track-map-page .overlay,
+    body.flags-page .overlay {
       background: transparent;
     }
 
@@ -80,6 +83,7 @@
 
     body.car-radar-page .overlay::before,
     body.track-map-page .overlay::before,
+    body.flags-page .overlay::before,
     body.garage-cover-page .overlay::before {
       display: none;
     }
@@ -97,6 +101,7 @@
 
     body.car-radar-page .header,
     body.track-map-page .header,
+    body.flags-page .header,
     body.garage-cover-page .header {
       display: none;
     }
@@ -172,6 +177,7 @@
 
     body.car-radar-page .content,
     body.track-map-page .content,
+    body.flags-page .content,
     body.garage-cover-page .content {
       width: 100%;
       height: 100%;
@@ -182,8 +188,16 @@
 
     body.car-radar-page .source,
     body.track-map-page .source,
+    body.flags-page .source,
     body.garage-cover-page .source {
       display: none;
+    }
+
+    .flags-v2 {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      overflow: visible;
     }
 
     table {

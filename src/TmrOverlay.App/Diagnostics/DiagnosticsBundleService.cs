@@ -66,6 +66,7 @@ internal sealed class DiagnosticsBundleService
     private readonly LiveOverlayWindowCaptureStore _liveOverlayWindowCaptureStore;
     private readonly ForegroundWindowTracker _foregroundWindowTracker;
     private readonly ReleaseUpdateService _releaseUpdates;
+    private readonly StreamChatOverlaySource _streamChatSource;
     private readonly ILogger<DiagnosticsBundleService> _logger;
     private readonly object _sync = new();
     private string? _lastBundlePath;
@@ -90,6 +91,7 @@ internal sealed class DiagnosticsBundleService
         LiveOverlayWindowCaptureStore liveOverlayWindowCaptureStore,
         ForegroundWindowTracker foregroundWindowTracker,
         ReleaseUpdateService releaseUpdates,
+        StreamChatOverlaySource streamChatSource,
         ILogger<DiagnosticsBundleService> logger)
     {
         _storageOptions = storageOptions;
@@ -106,6 +108,7 @@ internal sealed class DiagnosticsBundleService
         _liveOverlayWindowCaptureStore = liveOverlayWindowCaptureStore;
         _foregroundWindowTracker = foregroundWindowTracker;
         _releaseUpdates = releaseUpdates;
+        _streamChatSource = streamChatSource;
         _logger = logger;
     }
 
@@ -165,6 +168,8 @@ internal sealed class DiagnosticsBundleService
                 AddTextEntry(archive, "metadata/installer-cleanup.json", JsonSerializer.Serialize(InstallerCleanup.LegacyInstallerCleanupSnapshot(), JsonOptions));
                 AddTextEntry(archive, "metadata/track-maps.json", JsonSerializer.Serialize(_trackMapStore.DiagnosticsSnapshot(), JsonOptions));
                 AddTextEntry(archive, "metadata/garage-cover.json", JsonSerializer.Serialize(GarageCoverDiagnostics(), JsonOptions));
+                AddTextEntry(archive, "metadata/stream-chat.json", JsonSerializer.Serialize(StreamChatDiagnostics(), JsonOptions));
+                AddTextEntry(archive, "metadata/flags.json", JsonSerializer.Serialize(FlagsDiagnostics(), JsonOptions));
                 AddTextEntry(archive, "metadata/live-telemetry-synthesis.json", JsonSerializer.Serialize(LiveTelemetrySynthesis(), JsonOptions));
                 metadataSucceeded = true;
             }
@@ -863,6 +868,42 @@ internal sealed class DiagnosticsBundleService
         }
     }
 
+    private object StreamChatDiagnostics()
+    {
+        try
+        {
+            return _streamChatSource.DiagnosticsSnapshot(StreamChatOverlayViewModel.BrowserSettingsFrom(_settingsStore.Load()));
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Failed to collect Stream Chat diagnostics metadata.");
+            return new
+            {
+                Route = "/overlays/stream-chat",
+                Error = exception.Message
+            };
+        }
+    }
+
+    private object FlagsDiagnostics()
+    {
+        try
+        {
+            var settings = _settingsStore.Load();
+            var snapshot = _liveTelemetrySource.Snapshot();
+            return FlagsModelSummary(snapshot, settings, DateTimeOffset.UtcNow);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Failed to collect Flags diagnostics metadata.");
+            return new
+            {
+                Route = "/overlays/flags",
+                Error = exception.Message
+            };
+        }
+    }
+
     private object LiveTelemetrySynthesis()
     {
         try
@@ -962,6 +1003,7 @@ internal sealed class DiagnosticsBundleService
                     SessionTime = sample?.SessionTime,
                     StartupOrPreGreenNote = "SessionState 1/2/3 and early SessionState 4 frames can have progress/timing arrays before official positions become valid."
                 },
+                FlagsModel = FlagsModelSummary(snapshot, settingsSnapshot, now),
                 FieldSemantics = new
                 {
                     OfficialPosition = "CarIdxPosition > 0",
@@ -991,6 +1033,18 @@ internal sealed class DiagnosticsBundleService
                     snapshot.Models.Relative.ReferenceCarIdx,
                     RowCount = snapshot.Models.Relative.Rows.Count
                 },
+                ReferenceModel = ReferenceModelSummary(snapshot.Models.Reference),
+                DriverDirectoryModel = DriverDirectoryModelSummary(snapshot.Models.DriverDirectory),
+                RaceProgressModel = RaceProgressModelSummary(snapshot.Models.RaceProgress),
+                RaceProjectionModel = RaceProjectionModelSummary(snapshot.Models.RaceProjection),
+                RaceEventsModel = RaceEventsModelSummary(snapshot.Models.RaceEvents),
+                TireCompoundModel = TireCompoundModelSummary(snapshot.Models.TireCompounds),
+                TireConditionModel = TireConditionModelSummary(snapshot.Models.TireCondition),
+                WeatherModel = WeatherModelSummary(snapshot.Models.Weather),
+                InputsModel = InputsModelSummary(snapshot.Models.Inputs),
+                FuelPitModel = FuelPitModelSummary(snapshot.Models.FuelPit),
+                PitServiceModel = PitServiceModelSummary(snapshot.Models.PitService),
+                SpatialRadarModel = SpatialRadarModelSummary(snapshot.Models.Spatial),
                 ScoringModel = new
                 {
                     snapshot.Models.Scoring.HasData,
@@ -1009,6 +1063,7 @@ internal sealed class DiagnosticsBundleService
                         })
                         .ToArray()
                 },
+                TrackMapModel = TrackMapModelSummary(snapshot.Models.TrackMap),
                 LocalContexts = new
                 {
                     FuelCalculator = LiveLocalStrategyContext.ForFuelCalculator(snapshot, now),
@@ -1035,6 +1090,619 @@ internal sealed class DiagnosticsBundleService
                 Error = exception.Message
             };
         }
+    }
+
+    private static object ReferenceModelSummary(LiveReferenceModel reference)
+    {
+        return new
+        {
+            reference.HasData,
+            reference.Quality,
+            reference.PlayerCarIdx,
+            reference.FocusCarIdx,
+            reference.FocusIsPlayer,
+            reference.HasExplicitNonPlayerFocus,
+            reference.FocusUsesPlayerLocalFallback,
+            reference.FocusUnavailableReason,
+            reference.ReferenceCarClass,
+            reference.OverallPosition,
+            reference.ClassPosition,
+            reference.LapCompleted,
+            reference.LapDistPct,
+            reference.ProgressLaps,
+            reference.F2TimeSeconds,
+            reference.EstimatedTimeSeconds,
+            reference.TrackSurface,
+            reference.OnPitRoad,
+            reference.PlayerCarClass,
+            reference.PlayerLapCompleted,
+            reference.PlayerLapDistPct,
+            reference.PlayerProgressLaps,
+            reference.PlayerTrackSurface,
+            reference.PlayerOnPitRoad,
+            reference.PlayerYawNorthRadians,
+            reference.IsOnTrack,
+            reference.IsInGarage,
+            reference.PlayerCarInPitStall,
+            reference.HasTimingReference,
+            reference.HasTrackPlacement,
+            TimingEvidence = EvidenceSummary(reference.TimingEvidence),
+            SpatialEvidence = EvidenceSummary(reference.SpatialEvidence),
+            MissingSignalCount = reference.MissingSignals.Count,
+            reference.MissingSignals
+        };
+    }
+
+    private static object DriverDirectoryModelSummary(LiveDriverDirectoryModel directory)
+    {
+        return new
+        {
+            directory.HasData,
+            directory.Quality,
+            directory.PlayerCarIdx,
+            directory.FocusCarIdx,
+            directory.ReferenceCarClass,
+            HasPlayerDriver = directory.PlayerDriver is not null,
+            HasFocusDriver = directory.FocusDriver is not null,
+            DriverCount = directory.Drivers.Count,
+            ClassCount = directory.Drivers
+                .Where(driver => driver.CarClassId is not null)
+                .Select(driver => driver.CarClassId!.Value)
+                .Distinct()
+                .Count(),
+            SpectatorCount = directory.Drivers.Count(driver => driver.IsSpectator == true)
+        };
+    }
+
+    private static object RaceProgressModelSummary(LiveRaceProgressModel progress)
+    {
+        return new
+        {
+            progress.HasData,
+            progress.Quality,
+            progress.StrategyCarProgressLaps,
+            progress.ReferenceCarProgressLaps,
+            progress.OverallLeaderProgressLaps,
+            progress.ClassLeaderProgressLaps,
+            progress.StrategyOverallLeaderGapLaps,
+            progress.StrategyClassLeaderGapLaps,
+            progress.ReferenceOverallLeaderGapLaps,
+            progress.ReferenceClassLeaderGapLaps,
+            progress.StrategyOverallPosition,
+            progress.StrategyClassPosition,
+            progress.ReferenceOverallPosition,
+            progress.ReferenceClassPosition,
+            progress.StrategyLapTimeSeconds,
+            progress.StrategyLapTimeSource,
+            progress.RacePaceSeconds,
+            progress.RacePaceSource,
+            progress.RaceLapsRemaining,
+            progress.RaceLapsRemainingSource,
+            MissingSignalCount = progress.MissingSignals.Count,
+            progress.MissingSignals
+        };
+    }
+
+    private static object RaceProjectionModelSummary(LiveRaceProjectionModel projection)
+    {
+        return new
+        {
+            projection.HasData,
+            projection.Quality,
+            projection.OverallLeaderPaceSeconds,
+            projection.OverallLeaderPaceSource,
+            projection.OverallLeaderPaceConfidence,
+            projection.ReferenceClassPaceSeconds,
+            projection.ReferenceClassPaceSource,
+            projection.ReferenceClassPaceConfidence,
+            projection.TeamPaceSeconds,
+            projection.TeamPaceSource,
+            projection.TeamPaceConfidence,
+            projection.EstimatedFinishLap,
+            projection.EstimatedTeamLapsRemaining,
+            projection.EstimatedTeamLapsRemainingSource,
+            ClassProjectionCount = projection.ClassProjections.Count,
+            ClassProjections = projection.ClassProjections
+                .Select(classProjection => new
+                {
+                    classProjection.CarClass,
+                    classProjection.ClassName,
+                    classProjection.PaceSeconds,
+                    classProjection.PaceSource,
+                    classProjection.PaceConfidence,
+                    classProjection.EstimatedLapsRemaining,
+                    classProjection.EstimatedLapsRemainingSource
+                })
+                .ToArray(),
+            MissingSignalCount = projection.MissingSignals.Count,
+            projection.MissingSignals
+        };
+    }
+
+    private static object RaceEventsModelSummary(LiveRaceEventModel raceEvents)
+    {
+        return new
+        {
+            raceEvents.HasData,
+            raceEvents.Quality,
+            raceEvents.IsOnTrack,
+            raceEvents.IsInGarage,
+            raceEvents.IsGarageVisible,
+            raceEvents.OnPitRoad,
+            raceEvents.Lap,
+            raceEvents.LapCompleted,
+            raceEvents.LapDistPct,
+            raceEvents.DriversSoFar,
+            raceEvents.DriverChangeLapStatus
+        };
+    }
+
+    private static object TireCompoundModelSummary(LiveTireCompoundModel tireCompounds)
+    {
+        return new
+        {
+            tireCompounds.HasData,
+            tireCompounds.Quality,
+            DefinitionCount = tireCompounds.Definitions.Count,
+            CarCount = tireCompounds.Cars.Count,
+            PlayerCar = TireCompoundCarSummary(tireCompounds.PlayerCar),
+            FocusCar = TireCompoundCarSummary(tireCompounds.FocusCar),
+            Definitions = tireCompounds.Definitions
+                .Select(definition => new
+                {
+                    definition.Index,
+                    definition.Label,
+                    definition.ShortLabel,
+                    definition.IsWet
+                })
+                .ToArray(),
+            CarEvidenceCounts = tireCompounds.Cars
+                .GroupBy(car => EvidenceKey(car.Evidence))
+                .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase)
+        };
+    }
+
+    private static object TireConditionModelSummary(LiveTireConditionModel tireCondition)
+    {
+        return new
+        {
+            tireCondition.HasData,
+            tireCondition.Quality,
+            Evidence = EvidenceSummary(tireCondition.Evidence),
+            Corners = new[]
+            {
+                TireCornerConditionSummary(tireCondition.LeftFront),
+                TireCornerConditionSummary(tireCondition.RightFront),
+                TireCornerConditionSummary(tireCondition.LeftRear),
+                TireCornerConditionSummary(tireCondition.RightRear)
+            }
+        };
+    }
+
+    private static object FlagsModelSummary(
+        LiveTelemetrySnapshot snapshot,
+        ApplicationSettings settings,
+        DateTimeOffset now)
+    {
+        var overlay = settings.GetOrAddOverlay(
+            FlagsOverlayDefinition.Definition.Id,
+            FlagsOverlayDefinition.Definition.DefaultWidth,
+            FlagsOverlayDefinition.Definition.DefaultHeight,
+            defaultEnabled: false);
+        var viewModel = FlagsOverlayViewModel.ForDisplay(snapshot, now);
+        var displayFlags = viewModel.Flags
+            .Select(flag => new
+            {
+                Kind = flag.Kind.ToString(),
+                Category = flag.Category.ToString(),
+                flag.Label,
+                flag.Detail,
+                Tone = flag.Tone.ToString(),
+                Enabled = IsFlagCategoryEnabled(overlay, flag.Category)
+            })
+            .ToArray();
+        var enabledDisplayFlags = displayFlags
+            .Where(flag => flag.Enabled)
+            .ToArray();
+        var session = snapshot.Models.Session;
+
+        return new
+        {
+            Route = "/overlays/flags",
+            OverlayId = FlagsOverlayDefinition.Definition.Id,
+            overlay.Enabled,
+            EnabledCategories = new
+            {
+                Green = overlay.GetBooleanOption(OverlayOptionKeys.FlagsShowGreen, defaultValue: true),
+                Blue = overlay.GetBooleanOption(OverlayOptionKeys.FlagsShowBlue, defaultValue: true),
+                Yellow = overlay.GetBooleanOption(OverlayOptionKeys.FlagsShowYellow, defaultValue: true),
+                Critical = overlay.GetBooleanOption(OverlayOptionKeys.FlagsShowCritical, defaultValue: true),
+                Finish = overlay.GetBooleanOption(OverlayOptionKeys.FlagsShowFinish, defaultValue: true)
+            },
+            Snapshot = new
+            {
+                snapshot.IsConnected,
+                snapshot.IsCollecting,
+                snapshot.SourceId,
+                snapshot.LastUpdatedAtUtc,
+                snapshot.Sequence
+            },
+            Session = new
+            {
+                session.HasData,
+                session.Quality,
+                session.SessionType,
+                session.SessionName,
+                session.EventType,
+                session.SessionState,
+                SessionStateLabel = SessionStateLabel(session.SessionState),
+                session.SessionFlags,
+                SessionFlagsHex = FormatRawFlagsHex(session.SessionFlags),
+                session.SessionTimeRemainSeconds,
+                session.SessionLapsRemain,
+                session.RaceLaps,
+                session.SessionLapsTotal
+            },
+            viewModel.IsWaiting,
+            viewModel.Status,
+            Tone = viewModel.Tone.ToString(),
+            RawFlags = viewModel.RawFlags,
+            RawFlagsHex = FormatRawFlagsHex(viewModel.RawFlags),
+            DisplayFlagCount = displayFlags.Length,
+            EnabledDisplayFlagCount = enabledDisplayFlags.Length,
+            SuppressedBySettingsCount = displayFlags.Length - enabledDisplayFlags.Length,
+            DisplayFlags = displayFlags,
+            EnabledDisplayFlags = enabledDisplayFlags
+        };
+    }
+
+    private static object WeatherModelSummary(LiveWeatherModel weather)
+    {
+        return new
+        {
+            weather.HasData,
+            weather.Quality,
+            weather.AirTempC,
+            weather.TrackTempCrewC,
+            weather.TrackWetness,
+            weather.TrackWetnessLabel,
+            weather.WeatherDeclaredWet,
+            weather.DeclaredWetSurfaceMismatch,
+            weather.WeatherType,
+            weather.SkiesLabel,
+            weather.PrecipitationPercent,
+            weather.WindVelocityMetersPerSecond,
+            weather.WindDirectionRadians,
+            weather.RelativeHumidityPercent,
+            weather.FogLevelPercent,
+            weather.AirPressurePa,
+            weather.SolarAltitudeRadians,
+            weather.SolarAzimuthRadians,
+            weather.RubberState
+        };
+    }
+
+    private static object InputsModelSummary(LiveInputTelemetryModel inputs)
+    {
+        return new
+        {
+            inputs.HasData,
+            inputs.Quality,
+            inputs.HasPedalInputs,
+            inputs.HasSteeringInput,
+            inputs.SpeedMetersPerSecond,
+            inputs.Gear,
+            inputs.Rpm,
+            HasThrottle = inputs.Throttle is not null,
+            HasBrake = inputs.Brake is not null,
+            HasClutch = inputs.Clutch is not null,
+            HasSteeringWheelAngle = inputs.SteeringWheelAngle is not null,
+            inputs.BrakeAbsActive,
+            inputs.EngineWarnings,
+            HasVoltage = inputs.Voltage is not null,
+            HasWaterTemp = inputs.WaterTempC is not null,
+            HasOilTemp = inputs.OilTempC is not null,
+            HasOilPressure = inputs.OilPressureBar is not null,
+            HasFuelPressure = inputs.FuelPressureBar is not null
+        };
+    }
+
+    private static object FuelPitModelSummary(LiveFuelPitModel fuelPit)
+    {
+        return new
+        {
+            fuelPit.HasData,
+            fuelPit.Quality,
+            Fuel = new
+            {
+                fuelPit.Fuel.HasValidFuel,
+                fuelPit.Fuel.Source,
+                fuelPit.Fuel.FuelLevelLiters,
+                fuelPit.Fuel.FuelLevelPercent,
+                HasFuelUsePerHour = fuelPit.Fuel.FuelUsePerHourKg is not null
+                    || fuelPit.Fuel.FuelUsePerHourLiters is not null,
+                fuelPit.Fuel.FuelPerLapLiters,
+                fuelPit.Fuel.LapTimeSeconds,
+                fuelPit.Fuel.LapTimeSource,
+                fuelPit.Fuel.Confidence
+            },
+            fuelPit.OnPitRoad,
+            fuelPit.PitstopActive,
+            fuelPit.PlayerCarInPitStall,
+            fuelPit.TeamOnPitRoad,
+            FuelLevelEvidence = EvidenceSummary(fuelPit.FuelLevelEvidence),
+            InstantaneousBurnEvidence = EvidenceSummary(fuelPit.InstantaneousBurnEvidence),
+            MeasuredBurnEvidence = EvidenceSummary(fuelPit.MeasuredBurnEvidence),
+            BaselineEligibilityEvidence = EvidenceSummary(fuelPit.BaselineEligibilityEvidence),
+            PitService = new
+            {
+                fuelPit.PitServiceStatus,
+                fuelPit.PitServiceFlags,
+                fuelPit.PitServiceFuelLiters,
+                fuelPit.PitRepairLeftSeconds,
+                fuelPit.PitOptRepairLeftSeconds,
+                HasAnySignal = fuelPit.PitServiceStatus is not null
+                    || fuelPit.PitServiceFlags is not null
+                    || fuelPit.PitServiceFuelLiters is not null
+                    || fuelPit.PitRepairLeftSeconds is not null
+                    || fuelPit.PitOptRepairLeftSeconds is not null
+            },
+            TireSets = new
+            {
+                fuelPit.PlayerCarDryTireSetLimit,
+                fuelPit.TireSetsUsed,
+                fuelPit.TireSetsAvailable,
+                fuelPit.RequestedTireCompound
+            },
+            FastRepair = new
+            {
+                fuelPit.FastRepairUsed,
+                fuelPit.FastRepairAvailable,
+                fuelPit.TeamFastRepairsUsed
+            }
+        };
+    }
+
+    private static object PitServiceModelSummary(LivePitServiceModel pit)
+    {
+        return new
+        {
+            pit.HasData,
+            pit.Quality,
+            pit.OnPitRoad,
+            pit.PitstopActive,
+            pit.PlayerCarInPitStall,
+            pit.TeamOnPitRoad,
+            pit.Status,
+            pit.Flags,
+            Request = new
+            {
+                pit.Request.LeftFrontTire,
+                pit.Request.RightFrontTire,
+                pit.Request.LeftRearTire,
+                pit.Request.RightRearTire,
+                pit.Request.Fuel,
+                pit.Request.Tearoff,
+                pit.Request.FastRepair,
+                pit.Request.FuelLiters,
+                pit.Request.RequestedTireCompoundIndex,
+                pit.Request.RequestedTireCompoundLabel,
+                pit.Request.RequestedTireCompoundShortLabel,
+                pit.Request.RequestedTireCount,
+                pit.Request.HasAnyRequest
+            },
+            Repair = new
+            {
+                pit.Repair.RequiredSeconds,
+                pit.Repair.OptionalSeconds
+            },
+            Tires = new
+            {
+                pit.Tires.RequestedTireCount,
+                pit.Tires.DryTireSetLimit,
+                pit.Tires.TireSetsUsed,
+                pit.Tires.TireSetsAvailable,
+                pit.Tires.LeftTireSetsUsed,
+                pit.Tires.RightTireSetsUsed,
+                pit.Tires.FrontTireSetsUsed,
+                pit.Tires.RearTireSetsUsed,
+                pit.Tires.LeftTireSetsAvailable,
+                pit.Tires.RightTireSetsAvailable,
+                pit.Tires.FrontTireSetsAvailable,
+                pit.Tires.RearTireSetsAvailable,
+                pit.Tires.LeftFrontTiresUsed,
+                pit.Tires.RightFrontTiresUsed,
+                pit.Tires.LeftRearTiresUsed,
+                pit.Tires.RightRearTiresUsed,
+                pit.Tires.LeftFrontTiresAvailable,
+                pit.Tires.RightFrontTiresAvailable,
+                pit.Tires.LeftRearTiresAvailable,
+                pit.Tires.RightRearTiresAvailable,
+                pit.Tires.RequestedCompoundIndex,
+                pit.Tires.RequestedCompoundLabel,
+                pit.Tires.RequestedCompoundShortLabel,
+                pit.Tires.CurrentCompoundIndex,
+                pit.Tires.CurrentCompoundLabel,
+                pit.Tires.CurrentCompoundShortLabel,
+                pit.Tires.LeftFrontChangeRequested,
+                pit.Tires.RightFrontChangeRequested,
+                pit.Tires.LeftRearChangeRequested,
+                pit.Tires.RightRearChangeRequested,
+                pit.Tires.LeftFrontPressureKpa,
+                pit.Tires.RightFrontPressureKpa,
+                pit.Tires.LeftRearPressureKpa,
+                pit.Tires.RightRearPressureKpa
+            },
+            FastRepair = new
+            {
+                pit.FastRepair.Selected,
+                pit.FastRepair.LocalUsed,
+                pit.FastRepair.LocalAvailable,
+                pit.FastRepair.TeamUsed
+            }
+        };
+    }
+
+    private static object SpatialRadarModelSummary(LiveSpatialModel spatial)
+    {
+        return new
+        {
+            spatial.HasData,
+            spatial.Quality,
+            spatial.ReferenceCarIdx,
+            spatial.ReferenceCarClass,
+            spatial.CarLeftRight,
+            spatial.SideStatus,
+            spatial.HasCarLeft,
+            spatial.HasCarRight,
+            spatial.SideOverlapWindowSeconds,
+            spatial.TrackLengthMeters,
+            spatial.ReferenceLapDistPct,
+            CarCount = spatial.Cars.Count,
+            TimingPlacementCarCount = spatial.Cars.Count(car => car.RelativeSeconds is not null),
+            MeterPlacementCarCount = spatial.Cars.Count(car => car.RelativeMeters is not null),
+            MulticlassApproachCount = spatial.MulticlassApproaches.Count,
+            spatial.StrongestMulticlassApproach,
+            NearestAhead = SpatialCarSummary(spatial.NearestAhead),
+            NearestBehind = SpatialCarSummary(spatial.NearestBehind),
+            PlacementEvidenceCounts = spatial.Cars
+                .GroupBy(car => EvidenceKey(car.PlacementEvidence))
+                .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase)
+        };
+    }
+
+    private static object TrackMapModelSummary(LiveTrackMapModel trackMap)
+    {
+        var highlighted = trackMap.Sectors
+            .Where(sector => !string.Equals(sector.Highlight, LiveTrackSectorHighlights.None, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        return new
+        {
+            trackMap.HasSectors,
+            trackMap.HasLiveTiming,
+            trackMap.Quality,
+            SectorCount = trackMap.Sectors.Count,
+            HighlightedSectorCount = highlighted.Length,
+            HighlightCounts = trackMap.Sectors
+                .GroupBy(sector => string.IsNullOrWhiteSpace(sector.Highlight) ? LiveTrackSectorHighlights.None : sector.Highlight)
+                .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase),
+            BoundaryHighlightCounts = trackMap.Sectors
+                .GroupBy(sector => string.IsNullOrWhiteSpace(sector.BoundaryHighlight) ? LiveTrackSectorHighlights.None : sector.BoundaryHighlight)
+                .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase)
+        };
+    }
+
+    private static bool IsFlagCategoryEnabled(OverlaySettings overlay, FlagDisplayCategory category)
+    {
+        return category switch
+        {
+            FlagDisplayCategory.Green => overlay.GetBooleanOption(OverlayOptionKeys.FlagsShowGreen, defaultValue: true),
+            FlagDisplayCategory.Blue => overlay.GetBooleanOption(OverlayOptionKeys.FlagsShowBlue, defaultValue: true),
+            FlagDisplayCategory.Yellow => overlay.GetBooleanOption(OverlayOptionKeys.FlagsShowYellow, defaultValue: true),
+            FlagDisplayCategory.Critical => overlay.GetBooleanOption(OverlayOptionKeys.FlagsShowCritical, defaultValue: true),
+            FlagDisplayCategory.Finish => overlay.GetBooleanOption(OverlayOptionKeys.FlagsShowFinish, defaultValue: true),
+            _ => true
+        };
+    }
+
+    private static string FormatRawFlagsHex(int? flags)
+    {
+        return flags is { } value
+            ? $"0x{unchecked((uint)value).ToString("X8", CultureInfo.InvariantCulture)}"
+            : "--";
+    }
+
+    private static object? SpatialCarSummary(LiveSpatialCar? car)
+    {
+        return car is null
+            ? null
+            : new
+            {
+                car.CarIdx,
+                car.Quality,
+                PlacementEvidence = EvidenceSummary(car.PlacementEvidence),
+                car.RelativeLaps,
+                car.RelativeSeconds,
+                car.RelativeMeters,
+                car.OverallPosition,
+                car.ClassPosition,
+                car.CarClass,
+                car.TrackSurface,
+                car.OnPitRoad
+            };
+    }
+
+    private static object? TireCompoundCarSummary(LiveCarTireCompound? car)
+    {
+        return car is null
+            ? null
+            : new
+            {
+                car.CarIdx,
+                car.CompoundIndex,
+                car.Label,
+                car.ShortLabel,
+                car.IsWet,
+                car.IsPlayer,
+                car.IsFocus,
+                Evidence = EvidenceSummary(car.Evidence)
+            };
+    }
+
+    private static object TireCornerConditionSummary(LiveTireCornerCondition corner)
+    {
+        return new
+        {
+            corner.Corner,
+            corner.HasData,
+            Wear = AcrossTreadSummary(corner.Wear),
+            TemperatureC = AcrossTreadSummary(corner.TemperatureC),
+            corner.ColdPressureKpa,
+            corner.OdometerMeters,
+            corner.PitServicePressureKpa,
+            corner.BlackBoxColdPressurePa,
+            corner.ChangeRequested
+        };
+    }
+
+    private static object AcrossTreadSummary(LiveTireAcrossTreadValues values)
+    {
+        return new
+        {
+            values.HasData,
+            values.Left,
+            values.Middle,
+            values.Right
+        };
+    }
+
+    private static object EvidenceSummary(LiveSignalEvidence evidence)
+    {
+        return new
+        {
+            evidence.Source,
+            evidence.Quality,
+            evidence.IsUsable,
+            evidence.MissingReason
+        };
+    }
+
+    private static string EvidenceKey(LiveSignalEvidence evidence)
+    {
+        if (evidence.IsUsable)
+        {
+            return string.IsNullOrWhiteSpace(evidence.Source)
+                ? "usable"
+                : $"usable:{evidence.Source}";
+        }
+
+        return string.IsNullOrWhiteSpace(evidence.MissingReason)
+            ? "unavailable"
+            : $"missing:{evidence.MissingReason}";
     }
 
     private static object BuildCarFieldCoverage(IReadOnlyList<HistoricalCarProximity> cars)

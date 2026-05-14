@@ -61,6 +61,12 @@ export const pages = {
     settingsRoute: '/api/track-map',
     settingsProperty: 'trackMapSettings'
   }),
+  flags: pageDefinition('flags', 'Flags', '/overlays/flags', {
+    bodyClass: 'flags-page',
+    renderWhenTelemetryUnavailable: true,
+    fadeWhenTelemetryUnavailable: true,
+    modelRoute: '/api/overlay-model/flags'
+  }),
   'garage-cover': pageDefinition('garage-cover', 'Garage Cover', '/overlays/garage-cover', {
     bodyClass: 'garage-cover-page',
     renderWhenTelemetryUnavailable: true,
@@ -253,6 +259,8 @@ function defaultDisplayModel(page, live, settings) {
       return carRadarDisplayModel(page, live);
     case 'track-map':
       return trackMapDisplayModel(page, live, settings);
+    case 'flags':
+      return flagsDisplayModel(page, live, settings);
     case 'garage-cover':
       return garageCoverDisplayModel(page, live, settings);
     case 'stream-chat':
@@ -262,6 +270,51 @@ function defaultDisplayModel(page, live, settings) {
     default:
       return emptyDisplayModel(page.page.id, page.title);
   }
+}
+
+function flagsDisplayModel(page, live, settings) {
+  const flags = Array.isArray(settings?.flags)
+    ? settings.flags
+    : flagItemsFromSession(live?.models?.session?.sessionFlags, live?.models?.session?.sessionState);
+  const enabled = {
+    green: settings?.showGreen ?? true,
+    blue: settings?.showBlue ?? true,
+    yellow: settings?.showYellow ?? true,
+    critical: settings?.showCritical ?? true,
+    finish: settings?.showFinish ?? true
+  };
+  const visibleFlags = flags.filter((flag) => enabled[String(flag.category || '').toLowerCase()] !== false);
+  return {
+    ...emptyDisplayModel(page.page.id, page.title),
+    status: visibleFlags.length ? visibleFlags.map((flag) => flag.label).join(' + ').toLowerCase() : 'none',
+    source: 'source: session flags telemetry',
+    bodyKind: 'flags',
+    headerItems: [{ key: 'status', value: visibleFlags.length ? visibleFlags[0].label : 'none' }],
+    flags: {
+      flags: visibleFlags,
+      isWaiting: false
+    },
+    shouldRender: visibleFlags.length > 0
+  };
+}
+
+function flagItemsFromSession(sessionFlags, sessionState) {
+  const value = Number.isInteger(sessionFlags) ? sessionFlags : 0;
+  const items = [];
+  if ((value & 0x00000010) !== 0) items.push(flagItem('red', 'critical', 'Red', null, 'error'));
+  if ((value & 0x00100000) !== 0) items.push(flagItem('meatball', 'critical', 'Repair', null, 'error'));
+  if ((value & 0x00010000) !== 0) items.push(flagItem('black', 'critical', 'Black', null, 'error'));
+  if ((value & 0x00008000) !== 0 || (value & 0x00004000) !== 0) items.push(flagItem('caution', 'yellow', 'Caution', (value & 0x00008000) !== 0 ? 'waving' : null, 'warning'));
+  else if ((value & 0x00000008) !== 0 || (value & 0x00000100) !== 0 || (value & 0x00000200) !== 0 || (value & 0x00000040) !== 0 || (value & 0x00002000) !== 0) items.push(flagItem('yellow', 'yellow', (value & 0x00000200) !== 0 ? 'One to green' : (value & 0x00000040) !== 0 ? 'Debris' : 'Yellow', (value & 0x00000100) !== 0 || (value & 0x00002000) !== 0 ? 'waving' : null, 'warning'));
+  if ((value & 0x00000020) !== 0) items.push(flagItem('blue', 'blue', 'Blue', null, 'info'));
+  if ((value & 0x00000001) !== 0 || sessionState === 5) items.push(flagItem('checkered', 'finish', 'Checkered', sessionState === 5 && (value & 0x00000001) === 0 ? 'session complete' : null, 'info'));
+  if ((value & 0x00000002) !== 0 || (value & 0x00001000) !== 0 || (value & 0x00000800) !== 0 || (value & 0x00000080) !== 0) items.push(flagItem('white', 'finish', (value & 0x00000002) !== 0 ? 'White' : (value & 0x00001000) !== 0 ? 'Five to go' : (value & 0x00000800) !== 0 ? 'Ten to go' : 'Crossed', null, 'info'));
+  if ((value & 0x00000400) !== 0 || (value & 0x20000000) !== 0 || (value & 0x40000000) !== 0 || (value & 0x80000000) !== 0) items.push(flagItem('green', 'green', (value & 0x80000000) !== 0 ? 'Start' : (value & 0x40000000) !== 0 ? 'Set' : (value & 0x20000000) !== 0 ? 'Ready' : 'Green', (value & 0x00000400) !== 0 ? 'held' : null, 'success'));
+  return items;
+}
+
+function flagItem(kind, category, label, detail, tone) {
+  return { kind, category, label, detail, tone };
 }
 
 function fuelCalculatorDisplayModel(page, live, settings) {

@@ -20,6 +20,7 @@ describe('browser overlay catalogue behaviour', () => {
   it('covers every supported browser overlay route', () => {
     expect(browserOverlayPages().map((page) => page.page.id).sort()).toEqual([
       'car-radar',
+      'flags',
       'fuel-calculator',
       'gap-to-leader',
       'garage-cover',
@@ -42,6 +43,7 @@ describe('browser overlay catalogue behaviour', () => {
       'session-weather',
       'pit-service',
       'input-state',
+      'flags',
       'gap-to-leader',
       'car-radar',
       'track-map',
@@ -771,6 +773,43 @@ function browserScenarios() {
         expect(document.querySelectorAll('.track circle[fill="rgba(0,232,255,1.000)"]').length).toBe(1);
         expect(document.querySelector('.track text')?.textContent).toBe('5');
         expect(document.getElementById('status').textContent).toBe('live | track map');
+      }
+    },
+    {
+      id: 'flags',
+      fixture: () => ({
+        live: freshLiveSnapshot({}),
+        model: {
+          overlayId: 'flags',
+          title: 'Flags',
+          status: 'yellow + repair + checkered',
+          source: 'source: session flags telemetry',
+          bodyKind: 'flags',
+          columns: [],
+          rows: [],
+          metrics: [],
+          points: [],
+          headerItems: [],
+          flags: {
+            isWaiting: false,
+            flags: [
+              { kind: 'yellow', category: 'yellow', label: 'Yellow', detail: 'waving', tone: 'warning' },
+              { kind: 'meatball', category: 'critical', label: 'Repair', detail: null, tone: 'error' },
+              { kind: 'checkered', category: 'finish', label: 'Checkered', detail: null, tone: 'info' }
+            ]
+          },
+          shouldRender: true
+        },
+        waitForSelector: '.flags-v2'
+      }),
+      assert: ({ document }) => {
+        expect(document.body.classList.contains('flags-page')).toBe(true);
+        expect(document.querySelector('.flags-v2')).not.toBeNull();
+        expect(document.querySelectorAll('.flag-cell')).toHaveLength(3);
+        expect(document.querySelector('.flag-yellow title')?.textContent).toContain('Yellow | waving');
+        expect(document.querySelector('.flag-meatball circle')?.getAttribute('fill')).toBe('rgb(245,124,38)');
+        expect(document.getElementById('content').textContent).toContain('Repair');
+        expect(document.getElementById('status').textContent).toBe('');
       }
     },
     {

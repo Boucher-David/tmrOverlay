@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Events;
+using TmrOverlay.App.Overlays.Flags;
 using TmrOverlay.App.Storage;
 using TmrOverlay.Core.History;
 using TmrOverlay.Core.Overlays;
@@ -29,6 +30,10 @@ internal sealed class LiveOverlayDiagnosticsRecorder
     private readonly ILogger<LiveOverlayDiagnosticsRecorder> _logger;
     private readonly object _sync = new();
     private readonly Dictionary<string, int> _sessionFrameCounts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _flagsRawFlagCounts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _flagsDisplayKindCounts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _flagsDisplayCategoryCounts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _flagsToneCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _focusUnavailableReasonCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _focusUnavailableSessionKindCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _focusUnavailableSessionStateCounts = new(StringComparer.OrdinalIgnoreCase);
@@ -63,6 +68,14 @@ internal sealed class LiveOverlayDiagnosticsRecorder
     private int _sampledFrameCount;
     private int _droppedFrameSampleCount;
     private int _droppedEventSampleCount;
+    private int _flagsFramesWithSessionState;
+    private int _flagsFramesWithRawFlags;
+    private int _flagsFramesWithActiveRawFlags;
+    private int _flagsFramesWithDisplayFlags;
+    private int _flagsWaitingFrames;
+    private int _flagsRawActiveWithoutDisplayFrames;
+    private int _flagsStateOnlyDisplayFrames;
+    private int _maxFlagsDisplayFlags;
     private int _gapFramesWithData;
     private int _gapNonRaceFramesWithData;
     private int _gapClassLargeFrames;
@@ -195,6 +208,14 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             _sampledFrameCount = 0;
             _droppedFrameSampleCount = 0;
             _droppedEventSampleCount = 0;
+            _flagsFramesWithSessionState = 0;
+            _flagsFramesWithRawFlags = 0;
+            _flagsFramesWithActiveRawFlags = 0;
+            _flagsFramesWithDisplayFlags = 0;
+            _flagsWaitingFrames = 0;
+            _flagsRawActiveWithoutDisplayFrames = 0;
+            _flagsStateOnlyDisplayFrames = 0;
+            _maxFlagsDisplayFlags = 0;
             _gapFramesWithData = 0;
             _gapNonRaceFramesWithData = 0;
             _gapClassLargeFrames = 0;
@@ -289,6 +310,10 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             _trackMapBestLapSectorFrames = 0;
             _trackMapFullLapHighlightFrames = 0;
             _sessionFrameCounts.Clear();
+            _flagsRawFlagCounts.Clear();
+            _flagsDisplayKindCounts.Clear();
+            _flagsDisplayCategoryCounts.Clear();
+            _flagsToneCounts.Clear();
             _focusUnavailableReasonCounts.Clear();
             _focusUnavailableSessionKindCounts.Clear();
             _focusUnavailableSessionStateCounts.Clear();
@@ -338,6 +363,7 @@ internal sealed class LiveOverlayDiagnosticsRecorder
                 ?? DateTimeOffset.UtcNow;
             _frameCount++;
             RecordSession(snapshot);
+            RecordFlags(snapshot, capturedAtUtc);
             RecordFocus(snapshot, capturedAtUtc);
             RecordScoringCoverage(snapshot);
             RecordGap(snapshot, capturedAtUtc);
@@ -398,6 +424,19 @@ internal sealed class LiveOverlayDiagnosticsRecorder
                         UnavailableReasonCounts: Sorted(_focusUnavailableReasonCounts),
                         UnavailableSessionKindCounts: Sorted(_focusUnavailableSessionKindCounts),
                         UnavailableSessionStateCounts: Sorted(_focusUnavailableSessionStateCounts)),
+                    Flags: new FlagsOverlayDiagnosticsSummary(
+                        FramesWithSessionState: _flagsFramesWithSessionState,
+                        FramesWithRawFlags: _flagsFramesWithRawFlags,
+                        FramesWithActiveRawFlags: _flagsFramesWithActiveRawFlags,
+                        FramesWithDisplayFlags: _flagsFramesWithDisplayFlags,
+                        WaitingFrames: _flagsWaitingFrames,
+                        RawActiveWithoutDisplayFrames: _flagsRawActiveWithoutDisplayFrames,
+                        StateOnlyDisplayFrames: _flagsStateOnlyDisplayFrames,
+                        MaxDisplayFlags: _maxFlagsDisplayFlags,
+                        RawFlagCounts: Sorted(_flagsRawFlagCounts),
+                        DisplayKindCounts: Sorted(_flagsDisplayKindCounts),
+                        DisplayCategoryCounts: Sorted(_flagsDisplayCategoryCounts),
+                        ToneCounts: Sorted(_flagsToneCounts)),
                     Scoring: new ScoringOverlayDiagnosticsSummary(
                         FramesWithData: _scoringFramesWithData,
                         StartingGridFrames: _scoringStartingGridFrames,
@@ -542,6 +581,63 @@ internal sealed class LiveOverlayDiagnosticsRecorder
     private void RecordSession(LiveTelemetrySnapshot snapshot)
     {
         Increment(_sessionFrameCounts, SessionKind(snapshot));
+    }
+
+    private void RecordFlags(LiveTelemetrySnapshot snapshot, DateTimeOffset capturedAtUtc)
+    {
+        var session = snapshot.Models.Session;
+        var sessionState = session.SessionState ?? snapshot.LatestSample?.SessionState;
+        var rawFlags = session.SessionFlags ?? snapshot.LatestSample?.SessionFlags;
+        if (sessionState is not null)
+        {
+            _flagsFramesWithSessionState++;
+        }
+
+        if (rawFlags is { } rawValue)
+        {
+            _flagsFramesWithRawFlags++;
+            Increment(_flagsRawFlagCounts, FormatRawFlagsHex(rawValue));
+            if (rawValue != 0)
+            {
+                _flagsFramesWithActiveRawFlags++;
+            }
+        }
+
+        var viewModel = FlagsOverlayViewModel.ForDisplay(snapshot, capturedAtUtc);
+        if (viewModel.IsWaiting)
+        {
+            _flagsWaitingFrames++;
+            return;
+        }
+
+        if (viewModel.Flags.Count > 0)
+        {
+            _flagsFramesWithDisplayFlags++;
+            _maxFlagsDisplayFlags = Math.Max(_maxFlagsDisplayFlags, viewModel.Flags.Count);
+            foreach (var flag in viewModel.Flags)
+            {
+                Increment(_flagsDisplayKindCounts, flag.Kind.ToString());
+                Increment(_flagsDisplayCategoryCounts, flag.Category.ToString());
+                Increment(_flagsToneCounts, flag.Tone.ToString());
+            }
+
+            if (rawFlags is null or 0)
+            {
+                _flagsStateOnlyDisplayFrames++;
+            }
+
+            return;
+        }
+
+        if (rawFlags is { } activeRawFlags && activeRawFlags != 0)
+        {
+            _flagsRawActiveWithoutDisplayFrames++;
+            AddEvent(
+                "flags.raw-active-without-display",
+                $"SessionFlags {FormatRawFlagsHex(activeRawFlags)} did not produce a visible flag",
+                snapshot,
+                capturedAtUtc);
+        }
     }
 
     private void RecordFocus(LiveTelemetrySnapshot snapshot, DateTimeOffset capturedAtUtc)
@@ -1693,12 +1789,17 @@ internal sealed class LiveOverlayDiagnosticsRecorder
         var playerCarIdx = snapshot.Models.DriverDirectory.PlayerCarIdx ?? snapshot.LatestSample?.PlayerCarIdx;
         var focusCarIdx = snapshot.Models.DriverDirectory.FocusCarIdx
             ?? snapshot.LatestSample?.FocusCarIdx;
+        var flagViewModel = FlagsOverlayViewModel.ForDisplay(snapshot, capturedAtUtc);
         _sampleFrames.Add(new LiveOverlayDiagnosticsFrameSample(
             CapturedAtUtc: capturedAtUtc,
             Sequence: snapshot.Sequence,
             SessionTimeSeconds: Round(snapshot.LatestSample?.SessionTime),
             SessionKind: SessionKind(snapshot),
             SessionState: snapshot.LatestSample?.SessionState,
+            SessionFlags: snapshot.Models.Session.SessionFlags ?? snapshot.LatestSample?.SessionFlags,
+            SessionFlagsHex: FormatRawFlagsHex(snapshot.Models.Session.SessionFlags ?? snapshot.LatestSample?.SessionFlags),
+            FlagStatus: flagViewModel.Status,
+            FlagDisplayCount: flagViewModel.Flags.Count,
             IsOnTrack: snapshot.LatestSample?.IsOnTrack,
             IsInGarage: snapshot.LatestSample?.IsInGarage,
             OnPitRoad: snapshot.LatestSample?.OnPitRoad,
@@ -1743,6 +1844,7 @@ internal sealed class LiveOverlayDiagnosticsRecorder
         var focusCarIdx = snapshot.Models.DriverDirectory.FocusCarIdx
             ?? snapshot.LatestSample?.FocusCarIdx;
         var sessionKind = SessionKind(snapshot);
+        var flagViewModel = FlagsOverlayViewModel.ForDisplay(snapshot, capturedAtUtc);
         var eventKey = string.Join(
             "\u001f",
             normalizedKind,
@@ -1779,6 +1881,10 @@ internal sealed class LiveOverlayDiagnosticsRecorder
             SessionTimeSeconds: Round(snapshot.LatestSample?.SessionTime),
             SessionKind: sessionKind,
             SessionState: snapshot.LatestSample?.SessionState,
+            SessionFlags: snapshot.Models.Session.SessionFlags ?? snapshot.LatestSample?.SessionFlags,
+            SessionFlagsHex: FormatRawFlagsHex(snapshot.Models.Session.SessionFlags ?? snapshot.LatestSample?.SessionFlags),
+            FlagStatus: flagViewModel.Status,
+            FlagDisplayCount: flagViewModel.Flags.Count,
             IsOnTrack: snapshot.LatestSample?.IsOnTrack,
             IsInGarage: snapshot.LatestSample?.IsInGarage,
             OnPitRoad: snapshot.LatestSample?.OnPitRoad,
@@ -2139,6 +2245,13 @@ internal sealed class LiveOverlayDiagnosticsRecorder
         return value is { } finite && IsFinite(finite) ? Math.Round(finite, 6) : null;
     }
 
+    private static string FormatRawFlagsHex(int? flags)
+    {
+        return flags is { } value
+            ? $"0x{unchecked((uint)value).ToString("X8", System.Globalization.CultureInfo.InvariantCulture)}"
+            : "--";
+    }
+
     private string ResolveArtifactPath(string? captureDirectory, string sourceId)
     {
         if (!string.IsNullOrWhiteSpace(captureDirectory))
@@ -2324,6 +2437,7 @@ internal sealed record LiveOverlayDiagnosticsArtifact(
     LiveOverlayDiagnosticsArtifactOptions Options,
     LiveOverlayDiagnosticsTotals Totals,
     FocusContextDiagnosticsSummary Focus,
+    FlagsOverlayDiagnosticsSummary Flags,
     ScoringOverlayDiagnosticsSummary Scoring,
     GapOverlayDiagnosticsSummary Gap,
     RadarOverlayDiagnosticsSummary Radar,
@@ -2363,6 +2477,20 @@ internal sealed record FocusContextDiagnosticsSummary(
     IReadOnlyDictionary<string, int> UnavailableReasonCounts,
     IReadOnlyDictionary<string, int> UnavailableSessionKindCounts,
     IReadOnlyDictionary<string, int> UnavailableSessionStateCounts);
+
+internal sealed record FlagsOverlayDiagnosticsSummary(
+    int FramesWithSessionState,
+    int FramesWithRawFlags,
+    int FramesWithActiveRawFlags,
+    int FramesWithDisplayFlags,
+    int WaitingFrames,
+    int RawActiveWithoutDisplayFrames,
+    int StateOnlyDisplayFrames,
+    int MaxDisplayFlags,
+    IReadOnlyDictionary<string, int> RawFlagCounts,
+    IReadOnlyDictionary<string, int> DisplayKindCounts,
+    IReadOnlyDictionary<string, int> DisplayCategoryCounts,
+    IReadOnlyDictionary<string, int> ToneCounts);
 
 internal sealed record ScoringOverlayDiagnosticsSummary(
     int FramesWithData,
@@ -2491,6 +2619,10 @@ internal sealed record LiveOverlayDiagnosticsFrameSample(
     double? SessionTimeSeconds,
     string SessionKind,
     int? SessionState,
+    int? SessionFlags,
+    string SessionFlagsHex,
+    string FlagStatus,
+    int FlagDisplayCount,
     bool? IsOnTrack,
     bool? IsInGarage,
     bool? OnPitRoad,
@@ -2528,6 +2660,10 @@ internal sealed record LiveOverlayDiagnosticsEventSample(
     double? SessionTimeSeconds,
     string SessionKind,
     int? SessionState,
+    int? SessionFlags,
+    string SessionFlagsHex,
+    string FlagStatus,
+    int FlagDisplayCount,
     bool? IsOnTrack,
     bool? IsInGarage,
     bool? OnPitRoad,

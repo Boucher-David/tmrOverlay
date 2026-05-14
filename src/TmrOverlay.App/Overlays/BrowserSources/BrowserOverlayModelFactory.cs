@@ -3,6 +3,7 @@ using TmrOverlay.App.Overlays.Abstractions;
 using TmrOverlay.App.Overlays.CarRadar;
 using TmrOverlay.App.Overlays.Content;
 using TmrOverlay.App.Overlays.FuelCalculator;
+using TmrOverlay.App.Overlays.Flags;
 using TmrOverlay.App.Overlays.GarageCover;
 using TmrOverlay.App.Overlays.GapToLeader;
 using TmrOverlay.App.Overlays.InputState;
@@ -161,6 +162,10 @@ internal sealed class BrowserOverlayModelFactory
         else if (string.Equals(overlayId, GapToLeaderOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
             model = BuildGapToLeader(snapshot, settings, now);
+        }
+        else if (string.Equals(overlayId, FlagsOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            model = BuildFlags(snapshot, settings, now);
         }
         else if (string.Equals(overlayId, TrackMapOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
@@ -356,6 +361,34 @@ internal sealed class BrowserOverlayModelFactory
             metrics,
             headerItems,
             metricSections: MetricSectionsFrom(viewModel.MetricSections));
+    }
+
+    private static BrowserOverlayDisplayModel BuildFlags(
+        LiveTelemetrySnapshot snapshot,
+        ApplicationSettings settings,
+        DateTimeOffset now)
+    {
+        var overlay = FindOverlay(settings, FlagsOverlayDefinition.Definition.Id);
+        var viewModel = FlagsOverlayViewModel.ForDisplay(snapshot, now);
+        var flags = viewModel.Flags
+            .Where(flag => IsFlagCategoryEnabled(overlay, flag.Category))
+            .Select(BrowserFlagDisplayItem.From)
+            .ToArray();
+        var headerItems = HeaderItems(overlay, snapshot, viewModel.Status);
+
+        return new BrowserOverlayDisplayModel(
+            FlagsOverlayDefinition.Definition.Id,
+            FlagsOverlayDefinition.Definition.DisplayName,
+            BrowserStatus(headerItems, viewModel.Status),
+            SourceText(overlay, snapshot, "source: session flags telemetry"),
+            "flags",
+            [],
+            [],
+            [],
+            [],
+            headerItems,
+            Flags: new BrowserFlagsModel(flags, viewModel.IsWaiting),
+            ShouldRender: !viewModel.IsWaiting && flags.Length > 0);
     }
 
     private static BrowserOverlayDisplayModel FromSimple(
@@ -2197,6 +2230,19 @@ internal sealed class BrowserOverlayModelFactory
             : string.Empty;
     }
 
+    private static bool IsFlagCategoryEnabled(OverlaySettings? overlay, FlagDisplayCategory category)
+    {
+        return category switch
+        {
+            FlagDisplayCategory.Green => overlay?.GetBooleanOption(OverlayOptionKeys.FlagsShowGreen, defaultValue: true) ?? true,
+            FlagDisplayCategory.Blue => overlay?.GetBooleanOption(OverlayOptionKeys.FlagsShowBlue, defaultValue: true) ?? true,
+            FlagDisplayCategory.Yellow => overlay?.GetBooleanOption(OverlayOptionKeys.FlagsShowYellow, defaultValue: true) ?? true,
+            FlagDisplayCategory.Critical => overlay?.GetBooleanOption(OverlayOptionKeys.FlagsShowCritical, defaultValue: true) ?? true,
+            FlagDisplayCategory.Finish => overlay?.GetBooleanOption(OverlayOptionKeys.FlagsShowFinish, defaultValue: true) ?? true,
+            _ => true
+        };
+    }
+
     private static int FuelVisibleRowsForHeight(int height, bool showFooter)
     {
         var bodyHeight = height - FuelHeaderHeight - (showFooter ? FuelFooterHeight : 8) - FuelBodyGap - 34;
@@ -2286,6 +2332,7 @@ internal sealed record BrowserOverlayDisplayModel(
     BrowserGarageCoverModel? GarageCover = null,
     BrowserStreamChatModel? StreamChat = null,
     InputStateRenderModel? Inputs = null,
+    BrowserFlagsModel? Flags = null,
     IReadOnlyList<BrowserOverlayGridSection>? GridSections = null,
     IReadOnlyList<BrowserOverlayMetricSection>? MetricSections = null,
     bool ShouldRender = true)
@@ -2412,6 +2459,28 @@ internal sealed record BrowserStreamChatSegment(
     string Kind,
     string Text,
     string? ImageUrl);
+
+internal sealed record BrowserFlagsModel(
+    IReadOnlyList<BrowserFlagDisplayItem> Flags,
+    bool IsWaiting);
+
+internal sealed record BrowserFlagDisplayItem(
+    string Kind,
+    string Category,
+    string Label,
+    string? Detail,
+    string Tone)
+{
+    public static BrowserFlagDisplayItem From(FlagOverlayDisplayItem item)
+    {
+        return new BrowserFlagDisplayItem(
+            item.Kind.ToString().ToLowerInvariant(),
+            item.Category.ToString().ToLowerInvariant(),
+            item.Label,
+            item.Detail,
+            item.Tone.ToString().ToLowerInvariant());
+    }
+}
 
 internal sealed record BrowserGapGraph(
     IReadOnlyList<BrowserGapSeries> Series,
