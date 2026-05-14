@@ -89,6 +89,39 @@ describe('browser overlay catalogue behaviour', () => {
     expect(render.cars.find((car) => car.kind === 'focus')).toBeTruthy();
   });
 
+  it('renders spoofed stream chat replay rows without configuring an external provider', () => {
+    const response = browserOverlayApiResponse('stream-chat', '/api/overlay-model/stream-chat', {
+      live: freshLiveSnapshot({}),
+      settings: {
+        provider: 'none',
+        isConfigured: false,
+        streamlabsWidgetUrl: null,
+        twitchChannel: null,
+        status: 'replay_static',
+        replayStatus: 'replay chat | spoofed',
+        replaySource: 'source: spoofed stream replay',
+        replayRows: [
+          { name: 'TMR', text: 'Replay chat fixture.', kind: 'system' },
+          { name: 'viewer42', text: 'Fuel window is open.', kind: 'message' }
+        ]
+      }
+    });
+
+    expect(response?.model?.status).toBe('replay chat | spoofed');
+    expect(response?.model?.source).toBe('source: spoofed stream replay');
+    expect(response?.model?.streamChat?.settings).toEqual({
+      provider: 'none',
+      isConfigured: false,
+      streamlabsWidgetUrl: null,
+      twitchChannel: null,
+      status: 'replay_static'
+    });
+    expect(response?.model?.streamChat?.rows).toEqual([
+      { name: 'TMR', text: 'Replay chat fixture.', kind: 'system' },
+      { name: 'viewer42', text: 'Fuel window is open.', kind: 'message' }
+    ]);
+  });
+
   it('keeps distinct pre-grid distance rows from overlapping vertically', () => {
     const render = carRadarRenderModelFromState({
       isAvailable: true,
@@ -156,19 +189,54 @@ function browserScenarios() {
     },
     {
       id: 'fuel-calculator',
-      fixture: () => ({
-        live: freshLiveSnapshot({}),
-        model: metricsModel('fuel-calculator', 'Fuel Calculator', '3 stints / 2 stops', [
-          metric('Plan', '31 laps | 3 stints | final 7', 'modeled'),
-          metric('Strategy', '12-lap rhythm avoids +1 stop | ~52s | save 0.2 L/lap', 'modeled'),
-          metric('Stint 1', '12 laps | target 3.1 L/lap | tires free (36.8 L)', 'modeled')
-        ], 'burn 3.1 L/lap (live burn) | 34.2 laps/tank | history user'),
-        waitForSelector: '.metric'
-      }),
+      fixture: () => {
+        const raceRows = [
+          metric('Plan', '31 laps | 3 stints | 2 stops', 'info', [
+            segment('Race', '31 laps', 'info'),
+            segment('Remain', '30.4 laps', 'info'),
+            segment('Stints', '3', 'info'),
+            segment('Stops', '2', 'info'),
+            segment('Save', '0.2 L/lap', 'warning')
+          ]),
+          metric('Fuel', '74.0 L | 3.1 L/lap | Covered', 'success', [
+            segment('Current', '74.0 L', 'info'),
+            segment('Burn', '3.1 L/lap', 'info'),
+            segment('Tank', '34.2 laps', 'info'),
+            segment('Need', 'Covered', 'success')
+          ])
+        ];
+        const stintRows = [
+          metric('Stint 1', '12 laps | target 3.1 L/lap | tires free (36.8 L)', 'info', [
+            segment('Laps', '12 laps', 'info'),
+            segment('Target', '3.1 L/lap', 'info'),
+            segment('Save', '0.2 L/lap', 'warning'),
+            segment('Tires', 'tires free (36.8 L)', 'success')
+          ])
+        ];
+        return {
+          live: freshLiveSnapshot({}),
+          model: metricsModel(
+            'fuel-calculator',
+            'Fuel Calculator',
+            '3 stints / 2 stops',
+            [...raceRows, ...stintRows],
+            'burn 3.1 L/lap (live burn) | 34.2 laps/tank | history user',
+            [],
+            [
+              { title: 'Race Information', rows: raceRows },
+              { title: 'Stint Targets', rows: stintRows }
+            ]),
+          waitForSelector: '.metric.segmented'
+        };
+      },
       assert: ({ document }) => {
-        expect(metricText(document)).toContain('Plan 31 laps | 3 stints | final 7');
-        expect(metricText(document)).toContain('Stint 1 12 laps | target 3.1 L/lap | tires free (36.8 L)');
+        const metrics = metricText(document).join(' ');
+        expect(metrics).toContain('Plan Race 31 laps Remain 30.4 laps');
+        expect(metrics).toContain('Stint 1 Laps 12 laps Target 3.1 L/lap');
+        expect(contentText(document)).toContain('Race Information');
+        expect(contentText(document)).toContain('Stint Targets');
         expect(contentText(document)).not.toContain('Laps Left');
+        expect(document.querySelector('#content .metric.modeled, #content .value-segment.modeled')).toBeNull();
         expect(document.getElementById('status').textContent).toBe('3 stints / 2 stops');
       }
     },
@@ -612,7 +680,7 @@ function tableModel(overlayId, title, status, columns, rows) {
   };
 }
 
-function metricsModel(overlayId, title, status, metrics, source = 'source: catalogue behaviour', gridSections = [], metricSections = [], headerItems = []) {
+function metricsModel(overlayId, title, status, metrics, source = 'source: catalogue behaviour', gridSections = [], metricSections = [], headerItems = [{ key: 'status', value: status }]) {
   return {
     overlayId,
     title,

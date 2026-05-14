@@ -346,7 +346,7 @@ private let overlaySpecs: [OverlaySpec] = [
         route: "/overlays/fuel-calculator",
         showOpacity: true,
         showSessionFilters: true,
-        options: ["Show advice column", "Show source row", "Units: metric"],
+        options: ["Show advice column", "Footer source by session", "Units: metric"],
         kind: .fuel
     ),
     OverlaySpec(

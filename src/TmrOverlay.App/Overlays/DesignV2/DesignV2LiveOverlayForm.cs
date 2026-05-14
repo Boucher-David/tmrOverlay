@@ -382,6 +382,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         {
             var snapshot = _liveTelemetrySource.Snapshot();
             _model = BuildModel(snapshot, DateTimeOffset.UtcNow);
+            ApplyModelVisibility(_model);
             Invalidate();
             succeeded = true;
         }
@@ -394,6 +395,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                 Trim(exception.Message, 96),
                 DesignV2Evidence.Error,
                 new DesignV2MetricRowsBody([new DesignV2MetricRow("Error", Trim(exception.Message, 120), DesignV2Evidence.Error)]));
+            ApplyModelVisibility(_model);
             Invalidate();
         }
         finally
@@ -471,9 +473,15 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     internal static bool ShowFooterForSettings(DesignV2LiveOverlayKind kind, OverlaySettings settings, LiveTelemetrySnapshot snapshot)
     {
-        return OverlayChromeSettings.ShowFooterSource(settings, snapshot)
-            && (kind != DesignV2LiveOverlayKind.FuelCalculator
-                || settings.GetBooleanOption(OverlayOptionKeys.FuelSource, defaultValue: true));
+        return OverlayChromeSettings.ShowFooterSource(settings, snapshot);
+    }
+
+    private void ApplyModelVisibility(DesignV2OverlayModel model)
+    {
+        if (_kind == DesignV2LiveOverlayKind.FuelCalculator)
+        {
+            SetLiveTelemetryAvailable(model.ShouldRender);
+        }
     }
 
     private DesignV2OverlayModel BuildStandingsModel(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
@@ -648,39 +656,49 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     private DesignV2OverlayModel BuildFuelModel(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
     {
-        var localContext = LiveLocalStrategyContext.ForFuelCalculator(snapshot, now);
-        if (!localContext.IsAvailable)
+        var strategyModel = LiveFuelStrategyModel.From(snapshot, now, LookupHistory);
+        if (!strategyModel.IsAvailable)
         {
             return new DesignV2OverlayModel(
                 "Fuel Calculator",
-                localContext.StatusText,
+                strategyModel.Status,
                 "source: waiting",
                 DesignV2Evidence.Unavailable,
-                new DesignV2MetricRowsBody([]));
+                new DesignV2MetricRowsBody([]),
+                ShouldRender: false);
         }
 
-        var history = LookupHistory(snapshot.Combo);
-        var strategy = FuelStrategyCalculator.From(snapshot, history);
         var viewModel = FuelCalculatorViewModel.From(
-            strategy,
-            history,
+            strategyModel,
             _settings.GetBooleanOption(OverlayOptionKeys.FuelAdvice, defaultValue: true),
             _unitSystem,
-            maximumRows: Math.Max(1, (ClientSize.Height - HeaderHeight - FooterHeight - BodyGap - 34) / (RowHeight + RowGap)));
-        var rows = new List<DesignV2MetricRow>
-        {
-            new("Plan", viewModel.Overview, DesignV2Evidence.Modeled)
-        };
-        rows.AddRange(viewModel.Rows.Select(row => new DesignV2MetricRow(
-            row.Label,
-            string.IsNullOrWhiteSpace(row.Advice) ? row.Value : $"{row.Value} | {row.Advice}",
-            DesignV2Evidence.Modeled)));
+            maximumRows: FuelVisibleRowsForHeight(ClientSize.Height, ShowFooterForSettings(_kind, _settings, snapshot)));
+        var metricSections = viewModel.MetricSections.Select(section => new DesignV2MetricSection(
+            section.Title,
+            section.Rows.Select(row => new DesignV2MetricRow(
+                row.Label,
+                row.Value,
+                EvidenceFor(row.Tone))
+            {
+                Segments = row.Segments.Select(segment => new DesignV2MetricSegment(
+                    segment.Label,
+                    segment.Value,
+                    EvidenceFor(segment.Tone))).ToArray(),
+                RowColorHex = row.RowColorHex
+            }).ToArray())).ToArray();
+        var rows = metricSections.SelectMany(section => section.Rows).ToArray();
         return new DesignV2OverlayModel(
             "Fuel Calculator",
             viewModel.Status,
             viewModel.Source,
             DesignV2Evidence.Modeled,
-            new DesignV2MetricRowsBody(rows));
+            new DesignV2MetricRowsBody(rows, metricSections, []));
+    }
+
+    private static int FuelVisibleRowsForHeight(int height, bool showFooter)
+    {
+        var bodyHeight = height - HeaderHeight - (showFooter ? FooterHeight : 8) - BodyGap - 34;
+        return Math.Max(1, bodyHeight / (RowHeight + RowGap));
     }
 
     private DesignV2OverlayModel BuildInputModel(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
@@ -778,7 +796,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             .Where(car => CarRadarOverlayViewModel.IsInRadarRange(car, calibration))
             .ToArray();
         var showMulticlassWarning = settings.GetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true);
-        var multiclass = showMulticlassWarning
+        LiveMulticlassApproach? multiclass = showMulticlassWarning
             ? spatial.MulticlassApproaches
                 .Where(CarRadarOverlayViewModel.IsInMulticlassWarningRange)
                 .OrderBy(approach => approach.RelativeSeconds is { } seconds ? Math.Abs(seconds) : double.MaxValue)
@@ -6266,7 +6284,8 @@ internal sealed record DesignV2OverlayModel(
     DesignV2Evidence Evidence,
     DesignV2Body Body,
     string? HeaderText = null,
-    bool ShowFooter = true);
+    bool ShowFooter = true,
+    bool ShouldRender = true);
 
 internal abstract record DesignV2Body;
 

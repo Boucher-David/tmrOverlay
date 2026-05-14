@@ -127,7 +127,7 @@ Implemented initial overlay contents:
 - per-stint target liters-per-lap only; live/model burn is kept out of the row for now
 - advice column: per-stop guidance such as `tires free (106 L)`, `tires +4s`, `tire data pending`, `no tire stop`, or strategy time-loss/saving hints
 - stable content state: when no fuel stop remains, including after the final stop, the overlay keeps the same full table layout and leaves future rows blank so threshold changes do not switch the view mid-run
-- source row: selected burn source, laps-per-tank, history source, and min/avg/max burn when available
+- shared source footer: selected burn source, laps-per-tank, history source, and min/avg/max burn when enabled
 - status color:
   - gray: waiting for usable fuel/burn
   - amber: realistic fuel-saving target, final-stop deletion opportunity, or rhythm strategy opportunity

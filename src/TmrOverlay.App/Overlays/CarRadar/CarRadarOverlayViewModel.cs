@@ -65,7 +65,7 @@ internal sealed record CarRadarOverlayViewModel(
             .GroupBy(car => car.CarIdx)
             .Select(group => group.MinBy(car => Math.Abs(RangeRatio(car, calibration)))!)
             .ToArray();
-        var multiclass = showMulticlassWarning
+        LiveMulticlassApproach? multiclass = showMulticlassWarning
             ? spatial.MulticlassApproaches
                 .Where(IsInMulticlassWarningRange)
                 .OrderBy(approach => approach.RelativeSeconds is { } seconds ? Math.Abs(seconds) : double.MaxValue)

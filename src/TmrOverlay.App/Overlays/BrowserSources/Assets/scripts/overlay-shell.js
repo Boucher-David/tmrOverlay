@@ -601,6 +601,14 @@
         return;
       }
 
+      if (model.shouldRender === false) {
+        overlayEl.style.opacity = '0';
+        contentEl.innerHTML = '';
+        renderHeaderItems(model, '');
+        clearFooterSource();
+        return;
+      }
+
       const metrics = Array.isArray(model.metrics) ? model.metrics : [];
       const metricSections = Array.isArray(model.metricSections) ? model.metricSections : [];
       const gridSections = Array.isArray(model.gridSections) ? model.gridSections : [];
@@ -635,10 +643,11 @@
     }
 
     function renderHeaderItems(model, fallbackStatus) {
-      const items = Array.isArray(model?.headerItems) ? model.headerItems : [];
+      const hasHeaderItems = Array.isArray(model?.headerItems);
+      const items = hasHeaderItems ? model.headerItems : [];
       const statusItem = items.find((item) => String(item?.key || '').toLowerCase() === 'status');
       const timeItem = items.find((item) => String(item?.key || '').toLowerCase() === 'timeremaining');
-      const statusValue = statusItem ? String(statusItem.value || '').trim() : fallbackStatus || '';
+      const statusValue = statusItem ? String(statusItem.value || '').trim() : hasHeaderItems ? '' : fallbackStatus || '';
       statusEl.textContent = statusValue;
       statusEl.hidden = !statusValue;
       if (timeRemainingEl) {

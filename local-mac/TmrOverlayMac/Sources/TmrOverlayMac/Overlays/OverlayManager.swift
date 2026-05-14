@@ -1642,8 +1642,9 @@ final class OverlayManager {
             return
         }
 
-        let sessionKind = currentSessionKind(liveSnapshot: liveSnapshot ?? liveTelemetryStore.snapshot())
-        refreshFuelOverlay(sessionKind: sessionKind)
+        let currentSnapshot = liveSnapshot ?? liveTelemetryStore.snapshot()
+        let sessionKind = currentSessionKind(liveSnapshot: currentSnapshot)
+        refreshFuelOverlay(sessionKind: sessionKind, liveSnapshot: currentSnapshot)
         refreshRelativeOverlay(sessionKind: sessionKind)
         refreshStandingsOverlay(sessionKind: sessionKind)
         refreshTrackMapOverlay(sessionKind: sessionKind)
@@ -1653,7 +1654,7 @@ final class OverlayManager {
         refreshInputStateOverlay(sessionKind: sessionKind)
         refreshCarRadarOverlay(sessionKind: sessionKind)
         refreshGapOverlay(sessionKind: sessionKind)
-        applyLiveTelemetryFade(liveSnapshot: liveSnapshot ?? liveTelemetryStore.snapshot())
+        applyLiveTelemetryFade(liveSnapshot: currentSnapshot)
     }
 
     private func applyDisplaySettingsToOpenOverlays(captureSnapshot: TelemetryCaptureStatusSnapshot? = nil) {
@@ -1664,7 +1665,6 @@ final class OverlayManager {
 
         if let fuelSettings = settings.overlays.first(where: { $0.id == FuelCalculatorOverlayDefinition.definition.id }) {
             fuelCalculatorView?.showAdvice = fuelSettings.showFuelAdvice
-            fuelCalculatorView?.showSource = fuelSettings.showFuelSource
         }
         fuelCalculatorView?.fontFamily = fontFamily
         fuelCalculatorView?.unitSystem = settings.general.unitSystem
@@ -1786,9 +1786,10 @@ final class OverlayManager {
         return defaultValue
     }
 
-    private func refreshFuelOverlay(sessionKind: OverlaySessionKind?) {
+    private func refreshFuelOverlay(sessionKind: OverlaySessionKind?, liveSnapshot: LiveTelemetrySnapshot) {
         let definition = FuelCalculatorOverlayDefinition.definition
-        guard shouldShow(definition: definition, sessionKind: sessionKind) else {
+        guard shouldShow(definition: definition, sessionKind: sessionKind),
+              shouldRenderFuelCalculatorOverlay(liveSnapshot) else {
             overlayWindows[definition.id]?.orderOut(nil)
             return
         }
@@ -2494,6 +2495,23 @@ final class OverlayManager {
         }
 
         return Date().timeIntervalSince(lastUpdatedAtUtc) <= Self.liveTelemetryFreshnessSeconds
+    }
+
+    private func shouldRenderFuelCalculatorOverlay(_ snapshot: LiveTelemetrySnapshot) -> Bool {
+        guard isLiveTelemetryAvailable(snapshot),
+              let frame = snapshot.latestFrame,
+              let playerCarIdx = frame.playerCarIdx,
+              let focusCarIdx = frame.focusCarIdx else {
+            return false
+        }
+
+        guard playerCarIdx == focusCarIdx,
+              !frame.isInGarage,
+              !frame.isGarageVisible else {
+            return false
+        }
+
+        return frame.isOnTrack || frame.onPitRoad
     }
 
     private func setBaseOverlayOpacity(definition: OverlayDefinition, window: OverlayWindow, opacity: Double) {

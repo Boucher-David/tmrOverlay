@@ -4,6 +4,8 @@ const streamChatState = {
   socket: null,
   messages: [],
   reconnectTimer: null,
+  replayTimer: null,
+  replayPollActive: false,
   reconnectAllowed: true,
   twitchChannel: null,
   connectedAnnounced: false
@@ -35,15 +37,20 @@ async function initStreamChat() {
       ]);
       renderHeaderItems(model, model?.status || 'waiting for chat source');
       renderFooterSource(model);
+      if (settings.status === 'replay_static') {
+        startReplayChatPolling();
+      }
       return;
     }
 
     if (settings.provider === 'streamlabs') {
+      stopReplayChatPolling();
       renderStreamlabsChat(settings.streamlabsWidgetUrl);
       return;
     }
 
     if (settings.provider === 'twitch') {
+      stopReplayChatPolling();
       if (initialRows.length) {
         renderChatLines(initialRows);
         renderHeaderItems(model, model?.status || 'connecting | twitch');
@@ -54,11 +61,42 @@ async function initStreamChat() {
     }
 
     renderChatLines([{ name: 'TMR', text: 'Stream chat provider is not supported.', kind: 'error' }]);
+    stopReplayChatPolling();
     statusEl.textContent = 'chat provider unavailable';
   } catch (error) {
     renderChatLines([{ name: 'TMR', text: `Chat settings unavailable: ${error.message}`, kind: 'error' }]);
     statusEl.textContent = 'chat settings unavailable';
   }
+}
+
+function startReplayChatPolling() {
+  stopReplayChatPolling();
+  streamChatState.replayTimer = setInterval(async () => {
+    if (streamChatState.replayPollActive) {
+      return;
+    }
+
+    streamChatState.replayPollActive = true;
+    try {
+      const model = await fetchOverlayModel('stream-chat');
+      const rows = model?.streamChat?.rows || [];
+      if (rows.length) {
+        renderChatLines(rows);
+      }
+      renderHeaderItems(model, model?.status || 'replay chat');
+      renderFooterSource(model);
+    } catch {
+      // Keep the last replay rows visible if a single polling request fails.
+    } finally {
+      streamChatState.replayPollActive = false;
+    }
+  }, 500);
+}
+
+function stopReplayChatPolling() {
+  clearInterval(streamChatState.replayTimer);
+  streamChatState.replayTimer = null;
+  streamChatState.replayPollActive = false;
 }
 
 function renderStreamlabsChat(url) {

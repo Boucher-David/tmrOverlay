@@ -99,7 +99,7 @@ Last updated: 2026-05-10
   - keeps the full table row layout visible so strategy changes do not resize or switch the overlay view during live updates
   - adds an advice column that estimates whether tire service is likely free under refueling time or costs extra stationary time, using historical fill-rate and tire-service aggregates when available
   - adds a strategy row when useful, comparing a shorter conservative stint rhythm against the longest realistic target and quantifying extra stops plus estimated pit-time loss
-  - accounts for overall leader/reference-class/team projection for timed-race lap count, stores class-leader context, and shows leader/class gaps in the source row when available
+  - accounts for overall leader/reference-class/team projection for timed-race lap count, stores class-leader context, and shows leader/class gaps in the shared source footer when enabled
   - can bias future stint targets toward historical team-stint evidence, currently 8 laps for the 4-hour Nürburgring baseline, without labeling teammate rows in the UI
   - warns when a target such as an 8-lap stint needs realistic fuel saving versus nominal tank range or avoids extra stops over longer races
   - uses blank future rows when no fuel stop is needed or fewer stints are known, instead of hiding rows based on noisy collection thresholds

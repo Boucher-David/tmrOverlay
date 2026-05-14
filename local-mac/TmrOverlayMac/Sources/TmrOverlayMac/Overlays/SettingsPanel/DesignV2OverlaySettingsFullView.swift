@@ -352,15 +352,6 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
                     self?.saveOverlay()
                 }
             )
-            addMatrixCheckControl(
-                rowIndex: 1,
-                rect: NSRect(x: 306, y: 272, width: 834, height: 150),
-                isOn: overlay.showFuelSource,
-                onChange: { [weak self] isOn in
-                    self?.overlay.showFuelSource = isOn
-                    self?.saveOverlay()
-                }
-            )
         case "track-map":
             addMatrixCheckControl(
                 rowIndex: 1,
@@ -829,8 +820,7 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
         drawContentMatrix(
             title: "Content Display",
             rows: [
-                ContentMatrixRow(label: "Advice column", enabled: overlay.showFuelAdvice),
-                ContentMatrixRow(label: "Source row", enabled: overlay.showFuelSource)
+                ContentMatrixRow(label: "Advice column", enabled: overlay.showFuelAdvice)
             ],
             rect: NSRect(x: 306, y: 272, width: 834, height: 150)
         )

@@ -576,11 +576,17 @@ public sealed class OverlayInputTransparencyTests
     }
 
     [Fact]
-    public void DesignV2Chrome_HonorsFuelSourceToggleInAdditionToFooterSessionToggle()
+    public void DesignV2Chrome_UsesSharedFooterSourceSettingForFuel()
     {
         var settings = new OverlaySettings { Id = "fuel-calculator" };
         settings.SetBooleanOption(OverlayOptionKeys.ChromeFooterSourceRace, true);
-        settings.SetBooleanOption(OverlayOptionKeys.FuelSource, false);
+
+        Assert.True(DesignV2LiveOverlayForm.ShowFooterForSettings(
+            DesignV2LiveOverlayKind.FuelCalculator,
+            settings,
+            RaceSnapshot(timeRemainingSeconds: 600d)));
+
+        settings.SetBooleanOption(OverlayOptionKeys.ChromeFooterSourceRace, false);
 
         Assert.False(DesignV2LiveOverlayForm.ShowFooterForSettings(
             DesignV2LiveOverlayKind.FuelCalculator,

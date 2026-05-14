@@ -210,7 +210,7 @@ DriverInfo:
         int? sessionState = null,
         double? nearbyMeters = null)
     {
-        var nearbyCars = nearbyMeters is { } meters
+        HistoricalCarProximity[]? nearbyCars = nearbyMeters is { } meters
             ? new[]
             {
                 new HistoricalCarProximity(

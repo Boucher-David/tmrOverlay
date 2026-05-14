@@ -17,7 +17,6 @@ struct OverlaySettings: Codable {
     var showStatusCaptureDetails = true
     var showStatusHealthDetails = true
     var showFuelAdvice = true
-    var showFuelSource = true
     var showRadarMulticlassWarning = true
     var relativeCarsAhead = 5
     var relativeCarsBehind = 5
@@ -56,7 +55,6 @@ struct OverlaySettings: Codable {
         case showStatusCaptureDetails
         case showStatusHealthDetails
         case showFuelAdvice
-        case showFuelSource
         case showRadarMulticlassWarning
         case relativeCarsAhead
         case relativeCarsBehind
@@ -96,7 +94,6 @@ struct OverlaySettings: Codable {
         showStatusCaptureDetails: Bool = true,
         showStatusHealthDetails: Bool = true,
         showFuelAdvice: Bool = true,
-        showFuelSource: Bool = true,
         showRadarMulticlassWarning: Bool = true,
         relativeCarsAhead: Int = 5,
         relativeCarsBehind: Int = 5,
@@ -134,7 +131,6 @@ struct OverlaySettings: Codable {
         self.showStatusCaptureDetails = showStatusCaptureDetails
         self.showStatusHealthDetails = showStatusHealthDetails
         self.showFuelAdvice = showFuelAdvice
-        self.showFuelSource = showFuelSource
         self.showRadarMulticlassWarning = showRadarMulticlassWarning
         self.relativeCarsAhead = relativeCarsAhead
         self.relativeCarsBehind = relativeCarsBehind
@@ -175,7 +171,6 @@ struct OverlaySettings: Codable {
         showStatusCaptureDetails = try container.decodeIfPresent(Bool.self, forKey: .showStatusCaptureDetails) ?? true
         showStatusHealthDetails = try container.decodeIfPresent(Bool.self, forKey: .showStatusHealthDetails) ?? true
         showFuelAdvice = try container.decodeIfPresent(Bool.self, forKey: .showFuelAdvice) ?? true
-        showFuelSource = try container.decodeIfPresent(Bool.self, forKey: .showFuelSource) ?? true
         showRadarMulticlassWarning = try container.decodeIfPresent(Bool.self, forKey: .showRadarMulticlassWarning) ?? true
         relativeCarsAhead = try container.decodeIfPresent(Int.self, forKey: .relativeCarsAhead) ?? 5
         relativeCarsBehind = try container.decodeIfPresent(Int.self, forKey: .relativeCarsBehind) ?? 5

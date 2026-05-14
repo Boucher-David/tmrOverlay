@@ -237,12 +237,17 @@ function emptyDisplayModel(overlayId, title) {
     bodyKind: 'table',
     columns: [],
     rows: [],
-    metrics: []
+    metrics: [],
+    points: [],
+    headerItems: [],
+    shouldRender: true
   };
 }
 
 function defaultDisplayModel(page, live, settings) {
   switch (page.page.id) {
+    case 'fuel-calculator':
+      return fuelCalculatorDisplayModel(page, live, settings);
     case 'car-radar':
       return carRadarDisplayModel(page, live);
     case 'track-map':
@@ -256,6 +261,476 @@ function defaultDisplayModel(page, live, settings) {
     default:
       return emptyDisplayModel(page.page.id, page.title);
   }
+}
+
+function fuelCalculatorDisplayModel(page, live, settings) {
+  const unitSystem = normalizeUnitSystem(settings?.unitSystem ?? settings?.general?.unitSystem);
+  const context = fuelLocalContext(live);
+  if (!context.isAvailable) {
+    return {
+      ...emptyDisplayModel(page.page.id, page.title),
+      status: context.statusText,
+      source: fuelSourceFromSettings(settings, 'source: waiting'),
+      bodyKind: 'metrics',
+      headerItems: fuelHeaderItems(context.statusText, live, settings),
+      metricSections: [],
+      shouldRender: false
+    };
+  }
+
+  const strategy = fuelStrategy(live, unitSystem);
+  return {
+    ...emptyDisplayModel(page.page.id, page.title),
+    status: strategy.status,
+    source: fuelSourceFromSettings(settings, strategy.source),
+    bodyKind: 'metrics',
+    metrics: strategy.metricSections.flatMap((section) => section.rows),
+    headerItems: fuelHeaderItems(strategy.status, live, settings),
+    metricSections: strategy.metricSections
+  };
+}
+
+function fuelLocalContext(live) {
+  const statusText = 'waiting for local fuel context';
+  if (live?.isConnected === false) {
+    return { isAvailable: false, reason: 'disconnected', statusText: 'iRacing disconnected' };
+  }
+
+  if (live?.isCollecting === false) {
+    return { isAvailable: false, reason: 'waiting_for_telemetry', statusText: 'waiting for telemetry' };
+  }
+
+  const reference = live?.models?.reference || {};
+  const race = live?.models?.raceEvents || {};
+  const fuelPit = live?.models?.fuelPit || {};
+  const playerCarIdx = validCarIdx(reference.playerCarIdx ?? live?.latestSample?.playerCarIdx);
+  const focusCarIdx = validCarIdx(reference.focusCarIdx ?? live?.latestSample?.focusCarIdx);
+  if (playerCarIdx == null) {
+    return { isAvailable: false, reason: 'player_car_unavailable', statusText };
+  }
+
+  if (focusCarIdx == null) {
+    return { isAvailable: false, reason: 'focus_unavailable', statusText };
+  }
+
+  if (focusCarIdx !== playerCarIdx || reference.focusIsPlayer === false) {
+    return { isAvailable: false, reason: 'focus_on_another_car', statusText };
+  }
+
+  if (race.isInGarage === true || race.isGarageVisible === true || reference.isInGarage === true) {
+    return { isAvailable: false, reason: 'garage', statusText };
+  }
+
+  if (race.isOnTrack === true || reference.isOnTrack === true) {
+    return { isAvailable: true, reason: 'available', statusText: 'live' };
+  }
+
+  if (race.onPitRoad === true
+    || reference.onPitRoad === true
+    || reference.playerCarInPitStall === true
+    || fuelPit.onPitRoad === true
+    || fuelPit.pitstopActive === true
+    || fuelPit.playerCarInPitStall === true
+    || fuelPit.teamOnPitRoad === true
+    || live?.latestSample?.onPitRoad === true
+    || live?.latestSample?.playerCarInPitStall === true) {
+    return { isAvailable: true, reason: 'available', statusText: 'live' };
+  }
+
+  return { isAvailable: false, reason: 'not_in_car', statusText };
+}
+
+function validCarIdx(value) {
+  return Number.isInteger(value) && value >= 0 && value < 64 ? value : null;
+}
+
+function fuelStrategy(live, unitSystem) {
+  const models = live?.models || {};
+  const fuelPit = models.fuelPit || {};
+  const fuel = fuelPit.fuel || live?.fuel || {};
+  const progress = models.raceProgress || {};
+  const projection = models.raceProjection || {};
+  const session = models.session || {};
+  const currentFuel = positiveNumber(fuel.fuelLevelLiters ?? live?.fuel?.fuelLevelLiters);
+  const fuelPerLap = positiveNumber(fuel.fuelPerLapLiters ?? live?.fuel?.fuelPerLapLiters);
+  const fuelPercent = positiveNumber(fuel.fuelLevelPercent ?? live?.fuel?.fuelLevelPercent);
+  const maxFuel = fuelTankLiters(live, fuelPit, currentFuel, fuelPercent);
+  const lapTime = validLapTime(fuel.lapTimeSeconds)
+    ?? validLapTime(progress.strategyLapTimeSeconds)
+    ?? validLapTime(projection.overallLeaderPaceSeconds)
+    ?? validLapTime(progress.racePaceSeconds);
+  const raceLapsRemaining = fuelRaceLapsRemaining(session, progress, projection, lapTime);
+  const fuelToFinish = fuelPerLap != null && raceLapsRemaining != null ? fuelPerLap * raceLapsRemaining : null;
+  const additionalFuel = fuelToFinish != null && currentFuel != null ? Math.max(0, fuelToFinish - currentFuel) : null;
+  const fullTankLaps = maxFuel != null && fuelPerLap != null ? maxFuel / fuelPerLap : null;
+  const stintPlan = fuelStintPlan(currentFuel, fuelPerLap, maxFuel, raceLapsRemaining);
+  const status = fuelStatus(currentFuel, fuelPerLap, raceLapsRemaining, additionalFuel, stintPlan);
+  const planRow = fuelMetricRow('Plan', fuelPlanText(stintPlan.plannedRaceLaps, stintPlan.plannedStintCount, stintPlan.plannedStopCount), fuelStrategyTone(stintPlan), [
+    fuelMetricSegment('Race', formatLapCount(stintPlan.plannedRaceLaps), stintPlan.plannedRaceLaps == null ? 'waiting' : 'info'),
+    fuelMetricSegment('Remain', formatFuelLaps(raceLapsRemaining), raceLapsRemaining == null ? 'waiting' : 'info'),
+    fuelMetricSegment('Stints', formatCount(stintPlan.plannedStintCount), stintPlan.plannedStintCount == null ? 'waiting' : stintPlan.plannedStintCount <= 1 ? 'success' : 'info'),
+    fuelMetricSegment('Stops', formatCount(stintPlan.plannedStopCount), stintPlan.plannedStopCount == null ? 'waiting' : 'info'),
+    fuelMetricSegment('Save', formatFuelSaving(stintPlan.requiredFuelSavingLitersPerLap, unitSystem), fuelSavingTone(stintPlan.requiredFuelSavingLitersPerLap))
+  ]);
+  const fuelRow = fuelMetricRow('Fuel', fuelFuelText(currentFuel, fuelPerLap, additionalFuel, unitSystem), fuelNeedTone(additionalFuel), [
+    fuelMetricSegment('Current', formatFuelVolume(currentFuel, unitSystem), currentFuel == null ? 'waiting' : 'info'),
+    fuelMetricSegment('Burn', formatFuelPerLap(fuelPerLap, unitSystem), fuelPerLap == null ? 'waiting' : 'info'),
+    fuelMetricSegment('Tank', formatFuelLaps(fullTankLaps), fullTankLaps == null ? 'waiting' : 'info'),
+    fuelMetricSegment('Need', formatFuelNeed(additionalFuel, unitSystem), fuelNeedTone(additionalFuel))
+  ]);
+  const stintRows = stintPlan.stints
+    .filter((stint) => stint.lengthLaps > 0.05 || stint.source === 'finish')
+    .slice(0, 4)
+    .map((stint) => fuelMetricRow(
+      `Stint ${stint.number}`,
+      fuelStintText(stint, unitSystem),
+      fuelStintTone(stint),
+      [
+        fuelMetricSegment('Laps', formatStintLaps(stint), 'info'),
+        fuelMetricSegment('Target', formatStintTarget(stint, unitSystem), fuelStintTargetTone(stint)),
+        fuelMetricSegment('Save', formatFuelSaving(stint.requiredFuelSavingLitersPerLap, unitSystem), fuelSavingTone(stint.requiredFuelSavingLitersPerLap)),
+        fuelMetricSegment('Tires', stint.tireAdvice, stint.tireAdvice === 'no tire stop' ? 'success' : 'waiting')
+      ]));
+  const metricSections = [
+    { title: 'Race Information', rows: [planRow, fuelRow] }
+  ];
+  if (stintRows.length > 0) {
+    metricSections.push({ title: 'Stint Targets', rows: stintRows });
+  }
+
+  const source = fuelPerLap != null
+    ? `burn ${formatFuelPerLap(fuelPerLap, unitSystem)} (live burn) | ${formatFuelLaps(fullTankLaps, ' laps/tank')} | history none`
+    : 'source: waiting';
+  return { status, metricSections, source };
+}
+
+function fuelTankLiters(live, fuelPit, currentFuel, fuelPercent) {
+  const percentDerived = currentFuel != null && fuelPercent != null && fuelPercent > 0 && fuelPercent <= 1.5
+    ? currentFuel / fuelPercent
+    : null;
+  return positiveNumber(live?.context?.car?.driverCarFuelMaxLiters)
+    ?? positiveNumber(live?.context?.car?.driverCarFuelMaxLtr)
+    ?? positiveNumber(percentDerived)
+    ?? positiveNumber(fuelPit?.pitServiceFuelLiters)
+    ?? positiveNumber(fuelPit?.pitServiceFuel);
+}
+
+function fuelRaceLapsRemaining(session, progress, projection, lapTime) {
+  const direct = positiveNumber(projection.estimatedTeamLapsRemaining)
+    ?? positiveNumber(projection.estimatedLapsRemaining)
+    ?? positiveNumber(progress.raceLapsRemaining);
+  if (direct != null) return direct;
+
+  const lapBased = positiveNumber(session.sessionLapsRemain)
+    ?? positiveNumber(session.sessionLapsRemainEx);
+  if (lapBased != null && lapBased < 10000) return lapBased;
+
+  const timeRemaining = positiveNumber(session.sessionTimeRemainSeconds);
+  if (!isRacePreGreen(session) && timeRemaining != null && lapTime != null) {
+    const leaderProgress = positiveNumber(progress.overallLeaderProgressLaps)
+      ?? positiveNumber(progress.classLeaderProgressLaps);
+    const carProgress = positiveNumber(progress.strategyCarProgressLaps)
+      ?? positiveNumber(progress.referenceCarProgressLaps)
+      ?? leaderProgress;
+    if (leaderProgress != null && carProgress != null) {
+      return Math.max(0, Math.ceil(leaderProgress + timeRemaining / lapTime) - carProgress);
+    }
+
+    return Math.ceil(timeRemaining / lapTime + 1);
+  }
+
+  return null;
+}
+
+function isRacePreGreen(session) {
+  const state = session?.sessionState;
+  if (!Number.isInteger(state) || state < 1 || state > 3) return false;
+  const text = `${session?.sessionType || ''} ${session?.sessionName || ''} ${session?.eventType || ''}`.toLowerCase();
+  return text.includes('race');
+}
+
+function fuelStintPlan(currentFuel, fuelPerLap, maxFuel, raceLapsRemaining) {
+  const empty = {
+    stints: [],
+    plannedRaceLaps: null,
+    plannedStintCount: null,
+    plannedStopCount: null,
+    requiredFuelSavingLitersPerLap: null
+  };
+  if (fuelPerLap == null || fuelPerLap <= 0) return empty;
+
+  const currentStintLaps = currentFuel != null ? currentFuel / fuelPerLap : null;
+  const fullTankStintLaps = maxFuel != null ? maxFuel / fuelPerLap : null;
+  if (raceLapsRemaining != null && raceLapsRemaining > 0) {
+    const plannedRaceLaps = Math.ceil(raceLapsRemaining);
+    const plannedStintCount = plannedFuelStintCount(plannedRaceLaps, currentStintLaps, fullTankStintLaps);
+    if (plannedStintCount != null && plannedStintCount > 0) {
+      const targets = distributeWholeLapTargets(plannedRaceLaps, plannedStintCount);
+      const stints = [];
+      let displayedLapsConsumed = 0;
+      const savings = [];
+      for (let index = 0; index < targets.length; index++) {
+        const targetLaps = targets[index];
+        const availableFuel = index === 0 && currentFuel != null ? currentFuel : maxFuel;
+        const requiredSaving = requiredSavingPerLap(targetLaps, fuelPerLap, availableFuel);
+        if (requiredSaving != null && requiredSaving > 0) savings.push(requiredSaving);
+        const remainingForDisplay = Math.max(0, raceLapsRemaining - displayedLapsConsumed);
+        const lengthLaps = Math.min(targetLaps, remainingForDisplay);
+        displayedLapsConsumed += targetLaps;
+        stints.push({
+          number: index + 1,
+          lengthLaps,
+          source: targets.length === 1 ? 'finish' : index === targets.length - 1 ? 'final' : 'target',
+          targetLaps,
+          targetFuelPerLapLiters: availableFuel != null && targetLaps > 0 ? availableFuel / targetLaps : null,
+          requiredFuelSavingLitersPerLap: requiredSaving,
+          tireAdvice: targets.length <= 1 || index >= targets.length - 1 ? 'no tire stop' : 'tire data pending'
+        });
+      }
+
+      const requiredFuelSavingLitersPerLap = savings.length > 0 ? Math.max(...savings) : null;
+      return {
+        stints,
+        plannedRaceLaps,
+        plannedStintCount,
+        plannedStopCount: Math.max(0, plannedStintCount - 1),
+        requiredFuelSavingLitersPerLap
+      };
+    }
+  }
+
+  if (currentStintLaps != null) {
+    return {
+      ...empty,
+      stints: [{
+        number: 1,
+        lengthLaps: raceLapsRemaining != null ? Math.min(currentStintLaps, raceLapsRemaining) : currentStintLaps,
+        source: 'current fuel',
+        targetLaps: null,
+        targetFuelPerLapLiters: fuelPerLap,
+        requiredFuelSavingLitersPerLap: null,
+        tireAdvice: 'no tire stop'
+      }]
+    };
+  }
+
+  if (fullTankStintLaps != null) {
+    return {
+      ...empty,
+      stints: [{
+        number: 1,
+        lengthLaps: fullTankStintLaps,
+        source: 'full tank',
+        targetLaps: null,
+        targetFuelPerLapLiters: fuelPerLap,
+        requiredFuelSavingLitersPerLap: null,
+        tireAdvice: 'tire data pending'
+      }]
+    };
+  }
+
+  return empty;
+}
+
+function plannedFuelStintCount(plannedRaceLaps, currentStintLaps, fullTankStintLaps) {
+  if (plannedRaceLaps <= 0) return 0;
+  if (currentStintLaps != null && currentStintLaps > 0) {
+    const remainingAfterCurrent = plannedRaceLaps - currentStintLaps;
+    if (remainingAfterCurrent <= 0) return 1;
+    return fullTankStintLaps != null && fullTankStintLaps > 0
+      ? 1 + Math.ceil(remainingAfterCurrent / fullTankStintLaps)
+      : 1;
+  }
+
+  return fullTankStintLaps != null && fullTankStintLaps > 0
+    ? Math.ceil(plannedRaceLaps / fullTankStintLaps)
+    : null;
+}
+
+function distributeWholeLapTargets(plannedRaceLaps, plannedStintCount) {
+  if (plannedRaceLaps <= 0 || plannedStintCount <= 0) return [];
+  const baseLaps = Math.floor(plannedRaceLaps / plannedStintCount);
+  const extraLaps = plannedRaceLaps % plannedStintCount;
+  return Array.from({ length: plannedStintCount }, (_, index) => baseLaps + (index < extraLaps ? 1 : 0));
+}
+
+function requiredSavingPerLap(targetLaps, fuelPerLap, availableFuel) {
+  if (targetLaps <= 0 || availableFuel == null || availableFuel <= 0) return null;
+  const extraFuelRequired = targetLaps * fuelPerLap - availableFuel;
+  return extraFuelRequired > 0 ? extraFuelRequired / targetLaps : null;
+}
+
+function fuelStatus(currentFuel, fuelPerLap, raceLapsRemaining, additionalFuel, stintPlan) {
+  if (currentFuel == null && (fuelPerLap == null || raceLapsRemaining == null || stintPlan.plannedStintCount == null)) {
+    return 'waiting for fuel';
+  }
+
+  if (fuelPerLap == null) return 'waiting for burn';
+  if (raceLapsRemaining == null) return 'stint estimate';
+  if (stintPlan.requiredFuelSavingLitersPerLap != null && stintPlan.requiredFuelSavingLitersPerLap > 0.01) {
+    const targetLaps = Math.max(...stintPlan.stints.map((stint) => stint.targetLaps || 0));
+    return `${targetLaps}-lap target: save ${stintPlan.requiredFuelSavingLitersPerLap.toFixed(1)} L/lap`;
+  }
+
+  if (stintPlan.plannedStintCount != null && stintPlan.plannedStopCount != null) {
+    return stintPlan.plannedStintCount <= 1
+      ? 'fuel covers finish'
+      : `${stintPlan.plannedStintCount} stints / ${stintPlan.plannedStopCount} ${stintPlan.plannedStopCount === 1 ? 'stop' : 'stops'}`;
+  }
+
+  if (additionalFuel != null && additionalFuel > 0.1) {
+    return `+${additionalFuel.toFixed(1)} L needed`;
+  }
+
+  return 'fuel covers finish';
+}
+
+function fuelMetricRow(label, value, tone, segments = []) {
+  return { label, value, tone, segments };
+}
+
+function fuelMetricSegment(label, value, tone = 'normal') {
+  return { label, value, tone };
+}
+
+function fuelPlanText(plannedRaceLaps, plannedStintCount, plannedStopCount) {
+  const laps = plannedRaceLaps != null ? `${plannedRaceLaps} laps` : '--';
+  const stints = plannedStintCount != null ? plannedStintCount <= 1 ? 'no stop' : `${plannedStintCount} stints` : '--';
+  const stops = plannedStopCount != null ? `${plannedStopCount} ${plannedStopCount === 1 ? 'stop' : 'stops'}` : '--';
+  return `${laps} | ${stints} | ${stops}`;
+}
+
+function fuelFuelText(currentFuel, fuelPerLap, additionalFuel, unitSystem) {
+  return `${formatFuelVolume(currentFuel, unitSystem)} | ${formatFuelPerLap(fuelPerLap, unitSystem)} | ${formatFuelNeed(additionalFuel, unitSystem)}`;
+}
+
+function fuelStintText(stint, unitSystem) {
+  if (stint.source === 'finish') return 'no fuel stop needed';
+  if (stint.targetLaps != null) {
+    const suffix = stint.source === 'final' ? ' final' : '';
+    return `${stint.targetLaps} laps${suffix} | target ${formatFuelPerLap(stint.targetFuelPerLapLiters, unitSystem)}`;
+  }
+
+  return formatFuelLaps(stint.lengthLaps);
+}
+
+function formatStintLaps(stint) {
+  return stint.targetLaps != null ? `${stint.targetLaps} laps` : formatFuelLaps(stint.lengthLaps);
+}
+
+function formatStintTarget(stint, unitSystem) {
+  return stint.source === 'finish'
+    ? 'Finish'
+    : formatFuelPerLap(stint.targetFuelPerLapLiters, unitSystem);
+}
+
+function fuelStrategyTone(stintPlan) {
+  return stintPlan.requiredFuelSavingLitersPerLap != null && stintPlan.requiredFuelSavingLitersPerLap > 0.01
+    ? 'warning'
+    : 'info';
+}
+
+function fuelStintTone(stint) {
+  return stint.requiredFuelSavingLitersPerLap != null && stint.requiredFuelSavingLitersPerLap > 0.01
+    ? 'warning'
+    : 'info';
+}
+
+function fuelStintTargetTone(stint) {
+  if (stint.source === 'finish') return 'success';
+  return stint.targetFuelPerLapLiters == null ? 'waiting' : fuelStintTone(stint);
+}
+
+function fuelSavingTone(value) {
+  return value != null && value > 0.01 ? 'warning' : 'success';
+}
+
+function fuelNeedTone(value) {
+  if (value == null) return 'waiting';
+  return value > 0.1 ? 'warning' : 'success';
+}
+
+function formatFuelNeed(value, unitSystem) {
+  return value != null && value > 0.1 ? `+${formatFuelVolume(value, unitSystem)}` : 'Covered';
+}
+
+function formatFuelSaving(value, unitSystem) {
+  return value != null && value > 0.01 ? formatFuelPerLap(value, unitSystem) : 'None';
+}
+
+function formatLapCount(value) {
+  return Number.isFinite(value) ? `${value} laps` : '--';
+}
+
+function formatFuelLaps(value, suffix = ' laps') {
+  return Number.isFinite(value) ? `${value.toFixed(1)}${suffix}` : '--';
+}
+
+function formatCount(value) {
+  return Number.isFinite(value) ? String(value) : '--';
+}
+
+function formatFuelVolume(liters, unitSystem) {
+  const value = fuelUnitValue(liters, unitSystem);
+  return value == null ? '--' : `${value.toFixed(1)} ${fuelVolumeSuffix(unitSystem)}`;
+}
+
+function formatFuelPerLap(liters, unitSystem) {
+  const value = fuelUnitValue(liters, unitSystem);
+  return value == null ? '--' : `${value.toFixed(1)} ${fuelPerLapSuffix(unitSystem)}`;
+}
+
+function fuelUnitValue(liters, unitSystem) {
+  if (!Number.isFinite(liters)) return null;
+  return unitSystem === 'Imperial' ? liters * 0.264172052 : liters;
+}
+
+function fuelVolumeSuffix(unitSystem) {
+  return unitSystem === 'Imperial' ? 'gal' : 'L';
+}
+
+function fuelPerLapSuffix(unitSystem) {
+  return unitSystem === 'Imperial' ? 'gal/lap' : 'L/lap';
+}
+
+function positiveNumber(value) {
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function validLapTime(value) {
+  return Number.isFinite(value) && value > 20 && value < 1800 ? value : null;
+}
+
+function fuelHeaderItems(status, live, settings) {
+  const items = [];
+  if (settings?.showHeaderStatus !== false) {
+    items.push({ key: 'status', value: status });
+  }
+
+  if (settings?.showHeaderTimeRemaining !== false) {
+    const timeRemaining = formatFuelHeaderTimeRemaining(live?.models?.session);
+    if (timeRemaining) {
+      items.push({ key: 'timeRemaining', value: timeRemaining });
+    }
+  }
+
+  return items;
+}
+
+function formatFuelHeaderTimeRemaining(session) {
+  const seconds = session?.sessionTimeRemainSeconds;
+  if (!Number.isFinite(seconds) || seconds < 0) return null;
+  const totalSeconds = Math.ceil(seconds);
+  if (isRacePreGreen(session) || totalSeconds < 3600) {
+    return `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}`;
+  }
+
+  const totalMinutes = Math.ceil(totalSeconds / 60);
+  return `${String(Math.floor(totalMinutes / 60)).padStart(2, '0')}:${String(totalMinutes % 60).padStart(2, '0')}`;
+}
+
+function fuelSourceFromSettings(settings, source) {
+  return settings?.showFooterSource === false ? '' : source;
 }
 
 function inputStateDisplayModel(page, live, settings) {
@@ -380,6 +855,7 @@ function carRadarDisplayModel(page, live) {
   return {
     ...emptyDisplayModel(page.page.id, page.title),
     status,
+    headerItems: [{ key: 'status', value: status }],
     source: inCar && spatial.hasData !== false ? 'source: spatial telemetry' : 'source: waiting',
     bodyKind: 'car-radar',
     carRadar: {
@@ -937,6 +1413,7 @@ function trackMapDisplayModel(page, live, settings) {
   return {
     ...emptyDisplayModel(page.page.id, page.title),
     status: 'live | track map',
+    headerItems: [{ key: 'status', value: 'live | track map' }],
     source: 'source: live position telemetry',
     bodyKind: 'track-map',
     trackMap: {
@@ -954,40 +1431,92 @@ function garageCoverDisplayModel(page, live, settings) {
   const garageVisible = live?.models?.raceEvents?.isGarageVisible === true;
   const browserSettings = settings?.garageCover || settings || {};
   const previewVisible = browserSettings.previewVisible === true;
-  const status = previewVisible ? 'preview visible' : garageVisible ? 'garage visible' : 'garage hidden';
+  const detection = garageCoverDetection(live, garageVisible);
+  const status = previewVisible ? 'preview visible' : detection.displayText;
   return {
     ...emptyDisplayModel(page.page.id, page.title),
     status,
+    headerItems: [{ key: 'status', value: status }],
     source: 'source: garage telemetry/settings',
     bodyKind: 'garage-cover',
     garageCover: {
-      shouldCover: previewVisible || garageVisible,
+      shouldCover: previewVisible || !detection.isFresh || garageVisible,
       browserSettings,
-      detection: {
-        state: garageVisible ? 'garage_visible' : 'garage_hidden',
-        displayText: status,
-        isFresh: true
-      }
+      detection
     }
   };
 }
 
 function streamChatDisplayModel(page, settings) {
   const streamSettings = settings?.streamChat || settings || {};
-  const message = streamSettings.isConfigured
-    ? streamSettings.provider === 'twitch'
-      ? `Connecting to #${streamSettings.twitchChannel || 'channel'}...`
-      : 'Connecting to Streamlabs chat...'
-    : streamChatStatusText(streamSettings.status);
+  const browserSettings = {
+    provider: streamSettings.provider || 'none',
+    isConfigured: streamSettings.isConfigured === true,
+    streamlabsWidgetUrl: streamSettings.streamlabsWidgetUrl ?? null,
+    twitchChannel: streamSettings.twitchChannel ?? null,
+    status: streamSettings.status || 'not_configured'
+  };
+  const replayRows = normalizeStreamChatRows(streamSettings.replayRows || streamSettings.rows);
+  const isTwitch = browserSettings.isConfigured && browserSettings.provider === 'twitch' && browserSettings.twitchChannel;
+  const isStreamlabs = browserSettings.isConfigured && browserSettings.provider === 'streamlabs';
+  const message = !browserSettings.isConfigured
+    ? streamChatStatusText(browserSettings.status)
+    : isTwitch
+      ? `Connecting to #${browserSettings.twitchChannel}...`
+      : isStreamlabs
+        ? 'Streamlabs is browser-source only in this build.'
+        : 'Stream chat provider unavailable.';
+  const status = replayRows.length > 0
+    ? streamSettings.replayStatus || 'replay chat'
+    : !browserSettings.isConfigured
+      ? 'waiting for chat source'
+      : isTwitch
+        ? 'connecting | twitch'
+        : isStreamlabs
+          ? 'streamlabs unavailable'
+          : 'chat provider unavailable';
+  const rows = replayRows.length > 0
+    ? replayRows
+    : [{ name: 'TMR', text: message, kind: isStreamlabs || (browserSettings.isConfigured && !isTwitch) ? 'error' : 'system' }];
   return {
     ...emptyDisplayModel(page.page.id, page.title),
-    status: streamSettings.isConfigured ? `connecting | ${streamSettings.provider}` : 'waiting for chat source',
-    source: 'source: stream chat settings',
+    status,
+    headerItems: [{ key: 'status', value: status }],
+    source: streamSettings.replaySource || 'source: stream chat settings',
     bodyKind: 'stream-chat',
     streamChat: {
-      settings: streamSettings,
-      rows: [{ name: 'TMR', text: message, kind: 'system' }]
+      settings: browserSettings,
+      rows
     }
+  };
+}
+
+function normalizeStreamChatRows(rows) {
+  return (Array.isArray(rows) ? rows : [])
+    .map((row) => ({
+      name: String(row?.name || 'chat'),
+      text: String(row?.text || ''),
+      kind: ['message', 'system', 'error'].includes(String(row?.kind || '').toLowerCase())
+        ? String(row.kind).toLowerCase()
+        : 'message'
+    }))
+    .filter((row) => row.text.length > 0)
+    .slice(-36);
+}
+
+function garageCoverDetection(live, garageVisible) {
+  if (live?.isConnected === false) {
+    return { state: 'iracing_disconnected', displayText: 'iRacing disconnected', isFresh: false };
+  }
+
+  if (live?.isCollecting === false || live?.models?.raceEvents?.hasData === false) {
+    return { state: 'waiting_for_telemetry', displayText: 'waiting for telemetry', isFresh: false };
+  }
+
+  return {
+    state: garageVisible ? 'garage_visible' : 'garage_hidden',
+    displayText: garageVisible ? 'garage visible' : 'garage hidden',
+    isFresh: true
   };
 }
 

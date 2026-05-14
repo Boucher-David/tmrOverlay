@@ -55,6 +55,11 @@ internal sealed class BrowserOverlayModelFactory
     private const double GapThreatGainLapFraction = 0.005d;
     private const double GapFuelStintResetMinimumLiters = 5d;
     private const int GapOnTrackSurface = 3;
+    private const int FuelHeaderHeight = 38;
+    private const int FuelFooterHeight = 32;
+    private const int FuelBodyGap = 12;
+    private const int FuelRowHeight = 30;
+    private const int FuelRowGap = 5;
     private const double TrackMapReloadIntervalSeconds = 10d;
     private readonly SessionHistoryQueryService _historyQueryService;
     private readonly TrackMapStore? _trackMapStore;
@@ -308,35 +313,34 @@ internal sealed class BrowserOverlayModelFactory
         DateTimeOffset now)
     {
         var overlay = FindOverlay(settings, FuelCalculatorOverlayDefinition.Definition.Id);
-        var localContext = LiveLocalStrategyContext.ForFuelCalculator(snapshot, now);
-        if (!localContext.IsAvailable)
+        var effectiveOverlay = OverlayOrDefault(settings, FuelCalculatorOverlayDefinition.Definition);
+        var showFooter = overlay is null || OverlayChromeSettings.ShowFooterSource(overlay, snapshot);
+        var strategyModel = LiveFuelStrategyModel.From(snapshot, now, LookupHistory);
+        if (!strategyModel.IsAvailable)
         {
-            var waitingHeaderItems = HeaderItems(overlay, snapshot, localContext.StatusText);
+            var waitingHeaderItems = HeaderItems(overlay, snapshot, strategyModel.Status);
             return BrowserOverlayDisplayModel.MetricRows(
                 FuelCalculatorOverlayDefinition.Definition.Id,
                 FuelCalculatorOverlayDefinition.Definition.DisplayName,
-                BrowserStatus(waitingHeaderItems, localContext.StatusText),
+                BrowserStatus(waitingHeaderItems, strategyModel.Status),
                 SourceText(overlay, snapshot, "source: waiting"),
                 [],
-                waitingHeaderItems);
+                waitingHeaderItems,
+                shouldRender: false);
         }
 
-        var history = LookupHistory(snapshot.Combo);
-        var strategy = FuelStrategyCalculator.From(snapshot, history);
         var viewModel = FuelCalculatorViewModel.From(
-            strategy,
-            history,
+            strategyModel,
             overlay?.GetBooleanOption(OverlayOptionKeys.FuelAdvice, defaultValue: true) ?? true,
             unitSystem,
-            maximumRows: 8);
-        var metrics = new List<BrowserOverlayMetricRow>
-        {
-            new("Plan", viewModel.Overview, BrowserOverlayTone.Modeled)
-        };
-        metrics.AddRange(viewModel.Rows.Select(row => new BrowserOverlayMetricRow(
-            row.Label,
-            string.IsNullOrWhiteSpace(row.Advice) ? row.Value : $"{row.Value} | {row.Advice}",
-            BrowserOverlayTone.Modeled)));
+            maximumRows: FuelVisibleRowsForHeight(
+                effectiveOverlay.Height > 0
+                    ? effectiveOverlay.Height
+                    : FuelCalculatorOverlayDefinition.Definition.DefaultHeight,
+                showFooter));
+        var metrics = MetricSectionsFrom(viewModel.MetricSections)
+            .SelectMany(section => section.Rows)
+            .ToArray();
         var headerItems = HeaderItems(overlay, snapshot, viewModel.Status);
 
         return BrowserOverlayDisplayModel.MetricRows(
@@ -345,7 +349,8 @@ internal sealed class BrowserOverlayModelFactory
             BrowserStatus(headerItems, viewModel.Status),
             SourceText(overlay, snapshot, viewModel.Source),
             metrics,
-            headerItems);
+            headerItems,
+            metricSections: MetricSectionsFrom(viewModel.MetricSections));
     }
 
     private static BrowserOverlayDisplayModel FromSimple(
@@ -2185,6 +2190,12 @@ internal sealed class BrowserOverlayModelFactory
             : string.Empty;
     }
 
+    private static int FuelVisibleRowsForHeight(int height, bool showFooter)
+    {
+        var bodyHeight = height - FuelHeaderHeight - (showFooter ? FuelFooterHeight : 8) - FuelBodyGap - 34;
+        return Math.Max(1, bodyHeight / (FuelRowHeight + FuelRowGap));
+    }
+
     private static string BrowserStatus(IReadOnlyList<BrowserOverlayHeaderItem> headerItems, string fallback)
     {
         return headerItems.FirstOrDefault(item => string.Equals(item.Key, "status", StringComparison.OrdinalIgnoreCase))?.Value
@@ -2269,7 +2280,8 @@ internal sealed record BrowserOverlayDisplayModel(
     BrowserStreamChatModel? StreamChat = null,
     InputStateRenderModel? Inputs = null,
     IReadOnlyList<BrowserOverlayGridSection>? GridSections = null,
-    IReadOnlyList<BrowserOverlayMetricSection>? MetricSections = null)
+    IReadOnlyList<BrowserOverlayMetricSection>? MetricSections = null,
+    bool ShouldRender = true)
 {
     public static BrowserOverlayDisplayModel Table(
         string overlayId,
@@ -2301,7 +2313,8 @@ internal sealed record BrowserOverlayDisplayModel(
         IReadOnlyList<BrowserOverlayMetricRow> metrics,
         IReadOnlyList<BrowserOverlayHeaderItem>? headerItems = null,
         IReadOnlyList<BrowserOverlayGridSection>? gridSections = null,
-        IReadOnlyList<BrowserOverlayMetricSection>? metricSections = null)
+        IReadOnlyList<BrowserOverlayMetricSection>? metricSections = null,
+        bool shouldRender = true)
     {
         return new BrowserOverlayDisplayModel(
             overlayId,
@@ -2315,7 +2328,8 @@ internal sealed record BrowserOverlayDisplayModel(
             [],
             headerItems ?? [],
             GridSections: gridSections,
-            MetricSections: metricSections);
+            MetricSections: metricSections,
+            ShouldRender: shouldRender);
     }
 }
 

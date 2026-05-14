@@ -140,6 +140,10 @@
       padding: 12px 16px 14px;
     }
 
+    body.fuel-calculator-page .overlay {
+      width: min(600px, calc(100vw - 16px));
+    }
+
     .source {
       padding: 0 14px 10px;
       color: var(--tmr-text-muted);
@@ -318,15 +322,19 @@
     .metric-list {
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 5px;
       min-width: 420px;
+    }
+
+    body.fuel-calculator-page .metric-list {
+      min-width: 0;
     }
 
     .metric {
       display: grid;
-      grid-template-columns: minmax(92px, 38%) minmax(0, 62%);
+      grid-template-columns: 124px minmax(0, 1fr);
       align-items: center;
-      min-height: 28px;
+      min-height: 30px;
       padding: 0;
       border: 1px solid var(--tmr-border-muted);
       border-radius: 5px;
@@ -358,6 +366,31 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+
+    .metric.live .value,
+    .metric.success .value {
+      color: var(--tmr-green);
+    }
+
+    .metric.info .value {
+      color: var(--tmr-cyan);
+    }
+
+    .metric.modeled .value {
+      color: var(--tmr-magenta);
+    }
+
+    .metric.warning .value {
+      color: var(--tmr-amber);
+    }
+
+    .metric.error .value {
+      color: var(--tmr-error);
+    }
+
+    .metric.waiting .value {
+      color: var(--tmr-text-muted);
     }
 
     .metric.class-colored {

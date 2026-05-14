@@ -171,7 +171,6 @@ internal static class AppSettingsMigrator
         {
             case "fuel-calculator":
                 EnsureOption(overlay, OverlayOptionKeys.FuelAdvice, defaultValue: true);
-                EnsureOption(overlay, OverlayOptionKeys.FuelSource, defaultValue: true);
                 break;
             case "car-radar":
                 EnsureOption(overlay, OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true);
@@ -241,7 +240,7 @@ internal static class AppSettingsMigrator
 
         return overlayId.Trim().ToLowerInvariant() switch
         {
-            "fuel-calculator" => key is OverlayOptionKeys.FuelAdvice or OverlayOptionKeys.FuelSource,
+            "fuel-calculator" => key is OverlayOptionKeys.FuelAdvice,
             "car-radar" => key is OverlayOptionKeys.RadarMulticlassWarning,
             "standings" => key is
                 OverlayOptionKeys.StandingsClassSeparatorsEnabled
@@ -435,7 +434,6 @@ internal static class AppSettingsMigrator
         MigrateLegacyBoolean(overlay, "showStatusCaptureDetails", OverlayOptionKeys.StatusCaptureDetails);
         MigrateLegacyBoolean(overlay, "showStatusHealthDetails", OverlayOptionKeys.StatusHealthDetails);
         MigrateLegacyBoolean(overlay, "showFuelAdvice", OverlayOptionKeys.FuelAdvice);
-        MigrateLegacyBoolean(overlay, "showFuelSource", OverlayOptionKeys.FuelSource);
         MigrateLegacyBoolean(overlay, "showRadarMulticlassWarning", OverlayOptionKeys.RadarMulticlassWarning);
         MigrateLegacyInteger(overlay, "classGapCarsAhead", OverlayOptionKeys.GapCarsAhead, 0, 12);
         MigrateLegacyInteger(overlay, "classGapCarsBehind", OverlayOptionKeys.GapCarsBehind, 0, 12);

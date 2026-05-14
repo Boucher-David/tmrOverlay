@@ -44,6 +44,9 @@ The exporter reads `capture-manifest.json`, `telemetry-schema.json`,
 frame contains:
 
 - the existing Standings display model derived from raw telemetry/session data
+- optional `overlayModels` / `browserOverlayModels` display-model payloads keyed
+  by overlay id; when present, the replay server serves these production-shaped
+  models before using any browser-review fallback builder
 - `live.models` for session, reference, driver directory, scoring, timing,
   relative, spatial/radar inputs, race events, fuel, weather, inputs, and
   track-map sector context
@@ -77,6 +80,12 @@ source time instead of a hidden fixed frame count. Set
 position, and cadence summary so reviewers can confirm whether a replay is
 dense enough for Gap To Leader.
 
+Overlays that have browser-facing production model helpers should use those
+helpers in replay rather than maintaining replay-only display builders. Stream
+Chat cannot be derived from iRacing raw capture, so replay serves deterministic
+local chat rows through the normal Stream Chat display model shape and keeps
+external Twitch/Streamlabs connections disabled.
+
 ## Validate
 
 ```bash
@@ -106,8 +115,9 @@ Windows `ILiveTelemetrySink`, does not exercise native WinForms windows, and
 does not prove iRacing SDK connection, focus/topmost/click-through behavior, or
 settings persistence.
 
-Standings uses a capture-derived display model. Other model-route overlays use
-small browser-review summaries built from the exported `live.models`; that is
-enough to exercise browser routes and screenshot/model validation against real
-frame timing, field coverage, focus/player identity, inputs, fuel, weather, and
-race state, but it is not a byte-for-byte production overlay view-model replay.
+Replay frames with embedded per-overlay display models are served as-is, which
+keeps browser replay aligned with production-shaped native/browser view models.
+Older replay frames without an embedded model still use browser-review fallback
+summaries built from exported `live.models`; those are useful for exercising
+routes and screenshots against real frame timing, but they are not byte-for-byte
+production overlay view-model replay.

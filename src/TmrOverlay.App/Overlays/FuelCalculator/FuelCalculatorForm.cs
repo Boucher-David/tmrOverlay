@@ -42,12 +42,9 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
     private bool? _lastAdviceRowVisibility;
     private long? _lastRefreshSequence;
     private bool? _lastRefreshShowAdvice;
-    private bool? _lastRefreshShowSource;
     private string? _lastRefreshChromeSettings;
 
     private bool ShowAdvice => _settings.GetBooleanOption(OverlayOptionKeys.FuelAdvice, defaultValue: true);
-
-    private bool ShowSource => _settings.GetBooleanOption(OverlayOptionKeys.FuelSource, defaultValue: true);
 
     public FuelCalculatorForm(
         ILiveTelemetrySource liveTelemetrySource,
@@ -225,12 +222,10 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
             }
 
             var showAdvice = ShowAdvice;
-            var showSource = ShowSource;
             var now = DateTimeOffset.UtcNow;
             var previousSequence = _lastRefreshSequence;
             if (previousSequence == live.Sequence
                 && _lastRefreshShowAdvice == showAdvice
-                && _lastRefreshShowSource == showSource
                 && string.Equals(_lastRefreshChromeSettings, OverlayChromeSettings.SettingsSignature(_settings), StringComparison.Ordinal))
             {
                 _performanceState.RecordOverlayRefreshDecision(
@@ -244,10 +239,26 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
                 return;
             }
 
-            var localContext = LiveLocalStrategyContext.ForFuelCalculator(live, now);
-            if (!localContext.IsAvailable)
+            LiveFuelStrategyModel strategyModel;
+            var strategyStarted = Stopwatch.GetTimestamp();
+            var strategySucceeded = false;
+            try
             {
-                var waitingViewModel = FuelCalculatorViewModel.Waiting(localContext.StatusText);
+                strategyModel = LiveFuelStrategyModel.From(live, now, LookupHistory);
+                strategySucceeded = true;
+            }
+            finally
+            {
+                _performanceState.RecordOperation(
+                    AppPerformanceMetricIds.OverlayFuelStrategy,
+                    strategyStarted,
+                    strategySucceeded);
+            }
+
+            if (!strategyModel.IsAvailable)
+            {
+                SetLiveTelemetryAvailable(false);
+                var waitingViewModel = FuelCalculatorViewModel.From(strategyModel, showAdvice, _unitSystem, StintRowCount);
                 var waitingUiChanged = false;
                 var waitingApplyStarted = Stopwatch.GetTimestamp();
                 var waitingApplySucceeded = false;
@@ -258,7 +269,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
                         _titleLabel,
                         _statusLabel,
                         _sourceLabel,
-                        ChromeStateFor(waitingViewModel, OverlayChromeTone.Waiting, live, _settings, showSource),
+                        ChromeStateFor(waitingViewModel, OverlayChromeTone.Waiting, live, _settings),
                         titleWidth: 150,
                         timeRemainingLabel: _timeRemainingLabel);
                     waitingUiChanged |= OverlayChrome.SetTextIfChanged(_overviewValueLabel, waitingViewModel.Overview);
@@ -276,7 +287,6 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
 
                 _lastRefreshSequence = live.Sequence;
                 _lastRefreshShowAdvice = showAdvice;
-                _lastRefreshShowSource = showSource;
                 _lastRefreshChromeSettings = OverlayChromeSettings.SettingsSignature(_settings);
                 _performanceState.RecordOverlayRefreshDecision(
                     FuelCalculatorOverlayDefinition.Definition.Id,
@@ -289,44 +299,13 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
                 return;
             }
 
-            SessionHistoryLookupResult history;
-            var historyStarted = Stopwatch.GetTimestamp();
-            var historySucceeded = false;
-            try
-            {
-                history = LookupHistory(live.Combo);
-                historySucceeded = true;
-            }
-            finally
-            {
-                _performanceState.RecordOperation(
-                    AppPerformanceMetricIds.OverlayFuelHistoryLookup,
-                    historyStarted,
-                    historySucceeded);
-            }
-
-            FuelStrategySnapshot strategy;
-            var strategyStarted = Stopwatch.GetTimestamp();
-            var strategySucceeded = false;
-            try
-            {
-                strategy = FuelStrategyCalculator.From(live, history);
-                strategySucceeded = true;
-            }
-            finally
-            {
-                _performanceState.RecordOperation(
-                    AppPerformanceMetricIds.OverlayFuelStrategy,
-                    strategyStarted,
-                    strategySucceeded);
-            }
-
+            SetLiveTelemetryAvailable(true);
             FuelCalculatorViewModel viewModel;
             var viewModelStarted = Stopwatch.GetTimestamp();
             var viewModelSucceeded = false;
             try
             {
-                viewModel = FuelCalculatorViewModel.From(strategy, history, showAdvice, _unitSystem, StintRowCount);
+                viewModel = FuelCalculatorViewModel.From(strategyModel, showAdvice, _unitSystem, StintRowCount);
                 viewModelSucceeded = true;
             }
             finally
@@ -347,7 +326,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
                     _titleLabel,
                     _statusLabel,
                     _sourceLabel,
-                    ChromeStateFor(viewModel, ChromeTone(strategy), live, _settings, showSource),
+                    ChromeStateFor(viewModel, ChromeTone(strategyModel.Strategy), live, _settings),
                     titleWidth: 150,
                     timeRemainingLabel: _timeRemainingLabel);
                 uiChanged |= OverlayChrome.SetTextIfChanged(_overviewValueLabel, viewModel.Overview);
@@ -403,7 +382,6 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
 
             _lastRefreshSequence = live.Sequence;
             _lastRefreshShowAdvice = showAdvice;
-            _lastRefreshShowSource = showSource;
             _lastRefreshChromeSettings = OverlayChromeSettings.SettingsSignature(_settings);
             _performanceState.RecordOverlayRefreshDecision(
                 FuelCalculatorOverlayDefinition.Definition.Id,
@@ -501,14 +479,13 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
         FuelCalculatorViewModel viewModel,
         OverlayChromeTone tone,
         LiveTelemetrySnapshot live,
-        OverlaySettings settings,
-        bool showSource)
+        OverlaySettings settings)
     {
         var showStatus = OverlayChromeSettings.ShowHeaderStatus(settings, live);
         var timeRemaining = OverlayChromeSettings.ShowHeaderTimeRemaining(settings, live)
             ? OverlayHeaderTimeFormatter.FormatTimeRemaining(live)
             : string.Empty;
-        var footerMode = showSource && OverlayChromeSettings.ShowFooterSource(settings, live)
+        var footerMode = OverlayChromeSettings.ShowFooterSource(settings, live)
             ? OverlayChromeFooterMode.Always
             : OverlayChromeFooterMode.Never;
         return new OverlayChromeState(
@@ -520,9 +497,9 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
             TimeRemaining: timeRemaining);
     }
 
-    private static OverlayChromeTone ChromeTone(FuelStrategySnapshot strategy)
+    private static OverlayChromeTone ChromeTone(FuelStrategySnapshot? strategy)
     {
-        if (!strategy.HasData || strategy.FuelPerLapLiters is null)
+        if (strategy is null || !strategy.HasData || strategy.FuelPerLapLiters is null)
         {
             return OverlayChromeTone.Waiting;
         }

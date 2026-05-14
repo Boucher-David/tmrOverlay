@@ -783,12 +783,6 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
                 frame: NSRect(x: 22, y: top, width: 190, height: 24),
                 identifier: "\(definition.id)|fuelAdvice"
             ))
-            content.addSubview(checkbox(
-                title: "Show source row",
-                state: overlay.showFuelSource,
-                frame: NSRect(x: 220, y: top, width: 190, height: 24),
-                identifier: "\(definition.id)|fuelSource"
-            ))
             return true
         case "car-radar":
             content.addSubview(checkbox(
@@ -1093,8 +1087,6 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
             overlay.showStatusHealthDetails = isOn
         case "fuelAdvice":
             overlay.showFuelAdvice = isOn
-        case "fuelSource":
-            overlay.showFuelSource = isOn
         case "radarMulticlass":
             overlay.showRadarMulticlassWarning = isOn
         case "flagsShowGreen":

@@ -6,7 +6,6 @@ import {
   browserOverlayApiResponse,
   browserOverlayPage,
   browserOverlayPages,
-  carRadarRenderModelFromState,
   freshLiveSnapshot,
   renderOverlayHtml,
   renderOverlayIndexHtml,
@@ -17,16 +16,15 @@ import {
 const port = Number.parseInt(process.env.TMR_BROWSER_REVIEW_PORT || '5177', 10);
 const reviewUnitSystem = normalizeUnitSystem(process.env.TMR_REVIEW_UNIT_SYSTEM || process.env.TMR_UNIT_SYSTEM || 'Metric');
 const clients = new Set();
-const productionOverlayModelIds = new Set([
-  'standings',
-  'relative',
-  'fuel-calculator',
-  'session-weather',
-  'pit-service',
+const productionOverlayModelIds = new Set(browserOverlayPages()
+  .filter((page) => page.modelRoute)
+  .map((page) => page.page.id));
+const assetBackedReviewOverlayModelIds = new Set([
   'input-state',
   'car-radar',
-  'gap-to-leader',
-  'track-map'
+  'track-map',
+  'garage-cover',
+  'stream-chat'
 ]);
 let reloadTimer = null;
 
@@ -208,7 +206,8 @@ function reviewLiveSnapshot(previewMode = 'off') {
       steeringWheelAngle: -0.18,
       gear: 4,
       speedMetersPerSecond: sessionKind === 'race' ? 77.889366 : 63.4,
-      brakeAbsActive: true
+      brakeAbsActive: true,
+      trace: reviewInputTrace()
     },
     raceEvents: {
       hasData: true,
@@ -227,6 +226,7 @@ function reviewLiveSnapshot(previewMode = 'off') {
       strongestMulticlassApproach: {
         relativeSeconds: -2.4
       },
+      referenceCarClassColorHex: '#ffda59',
       cars: [
         { carIdx: 33, relativeSeconds: -1.1, carClassColorHex: '#33ceff' },
         { carIdx: 91, relativeSeconds: 1.7, carClassColorHex: '#ffaa00' },
@@ -290,21 +290,82 @@ function reviewSettings(overlayId, previewMode = 'off') {
   return {};
 }
 
+function reviewInputTrace() {
+  return Array.from({ length: 180 }, (_, index) => {
+    const t = index / 10;
+    return {
+      throttle: Math.max(0, Math.min(1, 0.68 + Math.sin(t) * 0.28)),
+      brake: Math.max(0, Math.min(1, Math.sin(t * 0.58 + 1.6) - 0.42)),
+      clutch: Math.max(0, Math.min(1, 0.08 + Math.sin(t * 0.35) * 0.06)),
+      brakeAbsActive: index > 112 && index < 132
+    };
+  });
+}
+
 function reviewDisplayModel(overlayId, previewMode = 'off') {
+  if (assetBackedReviewOverlayModelIds.has(overlayId)) {
+    return reviewAssetBackedDisplayModel(overlayId, previewMode);
+  }
+
   const previewLabel = previewMode === 'off' ? 'review fixture' : `${previewMode} preview`;
+  // BrowserOverlayModelFactory is a C# application service and cannot be executed
+  // directly from this Node review server. The fallback builders below emit the
+  // BrowserOverlayDisplayModel JSON contract used by production browser sources.
   switch (overlayId) {
     case 'standings':
       return standingsDisplayModel(previewLabel);
     case 'relative':
       return relativeDisplayModel(previewLabel);
     case 'fuel-calculator':
-      return metricsModel('fuel-calculator', 'Fuel Calculator', '3 stints / 2 stops', [
-        ['Plan', '31 laps | 3 stints | final 7', 'modeled'],
-        ['Strategy', `12-lap rhythm avoids +1 stop | ~52s | save ${formatFuelPerLap(0.2)}`, 'modeled'],
-        ['Stint 1', `12 laps | target ${formatFuelPerLap(3.1)} | tires free (${formatFuelVolume(36.8)})`, 'modeled'],
-        ['Stint 2', `12 laps | target ${formatFuelPerLap(3.1)} | tires free (${formatFuelVolume(36.8)})`, 'modeled'],
-        ['Stint 3', `7 laps final | target ${formatFuelPerLap(3.1)} | --`, 'modeled']
-      ], `burn ${formatFuelPerLap(3.1)} (live burn) | 34.2 laps/tank | history user | tires user pit history | gap O0.18 C0.04`);
+      {
+        const raceRows = [
+          metricRow('Plan', '31 laps | 3 stints | 2 stops', 'info', [
+            metricSegment('Race', '31 laps', 'info'),
+            metricSegment('Remain', '30.4 laps', 'info'),
+            metricSegment('Stints', '3', 'info'),
+            metricSegment('Stops', '2', 'info'),
+            metricSegment('Save', formatFuelPerLap(0.2), 'warning')
+          ]),
+          metricRow('Fuel', `${formatFuelVolume(74.0)} | ${formatFuelPerLap(3.1)} | Covered`, 'success', [
+            metricSegment('Current', formatFuelVolume(74.0), 'info'),
+            metricSegment('Burn', formatFuelPerLap(3.1), 'info'),
+            metricSegment('Tank', '34.2 laps', 'info'),
+            metricSegment('Need', 'Covered', 'success')
+          ])
+        ];
+        const stintRows = [
+          metricRow('Stint 1', `12 laps | target ${formatFuelPerLap(3.1)} | tires free (${formatFuelVolume(36.8)})`, 'info', [
+            metricSegment('Laps', '12 laps', 'info'),
+            metricSegment('Target', formatFuelPerLap(3.1), 'info'),
+            metricSegment('Save', formatFuelPerLap(0.2), 'warning'),
+            metricSegment('Tires', `free (${formatFuelVolume(36.8)})`, 'success')
+          ]),
+          metricRow('Stint 2', `12 laps | target ${formatFuelPerLap(3.1)} | tires free (${formatFuelVolume(36.8)})`, 'info', [
+            metricSegment('Laps', '12 laps', 'info'),
+            metricSegment('Target', formatFuelPerLap(3.1), 'info'),
+            metricSegment('Save', 'None', 'success'),
+            metricSegment('Tires', `free (${formatFuelVolume(36.8)})`, 'success')
+          ]),
+          metricRow('Stint 3', `7 laps final | target ${formatFuelPerLap(3.1)} | --`, 'info', [
+            metricSegment('Laps', '7 laps', 'info'),
+            metricSegment('Target', formatFuelPerLap(3.1), 'info'),
+            metricSegment('Save', 'None', 'success'),
+            metricSegment('Tires', '--', 'waiting')
+          ])
+        ];
+        const metricSections = [
+          { title: 'Race Information', rows: raceRows },
+          { title: 'Stint Targets', rows: stintRows }
+        ];
+        return metricsModel(
+          'fuel-calculator',
+          'Fuel Calculator',
+          '3 stints / 2 stops',
+          metricSections.flatMap((section) => section.rows),
+          `burn ${formatFuelPerLap(3.1)} (live burn) | 34.2 laps/tank | history user | tires user pit history | gap O0.18 C0.04`,
+          [],
+          metricSections);
+      }
     case 'session-weather':
       return metricsModel('session-weather', 'Session / Weather', 'Race', [
         ['Session', `Race | ${previewLabel} | team`, 'normal'],
@@ -396,10 +457,6 @@ function reviewDisplayModel(overlayId, previewMode = 'off') {
         { key: 'status', value: '' },
         { key: 'timeRemaining', value: '03:58' }
       ]);
-    case 'input-state':
-      return inputStateModel(previewLabel);
-    case 'car-radar':
-      return carRadarModel(previewLabel);
     case 'gap-to-leader':
       return {
         overlayId,
@@ -413,48 +470,17 @@ function reviewDisplayModel(overlayId, previewMode = 'off') {
         points: [74, 72, 70, 68, 66, 65, 63, 61, 60, 58, 55, 53],
         headerItems: [{ key: 'status', value: 'live | race gap' }]
       };
-    case 'track-map':
-      return browserOverlayApiResponse('track-map', browserOverlayPage('track-map').modelRoute, {
-        live: reviewLiveSnapshot(previewMode),
-        settings: reviewSettings('track-map', previewMode)
-      }).model;
     default:
       return tableModel(overlayId, browserOverlayPage(overlayId).title, `live | ${previewLabel}`, []);
   }
 }
 
-function carRadarModel(previewLabel = 'review fixture') {
-  const carRadar = {
-    isAvailable: true,
-    hasCarLeft: true,
-    hasCarRight: false,
-    cars: [
-      { carIdx: 12, relativeSeconds: -1.2, relativeMeters: -8, carClassColorHex: '#FFDA59' },
-      { carIdx: 14, relativeSeconds: 1.7, relativeMeters: 12, carClassColorHex: '#33CEFF' }
-    ],
-    strongestMulticlassApproach: { relativeSeconds: -2.8, urgency: 0.7 },
-    showMulticlassWarning: true,
-    previewVisible: false,
-    hasCurrentSignal: true,
-    referenceCarClassColorHex: '#FFDA59'
-  };
-
-  return {
-    overlayId: 'car-radar',
-    title: 'Car Radar',
-    status: `car left | ${previewLabel}`,
-    source: 'source: review fixture',
-    bodyKind: 'car-radar',
-    columns: [],
-    rows: [],
-    metrics: [],
-    points: [],
-    headerItems: [{ key: 'status', value: 'car left' }],
-    carRadar: {
-      ...carRadar,
-      renderModel: carRadarRenderModelFromState(carRadar)
-    }
-  };
+function reviewAssetBackedDisplayModel(overlayId, previewMode = 'off') {
+  const page = browserOverlayPage(overlayId);
+  return browserOverlayApiResponse(overlayId, page.modelRoute, {
+    live: reviewLiveSnapshot(previewMode),
+    settings: reviewSettings(overlayId, previewMode)
+  }).model;
 }
 
 function relativeDisplayModel(previewLabel = 'review fixture') {
@@ -555,56 +581,6 @@ function metricRow(label, value, tone, segments = undefined, extra = {}) {
 
 function metricSegment(label, value, tone) {
   return { label, value, tone };
-}
-
-function inputStateModel(previewLabel = 'review fixture') {
-  const trace = Array.from({ length: 180 }, (_, index) => {
-    const t = index / 10;
-    return {
-      throttle: Math.max(0, Math.min(1, 0.68 + Math.sin(t) * 0.28)),
-      brake: Math.max(0, Math.min(1, Math.sin(t * 0.58 + 1.6) - 0.42)),
-      clutch: Math.max(0, Math.min(1, 0.08 + Math.sin(t * 0.35) * 0.06)),
-      brakeAbsActive: index > 112 && index < 132
-    };
-  });
-  const latest = trace[trace.length - 1];
-  return {
-    overlayId: 'input-state',
-    title: 'Inputs',
-    status: `4 | 7250 rpm | ABS | ${previewLabel}`,
-    source: '',
-    bodyKind: 'inputs',
-    columns: [],
-    rows: [],
-    metrics: [],
-    points: [],
-    headerItems: [],
-    inputs: {
-      isAvailable: true,
-      throttle: latest.throttle,
-      brake: latest.brake,
-      clutch: latest.clutch,
-      steeringWheelAngle: -10 * Math.PI / 180,
-      speedMetersPerSecond: 64.2,
-      gear: 4,
-      speedText: formatSpeed(64.2),
-      gearText: '4',
-      steeringText: '-10 deg',
-      brakeAbsActive: true,
-      showThrottleTrace: true,
-      showBrakeTrace: true,
-      showClutchTrace: true,
-      showThrottle: true,
-      showBrake: true,
-      showClutch: true,
-      showSteering: true,
-      showGear: true,
-      showSpeed: true,
-      sampleIntervalMilliseconds: 50,
-      maximumTracePoints: 180,
-      trace
-    }
-  };
 }
 
 function metricModelRow(row) {

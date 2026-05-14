@@ -646,7 +646,6 @@ internal sealed class DesignV2SettingsSurface : Control
                 break;
             case "fuel-calculator":
                 AddMatrixCheck(new Rectangle(306, 272, 834, 150), 0, settings.GetBooleanOption(OverlayOptionKeys.FuelAdvice, true), isOn => settings.SetBooleanOption(OverlayOptionKeys.FuelAdvice, isOn));
-                AddMatrixCheck(new Rectangle(306, 272, 834, 150), 1, settings.GetBooleanOption(OverlayOptionKeys.FuelSource, true), isOn => settings.SetBooleanOption(OverlayOptionKeys.FuelSource, isOn));
                 break;
             case "track-map":
                 AddMatrixCheck(new Rectangle(306, 272, 834, 190), 1, settings.GetBooleanOption(OverlayOptionKeys.TrackMapSectorBoundariesEnabled, true), isOn => settings.SetBooleanOption(OverlayOptionKeys.TrackMapSectorBoundariesEnabled, isOn));
@@ -1131,8 +1130,7 @@ internal sealed class DesignV2SettingsSurface : Control
                     graphics,
                     "Content Display",
                     [
-                        new ContentMatrixRow("Advice column", settings.GetBooleanOption(OverlayOptionKeys.FuelAdvice, true)),
-                        new ContentMatrixRow("Source row", settings.GetBooleanOption(OverlayOptionKeys.FuelSource, true))
+                        new ContentMatrixRow("Advice column", settings.GetBooleanOption(OverlayOptionKeys.FuelAdvice, true))
                     ],
                     new Rectangle(306, 272, 834, 150));
                 break;

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { renderBrowserOverlay, waitFor } from './browserOverlayTestHost.js';
+import { freshLiveSnapshot, renderBrowserOverlay, waitFor } from './browserOverlayTestHost.js';
 
 let currentOverlay;
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -68,6 +68,61 @@ describe('browser overlay shell', () => {
         raceEvents: { hasData: true, isOnTrack: true, isInGarage: false, onPitRoad: true }
       }
     })).toBe(false);
+  });
+
+  it('does not invent header or footer chrome when the model omits shared chrome items', async () => {
+    currentOverlay = await renderBrowserOverlay('fuel-calculator', {
+      live: freshLiveSnapshot({}),
+      model: {
+        overlayId: 'fuel-calculator',
+        title: 'Fuel Calculator',
+        status: 'need fuel',
+        source: '',
+        bodyKind: 'metrics',
+        columns: [],
+        rows: [],
+        metrics: [
+          { label: 'Plan', value: '31 laps | 3 stints | 2 stops', tone: 'modeled' }
+        ],
+        points: [],
+        headerItems: [],
+        gridSections: [],
+        metricSections: []
+      },
+      waitForSelector: '.metric'
+    });
+
+    expect(currentOverlay.document.getElementById('status').textContent).toBe('');
+    expect(currentOverlay.document.getElementById('status').hidden).toBe(true);
+    expect(currentOverlay.document.getElementById('source').textContent).toBe('');
+    expect(currentOverlay.document.getElementById('source').hidden).toBe(true);
+  });
+
+  it('hides overlays when the production display model is not renderable', async () => {
+    currentOverlay = await renderBrowserOverlay('fuel-calculator', {
+      live: freshLiveSnapshot({}),
+      model: {
+        overlayId: 'fuel-calculator',
+        title: 'Fuel Calculator',
+        status: 'waiting for local fuel context',
+        source: 'source: waiting',
+        bodyKind: 'metrics',
+        columns: [],
+        rows: [],
+        metrics: [],
+        points: [],
+        headerItems: [{ key: 'status', value: 'waiting for local fuel context' }],
+        gridSections: [],
+        metricSections: [],
+        shouldRender: false
+      },
+      waitForSelector: null
+    });
+
+    await waitFor(() => currentOverlay.document.querySelector('.overlay').style.opacity === '0');
+
+    expect(currentOverlay.document.getElementById('content').textContent).toBe('');
+    expect(currentOverlay.document.getElementById('source').hidden).toBe(true);
   });
 });
 

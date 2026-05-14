@@ -33,6 +33,9 @@ const gapCarsBehind = clampInteger(process.env.TMR_GAP_CARS_BEHIND, 5, 0, 12);
 const gapShowHeaderStatus = parseBoolean(process.env.TMR_GAP_SHOW_HEADER_STATUS, true);
 const gapShowHeaderTimeRemaining = parseBoolean(process.env.TMR_GAP_SHOW_TIME_REMAINING, true);
 const gapShowFooterSource = parseBoolean(process.env.TMR_GAP_SHOW_FOOTER_SOURCE, true);
+const fuelShowHeaderStatus = parseBoolean(process.env.TMR_FUEL_SHOW_HEADER_STATUS, true);
+const fuelShowHeaderTimeRemaining = parseBoolean(process.env.TMR_FUEL_SHOW_TIME_REMAINING, true);
+const fuelShowFooterSource = parseBoolean(process.env.TMR_FUEL_SHOW_FOOTER_SOURCE, true);
 const reviewUnitSystem = normalizeUnitSystem(process.env.TMR_REVIEW_UNIT_SYSTEM || process.env.TMR_UNIT_SYSTEM || 'Metric');
 const inputStateReviewSettings = {
   showThrottleTrace: parseBoolean(process.env.TMR_INPUT_SHOW_THROTTLE_TRACE, true),
@@ -45,16 +48,14 @@ const inputStateReviewSettings = {
   showGear: parseBoolean(process.env.TMR_INPUT_SHOW_GEAR, true),
   showSpeed: parseBoolean(process.env.TMR_INPUT_SHOW_SPEED, true)
 };
-const productionOverlayModelIds = new Set([
-  'standings',
-  'relative',
+const productionOverlayModelIds = new Set(browserOverlayPages()
+  .filter((page) => page.modelRoute)
+  .map((page) => page.page.id));
+const assetBackedReplayOverlayModelIds = new Set([
   'fuel-calculator',
-  'session-weather',
-  'pit-service',
-  'car-radar',
-  'input-state',
-  'gap-to-leader',
-  'track-map'
+  'track-map',
+  'garage-cover',
+  'stream-chat'
 ]);
 const replay = loadReplay(replayPath);
 const replayCaptureSessionInfo = loadReplayCaptureSessionInfo(replay);
@@ -1473,8 +1474,13 @@ function clonePlainObject(value) {
 }
 
 function displayModel(overlayId, frame, index, searchParams = null) {
-  if (overlayId === 'standings') {
-    return frame.model;
+  const embeddedModel = embeddedReplayDisplayModel(overlayId, frame);
+  if (embeddedModel) {
+    return embeddedModel;
+  }
+
+  if (assetBackedReplayOverlayModelIds.has(overlayId)) {
+    return replayAssetBackedDisplayModel(overlayId, frame, index, searchParams);
   }
 
   if (frame.live?.models) {
@@ -1487,6 +1493,9 @@ function displayModel(overlayId, frame, index, searchParams = null) {
   const isPreGreen = Number.isFinite(frame.sessionState) && frame.sessionState < 4;
   const status = `${isPreGreen ? 'pre-green' : 'green'} | ${relativeSeconds >= 0 ? '+' : ''}${relativeSeconds}s`;
 
+  // BrowserOverlayModelFactory is a C# application service and cannot be run
+  // directly from this Node replay server. The remaining builders are isolated
+  // here and emit BrowserOverlayDisplayModel-shaped JSON from replay frames.
   if (overlayId === 'relative') {
     const relative = relativeSettings();
     const relativeModel = syntheticRelativeRows(frame, isPreGreen, relative.carsAhead, relative.carsBehind);
@@ -1499,15 +1508,6 @@ function displayModel(overlayId, frame, index, searchParams = null) {
   }
 
   const headerItems = replayHeaderItems(frame, status);
-
-  if (overlayId === 'fuel-calculator') {
-    return metricsModel(overlayId, 'Fuel Calculator', status, headerItems, [
-      ['Fuel', formatLiters(isPreGreen ? 74.0 : 73.4), 'info'],
-      ['Burn', isPreGreen ? 'grid idle' : formatFuelPerLap(2.9), 'normal'],
-      ['Window', isPreGreen ? 'after green' : '24 laps', 'normal'],
-      ['Mode', isPreGreen ? 'countdown ignored' : 'timed race', isPreGreen ? 'warning' : 'success']
-    ]);
-  }
 
   if (overlayId === 'session-weather') {
     return metricsModel(overlayId, 'Session / Weather', status, headerItems, [
@@ -1567,17 +1567,15 @@ function displayModel(overlayId, frame, index, searchParams = null) {
     };
   }
 
-  if (overlayId === 'track-map') {
-    return browserOverlayApiResponse('track-map', browserOverlayPage('track-map').modelRoute, {
-      live: liveSnapshot(frame, 0, searchParams),
-      settings: settings('track-map', frame)
-    }).model;
-  }
-
   return tableModel(overlayId, browserOverlayPage(overlayId).title, status, headerItems, []);
 }
 
 function captureDisplayModel(overlayId, frame, index, searchParams = null) {
+  const embeddedModel = embeddedReplayDisplayModel(overlayId, frame);
+  if (embeddedModel) {
+    return embeddedModel;
+  }
+
   const live = liveSnapshot(frame, index, searchParams);
   const models = live.models || {};
   const relativeSeconds = Number.isFinite(frame.raceStartRelativeSeconds)
@@ -1588,6 +1586,13 @@ function captureDisplayModel(overlayId, frame, index, searchParams = null) {
     ? `${phase} | frame ${frame.frameIndex}`
     : `${phase} | ${relativeSeconds >= 0 ? '+' : ''}${relativeSeconds}s`;
 
+  if (assetBackedReplayOverlayModelIds.has(overlayId)) {
+    return replayAssetBackedDisplayModel(overlayId, frame, index, searchParams, live);
+  }
+
+  // BrowserOverlayModelFactory is a C# application service and cannot be run
+  // directly from this Node replay server. The remaining builders are isolated
+  // here and emit BrowserOverlayDisplayModel-shaped JSON from replay frames.
   if (overlayId === 'relative') {
     const relative = relativeSettings();
     const relativeModel = relativeRows(models, relative.carsAhead, relative.carsBehind);
@@ -1600,21 +1605,6 @@ function captureDisplayModel(overlayId, frame, index, searchParams = null) {
   }
 
   const headerItems = captureHeaderItems(models, status);
-
-  if (overlayId === 'fuel-calculator') {
-    const localContext = localInCarOrPitContext(models, 'waiting for local fuel context');
-    if (!localContext.isAvailable) {
-      return metricsModel(
-        overlayId,
-        'Fuel Calculator',
-        localContext.statusText,
-        captureHeaderItems(models, localContext.statusText),
-        [],
-        'source: waiting');
-    }
-
-    return captureFuelModel(models, live, status, headerItems);
-  }
 
   if (overlayId === 'session-weather') {
     return captureSessionWeatherModel(models, status, headerItems);
@@ -1647,14 +1637,100 @@ function captureDisplayModel(overlayId, frame, index, searchParams = null) {
     return captureInputStateModel(models, status, index, searchParams);
   }
 
-  if (overlayId === 'track-map') {
-    return browserOverlayApiResponse('track-map', browserOverlayPage('track-map').modelRoute, {
-      live,
-      settings: settings('track-map', frame)
-    }).model;
+  return tableModel(overlayId, browserOverlayPage(overlayId).title, status, headerItems, [], 'source: capture-derived live replay');
+}
+
+function embeddedReplayDisplayModel(overlayId, frame) {
+  const candidates = [
+    frame?.overlayModels,
+    frame?.models?.overlayModels,
+    frame?.live?.models?.overlayModels,
+    frame?.browserOverlayModels,
+    frame?.models?.browserOverlayModels,
+    frame?.live?.models?.browserOverlayModels
+  ];
+
+  for (const candidate of candidates) {
+    const model = displayModelFromCollection(candidate, overlayId);
+    if (model) {
+      return normalizeEmbeddedDisplayModel(model, overlayId);
+    }
   }
 
-  return tableModel(overlayId, browserOverlayPage(overlayId).title, status, headerItems, [], 'source: capture-derived live replay');
+  if (isDisplayModelForOverlay(frame?.model, overlayId)) {
+    return normalizeEmbeddedDisplayModel(frame.model, overlayId);
+  }
+
+  return null;
+}
+
+function displayModelFromCollection(collection, overlayId) {
+  if (!collection) {
+    return null;
+  }
+
+  if (Array.isArray(collection)) {
+    return collection.find((model) => isDisplayModelForOverlay(model, overlayId)) || null;
+  }
+
+  if (typeof collection === 'object') {
+    const exact = collection[overlayId];
+    if (isDisplayModelForOverlay(exact, overlayId)) {
+      return exact;
+    }
+
+    const camelKey = overlayId.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+    const camel = collection[camelKey];
+    if (isDisplayModelForOverlay(camel, overlayId)) {
+      return camel;
+    }
+
+    return Object.values(collection).find((model) => isDisplayModelForOverlay(model, overlayId)) || null;
+  }
+
+  return null;
+}
+
+function isDisplayModelForOverlay(model, overlayId) {
+  return model
+    && typeof model === 'object'
+    && typeof model.overlayId === 'string'
+    && model.overlayId.toLowerCase() === overlayId;
+}
+
+function normalizeEmbeddedDisplayModel(model, overlayId) {
+  const page = browserOverlayPage(overlayId);
+  const normalized = {
+    overlayId,
+    title: model.title || page.title,
+    status: model.status || '',
+    source: model.source || '',
+    bodyKind: model.bodyKind || 'table',
+    columns: Array.isArray(model.columns) ? model.columns : [],
+    rows: Array.isArray(model.rows) ? model.rows : [],
+    metrics: Array.isArray(model.metrics) ? model.metrics : [],
+    points: Array.isArray(model.points) ? model.points : [],
+    headerItems: Array.isArray(model.headerItems) ? model.headerItems : [],
+    gridSections: Array.isArray(model.gridSections) ? model.gridSections : [],
+    metricSections: Array.isArray(model.metricSections) ? model.metricSections : [],
+    shouldRender: model.shouldRender !== false
+  };
+
+  for (const extensionKey of ['carRadar', 'trackMap', 'garageCover', 'streamChat', 'inputState', 'graph']) {
+    if (model[extensionKey] && typeof model[extensionKey] === 'object') {
+      normalized[extensionKey] = clonePlainObject(model[extensionKey]);
+    }
+  }
+
+  return normalized;
+}
+
+function replayAssetBackedDisplayModel(overlayId, frame, index, searchParams = null, live = null) {
+  const page = browserOverlayPage(overlayId);
+  return browserOverlayApiResponse(overlayId, page.modelRoute, {
+    live: live ?? liveSnapshot(frame, index, searchParams),
+    settings: settings(overlayId, frame)
+  }).model;
 }
 
 function captureCarRadarModel(models, fallbackStatus, headerItems) {
@@ -1766,18 +1842,6 @@ function localInCarOrPitContext(models, statusText) {
   }
 
   return { isAvailable: false, reason: 'not_in_car', statusText };
-}
-
-function captureFuelModel(models, live, status, headerItems) {
-  const fuel = models.fuelPit?.fuel || live.fuel || {};
-  const progress = models.raceProgress || {};
-  const source = models.fuelPit?.hasData ? 'source: capture-derived fuel telemetry' : 'source: waiting';
-  return metricsModel('fuel-calculator', 'Fuel Calculator', status, headerItems, [
-    ['Fuel', formatLiters(fuel.fuelLevelLiters), 'modeled'],
-    ['Fuel %', formatPercent(fuel.fuelLevelPercent), 'modeled'],
-    ['Burn', formatFuelBurn(fuel.fuelUsePerHourKg), 'modeled'],
-    ['Progress', formatProgressLaps(progress.referenceCarProgressLaps), 'normal']
-  ], source);
 }
 
 function captureSessionWeatherModel(models, fallbackStatus, headerItems) {
@@ -4198,13 +4262,20 @@ function settings(overlayId, frame) {
     return gapSettingsModel();
   }
 
+  if (overlayId === 'fuel-calculator') {
+    return fuelSettingsModel();
+  }
+
   if (overlayId === 'stream-chat') {
     return {
       provider: 'none',
       isConfigured: false,
       streamlabsWidgetUrl: null,
       twitchChannel: null,
-      status: 'not_configured'
+      status: 'replay_static',
+      replayStatus: 'replay chat | spoofed',
+      replaySource: 'source: spoofed stream replay',
+      replayRows: streamChatReplayRows(frame)
     };
   }
 
@@ -4253,6 +4324,34 @@ function gapSettingsModel() {
     showHeaderTimeRemaining: gapShowHeaderTimeRemaining,
     showFooterSource: gapShowFooterSource
   };
+}
+
+function fuelSettingsModel() {
+  return {
+    unitSystem: reviewUnitSystem,
+    showHeaderStatus: fuelShowHeaderStatus,
+    showHeaderTimeRemaining: fuelShowHeaderTimeRemaining,
+    showFooterSource: fuelShowFooterSource
+  };
+}
+
+function streamChatReplayRows(frame) {
+  const frameIndex = replay.frames.indexOf(frame);
+  const position = replayProgress(frame, frameIndex >= 0 ? frameIndex : 0);
+  const allRows = [
+    { name: 'TMR', text: 'Stream replay fixture: spoofed chat source.', kind: 'system' },
+    { name: 'race_control', text: 'Green flag. Settle in and hit your marks.', kind: 'message' },
+    { name: 'crew_chief', text: 'Fuel window is open if the caution falls our way.', kind: 'message' },
+    { name: 'viewer42', text: 'That GT3 traffic through esses is getting spicy.', kind: 'message' },
+    { name: 'pit_wall', text: 'Box call is ready. No tires unless pace drops.', kind: 'message' },
+    { name: 'mod_bot', text: 'Replay chat is local test data, not a live channel.', kind: 'system' },
+    { name: 'spotter', text: 'Faster class approaching behind.', kind: 'message' },
+    { name: 'crew_chief', text: 'Nice save. Keep the brake temps under control.', kind: 'message' },
+    { name: 'viewer_amy', text: 'Map overlay looks clear with the smaller car dots.', kind: 'message' },
+    { name: 'TMR', text: 'Replay source disconnected from external chat services.', kind: 'system' }
+  ];
+  const visibleCount = Math.max(3, Math.min(allRows.length, Math.floor(position * allRows.length) + 3));
+  return allRows.slice(0, visibleCount);
 }
 
 function relativeColumns() {

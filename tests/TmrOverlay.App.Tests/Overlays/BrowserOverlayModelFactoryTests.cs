@@ -3,6 +3,7 @@ using TmrOverlay.App.History;
 using TmrOverlay.App.Overlays.BrowserSources;
 using TmrOverlay.App.Overlays.PitService;
 using TmrOverlay.Core.History;
+using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 using TmrOverlay.Core.Telemetry.Live;
 using Xunit;
@@ -25,6 +26,32 @@ public sealed class BrowserOverlayModelFactoryTests
         Assert.DoesNotContain("\"forwardQueryParameters\"", html, StringComparison.Ordinal);
         Assert.DoesNotContain("pitService=all", html, StringComparison.Ordinal);
         Assert.DoesNotContain("spoofFocus", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FuelCalculatorModel_HonorsSharedFooterSourceSetting()
+    {
+        var factory = new BrowserOverlayModelFactory(new SessionHistoryQueryService(new SessionHistoryOptions
+        {
+            Enabled = false,
+            ResolvedUserHistoryRoot = Path.Combine(Path.GetTempPath(), "tmr-overlay-test-history"),
+            ResolvedBaselineHistoryRoot = Path.Combine(Path.GetTempPath(), "tmr-overlay-test-baseline-history")
+        }));
+        var settings = new ApplicationSettings();
+        var overlay = settings.GetOrAddOverlay("fuel-calculator", 600, 340);
+        overlay.SetBooleanOption(OverlayOptionKeys.ChromeFooterSourceTest, false);
+        overlay.SetBooleanOption(OverlayOptionKeys.ChromeFooterSourcePractice, false);
+        overlay.SetBooleanOption(OverlayOptionKeys.ChromeFooterSourceQualifying, false);
+        overlay.SetBooleanOption(OverlayOptionKeys.ChromeFooterSourceRace, false);
+        var now = DateTimeOffset.Parse("2026-05-13T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
+
+        var built = factory.TryBuild("fuel-calculator", LiveTelemetrySnapshot.Empty, settings, now, out var response);
+
+        Assert.True(built);
+        Assert.Equal(string.Empty, response.Model.Source);
+        Assert.Empty(response.Model.Metrics);
+        Assert.Equal("waiting for iRacing", response.Model.Status);
+        Assert.False(response.Model.ShouldRender);
     }
 
     [Fact]
