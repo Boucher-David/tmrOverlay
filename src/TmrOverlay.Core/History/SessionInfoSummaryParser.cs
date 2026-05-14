@@ -456,6 +456,8 @@ internal static class SessionInfoSummaryParser
             CarScreenNameShort = ReadString(values, "CarScreenNameShort"),
             CarClassId = ReadInt(values, "CarClassID"),
             CarClassShortName = ReadString(values, "CarClassShortName"),
+            CarClassRelSpeed = ReadInt(values, "CarClassRelSpeed"),
+            CarClassEstLapTimeSeconds = ReadDouble(values, "CarClassEstLapTime"),
             CarClassColorHex = NormalizeColorHex(ReadString(values, "CarClassColor")),
             IsSpectator = ReadBool(values, "IsSpectator")
         };

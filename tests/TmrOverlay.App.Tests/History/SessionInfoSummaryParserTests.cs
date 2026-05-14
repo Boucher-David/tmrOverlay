@@ -52,10 +52,19 @@ DriverInfo:
  Drivers:
  - CarIdx: 10
    UserName: Driver One
+   CarClassID: 4098
+   CarClassShortName: GT3
+   CarClassRelSpeed: 50
+   CarClassEstLapTime: 90.1234
  - CarIdx: 12
    UserName: Driver Two
 """);
 
+        var driver = Assert.Single(context.Drivers, driver => driver.CarIdx == 10);
+        Assert.Equal(4098, driver.CarClassId);
+        Assert.Equal("GT3", driver.CarClassShortName);
+        Assert.Equal(50, driver.CarClassRelSpeed);
+        Assert.Equal(90.1234d, driver.CarClassEstLapTimeSeconds);
         Assert.Equal("Race", context.Session.SessionType);
         Assert.Equal("RACE", context.Session.SessionName);
         Assert.Collection(

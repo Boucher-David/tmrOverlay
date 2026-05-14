@@ -17,6 +17,8 @@ internal sealed class HistoryMaintenanceManifest
 
     public int CurrentAggregateVersion { get; init; } = HistoricalDataVersions.AggregateVersion;
 
+    public int CurrentCarRadarCalibrationAggregateVersion { get; init; } = HistoricalDataVersions.CarRadarCalibrationAggregateVersion;
+
     public int SummaryFilesScanned { get; init; }
 
     public int SummaryFilesCompatible { get; init; }

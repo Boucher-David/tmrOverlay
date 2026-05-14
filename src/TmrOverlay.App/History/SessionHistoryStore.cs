@@ -1,4 +1,5 @@
 using System.Text.Json;
+using TmrOverlay.App.Cars;
 using TmrOverlay.Core.History;
 
 namespace TmrOverlay.App.History;
@@ -41,6 +42,7 @@ internal sealed class SessionHistoryStore
             .ConfigureAwait(false);
 
         await UpdateAggregateAsync(sessionDirectory, summary, cancellationToken).ConfigureAwait(false);
+        await UpdateCarRadarCalibrationAsync(summary, cancellationToken).ConfigureAwait(false);
     }
 
     private string GetSessionDirectory(HistoricalSessionSummary summary)
@@ -55,6 +57,15 @@ internal sealed class SessionHistoryStore
             summary.Combo.SessionKey);
     }
 
+    private string GetCarRadarCalibrationPath(HistoricalSessionSummary summary)
+    {
+        return Path.Combine(
+            _options.ResolvedHistoryRoot,
+            "cars",
+            summary.Combo.CarKey,
+            "radar-calibration.json");
+    }
+
     private static async Task UpdateAggregateAsync(
         string sessionDirectory,
         HistoricalSessionSummary summary,
@@ -66,6 +77,36 @@ internal sealed class SessionHistoryStore
 
         SessionHistoryAggregateBuilder.AddSummary(aggregate, summary, DateTimeOffset.UtcNow);
 
+        await File.WriteAllTextAsync(
+                aggregatePath,
+                JsonSerializer.Serialize(aggregate, JsonOptions),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async Task UpdateCarRadarCalibrationAsync(
+        HistoricalSessionSummary summary,
+        CancellationToken cancellationToken)
+    {
+        if (CarSpecificationCatalog.Bundled.HasExactSpec(summary.Combo))
+        {
+            return;
+        }
+
+        var aggregatePath = GetCarRadarCalibrationPath(summary);
+        var aggregate = await ReadCarRadarCalibrationAggregateAsync(aggregatePath, cancellationToken).ConfigureAwait(false)
+            ?? new HistoricalCarRadarCalibrationAggregate();
+
+        var changed = SessionHistoryAggregateBuilder.AddRadarCalibrationSummary(
+            aggregate,
+            summary,
+            DateTimeOffset.UtcNow);
+        if (!changed)
+        {
+            return;
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(aggregatePath)!);
         await File.WriteAllTextAsync(
                 aggregatePath,
                 JsonSerializer.Serialize(aggregate, JsonOptions),
@@ -89,6 +130,26 @@ internal sealed class SessionHistoryStore
                 cancellationToken)
             .ConfigureAwait(false);
         return aggregate?.AggregateVersion == HistoricalDataVersions.AggregateVersion
+            ? aggregate
+            : null;
+    }
+
+    private static async Task<HistoricalCarRadarCalibrationAggregate?> ReadCarRadarCalibrationAggregateAsync(
+        string aggregatePath,
+        CancellationToken cancellationToken)
+    {
+        if (!File.Exists(aggregatePath))
+        {
+            return null;
+        }
+
+        await using var stream = File.OpenRead(aggregatePath);
+        var aggregate = await JsonSerializer.DeserializeAsync<HistoricalCarRadarCalibrationAggregate>(
+                stream,
+                JsonOptions,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return aggregate?.AggregateVersion == HistoricalDataVersions.CarRadarCalibrationAggregateVersion
             ? aggregate
             : null;
     }

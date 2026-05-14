@@ -59,6 +59,8 @@ internal sealed class HistoricalSessionSummary
 
     public IReadOnlyList<HistoricalPitStopSummary> PitStops { get; init; } = [];
 
+    public HistoricalRadarCalibrationSummary? RadarCalibration { get; init; }
+
     public required HistoricalDataQuality Quality { get; init; }
 
     public AppVersionInfo? AppVersion { get; init; }
@@ -221,6 +223,10 @@ internal sealed class HistoricalSessionDriver
     public int? CarClassId { get; init; }
 
     public string? CarClassShortName { get; init; }
+
+    public int? CarClassRelSpeed { get; init; }
+
+    public double? CarClassEstLapTimeSeconds { get; init; }
 
     public string? CarClassColorHex { get; init; }
 
@@ -413,6 +419,79 @@ internal sealed class HistoricalPitStopSummary
     public int? PitServiceFlags { get; init; }
 
     public required string[] ConfidenceFlags { get; init; }
+}
+
+internal sealed class HistoricalRadarCalibrationSummary
+{
+    public HistoricalRadarCalibrationMetric SideOverlapWindowSeconds { get; init; } = new();
+
+    public HistoricalRadarCalibrationMetric EstimatedBodyLengthMeters { get; init; } = new();
+
+    public string[] ConfidenceFlags { get; init; } = [];
+}
+
+internal sealed class HistoricalRadarCalibrationMetric
+{
+    public int SampleCount { get; set; }
+
+    public double? Mean { get; set; }
+
+    public double? Minimum { get; set; }
+
+    public double? Maximum { get; set; }
+
+    public void Add(double? value)
+    {
+        if (value is null || double.IsNaN(value.Value) || double.IsInfinity(value.Value))
+        {
+            return;
+        }
+
+        if (SampleCount == 0)
+        {
+            SampleCount = 1;
+            Mean = value;
+            Minimum = value;
+            Maximum = value;
+            return;
+        }
+
+        Mean = ((Mean ?? 0d) * SampleCount + value.Value) / (SampleCount + 1);
+        Minimum = Math.Min(Minimum ?? value.Value, value.Value);
+        Maximum = Math.Max(Maximum ?? value.Value, value.Value);
+        SampleCount++;
+    }
+
+    public void Add(HistoricalRadarCalibrationMetric? metric)
+    {
+        if (metric is null || metric.SampleCount <= 0 || metric.Mean is null)
+        {
+            return;
+        }
+
+        if (SampleCount == 0)
+        {
+            SampleCount = metric.SampleCount;
+            Mean = metric.Mean;
+            Minimum = metric.Minimum;
+            Maximum = metric.Maximum;
+            return;
+        }
+
+        var nextCount = SampleCount + metric.SampleCount;
+        Mean = ((Mean ?? 0d) * SampleCount + metric.Mean.Value * metric.SampleCount) / nextCount;
+        Minimum = Minimum is null
+            ? metric.Minimum
+            : metric.Minimum is { } minimum
+                ? Math.Min(Minimum.Value, minimum)
+                : Minimum;
+        Maximum = Maximum is null
+            ? metric.Maximum
+            : metric.Maximum is { } maximum
+                ? Math.Max(Maximum.Value, maximum)
+                : Maximum;
+        SampleCount = nextCount;
+    }
 }
 
 internal sealed class HistoricalDataQuality

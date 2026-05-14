@@ -792,7 +792,7 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
             return true
         case "car-radar":
             content.addSubview(checkbox(
-                title: "Show multiclass warning",
+                title: "Show faster-class warning",
                 state: overlay.showRadarMulticlassWarning,
                 frame: NSRect(x: 22, y: top, width: 220, height: 24),
                 identifier: "\(definition.id)|radarMulticlass"

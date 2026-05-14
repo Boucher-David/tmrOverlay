@@ -6,6 +6,7 @@ import {
   browserOverlayApiResponse,
   browserOverlayPage,
   browserOverlayPages,
+  carRadarRenderModelFromState,
   renderOverlayHtml,
   renderOverlayIndexHtml
 } from '../../tests/browser-overlays/browserOverlayAssets.js';
@@ -50,6 +51,7 @@ const productionOverlayModelIds = new Set([
   'fuel-calculator',
   'session-weather',
   'pit-service',
+  'car-radar',
   'input-state',
   'gap-to-leader'
 ]);
@@ -967,6 +969,10 @@ function captureDisplayModel(overlayId, frame, index, searchParams = null) {
     return capturePitServiceModel(models, status, headerItems, searchParams);
   }
 
+  if (overlayId === 'car-radar') {
+    return captureCarRadarModel(models, status, headerItems);
+  }
+
   if (overlayId === 'gap-to-leader') {
     return captureGapToLeaderModel(models, frame, index, searchParams);
   }
@@ -976,6 +982,88 @@ function captureDisplayModel(overlayId, frame, index, searchParams = null) {
   }
 
   return tableModel(overlayId, browserOverlayPage(overlayId).title, status, headerItems, [], 'source: capture-derived live replay');
+}
+
+function captureCarRadarModel(models, fallbackStatus, headerItems) {
+  const spatial = models.spatial || {};
+  const inCar = isPlayerInCar(models);
+  const cars = Array.isArray(spatial.cars) ? spatial.cars : [];
+  const strongestMulticlassApproach = carRadarMulticlassApproach(spatial);
+  const hasCurrentSignal = Boolean(
+    spatial.hasCarLeft === true
+    || spatial.hasCarRight === true
+    || strongestMulticlassApproach
+    || cars.length > 0);
+  const carRadar = {
+    isAvailable: inCar,
+    hasCarLeft: spatial.hasCarLeft === true,
+    hasCarRight: spatial.hasCarRight === true,
+    cars,
+    strongestMulticlassApproach,
+    showMulticlassWarning: true,
+    previewVisible: false,
+    hasCurrentSignal,
+    referenceCarClassColorHex: spatial.referenceCarClassColorHex
+  };
+  const status = !inCar
+    ? 'waiting for player in car'
+    : spatial.hasData === false
+      ? 'waiting for radar'
+      : spatial.hasCarLeft && spatial.hasCarRight
+        ? 'cars both sides'
+        : spatial.hasCarLeft
+          ? 'car left'
+          : spatial.hasCarRight
+            ? 'car right'
+            : strongestMulticlassApproach
+              ? 'faster class'
+              : fallbackStatus || 'clear';
+
+  return {
+    ...tableModel('car-radar', 'Car Radar', status, headerItems, [], inCar && spatial.hasData !== false ? 'source: capture-derived spatial telemetry' : 'source: waiting'),
+    bodyKind: 'car-radar',
+    carRadar: {
+      ...carRadar,
+      renderModel: carRadarRenderModelFromState(carRadar)
+    }
+  };
+}
+
+function carRadarMulticlassApproach(spatial) {
+  const approaches = Array.isArray(spatial?.multiclassApproaches)
+    ? spatial.multiclassApproaches
+    : spatial?.strongestMulticlassApproach
+      ? [spatial.strongestMulticlassApproach]
+      : [];
+  return approaches
+    .filter(isInCarRadarMulticlassWarningRange)
+    .sort((left, right) =>
+      Math.abs(left?.relativeSeconds ?? Number.POSITIVE_INFINITY)
+        - Math.abs(right?.relativeSeconds ?? Number.POSITIVE_INFINITY)
+      || Number(right?.urgency || 0) - Number(left?.urgency || 0))[0] || null;
+}
+
+function isInCarRadarMulticlassWarningRange(approach) {
+  const seconds = approach?.relativeSeconds;
+  return Number.isFinite(seconds) && seconds < -2 && seconds >= -5;
+}
+
+function isPlayerInCar(models) {
+  const reference = models.reference || {};
+  const race = models.raceEvents || {};
+  if (reference.focusIsPlayer === false) {
+    return false;
+  }
+
+  if (race.isInGarage === true || race.isGarageVisible === true) {
+    return false;
+  }
+
+  if (race.isOnTrack === false) {
+    return false;
+  }
+
+  return reference.hasData !== false;
 }
 
 function localInCarOrPitContext(models, statusText) {
@@ -3514,6 +3602,7 @@ function spatialModel(lapProgress, relativeSeconds) {
     hasData: true,
     quality: 'inferred',
     referenceCarIdx: 0,
+    referenceCarClassColorHex: '#FFDA59',
     referenceLapDistPct: lapProgress,
     hasCarLeft: relativeSeconds > -20 && relativeSeconds < 20,
     hasCarRight: relativeSeconds > 40 && relativeSeconds < 80,

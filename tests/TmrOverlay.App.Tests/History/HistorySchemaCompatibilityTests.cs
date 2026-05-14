@@ -20,6 +20,7 @@ HistoricalSessionSummary
   Metrics: HistoricalSessionMetrics
   PitStops: IReadOnlyList<HistoricalPitStopSummary>
   Quality: HistoricalDataQuality
+  RadarCalibration: HistoricalRadarCalibrationSummary?
   Session: HistoricalSessionIdentity
   SourceCaptureId: string
   StartedAtUtc: DateTimeOffset
@@ -147,6 +148,15 @@ HistoricalPitStopSummary
   ServiceActiveSeconds: double?
   StopNumber: int
   TireSetChanged: bool
+HistoricalRadarCalibrationSummary
+  ConfidenceFlags: string[]
+  EstimatedBodyLengthMeters: HistoricalRadarCalibrationMetric
+  SideOverlapWindowSeconds: HistoricalRadarCalibrationMetric
+HistoricalRadarCalibrationMetric
+  Maximum: double?
+  Mean: double?
+  Minimum: double?
+  SampleCount: int
 HistoricalDataQuality
   Confidence: string
   ContributesToBaseline: bool
@@ -177,6 +187,18 @@ HistoricalSessionAggregate
   TeammateDriverStintLaps: RunningHistoricalMetric
   Track: HistoricalTrackIdentity
   UpdatedAtUtc: DateTimeOffset
+HistoricalCarRadarCalibrationAggregate
+  AggregateVersion: int
+  Car: HistoricalCarIdentity
+  CarKey: string
+  RadarCalibration: HistoricalRadarCalibrationAggregate
+  SessionCount: int
+  UpdatedAtUtc: DateTimeOffset
+HistoricalRadarCalibrationAggregate
+  ConfidenceFlags: string[]
+  EstimatedBodyLengthMeters: HistoricalRadarCalibrationMetric
+  SideOverlapWindowSeconds: HistoricalRadarCalibrationMetric
+  SourceSessionCount: int
 RunningHistoricalMetric
   Maximum: double?
   Mean: double?
@@ -217,8 +239,12 @@ PostRaceAnalysis
             typeof(HistoricalSessionMetrics),
             typeof(HistoricalStintSummary),
             typeof(HistoricalPitStopSummary),
+            typeof(HistoricalRadarCalibrationSummary),
+            typeof(HistoricalRadarCalibrationMetric),
             typeof(HistoricalDataQuality),
             typeof(HistoricalSessionAggregate),
+            typeof(HistoricalCarRadarCalibrationAggregate),
+            typeof(HistoricalRadarCalibrationAggregate),
             typeof(RunningHistoricalMetric),
             typeof(PostRaceAnalysis));
 

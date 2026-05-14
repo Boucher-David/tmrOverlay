@@ -396,6 +396,8 @@ Hide or degrade the local radar when the user is not in the car, is spectating, 
 
 Windows Car Radar now follows this v2 path by reading `LiveTelemetrySnapshot.Models.Spatial` for local side occupancy, physically placed local cars, and multiclass warning state. Timing-only nearby cars remain available to Relative and diagnostics, but they do not draw radar targets. The legacy `LiveProximitySnapshot` remains as an internal compatibility/diagnostic slice until parity and diagnostics no longer need it.
 
+Post-session radar calibration now has a car-scoped history scaffold for clean `CarLeftRight` side-window durations and identity-backed body-length estimates, including useful `SessionState = 3` pre-grid rows where cars are paired on the way to the grid. Live radar uses exact bundled car specifications first, trusted user calibration for unknown cars second, and low-confidence bundled estimates only as fallback. Local IBT inspection did not expose car length, width, wheelbase, or similar dimension fields, so the bundled spec catalog is keyed by `CarID`/`CarPath` and learned calibration stays conservative.
+
 ### Radar Focus And Multiclass V2
 
 Treat non-local focus, teammate focus, spectator mode, and multiclass warning as the advanced radar branch. Move those cases to model-v2 focus-relative evidence. Keep `CarLeftRight` local-player scoped, suppress or relabel it for non-player focus, and make teammate/team-car focus states explicit.

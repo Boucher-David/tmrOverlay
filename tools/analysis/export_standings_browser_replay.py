@@ -444,26 +444,11 @@ def live_relative_rows(
     focus = timing_rows.get(focus_idx) if focus_idx is not None else None
     if not focus:
         return []
-    focus_progress = focus.get("lapCompleted")
-    focus_pct = focus.get("lapDistPct")
-    focus_est = focus.get("estimatedTimeSeconds")
-    focus_f2 = usable_f2_for_timing(focus, True)
-    if isinstance(focus_progress, int) and finite(focus_pct):
-        focus_laps = focus_progress + float(focus_pct)
-    else:
-        focus_laps = None
     rows = []
     for car_idx, row in timing_rows.items():
         if car_idx == focus_idx:
             continue
-        relative_seconds = None
-        if valid_timing_seconds(row.get("estimatedTimeSeconds")) is not None and valid_timing_seconds(focus_est) is not None:
-            relative_seconds = float(row["estimatedTimeSeconds"]) - float(focus_est)
-        elif usable_f2_for_timing(row, True) is not None and focus_f2 is not None:
-            relative_seconds = float(row["f2TimeSeconds"]) - float(focus_f2)
-        relative_laps = None
-        if focus_laps is not None and isinstance(row.get("lapCompleted"), int) and finite(row.get("lapDistPct")):
-            relative_laps = row["lapCompleted"] + float(row["lapDistPct"]) - focus_laps
+        relative_seconds, relative_laps = relative_metrics(row, focus)
         if relative_seconds is None and relative_laps is None:
             continue
         rows.append(
@@ -483,8 +468,71 @@ def live_relative_rows(
     return sorted(rows, key=lambda row: abs(row.get("relativeSeconds") if row.get("relativeSeconds") is not None else (row.get("relativeLaps") or 99) * 120))[:16]
 
 
+def relative_metrics(row: dict[str, Any], focus: dict[str, Any]) -> tuple[float | None, float | None]:
+    relative_seconds = None
+    focus_est = focus.get("estimatedTimeSeconds")
+    focus_f2 = usable_f2_for_timing(focus, True)
+    if valid_timing_seconds(row.get("estimatedTimeSeconds")) is not None and valid_timing_seconds(focus_est) is not None:
+        relative_seconds = float(row["estimatedTimeSeconds"]) - float(focus_est)
+    elif usable_f2_for_timing(row, True) is not None and focus_f2 is not None:
+        relative_seconds = float(row["f2TimeSeconds"]) - float(focus_f2)
+
+    focus_progress = focus.get("lapCompleted")
+    focus_pct = valid_lap_dist_pct(focus.get("lapDistPct"))
+    if isinstance(focus_progress, int) and focus_progress >= 0 and focus_pct is not None:
+        focus_laps = focus_progress + float(focus_pct)
+    else:
+        focus_laps = None
+
+    relative_laps = None
+    row_pct = valid_lap_dist_pct(row.get("lapDistPct"))
+    if focus_laps is not None and isinstance(row.get("lapCompleted"), int) and row.get("lapCompleted") >= 0 and row_pct is not None:
+        relative_laps = row["lapCompleted"] + float(row["lapDistPct"]) - focus_laps
+    elif focus_pct is not None and row_pct is not None:
+        relative_laps = row_pct - focus_pct
+        if relative_laps > 0.5:
+            relative_laps -= 1.0
+        elif relative_laps < -0.5:
+            relative_laps += 1.0
+    return relative_seconds, relative_laps
+
+
+def live_spatial_rows(
+    timing_rows: dict[int, dict[str, Any]],
+    drivers: dict[int, dict[str, Any]],
+    focus_idx: int | None,
+    player_idx: int | None,
+) -> list[dict[str, Any]]:
+    focus = timing_rows.get(focus_idx) if focus_idx is not None else None
+    if not focus:
+        return []
+    rows = []
+    for car_idx, row in timing_rows.items():
+        if car_idx == focus_idx:
+            continue
+        relative_seconds, relative_laps = relative_metrics(row, focus)
+        if relative_seconds is None and relative_laps is None:
+            continue
+        rows.append(
+            enrich_live_row(
+                {
+                    **row,
+                    "relativeSeconds": relative_seconds,
+                    "relativeLaps": relative_laps,
+                    "isAhead": relative_laps is not None and relative_laps > 0,
+                    "isBehind": relative_laps is not None and relative_laps < 0,
+                },
+                drivers.get(car_idx),
+                focus_idx,
+                player_idx,
+            )
+        )
+    return rows
+
+
 def live_spatial_model(
     raw: dict[str, Any],
+    spatial_source_rows: list[dict[str, Any]],
     relative_rows: list[dict[str, Any]],
     reference: dict[str, Any] | None,
     track_length: float | None,
@@ -500,12 +548,14 @@ def live_spatial_model(
             "relativeMeters": row.get("relativeMeters"),
             "carClassColorHex": row.get("carClassColorHex"),
         }
-        for row in spatial_rows(relative_rows, track_length)
+        for row in spatial_rows(spatial_source_rows, track_length)
     ]
     return {
         "hasData": bool(reference) or bool(cars),
         "quality": "capture-derived",
         "referenceCarIdx": reference.get("carIdx") if reference else None,
+        "referenceCarClassColorHex": reference.get("carClassColorHex") if reference else None,
+        "carLeftRight": side,
         "referenceLapDistPct": reference.get("lapDistPct") if reference else None,
         "trackLengthMeters": track_length,
         "hasCarLeft": has_left,
@@ -553,10 +603,12 @@ def build_live_snapshot(
     focus_idx = reference_car_idx(raw, timing_rows)
     player_idx = raw.get("PlayerCarIdx") if isinstance(raw.get("PlayerCarIdx"), int) and 0 <= raw.get("PlayerCarIdx") < 64 else None
     reference = timing_rows.get(focus_idx) if focus_idx is not None else None
+    reference_live = enrich_live_row(reference, drivers.get(focus_idx), focus_idx, player_idx) if reference and focus_idx is not None else None
     selected_source, selected_rows = selected_scoring_rows(session_data, raw, selected, all_timing_cars(values))
     timing_live = timing_live_rows(timing_rows, drivers, focus_idx, player_idx)
     scoring_live = scoring_live_rows(selected_rows, timing_rows, drivers, focus_idx, player_idx)
     relative_live = live_relative_rows(timing_rows, drivers, focus_idx, player_idx)
+    spatial_live = live_spatial_rows(timing_rows, drivers, focus_idx, player_idx)
     track_length = track_length_meters(session_data)
     track_wetness = raw.get("TrackWetness") if isinstance(raw.get("TrackWetness"), int) else None
     clutch = clutch_control_input(raw)
@@ -591,6 +643,7 @@ def build_live_snapshot(
             "focusClassPosition": (reference or {}).get("classPosition"),
             "sessionTime": raw.get("SessionTime"),
             "sessionState": raw.get("SessionState"),
+            "carLeftRight": raw.get("CarLeftRight"),
         },
         "fuel": {
             "fuelLevelLiters": fuel_level,
@@ -655,7 +708,7 @@ def build_live_snapshot(
                 "hasData": bool(timing_live),
                 "quality": "capture-derived" if timing_live else "unavailable",
                 "focusCarIdx": focus_idx,
-                "focusRow": enrich_live_row(reference, drivers.get(focus_idx), focus_idx, player_idx) if reference and focus_idx is not None else None,
+                "focusRow": reference_live,
                 "playerRow": enrich_live_row(timing_rows[player_idx], drivers.get(player_idx), focus_idx, player_idx) if player_idx in timing_rows else None,
                 "overallRows": timing_live,
                 "classRows": [row for row in timing_live if reference is None or row.get("carClass") == reference.get("carClass")],
@@ -666,7 +719,7 @@ def build_live_snapshot(
                 "referenceCarIdx": focus_idx,
                 "rows": relative_live,
             },
-            "spatial": live_spatial_model(raw, relative_live, reference, track_length),
+            "spatial": live_spatial_model(raw, spatial_live, relative_live, reference_live, track_length),
             "raceEvents": {
                 "hasData": True,
                 "quality": "capture-derived",

@@ -206,7 +206,7 @@ enum DesignV2SettingsOverlaySpecs {
         case "input-state":
             return "Input rail visibility for pedal, steering, gear, and speed telemetry."
         case "car-radar":
-            return "Local proximity radar and multiclass approach warning controls."
+            return "Local proximity radar and faster-class warning controls."
         case "flags":
             return "Compact session flag strip display and size controls."
         default:

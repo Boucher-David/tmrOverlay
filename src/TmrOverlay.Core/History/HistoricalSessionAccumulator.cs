@@ -7,6 +7,12 @@ internal sealed class HistoricalSessionAccumulator
     private const double MinimumGreenSecondsForFuelPerHour = 30d;
     private const double MinimumDistanceLapsForFuelPerLap = 0.25d;
     private const double MaximumFuelBurnLitersPerSecond = 0.10d;
+    private const double DefaultRadarBodyLengthMeters = 4.746d;
+    private const double RadarSideCandidateWindowMeters = DefaultRadarBodyLengthMeters * 2d;
+    private const double MinimumRadarBodyLengthEstimateMeters = 3.2d;
+    private const double MaximumRadarBodyLengthEstimateMeters = 7.0d;
+    private const double MaximumRadarSideClosestApproachMeters = 2.5d;
+    private const double MinimumRadarStableIdentityShare = 0.70d;
     private readonly object _sync = new();
     private HistoricalSessionContext _context = HistoricalSessionContext.Empty;
     private HistoricalTelemetrySample? _previousSample;
@@ -15,6 +21,7 @@ internal sealed class HistoricalSessionAccumulator
     private readonly List<HistoricalPitStopSummary> _pitStops = [];
     private StintBuilder? _activeStint;
     private PitStopBuilder? _activePitStop;
+    private RadarSideWindowBuilder? _activeRadarSideWindow;
     private DateTimeOffset? _firstFrameAtUtc;
     private DateTimeOffset? _lastFrameAtUtc;
     private double _onTrackTimeSeconds;
@@ -29,6 +36,9 @@ internal sealed class HistoricalSessionAccumulator
     private double? _minimumFuelLiters;
     private double? _maximumFuelLiters;
     private double? _lastLapLastLapTime;
+    private readonly HistoricalRadarCalibrationMetric _radarSideOverlapWindowSeconds = new();
+    private readonly HistoricalRadarCalibrationMetric _radarEstimatedBodyLengthMeters = new();
+    private readonly HashSet<string> _radarCalibrationConfidenceFlags = new(StringComparer.OrdinalIgnoreCase);
     private int _frameCount;
     private int _pitRoadEntryCount;
     private int _pitServiceCount;
@@ -95,6 +105,7 @@ internal sealed class HistoricalSessionAccumulator
 
             FinalizeActiveStint();
             FinalizeActivePitStop();
+            CompleteActiveRadarSideWindow();
 
             double? averageStintLaps = _stints.Count > 0
                 ? _stints.Average(stint => stint.DistanceLaps)
@@ -170,6 +181,7 @@ internal sealed class HistoricalSessionAccumulator
                 Metrics = metrics,
                 Stints = _stints.ToArray(),
                 PitStops = _pitStops.ToArray(),
+                RadarCalibration = BuildRadarCalibration(),
                 Quality = HistoricalDataQuality.From(_context, metrics),
                 AppVersion = AppVersionInfo.Current
             };
@@ -181,6 +193,7 @@ internal sealed class HistoricalSessionAccumulator
         var deltaSeconds = current.SessionTime - previous.SessionTime;
         if (deltaSeconds <= 0d || deltaSeconds > 1d)
         {
+            CompleteActiveRadarSideWindow();
             return;
         }
 
@@ -188,6 +201,8 @@ internal sealed class HistoricalSessionAccumulator
         {
             _onTrackTimeSeconds += deltaSeconds;
         }
+
+        TrackRadarCalibration(current, deltaSeconds);
 
         if (previous.OnPitRoad)
         {
@@ -262,6 +277,95 @@ internal sealed class HistoricalSessionAccumulator
         {
             _fuelAddedLiters += addedFuelLiters;
         }
+    }
+
+    private void TrackRadarCalibration(HistoricalTelemetrySample current, double deltaSeconds)
+    {
+        var currentSide = RadarSideKind(current.CarLeftRight);
+        var currentCanContribute = currentSide is not null && IsRadarCalibrationContext(current);
+        var currentCandidate = currentCanContribute
+            ? SelectRadarSideCandidate(current)
+            : null;
+
+        if (_activeRadarSideWindow is null)
+        {
+            if (currentCanContribute)
+            {
+                _activeRadarSideWindow = RadarSideWindowBuilder.Start(currentSide!, currentCandidate);
+            }
+
+            return;
+        }
+
+        if (!currentCanContribute || currentSide != _activeRadarSideWindow.SideKind)
+        {
+            CompleteActiveRadarSideWindow();
+            if (currentCanContribute)
+            {
+                _activeRadarSideWindow = RadarSideWindowBuilder.Start(currentSide!, currentCandidate);
+            }
+
+            return;
+        }
+
+        _activeRadarSideWindow.RecordDelta(deltaSeconds, currentCandidate);
+    }
+
+    private void CompleteActiveRadarSideWindow()
+    {
+        if (_activeRadarSideWindow is null)
+        {
+            return;
+        }
+
+        if (_activeRadarSideWindow.TryBuild(out var calibration))
+        {
+            _radarSideOverlapWindowSeconds.Add(calibration.DurationSeconds);
+            _radarCalibrationConfidenceFlags.Add("carleft-right-clean-transition");
+            if (calibration.StableCarIdx is not null)
+            {
+                _radarCalibrationConfidenceFlags.Add("identity-backed-window");
+            }
+            else
+            {
+                _radarCalibrationConfidenceFlags.Add("no-car-identity");
+            }
+
+            if (calibration.EstimatedBodyLengthMeters is { } bodyLengthMeters)
+            {
+                _radarEstimatedBodyLengthMeters.Add(bodyLengthMeters);
+                _radarCalibrationConfidenceFlags.Add("identity-backed-body-length");
+            }
+            else
+            {
+                _radarCalibrationConfidenceFlags.Add("not-live-consumed");
+            }
+        }
+
+        _activeRadarSideWindow = null;
+    }
+
+    private HistoricalRadarCalibrationSummary? BuildRadarCalibration()
+    {
+        if (_radarSideOverlapWindowSeconds.SampleCount == 0
+            && _radarEstimatedBodyLengthMeters.SampleCount == 0)
+        {
+            return null;
+        }
+
+        var sideOverlapWindowSeconds = new HistoricalRadarCalibrationMetric();
+        sideOverlapWindowSeconds.Add(_radarSideOverlapWindowSeconds);
+        var estimatedBodyLengthMeters = new HistoricalRadarCalibrationMetric();
+        estimatedBodyLengthMeters.Add(_radarEstimatedBodyLengthMeters);
+
+        return new HistoricalRadarCalibrationSummary
+        {
+            SideOverlapWindowSeconds = sideOverlapWindowSeconds,
+            EstimatedBodyLengthMeters = estimatedBodyLengthMeters,
+            ConfidenceFlags = _radarCalibrationConfidenceFlags
+                .Order(StringComparer.OrdinalIgnoreCase)
+                .ToArray()
+        };
     }
 
     private void TrackFuelExtremes(HistoricalTelemetrySample sample)
@@ -347,6 +451,122 @@ internal sealed class HistoricalSessionAccumulator
             && !IsTeamCarOnPitRoad(sample)
             && !sample.IsInGarage
             && (sample.SessionState is null || sample.SessionState < 5);
+    }
+
+    private static bool IsRadarCalibrationContext(HistoricalTelemetrySample sample)
+    {
+        return sample.IsOnTrack
+            && !sample.IsInGarage
+            && !sample.OnPitRoad
+            && !sample.PlayerCarInPitStall
+            && sample.TeamOnPitRoad != true
+            && sample.SpeedMetersPerSecond > 5d
+            && sample.PlayerCarIdx is >= 0 and < 64
+            && (sample.FocusCarIdx is null || sample.FocusCarIdx == sample.PlayerCarIdx);
+    }
+
+    private RadarSideCandidate? SelectRadarSideCandidate(HistoricalTelemetrySample sample)
+    {
+        if (sample.NearbyCars is null || sample.NearbyCars.Count == 0)
+        {
+            return null;
+        }
+
+        var trackLengthMeters = _context.Track.TrackLengthKm is { } trackLengthKm
+            && !double.IsNaN(trackLengthKm)
+            && !double.IsInfinity(trackLengthKm)
+            && trackLengthKm > 0d
+                ? trackLengthKm * 1000d
+                : (double?)null;
+        if (trackLengthMeters is null)
+        {
+            return null;
+        }
+
+        var referencePosition = ReferenceRadarLapPosition(sample);
+        if (referencePosition is null)
+        {
+            return null;
+        }
+
+        return sample.NearbyCars
+            .Where(IsRadarSideCandidate)
+            .Select(car => ToRadarSideCandidate(car, referencePosition.Value, trackLengthMeters.Value))
+            .Where(candidate => candidate is not null)
+            .Select(candidate => candidate!)
+            .Where(candidate => Math.Abs(candidate.RelativeMeters) <= RadarSideCandidateWindowMeters)
+            .OrderBy(candidate => Math.Abs(candidate.RelativeMeters))
+            .ThenBy(candidate => candidate.CarIdx)
+            .FirstOrDefault();
+    }
+
+    private static bool IsRadarSideCandidate(HistoricalCarProximity car)
+    {
+        return car.CarIdx is >= 0 and < 64
+            && car.LapCompleted >= 0
+            && !double.IsNaN(car.LapDistPct)
+            && !double.IsInfinity(car.LapDistPct)
+            && car.LapDistPct >= 0d
+            && car.OnPitRoad != true
+            && car.TrackSurface is not 1 and not 2;
+    }
+
+    private static RadarSideCandidate? ToRadarSideCandidate(
+        HistoricalCarProximity car,
+        double referencePosition,
+        double trackLengthMeters)
+    {
+        var carPosition = car.LapCompleted + Math.Clamp(car.LapDistPct, 0d, 1d);
+        var relativeLaps = carPosition - referencePosition;
+        if (relativeLaps > 0.5d)
+        {
+            relativeLaps -= 1d;
+        }
+        else if (relativeLaps < -0.5d)
+        {
+            relativeLaps += 1d;
+        }
+
+        var relativeMeters = relativeLaps * trackLengthMeters;
+        return !double.IsNaN(relativeMeters) && !double.IsInfinity(relativeMeters)
+            ? new RadarSideCandidate(car.CarIdx, relativeMeters)
+            : null;
+    }
+
+    private static double? ReferenceRadarLapPosition(HistoricalTelemetrySample sample)
+    {
+        if (sample.TeamLapCompleted is { } teamLapCompleted
+            && teamLapCompleted >= 0
+            && sample.TeamLapDistPct is { } teamLapDistPct
+            && !double.IsNaN(teamLapDistPct)
+            && !double.IsInfinity(teamLapDistPct)
+            && teamLapDistPct >= 0d)
+        {
+            return teamLapCompleted + Math.Clamp(teamLapDistPct, 0d, 1d);
+        }
+
+        if (sample.LapCompleted >= 0
+            && !double.IsNaN(sample.LapDistPct)
+            && !double.IsInfinity(sample.LapDistPct)
+            && sample.LapDistPct >= 0d)
+        {
+            return sample.LapCompleted + Math.Clamp(sample.LapDistPct, 0d, 1d);
+        }
+
+        return null;
+    }
+
+    private static string? RadarSideKind(int? carLeftRight)
+    {
+        return carLeftRight switch
+        {
+            2 => "left",
+            3 => "right",
+            4 => "both",
+            5 => "two-left",
+            6 => "two-right",
+            _ => null
+        };
     }
 
     private static bool HasTeamProgress(HistoricalTelemetrySample sample)
@@ -667,4 +887,122 @@ internal sealed class HistoricalSessionAccumulator
             _fuelAfterLiters = sample.FuelLevelLiters;
         }
     }
+
+    private sealed class RadarSideWindowBuilder
+    {
+        private const double MinimumCleanDurationSeconds = 0.08d;
+        private const double MaximumCleanDurationSeconds = 1.25d;
+        private readonly List<RadarSideCandidate> _candidates = [];
+        private double _durationSeconds;
+        private int _deltaCount;
+        private int _frameCount;
+
+        private RadarSideWindowBuilder(
+            string sideKind,
+            RadarSideCandidate? candidate)
+        {
+            SideKind = sideKind;
+            RecordFrame(candidate);
+        }
+
+        public string SideKind { get; }
+
+        public static RadarSideWindowBuilder Start(
+            string sideKind,
+            RadarSideCandidate? candidate)
+        {
+            return new RadarSideWindowBuilder(sideKind, candidate);
+        }
+
+        public void RecordDelta(
+            double deltaSeconds,
+            RadarSideCandidate? candidate)
+        {
+            if (deltaSeconds <= 0d || deltaSeconds > 1d)
+            {
+                return;
+            }
+
+            _durationSeconds += deltaSeconds;
+            _deltaCount++;
+            RecordFrame(candidate);
+        }
+
+        public bool TryBuild(out RadarSideWindowCalibration calibration)
+        {
+            var estimate = EstimateBodyLengthMeters(out var stableCarIdx);
+            calibration = new RadarSideWindowCalibration(
+                _durationSeconds,
+                stableCarIdx,
+                estimate);
+            return _deltaCount >= 2
+                && _durationSeconds >= MinimumCleanDurationSeconds
+                && _durationSeconds <= MaximumCleanDurationSeconds;
+        }
+
+        private void RecordFrame(RadarSideCandidate? candidate)
+        {
+            _frameCount++;
+            if (candidate is not null)
+            {
+                _candidates.Add(candidate);
+            }
+        }
+
+        private double? EstimateBodyLengthMeters(out int? stableCarIdx)
+        {
+            stableCarIdx = null;
+            if (_frameCount <= 0 || _candidates.Count < 2)
+            {
+                return null;
+            }
+
+            var stableGroup = _candidates
+                .GroupBy(candidate => candidate.CarIdx)
+                .Select(group => new
+                {
+                    CarIdx = group.Key,
+                    Count = group.Count(),
+                    Samples = group.ToArray()
+                })
+                .OrderByDescending(group => group.Count)
+                .ThenBy(group => group.CarIdx)
+                .FirstOrDefault();
+            if (stableGroup is null)
+            {
+                return null;
+            }
+
+            stableCarIdx = stableGroup.CarIdx;
+            var stableShare = stableGroup.Count / (double)_frameCount;
+            if (stableShare < MinimumRadarStableIdentityShare)
+            {
+                return null;
+            }
+
+            var absoluteMeters = stableGroup.Samples
+                .Select(candidate => Math.Abs(candidate.RelativeMeters))
+                .Where(value => !double.IsNaN(value) && !double.IsInfinity(value))
+                .ToArray();
+            if (absoluteMeters.Length < 2)
+            {
+                return null;
+            }
+
+            var closestApproachMeters = absoluteMeters.Min();
+            var boundaryMeters = absoluteMeters.Max();
+            return closestApproachMeters <= MaximumRadarSideClosestApproachMeters
+                && boundaryMeters >= MinimumRadarBodyLengthEstimateMeters
+                && boundaryMeters <= MaximumRadarBodyLengthEstimateMeters
+                    ? boundaryMeters
+                    : null;
+        }
+    }
+
+    private sealed record RadarSideCandidate(int CarIdx, double RelativeMeters);
+
+    private sealed record RadarSideWindowCalibration(
+        double DurationSeconds,
+        int? StableCarIdx,
+        double? EstimatedBodyLengthMeters);
 }

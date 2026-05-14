@@ -171,6 +171,9 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private HistoricalComboIdentity? _cachedHistoryCombo;
     private SessionHistoryLookupResult? _cachedHistory;
     private DateTimeOffset _cachedHistoryAtUtc;
+    private string? _cachedRadarCalibrationCarKey;
+    private CarRadarCalibrationLookupResult? _cachedRadarCalibration;
+    private DateTimeOffset _cachedRadarCalibrationAtUtc;
     private string? _lastLoggedError;
     private DateTimeOffset? _lastLoggedErrorAtUtc;
     private CancellationTokenSource? _chatConnectionCancellation;
@@ -181,6 +184,9 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private DateTimeOffset? _lastTrackMarkerSmoothingAtUtc;
     private DateTimeOffset _nextTrackMapReloadAtUtc = DateTimeOffset.MinValue;
     private long? _lastGapSequence;
+    private CarRadarRenderModel _lastRadarRenderableModel = CarRadarRenderModel.Empty;
+    private DateTimeOffset? _lastRadarFadeAtUtc;
+    private double _radarSurfaceAlpha;
     private double? _latestGapAxisSeconds;
     private double? _gapTrendStartAxisSeconds;
     private double? _lastGapLapReferenceSeconds;
@@ -220,7 +226,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         _fontFamily = fontFamily;
         _unitSystem = unitSystem;
         _pitServiceBuilder = PitServiceOverlayViewModel.CreateStatefulBuilder();
-        _model = WaitingModel(TitleFor(kind), "waiting");
+        _model = InitialModelFor(kind);
 
         BackColor = UsesTransparentBackground(kind) ? TransparentColor : Color.Black;
         if (UsesTransparentBackground(kind))
@@ -272,9 +278,12 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     private static int RefreshIntervalFor(DesignV2LiveOverlayKind kind)
     {
-        return kind == DesignV2LiveOverlayKind.InputState
-            ? InputStateRenderModelBuilder.RefreshIntervalMilliseconds
-            : DefaultRefreshIntervalMilliseconds;
+        return kind switch
+        {
+            DesignV2LiveOverlayKind.InputState => InputStateRenderModelBuilder.RefreshIntervalMilliseconds,
+            DesignV2LiveOverlayKind.CarRadar => CarRadarRenderModel.RefreshIntervalMilliseconds,
+            _ => DefaultRefreshIntervalMilliseconds
+        };
     }
 
     public override bool IsIntrinsicallyInputTransparentOverlay => IsInputTransparentKind(_kind);
@@ -709,12 +718,15 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     private DesignV2OverlayModel BuildRadarModel(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
     {
+        var calibration = CarRadarCalibrationProfile.FromHistory(LookupCarRadarCalibration(snapshot.Models.Session.Combo));
         var viewModel = CarRadarOverlayViewModel.From(
             snapshot,
             now,
             _settingsPreviewVisible,
-            _settings.GetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true));
-        var body = RadarBodyFromViewModel(viewModel);
+            _settings.GetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true),
+            calibration);
+        var renderState = ApplyRadarSurfaceFade(CarRadarRenderModel.FromViewModel(viewModel, calibration), now);
+        var body = RadarBodyFromViewModel(viewModel, renderState.RenderModel, renderState.SurfaceAlpha);
         return new DesignV2OverlayModel(
             viewModel.Title,
             viewModel.Status,
@@ -723,7 +735,21 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             body);
     }
 
-    internal static DesignV2RadarBody RadarBodyFromViewModel(CarRadarOverlayViewModel viewModel)
+    internal static DesignV2RadarBody RadarBodyFromViewModel(
+        CarRadarOverlayViewModel viewModel,
+        CarRadarCalibrationProfile? calibrationProfile = null)
+    {
+        var renderModel = CarRadarRenderModel.FromViewModel(viewModel, calibrationProfile);
+        return RadarBodyFromViewModel(
+            viewModel,
+            renderModel,
+            renderModel.ShouldRender ? 1d : 0d);
+    }
+
+    private static DesignV2RadarBody RadarBodyFromViewModel(
+        CarRadarOverlayViewModel viewModel,
+        CarRadarRenderModel renderModel,
+        double surfaceAlpha)
     {
         return new DesignV2RadarBody(
             viewModel.IsAvailable,
@@ -732,28 +758,88 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             viewModel.Cars,
             viewModel.StrongestMulticlassApproach,
             viewModel.ShowMulticlassWarning,
-            viewModel.PreviewVisible);
+            viewModel.PreviewVisible,
+            renderModel,
+            surfaceAlpha);
     }
 
     internal static DesignV2RadarBody RadarBodyFromSpatial(
         LiveSpatialModel spatial,
         bool overlayAvailable,
         bool previewVisible,
-        OverlaySettings settings)
+        OverlaySettings settings,
+        CarRadarCalibrationProfile? calibrationProfile = null)
     {
+        var calibration = calibrationProfile ?? CarRadarCalibrationProfile.Default;
         var isAvailable = overlayAvailable && spatial.HasData;
         var cars = spatial.Cars
-            .Where(CarRadarOverlayViewModel.IsInRadarRange)
+            .Where(car => CarRadarOverlayViewModel.IsInRadarRange(car, calibration))
             .ToArray();
         var showMulticlassWarning = settings.GetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true);
+        var multiclass = showMulticlassWarning
+            ? spatial.MulticlassApproaches
+                .Where(CarRadarOverlayViewModel.IsInMulticlassWarningRange)
+                .OrderBy(approach => approach.RelativeSeconds is { } seconds ? Math.Abs(seconds) : double.MaxValue)
+                .ThenByDescending(approach => approach.Urgency)
+                .FirstOrDefault()
+            : null;
+        var renderModel = CarRadarRenderModel.FromState(
+            isAvailable || previewVisible,
+            spatial.HasCarLeft,
+            spatial.HasCarRight,
+            cars,
+            multiclass,
+            showMulticlassWarning,
+            previewVisible,
+            previewVisible
+                || spatial.HasCarLeft
+                || spatial.HasCarRight
+                || cars.Length > 0
+                || multiclass is not null,
+            spatial.ReferenceCarClassColorHex,
+            calibration);
         return new DesignV2RadarBody(
             isAvailable || previewVisible,
             spatial.HasCarLeft,
             spatial.HasCarRight,
             cars,
-            showMulticlassWarning ? spatial.StrongestMulticlassApproach : null,
+            multiclass,
             showMulticlassWarning,
-            previewVisible);
+            previewVisible,
+            renderModel,
+            renderModel.ShouldRender ? 1d : 0d);
+    }
+
+    private RadarSurfaceRenderState ApplyRadarSurfaceFade(CarRadarRenderModel current, DateTimeOffset now)
+    {
+        var elapsedSeconds = _lastRadarFadeAtUtc is { } lastFadeAtUtc
+            ? Math.Clamp((now - lastFadeAtUtc).TotalSeconds, 0d, 0.5d)
+            : 0d;
+        _lastRadarFadeAtUtc = now;
+
+        if (current.ShouldRender)
+        {
+            _lastRadarRenderableModel = current;
+        }
+
+        var targetAlpha = current.ShouldRender ? 1d : 0d;
+        var durationMilliseconds = current.ShouldRender
+            ? current.FadeInMilliseconds
+            : Math.Max(current.FadeOutMilliseconds, _lastRadarRenderableModel.FadeOutMilliseconds);
+        var durationSeconds = Math.Max(0.001d, durationMilliseconds / 1000d);
+        _radarSurfaceAlpha = MoveToward(_radarSurfaceAlpha, targetAlpha, elapsedSeconds / durationSeconds);
+
+        if (!current.ShouldRender
+            && _radarSurfaceAlpha <= Math.Max(current.MinimumVisibleAlpha, _lastRadarRenderableModel.MinimumVisibleAlpha))
+        {
+            _radarSurfaceAlpha = 0d;
+            _lastRadarRenderableModel = CarRadarRenderModel.Empty;
+        }
+
+        var renderModel = current.ShouldRender
+            ? current
+            : _lastRadarRenderableModel;
+        return new RadarSurfaceRenderState(renderModel, _radarSurfaceAlpha);
     }
 
     private DesignV2OverlayModel BuildGapModel(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
@@ -2713,6 +2799,22 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         return _cachedHistory;
     }
 
+    private CarRadarCalibrationLookupResult LookupCarRadarCalibration(HistoricalComboIdentity combo)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (_cachedRadarCalibration is not null
+            && string.Equals(_cachedRadarCalibrationCarKey, combo.CarKey, StringComparison.Ordinal)
+            && now - _cachedRadarCalibrationAtUtc <= TimeSpan.FromSeconds(30))
+        {
+            return _cachedRadarCalibration;
+        }
+
+        _cachedRadarCalibration = _historyQueryService.LookupCarRadarCalibration(combo);
+        _cachedRadarCalibrationCarKey = combo.CarKey;
+        _cachedRadarCalibrationAtUtc = now;
+        return _cachedRadarCalibration;
+    }
+
     private bool IsFlagCategoryEnabled(FlagDisplayCategory category)
     {
         return category switch
@@ -4570,100 +4672,158 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     private void DrawRadarOverlay(Graphics graphics, RectangleF rect, DesignV2RadarBody radar)
     {
-        if (!radar.IsAvailable && !radar.PreviewVisible)
+        var model = radar.RenderModel;
+        var surfaceAlpha = Math.Clamp(radar.SurfaceAlpha, 0d, 1d);
+        if (!model.ShouldRender || surfaceAlpha <= model.MinimumVisibleAlpha)
         {
             return;
         }
 
-        var diameter = Math.Max(20, Math.Min(rect.Width, rect.Height) - 8);
+        var diameter = Math.Max(20, Math.Min(rect.Width, rect.Height));
         var radarRect = new RectangleF(
             rect.Left + (rect.Width - diameter) / 2f,
             rect.Top + (rect.Height - diameter) / 2f,
             diameter,
             diameter);
-        using (var fill = new SolidBrush(Color.FromArgb(235, Surface)))
+        var scaleX = radarRect.Width / (float)Math.Max(1d, model.Width);
+        var scaleY = radarRect.Height / (float)Math.Max(1d, model.Height);
+
+        DrawRenderCircle(graphics, radarRect, model.Background, scaleX, scaleY, surfaceAlpha);
+        if (model.MulticlassArc is { } arc)
         {
-            graphics.FillEllipse(fill, radarRect);
-        }
-        using (var borderPen = new Pen(Cyan, 2f))
-        {
-            graphics.DrawEllipse(borderPen, radarRect);
+            DrawRenderArc(graphics, radarRect, arc, scaleX, scaleY, surfaceAlpha);
         }
 
-        using var titleFont = FontOf(12f, FontStyle.Bold);
-        using var statusFont = FontOf(10f, FontStyle.Bold);
-        DrawText(graphics, "CAR RADAR", titleFont, TextPrimary, new RectangleF(radarRect.Left + 20, radarRect.Top + 18, 116, 16));
-        DrawText(graphics, RadarStatusText(radar), statusFont, radar.IsAvailable ? Error : TextMuted, new RectangleF(radarRect.Right - 104, radarRect.Top + 18, 84, 16), ContentAlignment.MiddleRight);
+        foreach (var ring in model.Rings)
+        {
+            DrawRenderCircle(graphics, radarRect, ring, scaleX, scaleY, surfaceAlpha);
+        }
 
-        var center = new PointF(rect.Left + rect.Width / 2f, rect.Top + rect.Height / 2f);
-        using var ringPen = new Pen(Color.FromArgb(62, TextMuted), 1f);
-        foreach (var fraction in new[] { 1f / 3f, 2f / 3f })
+        foreach (var car in model.Cars)
         {
-            var inset = radarRect.Width * fraction / 2f;
-            graphics.DrawEllipse(ringPen, RectangleF.Inflate(radarRect, -inset, -inset));
+            DrawRenderRectangle(graphics, radarRect, car, scaleX, scaleY, surfaceAlpha);
         }
-        graphics.DrawLine(ringPen, radarRect.Left, center.Y, radarRect.Right, center.Y);
-        graphics.DrawLine(ringPen, center.X, radarRect.Top, center.X, radarRect.Bottom);
 
-        DrawMulticlassApproachWarning(graphics, radarRect, radar);
-        DrawRadarCars(graphics, radar, radarRect);
-        if (radar.HasLeft)
+        foreach (var label in model.Labels)
         {
-            DrawRadarCar(graphics, new RectangleF(center.X - 94, center.Y - 28, 28, 58), Error);
+            DrawRenderText(graphics, radarRect, label, scaleX, scaleY, surfaceAlpha);
         }
-        if (radar.HasRight)
-        {
-            DrawRadarCar(graphics, new RectangleF(center.X + 66, center.Y - 64, 28, 58), Cyan);
-        }
-        DrawRadarCar(graphics, new RectangleF(center.X - 12, center.Y - 24, 24, 48), TextPrimary);
     }
 
-    private void DrawMulticlassApproachWarning(Graphics graphics, RectangleF rect, DesignV2RadarBody radar)
+    private static void DrawRenderCircle(
+        Graphics graphics,
+        RectangleF target,
+        CarRadarRenderCircle circle,
+        float scaleX,
+        float scaleY,
+        double alphaMultiplier)
     {
-        if (!radar.ShowMulticlassWarning || radar.StrongestMulticlassApproach?.RelativeSeconds is not { } seconds)
+        var rect = ScaleRect(target, circle.X, circle.Y, circle.Width, circle.Height, scaleX, scaleY);
+        if (circle.Fill is { } fill)
         {
-            return;
+            using var brush = new SolidBrush(RenderColor(fill, alphaMultiplier));
+            graphics.FillEllipse(brush, rect);
         }
 
-        using var pen = new Pen(Amber, 4f)
+        if (circle.Stroke is { } stroke && circle.StrokeWidth > 0d)
+        {
+            using var pen = new Pen(RenderColor(stroke, alphaMultiplier), Math.Max(1f, (float)circle.StrokeWidth * Math.Min(scaleX, scaleY)));
+            graphics.DrawEllipse(pen, rect);
+        }
+    }
+
+    private static void DrawRenderArc(
+        Graphics graphics,
+        RectangleF target,
+        CarRadarRenderArc arc,
+        float scaleX,
+        float scaleY,
+        double alphaMultiplier)
+    {
+        using var pen = new Pen(RenderColor(arc.Stroke, alphaMultiplier), Math.Max(1f, (float)arc.StrokeWidth * Math.Min(scaleX, scaleY)))
         {
             StartCap = LineCap.Round,
             EndCap = LineCap.Round
         };
-        var arc = RectangleF.Inflate(rect, -18, -18);
-        graphics.DrawArc(pen, arc, 242.5f, 55f);
-        using var font = FontOf(9.5f, FontStyle.Bold);
-        DrawText(graphics, $"{Math.Abs(seconds):0.0}s", font, Amber, new RectangleF(rect.Left + 58, rect.Bottom - 42, rect.Width - 116, 16), ContentAlignment.MiddleCenter);
+        graphics.DrawArc(
+            pen,
+            ScaleRect(target, arc.X, arc.Y, arc.Width, arc.Height, scaleX, scaleY),
+            (float)arc.StartDegrees,
+            (float)arc.SweepDegrees);
     }
 
-    private void DrawRadarCars(Graphics graphics, DesignV2RadarBody radar, RectangleF rect)
+    private static void DrawRenderRectangle(
+        Graphics graphics,
+        RectangleF target,
+        CarRadarRenderRectangle rectangle,
+        float scaleX,
+        float scaleY,
+        double alphaMultiplier)
     {
-        IReadOnlyList<LiveSpatialCar> cars = radar.IsAvailable && radar.Cars.Count > 0
-            ? radar.Cars
-            : radar.PreviewVisible
-                ?
-                [
-                    new LiveSpatialCar(12, LiveModelQuality.Reliable, LiveSignalEvidence.Reliable("preview"), 0.014d, 1.2d, 8d, 6, 5, 4098, null, false, "#FFDA59"),
-                    new LiveSpatialCar(51, LiveModelQuality.Reliable, LiveSignalEvidence.Reliable("preview"), -0.065d, -3.4d, -12d, 3, 1, 4099, null, false, "#33CEFF")
-                ]
-                : [];
-        var center = new PointF(rect.Left + rect.Width / 2f, rect.Top + rect.Height / 2f);
-        var usableRadius = rect.Width / 2f - 48f;
-        foreach (var (car, index) in cars.Take(8).Select((car, index) => (car, index)))
+        var rect = ScaleRect(target, rectangle.X, rectangle.Y, rectangle.Width, rectangle.Height, scaleX, scaleY);
+        using var path = RoundedPath(rect, (float)rectangle.Radius * Math.Min(scaleX, scaleY));
+        using var brush = new SolidBrush(RenderColor(rectangle.Fill, alphaMultiplier));
+        graphics.FillPath(brush, path);
+        if (rectangle.StrokeWidth > 0d)
         {
-            var normalized = Math.Clamp((car.RelativeMeters ?? 0d) / RadarRangeMeters, -1d, 1d);
-            var lane = ((index % 3) - 1) * 36f;
-            var x = center.X + lane;
-            var y = center.Y - (float)normalized * usableRadius;
-            var color = OverlayClassColor.TryParseWithAlpha(car.CarClassColorHex, 245)
-                ?? (Math.Abs(normalized) < 0.35d ? Error : Amber);
-            DrawRadarCar(graphics, new RectangleF(x - 12, y - 25, 24, 50), color);
+            using var pen = new Pen(RenderColor(rectangle.Stroke, alphaMultiplier), Math.Max(1f, (float)rectangle.StrokeWidth * Math.Min(scaleX, scaleY)));
+            graphics.DrawPath(pen, path);
         }
     }
 
-    private static void DrawRadarCar(Graphics graphics, RectangleF rect, Color color)
+    private void DrawRenderText(
+        Graphics graphics,
+        RectangleF target,
+        CarRadarRenderText label,
+        float scaleX,
+        float scaleY,
+        double alphaMultiplier)
     {
-        FillRounded(graphics, rect, 6, Color.FromArgb(245, color), Color.FromArgb(72, TextPrimary));
+        using var font = FontOf((float)(label.FontSize * Math.Min(scaleX, scaleY)), label.Bold ? FontStyle.Bold : FontStyle.Regular);
+        using var brush = new SolidBrush(RenderColor(label.Color, alphaMultiplier));
+        using var format = new StringFormat
+        {
+            Trimming = StringTrimming.EllipsisCharacter,
+            FormatFlags = StringFormatFlags.NoWrap,
+            Alignment = label.Alignment switch
+            {
+                "center" => StringAlignment.Center,
+                "far" => StringAlignment.Far,
+                _ => StringAlignment.Near
+            },
+            LineAlignment = StringAlignment.Center
+        };
+        graphics.DrawString(
+            label.Text,
+            font,
+            brush,
+            ScaleRect(target, label.X, label.Y, label.Width, label.Height, scaleX, scaleY),
+            format);
+    }
+
+    private static RectangleF ScaleRect(
+        RectangleF target,
+        double x,
+        double y,
+        double width,
+        double height,
+        float scaleX,
+        float scaleY)
+    {
+        return new RectangleF(
+            target.Left + (float)x * scaleX,
+            target.Top + (float)y * scaleY,
+            (float)width * scaleX,
+            (float)height * scaleY);
+    }
+
+    private static Color RenderColor(CarRadarRenderColor color, double alphaMultiplier = 1d)
+    {
+        return Color.FromArgb(
+            (int)Math.Round(Math.Clamp(color.Alpha * alphaMultiplier, 0d, 255d)),
+            Math.Clamp(color.Red, 0, 255),
+            Math.Clamp(color.Green, 0, 255),
+            Math.Clamp(color.Blue, 0, 255));
     }
 
     private void DrawTrackMapOverlay(Graphics graphics, RectangleF rect, DesignV2TrackMapBody body)
@@ -5375,6 +5535,42 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             "source: waiting",
             DesignV2Evidence.Unavailable,
             new DesignV2MetricRowsBody([]));
+    }
+
+    private static DesignV2OverlayModel InitialModelFor(DesignV2LiveOverlayKind kind)
+    {
+        if (kind == DesignV2LiveOverlayKind.CarRadar)
+        {
+            return new DesignV2OverlayModel(
+                "Car Radar",
+                string.Empty,
+                string.Empty,
+                DesignV2Evidence.Unavailable,
+                new DesignV2RadarBody(
+                    false,
+                    false,
+                    false,
+                    [],
+                    null,
+                    true,
+                    false,
+                    CarRadarRenderModel.Empty,
+                    0d));
+        }
+
+        return WaitingModel(TitleFor(kind), "waiting");
+    }
+
+    private static double MoveToward(double current, double target, double delta)
+    {
+        if (delta <= 0d)
+        {
+            return current;
+        }
+
+        return current < target
+            ? Math.Min(target, current + delta)
+            : Math.Max(target, current - delta);
     }
 
     private static string TitleFor(DesignV2LiveOverlayKind kind)
@@ -6146,7 +6342,13 @@ internal sealed record DesignV2RadarBody(
     IReadOnlyList<LiveSpatialCar> Cars,
     LiveMulticlassApproach? StrongestMulticlassApproach,
     bool ShowMulticlassWarning,
-    bool PreviewVisible) : DesignV2Body;
+    bool PreviewVisible,
+    CarRadarRenderModel RenderModel,
+    double SurfaceAlpha) : DesignV2Body;
+
+internal sealed record RadarSurfaceRenderState(
+    CarRadarRenderModel RenderModel,
+    double SurfaceAlpha);
 
 internal sealed record DesignV2ChatBody(
     IReadOnlyList<DesignV2ChatRow> Rows) : DesignV2Body;

@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   browserOverlayApiResponse,
   browserOverlayPages,
-  freshLiveSnapshot,
+  carRadarRenderModelFromState,
+  freshLiveSnapshot
+} from './browserOverlayAssets.js';
+import {
   renderBrowserOverlay
 } from './browserOverlayTestHost.js';
 
@@ -66,6 +69,49 @@ describe('browser overlay catalogue behaviour', () => {
       await scenario.assert(currentOverlay);
     });
   }
+
+  it('renders car radar for a multiclass approach even when no cars are inside the radar', () => {
+    const render = carRadarRenderModelFromState({
+      isAvailable: true,
+      hasCarLeft: false,
+      hasCarRight: false,
+      cars: [],
+      strongestMulticlassApproach: { relativeSeconds: -4.2, urgency: 0.5 },
+      showMulticlassWarning: true,
+      previewVisible: false,
+      hasCurrentSignal: true,
+      referenceCarClassColorHex: '#FFDA59'
+    });
+
+    expect(render.shouldRender).toBe(true);
+    expect(render.multiclassArc?.label?.text).toBe('Faster class approaching 4.2s');
+    expect(render.cars.filter((car) => car.kind === 'nearby')).toHaveLength(0);
+    expect(render.cars.find((car) => car.kind === 'focus')).toBeTruthy();
+  });
+
+  it('keeps distinct pre-grid distance rows from overlapping vertically', () => {
+    const render = carRadarRenderModelFromState({
+      isAvailable: true,
+      hasCarLeft: false,
+      hasCarRight: false,
+      cars: [
+        { carIdx: 45, relativeMeters: -24, relativeSeconds: -4.6, carClassColorHex: '#FFDA59' },
+        { carIdx: 42, relativeMeters: -16, relativeSeconds: -0.2, carClassColorHex: '#FFDA59' },
+        { carIdx: 10, relativeMeters: -8, relativeSeconds: -2.3, carClassColorHex: '#FFDA59' },
+        { carIdx: 22, relativeMeters: 0, relativeSeconds: -4.2, carClassColorHex: '#FFDA59' },
+        { carIdx: 11, relativeMeters: 8, relativeSeconds: 1.1, carClassColorHex: '#FFDA59' }
+      ],
+      strongestMulticlassApproach: null,
+      showMulticlassWarning: true,
+      previewVisible: false,
+      hasCurrentSignal: true,
+      referenceCarClassColorHex: '#FFDA59'
+    });
+
+    const nearby = render.cars.filter((car) => car.kind === 'nearby').sort((left, right) => left.y - right.y);
+    const distinctRowGaps = nearby.slice(1).map((car, index) => Math.abs(car.y - nearby[index].y));
+    expect(Math.min(...distinctRowGaps)).toBeGreaterThanOrEqual(47.9);
+  });
 });
 
 function browserScenarios() {
@@ -420,7 +466,8 @@ function browserScenarios() {
       }),
       assert: ({ document }) => {
         expect(document.querySelector('.radar-v2')).not.toBeNull();
-        expect(document.body.textContent).toContain('2.8s');
+        expect(document.body.textContent).toContain('Faster class approaching 2.8s');
+        expect(document.querySelector('.radar-car-side-left')).not.toBeNull();
       }
     },
     {
@@ -437,12 +484,11 @@ function browserScenarios() {
             cars: []
           }
         }),
-        waitForSelector: '.radar-v2'
+        waitForSelector: null
       }),
       assert: ({ document }) => {
-        expect(document.querySelector('.radar-v2')).not.toBeNull();
-        expect(document.querySelector('.radar-multiclass-label')).toBeNull();
-        expect(document.body.textContent).toContain('WAIT');
+        expect(document.querySelector('.radar-v2')).toBeNull();
+        expect(document.getElementById('content').textContent.trim()).toBe('');
         expect(document.getElementById('status').textContent).toBe('waiting for radar');
       }
     },
@@ -462,11 +508,11 @@ function browserScenarios() {
             ]
           }
         }),
-        waitForSelector: '.empty'
+        waitForSelector: null
       }),
       assert: ({ document }) => {
         expect(document.querySelector('.radar-v2')).toBeNull();
-        expect(document.body.textContent).toContain('Waiting for player in car.');
+        expect(document.getElementById('content').textContent.trim()).toBe('');
         expect(document.getElementById('status').textContent).toMatch(/waiting( for player in car)?/);
       }
     },

@@ -87,11 +87,12 @@ struct LiveFuelSnapshot {
 
 struct LiveProximitySnapshot {
     private static let closeRadarRangeSeconds = 2.0
-    private static let multiclassWarningRangeSeconds = 25.0
+    private static let multiclassWarningRangeSeconds = 5.0
 
     var hasData: Bool
     var carLeftRight: Int?
     var referenceCarClass: Int?
+    var referenceCarClassColorHex: String?
     var sideStatus: String
     var hasCarLeft: Bool
     var hasCarRight: Bool
@@ -106,6 +107,7 @@ struct LiveProximitySnapshot {
         hasData: false,
         carLeftRight: nil,
         referenceCarClass: nil,
+        referenceCarClassColorHex: nil,
         sideStatus: "waiting",
         hasCarLeft: false,
         hasCarRight: false,
@@ -133,7 +135,7 @@ struct LiveProximitySnapshot {
         let phase = frame.sessionTime.truncatingRemainder(dividingBy: 18) / 18
         let aheadSeconds = 2.4 + sin(phase * Double.pi * 2) * 1.1
         let behindSeconds = -3.2 + cos(phase * Double.pi * 2) * 1.4
-        let multiclassSeconds = -18.0 + sin(frame.sessionTime / 11) * 3.0
+        let multiclassSeconds = -4.0 + sin(frame.sessionTime / 11) * 0.8
         let cars = [
             LiveProximityCar(
                 carIdx: 12,
@@ -199,6 +201,7 @@ struct LiveProximitySnapshot {
             hasData: true,
             carLeftRight: frame.carLeftRight,
             referenceCarClass: 4098,
+            referenceCarClassColorHex: "#FFDA59",
             sideStatus: sideStatus(frame.carLeftRight),
             hasCarLeft: hasCarLeft(frame.carLeftRight),
             hasCarRight: hasCarRight(frame.carLeftRight),
@@ -206,7 +209,7 @@ struct LiveProximitySnapshot {
             nearestAhead: cars.filter { $0.relativeLaps > 0 }.min { $0.relativeLaps < $1.relativeLaps },
             nearestBehind: cars.filter { $0.relativeLaps < 0 }.max { $0.relativeLaps < $1.relativeLaps },
             multiclassApproaches: approaches,
-            strongestMulticlassApproach: approaches.max { $0.urgency < $1.urgency },
+            strongestMulticlassApproach: nearestMulticlassApproach(approaches),
             sideOverlapWindowSeconds: 0.22
         )
     }
@@ -282,6 +285,7 @@ struct LiveProximitySnapshot {
             hasData: true,
             carLeftRight: frame.carLeftRight,
             referenceCarClass: reference.carClass,
+            referenceCarClassColorHex: reference.carClassColorHex,
             sideStatus: sideStatus(frame.carLeftRight),
             hasCarLeft: hasCarLeft(frame.carLeftRight),
             hasCarRight: hasCarRight(frame.carLeftRight),
@@ -289,7 +293,7 @@ struct LiveProximitySnapshot {
             nearestAhead: cars.filter { $0.relativeLaps > 0 }.min { $0.relativeLaps < $1.relativeLaps },
             nearestBehind: cars.filter { $0.relativeLaps < 0 }.max { $0.relativeLaps < $1.relativeLaps },
             multiclassApproaches: approaches,
-            strongestMulticlassApproach: approaches.max { $0.urgency < $1.urgency },
+            strongestMulticlassApproach: nearestMulticlassApproach(approaches),
             sideOverlapWindowSeconds: 0.22
         )
     }
@@ -307,6 +311,15 @@ struct LiveProximitySnapshot {
             value += 1
         }
         return value
+    }
+
+    private static func nearestMulticlassApproach(_ approaches: [LiveMulticlassApproach]) -> LiveMulticlassApproach? {
+        approaches
+            .filter { $0.relativeSeconds?.isFinite == true }
+            .min {
+                abs($0.relativeSeconds ?? .infinity) < abs($1.relativeSeconds ?? .infinity)
+                    || ($0.relativeSeconds == $1.relativeSeconds && $0.urgency > $1.urgency)
+            }
     }
 
     private static func lapDelta(_ car: CapturedReplayCar, _ reference: CapturedReplayCar) -> Int? {

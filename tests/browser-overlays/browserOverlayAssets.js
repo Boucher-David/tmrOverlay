@@ -43,7 +43,9 @@ export const pages = {
   }),
   'car-radar': pageDefinition('car-radar', 'Car Radar', '/overlays/car-radar', {
     bodyClass: 'car-radar-page',
+    renderWhenTelemetryUnavailable: true,
     fadeWhenTelemetryUnavailable: true,
+    refreshIntervalMilliseconds: 100,
     modelRoute: '/api/overlay-model/car-radar'
   }),
   'gap-to-leader': pageDefinition('gap-to-leader', 'Gap To Leader', '/overlays/gap-to-leader', {
@@ -356,6 +358,12 @@ function clamp01(value) {
 function carRadarDisplayModel(page, live) {
   const spatial = live?.models?.spatial || {};
   const inCar = isPlayerInCar(live);
+  const strongestMulticlassApproach = carRadarMulticlassApproach(spatial);
+  const hasCurrentSignal = Boolean(
+    spatial.hasCarLeft
+    || spatial.hasCarRight
+    || strongestMulticlassApproach
+    || spatial.cars?.length);
   const status = !inCar
     ? 'waiting for player in car'
     : spatial.hasData === false
@@ -363,11 +371,11 @@ function carRadarDisplayModel(page, live) {
       : spatial.hasCarLeft && spatial.hasCarRight
         ? 'cars both sides'
         : spatial.hasCarLeft
-          ? 'car left'
-          : spatial.hasCarRight
-            ? 'car right'
-            : Number.isFinite(spatial.strongestMulticlassApproach?.relativeSeconds)
-              ? 'class traffic'
+        ? 'car left'
+        : spatial.hasCarRight
+          ? 'car right'
+            : strongestMulticlassApproach
+              ? 'faster class'
               : 'clear';
   return {
     ...emptyDisplayModel(page.page.id, page.title),
@@ -379,12 +387,550 @@ function carRadarDisplayModel(page, live) {
       hasCarLeft: spatial.hasCarLeft === true,
       hasCarRight: spatial.hasCarRight === true,
       cars: spatial.cars || [],
-      strongestMulticlassApproach: spatial.strongestMulticlassApproach || null,
+      strongestMulticlassApproach,
       showMulticlassWarning: true,
       previewVisible: false,
-      hasCurrentSignal: Boolean(spatial.hasCarLeft || spatial.hasCarRight || spatial.strongestMulticlassApproach || spatial.cars?.length)
+      hasCurrentSignal,
+      renderModel: carRadarRenderModelFromState({
+        isAvailable: inCar,
+        hasCarLeft: spatial.hasCarLeft === true,
+        hasCarRight: spatial.hasCarRight === true,
+        cars: spatial.cars || [],
+        strongestMulticlassApproach,
+        showMulticlassWarning: true,
+        previewVisible: false,
+        hasCurrentSignal,
+        referenceCarClassColorHex: spatial.referenceCarClassColorHex
+      })
     }
   };
+}
+
+function carRadarMulticlassApproach(spatial) {
+  const approaches = Array.isArray(spatial?.multiclassApproaches)
+    ? spatial.multiclassApproaches
+    : spatial?.strongestMulticlassApproach
+      ? [spatial.strongestMulticlassApproach]
+      : [];
+  return approaches
+    .filter(isInCarRadarMulticlassWarningRange)
+    .sort((left, right) =>
+      Math.abs(left?.relativeSeconds ?? Number.POSITIVE_INFINITY)
+        - Math.abs(right?.relativeSeconds ?? Number.POSITIVE_INFINITY)
+      || Number(right?.urgency || 0) - Number(left?.urgency || 0))[0] || null;
+}
+
+function isInCarRadarMulticlassWarningRange(approach) {
+  const seconds = approach?.relativeSeconds;
+  return Number.isFinite(seconds) && seconds < -2 && seconds >= -5;
+}
+
+export function carRadarRenderModelFromState({
+  isAvailable = false,
+  hasCarLeft = false,
+  hasCarRight = false,
+  cars = [],
+  strongestMulticlassApproach = null,
+  showMulticlassWarning = true,
+  previewVisible = false,
+  hasCurrentSignal = false,
+  referenceCarClassColorHex = null
+} = {}) {
+  const shouldRender = (isAvailable && hasCurrentSignal) || previewVisible;
+  const empty = () => ({
+    shouldRender: false,
+    width: 300,
+    height: 300,
+    fadeInMilliseconds: 250,
+    fadeOutMilliseconds: 850,
+    minimumVisibleAlpha: 0.02,
+    background: radarBackground(),
+    rings: [],
+    cars: [],
+    labels: [],
+    multiclassArc: null
+  });
+  if (!shouldRender) return empty();
+
+  const currentCars = uniqueRadarCars((Array.isArray(cars) ? cars : []).filter(isInRadarRange));
+  const sideAttachments = sideWarningAttachments(hasCarLeft, hasCarRight, currentCars);
+  const renderCars = [
+    ...radarCarPlacements(currentCars, sideAttachments).map(nearbyCarRectangle),
+    ...sideWarningRectangles(hasCarLeft, hasCarRight, sideAttachments),
+    playerCarRectangle(referenceCarClassColorHex)
+  ];
+  const rings = [distanceRing(1), distanceRing(2)];
+  const labels = rings.map((ring) => ring.label).filter(Boolean);
+  const multiclassArc = showMulticlassWarning && strongestMulticlassApproach
+    ? multiclassApproachArc(strongestMulticlassApproach)
+    : null;
+  if (multiclassArc?.label) labels.push(multiclassArc.label);
+
+  return {
+    shouldRender: true,
+    width: 300,
+    height: 300,
+    fadeInMilliseconds: 250,
+    fadeOutMilliseconds: 850,
+    minimumVisibleAlpha: 0.02,
+    background: radarBackground(),
+    rings,
+    cars: renderCars,
+    labels,
+    multiclassArc
+  };
+}
+
+const radarConstants = {
+  radarInset: 4,
+  radarDiameter: 292,
+  radarCenter: 150,
+  focusedCarLengthMeters: 4.746,
+  contactWindowMeters: 4.746,
+  proximityWarningGapMeters: 2,
+  proximityRedStart: 0.74,
+  timingAwareVisibilitySeconds: 2,
+  maximumTimingAwareRangeMultiplier: 15,
+  timingAwareEdgeOpacity: 0.2,
+  maxWideRowRadarCars: 18,
+  focusedCarWidth: 20,
+  focusedCarHeight: 36,
+  radarCarWidth: 20,
+  radarCarHeight: 36,
+  carCornerRadius: 4,
+  separatedCarPaddingPixels: 2,
+  radarEdgeCenterPaddingPixels: 2,
+  gridRowReferenceMeters: 8,
+  minimumDistinctRowGapPixels: 48,
+  wideRowBucketPixels: 30,
+  wideRowLongitudinalBucketMeters: 2,
+  wideRowSlotPitchPixels: 36,
+  multiclassWarningArcStartDegrees: 62.5,
+  multiclassWarningArcSweepDegrees: 55
+};
+radarConstants.radarRadius = radarConstants.radarDiameter / 2;
+radarConstants.radarRangeMeters = radarConstants.focusedCarLengthMeters * 6;
+radarConstants.maximumTimingAwareRangeMeters = radarConstants.focusedCarLengthMeters * radarConstants.maximumTimingAwareRangeMultiplier;
+radarConstants.sideAttachmentWindowMeters = radarConstants.focusedCarLengthMeters * 2;
+radarConstants.usableRadarRadius = radarConstants.radarRadius - radarConstants.radarEdgeCenterPaddingPixels;
+radarConstants.distinctRowPixelsPerMeter = radarConstants.minimumDistinctRowGapPixels / radarConstants.gridRowReferenceMeters;
+
+function radarBackground() {
+  return {
+    x: radarConstants.radarInset,
+    y: radarConstants.radarInset,
+    width: radarConstants.radarDiameter,
+    height: radarConstants.radarDiameter,
+    fill: rgba(12, 18, 22, 82),
+    stroke: rgba(0, 232, 255, 88),
+    strokeWidth: 1.2,
+    label: null
+  };
+}
+
+function distanceRing(index) {
+  const inset = radarConstants.radarDiameter * index / 6;
+  const radius = radarConstants.radarDiameter / 2 - inset;
+  return {
+    x: radarConstants.radarInset + inset,
+    y: radarConstants.radarInset + inset,
+    width: radarConstants.radarDiameter - inset * 2,
+    height: radarConstants.radarDiameter - inset * 2,
+    fill: null,
+    stroke: rgba(255, 255, 255, 40),
+    strokeWidth: 1,
+    label: {
+      text: formatRingDistance(radius),
+      x: radarConstants.radarCenter + radius * 0.35,
+      y: radarConstants.radarCenter - radius - 8,
+      width: 58,
+      height: 16,
+      fontSize: 7.5,
+      bold: false,
+      alignment: 'near',
+      color: rgba(220, 230, 236, 118)
+    }
+  };
+}
+
+function formatRingDistance(offsetPixels) {
+  return `${Math.round(distanceForLongitudinalOffset(offsetPixels))}m`;
+}
+
+function distanceForLongitudinalOffset(offsetPixels) {
+  const separatedCenterOffset = Math.min(
+    radarConstants.usableRadarRadius,
+    radarConstants.focusedCarHeight / 2 + radarConstants.radarCarHeight / 2 + radarConstants.separatedCarPaddingPixels);
+  const absOffset = Math.max(0, Math.min(radarConstants.usableRadarRadius, Math.abs(offsetPixels)));
+  if (absOffset <= separatedCenterOffset) {
+    return radarConstants.contactWindowMeters * absOffset / Math.max(0.001, separatedCenterOffset);
+  }
+
+  return radarConstants.contactWindowMeters
+    + (absOffset - separatedCenterOffset) / radarConstants.distinctRowPixelsPerMeter;
+}
+
+function uniqueRadarCars(cars) {
+  const byCar = new Map();
+  for (const car of cars) {
+    const current = byCar.get(car.carIdx);
+    if (!current || Math.abs(rangeRatio(car)) < Math.abs(rangeRatio(current))) {
+      byCar.set(car.carIdx, car);
+    }
+  }
+  return [...byCar.values()];
+}
+
+function sideWarningAttachments(hasCarLeft, hasCarRight, cars) {
+  const used = new Set();
+  const left = hasCarLeft ? selectSideAttachment(cars, used) : null;
+  if (left) used.add(left.carIdx);
+  const right = hasCarRight ? selectSideAttachment(cars, used) : null;
+  return { left, right };
+}
+
+function selectSideAttachment(cars, used) {
+  return cars
+    .filter((car) => !used.has(car.carIdx) && isSideAttachmentCandidate(car))
+    .sort((a, b) => Math.abs(rangeRatio(a)) - Math.abs(rangeRatio(b)) || a.carIdx - b.carIdx)[0] || null;
+}
+
+function isSideAttachmentCandidate(car) {
+  return isInRadarRange(car)
+    && Number.isFinite(car.relativeMeters)
+    && Math.abs(car.relativeMeters) <= radarConstants.sideAttachmentWindowMeters;
+}
+
+function radarCarPlacements(cars, sideAttachments) {
+  const usableRadius = radarConstants.usableRadarRadius;
+  const visibleCars = cars
+    .filter((car) => car.carIdx !== sideAttachments.left?.carIdx && car.carIdx !== sideAttachments.right?.carIdx)
+    .sort((a, b) => Math.abs(rangeRatio(a)) - Math.abs(rangeRatio(b)))
+    .slice(0, radarConstants.maxWideRowRadarCars);
+  const candidates = visibleCars.map((car, index) => {
+    const offset = longitudinalOffset(car, usableRadius);
+    return {
+      car,
+      sourceIndex: index,
+      idealOffset: offset,
+      longitudinalMeters: Number.isFinite(car.relativeMeters) ? car.relativeMeters : null,
+      direction: placementDirection(car, index, offset)
+    };
+  });
+  const rows = [];
+  for (const candidate of candidates.sort((a, b) => a.idealOffset - b.idealOffset)) {
+    const row = rows.find((entry) => isSameWideRadarRow(entry, candidate));
+    if (row) {
+      row.candidates.push(candidate);
+    } else {
+      rows.push({
+        anchorOffset: candidate.idealOffset,
+        anchorMeters: candidate.longitudinalMeters,
+        direction: candidate.direction,
+        candidates: [candidate]
+      });
+    }
+  }
+  return rows.flatMap((row) => placementsForRow(row, usableRadius));
+}
+
+function isSameWideRadarRow(row, candidate) {
+  if (Math.abs(row.direction - candidate.direction) > 0.001) return false;
+  if (Number.isFinite(row.anchorMeters) && Number.isFinite(candidate.longitudinalMeters)) {
+    return Math.abs(row.anchorMeters - candidate.longitudinalMeters) <= radarConstants.wideRowLongitudinalBucketMeters;
+  }
+  return Math.abs(row.anchorOffset - candidate.idealOffset) <= radarConstants.wideRowBucketPixels;
+}
+
+function placementsForRow(row, usableRadius) {
+  if (!row.candidates.length) return [];
+  const rowOffset = row.candidates.reduce((sum, candidate) => sum + candidate.idealOffset, 0) / row.candidates.length;
+  const clampedRowMagnitude = Math.min(Math.abs(rowOffset), usableRadius);
+  const availableHalfWidth = Math.sqrt(Math.max(0, usableRadius * usableRadius - clampedRowMagnitude * clampedRowMagnitude));
+  const maxCenterOffset = Math.max(0, availableHalfWidth - radarConstants.radarCarWidth / 2 - 4);
+  const minimumSlots = row.candidates.length > 1 ? 2 : 1;
+  const maxSlots = Math.max(minimumSlots, Math.floor(maxCenterOffset * 2 / radarConstants.wideRowSlotPitchPixels) + 1);
+  const visibleCandidates = row.candidates
+    .sort((a, b) => a.sourceIndex - b.sourceIndex || a.car.carIdx - b.car.carIdx)
+    .slice(0, maxSlots);
+  const xOffsets = focusOverlappingRow(rowOffset)
+    ? focusAvoidingXOffsets(visibleCandidates.length, maxCenterOffset)
+    : centeredXOffsets(visibleCandidates.length);
+  return visibleCandidates.slice(0, xOffsets.length).map((candidate, slotIndex) => {
+    return {
+      car: candidate.car,
+      x: radarConstants.radarCenter + xOffsets[slotIndex] - radarConstants.radarCarWidth / 2,
+      y: radarConstants.radarCenter - rowOffset - radarConstants.radarCarHeight / 2,
+      offset: rowOffset
+    };
+  });
+}
+
+function centeredXOffsets(count) {
+  const lineWidth = radarConstants.wideRowSlotPitchPixels * Math.max(0, count - 1);
+  return Array.from({ length: count }, (_, index) => index * radarConstants.wideRowSlotPitchPixels - lineWidth / 2);
+}
+
+function focusOverlappingRow(rowOffset) {
+  const verticalSeparation = radarConstants.focusedCarHeight / 2 + radarConstants.radarCarHeight / 2 + 4;
+  return Math.abs(rowOffset) < verticalSeparation;
+}
+
+function focusAvoidingXOffsets(count, maxCenterOffset) {
+  const minimumOffset = radarConstants.focusedCarWidth / 2 + radarConstants.radarCarWidth / 2 + 22;
+  if (maxCenterOffset < minimumOffset) {
+    return centeredXOffsets(count);
+  }
+
+  const offsets = [];
+  const signs = count === 1 ? [1] : [-1, 1];
+  for (let lane = 0; offsets.length < count; lane += 1) {
+    for (const sign of signs) {
+      const offset = sign * (minimumOffset + lane * radarConstants.wideRowSlotPitchPixels);
+      if (Math.abs(offset) <= maxCenterOffset) {
+        offsets.push(offset);
+      }
+      if (offsets.length >= count) break;
+    }
+    if (minimumOffset + lane * radarConstants.wideRowSlotPitchPixels > maxCenterOffset + radarConstants.wideRowSlotPitchPixels) break;
+  }
+  return offsets.length ? offsets : centeredXOffsets(count);
+}
+
+function nearbyCarRectangle(placement) {
+  const visualAlpha = radarEntryOpacity(placement.car);
+  return {
+    kind: 'nearby',
+    carIdx: placement.car.carIdx,
+    x: placement.x,
+    y: placement.y,
+    width: radarConstants.radarCarWidth,
+    height: radarConstants.radarCarHeight,
+    radius: radarConstants.carCornerRadius,
+    fill: proximityColor(proximityTint(placement.car), visualAlpha),
+    stroke: classBorderColor(placement.car.carClassColorHex, visualAlpha),
+    strokeWidth: 2
+  };
+}
+
+function sideWarningRectangles(hasCarLeft, hasCarRight, sideAttachments) {
+  const rectangles = [];
+  const usableRadius = radarConstants.usableRadarRadius;
+  if (hasCarLeft) {
+    rectangles.push(sideWarningRectangle('left', radarConstants.radarCenter - 42, sideWarningCenterY(usableRadius, sideAttachments.left), sideAttachments.left));
+  }
+  if (hasCarRight) {
+    rectangles.push(sideWarningRectangle('right', radarConstants.radarCenter + 42, sideWarningCenterY(usableRadius, sideAttachments.right), sideAttachments.right));
+  }
+  return rectangles;
+}
+
+function sideWarningRectangle(side, centerX, centerY, attachment) {
+  const fillAlpha = attachment ? 245 : 238;
+  return {
+    kind: `side-${side}`,
+    carIdx: attachment?.carIdx ?? null,
+    x: centerX - radarConstants.radarCarWidth / 2,
+    y: centerY - radarConstants.radarCarHeight / 2,
+    width: radarConstants.radarCarWidth,
+    height: radarConstants.radarCarHeight,
+    radius: radarConstants.carCornerRadius,
+    fill: rgba(236, 112, 99, fillAlpha),
+    stroke: classBorderColor(attachment?.carClassColorHex, fillAlpha / 255),
+    strokeWidth: 2
+  };
+}
+
+function sideWarningCenterY(usableRadius, car) {
+  if (!car) return radarConstants.radarCenter;
+  const maximumBias = radarConstants.focusedCarHeight * 0.55;
+  const offset = Math.max(-maximumBias, Math.min(maximumBias, longitudinalOffset(car, usableRadius)));
+  return radarConstants.radarCenter - offset;
+}
+
+function playerCarRectangle(referenceCarClassColorHex) {
+  return {
+    kind: 'focus',
+    carIdx: null,
+    x: radarConstants.radarCenter - radarConstants.focusedCarWidth / 2,
+    y: radarConstants.radarCenter - radarConstants.focusedCarHeight / 2,
+    width: radarConstants.focusedCarWidth,
+    height: radarConstants.focusedCarHeight,
+    radius: radarConstants.carCornerRadius,
+    fill: rgba(255, 255, 255, 240),
+    stroke: classBorderColor(referenceCarClassColorHex, 1),
+    strokeWidth: 2
+  };
+}
+
+function multiclassApproachArc(approach) {
+  const urgency = Math.max(0, Math.min(1, Number.isFinite(approach.urgency) ? approach.urgency : 0));
+  const alpha = Math.round(120 + urgency * 110);
+  return {
+    x: radarConstants.radarInset + 4,
+    y: radarConstants.radarInset + 4,
+    width: radarConstants.radarDiameter - 8,
+    height: radarConstants.radarDiameter - 8,
+    startDegrees: radarConstants.multiclassWarningArcStartDegrees,
+    sweepDegrees: radarConstants.multiclassWarningArcSweepDegrees,
+    strokeWidth: 5,
+    stroke: rgba(236, 112, 99, alpha),
+    label: {
+      text: Number.isFinite(approach.relativeSeconds)
+        ? `Faster class approaching ${Math.abs(approach.relativeSeconds).toFixed(1)}s`
+        : 'Faster class approaching',
+      x: radarConstants.radarInset + 28,
+      y: radarConstants.radarInset + radarConstants.radarDiameter - 48,
+      width: radarConstants.radarDiameter - 56,
+      height: 18,
+      fontSize: 9,
+      bold: true,
+      alignment: 'center',
+      color: rgba(255, 225, 220, alpha)
+    }
+  };
+}
+
+function longitudinalOffset(car, usableRadius) {
+  if (Number.isFinite(car.relativeMeters)) {
+    return longitudinalOffsetFromDistance(placementMeters(car.relativeMeters), usableRadius);
+  }
+  return Math.sign(car.relativeLaps || 0) * usableRadius;
+}
+
+function longitudinalOffsetFromDistance(meters, usableRadius) {
+  const sign = Math.sign(meters);
+  if (sign === 0) return 0;
+  const absMeters = Math.abs(meters);
+  const separatedCenterOffset = Math.min(
+    usableRadius,
+    radarConstants.focusedCarHeight / 2 + radarConstants.radarCarHeight / 2 + radarConstants.separatedCarPaddingPixels);
+  if (absMeters <= radarConstants.contactWindowMeters) {
+    return sign * (absMeters / radarConstants.contactWindowMeters) * separatedCenterOffset;
+  }
+  const rowAwareOffset = separatedCenterOffset
+    + (absMeters - radarConstants.contactWindowMeters) * radarConstants.distinctRowPixelsPerMeter;
+  return sign * rowAwareOffset;
+}
+
+function placementDirection(car, index, idealOffset) {
+  if (idealOffset < 0) return -1;
+  if (idealOffset > 0) return 1;
+  if (Math.abs(car.relativeLaps || 0) > 0.0001) return car.relativeLaps < 0 ? -1 : 1;
+  return index % 2 === 0 ? 1 : -1;
+}
+
+function rangeRatio(car) {
+  if (Number.isFinite(car.relativeMeters)) {
+    return Math.max(-1, Math.min(1, car.relativeMeters / visualRadarRangeMeters(car)));
+  }
+  return Math.sign(car.relativeLaps || 0);
+}
+
+function isInRadarRange(car) {
+  return Number.isFinite(car?.relativeMeters) && Math.abs(car.relativeMeters) <= visualRadarRangeMeters(car);
+}
+
+function proximityColor(proximityTintValue, visualAlpha) {
+  const normalized = Math.max(0, Math.min(1, proximityTintValue));
+  const alpha = scaleAlpha(238, visualAlpha);
+  if (normalized <= 0) return rgba(255, 255, 255, alpha);
+  if (normalized < radarConstants.proximityRedStart) {
+    const yellowMix = smoothStep(0, radarConstants.proximityRedStart, normalized);
+    return rgba(lerp(255, 255, yellowMix), lerp(255, 220, yellowMix), lerp(255, 66, yellowMix), alpha);
+  }
+  const redMix = smoothStep(radarConstants.proximityRedStart, 1, normalized);
+  return rgba(lerp(255, 255, redMix), lerp(220, 24, redMix), lerp(66, 16, redMix), alpha);
+}
+
+function proximityTint(car) {
+  return Number.isFinite(car.relativeMeters) ? bumperGapProximity(Math.abs(car.relativeMeters)) : 0;
+}
+
+function radarEntryOpacity(car) {
+  if (!Number.isFinite(car.relativeMeters)) return 0;
+  const physicalOpacity = opacityBetweenRangeEdgeAndWarningStart(
+    Math.abs(car.relativeMeters),
+    radarConstants.contactWindowMeters + radarConstants.proximityWarningGapMeters,
+    radarConstants.radarRangeMeters);
+  const timingAwareOpacity = timingAwareEntryOpacity(
+    Math.abs(car.relativeMeters),
+    visualRadarRangeMeters(car));
+  return Math.max(physicalOpacity, timingAwareOpacity);
+}
+
+function timingAwareEntryOpacity(absoluteMeters, visualRangeMeters) {
+  if (visualRangeMeters <= radarConstants.radarRangeMeters || absoluteMeters >= visualRangeMeters) return 0;
+  if (absoluteMeters <= radarConstants.radarRangeMeters) return radarConstants.timingAwareEdgeOpacity;
+  const normalized = 1 - Math.max(
+    0,
+    Math.min(1, (absoluteMeters - radarConstants.radarRangeMeters) / Math.max(0.001, visualRangeMeters - radarConstants.radarRangeMeters)));
+  return radarConstants.timingAwareEdgeOpacity * smoothStep(0, 1, normalized);
+}
+
+function placementMeters(meters) {
+  return Math.sign(meters) * Math.min(Math.abs(meters), radarConstants.radarRangeMeters);
+}
+
+function visualRadarRangeMeters(car) {
+  const range = radarConstants.radarRangeMeters;
+  if (!Number.isFinite(car?.relativeMeters) || !Number.isFinite(car?.relativeSeconds)) return range;
+  const absMeters = Math.abs(car.relativeMeters);
+  const absSeconds = Math.abs(car.relativeSeconds);
+  if (absMeters <= range || absSeconds <= 0.05) return range;
+  const inferredMetersPerSecond = absMeters / absSeconds;
+  if (!Number.isFinite(inferredMetersPerSecond) || inferredMetersPerSecond <= 0) return range;
+  const timingAwareRange = inferredMetersPerSecond * radarConstants.timingAwareVisibilitySeconds;
+  return Math.max(
+    range,
+    Math.min(radarConstants.maximumTimingAwareRangeMeters, timingAwareRange));
+}
+
+function opacityBetweenRangeEdgeAndWarningStart(absoluteValue, warningStart, radarRange) {
+  if (absoluteValue <= warningStart) return 1;
+  if (radarRange <= warningStart) return absoluteValue <= radarRange ? 1 : 0;
+  const normalized = 1 - Math.max(0, Math.min(1, (absoluteValue - warningStart) / (radarRange - warningStart)));
+  return smoothStep(0, 1, normalized);
+}
+
+function bumperGapProximity(centerDistanceMeters) {
+  return 1 - Math.max(0, Math.min(1, (centerDistanceMeters - radarConstants.focusedCarLengthMeters) / radarConstants.proximityWarningGapMeters));
+}
+
+function scaleAlpha(alpha, multiplier) {
+  return Math.round(Math.max(0, Math.min(255, alpha * multiplier)));
+}
+
+function classBorderColor(colorHex, visualAlpha) {
+  const parsed = parseHexColor(colorHex);
+  const alpha = scaleAlpha(245, visualAlpha);
+  return parsed
+    ? rgba(parsed.red, parsed.green, parsed.blue, alpha)
+    : rgba(255, 255, 255, alpha);
+}
+
+function parseHexColor(value) {
+  if (typeof value !== 'string') return null;
+  const token = value.trim().replace(/^#/, '');
+  if (!/^[0-9a-fA-F]{6}$/.test(token)) return null;
+  return {
+    red: Number.parseInt(token.slice(0, 2), 16),
+    green: Number.parseInt(token.slice(2, 4), 16),
+    blue: Number.parseInt(token.slice(4, 6), 16)
+  };
+}
+
+function smoothStep(edge0, edge1, value) {
+  const ratio = Math.max(0, Math.min(1, (value - edge0) / (edge1 - edge0)));
+  return ratio * ratio * (3 - 2 * ratio);
+}
+
+function lerp(start, end, ratio) {
+  return Math.round(start + (end - start) * ratio);
+}
+
+function rgba(red, green, blue, alpha) {
+  return { red, green, blue, alpha };
 }
 
 function trackMapDisplayModel(page, live, settings) {

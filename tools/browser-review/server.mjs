@@ -6,6 +6,7 @@ import {
   browserOverlayApiResponse,
   browserOverlayPage,
   browserOverlayPages,
+  carRadarRenderModelFromState,
   freshLiveSnapshot,
   renderOverlayHtml,
   renderOverlayIndexHtml,
@@ -23,6 +24,7 @@ const productionOverlayModelIds = new Set([
   'session-weather',
   'pit-service',
   'input-state',
+  'car-radar',
   'gap-to-leader'
 ]);
 let reloadTimer = null;
@@ -395,6 +397,8 @@ function reviewDisplayModel(overlayId, previewMode = 'off') {
       ]);
     case 'input-state':
       return inputStateModel(previewLabel);
+    case 'car-radar':
+      return carRadarModel(previewLabel);
     case 'gap-to-leader':
       return {
         overlayId,
@@ -411,6 +415,40 @@ function reviewDisplayModel(overlayId, previewMode = 'off') {
     default:
       return tableModel(overlayId, browserOverlayPage(overlayId).title, `live | ${previewLabel}`, []);
   }
+}
+
+function carRadarModel(previewLabel = 'review fixture') {
+  const carRadar = {
+    isAvailable: true,
+    hasCarLeft: true,
+    hasCarRight: false,
+    cars: [
+      { carIdx: 12, relativeSeconds: -1.2, relativeMeters: -8, carClassColorHex: '#FFDA59' },
+      { carIdx: 14, relativeSeconds: 1.7, relativeMeters: 12, carClassColorHex: '#33CEFF' }
+    ],
+    strongestMulticlassApproach: { relativeSeconds: -2.8, urgency: 0.7 },
+    showMulticlassWarning: true,
+    previewVisible: false,
+    hasCurrentSignal: true,
+    referenceCarClassColorHex: '#FFDA59'
+  };
+
+  return {
+    overlayId: 'car-radar',
+    title: 'Car Radar',
+    status: `car left | ${previewLabel}`,
+    source: 'source: review fixture',
+    bodyKind: 'car-radar',
+    columns: [],
+    rows: [],
+    metrics: [],
+    points: [],
+    headerItems: [{ key: 'status', value: 'car left' }],
+    carRadar: {
+      ...carRadar,
+      renderModel: carRadarRenderModelFromState(carRadar)
+    }
+  };
 }
 
 function relativeDisplayModel(previewLabel = 'review fixture') {

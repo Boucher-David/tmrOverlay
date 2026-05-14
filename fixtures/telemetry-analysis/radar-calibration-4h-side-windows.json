@@ -1,0 +1,25 @@
+{
+  "sourceCaptureId": "capture-20260426-130334-932",
+  "sourceDescription": "4-hour Nurburgring team-race raw capture; compact clean CarLeftRight windows derived from telemetry.bin.",
+  "tickRateHz": 60,
+  "rawSideWindowCount": 35,
+  "cleanSideWindowCount": 13,
+  "expectedMeanSeconds": 0.6192307692307693,
+  "expectedMinimumSeconds": 0.08333333333333333,
+  "expectedMaximumSeconds": 1.1,
+  "cleanSideWindows": [
+    { "sourceFrameIndex": 20791, "sourceSessionTimeSeconds": 454.817, "carLeftRight": 3, "deltaCount": 63 },
+    { "sourceFrameIndex": 156279, "sourceSessionTimeSeconds": 280.917, "carLeftRight": 2, "deltaCount": 6 },
+    { "sourceFrameIndex": 156838, "sourceSessionTimeSeconds": 290.233, "carLeftRight": 2, "deltaCount": 65 },
+    { "sourceFrameIndex": 156923, "sourceSessionTimeSeconds": 291.650, "carLeftRight": 3, "deltaCount": 6 },
+    { "sourceFrameIndex": 157046, "sourceSessionTimeSeconds": 293.700, "carLeftRight": 3, "deltaCount": 5 },
+    { "sourceFrameIndex": 157132, "sourceSessionTimeSeconds": 295.133, "carLeftRight": 3, "deltaCount": 21 },
+    { "sourceFrameIndex": 157154, "sourceSessionTimeSeconds": 295.500, "carLeftRight": 6, "deltaCount": 61 },
+    { "sourceFrameIndex": 157309, "sourceSessionTimeSeconds": 298.083, "carLeftRight": 3, "deltaCount": 25 },
+    { "sourceFrameIndex": 158193, "sourceSessionTimeSeconds": 312.817, "carLeftRight": 3, "deltaCount": 56 },
+    { "sourceFrameIndex": 184669, "sourceSessionTimeSeconds": 754.083, "carLeftRight": 2, "deltaCount": 16 },
+    { "sourceFrameIndex": 213913, "sourceSessionTimeSeconds": 1241.483, "carLeftRight": 3, "deltaCount": 63 },
+    { "sourceFrameIndex": 640593, "sourceSessionTimeSeconds": 8352.833, "carLeftRight": 2, "deltaCount": 30 },
+    { "sourceFrameIndex": 781340, "sourceSessionTimeSeconds": 10698.617, "carLeftRight": 3, "deltaCount": 66 }
+  ]
+}

@@ -67,6 +67,9 @@ internal sealed class BrowserOverlayModelFactory
     private HistoricalComboIdentity? _cachedHistoryCombo;
     private SessionHistoryLookupResult? _cachedHistory;
     private DateTimeOffset _cachedHistoryAtUtc;
+    private string? _cachedRadarCalibrationCarKey;
+    private CarRadarCalibrationLookupResult? _cachedRadarCalibration;
+    private DateTimeOffset _cachedRadarCalibrationAtUtc;
     private BrowserGapReferenceContext? _lastGapReferenceContext;
     private long? _lastGapSequence;
     private double? _latestGapAxisSeconds;
@@ -443,17 +446,19 @@ internal sealed class BrowserOverlayModelFactory
             Graph: graph);
     }
 
-    private static BrowserOverlayDisplayModel BuildCarRadar(
+    private BrowserOverlayDisplayModel BuildCarRadar(
         LiveTelemetrySnapshot snapshot,
         ApplicationSettings settings,
         DateTimeOffset now)
     {
         var overlay = FindOverlay(settings, CarRadarOverlayDefinition.Definition.Id);
+        var calibration = CarRadarCalibrationProfile.FromHistory(LookupCarRadarCalibration(snapshot.Models.Session.Combo));
         var viewModel = CarRadarOverlayViewModel.From(
             snapshot,
             now,
             previewVisible: false,
-            overlay?.GetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true) ?? true);
+            overlay?.GetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true) ?? true,
+            calibration);
         var headerItems = HeaderItems(overlay, snapshot, viewModel.Status);
         return new BrowserOverlayDisplayModel(
             CarRadarOverlayDefinition.Definition.Id,
@@ -474,7 +479,8 @@ internal sealed class BrowserOverlayModelFactory
                 viewModel.StrongestMulticlassApproach,
                 viewModel.ShowMulticlassWarning,
                 viewModel.PreviewVisible,
-                viewModel.HasCurrentSignal));
+                viewModel.HasCurrentSignal,
+                CarRadarRenderModel.FromViewModel(viewModel, calibration)));
     }
 
     private BrowserOverlayDisplayModel BuildInputState(
@@ -2071,6 +2077,22 @@ internal sealed class BrowserOverlayModelFactory
         return _cachedHistory;
     }
 
+    private CarRadarCalibrationLookupResult LookupCarRadarCalibration(HistoricalComboIdentity combo)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (_cachedRadarCalibration is not null
+            && string.Equals(_cachedRadarCalibrationCarKey, combo.CarKey, StringComparison.Ordinal)
+            && now - _cachedRadarCalibrationAtUtc <= TimeSpan.FromSeconds(30))
+        {
+            return _cachedRadarCalibration;
+        }
+
+        _cachedRadarCalibration = _historyQueryService.LookupCarRadarCalibration(combo);
+        _cachedRadarCalibrationCarKey = combo.CarKey;
+        _cachedRadarCalibrationAtUtc = now;
+        return _cachedRadarCalibration;
+    }
+
     private static OverlaySettings? FindOverlay(ApplicationSettings settings, string overlayId)
     {
         return settings.Overlays.FirstOrDefault(
@@ -2266,7 +2288,8 @@ internal sealed record BrowserCarRadarModel(
     LiveMulticlassApproach? StrongestMulticlassApproach,
     bool ShowMulticlassWarning,
     bool PreviewVisible,
-    bool HasCurrentSignal);
+    bool HasCurrentSignal,
+    CarRadarRenderModel RenderModel);
 
 internal sealed record BrowserTrackMapModel(
     IReadOnlyList<TrackMapOverlayMarker> Markers,

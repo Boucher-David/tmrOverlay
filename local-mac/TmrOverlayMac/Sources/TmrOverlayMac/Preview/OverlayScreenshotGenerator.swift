@@ -551,6 +551,7 @@ public enum OverlayScreenshotGenerator {
             hasData: true,
             carLeftRight: 4,
             referenceCarClass: 4098,
+            referenceCarClassColorHex: "#FFDA59",
             sideStatus: "both sides",
             hasCarLeft: true,
             hasCarRight: true,
@@ -609,7 +610,7 @@ public enum OverlayScreenshotGenerator {
                     image: try renderImage(sidePressureView)
                 ),
                 ContactSheetState(
-                    title: "3. Multiclass approaching",
+                    title: "3. Faster class approaching",
                     note: "Faster other-class traffic outside the close radar range.",
                     fileName: "multiclass-approaching.png",
                     image: try renderImage(multiclassView)

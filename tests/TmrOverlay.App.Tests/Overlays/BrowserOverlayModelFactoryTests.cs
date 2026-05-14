@@ -1,6 +1,8 @@
+using System.Text.Json;
 using TmrOverlay.App.History;
 using TmrOverlay.App.Overlays.BrowserSources;
 using TmrOverlay.App.Overlays.PitService;
+using TmrOverlay.Core.History;
 using TmrOverlay.Core.Settings;
 using TmrOverlay.Core.Telemetry.Live;
 using Xunit;
@@ -9,6 +11,11 @@ namespace TmrOverlay.App.Tests.Overlays;
 
 public sealed class BrowserOverlayModelFactoryTests
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
     [Fact]
     public void ProductionBrowserPage_DoesNotForwardReviewSpoofQueryParameters()
     {
@@ -18,6 +25,104 @@ public sealed class BrowserOverlayModelFactoryTests
         Assert.DoesNotContain("forwardQueryParameters", html, StringComparison.Ordinal);
         Assert.DoesNotContain("pitService=all", html, StringComparison.Ordinal);
         Assert.DoesNotContain("spoofFocus", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CarRadarModel_UsesTrustedHistoryCalibrationForBrowserRenderModel()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "tmr-browser-radar-history-test", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var combo = new HistoricalComboIdentity
+            {
+                CarKey = "car-test",
+                TrackKey = "track-test",
+                SessionKey = "race"
+            };
+            var aggregate = new HistoricalCarRadarCalibrationAggregate
+            {
+                CarKey = combo.CarKey,
+                SessionCount = 1
+            };
+            aggregate.RadarCalibration.EstimatedBodyLengthMeters.Add(4.8d);
+            aggregate.RadarCalibration.EstimatedBodyLengthMeters.Add(4.7d);
+            aggregate.RadarCalibration.EstimatedBodyLengthMeters.Add(4.76d);
+            WriteCarRadarCalibration(root, combo, aggregate);
+
+            var factory = new BrowserOverlayModelFactory(new SessionHistoryQueryService(new SessionHistoryOptions
+            {
+                Enabled = true,
+                ResolvedUserHistoryRoot = root,
+                ResolvedBaselineHistoryRoot = Path.Combine(root, "baseline")
+            }));
+            var now = DateTimeOffset.Parse("2026-05-13T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
+            var edgeCar = new LiveSpatialCar(
+                CarIdx: 58,
+                Quality: LiveModelQuality.Reliable,
+                PlacementEvidence: LiveSignalEvidence.Reliable("test"),
+                RelativeLaps: 28.65d / 5100d,
+                RelativeSeconds: 1.1d,
+                RelativeMeters: 28.65d,
+                OverallPosition: null,
+                ClassPosition: null,
+                CarClass: 4098,
+                TrackSurface: 3,
+                OnPitRoad: false,
+                CarClassColorHex: "#FFDA59");
+            var snapshot = LiveTelemetrySnapshot.Empty with
+            {
+                IsConnected = true,
+                IsCollecting = true,
+                LastUpdatedAtUtc = now,
+                Sequence = 1,
+                Models = LiveRaceModels.Empty with
+                {
+                    Session = LiveSessionModel.Empty with
+                    {
+                        HasData = true,
+                        Quality = LiveModelQuality.Reliable,
+                        Combo = combo,
+                        SessionType = "Race"
+                    },
+                    DriverDirectory = LiveDriverDirectoryModel.Empty with
+                    {
+                        HasData = true,
+                        Quality = LiveModelQuality.Reliable,
+                        PlayerCarIdx = 10,
+                        FocusCarIdx = 10
+                    },
+                    RaceEvents = LiveRaceEventModel.Empty with
+                    {
+                        HasData = true,
+                        Quality = LiveModelQuality.Reliable,
+                        IsOnTrack = true
+                    },
+                    Spatial = LiveSpatialModel.Empty with
+                    {
+                        HasData = true,
+                        Quality = LiveModelQuality.Reliable,
+                        ReferenceCarIdx = 10,
+                        ReferenceCarClass = 4098,
+                        Cars = [edgeCar]
+                    }
+                }
+            };
+
+            var built = factory.TryBuild("car-radar", snapshot, new ApplicationSettings(), now, out var response);
+
+            Assert.True(built);
+            Assert.NotNull(response.Model.CarRadar);
+            Assert.Contains(
+                response.Model.CarRadar.RenderModel.Cars,
+                car => car.Kind == "nearby" && car.CarIdx == edgeCar.CarIdx);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
     }
 
     [Fact]
@@ -295,5 +400,20 @@ public sealed class BrowserOverlayModelFactoryTests
             DeltaSecondsToFocus: deltaSeconds,
             TrackSurface: null,
             OnPitRoad: false);
+    }
+
+    private static void WriteCarRadarCalibration(
+        string root,
+        HistoricalComboIdentity combo,
+        HistoricalCarRadarCalibrationAggregate aggregate)
+    {
+        var path = Path.Combine(
+            root,
+            "cars",
+            combo.CarKey,
+            "radar-calibration.json");
+
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, JsonSerializer.Serialize(aggregate, JsonOptions));
     }
 }

@@ -104,11 +104,11 @@ public sealed class BrowserOverlayPageRendererTests
         if (expectedId == "car-radar")
         {
             Assert.Contains("radar-v2", html);
-            Assert.Contains("const radarModel = window.TmrBrowserModel", html);
-            Assert.Contains("radarModel.spatial(live)", html);
-            Assert.Contains("radarModel.hasRelativePlacement", html);
+            Assert.Contains("fetchOverlayModel('car-radar')", html);
+            Assert.Contains("renderModel", html);
+            Assert.Contains("arcPath", html);
             Assert.Contains("body.car-radar-page .overlay", html);
-            Assert.Contains("classColorCss(car.carClassColorHex)", html);
+            Assert.DoesNotContain("classColorCss(car.carClassColorHex)", html);
         }
         if (expectedId == "session-weather")
         {

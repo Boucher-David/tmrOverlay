@@ -175,8 +175,8 @@ internal sealed record LiveProximitySnapshot(
             RelativeMeters: trackLengthMeters is { } meters && IsPositiveFinite(meters)
                 ? relativeLaps * meters
                 : null,
-            OverallPosition: car.Position,
-            ClassPosition: car.ClassPosition,
+            OverallPosition: car.Position is > 0 ? car.Position : null,
+            ClassPosition: car.ClassPosition is > 0 ? car.ClassPosition : null,
             CarClass: car.CarClass,
             TrackSurface: car.TrackSurface,
             OnPitRoad: car.OnPitRoad,

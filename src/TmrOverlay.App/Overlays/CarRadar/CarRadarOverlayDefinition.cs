@@ -13,7 +13,7 @@ internal static class CarRadarOverlayDefinition
         [
             OverlaySettingsOptionDescriptor.Boolean(
                 OverlayOptionKeys.RadarMulticlassWarning,
-                "Show multiclass warning",
+                "Show faster-class warning",
                 defaultValue: true)
         ],
         ShowOpacityControl: false,

@@ -179,5 +179,6 @@ May 2026 uploaded-data pass:
 - `captures/IBT` contained 876 parseable `.ibt` files totaling about 21.4 GiB.
 - All parsed files contained local-position fields such as `Lat`, `Lon`, and `Alt`.
 - None of the parsed files contained the live opponent/timing arrays used by current overlays, including `CarIdxLapDistPct`, `CarIdxF2Time`, `CarIdxEstTime`, `CarIdxPosition`, `CarIdxClassPosition`, `CarIdxOnPitRoad`, or `CarLeftRight`.
+- A local search across the IBT inventory and representative `strings` output did not find car dimension metadata such as `CarLength`, `CarWidth`, `Wheelbase`, body length, or vehicle dimensions. IBT can identify the car by `CarID`/`CarPath`, but radar body-size calibration still needs a curated external metadata table or another proven source for physical dimensions.
 - Treat IBT as a strong local-car post-race enrichment source, especially for trajectory, fuel-level, tire, wheel, ride-height, and vehicle-dynamics analysis. Do not treat it as a replacement for raw/live capture when the analysis needs opponent timing, side occupancy, camera focus, team/focus `CarIdx`, or standings context.
 - The repo keeps compact examples under `fixtures/telemetry-analysis/`. Do not commit raw `.ibt` files or raw `telemetry.bin` captures; commit derived example JSON when a new signal assumption needs to be preserved.

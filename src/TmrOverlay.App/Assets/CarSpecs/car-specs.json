@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "generatedAtUtc": "2026-05-13T00:00:00Z",
+  "cars": [
+    {
+      "carId": 156,
+      "carPath": "mercedesamgevogt3",
+      "displayName": "Mercedes-AMG GT3 2020",
+      "carKeys": [
+        "car-156-mercedesamgevogt3"
+      ],
+      "bodyLengthMeters": 4.746,
+      "confidence": "exact",
+      "source": "manufacturer-spec",
+      "sourceNote": "Mercedes-AMG GT3 listed length: 4746 mm."
+    },
+    {
+      "carId": 169,
+      "carPath": "porsche992rgt3",
+      "displayName": "Porsche 911 GT3 R (992)",
+      "carKeys": [
+        "car-169-porsche992rgt3"
+      ],
+      "bodyLengthMeters": 4.619,
+      "confidence": "exact",
+      "source": "manufacturer-spec",
+      "sourceNote": "Porsche 911 GT3 R type 992 listed length: 4619 mm."
+    },
+    {
+      "carId": 132,
+      "carPath": "bmwm4gt3",
+      "displayName": "BMW M4 GT3 EVO",
+      "carKeys": [
+        "car-132-bmwm4gt3"
+      ],
+      "bodyLengthMeters": 5.020,
+      "confidence": "exact",
+      "source": "manufacturer-spec",
+      "sourceNote": "BMW M4 GT3 listed length: 5020 mm."
+    },
+    {
+      "carId": 173,
+      "carPath": "ferrari296gt3",
+      "displayName": "Ferrari 296 GT3",
+      "carKeys": [
+        "car-173-ferrari296gt3"
+      ],
+      "bodyLengthMeters": 4.565,
+      "confidence": "exact",
+      "source": "technical-spec",
+      "sourceNote": "Ferrari 296 GT3 listed length: 4565 mm."
+    },
+    {
+      "carId": 206,
+      "carPath": "amvantageevogt3",
+      "displayName": "Aston Martin Vantage GT3 EVO",
+      "carKeys": [
+        "car-206-amvantageevogt3"
+      ],
+      "bodyLengthMeters": 4.547,
+      "confidence": "exact",
+      "source": "technical-spec",
+      "sourceNote": "Aston Martin Vantage GT3 EVO listed length: 4547 mm."
+    },
+    {
+      "carId": 208,
+      "carPath": "porsche9922cup",
+      "displayName": "Porsche 911 Cup (992.2)",
+      "carKeys": [
+        "car-208-porsche9922cup"
+      ],
+      "bodyLengthMeters": 4.599,
+      "confidence": "exact",
+      "source": "manufacturer-spec",
+      "sourceNote": "Porsche 911 GT3 Cup type 992.2 listed length: 4599 mm."
+    },
+    {
+      "carId": 185,
+      "carPath": "fordmustanggt3",
+      "displayName": "Ford Mustang GT3",
+      "carKeys": [
+        "car-185-fordmustanggt3"
+      ],
+      "bodyLengthMeters": 4.811,
+      "confidence": "estimate",
+      "source": "road-car-basis-spec",
+      "sourceNote": "Fallback based on the S650 Mustang body length until a GT3-specific published length is added."
+    }
+  ]
+}

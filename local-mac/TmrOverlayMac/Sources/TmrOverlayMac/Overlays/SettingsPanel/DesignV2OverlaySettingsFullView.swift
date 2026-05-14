@@ -893,7 +893,7 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
             title: "Content Display",
             rows: [
                 ContentMatrixRow(label: "Radar proximity", enabled: true),
-                ContentMatrixRow(label: "Multiclass warning", enabled: overlay.showRadarMulticlassWarning)
+                ContentMatrixRow(label: "Faster-class warning", enabled: overlay.showRadarMulticlassWarning)
             ],
             rect: NSRect(x: 306, y: 272, width: 834, height: 150)
         )

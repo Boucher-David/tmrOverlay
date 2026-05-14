@@ -1375,6 +1375,7 @@ internal static class LiveRaceModelBuilder
                     : LiveModelQuality.Unavailable,
             ReferenceCarIdx: referenceCarIdx,
             ReferenceCarClass: proximity.ReferenceCarClass,
+            ReferenceCarClassColorHex: ReferenceCarClassColorHex(context, sample, referenceCarIdx, proximity.ReferenceCarClass),
             CarLeftRight: proximity.CarLeftRight,
             SideStatus: proximity.SideStatus,
             HasCarLeft: proximity.HasCarLeft,
@@ -1391,6 +1392,31 @@ internal static class LiveRaceModelBuilder
                 .MaxBy(car => car.RelativeLaps),
             MulticlassApproaches: proximity.MulticlassApproaches,
             StrongestMulticlassApproach: proximity.StrongestMulticlassApproach);
+    }
+
+    private static string? ReferenceCarClassColorHex(
+        HistoricalSessionContext context,
+        HistoricalTelemetrySample sample,
+        int? referenceCarIdx,
+        int? referenceCarClass)
+    {
+        if (referenceCarIdx is { } carIdx)
+        {
+            var driverColor = context.Drivers
+                .FirstOrDefault(driver => driver.CarIdx == carIdx && !string.IsNullOrWhiteSpace(driver.CarClassColorHex))
+                ?.CarClassColorHex;
+            if (!string.IsNullOrWhiteSpace(driverColor))
+            {
+                return driverColor;
+            }
+        }
+
+        var localClass = referenceCarClass ?? ReferenceCarClass(sample);
+        return localClass is { } carClass
+            ? context.Drivers
+                .FirstOrDefault(driver => driver.CarClassId == carClass && !string.IsNullOrWhiteSpace(driver.CarClassColorHex))
+                ?.CarClassColorHex
+            : null;
     }
 
     private static LiveWeatherModel BuildWeather(HistoricalSessionContext context, HistoricalTelemetrySample sample)

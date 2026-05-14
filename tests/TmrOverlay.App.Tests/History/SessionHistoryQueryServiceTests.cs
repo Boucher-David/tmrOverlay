@@ -152,6 +152,58 @@ public sealed class SessionHistoryQueryServiceTests
         }
     }
 
+    [Fact]
+    public void LookupCarRadarCalibration_IsScopedByCarOnly()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "tmr-history-query-test", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var userRoot = Path.Combine(root, "user");
+            var baselineRoot = Path.Combine(root, "baseline");
+            var sourceCombo = new HistoricalComboIdentity
+            {
+                CarKey = "car-test",
+                TrackKey = "road-atlanta",
+                SessionKey = "race"
+            };
+            var targetCombo = new HistoricalComboIdentity
+            {
+                CarKey = sourceCombo.CarKey,
+                TrackKey = "nurburgring",
+                SessionKey = "practice"
+            };
+            var aggregate = new HistoricalCarRadarCalibrationAggregate
+            {
+                CarKey = sourceCombo.CarKey,
+                SessionCount = 3
+            };
+            aggregate.RadarCalibration.EstimatedBodyLengthMeters.Add(4.8d);
+            aggregate.RadarCalibration.EstimatedBodyLengthMeters.Add(4.7d);
+            aggregate.RadarCalibration.EstimatedBodyLengthMeters.Add(4.76d);
+            WriteCarRadarCalibration(userRoot, sourceCombo, aggregate);
+
+            var service = new SessionHistoryQueryService(new SessionHistoryOptions
+            {
+                Enabled = true,
+                ResolvedUserHistoryRoot = userRoot,
+                ResolvedBaselineHistoryRoot = baselineRoot
+            });
+
+            var result = service.LookupCarRadarCalibration(targetCombo);
+
+            Assert.NotNull(result.UserAggregate);
+            Assert.Equal(sourceCombo.CarKey, result.CarKey);
+            Assert.Equal(4.753d, result.UserAggregate.RadarCalibration.EstimatedBodyLengthMeters.Mean!.Value, precision: 3);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
     private static void WriteAggregate(
         string root,
         HistoricalComboIdentity combo,
@@ -166,6 +218,21 @@ public sealed class SessionHistoryQueryServiceTests
             "sessions",
             combo.SessionKey,
             "aggregate.json");
+
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, JsonSerializer.Serialize(aggregate, JsonOptions));
+    }
+
+    private static void WriteCarRadarCalibration(
+        string root,
+        HistoricalComboIdentity combo,
+        HistoricalCarRadarCalibrationAggregate aggregate)
+    {
+        var path = Path.Combine(
+            root,
+            "cars",
+            combo.CarKey,
+            "radar-calibration.json");
 
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, JsonSerializer.Serialize(aggregate, JsonOptions));

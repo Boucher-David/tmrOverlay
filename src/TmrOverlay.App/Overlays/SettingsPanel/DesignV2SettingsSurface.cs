@@ -1167,7 +1167,7 @@ internal sealed class DesignV2SettingsSurface : Control
                     "Content Display",
                     [
                         new ContentMatrixRow("Radar proximity", true),
-                        new ContentMatrixRow("Multiclass warning", settings.GetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, true))
+                        new ContentMatrixRow("Faster-class warning", settings.GetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, true))
                     ],
                     new Rectangle(306, 272, 834, 150));
                 break;
