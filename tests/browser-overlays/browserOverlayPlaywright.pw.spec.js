@@ -146,12 +146,12 @@ test.describe('browser overlay Playwright integration', () => {
     await expect(page.locator('.input-graph')).toHaveCount(0);
     await expect(page.locator('.overlay')).toHaveClass(/input-rail-only/);
 
-    const overlayBox = await page.locator('.overlay').boundingBox();
-    expect(overlayBox?.width).toBeGreaterThanOrEqual(270);
-    expect(overlayBox?.width).toBeLessThanOrEqual(282);
+    const overlayWidth = await boundingBoxWidth(page.locator('.overlay'));
+    expect(overlayWidth).toBeGreaterThanOrEqual(270);
+    expect(overlayWidth).toBeLessThanOrEqual(282);
 
-    const railBox = await page.locator('.input-rail').boundingBox();
-    expect(railBox?.width).toBeGreaterThan(220);
+    const railWidth = await boundingBoxWidth(page.locator('.input-rail'));
+    expect(railWidth).toBeGreaterThan(220);
   });
 
   test('shrinks input overlay width when only the graph is enabled', async ({ page }) => {
@@ -177,9 +177,9 @@ test.describe('browser overlay Playwright integration', () => {
     await expect(page.locator('.input-rail')).toHaveCount(0);
     await expect(page.locator('.overlay')).toHaveClass(/input-graph-only/);
 
-    const overlayBox = await page.locator('.overlay').boundingBox();
-    expect(overlayBox?.width).toBeGreaterThanOrEqual(374);
-    expect(overlayBox?.width).toBeLessThanOrEqual(386);
+    const overlayWidth = await boundingBoxWidth(page.locator('.overlay'));
+    expect(overlayWidth).toBeGreaterThanOrEqual(374);
+    expect(overlayWidth).toBeLessThanOrEqual(386);
   });
 
   test('renders General settings preview controls without forcing hidden overlays', async ({ page }) => {
@@ -319,6 +319,16 @@ async function installBrowserOverlayRoutes(page, overlayId, fixture) {
   });
 
   return requests;
+}
+
+async function boundingBoxWidth(locator) {
+  let width = 0;
+  await expect.poll(async () => {
+    const box = await locator.boundingBox();
+    width = box?.width ?? 0;
+    return width;
+  }, { timeout: 3500 }).toBeGreaterThan(0);
+  return width;
 }
 
 function resolveLiveFixture(live, path, frameIndex) {

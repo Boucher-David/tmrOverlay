@@ -2239,7 +2239,8 @@ QualifyResultsInfo:
         var inputs = store.Snapshot().Models.Inputs;
 
         Assert.Equal(1d, inputs.Brake);
-        Assert.Equal(0.18d, inputs.Clutch, precision: 6);
+        Assert.NotNull(inputs.Clutch);
+        Assert.Equal(0.18d, inputs.Clutch.Value, precision: 6);
     }
 
     [Fact]
