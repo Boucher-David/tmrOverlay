@@ -260,7 +260,7 @@ internal static class Program
                     AppPerformanceMetricIds.OverlayPitServiceApplyUi,
                     AppPerformanceMetricIds.OverlayPitServiceRows,
                     AppPerformanceMetricIds.OverlayPitServicePaint),
-                PitServiceOverlayViewModel.From,
+                PitServiceOverlayViewModel.CreateBuilder(OverlaySettingsFor(PitServiceOverlayDefinition.Definition)),
                 Noop)));
         screenshots.Add(RenderForm(
             outputRoot,
