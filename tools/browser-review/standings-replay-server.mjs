@@ -3561,7 +3561,7 @@ function settings(overlayId, frame) {
 
   if (overlayId === 'track-map') {
     return {
-      trackMap: reviewTrackMap(),
+      trackMap: null,
       trackMapSettings: {
         internalOpacity: 0.88,
         showSectorBoundaries: true
