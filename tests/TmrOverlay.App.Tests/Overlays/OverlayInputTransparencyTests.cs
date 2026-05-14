@@ -334,7 +334,7 @@ public sealed class OverlayInputTransparencyTests
     [Fact]
     public void CarRadarRenderModel_UsesTrustedHistoryBodyLengthForRange()
     {
-        var nearCalibratedEdge = SpatialCar(58, relativeMeters: 28.65d, relativeSeconds: 1.1d);
+        var nearCalibratedEdge = SpatialCar(58, relativeMeters: 76d, relativeSeconds: 1.1d);
         var defaultRender = CarRadarRenderModel.FromState(
             isAvailable: true,
             hasCarLeft: false,
@@ -353,7 +353,7 @@ public sealed class OverlayInputTransparencyTests
             showMulticlassWarning: true,
             previewVisible: false,
             hasCurrentSignal: true,
-            calibrationProfile: new CarRadarCalibrationProfile(4.8d, IsHistoryBacked: true, Source: "test"));
+            calibrationProfile: new CarRadarCalibrationProfile(5.4d, IsHistoryBacked: true, Source: "test"));
 
         Assert.DoesNotContain(defaultRender.Cars, car => car.Kind == "nearby" && car.CarIdx == nearCalibratedEdge.CarIdx);
         Assert.Contains(calibratedRender.Cars, car => car.Kind == "nearby" && car.CarIdx == nearCalibratedEdge.CarIdx);

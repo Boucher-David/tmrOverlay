@@ -1831,6 +1831,7 @@ DriverInfo:
             classLeaderCarIdx: 11,
             classLeaderLapDistPct: -1d,
             classLeaderF2TimeSeconds: 0d,
+            playerTrackSurface: 3,
             allCars:
             [
                 Car(11, position: 1, classPosition: 1, lapDistPct: -1d, f2TimeSeconds: 0d, lapCompleted: -1, estimatedTimeSeconds: 90d),

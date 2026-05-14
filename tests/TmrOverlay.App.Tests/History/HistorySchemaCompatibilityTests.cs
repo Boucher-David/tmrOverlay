@@ -20,7 +20,7 @@ HistoricalSessionSummary
   Metrics: HistoricalSessionMetrics
   PitStops: IReadOnlyList<HistoricalPitStopSummary>
   Quality: HistoricalDataQuality
-  RadarCalibration: HistoricalRadarCalibrationSummary?
+  RadarCalibration: HistoricalRadarCalibrationSummary
   Session: HistoricalSessionIdentity
   SourceCaptureId: string
   StartedAtUtc: DateTimeOffset

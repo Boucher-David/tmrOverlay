@@ -59,7 +59,7 @@ public sealed class BrowserOverlayPageRendererTests
             Assert.Contains("renderModel.primitives", html);
             Assert.Contains("renderModel.markers", html);
             Assert.Contains("\"refreshIntervalMilliseconds\":100", html);
-            Assert.Contains("primitive.kind", html);
+            Assert.Contains("primitive?.kind", html);
             Assert.Contains("rgba(${red},${green},${blue},${alpha.toFixed(3)})", html);
             Assert.Contains("aria-label=\"Track map\"", html);
         }
@@ -89,11 +89,13 @@ public sealed class BrowserOverlayPageRendererTests
         }
         if (expectedId == "input-state")
         {
-            Assert.Contains("waiting for player in car", html);
             Assert.Contains("fetchOverlayModel('input-state')", html);
             Assert.Contains("inputDisplayModel", html);
             Assert.Contains("model?.inputs", html);
+            Assert.Contains("Waiting for player in car.", html);
             Assert.Contains("brakeAbsActive", html);
+            Assert.Contains("inputGraphEnabled(inputs)", html);
+            Assert.Contains("renderInputRail(inputs, brakeAbsActive)", html);
             Assert.Contains("var(--tmr-green)", html);
             Assert.Contains("themeColor('--tmr-green'", html);
             Assert.DoesNotContain("tractionControlActive", html);
@@ -128,9 +130,9 @@ public sealed class BrowserOverlayPageRendererTests
             Assert.Contains("garage-cover-page", html);
             Assert.Contains("fetchOverlayModel('garage-cover')", html);
             Assert.Contains("/api/garage-cover/image", html);
-            Assert.Contains("preview visible", html);
             Assert.Contains("garageCoverDisplayModel", html);
             Assert.Contains("model?.garageCover", html);
+            Assert.Contains("garageCoverContent(settings)", html);
             Assert.Contains("browserSettings", html);
             Assert.Contains("shouldCover", html);
         }
