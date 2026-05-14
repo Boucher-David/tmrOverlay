@@ -87,7 +87,7 @@ Likely squash body:
 - Fixed input wheel clipping and preserved pit/engine-off brake behavior.
 - Extended browser race-start replay validation to inspect telemetry-derived overlay models in addition to screenshot artifacts, aligned replay/corpus tooling with meaningful race-scoring coverage, and documented real-capture replay expectations.
 - Updated live-model, Relative, Standings, Gap To Leader, Pit Service, Fuel Calculator, Settings, browser replay, and future-branch docs for the normalized-reference model and browser-equals-native validation target.
-- Validated git hygiene, C# compile-shape scanning, browser unit tests, browser Playwright tests, browser replay script syntax, Python compile checks, and screenshot expectations; Windows .NET build/test and real WinForms behavior validation remain CI/Windows-machine gates.
+- Validated git hygiene, C# compile-shape scanning, browser unit tests, browser Playwright tests, browser replay script syntax, Python compile checks, deterministic mac screenshots, Windows screenshot expectations, and dense 4h race-start browser replay across the overlay catalog; Windows .NET build/test and real WinForms behavior validation remain CI/Windows-machine gates.
 ```
 
 ## Next Planned Milestone

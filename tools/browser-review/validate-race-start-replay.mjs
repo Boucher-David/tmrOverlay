@@ -139,7 +139,7 @@ async function validateOverlayFrame(context, overlay, frameSeconds, requireCaptu
       }
     });
     const canvasPixels = await canvasHasVisiblePixels(page);
-    const failures = validateMetrics(overlay.page.id, metrics, canvasPixels)
+    const failures = validateMetrics(overlay.page.id, metrics, canvasPixels, modelResponse)
       .concat(overlay.modelRoute ? validateModel(overlay.page.id, modelResponse, metrics) : [])
       .concat(validateCaptureLiveSnapshot(snapshotResponse, requireCaptureLive))
       .concat(validateReplayStatus(overlay.page.id, replayStatusResponse, requireCaptureLive))
@@ -229,7 +229,7 @@ function validateReplayStatus(overlayId, response, requireCaptureLive) {
   return [];
 }
 
-function validateMetrics(overlayId, metrics, canvasPixels) {
+function validateMetrics(overlayId, metrics, canvasPixels, modelResponse = null) {
   const failures = [];
   if (!metrics) {
     return ['metrics missing'];
@@ -281,7 +281,7 @@ function validateMetrics(overlayId, metrics, canvasPixels) {
   if (overlayId === 'garage-cover' && !metrics.hasGarageCover) {
     failures.push('garage cover body missing');
   }
-  if (overlayId === 'flags' && !metrics.hasFlags) {
+  if (overlayId === 'flags' && modelResponse?.model?.shouldRender === true && !metrics.hasFlags) {
     failures.push('flags body missing');
   }
 
