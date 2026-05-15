@@ -133,7 +133,7 @@ public sealed class BrowserOverlayPageRendererTests
         {
             Assert.Contains("fetchOverlayModel('stream-chat')", html);
             Assert.Contains("authorColorHex", html);
-            Assert.Contains("chat connected", html);
+            Assert.Contains("Choose Streamlabs or Twitch in the Stream Chat settings tab.", html);
         }
         if (expectedId == "garage-cover")
         {

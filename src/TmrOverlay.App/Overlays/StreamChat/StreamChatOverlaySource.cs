@@ -55,7 +55,7 @@ internal sealed class StreamChatOverlaySource : IDisposable
 
     internal StreamChatOverlayViewModel Snapshot(StreamChatBrowserSettings settings, DateTimeOffset now)
     {
-        ReconcileSettings(settings);
+        ReconcileSettings(settings, now);
         lock (_sync)
         {
             PruneExpiredChatMessages(now);
@@ -135,7 +135,7 @@ internal sealed class StreamChatOverlaySource : IDisposable
         StopConnection();
     }
 
-    private void ReconcileSettings(StreamChatBrowserSettings settings)
+    private void ReconcileSettings(StreamChatBrowserSettings settings, DateTimeOffset now)
     {
         var settingsKey = SettingsKey(settings);
         string? twitchChannel = null;
@@ -154,7 +154,7 @@ internal sealed class StreamChatOverlaySource : IDisposable
             _status = StreamChatOverlayViewModel.InitialStatus(settings);
             _source = SourceText(settings);
             _messages.Clear();
-            _messages.Add(Store(StreamChatOverlayViewModel.InitialMessage(settings), DateTimeOffset.UtcNow));
+            _messages.Add(Store(StreamChatOverlayViewModel.InitialMessage(settings), now));
 
             if (string.Equals(settings.Provider, StreamChatOverlaySettings.ProviderTwitch, StringComparison.Ordinal)
                 && settings.TwitchChannel is { Length: > 0 } channel)
