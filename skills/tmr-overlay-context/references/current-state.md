@@ -79,7 +79,7 @@ Last updated: 2026-05-15
 - Design V2 overlay styling:
   - Windows live overlays default to the Design V2 shell for live testing, with `TMR_WINDOWS_DESIGN_V2_LIVE_OVERLAYS=false` kept as an opt-out
   - localhost routes use the same V2 shell/colors as native review surfaces
-  - browser review is now the primary local overlay parity loop and screenshot generator for native plus localhost behavior: `npm run review:browser` serves `/review/app`, `/review/settings/general`, individual browser pages under `/review/overlays/<overlay-id>`, and localhost pages under `/overlays/<overlay-id>` from the same asset files as localhost routes; `npm run screenshots:browser` captures the same surface into `artifacts/browser-review-screenshots`
+  - browser review is now the primary local overlay parity loop, while localhost route screenshots are a separate route-surface gate: `npm run review:browser` serves `/review/app`, `/review/settings/general`, individual browser pages under `/review/overlays/<overlay-id>`, and localhost pages under `/overlays/<overlay-id>` from the same asset files as localhost routes; `npm run screenshots:browser-review` captures browser review/settings into `artifacts/browser-review-screenshots`, and `npm run screenshots:localhost` captures localhost routes into `artifacts/localhost-screenshots`
   - Playwright integration tests run against managed Chromium by default so browser tests do not launch the user's normal Chrome app; set `TMR_PLAYWRIGHT_CHANNEL=chrome` only when a system Chrome run is intentionally needed
   - treat UI/style v2 as telemetry-first by default: standings, relative, local in-car radar, flags, session/weather context, and timing tables should be dense, stable windows into iRacing telemetry
   - persistent source footers should be validation/admin chrome, not default end-user overlay furniture
@@ -321,7 +321,7 @@ Last updated: 2026-05-15
   - the mac mock race mirrors the Windows radar/gap feature behavior with synthetic all-class timing rows, multiclass approach traffic, weather bands, and driver handoff events, while Windows remains real telemetry only
   - the mac harness may mirror selected current Windows overlay review surfaces when that secondary scaffold is maintained, but it should not be used to define product parity
   - the mac harness mirrors the settings window schema and basic tabbed UI for visibility, scale/opacity when applicable, content/header/footer session gates, units, support capture, and a mock Support/performance snapshot tab; mac diagnostics bundles include matching telemetry-state/performance metadata stubs and recent mock performance JSONL logs
-  - `swift run TmrOverlayMacScreenshots` still exists for legacy tracked artifacts under `mocks/`, but new branch review screenshots should come from `npm run screenshots:browser`
+  - `swift run TmrOverlayMacScreenshots` still exists for legacy tracked artifacts under `mocks/`, but new branch review screenshots should come from `npm run screenshots:browser-review` and `npm run screenshots:localhost`
   - Design V2 component review overlays can be opened live from the menu bar or with `TMR_MAC_DESIGN_V2_COMPONENTS_DEMO=current|outrun ./run.sh`, and legacy component artifacts under `mocks/design-v2/components/` come from the same mac-harness views
   - screenshot waiting/unavailable fixtures should be isolated from local user history and cached live telemetry; for example, the fuel waiting preview uses an empty temporary history root so it cannot accidentally show stale stint rows from this machine
 
@@ -342,8 +342,8 @@ Last updated: 2026-05-15
   - validates that expected screenshot PNG artifacts exist, match fixed dimensions where appropriate, and are not blank
   - should be run after regenerating screenshots, but does not replace visual review for scenario correctness, text clipping/overlap, misleading populated-empty states, or platform-specific layout behavior
 - `tools/browser-review/render-screenshots.mjs`
-  - captures the browser review settings app, browser overlay routes, and localhost overlay routes into `artifacts/browser-review-screenshots`
-  - is the local screenshot generator for current browser/localhost parity review
+  - captures the browser review settings app and browser overlay routes into `artifacts/browser-review-screenshots`, localhost overlay routes into `artifacts/localhost-screenshots`, or both into `artifacts/browser-localhost-screenshots` when run with `--surface all`
+  - is the local screenshot generator for current browser review and localhost route review, with the two surfaces validated independently
 
 - Validation standard going forward:
   - rendered screenshots are validation artifacts as well as design artifacts

@@ -52,7 +52,7 @@
       function initialRegion() {
         const params = new URLSearchParams(window.location.search);
         const requested = params.get('region') || config.selectedRegion || 'general';
-        return ['general', 'content', 'header', 'footer', 'preview', 'twitch'].includes(requested) ? requested : 'general';
+        return ['general', 'content', 'header', 'footer', 'preview', 'twitch', 'streamlabs'].includes(requested) ? requested : 'general';
       }
 
       function knownTab(tabId) {

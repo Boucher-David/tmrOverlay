@@ -141,11 +141,11 @@ internal static class PitServiceOverlayViewModel
         return "source: player/team pit service telemetry";
     }
 
-    internal static string HeaderStatus(string status)
+    internal static string HeaderStatus(string? status)
     {
         return string.Equals(status?.Trim(), "hold", StringComparison.OrdinalIgnoreCase)
             ? string.Empty
-            : status;
+            : status ?? string.Empty;
     }
 
     private static string BuildStatus(LivePitServiceModel pit, PitReleaseState release)

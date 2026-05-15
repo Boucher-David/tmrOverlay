@@ -1066,7 +1066,8 @@ internal sealed class BrowserOverlayModelFactory
         var reference = cars.FirstOrDefault(car =>
             car.IsReferenceCar
             && BrowserGapSeconds(car, lapReferenceSeconds) is not null);
-        var referenceCanAnchor = reference is not null && !IsLappedGraphGap(reference, lapReferenceSeconds);
+        var anchor = reference;
+        var referenceCanAnchor = anchor is not null && !IsLappedGraphGap(anchor, lapReferenceSeconds);
         foreach (var car in cars.Where(car => car.IsClassLeader || (referenceCanAnchor && car.IsReferenceCar)))
         {
             selected.Add(car.CarIdx);
@@ -1075,7 +1076,7 @@ internal sealed class BrowserOverlayModelFactory
         var overlay = FindOverlay(settings, GapToLeaderOverlayDefinition.Definition.Id);
         var aheadCount = overlay?.GetIntegerOption(OverlayOptionKeys.GapCarsAhead, defaultValue: 5, minimum: 0, maximum: 12) ?? 5;
         var behindCount = overlay?.GetIntegerOption(OverlayOptionKeys.GapCarsBehind, defaultValue: 5, minimum: 0, maximum: 12) ?? 5;
-        if (!referenceCanAnchor)
+        if (!referenceCanAnchor || anchor is null)
         {
             foreach (var car in cars
                 .Where(car => !car.IsClassLeader && !IsLappedGraphGap(car, lapReferenceSeconds))
@@ -1105,7 +1106,7 @@ internal sealed class BrowserOverlayModelFactory
         foreach (var car in cars
             .Where(car => !car.IsReferenceCar
                 && !car.IsClassLeader
-                && IsSameLapGapCandidate(car, reference, lapReferenceSeconds)
+                && IsSameLapGapCandidate(car, anchor, lapReferenceSeconds)
                 && car.DeltaSecondsToReference is < 0d
                 && Math.Abs(car.DeltaSecondsToReference.Value) <= rangeSeconds)
             .OrderByDescending(car => car.DeltaSecondsToReference!.Value)
@@ -1117,7 +1118,7 @@ internal sealed class BrowserOverlayModelFactory
         foreach (var car in cars
             .Where(car => !car.IsReferenceCar
                 && !car.IsClassLeader
-                && IsSameLapGapCandidate(car, reference, lapReferenceSeconds)
+                && IsSameLapGapCandidate(car, anchor, lapReferenceSeconds)
                 && car.DeltaSecondsToReference is > 0d
                 && car.DeltaSecondsToReference.Value <= rangeSeconds)
             .OrderBy(car => car.DeltaSecondsToReference!.Value)

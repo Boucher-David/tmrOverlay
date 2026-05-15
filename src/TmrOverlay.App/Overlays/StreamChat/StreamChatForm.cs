@@ -14,6 +14,10 @@ internal sealed class StreamChatForm : PersistentOverlayForm
 {
     private const int SettingsRefreshIntervalMilliseconds = 1000;
     private const int VisibleMessageBudget = StreamChatOverlayViewModel.VisibleMessageBudget;
+    private const int HeaderHeight = 42;
+    private const int CloseButtonSize = 22;
+    private const int CloseButtonRightMargin = 10;
+    private const int CloseButtonTop = 10;
 
     private readonly AppSettingsStore _settingsStore;
     private readonly StreamChatOverlaySource _streamChatSource;
@@ -22,7 +26,6 @@ internal sealed class StreamChatForm : PersistentOverlayForm
     private readonly string _fontFamily;
     private readonly System.Windows.Forms.Timer _settingsTimer;
     private readonly List<StreamChatMessage> _messages = [];
-    private readonly Button? _closeButton;
     private StreamChatContentOptions _contentOptions = StreamChatContentOptions.Default;
     private string _status = "waiting for chat source";
     private string? _lastLoggedError;
@@ -74,16 +77,9 @@ internal sealed class StreamChatForm : PersistentOverlayForm
         {
             _settingsTimer.Stop();
             _settingsTimer.Dispose();
-            _closeButton?.Dispose();
         }
 
         base.Dispose(disposing);
-    }
-
-    protected override void OnResize(EventArgs e)
-    {
-        base.OnResize(e);
-        LayoutCloseButton();
     }
 
     public override bool IsIntrinsicallyInputTransparentOverlay => true;
@@ -185,7 +181,8 @@ internal sealed class StreamChatForm : PersistentOverlayForm
         using var statusBrush = new SolidBrush(OverlayTheme.Colors.TextSubtle);
         graphics.DrawString("Stream Chat", titleFont, titleBrush, 14, 11);
 
-        var statusRect = new RectangleF(132, 13, Math.Max(90, ClientSize.Width - 180), 18);
+        var closeButton = CloseButtonBounds();
+        var statusRect = new RectangleF(132, 13, Math.Max(60, closeButton.Left - 142), 18);
         using var statusFormat = new StringFormat
         {
             Alignment = StringAlignment.Far,
@@ -193,54 +190,46 @@ internal sealed class StreamChatForm : PersistentOverlayForm
             Trimming = StringTrimming.EllipsisCharacter
         };
         graphics.DrawString(_status, statusFont, statusBrush, statusRect, statusFormat);
+        DrawCloseButton(graphics, closeButton);
     }
 
-    private Button CreateCloseButton()
+    private Rectangle CloseButtonBounds()
     {
-        var button = new Button
-        {
-            Text = "X",
-            FlatStyle = FlatStyle.Flat,
-            TabStop = false,
-            Width = 22,
-            Height = 22,
-            BackColor = OverlayTheme.Colors.TitleBarBackground,
-            ForeColor = OverlayTheme.Colors.TextPrimary,
-            Cursor = Cursors.Hand
-        };
-        button.FlatAppearance.BorderColor = OverlayTheme.Colors.WindowBorder;
-        button.FlatAppearance.BorderSize = 1;
-        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(74, 40, 48, 62);
-        button.FlatAppearance.MouseDownBackColor = Color.FromArgb(96, 60, 34, 44);
-        button.Click += (_, _) => DisableOverlayAndClose();
-        return button;
+        return CloseButtonBounds(ClientSize);
     }
 
-    private void LayoutCloseButton()
+    private static Rectangle CloseButtonBounds(Size clientSize)
     {
-        if (_closeButton is null)
-        {
-            return;
-        }
-
-        _closeButton.Location = new Point(Math.Max(4, ClientSize.Width - _closeButton.Width - 10), 10);
+        return new Rectangle(
+            Math.Max(4, clientSize.Width - CloseButtonSize - CloseButtonRightMargin),
+            CloseButtonTop,
+            CloseButtonSize,
+            CloseButtonSize);
     }
 
     private bool IsCloseButtonHit(Point clientPoint)
     {
-        return _closeButton is not null && _closeButton.Bounds.Contains(clientPoint);
+        return CloseButtonBounds().Contains(clientPoint);
+    }
+
+    private static void DrawCloseButton(Graphics graphics, Rectangle bounds)
+    {
+        using var fillBrush = new SolidBrush(OverlayTheme.Colors.TitleBarBackground);
+        using var borderPen = new Pen(OverlayTheme.Colors.WindowBorder);
+        using var glyphPen = new Pen(OverlayTheme.Colors.TextPrimary, 1.45f);
+        graphics.FillRectangle(fillBrush, bounds);
+        graphics.DrawRectangle(borderPen, bounds);
+        graphics.DrawLine(glyphPen, bounds.Left + 7, bounds.Top + 7, bounds.Right - 7, bounds.Bottom - 7);
+        graphics.DrawLine(glyphPen, bounds.Right - 7, bounds.Top + 7, bounds.Left + 7, bounds.Bottom - 7);
     }
 
     internal static bool IsHeaderDragHit(Point clientPoint, Size clientSize)
     {
-        const int headerHeight = 42;
-        const int closeButtonWidth = 22;
-        const int closeButtonRightMargin = 10;
-        var closeButtonLeft = Math.Max(4, clientSize.Width - closeButtonWidth - closeButtonRightMargin);
+        var closeButtonLeft = Math.Max(4, clientSize.Width - CloseButtonSize - CloseButtonRightMargin);
         return clientPoint.X >= 0
             && clientPoint.X < closeButtonLeft
             && clientPoint.Y >= 0
-            && clientPoint.Y < headerHeight;
+            && clientPoint.Y < HeaderHeight;
     }
 
     private void DrawMessages(Graphics graphics)

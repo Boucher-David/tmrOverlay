@@ -51,6 +51,10 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private const int HeaderHeight = 38;
     private const int FooterHeight = 32;
     private const int BodyGap = 12;
+    private const int StreamChatCloseButtonSize = 22;
+    private const int StreamChatCloseButtonRightMargin = 10;
+    private const int StreamChatCloseButtonTop = 9;
+    private const int StreamChatCloseButtonStatusReserve = 34;
     private const int RowHeight = 30;
     private const int RowGap = 5;
     private const int ColumnGap = 8;
@@ -161,7 +165,6 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private readonly List<InputStateTracePoint> _inputTrace = [];
     private readonly TrackMapRenderModelBuilder _trackMapRenderBuilder = new();
     private readonly Dictionary<int, double> _smoothedTrackMarkerProgress = new();
-    private readonly Button? _closeButton;
     private DesignV2OverlayModel _model;
     private TrackMapDocument? _trackMap;
     private string? _trackMapIdentityKey;
@@ -318,7 +321,6 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         {
             _refreshTimer.Stop();
             _refreshTimer.Dispose();
-            _closeButton?.Dispose();
         }
 
         base.Dispose(disposing);
@@ -336,12 +338,6 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         return base.GetPersistedOverlaySize();
     }
 
-    protected override void OnResize(EventArgs e)
-    {
-        base.OnResize(e);
-        LayoutStreamChatCloseButton();
-    }
-
     protected override bool ShouldReceiveInputWhileTransparent(Point clientPoint)
     {
         return _kind == DesignV2LiveOverlayKind.StreamChat
@@ -350,7 +346,9 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     protected override void OnMouseUp(MouseEventArgs e)
     {
-        if (e.Button == MouseButtons.Left && IsStreamChatCloseButtonHit(e.Location))
+        if (_kind == DesignV2LiveOverlayKind.StreamChat
+            && e.Button == MouseButtons.Left
+            && IsStreamChatCloseButtonHit(e.Location))
         {
             DisableOverlayAndClose();
             return;
@@ -1346,7 +1344,8 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         var reference = cars.FirstOrDefault(car =>
             car.IsReferenceCar
             && DesignV2GapSeconds(car, lapReferenceSeconds) is not null);
-        var referenceCanAnchor = reference is not null && !IsLappedGraphGap(reference, lapReferenceSeconds);
+        var anchor = reference;
+        var referenceCanAnchor = anchor is not null && !IsLappedGraphGap(anchor, lapReferenceSeconds);
         foreach (var car in cars.Where(car => car.IsClassLeader || (referenceCanAnchor && car.IsReferenceCar)))
         {
             selected.Add(car.CarIdx);
@@ -1354,7 +1353,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
         var aheadCount = _settings.GetIntegerOption(OverlayOptionKeys.GapCarsAhead, defaultValue: 5, minimum: 0, maximum: 12);
         var behindCount = _settings.GetIntegerOption(OverlayOptionKeys.GapCarsBehind, defaultValue: 5, minimum: 0, maximum: 12);
-        if (!referenceCanAnchor)
+        if (!referenceCanAnchor || anchor is null)
         {
             foreach (var car in cars
                 .Where(car => !car.IsClassLeader && !IsLappedGraphGap(car, lapReferenceSeconds))
@@ -1384,7 +1383,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         foreach (var car in cars
             .Where(car => !car.IsReferenceCar
                 && !car.IsClassLeader
-                && IsSameLapGapCandidate(car, reference, lapReferenceSeconds)
+                && IsSameLapGapCandidate(car, anchor, lapReferenceSeconds)
                 && car.DeltaSecondsToReference is < 0d
                 && Math.Abs(car.DeltaSecondsToReference.Value) <= rangeSeconds)
             .OrderByDescending(car => car.DeltaSecondsToReference!.Value)
@@ -1396,7 +1395,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         foreach (var car in cars
             .Where(car => !car.IsReferenceCar
                 && !car.IsClassLeader
-                && IsSameLapGapCandidate(car, reference, lapReferenceSeconds)
+                && IsSameLapGapCandidate(car, anchor, lapReferenceSeconds)
                 && car.DeltaSecondsToReference is > 0d
                 && car.DeltaSecondsToReference.Value <= rangeSeconds)
             .OrderBy(car => car.DeltaSecondsToReference!.Value)
@@ -2706,7 +2705,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             using var titleFont = FontOf(14, FontStyle.Bold);
             using var statusFont = FontOf(11, FontStyle.Bold);
             DrawText(graphics, model.Title, titleFont, TextPrimary, new RectangleF(outer.Left + 14, header.Top + 10, Math.Min(230, outer.Width * 0.55f), 18));
-            var closeButtonSpace = _closeButton is not null ? 34 : 0;
+            var closeButtonSpace = _kind == DesignV2LiveOverlayKind.StreamChat ? StreamChatCloseButtonStatusReserve : 0;
             DrawText(
                 graphics,
                 model.HeaderText ?? model.Status,
@@ -2714,6 +2713,11 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                 EvidenceColor(model.Evidence),
                 new RectangleF(outer.Left + 230, header.Top + 10, Math.Max(1, outer.Width - 244 - closeButtonSpace), 18),
                 ContentAlignment.MiddleRight);
+            if (_kind == DesignV2LiveOverlayKind.StreamChat)
+            {
+                DrawStreamChatCloseButton(graphics, StreamChatCloseButtonBounds(outer));
+            }
+
             headerBottom = header.Bottom;
         }
 
@@ -5813,45 +5817,40 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         return kind is DesignV2LiveOverlayKind.StreamChat;
     }
 
-    private Button CreateStreamChatCloseButton()
+    private static RectangleF StreamChatCloseButtonBounds(RectangleF outer)
     {
-        var button = new Button
-        {
-            Text = "X",
-            FlatStyle = FlatStyle.Flat,
-            TabStop = false,
-            Width = 22,
-            Height = 22,
-            BackColor = TitleBar,
-            ForeColor = TextPrimary,
-            Cursor = Cursors.Hand
-        };
-        button.FlatAppearance.BorderColor = Border;
-        button.FlatAppearance.BorderSize = 1;
-        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(74, 40, 48, 62);
-        button.FlatAppearance.MouseDownBackColor = Color.FromArgb(96, 60, 34, 44);
-        button.Click += (_, _) => DisableOverlayAndClose();
-        return button;
+        return new RectangleF(
+            Math.Max(outer.Left + 4, outer.Right - StreamChatCloseButtonSize - StreamChatCloseButtonRightMargin),
+            outer.Top + StreamChatCloseButtonTop,
+            StreamChatCloseButtonSize,
+            StreamChatCloseButtonSize);
     }
 
-    private void LayoutStreamChatCloseButton()
+    private static Rectangle StreamChatCloseButtonBounds(Size clientSize)
     {
-        if (_closeButton is null)
-        {
-            return;
-        }
-
-        _closeButton.Location = new Point(Math.Max(4, ClientSize.Width - _closeButton.Width - 10), 9);
+        return new Rectangle(
+            Math.Max(4, clientSize.Width - StreamChatCloseButtonSize - StreamChatCloseButtonRightMargin),
+            StreamChatCloseButtonTop,
+            StreamChatCloseButtonSize,
+            StreamChatCloseButtonSize);
     }
 
     private bool IsStreamChatCloseButtonHit(Point clientPoint)
     {
-        return _closeButton is not null && _closeButton.Bounds.Contains(clientPoint);
+        return StreamChatCloseButtonBounds(ClientSize).Contains(clientPoint);
+    }
+
+    private static void DrawStreamChatCloseButton(Graphics graphics, RectangleF bounds)
+    {
+        FillRounded(graphics, bounds, 3, TitleBar, Border);
+        using var glyphPen = new Pen(TextPrimary, 1.45f);
+        graphics.DrawLine(glyphPen, bounds.Left + 7, bounds.Top + 7, bounds.Right - 7, bounds.Bottom - 7);
+        graphics.DrawLine(glyphPen, bounds.Right - 7, bounds.Top + 7, bounds.Left + 7, bounds.Bottom - 7);
     }
 
     internal static bool IsStreamChatDragHit(Point clientPoint, Size clientSize)
     {
-        var closeButtonLeft = Math.Max(4, clientSize.Width - 22 - 10);
+        var closeButtonLeft = Math.Max(4, clientSize.Width - StreamChatCloseButtonSize - StreamChatCloseButtonRightMargin);
         return clientPoint.X >= 0
             && clientPoint.X < closeButtonLeft
             && clientPoint.Y >= 0

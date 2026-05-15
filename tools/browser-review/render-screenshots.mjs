@@ -14,7 +14,9 @@ import { fileURLToPath } from 'node:url';
 import { browserOverlayPages } from '../../tests/browser-overlays/browserOverlayAssets.js';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const overlayIds = browserOverlayPages().map((page) => page.page.id);
+const overlayPages = browserOverlayPages();
+const overlayIds = overlayPages.map((page) => page.page.id);
+const overlayPagesById = new Map(overlayPages.map((page) => [page.page.id, page]));
 const sharedChromeOverlayIds = new Set([
   'standings',
   'relative',
@@ -26,7 +28,7 @@ const sharedChromeOverlayIds = new Set([
 const previewModes = ['practice', 'qualifying', 'race'];
 
 const args = parseArgs(process.argv.slice(2));
-const outputRoot = resolve(repoRoot, args.output || 'artifacts/browser-review-screenshots');
+const outputRoot = resolve(repoRoot, args.output || defaultOutputFor(args.surface));
 const port = args.port || Number.parseInt(process.env.TMR_BROWSER_SCREENSHOT_PORT || '5199', 10);
 const baseUrl = stripTrailingSlash(args.baseUrl || `http://127.0.0.1:${port}`);
 const settleMilliseconds = args.settleMilliseconds ?? 350;
@@ -37,7 +39,7 @@ try {
     serverProcess = startReviewServer(port);
   }
 
-  await waitForServer(`${baseUrl}/review/app`);
+  await waitForServer(`${baseUrl}${serverProbePath(args.surface)}`);
   rmSync(outputRoot, { recursive: true, force: true });
   mkdirSync(outputRoot, { recursive: true });
 
@@ -49,7 +51,7 @@ try {
   const page = await context.newPage();
   const manifest = [];
 
-  for (const route of screenshotRoutes()) {
+  for (const route of screenshotRoutes(args.surface)) {
     await captureRoute(page, route, manifest);
   }
 
@@ -59,54 +61,78 @@ try {
     `${JSON.stringify({
       generatedAtUtc: new Date().toISOString(),
       baseUrl,
+      surfaceMode: args.surface,
       screenshots: manifest
     }, null, 2)}\n`);
-  console.log(`Wrote ${manifest.length} browser review screenshots to ${outputRoot}`);
+  console.log(`Wrote ${manifest.length} ${args.surface} screenshots to ${outputRoot}`);
 } finally {
   if (serverProcess) {
     serverProcess.kill('SIGTERM');
   }
 }
 
-function screenshotRoutes() {
-  const routes = [
-    settingsRoute('settings/general.png', '/review/app', { tab: 'general', region: 'general' }),
-    settingsRoute('settings/diagnostics.png', '/review/app?tab=support', { tab: 'support', region: 'general' }),
-    ...previewModes.map((mode) =>
-      settingsRoute(
-        `settings/general-preview-${mode}.png`,
-        `/review/app?preview=${encodeURIComponent(mode)}`,
-        { tab: 'general', region: 'general', previewMode: mode }))
-  ];
+function screenshotRoutes(surface) {
+  const routes = [];
+  if (surface === 'browser-review' || surface === 'all') {
+    routes.push(
+      settingsRoute('settings/general.png', '/review/app', { tab: 'general', region: 'general' }),
+      settingsRoute('settings/diagnostics.png', '/review/app?tab=support', { tab: 'support', region: 'general' }),
+      ...previewModes.map((mode) =>
+        settingsRoute(
+          `settings/general-preview-${mode}.png`,
+          `/review/app?preview=${encodeURIComponent(mode)}`,
+          { tab: 'general', region: 'general', previewMode: mode }))
+    );
 
-  for (const overlayId of overlayIds) {
-    for (const region of regionsForOverlay(overlayId)) {
-      const suffix = region === 'general' ? '' : `-${region}`;
-      routes.push(settingsRoute(
-        `settings/${overlayId}${suffix}.png`,
-        `/review/app?tab=${encodeURIComponent(overlayId)}${region === 'general' ? '' : `&region=${encodeURIComponent(region)}`}`,
-        { tab: overlayId, overlayId, region }));
+    for (const overlayId of overlayIds) {
+      for (const region of regionsForOverlay(overlayId)) {
+        const suffix = region === 'general' ? '' : `-${region}`;
+        routes.push(settingsRoute(
+          `settings/${overlayId}${suffix}.png`,
+          `/review/app?tab=${encodeURIComponent(overlayId)}${region === 'general' ? '' : `&region=${encodeURIComponent(region)}`}`,
+          { tab: overlayId, overlayId, region }));
+      }
     }
   }
 
   for (const overlayId of overlayIds) {
-    routes.push(overlayRoute(
-      `browser-overlays/${overlayId}.png`,
-      withPreview(`/review/overlays/${encodeURIComponent(overlayId)}`, 'race'),
-      { surface: 'browser-review-overlay', overlayId, previewMode: 'race' }));
-    routes.push(overlayRoute(
-      `localhost-overlays/${overlayId}.png`,
-      withPreview(`/overlays/${encodeURIComponent(overlayId)}`, 'race'),
-      { surface: 'localhost-overlay', overlayId, previewMode: 'race' }));
+    if (surface === 'browser-review' || surface === 'all') {
+      routes.push(overlayRoute(
+        `browser-overlays/${overlayId}.png`,
+        withPreview(`/review/overlays/${encodeURIComponent(overlayId)}`, 'race'),
+        { surface: 'browser-review-overlay', overlayId, previewMode: 'race' }));
+    }
+    if (surface === 'localhost' || surface === 'all') {
+      routes.push(overlayRoute(
+        `localhost-overlays/${overlayId}.png`,
+        withPreview(`/overlays/${encodeURIComponent(overlayId)}`, 'race'),
+        { surface: 'localhost-overlay', overlayId, previewMode: 'race' }));
+      for (const alias of localhostAliasesForOverlay(overlayId)) {
+        routes.push(overlayRoute(
+          `localhost-overlays/${overlayId}-alias-${aliasSlug(alias)}.png`,
+          withPreview(alias, 'race'),
+          { surface: 'localhost-overlay', overlayId, previewMode: 'race', routeAlias: alias }));
+      }
+    }
     for (const mode of previewModesForOverlay(overlayId)) {
-      routes.push(overlayRoute(
-        `browser-overlays/${overlayId}-${mode}.png`,
-        withPreview(`/review/overlays/${encodeURIComponent(overlayId)}`, mode),
-        { surface: 'browser-review-overlay', overlayId, previewMode: mode }));
-      routes.push(overlayRoute(
-        `localhost-overlays/${overlayId}-${mode}.png`,
-        withPreview(`/overlays/${encodeURIComponent(overlayId)}`, mode),
-        { surface: 'localhost-overlay', overlayId, previewMode: mode }));
+      if (surface === 'browser-review' || surface === 'all') {
+        routes.push(overlayRoute(
+          `browser-overlays/${overlayId}-${mode}.png`,
+          withPreview(`/review/overlays/${encodeURIComponent(overlayId)}`, mode),
+          { surface: 'browser-review-overlay', overlayId, previewMode: mode }));
+      }
+      if (surface === 'localhost' || surface === 'all') {
+        routes.push(overlayRoute(
+          `localhost-overlays/${overlayId}-${mode}.png`,
+          withPreview(`/overlays/${encodeURIComponent(overlayId)}`, mode),
+          { surface: 'localhost-overlay', overlayId, previewMode: mode }));
+        for (const alias of localhostAliasesForOverlay(overlayId)) {
+          routes.push(overlayRoute(
+            `localhost-overlays/${overlayId}-alias-${aliasSlug(alias)}-${mode}.png`,
+            withPreview(alias, mode),
+            { surface: 'localhost-overlay', overlayId, previewMode: mode, routeAlias: alias }));
+        }
+      }
     }
   }
 
@@ -131,6 +157,21 @@ function regionsForOverlay(overlayId) {
 
 function previewModesForOverlay(overlayId) {
   return overlayId === 'gap-to-leader' ? ['race'] : previewModes;
+}
+
+function localhostAliasesForOverlay(overlayId) {
+  return overlayPagesById.get(overlayId)?.aliases || [];
+}
+
+function aliasSlug(alias) {
+  const slug = String(alias || '')
+    .split('/')
+    .filter(Boolean)
+    .pop();
+  return String(slug || 'alias')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'alias';
 }
 
 function settingsRoute(relativePath, urlPath, metadata = {}) {
@@ -190,6 +231,8 @@ async function captureRoute(page, route, manifest) {
     overlayId: route.overlayId || null,
     tab: route.tab || null,
     region: route.region || null,
+    activeRegion: dom.activeRegion,
+    routeAlias: route.routeAlias || null,
     previewMode: route.previewMode || null,
     status: stringOrNull(model?.status),
     source: stringOrNull(model?.source),
@@ -231,6 +274,9 @@ async function readDomDiagnostics(element) {
       .replace(/\s+/g, ' ')
       .trim()
       .slice(0, 500);
+    const activeRegion = String(node.querySelector('.region-segment.active')?.textContent || '')
+      .replace(/\s+/g, ' ')
+      .trim();
     const selectors = [
       '.overlay-panel',
       '.overlay-content',
@@ -252,7 +298,7 @@ async function readDomDiagnostics(element) {
       .map((element) => element.getBoundingClientRect())
       .filter((rect) => rect.width > 0 && rect.height > 0);
     if (!rects.length) {
-      return { textSample: text || null, contentBounds: null };
+      return { textSample: text || null, activeRegion: activeRegion || null, contentBounds: null };
     }
 
     const left = Math.min(...rects.map((rect) => rect.left));
@@ -263,6 +309,7 @@ async function readDomDiagnostics(element) {
     const height = bottom - top;
     return {
       textSample: text || null,
+      activeRegion: activeRegion || null,
       contentBounds: {
         x: Math.round(left - rootRect.left),
         y: Math.round(top - rootRect.top),
@@ -372,6 +419,7 @@ function parseArgs(values) {
     output: '',
     port: 0,
     settleMilliseconds: null,
+    surface: 'browser-review',
     verbose: false
   };
 
@@ -385,6 +433,8 @@ function parseArgs(values) {
       parsed.port = Number.parseInt(requiredValue(values, ++index, value), 10);
     } else if (value === '--settle-ms') {
       parsed.settleMilliseconds = Number.parseInt(requiredValue(values, ++index, value), 10);
+    } else if (value === '--surface') {
+      parsed.surface = requiredValue(values, ++index, value);
     } else if (value === '--verbose') {
       parsed.verbose = true;
     } else {
@@ -398,8 +448,27 @@ function parseArgs(values) {
   if (parsed.settleMilliseconds !== null && !Number.isFinite(parsed.settleMilliseconds)) {
     throw new Error('Invalid --settle-ms value.');
   }
+  if (!['browser-review', 'localhost', 'all'].includes(parsed.surface)) {
+    throw new Error('Invalid --surface value. Expected browser-review, localhost, or all.');
+  }
 
   return parsed;
+}
+
+function defaultOutputFor(surface) {
+  if (surface === 'localhost') {
+    return 'artifacts/localhost-screenshots';
+  }
+  if (surface === 'all') {
+    return 'artifacts/browser-localhost-screenshots';
+  }
+  return 'artifacts/browser-review-screenshots';
+}
+
+function serverProbePath(surface) {
+  return surface === 'localhost'
+    ? '/overlays/standings?preview=race'
+    : '/review/app';
 }
 
 function requiredValue(values, index, flag) {

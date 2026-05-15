@@ -240,6 +240,11 @@ BROWSER_REVIEW_OVERLAY_IDS = [
     "stream-chat",
 ]
 
+LOCALHOST_OVERLAY_ALIASES = {
+    "fuel-calculator": (("calculator", "/overlays/calculator"),),
+    "input-state": (("inputs", "/overlays/inputs"),),
+}
+
 BROWSER_ONLY_OVERLAY_IDS = {
     # Garage Cover is a localhost/browser-source privacy cover controlled from
     # the Windows settings UI; the installed app does not create a native
@@ -348,7 +353,16 @@ def main() -> int:
     parser.add_argument("--root", default="mocks", help="Screenshot root directory.")
     parser.add_argument(
         "--profile",
-        choices=("tracked", "windows-ci", "browser-review-ci", "windows-expectations", "screenshot-expectations", "release-tutorial"),
+        choices=(
+            "tracked",
+            "windows-ci",
+            "browser-review-ci",
+            "localhost-ci",
+            "browser-localhost-ci",
+            "windows-expectations",
+            "screenshot-expectations",
+            "release-tutorial",
+        ),
         default="tracked",
         help="Screenshot artifact profile to validate.",
     )
@@ -367,6 +381,12 @@ def main() -> int:
         return finish(failures)
     if args.profile == "browser-review-ci":
         validate_browser_review_ci(root, args.min_unique_bytes, failures)
+        return finish(failures)
+    if args.profile == "localhost-ci":
+        validate_localhost_ci(root, args.min_unique_bytes, failures)
+        return finish(failures)
+    if args.profile == "browser-localhost-ci":
+        validate_browser_localhost_ci(root, args.min_unique_bytes, failures)
         return finish(failures)
     if args.profile in ("windows-expectations", "screenshot-expectations"):
         validate_windows_expectations(failures)
@@ -493,31 +513,90 @@ def validate_browser_review_ci(root: Path, min_unique_bytes: int, failures: list
             minimum_size=(1000, 680),
         )
 
+    validate_web_overlay_pngs(root, "browser-overlays", min_unique_bytes, failures)
+
+    validate_browser_review_manifest(
+        root,
+        expected_paths=browser_review_manifest_paths(),
+        label="Browser review screenshot manifest paths",
+        failures=failures,
+    )
+
+
+def validate_localhost_ci(root: Path, min_unique_bytes: int, failures: list[str]) -> None:
+    manifest = root / "manifest.json"
+    if not manifest.exists():
+        failures.append("manifest.json: missing file")
+
+    validate_web_overlay_pngs(root, "localhost-overlays", min_unique_bytes, failures)
+    validate_localhost_alias_pngs(root, min_unique_bytes, failures)
+
+    validate_browser_review_manifest(
+        root,
+        expected_paths=localhost_manifest_paths(),
+        label="Localhost screenshot manifest paths",
+        failures=failures,
+    )
+
+
+def validate_browser_localhost_ci(root: Path, min_unique_bytes: int, failures: list[str]) -> None:
+    manifest = root / "manifest.json"
+    if not manifest.exists():
+        failures.append("manifest.json: missing file")
+
+    for relative_path in BROWSER_REVIEW_SETTINGS_PNGS:
+        validate_png(
+            root=root,
+            relative_path=relative_path,
+            expected_size=None,
+            min_unique_bytes=min_unique_bytes,
+            failures=failures,
+            minimum_size=(1000, 680),
+        )
+
+    validate_web_overlay_pngs(root, "browser-overlays", min_unique_bytes, failures)
+    validate_web_overlay_pngs(root, "localhost-overlays", min_unique_bytes, failures)
+    validate_localhost_alias_pngs(root, min_unique_bytes, failures)
+
+    validate_browser_review_manifest(
+        root,
+        expected_paths=browser_localhost_manifest_paths(),
+        label="Browser/localhost screenshot manifest paths",
+        failures=failures,
+    )
+
+
+def validate_web_overlay_pngs(root: Path, prefix: str, min_unique_bytes: int, failures: list[str]) -> None:
     for overlay_id in BROWSER_REVIEW_OVERLAY_IDS:
-        for prefix in ("browser-overlays", "localhost-overlays"):
+        validate_png(
+            root=root,
+            relative_path=f"{prefix}/{overlay_id}.png",
+            expected_size=None,
+            min_unique_bytes=min_unique_bytes,
+            failures=failures,
+            minimum_size=(200, 120),
+        )
+        for mode in preview_modes_for_overlay(overlay_id):
             validate_png(
                 root=root,
-                relative_path=f"{prefix}/{overlay_id}.png",
+                relative_path=f"{prefix}/{overlay_id}-{mode}.png",
                 expected_size=None,
                 min_unique_bytes=min_unique_bytes,
                 failures=failures,
                 minimum_size=(200, 120),
             )
-            for mode in preview_modes_for_overlay(overlay_id):
-                validate_png(
-                    root=root,
-                    relative_path=f"{prefix}/{overlay_id}-{mode}.png",
-                    expected_size=None,
-                    min_unique_bytes=min_unique_bytes,
-                    failures=failures,
-                    minimum_size=(200, 120),
-                )
 
-    validate_browser_review_manifest(
-        root,
-        expected_paths=browser_review_manifest_paths(),
-        failures=failures,
-    )
+
+def validate_localhost_alias_pngs(root: Path, min_unique_bytes: int, failures: list[str]) -> None:
+    for relative_path in localhost_alias_manifest_paths():
+        validate_png(
+            root=root,
+            relative_path=relative_path,
+            expected_size=None,
+            min_unique_bytes=min_unique_bytes,
+            failures=failures,
+            minimum_size=(200, 120),
+        )
 
 
 def windows_ci_manifest_paths() -> set[str]:
@@ -544,11 +623,35 @@ def EXPECTED_WINDOWS_COMPONENT_FILES() -> tuple[str, ...]:
 
 def browser_review_manifest_paths() -> set[str]:
     paths = set(BROWSER_REVIEW_SETTINGS_PNGS)
+    paths.update(web_overlay_manifest_paths("browser-overlays"))
+    return paths
+
+
+def localhost_manifest_paths() -> set[str]:
+    return web_overlay_manifest_paths("localhost-overlays") | localhost_alias_manifest_paths()
+
+
+def browser_localhost_manifest_paths() -> set[str]:
+    return browser_review_manifest_paths() | localhost_manifest_paths()
+
+
+def web_overlay_manifest_paths(prefix: str) -> set[str]:
+    paths = set()
     for overlay_id in BROWSER_REVIEW_OVERLAY_IDS:
-        for prefix in ("browser-overlays", "localhost-overlays"):
-            paths.add(f"{prefix}/{overlay_id}.png")
+        paths.add(f"{prefix}/{overlay_id}.png")
+        for mode in preview_modes_for_overlay(overlay_id):
+            paths.add(f"{prefix}/{overlay_id}-{mode}.png")
+    return paths
+
+
+def localhost_alias_manifest_paths() -> set[str]:
+    paths = set()
+    for overlay_id, aliases in LOCALHOST_OVERLAY_ALIASES.items():
+        for alias_slug, _alias_route in aliases:
+            stem = f"localhost-overlays/{overlay_id}-alias-{alias_slug}"
+            paths.add(f"{stem}.png")
             for mode in preview_modes_for_overlay(overlay_id):
-                paths.add(f"{prefix}/{overlay_id}-{mode}.png")
+                paths.add(f"{stem}-{mode}.png")
     return paths
 
 
@@ -584,7 +687,12 @@ def validate_windows_manifest(root: Path, expected_paths: set[str], failures: li
             require_manifest_fields(path, metadata, ["tab", "region", "fixture", "sourceContract"], failures)
 
 
-def validate_browser_review_manifest(root: Path, expected_paths: set[str], failures: list[str]) -> None:
+def validate_browser_review_manifest(
+    root: Path,
+    expected_paths: set[str],
+    label: str,
+    failures: list[str],
+) -> None:
     manifest = read_manifest(root, failures)
     if manifest is None:
         return
@@ -593,11 +701,12 @@ def validate_browser_review_manifest(root: Path, expected_paths: set[str], failu
     if screenshots is None:
         return
 
-    compare_sets("Browser review screenshot manifest paths", set(screenshots), expected_paths, failures)
+    compare_sets(label, set(screenshots), expected_paths, failures)
     for path, screenshot in screenshots.items():
         require_manifest_fields(path, screenshot, ["surface", "renderer", "sourceContract"], failures)
         if path.startswith(("browser-overlays/", "localhost-overlays/")):
             require_manifest_fields(path, screenshot, ["overlayId", "previewMode", "moduleAsset", "status", "bodyKind"], failures)
+            validate_localhost_alias_manifest(path, screenshot, failures)
             validate_overlay_semantics(
                 path,
                 values=screenshot,
@@ -608,6 +717,48 @@ def validate_browser_review_manifest(root: Path, expected_paths: set[str], failu
             )
         if path.startswith("settings/"):
             require_manifest_fields(path, screenshot, ["tab", "region"], failures)
+            validate_settings_region_manifest(path, screenshot, failures)
+
+
+def validate_localhost_alias_manifest(path: str, values: dict[str, object], failures: list[str]) -> None:
+    expected_alias = expected_localhost_alias_route(path)
+    if expected_alias is None:
+        return
+
+    require_manifest_fields(path, values, ["routeAlias"], failures)
+    actual_alias = values.get("routeAlias")
+    if actual_alias != expected_alias:
+        failures.append(f"{path}: expected routeAlias {expected_alias!r}, got {actual_alias!r}")
+
+
+def expected_localhost_alias_route(path: str) -> str | None:
+    for overlay_id, aliases in LOCALHOST_OVERLAY_ALIASES.items():
+        for alias_slug, alias_route in aliases:
+            stem = f"localhost-overlays/{overlay_id}-alias-{alias_slug}"
+            if path == f"{stem}.png":
+                return alias_route
+            for mode in preview_modes_for_overlay(overlay_id):
+                if path == f"{stem}-{mode}.png":
+                    return alias_route
+    return None
+
+
+def validate_settings_region_manifest(path: str, values: dict[str, object], failures: list[str]) -> None:
+    tab = values.get("tab")
+    if tab in (None, "general", "support"):
+        return
+
+    expected_region = normalize_manifest_region(values.get("region"))
+    actual_region = normalize_manifest_region(values.get("activeRegion"))
+    if actual_region != expected_region:
+        failures.append(
+            f"{path}: expected activeRegion {expected_region!r}, got {actual_region!r}; "
+            "settings screenshot may have rendered the wrong region"
+        )
+
+
+def normalize_manifest_region(value: object) -> str:
+    return str(value or "").strip().lower()
 
 
 def validate_overlay_semantics(
