@@ -270,7 +270,7 @@ struct HistoricalDataQuality: Codable {
 }
 
 struct HistoricalSessionAggregate: Codable {
-    var aggregateVersion = 1
+    var aggregateVersion = 3
     var combo: HistoricalComboIdentity?
     var car: HistoricalCarIdentity?
     var track: HistoricalTrackIdentity?

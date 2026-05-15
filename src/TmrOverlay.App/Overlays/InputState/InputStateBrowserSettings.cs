@@ -4,6 +4,9 @@ using TmrOverlay.Core.Settings;
 namespace TmrOverlay.App.Overlays.InputState;
 
 internal sealed record InputStateBrowserSettings(
+    bool ShowThrottleTrace,
+    bool ShowBrakeTrace,
+    bool ShowClutchTrace,
     bool ShowThrottle,
     bool ShowBrake,
     bool ShowClutch,
@@ -12,6 +15,9 @@ internal sealed record InputStateBrowserSettings(
     bool ShowSpeed)
 {
     public static InputStateBrowserSettings Default { get; } = new(
+        ShowThrottleTrace: true,
+        ShowBrakeTrace: true,
+        ShowClutchTrace: true,
         ShowThrottle: true,
         ShowBrake: true,
         ShowClutch: true,
@@ -24,6 +30,9 @@ internal sealed record InputStateBrowserSettings(
         var input = settings.Overlays.FirstOrDefault(
             overlay => string.Equals(overlay.Id, InputStateOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase));
         return new InputStateBrowserSettings(
+            ShowThrottleTrace: input?.GetBooleanOption(OverlayOptionKeys.InputShowThrottleTrace, defaultValue: Default.ShowThrottleTrace) ?? Default.ShowThrottleTrace,
+            ShowBrakeTrace: input?.GetBooleanOption(OverlayOptionKeys.InputShowBrakeTrace, defaultValue: Default.ShowBrakeTrace) ?? Default.ShowBrakeTrace,
+            ShowClutchTrace: input?.GetBooleanOption(OverlayOptionKeys.InputShowClutchTrace, defaultValue: Default.ShowClutchTrace) ?? Default.ShowClutchTrace,
             ShowThrottle: input?.GetBooleanOption(OverlayOptionKeys.InputShowThrottle, defaultValue: Default.ShowThrottle) ?? Default.ShowThrottle,
             ShowBrake: input?.GetBooleanOption(OverlayOptionKeys.InputShowBrake, defaultValue: Default.ShowBrake) ?? Default.ShowBrake,
             ShowClutch: input?.GetBooleanOption(OverlayOptionKeys.InputShowClutch, defaultValue: Default.ShowClutch) ?? Default.ShowClutch,

@@ -12,7 +12,7 @@ enum FlagsOverlayDefinition {
         displayName: "Flags",
         defaultSize: NSSize(width: 360, height: 170),
         showSessionFilters: false,
-        showScaleControl: false,
+        showScaleControl: true,
         showOpacityControl: false,
         fadeWhenLiveTelemetryUnavailable: true
     )

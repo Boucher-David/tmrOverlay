@@ -37,13 +37,16 @@ $forbiddenTopLevelDirectories = @(
 $requiredFiles = @(
     "TMROverlay.exe",
     "appsettings.json",
+    "Assets\GarageCoverDefault.png",
     "Assets\TMRLogo.png"
 )
 $allowedAssetFiles = @(
+    "Assets\GarageCoverDefault.png",
     "Assets\TMRLogo.png"
 )
 
 $allowedAssetPatterns = @(
+    '^Assets\\CarSpecs\\[^\\]+\.json$',
     '^Assets\\TrackMaps\\[^\\]+\.json$'
 )
 

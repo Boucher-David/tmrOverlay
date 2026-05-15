@@ -6,11 +6,11 @@ Start here when continuing work in this repo.
 
 - Windows tray application in `src/TmrOverlay.App/`
 - Platform-neutral settings, history, live telemetry, fuel, overlay metadata, and post-race analysis models in `src/TmrOverlay.Core/`
-- Tracked local macOS harness in `local-mac/TmrOverlayMac/` for mock-telemetry UI parity and review demos
+- Deprecated tracked local macOS harness in `local-mac/TmrOverlayMac/` for secondary mock-telemetry and legacy native-shell scaffolding; it is not a V1 parity, screenshot, or release gate
 - Startup surface: fixed-size settings app window; driving/support overlays are opt-in from settings and default hidden
-- Settings panel owns overlay visibility, scale/custom size, session filters where relevant, shared font/units, and support capture/diagnostics controls; future product surfaces such as Overlay Bridge and post-race analysis should not be exposed as ordinary overlay tabs without a product pass
+- Settings panel owns overlay visibility, scale/custom size, content/header/footer session gates where relevant, shared font/units, and support capture/diagnostics controls; future product surfaces such as Overlay Bridge and post-race analysis should not be exposed as ordinary overlay tabs without a product pass
 - iRacing ingestion through `irsdkSharp`
-- Default-on localhost browser-source routes for supported OBS overlays; future Overlay Bridge work remains separate from localhost
+- Default-on localhost routes for supported OBS overlays; future Overlay Bridge work remains separate from localhost
 - Raw capture pipeline that writes:
   - `capture-manifest.json`
   - `telemetry-schema.json`
@@ -37,13 +37,13 @@ Start here when continuing work in this repo.
 ## Guardrails
 
 - Preserve the collector-first architecture unless there is a strong reason to change it.
-- Keep Windows as the production/iRacing runtime and the tracked mac harness as the mock-telemetry development surface.
-- The mac harness under `local-mac/TmrOverlayMac/` is tracked source now. Keep source/config/tests in sync with shared overlay/settings behavior where practical, while generated `.build`, local app data, captures, logs, and screenshots stay ignored.
+- Keep Windows as the production/iRacing runtime, browser review as the primary local development surface, and localhost as the OBS route surface.
+- The mac harness under `local-mac/TmrOverlayMac/` is tracked source but deprecated secondary scaffolding. Keep it buildable when touched, but do not treat it as a product parity target or screenshot authority.
 - If you change the raw capture format, update `docs/capture-format.md` and `README.md` in the same pass.
 - Prefer shared Core models/read services, descriptor-driven overlay options, and `OverlayTheme` tokens over one-off UI contracts.
-- Design mocks should combine new visual treatment with current production content contracts by default. Keep the displayed fields, ordering, data source semantics, settings-driven content options, and native/browser parity aligned with the current product unless the mock is explicitly proposing a content change.
+- Design mocks should combine new visual treatment with current production content contracts by default. Keep the displayed fields, ordering, data source semantics, settings-driven content options, and native/localhost parity aligned with the current product unless the mock is explicitly proposing a content change. Browser review is the local development surface for checking that parity, not a separate product runtime.
 - Product overlays should read normalized live state through `ILiveTelemetrySource`; telemetry providers should write through `ILiveTelemetrySink`.
-- Mirror shared app/overlay/boilerplate changes in both the Windows app and tracked mac harness unless the work is explicitly Windows/iRacing-specific.
+- Mirror shared app/overlay/boilerplate changes into the tracked mac harness only when deliberately maintaining that secondary scaffold; native/browser/localhost parity is the active product target.
 - In the Windows app, fully qualify timer types: use `System.Threading.Timer` for hosted/background services and `System.Windows.Forms.Timer` for UI refresh loops. WinForms implicit globals import both namespaces, so bare `Timer` is ambiguous on Windows.
 - Waiting/unavailable/error preview states must use deterministic isolated fixtures. Do not let local user history, cached telemetry, or machine-specific paths make an empty state look populated unless the scenario explicitly tests history fallback or support-path display.
 - For wider app changes, carry validation discipline into tests and fixtures: assert both data that should appear and data that must stay hidden, cover failure/degraded paths, and keep performance/diagnostics/update flows fixture-driven where possible.

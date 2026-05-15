@@ -17,6 +17,19 @@ internal static class SessionHistoryAggregateBuilder
         return aggregate;
     }
 
+    public static HistoricalCarRadarCalibrationAggregate RebuildCarRadarCalibration(
+        IEnumerable<HistoricalSessionSummary> summaries,
+        DateTimeOffset updatedAtUtc)
+    {
+        var aggregate = new HistoricalCarRadarCalibrationAggregate();
+        foreach (var summary in summaries.OrderBy(summary => summary.StartedAtUtc))
+        {
+            AddRadarCalibrationSummary(aggregate, summary, updatedAtUtc);
+        }
+
+        return aggregate;
+    }
+
     public static void AddSummary(
         HistoricalSessionAggregate aggregate,
         HistoricalSessionSummary summary,
@@ -68,6 +81,36 @@ internal static class SessionHistoryAggregateBuilder
         aggregate.ObservedFuelFillRateLitersPerSecond.Add(summary.Metrics.ObservedFuelFillRateLitersPerSecond);
         aggregate.AverageTireChangePitServiceSeconds.Add(summary.Metrics.AverageTireChangePitServiceSeconds);
         aggregate.AverageNoTirePitServiceSeconds.Add(summary.Metrics.AverageNoTirePitServiceSeconds);
+    }
+
+    public static bool AddRadarCalibrationSummary(
+        HistoricalCarRadarCalibrationAggregate aggregate,
+        HistoricalSessionSummary summary,
+        DateTimeOffset updatedAtUtc)
+    {
+        if (summary.RadarCalibration is null
+            || !HasRadarCalibrationData(summary.RadarCalibration)
+            || HistoricalRadarCalibrationTrust.TryGetTrustedBodyLengthMeters(
+                aggregate.RadarCalibration?.EstimatedBodyLengthMeters,
+                out _))
+        {
+            return false;
+        }
+
+        aggregate.AggregateVersion = HistoricalDataVersions.CarRadarCalibrationAggregateVersion;
+        aggregate.CarKey = summary.Combo.CarKey;
+        aggregate.Car = summary.Car;
+        aggregate.UpdatedAtUtc = updatedAtUtc;
+        aggregate.SessionCount++;
+        aggregate.RadarCalibration ??= new HistoricalRadarCalibrationAggregate();
+        aggregate.RadarCalibration.Add(summary.RadarCalibration);
+        return true;
+    }
+
+    private static bool HasRadarCalibrationData(HistoricalRadarCalibrationSummary summary)
+    {
+        return summary.SideOverlapWindowSeconds.SampleCount > 0
+            || summary.EstimatedBodyLengthMeters.SampleCount > 0;
     }
 
     private static bool IsLocalDriverStint(string driverRole)

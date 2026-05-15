@@ -778,6 +778,46 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         };
     }
 
+    private static HistoricalTireConditionSnapshot ReadTireCondition(IRacingSDK sdk)
+    {
+        return new HistoricalTireConditionSnapshot(
+            LeftFront: ReadTireCornerCondition(sdk, "LF"),
+            RightFront: ReadTireCornerCondition(sdk, "RF"),
+            LeftRear: ReadTireCornerCondition(sdk, "LR"),
+            RightRear: ReadTireCornerCondition(sdk, "RR"));
+    }
+
+    private static HistoricalTireCornerCondition ReadTireCornerCondition(IRacingSDK sdk, string prefix)
+    {
+        return new HistoricalTireCornerCondition(
+            WearLeft: ReadNullableFiniteDouble(sdk, $"{prefix}wearL"),
+            WearMiddle: ReadNullableFiniteDouble(sdk, $"{prefix}wearM"),
+            WearRight: ReadNullableFiniteDouble(sdk, $"{prefix}wearR"),
+            TemperatureCLeft: ReadNullableFiniteDouble(sdk, $"{prefix}tempCL"),
+            TemperatureCMiddle: ReadNullableFiniteDouble(sdk, $"{prefix}tempCM"),
+            TemperatureCRight: ReadNullableFiniteDouble(sdk, $"{prefix}tempCR"),
+            ColdPressureKpa: ReadNullableFiniteDouble(sdk, $"{prefix}coldPressure"),
+            OdometerMeters: ReadNullableFiniteDouble(sdk, $"{prefix}odometer"));
+    }
+
+    private static HistoricalPitServiceTireRequest ReadPitServiceTireRequest(IRacingSDK sdk)
+    {
+        return new HistoricalPitServiceTireRequest(
+            RequestedTireCompound: ReadNullableInt32(sdk, "PitSvTireCompound"),
+            LeftFrontServicePressureKpa: ReadNullableFiniteDouble(sdk, "PitSvLFP"),
+            RightFrontServicePressureKpa: ReadNullableFiniteDouble(sdk, "PitSvRFP"),
+            LeftRearServicePressureKpa: ReadNullableFiniteDouble(sdk, "PitSvLRP"),
+            RightRearServicePressureKpa: ReadNullableFiniteDouble(sdk, "PitSvRRP"),
+            LeftFrontColdPressurePa: ReadNullableFiniteDouble(sdk, "dpLFTireColdPress"),
+            RightFrontColdPressurePa: ReadNullableFiniteDouble(sdk, "dpRFTireColdPress"),
+            LeftRearColdPressurePa: ReadNullableFiniteDouble(sdk, "dpLRTireColdPress"),
+            RightRearColdPressurePa: ReadNullableFiniteDouble(sdk, "dpRRTireColdPress"),
+            LeftFrontChangeRequested: ReadNullableBoolean(sdk, "dpLFTireChange"),
+            RightFrontChangeRequested: ReadNullableBoolean(sdk, "dpRFTireChange"),
+            LeftRearChangeRequested: ReadNullableBoolean(sdk, "dpLRTireChange"),
+            RightRearChangeRequested: ReadNullableBoolean(sdk, "dpRRTireChange"));
+    }
+
     private static int? ReadInt32ArrayElement(IRacingSDK sdk, string variableName, int index)
     {
         if (index < 0)
@@ -957,7 +997,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
             BestLapTimeSeconds: ReadNullableDoubleArrayElement(sdk, "CarIdxBestLapTime", carIdx),
             Position: position,
             ClassPosition: classPosition,
-            CarClass: ReadInt32ArrayElement(sdk, "CarIdxClass", carIdx));
+            CarClass: ReadInt32ArrayElement(sdk, "CarIdxClass", carIdx),
+            TireCompound: ReadInt32ArrayElement(sdk, "CarIdxTireCompound", carIdx));
     }
 
     private static IReadOnlyList<HistoricalCarProximity> ReadNearbyCars(IRacingSDK sdk, int referenceCarIdx)
@@ -995,7 +1036,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 ClassPosition: ReadInt32ArrayElement(sdk, "CarIdxClassPosition", carIdx),
                 CarClass: ReadInt32ArrayElement(sdk, "CarIdxClass", carIdx),
                 TrackSurface: ReadInt32ArrayElement(sdk, "CarIdxTrackSurface", carIdx),
-                OnPitRoad: ReadBooleanArrayElement(sdk, "CarIdxOnPitRoad", carIdx)));
+                OnPitRoad: ReadBooleanArrayElement(sdk, "CarIdxOnPitRoad", carIdx),
+                TireCompound: ReadInt32ArrayElement(sdk, "CarIdxTireCompound", carIdx)));
         }
 
         return cars;
@@ -1045,7 +1087,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 ClassPosition: classPosition,
                 CarClass: carClass,
                 TrackSurface: ReadInt32ArrayElement(sdk, "CarIdxTrackSurface", carIdx),
-                OnPitRoad: ReadBooleanArrayElement(sdk, "CarIdxOnPitRoad", carIdx)));
+                OnPitRoad: ReadBooleanArrayElement(sdk, "CarIdxOnPitRoad", carIdx),
+                TireCompound: ReadInt32ArrayElement(sdk, "CarIdxTireCompound", carIdx)));
         }
 
         return cars;
@@ -1078,7 +1121,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 ClassPosition: classPosition,
                 CarClass: ReadInt32ArrayElement(sdk, "CarIdxClass", carIdx),
                 TrackSurface: ReadInt32ArrayElement(sdk, "CarIdxTrackSurface", carIdx),
-                OnPitRoad: ReadBooleanArrayElement(sdk, "CarIdxOnPitRoad", carIdx)));
+                OnPitRoad: ReadBooleanArrayElement(sdk, "CarIdxOnPitRoad", carIdx),
+                TireCompound: ReadInt32ArrayElement(sdk, "CarIdxTireCompound", carIdx)));
         }
 
         return cars;
@@ -1526,6 +1570,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 FocusPosition: focusProgress?.Position,
                 FocusClassPosition: focusProgress?.ClassPosition,
                 FocusCarClass: focusProgress?.CarClass,
+                FocusTireCompound: focusProgress?.TireCompound,
                 FocusOnPitRoad: focusCarIdx is { } focusPitCarIdx
                     ? ReadBooleanArrayElement(sdk, "CarIdxOnPitRoad", focusPitCarIdx)
                     : null,
@@ -1541,6 +1586,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 TeamPosition: ReadInt32ArrayElement(sdk, "CarIdxPosition", playerCarIdx),
                 TeamClassPosition: ReadInt32ArrayElement(sdk, "CarIdxClassPosition", playerCarIdx),
                 TeamCarClass: ReadInt32ArrayElement(sdk, "CarIdxClass", playerCarIdx),
+                TeamTireCompound: ReadInt32ArrayElement(sdk, "CarIdxTireCompound", playerCarIdx),
                 LeaderCarIdx: leaderProgress?.CarIdx,
                 LeaderLapCompleted: leaderProgress?.LapCompleted,
                 LeaderLapDistPct: leaderProgress?.LapDistPct,
@@ -1548,6 +1594,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 LeaderEstimatedTimeSeconds: leaderProgress?.EstimatedTimeSeconds,
                 LeaderLastLapTimeSeconds: leaderProgress?.LastLapTimeSeconds,
                 LeaderBestLapTimeSeconds: leaderProgress?.BestLapTimeSeconds,
+                LeaderTireCompound: leaderProgress?.TireCompound,
                 ClassLeaderCarIdx: classLeaderProgress?.CarIdx,
                 ClassLeaderLapCompleted: classLeaderProgress?.LapCompleted,
                 ClassLeaderLapDistPct: classLeaderProgress?.LapDistPct,
@@ -1555,6 +1602,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 ClassLeaderEstimatedTimeSeconds: classLeaderProgress?.EstimatedTimeSeconds,
                 ClassLeaderLastLapTimeSeconds: classLeaderProgress?.LastLapTimeSeconds,
                 ClassLeaderBestLapTimeSeconds: classLeaderProgress?.BestLapTimeSeconds,
+                ClassLeaderTireCompound: classLeaderProgress?.TireCompound,
                 FocusClassLeaderCarIdx: focusClassLeaderProgress?.CarIdx,
                 FocusClassLeaderLapCompleted: focusClassLeaderProgress?.LapCompleted,
                 FocusClassLeaderLapDistPct: focusClassLeaderProgress?.LapDistPct,
@@ -1562,6 +1610,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 FocusClassLeaderEstimatedTimeSeconds: focusClassLeaderProgress?.EstimatedTimeSeconds,
                 FocusClassLeaderLastLapTimeSeconds: focusClassLeaderProgress?.LastLapTimeSeconds,
                 FocusClassLeaderBestLapTimeSeconds: focusClassLeaderProgress?.BestLapTimeSeconds,
+                FocusClassLeaderTireCompound: focusClassLeaderProgress?.TireCompound,
                 PlayerTrackSurface: ReadNullableInt32(sdk, "PlayerTrackSurface"),
                 CarLeftRight: ReadNullableInt32(sdk, "CarLeftRight"),
                 NearbyCars: nearbyCars,
@@ -1575,8 +1624,29 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 PitServiceFuelLiters: ReadNullableDouble(sdk, "PitSvFuel"),
                 PitRepairLeftSeconds: ReadNullableDouble(sdk, "PitRepairLeft"),
                 PitOptRepairLeftSeconds: ReadNullableDouble(sdk, "PitOptRepairLeft"),
+                PlayerCarDryTireSetLimit: ReadInt32(sdk, "PlayerCarDryTireSetLimit"),
                 TireSetsUsed: ReadInt32(sdk, "TireSetsUsed"),
+                TireSetsAvailable: ReadInt32(sdk, "TireSetsAvailable"),
+                LeftTireSetsUsed: ReadInt32(sdk, "LeftTireSetsUsed"),
+                RightTireSetsUsed: ReadInt32(sdk, "RightTireSetsUsed"),
+                FrontTireSetsUsed: ReadInt32(sdk, "FrontTireSetsUsed"),
+                RearTireSetsUsed: ReadInt32(sdk, "RearTireSetsUsed"),
+                LeftTireSetsAvailable: ReadInt32(sdk, "LeftTireSetsAvailable"),
+                RightTireSetsAvailable: ReadInt32(sdk, "RightTireSetsAvailable"),
+                FrontTireSetsAvailable: ReadInt32(sdk, "FrontTireSetsAvailable"),
+                RearTireSetsAvailable: ReadInt32(sdk, "RearTireSetsAvailable"),
+                LeftFrontTiresUsed: ReadInt32(sdk, "LFTiresUsed"),
+                RightFrontTiresUsed: ReadInt32(sdk, "RFTiresUsed"),
+                LeftRearTiresUsed: ReadInt32(sdk, "LRTiresUsed"),
+                RightRearTiresUsed: ReadInt32(sdk, "RRTiresUsed"),
+                LeftFrontTiresAvailable: ReadInt32(sdk, "LFTiresAvailable"),
+                RightFrontTiresAvailable: ReadInt32(sdk, "RFTiresAvailable"),
+                LeftRearTiresAvailable: ReadInt32(sdk, "LRTiresAvailable"),
+                RightRearTiresAvailable: ReadInt32(sdk, "RRTiresAvailable"),
                 FastRepairUsed: ReadInt32(sdk, "FastRepairUsed"),
+                FastRepairAvailable: ReadInt32(sdk, "FastRepairAvailable"),
+                TireCondition: ReadTireCondition(sdk),
+                PitServiceTireRequest: ReadPitServiceTireRequest(sdk),
                 DriversSoFar: ReadInt32(sdk, "DCDriversSoFar"),
                 DriverChangeLapStatus: ReadInt32(sdk, "DCLapStatus"),
                 LapCurrentLapTimeSeconds: ReadNullableDouble(sdk, "LapCurrentLapTime"),
@@ -1602,6 +1672,7 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
                 Clutch: ReadNullableFiniteDouble(sdk, "Clutch"),
                 ClutchRaw: ReadNullableFiniteDouble(sdk, "ClutchRaw"),
                 SteeringWheelAngle: ReadNullableFiniteDouble(sdk, "SteeringWheelAngle"),
+                PlayerYawNorthRadians: ReadNullableFiniteDouble(sdk, "YawNorth"),
                 BrakeAbsActive: ReadNullableBoolean(sdk, "BrakeABSactive"),
                 EngineWarnings: ReadNullableInt32(sdk, "EngineWarnings"),
                 Voltage: ReadNullableFiniteDouble(sdk, "Voltage"),
@@ -2400,7 +2471,8 @@ internal sealed class TelemetryCaptureHostedService : IHostedService
         double? BestLapTimeSeconds,
         int? Position,
         int? ClassPosition,
-        int? CarClass)
+        int? CarClass,
+        int? TireCompound)
     {
         public bool HasLapProgress => LapCompleted >= 0 && LapDistPct >= 0d;
 

@@ -10,7 +10,7 @@ final class DesignV2ApplicationSettingsFullView: NSView {
             case .general:
                 return "General"
             case .support:
-                return "Support"
+                return "Diagnostics"
             }
         }
 
@@ -19,7 +19,7 @@ final class DesignV2ApplicationSettingsFullView: NSView {
             case .general:
                 return "Shared units."
             case .support:
-                return "Diagnostics and teammate handoff controls stay task-oriented."
+                return "Advanced capture and support bundle tools."
             }
         }
 
@@ -28,7 +28,7 @@ final class DesignV2ApplicationSettingsFullView: NSView {
             case .general:
                 return nil
             case .support:
-                return "READY"
+                return nil
             }
         }
     }
@@ -43,6 +43,7 @@ final class DesignV2ApplicationSettingsFullView: NSView {
     private var sidebarButtons: [String: NSButton] = [:]
     private var dynamicControls: [NSView] = []
     private var supportStatus = ""
+    private var updateStatus = "Dev run."
     private var settingsRenderer: DesignV2SettingsRenderer {
         DesignV2SettingsRenderer(fontFamily: OverlayTheme.defaultFontFamily)
     }
@@ -155,9 +156,21 @@ final class DesignV2ApplicationSettingsFullView: NSView {
                     needsDisplay = true
                 }
             ))
+            addActionButton(frame: NSRect(x: 748, y: 292, width: 76, height: 30), title: "Check") { [weak self] in
+                self?.updateStatus = "Checked."
+                self?.needsDisplay = true
+            }
+            addActionButton(frame: NSRect(x: 838, y: 292, width: 88, height: 30), title: "Install") { [weak self] in
+                self?.updateStatus = "No installable update."
+                self?.needsDisplay = true
+            }
+            addActionButton(frame: NSRect(x: 940, y: 292, width: 92, height: 30), title: "Releases") { [weak self] in
+                self?.updateStatus = "Opened releases."
+                self?.needsDisplay = true
+            }
         case .support:
             addDynamic(DesignV2SettingsToggleControl(
-                frame: NSRect(x: 328, y: 276, width: 56, height: 28),
+                frame: NSRect(x: 620, y: 276, width: 56, height: 28),
                 isOn: captureSnapshot.rawCaptureEnabled || captureSnapshot.rawCaptureActive,
                 theme: theme,
                 onChange: { [weak self] isOn in
@@ -181,14 +194,31 @@ final class DesignV2ApplicationSettingsFullView: NSView {
                     needsDisplay = true
                 }
             ))
-            addActionButton(frame: NSRect(x: 328, y: 510, width: 138, height: 34), title: "Create Bundle") { [weak self] in
+            addDynamic(DesignV2SettingsToggleControl(
+                frame: NSRect(x: 620, y: 320, width: 56, height: 28),
+                isOn: trackMapSettings().trackMapBuildFromTelemetry,
+                theme: theme,
+                onChange: { [weak self] isOn in
+                    self?.setTrackMapBuildFromTelemetry(isOn)
+                }
+            ))
+            addActionButton(frame: NSRect(x: 748, y: 552, width: 132, height: 32), title: "Create Bundle") { [weak self] in
                 self?.openSupportURL(AppPaths.diagnosticsRoot(), status: "Opened diagnostics folder.")
             }
-            addActionButton(frame: NSRect(x: 482, y: 510, width: 120, height: 34), title: "Open Logs") { [weak self] in
+            addActionButton(frame: NSRect(x: 894, y: 552, width: 104, height: 32), title: "Copy Path") { [weak self] in
+                self?.copyDiagnosticsBundlePath()
+            }
+            addActionButton(frame: NSRect(x: 328, y: 514, width: 104, height: 30), title: "Open Logs") { [weak self] in
                 self?.openSupportURL(AppPaths.logsRoot(), status: "Opened logs folder.")
             }
-            addActionButton(frame: NSRect(x: 618, y: 510, width: 116, height: 34), title: "Copy Path") { [weak self] in
-                self?.copyDiagnosticsBundlePath()
+            addActionButton(frame: NSRect(x: 446, y: 514, width: 118, height: 30), title: "Diagnostics") { [weak self] in
+                self?.openSupportURL(AppPaths.diagnosticsRoot(), status: "Opened diagnostics folder.")
+            }
+            addActionButton(frame: NSRect(x: 328, y: 552, width: 100, height: 30), title: "Captures") { [weak self] in
+                self?.openSupportURL(AppPaths.captureRoot(), status: "Opened captures folder.")
+            }
+            addActionButton(frame: NSRect(x: 446, y: 552, width: 92, height: 30), title: "History") { [weak self] in
+                self?.openSupportURL(AppPaths.historyRoot(), status: "Opened history folder.")
             }
         }
     }
@@ -220,48 +250,46 @@ final class DesignV2ApplicationSettingsFullView: NSView {
     private func drawGeneralPage() {
         drawPanel(NSRect(x: 306, y: 214, width: 392, height: 132), title: "Units")
         drawText("Measurement system", in: NSRect(x: 328, y: 281, width: 160, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
+
+        drawPanel(NSRect(x: 726, y: 214, width: 414, height: 132), title: "Updates")
+        drawText("Status", in: NSRect(x: 748, y: 281, width: 70, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
+        drawText(updateStatus, in: NSRect(x: 826, y: 281, width: 290, height: 18), size: 10, weight: .bold, color: DesignV2SettingsPalette.muted)
     }
 
     private func drawSupportPage() {
-        drawPanel(NSRect(x: 306, y: 214, width: 392, height: 170), title: "Diagnostic Capture")
+        drawPanel(NSRect(x: 306, y: 214, width: 392, height: 206), title: "Capture Controls")
         drawText(
             captureSnapshot.rawCaptureActive ? "Raw diagnostic telemetry active" : "Raw diagnostic telemetry",
-            in: NSRect(x: 400, y: 282, width: 250, height: 18),
+            in: NSRect(x: 328, y: 282, width: 250, height: 18),
             size: 13,
             weight: .heavy,
             color: DesignV2SettingsPalette.text
         )
+        drawText("Local map building", in: NSRect(x: 328, y: 326, width: 250, height: 18), size: 13, weight: .heavy, color: DesignV2SettingsPalette.text)
         drawBodyLines(
             [
                 "Capture writes raw frames only when explicitly requested.",
-                "Live overlay diagnostics remain lightweight by default."
+                "Local map building derives track geometry from completed telemetry."
             ],
             x: 328,
-            y: 320,
+            y: 364,
             width: 326
         )
 
-        drawPanel(NSRect(x: 726, y: 214, width: 414, height: 170), title: "Current State")
-        drawStatusRow(label: "iRacing", value: captureSnapshot.isConnected ? "Connected" : "Waiting", y: 280, active: captureSnapshot.isConnected)
-        drawStatusRow(label: "Session", value: sessionStateText(), y: 314, active: captureSnapshot.isCapturing, accent: DesignV2SettingsPalette.cyan)
-        drawStatusRow(label: "Issue", value: shortIssueText(), y: 348, active: shortIssueText() == "No active warnings")
+        drawPanel(NSRect(x: 726, y: 214, width: 414, height: 206), title: "Automatic History")
+        drawStatusRow(label: "Car / track", value: "Session history", y: 280, active: true)
+        drawStatusRow(label: "Fuel", value: "History model", y: 314, active: true)
+        drawStatusRow(label: "Radar", value: "Calibration analysis", y: 348, active: true)
+        drawStatusRow(label: "Post-race", value: "Summary analysis", y: 382, active: true)
 
-        drawPanel(NSRect(x: 306, y: 410, width: 834, height: 156), title: "Support Bundle")
-        drawText("Latest bundle", in: NSRect(x: 328, y: 478, width: 110, height: 18), size: 13, color: DesignV2SettingsPalette.muted)
-        drawText(mockDiagnosticsBundleURL.lastPathComponent, in: NSRect(x: 456, y: 477, width: 360, height: 18), size: 12, weight: .bold, color: DesignV2SettingsPalette.text, monospaced: true)
-        drawBodyLines(
-            [
-                "Storage shortcuts and release/update state stay here,",
-                "not inside normal overlay tabs."
-            ],
-            x: 754,
-            y: 520,
-            width: 330,
-            size: 11
-        )
+        drawPanel(NSRect(x: 726, y: 446, width: 414, height: 142), title: "Support Bundle")
+        drawText("Latest bundle", in: NSRect(x: 748, y: 514, width: 110, height: 18), size: 13, color: DesignV2SettingsPalette.muted)
+        drawText(mockDiagnosticsBundleURL.lastPathComponent, in: NSRect(x: 876, y: 513, width: 220, height: 18), size: 12, weight: .bold, color: DesignV2SettingsPalette.text, monospaced: true)
         if !supportStatus.isEmpty {
-            drawText(supportStatus, in: NSRect(x: 328, y: 548, width: 520, height: 18), size: 11, color: DesignV2SettingsPalette.green)
+            drawText(supportStatus, in: NSRect(x: 748, y: 562, width: 330, height: 18), size: 11, color: DesignV2SettingsPalette.green)
         }
+
+        drawPanel(NSRect(x: 306, y: 446, width: 392, height: 142), title: "Support Folders")
     }
 
     private func drawStatusRow(label: String, value: String, y: CGFloat, active: Bool, accent: NSColor = DesignV2SettingsPalette.green) {
@@ -299,6 +327,20 @@ final class DesignV2ApplicationSettingsFullView: NSView {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(mockDiagnosticsBundleURL.path, forType: .string)
         supportStatus = "Copied diagnostics bundle path."
+        needsDisplay = true
+    }
+
+    private func trackMapSettings() -> OverlaySettings {
+        settings.overlays.first { $0.id == "track-map" }
+            ?? OverlaySettings(id: "track-map", width: 360, height: 360)
+    }
+
+    private func setTrackMapBuildFromTelemetry(_ isOn: Bool) {
+        var overlay = trackMapSettings()
+        overlay.trackMapBuildFromTelemetry = isOn
+        settings.updateOverlay(overlay)
+        onSettingsChanged(settings)
+        supportStatus = isOn ? "Local map building enabled." : "Local map building disabled."
         needsDisplay = true
     }
 

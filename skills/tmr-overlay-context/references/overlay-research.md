@@ -113,6 +113,6 @@ Roadmap fit:
 
 ## Development Boundary
 
-Treat the Windows app as production-facing during overlay development: keep it conservative, real-data-driven, and free of mock offsets or named sample assumptions. The tracked mac harness should mirror feature behavior, but it can be much looser about data generation, including fixed preview race offsets, named mock drivers, synthetic all-class timing rows, artificial weather windows, and exaggerated graph events that help validate visuals quickly.
+Treat the Windows app as production-facing during overlay development: keep it conservative, real-data-driven, and free of mock offsets or named sample assumptions. Browser review is the primary local design and screenshot surface, with fixture data allowed to be much looser for visual validation. The tracked mac harness is deprecated secondary scaffolding and should not define product parity.
 
 The radar should be treated as an early proximity surface until we collect enough side-by-side traffic samples to validate lateral behavior beyond the scalar left/right signal.

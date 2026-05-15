@@ -10,6 +10,7 @@ final class OverlayCatalogueBehaviourTests: XCTestCase {
 
         XCTAssertEqual(ids, [
             "car-radar",
+            "flags",
             "fuel-calculator",
             "gap-to-leader",
             "garage-cover",
@@ -71,6 +72,9 @@ final class OverlayCatalogueBehaviourTests: XCTestCase {
     func testGarageCoverVisibilityFollowsGarageSignal() {
         let cover = GarageCoverView()
 
+        cover.update(with: .empty)
+        XCTAssertFalse(cover.isHidden)
+
         cover.update(with: liveSnapshot(sessionTime: 1_200, isGarageVisible: false))
         XCTAssertTrue(cover.isHidden)
 
@@ -89,6 +93,7 @@ final class OverlayCatalogueBehaviourTests: XCTestCase {
             CarRadarOverlayDefinition.definition,
             GapToLeaderOverlayDefinition.definition,
             TrackMapOverlayDefinition.definition,
+            FlagsOverlayDefinition.definition,
             StreamChatOverlayDefinition.definition,
             GarageCoverOverlayDefinition.definition
         ]

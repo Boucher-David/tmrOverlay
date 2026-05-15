@@ -1,3 +1,4 @@
+using System.Drawing;
 using System.Text.Json;
 using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Overlays.Standings;
@@ -162,6 +163,21 @@ public sealed class LiveOverlayWindowCaptureStoreTests
                 Directory.Delete(root, recursive: true);
             }
         }
+    }
+
+    [Fact]
+    public void ApplyTransparencyKeyForCapture_MakesFallbackBackgroundTransparent()
+    {
+        using var bitmap = new Bitmap(2, 1);
+        var transparentKey = Color.FromArgb(1, 2, 3);
+        var renderedPixel = Color.FromArgb(12, 18, 22);
+        bitmap.SetPixel(0, 0, transparentKey);
+        bitmap.SetPixel(1, 0, renderedPixel);
+
+        LiveOverlayWindowCaptureStore.ApplyTransparencyKeyForCapture(bitmap, transparentKey);
+
+        Assert.Equal(0, bitmap.GetPixel(0, 0).A);
+        Assert.Equal(renderedPixel.ToArgb(), bitmap.GetPixel(1, 0).ToArgb());
     }
 
     private static AppStorageOptions CreateStorage(string root)

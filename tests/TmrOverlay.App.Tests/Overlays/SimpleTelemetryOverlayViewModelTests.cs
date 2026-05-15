@@ -1,8 +1,11 @@
 using TmrOverlay.App.Overlays.Flags;
+using TmrOverlay.App.Overlays.Content;
 using TmrOverlay.App.Overlays.InputState;
 using TmrOverlay.App.Overlays.PitService;
 using TmrOverlay.App.Overlays.SessionWeather;
 using TmrOverlay.App.Overlays.SimpleTelemetry;
+using TmrOverlay.Core.Overlays;
+using TmrOverlay.Core.Settings;
 using TmrOverlay.Core.Telemetry.Live;
 using Xunit;
 
@@ -209,30 +212,47 @@ public sealed class SimpleTelemetryOverlayViewModelTests
                 Quality = LiveModelQuality.Reliable,
                 SessionType = "Race",
                 SessionName = "Endurance",
+                EventType = "Race",
                 TeamRacing = true,
                 SessionTimeSeconds = 60d,
                 SessionTimeRemainSeconds = 3600d,
+                SessionTimeTotalSeconds = 14400d,
                 SessionLapsRemain = 20,
                 RaceLaps = 50,
+                SessionState = 4,
+                SessionFlags = 4,
                 TrackDisplayName = "Road Atlanta",
-                TrackLengthKm = 4.088d
+                TrackLengthKm = 4.088d,
+                CarDisplayName = "Mercedes-AMG GT3"
+            },
+            Reference = LiveReferenceModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                PlayerCarIdx = 10,
+                FocusCarIdx = 10,
+                FocusIsPlayer = true,
+                PlayerYawNorthRadians = Math.PI
             },
             Weather = LiveWeatherModel.Empty with
             {
                 HasData = true,
                 Quality = LiveModelQuality.Reliable,
-                AirTempC = 21d,
-                TrackTempCrewC = 31d,
+                AirTempC = 19d,
+                TrackTempCrewC = 44d,
                 TrackWetness = 0,
                 TrackWetnessLabel = "dry",
                 WeatherDeclaredWet = false,
                 WeatherType = "constant",
                 SkiesLabel = "partly cloudy",
-                PrecipitationPercent = 0d,
+                PrecipitationPercent = 0.12d,
                 WindVelocityMetersPerSecond = 4.2d,
                 WindDirectionRadians = Math.PI,
-                RelativeHumidityPercent = 67d,
-                FogLevelPercent = 0d,
+                RelativeHumidityPercent = 0.67d,
+                FogLevelPercent = 0.02d,
+                AirPressurePa = 101325d,
+                SolarAltitudeRadians = 0.5d,
+                SolarAzimuthRadians = 2.2d,
                 RubberState = "moderate usage"
             }
         });
@@ -241,9 +261,121 @@ public sealed class SimpleTelemetryOverlayViewModelTests
 
         Assert.Equal("Race", viewModel.Status);
         Assert.Contains(viewModel.Rows, row => row.Label == "Session" && row.Value.Contains("team", StringComparison.Ordinal));
-        Assert.Contains(viewModel.Rows, row => row.Label == "Temps" && row.Value.Contains("70 F", StringComparison.Ordinal));
-        Assert.Contains(viewModel.Rows, row => row.Label == "Surface" && row.Value.Contains("rubber moderate usage", StringComparison.Ordinal));
+        Assert.Contains(viewModel.Rows, row => row.Label == "Temps" && row.Value.Contains("66 F", StringComparison.Ordinal));
+        Assert.Contains(viewModel.Rows, row => row.Label == "Surface" && row.Value.Contains("Dry", StringComparison.Ordinal) && row.Value.Contains("Rubber Moderate Usage", StringComparison.Ordinal));
+        Assert.Contains(viewModel.Rows, row => row.Label == "Sky" && row.Value.Contains("Partly Cloudy", StringComparison.Ordinal));
+        Assert.Contains(viewModel.Rows, row => row.Label == "Sky" && row.Value.Contains("rain:12%", StringComparison.Ordinal));
         Assert.Contains(viewModel.Rows, row => row.Label == "Wind" && row.Value.Contains("S", StringComparison.Ordinal));
+        Assert.Contains(viewModel.Rows, row => row.Label == "Atmosphere" && row.Value.Contains("hum 67%", StringComparison.Ordinal) && row.Value.Contains("29.92 inHg", StringComparison.Ordinal));
+        Assert.DoesNotContain(viewModel.Rows, row => row.Label == "State");
+        Assert.DoesNotContain(viewModel.Rows, row => row.Label == "Sun");
+        Assert.Contains(viewModel.Rows, row => row.Label == "Wind" && row.Segments.Any(segment => segment.Label == "Facing" && segment.Value == "Head"));
+        Assert.Collection(
+            viewModel.MetricSections,
+            section =>
+            {
+                Assert.Equal("Session", section.Title);
+                Assert.Contains(section.Rows, row => row.Label == "Event" && row.Segments.Select(segment => segment.Label).SequenceEqual(new[] { "Event", "Car" }));
+                Assert.Contains(section.Rows, row => row.Label == "Clock" && row.Segments.Select(segment => segment.Label).SequenceEqual(new[] { "Elapsed", "Left", "Total" }));
+                Assert.Contains(section.Rows, row => row.Label == "Laps" && row.Segments.Select(segment => segment.Label).SequenceEqual(new[] { "Remaining", "Total" }));
+                Assert.DoesNotContain(section.Rows, row => row.Label == "State");
+            },
+            section =>
+            {
+                Assert.Equal("Weather", section.Title);
+                var temps = Assert.Single(section.Rows, row => row.Label == "Temps");
+                Assert.Equal(new[] { "Air", "Track" }, temps.Segments.Select(segment => segment.Label));
+                Assert.Contains(temps.Segments, segment => segment.Label == "Air" && segment.AccentHex == "#33CEFF");
+                Assert.Contains(temps.Segments, segment => segment.Label == "Track" && segment.AccentHex == "#FF7D49");
+                Assert.Contains(section.Rows, row => row.Label == "Surface" && row.Segments.Select(segment => segment.Label).SequenceEqual(new[] { "Wetness", "Declared", "Rubber" }));
+                Assert.Contains(section.Rows, row => row.Label == "Surface" && row.Segments.Any(segment => segment.Label == "Wetness" && segment.Value == "Dry"));
+                Assert.Contains(section.Rows, row => row.Label == "Surface" && row.Segments.Any(segment => segment.Label == "Rubber" && segment.Value == "Moderate Usage"));
+                Assert.Contains(section.Rows, row => row.Label == "Sky" && row.Segments.Any(segment => segment.Label == "Skies" && segment.Value == "Partly Cloudy"));
+                Assert.Contains(section.Rows, row => row.Label == "Atmosphere" && row.Segments.Any(segment => segment.Label == "Fog" && segment.Value == "2%"));
+                Assert.Contains(section.Rows, row => row.Label == "Wind" && row.Segments.Any(segment => segment.Label == "Facing" && segment.RotationDegrees == 0d && segment.AccentHex is null));
+            });
+    }
+
+    [Fact]
+    public void SessionWeather_FromTelemetry_HidesLocalWindOutsideLocalInCarContext()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = Snapshot(now, LiveRaceModels.Empty with
+        {
+            Session = LiveSessionModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                SessionType = "Race"
+            },
+            RaceEvents = LiveRaceEventModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                IsOnTrack = false,
+                IsInGarage = true
+            },
+            Reference = LiveReferenceModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                PlayerCarIdx = 10,
+                FocusCarIdx = 10,
+                FocusIsPlayer = true,
+                PlayerYawNorthRadians = Math.PI
+            },
+            Weather = LiveWeatherModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                WindVelocityMetersPerSecond = 4.2d,
+                WindDirectionRadians = Math.PI
+            }
+        });
+
+        var viewModel = SessionWeatherOverlayViewModel.From(snapshot, now, "Metric");
+
+        Assert.DoesNotContain(viewModel.Rows, row => row.Label == "Local wind");
+        Assert.Contains(viewModel.Rows, row => row.Label == "Wind" && row.Segments.All(segment => segment.Label != "Facing"));
+    }
+
+    [Fact]
+    public void SessionWeather_FromTelemetry_HonorsContentCellToggles()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = Snapshot(now, LiveRaceModels.Empty with
+        {
+            Session = LiveSessionModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                SessionType = "Race"
+            },
+            Weather = LiveWeatherModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                AirTempC = 21d,
+                TrackTempCrewC = 38d,
+                SkiesLabel = "partly cloudy",
+                WeatherType = "dynamic",
+                PrecipitationPercent = 0.2d
+            }
+        });
+        var settings = new OverlaySettings { Id = "session-weather" };
+        settings.SetBooleanOption($"{OverlayContentColumnSettings.SessionWeatherSkySkiesBlockId}.enabled", false);
+        settings.SetBooleanOption($"{OverlayContentColumnSettings.SessionWeatherSkyWeatherBlockId}.enabled", false);
+        settings.SetBooleanOption($"{OverlayContentColumnSettings.SessionWeatherSkyRainBlockId}.enabled", false);
+        settings.SetBooleanOption($"{OverlayContentColumnSettings.SessionWeatherTempsAirBlockId}.enabled", false);
+
+        var viewModel = SessionWeatherOverlayViewModel.From(snapshot, now, "Metric", settings);
+
+        Assert.DoesNotContain(viewModel.Rows, row => row.Label == "Sky");
+        Assert.Contains(
+            viewModel.Rows,
+            row => row.Label == "Temps"
+                && row.Value == "38 C"
+                && row.Segments.Select(segment => segment.Label).SequenceEqual(new[] { "Track" }));
     }
 
     [Fact]
@@ -356,7 +488,7 @@ public sealed class SimpleTelemetryOverlayViewModelTests
                 OnPitRoad = true,
                 PitstopActive = true,
                 PitServiceStatus = PitServiceStatusFormatter.InProgress,
-                PitServiceFlags = 0x1f,
+                PitServiceFlags = 0x3f,
                 PitServiceFuelLiters = 45.5d,
                 PitRepairLeftSeconds = 12.2d,
                 TireSetsUsed = 2,
@@ -379,10 +511,103 @@ public sealed class SimpleTelemetryOverlayViewModelTests
         Assert.Equal("source: player/team pit service telemetry", viewModel.Source);
         Assert.Contains(viewModel.Rows, row => row.Label == "Release" && row.Value == "RED - service active");
         Assert.Contains(viewModel.Rows, row => row.Label == "Pit status" && row.Value == "in progress");
-        Assert.Contains(viewModel.Rows, row => row.Label == "Service" && row.Value.Contains("active", StringComparison.Ordinal));
-        Assert.Contains(viewModel.Rows, row => row.Label == "Fuel request" && row.Value == "45.5 L");
+        Assert.DoesNotContain(viewModel.Rows, row => row.Label == "Location");
+        Assert.DoesNotContain(viewModel.Rows, row => row.Label == "Service");
+        Assert.DoesNotContain(viewModel.Rows, row => row.Label == "Tires");
+        Assert.Contains(viewModel.Rows, row => row.Label == "Fuel request" && row.Value == "requested | 45.5 L");
+        Assert.Contains(viewModel.Rows, row => row.Label == "Fuel request" && row.Segments.Select(segment => segment.Label).SequenceEqual(new[] { "Requested", "Selected" }));
+        Assert.Contains(viewModel.Rows, row => row.Label == "Tearoff" && row.Value == "requested" && row.Segments.Count == 1);
         Assert.Contains(viewModel.Rows, row => row.Label == "Repair" && row.Value.Contains("12s required", StringComparison.Ordinal));
-        Assert.Contains(viewModel.Rows, row => row.Label == "Fast repair" && row.Value == "local 0 | team 1");
+        Assert.Contains(viewModel.Rows, row => row.Label == "Fast repair" && row.Value == "--" && row.Segments.Count == 2);
+    }
+
+    [Fact]
+    public void PitService_FromTelemetry_HonorsMetricCellToggles()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = Snapshot(now, LiveRaceModels.Empty with
+        {
+            FuelPit = LiveFuelPitModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                OnPitRoad = true,
+                PitServiceStatus = PitServiceStatusFormatter.InProgress,
+                PitServiceFlags = 0x10,
+                PitServiceFuelLiters = 45.5d,
+                PitRepairLeftSeconds = 12.2d,
+                PitOptRepairLeftSeconds = 18.4d
+            }
+        });
+        var settings = new OverlaySettings { Id = "pit-service" };
+        settings.SetBooleanOption($"{OverlayContentColumnSettings.PitServiceReleaseBlockId}.enabled", false);
+        settings.SetBooleanOption($"{OverlayContentColumnSettings.PitServiceFuelSelectedBlockId}.enabled", false);
+        settings.SetBooleanOption($"{OverlayContentColumnSettings.PitServiceRepairRequiredBlockId}.enabled", false);
+        settings.SetBooleanOption($"{OverlayContentColumnSettings.PitServiceRepairOptionalBlockId}.enabled", false);
+
+        var viewModel = PitServiceOverlayViewModel.From(snapshot, now, "Metric", settings);
+
+        Assert.DoesNotContain(viewModel.Rows, row => row.Label == "Release");
+        Assert.DoesNotContain(viewModel.Rows, row => row.Label == "Repair");
+        Assert.Contains(
+            viewModel.Rows,
+            row => row.Label == "Fuel request"
+                && row.Value == "Yes"
+                && Assert.Single(row.Segments).Label == "Requested");
+    }
+
+    [Fact]
+    public void PitService_FromTelemetry_GroupsRowsAndShowsTimeWithFiniteRaceLaps()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = Snapshot(now, LiveRaceModels.Empty with
+        {
+            Session = LiveSessionModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                SessionType = "Race",
+                SessionTimeRemainSeconds = 86_258.266667d,
+                SessionLapsRemain = 4,
+                SessionLapsTotal = 5
+            },
+            FuelPit = LiveFuelPitModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                PlayerCarInPitStall = true,
+                PitstopActive = false,
+                PitServiceFlags = 0
+            }
+        });
+
+        var viewModel = PitServiceOverlayViewModel.From(snapshot, now, "Metric");
+
+        Assert.Equal("release ready", viewModel.Status);
+        Assert.Contains(viewModel.Rows, row => row.Label == "Release" && row.Value == "GREEN - go (inferred)");
+        Assert.Contains(viewModel.Rows, row => row.Label == "Time / Laps" && row.Value == "23:58 | 4/5 laps");
+
+        Assert.Collection(
+            viewModel.MetricSections,
+            section =>
+            {
+                Assert.Equal("Session", section.Title);
+                Assert.Contains(section.Rows, row => row.Label == "Time / Laps");
+            },
+            section =>
+            {
+                Assert.Equal("Pit Signal", section.Title);
+                Assert.Contains(section.Rows, row => row.Label == "Release");
+                Assert.Contains(section.Rows, row => row.Label == "Pit status");
+                Assert.DoesNotContain(section.Rows, row => row.Label == "Location");
+            },
+            section =>
+            {
+                Assert.Equal("Service Request", section.Title);
+                Assert.DoesNotContain(section.Rows, row => row.Label == "Service");
+                Assert.Contains(section.Rows, row => row.Label == "Tearoff");
+                Assert.Contains(section.Rows, row => row.Label == "Fast repair");
+            });
     }
 
     [Fact]
@@ -505,6 +730,7 @@ public sealed class SimpleTelemetryOverlayViewModelTests
                 Quality = LiveModelQuality.Reliable,
                 PitServiceFlags = 0x40,
                 FastRepairUsed = 0,
+                FastRepairAvailable = 1,
                 TeamFastRepairsUsed = 1
             }
         });
@@ -513,8 +739,9 @@ public sealed class SimpleTelemetryOverlayViewModelTests
 
         Assert.Equal("service requested", viewModel.Status);
         Assert.Contains(viewModel.Rows, row => row.Label == "Release" && row.Value == "armed");
-        Assert.Contains(viewModel.Rows, row => row.Label == "Service" && row.Value == "requested | fast repair");
-        Assert.Contains(viewModel.Rows, row => row.Label == "Fast repair" && row.Value == "selected | local 0 | team 1");
+        Assert.DoesNotContain(viewModel.Rows, row => row.Label == "Service");
+        Assert.Contains(viewModel.Rows, row => row.Label == "Fast repair" && row.Value == "selected | available 1");
+        Assert.Contains(viewModel.Rows, row => row.Label == "Fast repair" && row.Segments.Any(segment => segment.Label == "Available" && segment.Value == "1"));
     }
 
     [Fact]
@@ -551,8 +778,109 @@ public sealed class SimpleTelemetryOverlayViewModelTests
         var second = builder(changed, now.AddSeconds(1), "Metric");
 
         Assert.Contains(first.Rows, row => row.Label == "Fuel request" && row.Tone == SimpleTelemetryTone.Normal);
-        Assert.Contains(second.Rows, row => row.Label == "Fuel request" && row.Value == "45.0 L" && row.Tone == SimpleTelemetryTone.Info);
-        Assert.Contains(second.Rows, row => row.Label == "Tires" && row.Value == "four tires" && row.Tone == SimpleTelemetryTone.Info);
+        Assert.Contains(second.Rows, row => row.Label == "Fuel request" && row.Value == "requested | 45.0 L" && row.Tone == SimpleTelemetryTone.Info);
+        Assert.DoesNotContain(second.Rows, row => row.Label == "Tires");
+        Assert.Contains(second.Sections.SelectMany(section => section.Rows), row => row.Label == "Change" && row.Cells.All(cell => cell.Value == "Change"));
+    }
+
+    [Fact]
+    public void PitService_FromTelemetry_HidesTireAnalysisWhenCountersAreNotRepresentative()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = Snapshot(now, LiveRaceModels.Empty with
+        {
+            FuelPit = LiveFuelPitModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                PlayerCarDryTireSetLimit = 0,
+                TireSetsAvailable = 0,
+                TireSetsUsed = 0,
+                LeftFrontTiresAvailable = 0,
+                RightFrontTiresAvailable = 0,
+                LeftRearTiresAvailable = 0,
+                RightRearTiresAvailable = 0
+            }
+        });
+
+        var viewModel = PitServiceOverlayViewModel.From(snapshot, now, "Metric");
+
+        Assert.Empty(viewModel.Sections);
+        Assert.DoesNotContain(viewModel.Rows, row => row.Label == "Tires");
+    }
+
+    [Fact]
+    public void PitService_FromTelemetry_ShowsRepresentativeTireAnalysisRows()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = TireAnalysisSnapshot(now);
+
+        var viewModel = PitServiceOverlayViewModel.From(snapshot, now, "Imperial");
+
+        var section = Assert.Single(viewModel.Sections);
+        Assert.Equal("Tire Analysis", section.Title);
+        Assert.Collection(
+            section.Headers,
+            header => Assert.Equal("Info", header),
+            header => Assert.Equal("FL", header),
+            header => Assert.Equal("FR", header),
+            header => Assert.Equal("RL", header),
+            header => Assert.Equal("RR", header));
+        Assert.Contains(section.Rows, row => row.Label == "Set limit" && row.Cells.All(cell => cell.Value == "4 sets"));
+        Assert.Contains(section.Rows, row => row.Label == "Compound" && row.Cells.All(cell => cell.Value == "Dry" && cell.Tone == SimpleTelemetryTone.Info));
+        Assert.Contains(section.Rows, row => row.Label == "Change" && row.Cells[0].Value == "Change" && row.Cells[0].Tone == SimpleTelemetryTone.Success);
+        Assert.Contains(section.Rows, row => row.Label == "Change" && row.Cells[1].Value == "Keep" && row.Cells[1].Tone == SimpleTelemetryTone.Info);
+        Assert.Contains(section.Rows, row => row.Label == "Available" && row.Cells[0].Value == "2");
+        Assert.Contains(section.Rows, row => row.Label == "Used" && row.Cells[0].Value == "1");
+        Assert.Contains(section.Rows, row => row.Label == "Wear" && row.Cells[0].Value == "92/91/90%");
+        Assert.Contains(section.Rows, row => row.Label == "Temp" && row.Cells[0].Value == "176/178/180 F");
+        Assert.Contains(section.Rows, row => row.Label == "Pressure" && row.Cells[0].Value == "30 psi");
+        Assert.Contains(section.Rows, row => row.Label == "Distance" && row.Cells[0].Value == "12.4 mi");
+    }
+
+    [Fact]
+    public void PitService_FromTelemetry_ShowsZeroAvailableWhenSetLimitIsKnown()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = Snapshot(now, LiveRaceModels.Empty with
+        {
+            FuelPit = LiveFuelPitModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                PlayerCarDryTireSetLimit = 4,
+                TireSetsAvailable = 0,
+                LeftFrontTiresAvailable = 0,
+                RightFrontTiresAvailable = 0,
+                LeftRearTiresAvailable = 0,
+                RightRearTiresAvailable = 0
+            }
+        });
+
+        var viewModel = PitServiceOverlayViewModel.From(snapshot, now, "Metric");
+
+        var section = Assert.Single(viewModel.Sections);
+        Assert.Contains(section.Rows, row => row.Label == "Set limit" && row.Cells.All(cell => cell.Value == "4 sets"));
+        Assert.Contains(section.Rows, row => row.Label == "Available" && row.Cells.All(cell => cell.Value == "0" && cell.Tone == SimpleTelemetryTone.Error));
+    }
+
+    [Fact]
+    public void PitService_FromTelemetry_HonorsTireAnalysisContentToggles()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = TireAnalysisSnapshot(now);
+        var settings = new OverlaySettings { Id = "pit-service" };
+        settings.SetBooleanOption(OverlayOptionKeys.PitServiceShowTireSetsAvailable, false);
+        settings.SetBooleanOption(OverlayOptionKeys.PitServiceShowTireWear, false);
+        settings.SetBooleanOption(OverlayOptionKeys.PitServiceShowTireTemperature, false);
+
+        var viewModel = PitServiceOverlayViewModel.From(snapshot, now, "Metric", settings);
+
+        var section = Assert.Single(viewModel.Sections);
+        Assert.DoesNotContain(section.Rows, row => row.Label == "Available");
+        Assert.DoesNotContain(section.Rows, row => row.Label == "Wear");
+        Assert.DoesNotContain(section.Rows, row => row.Label == "Temp");
+        Assert.Contains(section.Rows, row => row.Label == "Set limit");
     }
 
     [Fact]
@@ -640,7 +968,10 @@ public sealed class SimpleTelemetryOverlayViewModelTests
                     HasData = true,
                     Quality = LiveModelQuality.Reliable,
                     IsOnTrack = true
-                }
+                },
+            PitService = models.PitService.HasData || !models.FuelPit.HasData
+                ? models.PitService
+                : LivePitServiceModel.FromFuelPit(models.FuelPit, models.TireCompounds)
         };
 
         return LiveTelemetrySnapshot.Empty with
@@ -651,5 +982,79 @@ public sealed class SimpleTelemetryOverlayViewModelTests
             Sequence = 1,
             Models = normalizedModels
         };
+    }
+
+    private static LiveTelemetrySnapshot TireAnalysisSnapshot(DateTimeOffset now)
+    {
+        return Snapshot(now, LiveRaceModels.Empty with
+        {
+            TireCompounds = LiveTireCompoundModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                Definitions =
+                [
+                    new LiveTireCompoundDefinition(0, "Dry", "Dry", IsWet: false)
+                ],
+                PlayerCar = new LiveCarTireCompound(
+                    CarIdx: 10,
+                    CompoundIndex: 0,
+                    Label: "Dry",
+                    ShortLabel: "Dry",
+                    IsWet: false,
+                    IsPlayer: true,
+                    IsFocus: true,
+                    Evidence: LiveSignalEvidence.Reliable("CarIdxTireCompound"))
+            },
+            FuelPit = LiveFuelPitModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                PitServiceFlags = 0x01,
+                PlayerCarDryTireSetLimit = 4,
+                TireSetsAvailable = 2,
+                TireSetsUsed = 1,
+                LeftFrontTiresAvailable = 2,
+                RightFrontTiresAvailable = 2,
+                LeftRearTiresAvailable = 2,
+                RightRearTiresAvailable = 2,
+                LeftFrontTiresUsed = 1,
+                RightFrontTiresUsed = 1,
+                LeftRearTiresUsed = 1,
+                RightRearTiresUsed = 1,
+                RequestedTireCompound = 0
+            },
+            TireCondition = LiveTireConditionModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Partial,
+                LeftFront = TireCorner("LF", 0.92d, 0.91d, 0.90d, 80d, 81d, 82d, 206.8d, 20_000d),
+                RightFront = TireCorner("RF", 0.93d, 0.92d, 0.91d, 79d, 80d, 81d, 203.4d, 19_750d),
+                LeftRear = TireCorner("LR", 0.96d, 0.95d, 0.94d, 72d, 73d, 74d, 196.5d, 20_000d),
+                RightRear = TireCorner("RR", 0.97d, 0.96d, 0.95d, 73d, 74d, 75d, 198.6d, 19_750d)
+            }
+        });
+    }
+
+    private static LiveTireCornerCondition TireCorner(
+        string corner,
+        double wearLeft,
+        double wearMiddle,
+        double wearRight,
+        double tempLeft,
+        double tempMiddle,
+        double tempRight,
+        double coldPressureKpa,
+        double odometerMeters)
+    {
+        return new LiveTireCornerCondition(
+            Corner: corner,
+            Wear: new LiveTireAcrossTreadValues(wearLeft, wearMiddle, wearRight),
+            TemperatureC: new LiveTireAcrossTreadValues(tempLeft, tempMiddle, tempRight),
+            ColdPressureKpa: coldPressureKpa,
+            OdometerMeters: odometerMeters,
+            PitServicePressureKpa: null,
+            BlackBoxColdPressurePa: null,
+            ChangeRequested: null);
     }
 }

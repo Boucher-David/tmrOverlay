@@ -45,6 +45,11 @@ internal static class OverlayChromeSettings
 
     public static bool ShowFooterSource(OverlaySettings settings, LiveTelemetrySnapshot snapshot)
     {
+        if (!SupportsFooterSource(settings))
+        {
+            return false;
+        }
+
         return IsEnabledForSession(
             settings,
             OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot),
@@ -52,6 +57,11 @@ internal static class OverlayChromeSettings
             OverlayOptionKeys.ChromeFooterSourcePractice,
             OverlayOptionKeys.ChromeFooterSourceQualifying,
             OverlayOptionKeys.ChromeFooterSourceRace);
+    }
+
+    public static bool SupportsFooterSource(OverlaySettings settings)
+    {
+        return settings.Id.Trim().ToLowerInvariant() is not "session-weather";
     }
 
     public static string SettingsSignature(OverlaySettings settings)
@@ -69,13 +79,15 @@ internal static class OverlayChromeSettings
         string qualifyingKey,
         string raceKey)
     {
-        return sessionKind switch
+        return OverlayAvailabilityEvaluator.NormalizeSessionKind(sessionKind) switch
         {
-            OverlaySessionKind.Test => settings.GetBooleanOption(testKey, defaultValue: true),
             OverlaySessionKind.Practice => settings.GetBooleanOption(practiceKey, defaultValue: true),
             OverlaySessionKind.Qualifying => settings.GetBooleanOption(qualifyingKey, defaultValue: true),
             OverlaySessionKind.Race => settings.GetBooleanOption(raceKey, defaultValue: true),
-            _ => true
+            _ => settings.GetBooleanOption(testKey, defaultValue: true)
+                || settings.GetBooleanOption(practiceKey, defaultValue: true)
+                || settings.GetBooleanOption(qualifyingKey, defaultValue: true)
+                || settings.GetBooleanOption(raceKey, defaultValue: true)
         };
     }
 }

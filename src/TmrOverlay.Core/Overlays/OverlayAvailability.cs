@@ -121,12 +121,8 @@ internal static class OverlayAvailabilityEvaluator
         }
 
         var normalized = sessionType.ToLowerInvariant();
-        if (normalized.Contains("test", StringComparison.Ordinal))
-        {
-            return OverlaySessionKind.Test;
-        }
-
-        if (normalized.Contains("practice", StringComparison.Ordinal))
+        if (normalized.Contains("test", StringComparison.Ordinal)
+            || normalized.Contains("practice", StringComparison.Ordinal))
         {
             return OverlaySessionKind.Practice;
         }
@@ -148,14 +144,14 @@ internal static class OverlayAvailabilityEvaluator
         OverlaySettings settings,
         OverlaySessionKind? sessionKind)
     {
-        return sessionKind switch
-        {
-            OverlaySessionKind.Test => settings.ShowInTest,
-            OverlaySessionKind.Practice => settings.ShowInPractice,
-            OverlaySessionKind.Qualifying => settings.ShowInQualifying,
-            OverlaySessionKind.Race => settings.ShowInRace,
-            _ => true
-        };
+        return true;
+    }
+
+    public static OverlaySessionKind? NormalizeSessionKind(OverlaySessionKind? sessionKind)
+    {
+        return sessionKind == OverlaySessionKind.Test
+            ? OverlaySessionKind.Practice
+            : sessionKind;
     }
 
     private static OverlayAvailabilitySnapshot Unavailable(

@@ -3,128 +3,1107 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TMR Settings - General</title>
+  <title>TMR Settings Review</title>
   <style>
 {{SETTINGS_CSS}}
   </style>
 </head>
-<body data-preview="{{PREVIEW_MODE}}">
-  <main class="settings-shell">
-    <aside class="sidebar" aria-label="Settings sections">
-      <div class="brand">
-        <div class="brand-mark">TMR</div>
-        <div>
-          <div class="brand-title">Tech Mates Racing Overlay</div>
-          <div class="brand-subtitle">TMR Overlay</div>
-        </div>
-      </div>
-      <nav class="nav-list">
-        <a class="nav-item {{APP_ACTIVE}}" href="/review/app">App Validator</a>
-        <a class="nav-item {{GENERAL_ACTIVE}}" href="/review/settings/general">General</a>
-        <a class="nav-item" href="/review/overlays/standings">Standings</a>
-        <a class="nav-item" href="/review/overlays/relative">Relative</a>
-        <a class="nav-item" href="/review/overlays/gap-to-leader">Gap To Leader</a>
-        <a class="nav-item" href="/review/overlays/track-map">Track Map</a>
-        <a class="nav-item" href="/review/overlays/stream-chat">Stream Chat</a>
-        <a class="nav-item" href="/review/overlays/garage-cover">Garage Cover</a>
-        <a class="nav-item" href="/review/overlays/fuel-calculator">Fuel Calculator</a>
-        <a class="nav-item" href="/review/overlays/input-state">Input / Car State</a>
-        <a class="nav-item" href="/review/overlays/car-radar">Car Radar</a>
-        <a class="nav-item" href="/review/settings/general#flags">Flags</a>
-        <a class="nav-item" href="/review/overlays/session-weather">Session / Weather</a>
-        <a class="nav-item" href="/review/overlays/pit-service">Pit Service</a>
-        <a class="nav-item" href="/review/settings/general#support">Support</a>
-      </nav>
-    </aside>
-    <section class="content" aria-labelledby="page-title">
-      <header class="content-header">
-        <div>
-          <h1 id="page-title">{{PAGE_TITLE}}</h1>
-          <p>{{PAGE_SUBTITLE}}</p>
-        </div>
-        <span class="status-pill" id="preview-pill">Preview off</span>
-      </header>
-      <section class="panel units-panel" aria-labelledby="units-title">
-        <h2 id="units-title">Units</h2>
-        <div class="field-row">
-          <span>Measurement system</span>
-          <div class="segmented" role="group" aria-label="Measurement system">
-            <button class="segment active" type="button" aria-pressed="true">Metric</button>
-            <button class="segment" type="button" aria-pressed="false">Imperial</button>
-          </div>
-        </div>
-      </section>
-      <section class="panel preview-panel" aria-labelledby="preview-title">
-        <h2 id="preview-title">{{PREVIEW_TITLE}}</h2>
-        <div class="preview-summary">
-          <div>
-            <span class="label">Session preview</span>
-            <strong id="preview-state">Preview off</strong>
-          </div>
-          <div class="segmented wide" role="group" aria-label="Session preview">
-            <button class="segment preview-choice" type="button" data-mode="off" aria-pressed="true">Off</button>
-            <button class="segment preview-choice" type="button" data-mode="practice" aria-pressed="false">Practice</button>
-            <button class="segment preview-choice" type="button" data-mode="qualifying" aria-pressed="false">Quali</button>
-            <button class="segment preview-choice" type="button" data-mode="race" aria-pressed="false">Race</button>
-          </div>
-        </div>
-        <ul class="preview-rules">
-          <li>Uses deterministic mock telemetry for the selected session.</li>
-          <li>Overlay visibility, session filters, positions, scale, and opacity stay normal.</li>
-          <li>Hidden overlays stay hidden; Stream Chat is not forced open.</li>
-        </ul>
-        <div class="preview-stage" aria-label="{{PREVIEW_LABEL}}">
-          <iframe class="overlay-frame standings-frame" title="Standings preview" src="/review/overlays/standings?preview=off"></iframe>
-          <iframe class="overlay-frame relative-frame" title="Relative preview" src="/review/overlays/relative?preview=off"></iframe>
-          <iframe class="overlay-frame gap-frame" title="Gap To Leader preview" src="/review/overlays/gap-to-leader?preview=off"></iframe>
-          <iframe class="overlay-frame fuel-frame" title="Fuel preview" src="/review/overlays/fuel-calculator?preview=off"></iframe>
-          <iframe class="overlay-frame weather-frame" title="Session Weather preview" src="/review/overlays/session-weather?preview=off"></iframe>
-          <iframe class="overlay-frame pit-frame" title="Pit Service preview" src="/review/overlays/pit-service?preview=off"></iframe>
-          <iframe class="overlay-frame input-frame" title="Input State preview" src="/review/overlays/input-state?preview=off"></iframe>
-          <iframe class="overlay-frame radar-frame" title="Car Radar preview" src="/review/overlays/car-radar?preview=off"></iframe>
-          <iframe class="overlay-frame track-frame" title="Track Map preview" src="/review/overlays/track-map?preview=off"></iframe>
-          <iframe class="overlay-frame chat-frame" title="Stream Chat preview" src="/review/overlays/stream-chat?preview=off"></iframe>
-          <iframe class="overlay-frame garage-frame" title="Garage Cover preview" src="/review/overlays/garage-cover?preview=off"></iframe>
-        </div>
-      </section>
-    </section>
-  </main>
+<body>
+  <div id="settings-scale-frame" class="settings-scale-frame">
+    <main id="settings-app" class="app-canvas" aria-label="TMR Overlay settings review"></main>
+  </div>
+  <script type="application/json" id="settings-app-config">{{APP_CONFIG_JSON}}</script>
   <script>
     (() => {
-      const labels = {
-        off: 'Preview off',
-        practice: 'Practice preview active',
-        qualifying: 'Qualifying preview active',
-        race: 'Race preview active'
+      const config = JSON.parse(document.getElementById('settings-app-config').textContent);
+      const app = document.getElementById('settings-app');
+      const scaleFrame = document.getElementById('settings-scale-frame');
+      const sessionLabels = normalizedSessionLabels(config.sessionLabels);
+      const designWidth = 1240;
+      const designHeight = 680;
+      const state = {
+        selectedTab: initialTab(),
+        selectedRegion: initialRegion(),
+        previewMode: config.previewMode || 'off',
+        unitSystem: config.unitSystem || 'Metric',
+        support: {
+          rawCaptureEnabled: config.support?.rawCaptureEnabled === true,
+          latestBundlePath: config.support?.latestBundlePath || '',
+          statusText: config.support?.statusText || '',
+          statusTone: config.support?.statusTone || 'neutral',
+          updateText: config.support?.updateText || 'No update available.',
+          canCheckUpdates: config.support?.canCheckUpdates !== false,
+          canInstallUpdate: config.support?.canInstallUpdate === true,
+          canRestartUpdate: config.support?.canRestartUpdate === true,
+          updatePendingRestart: config.support?.updatePendingRestart === true,
+          releasePageAvailable: config.support?.releasePageAvailable === true
+        }
       };
-      const body = document.body;
-      const state = document.getElementById('preview-state');
-      const pill = document.getElementById('preview-pill');
-      const buttons = Array.from(document.querySelectorAll('.preview-choice'));
+      applySessionLayoutVars();
+      applyReviewScale();
+      window.addEventListener('resize', applyReviewScale);
 
-      function setMode(mode) {
-        const selected = labels[mode] ? mode : 'off';
-        body.dataset.preview = selected;
-        state.textContent = labels[selected];
-        pill.textContent = labels[selected];
-        pill.classList.toggle('active', selected !== 'off');
-        for (const button of buttons) {
-          const active = button.dataset.mode === selected;
-          button.classList.toggle('active', active);
-          button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      function initialTab() {
+        const params = new URLSearchParams(window.location.search);
+        const requested = params.get('tab') || config.selectedTab || 'general';
+        return knownTab(requested) ? requested : 'general';
+      }
+
+      function initialRegion() {
+        const params = new URLSearchParams(window.location.search);
+        const requested = params.get('region') || config.selectedRegion || 'general';
+        return ['general', 'content', 'header', 'footer', 'preview', 'twitch'].includes(requested) ? requested : 'general';
+      }
+
+      function knownTab(tabId) {
+        return tabId === 'general'
+          || tabId === 'support'
+          || config.overlays.some((overlay) => overlay.id === tabId);
+      }
+
+      function currentOverlay() {
+        return config.overlays.find((overlay) => overlay.id === state.selectedTab) || null;
+      }
+
+      function regionsFor(overlay) {
+        if (!overlay) return [];
+        if (overlay.id === 'garage-cover') return ['general', 'preview'];
+        if (overlay.id === 'stream-chat') return ['general', 'content', 'twitch'];
+        return overlay.supportsChrome ? ['general', 'content', 'header', 'footer'] : ['general', 'content'];
+      }
+
+      function setTab(tabId) {
+        if (!knownTab(tabId)) return;
+        state.selectedTab = tabId;
+        const overlay = currentOverlay();
+        const regions = regionsFor(overlay);
+        if (overlay && !regions.includes(state.selectedRegion)) {
+          state.selectedRegion = regions[0] || 'general';
+        } else if (!overlay) {
+          state.selectedRegion = 'general';
         }
-        for (const frame of document.querySelectorAll('.overlay-frame')) {
-          const url = new URL(frame.getAttribute('src'), window.location.href);
-          url.searchParams.set('preview', selected);
-          frame.setAttribute('src', `${url.pathname}${url.search}`);
+        syncUrl();
+        render();
+      }
+
+      function setRegion(region) {
+        const overlay = currentOverlay();
+        if (!overlay || !regionsFor(overlay).includes(region)) return;
+        state.selectedRegion = region;
+        syncUrl();
+        render();
+      }
+
+      function setPreview(mode) {
+        state.previewMode = ['practice', 'qualifying', 'race'].includes(mode) ? mode : 'off';
+        syncUrl();
+        render();
+      }
+
+      function syncUrl() {
+        const params = new URLSearchParams();
+        if (state.selectedTab !== 'general') params.set('tab', state.selectedTab);
+        if (currentOverlay() && state.selectedRegion !== 'general') params.set('region', state.selectedRegion);
+        if (state.previewMode !== 'off') params.set('preview', state.previewMode);
+        const next = `${window.location.pathname}${params.toString() ? `?${params}` : ''}`;
+        window.history.replaceState(null, '', next);
+      }
+
+      function render() {
+        app.replaceChildren(
+          node('section', 'settings-window', {}, [
+            renderTitleBar(),
+            node('section', 'settings-body', {}, [
+              renderSidebar(),
+              renderContent()
+            ])
+          ])
+        );
+      }
+
+      function renderTitleBar() {
+        return node('header', 'titlebar', {}, [
+          node('div', 'brand-lockup', {}, [
+            node('div', 'brand-mark', {}, ['TMR']),
+            node('div', 'brand-copy', {}, [
+              node('div', 'brand-title', {}, ['Tech Mates Racing Overlay'])
+            ])
+          ]),
+          node('button', 'close-button', { type: 'button', 'aria-label': 'Close settings preview' }, ['X'], { click: closeSettingsReview })
+        ]);
+      }
+
+      function renderSidebar() {
+        const tabs = [
+          { id: 'general', label: 'General' },
+          ...config.overlays.map((overlay) => ({ id: overlay.id, label: overlay.title })),
+          { id: 'support', label: 'Diagnostics' }
+        ];
+        return node('aside', 'sidebar', { 'aria-label': 'Settings sections' }, [
+          node('nav', 'sidebar-list', {}, tabs.map((tab) => {
+            const active = tab.id === state.selectedTab;
+            return node('a', `sidebar-tab${active ? ' active' : ''}`, { href: appHref(tab.id) }, [tab.label], {
+              click: (event) => {
+                event.preventDefault();
+                setTab(tab.id);
+              }
+            });
+          }))
+        ]);
+      }
+
+      function appHref(tabId, region = 'general') {
+        const params = new URLSearchParams();
+        if (tabId !== 'general') params.set('tab', tabId);
+        if (tabId !== 'general' && tabId !== 'support' && region !== 'general') params.set('region', region);
+        if (state.previewMode !== 'off') params.set('preview', state.previewMode);
+        return `/review/app${params.toString() ? `?${params}` : ''}`;
+      }
+
+      function renderContent() {
+        if (state.selectedTab === 'general') {
+          return renderContentShell('General', 'Shared units.', null, renderGeneralPage());
+        }
+        if (state.selectedTab === 'support') {
+          return renderContentShell('Diagnostics', 'Advanced capture and support bundle tools.', null, renderSupportPage());
+        }
+        const overlay = currentOverlay();
+        if (!overlay) {
+          return renderContentShell('Settings', 'Overlay settings and browser-source controls.', null, []);
+        }
+        const regions = regionsFor(overlay);
+        if (!regions.includes(state.selectedRegion)) {
+          state.selectedRegion = regions[0] || 'general';
+          syncUrl();
+        }
+        return renderContentShell(
+          overlay.title,
+          overlay.subtitle,
+          null,
+          [
+            renderSegments(regions),
+            renderOverlayRegion(overlay)
+          ]);
+      }
+
+      function renderContentShell(title, subtitle, status, children) {
+        return node('section', 'content-card', { 'aria-labelledby': 'page-title' }, [
+          node('header', 'content-header', {}, [
+            node('div', 'content-heading-copy', {}, [
+              node('h1', '', { id: 'page-title' }, [title]),
+              node('p', '', {}, [subtitle])
+            ]),
+            status ? node('span', 'header-pill', {}, [status]) : null
+          ]),
+          node('div', 'content-body', {}, children)
+        ].filter(Boolean));
+      }
+
+      function renderSegments(regions) {
+        return node('div', 'region-segments', { role: 'tablist', 'aria-label': 'Settings page sections' },
+          regions.map((region) => node(
+            'button',
+            `region-segment region-${region}${region === state.selectedRegion ? ' active' : ''}`,
+            { type: 'button', role: 'tab', 'aria-selected': region === state.selectedRegion ? 'true' : 'false' },
+            [regionTitle(region)],
+            { click: () => setRegion(region) })));
+      }
+
+      function renderGeneralPage() {
+        const support = state.support;
+        return [
+          node('div', 'general-top-grid', {}, [
+            panel('Units', 'units-panel', [
+              row('Measurement system', choice(['Metric', 'Imperial'], state.unitSystem, (value) => {
+                state.unitSystem = value;
+                persistSettings({ kind: 'unitSystem', value });
+                render();
+              }))
+            ]),
+            panel('Updates', 'updates-panel', [
+              row('Status', node('strong', 'field-value muted', {}, [support.updateText])),
+              node('div', 'button-row small', {}, [
+                button('Check', () => checkReviewUpdates(), { disabled: support.canCheckUpdates === false }),
+                button(support.updatePendingRestart ? 'Restart' : 'Install', () => runSupportAction(support.updatePendingRestart ? 'restartUpdate' : 'installUpdate', support.updatePendingRestart ? 'Restart requested.' : 'No installable update in review run.'), { disabled: support.updatePendingRestart ? support.canRestartUpdate === false : support.canInstallUpdate !== true }),
+                button('Releases', () => runSupportAction('openReleases', 'Opened releases page.'), { disabled: support.releasePageAvailable === false })
+              ])
+            ])
+          ]),
+          panel('Show Preview', 'preview-panel', [
+            node('div', 'preview-summary', {}, [
+              node('div', 'preview-copy', {}, [
+                node('span', 'field-label', {}, ['Session data']),
+                node('strong', `field-value ${state.previewMode === 'off' ? 'muted' : 'success'}`, {}, [previewLabel(state.previewMode)])
+              ])
+            ]),
+            node('div', 'preview-control-row', {}, [
+              choice(['Off', 'Practice', 'Quali', 'Race'], previewChoice(state.previewMode), (value) => setPreview(previewModeFromChoice(value)), 'wide')
+            ]),
+            node('div', 'body-lines', {}, [
+              node('p', '', {}, ['Uses deterministic mock telemetry for the selected session.']),
+              node('p', '', {}, ['Overlay visibility, session filters, positions, scale, and opacity stay normal.']),
+              node('p', '', {}, ['Hidden overlays stay hidden; Stream Chat is not forced open.'])
+            ])
+          ])
+        ];
+      }
+
+      function renderSupportPage() {
+        const support = state.support;
+        const trackMapBuildEnabled = trackMapBuildFromTelemetryEnabled();
+        return [
+          node('div', 'support-stack', {}, [
+            node('div', 'support-grid', {}, [
+              panel('Capture Controls', 'support-capture-panel', [
+                row('Raw diagnostic telemetry', toggle(support.rawCaptureEnabled, (isOn) => setRawCaptureEnabled(isOn), 'Raw diagnostic telemetry')),
+                row('Local map building', toggle(trackMapBuildEnabled, (isOn) => setTrackMapBuildFromTelemetry(isOn), 'Local map building')),
+                node('div', 'body-lines compact', {}, [
+                  node('p', '', {}, ['Capture writes raw frames only when explicitly requested.']),
+                  node('p', '', {}, ['Local map building derives track geometry from completed telemetry.'])
+                ])
+              ]),
+              panel('Automatic History', 'support-history-panel', [
+                statusRow('Car / track', 'Session history', 'success'),
+                statusRow('Fuel', 'History model', 'success'),
+                statusRow('Radar', 'Calibration analysis', 'success'),
+                statusRow('Post-race', 'Summary analysis', 'success')
+              ])
+            ]),
+            node('div', 'support-grid support-bottom-grid', {}, [
+              panel('Support Bundle', 'support-bundle', [
+                row('Latest bundle', node('code', 'value-code', {}, [latestBundleDisplayText(support.latestBundlePath)])),
+                node('div', 'button-row', {}, [
+                  button('Create Bundle', () => createReviewDiagnosticsBundle()),
+                  button('Copy Path', () => copyLatestReviewBundlePath())
+                ]),
+                support.statusText ? node('p', `support-status ${support.statusTone}`, {}, [support.statusText]) : null
+              ]),
+              panel('Support Folders', 'support-folders', [
+                node('div', 'button-row small', {}, [
+                  button('Open Logs', () => runSupportAction('openLogs', 'Opened logs folder.')),
+                  button('Diagnostics', () => runSupportAction('openDiagnostics', 'Opened diagnostics folder.')),
+                  button('Captures', () => runSupportAction('openCaptures', 'Opened captures folder.')),
+                  button('History', () => runSupportAction('openHistory', 'Opened history folder.'))
+                ])
+              ])
+            ])
+          ])
+        ];
+      }
+
+      function renderOverlayRegion(overlay) {
+        switch (state.selectedRegion) {
+          case 'content':
+            return renderOverlayContent(overlay);
+          case 'header':
+            return renderChrome(overlay, 'Header', overlay.headerRows || []);
+          case 'footer':
+            return renderChrome(overlay, 'Footer', overlay.footerRows || []);
+          case 'preview':
+            return renderGarageCoverPreview(overlay);
+          case 'twitch':
+            return renderStreamChatTwitch(overlay);
+          default:
+            return renderOverlayGeneral(overlay);
         }
       }
 
-      for (const button of buttons) {
-        button.addEventListener('click', () => setMode(button.dataset.mode));
+      function renderOverlayGeneral(overlay) {
+        const controls = [];
+        if (overlay.id !== 'garage-cover') {
+          controls.push(row('Visible', toggle(overlay.enabled, (isOn) => {
+            overlay.enabled = isOn;
+            persistSettings({ kind: 'overlayEnabled', overlayId: overlay.id, enabled: isOn });
+            render();
+          })));
+        }
+        if (overlay.showScale) controls.push(row('Scale', percentSlider('Scale', overlay.scalePercent, [60, 75, 100, 125, 150, 175, 200], 'cyan', (percent) => {
+          overlay.scalePercent = percent;
+          persistSettings({ kind: 'number', overlayId: overlay.id, key: 'scalePercent', value: percent });
+          render();
+        })));
+        if (overlay.showOpacity) {
+          const opacityLabel = overlay.id === 'track-map' ? 'Map fill' : 'Opacity';
+          controls.push(row(opacityLabel, percentSlider(opacityLabel, overlay.opacityPercent, [20, 30, 40, 50, 60, 70, 80, 90, 100], 'magenta', (percent) => {
+            overlay.opacityPercent = percent;
+            persistSettings({ kind: 'number', overlayId: overlay.id, key: 'opacityPercent', value: percent });
+            render();
+          })));
+        }
+        if (overlay.id === 'garage-cover') {
+          controls.push(row('Cover image', node('div', 'button-row inline', {}, [
+            button('Import', () => importGarageCoverPreviewImage(overlay)),
+            button('Clear', () => {
+              clearGarageCoverPreviewImage(overlay);
+              overlay.garageHasImage = false;
+              overlay.garagePreviewVisible = false;
+              persistSettings({ kind: 'garageCover', overlayId: overlay.id, action: 'clear' });
+              render();
+            })
+          ])));
+        }
+
+        const panels = [panel('Overlay Controls', 'overlay-controls', controls)];
+        if (overlay.route) {
+          panels.push(browserSourcePanel(overlay));
+        }
+        return node('div', overlay.id === 'garage-cover' ? 'overlay-general-grid garage' : 'overlay-general-grid', {}, panels);
       }
 
-      setMode(body.dataset.preview);
+      function renderGarageCoverPreview(overlay) {
+        return node('div', 'content-stack garage-preview-content', {}, [
+          node('div', 'garage-preview-stage', {}, [
+            node('div', 'cover-preview standalone', {}, [
+              node('img', 'cover-image', {
+                alt: '',
+                src: garageCoverPreviewImageSrc(overlay)
+              }, [], {
+                error: (event) => handleGarageCoverPreviewImageError(event.currentTarget)
+              })
+            ])
+          ])
+        ]);
+      }
+
+      function garageCoverPreviewImageSrc(overlay) {
+        if (overlay.garagePreviewImageObjectUrl) return overlay.garagePreviewImageObjectUrl;
+        return overlay.garageHasImage
+          ? '/api/garage-cover/image?v=review'
+          : '/api/garage-cover/default-image?v=stock';
+      }
+
+      function importGarageCoverPreviewImage(overlay) {
+        const input = node('input', '', {
+          type: 'file',
+          accept: 'image/png,image/jpeg,image/bmp,image/gif,image/*'
+        }, [], {
+          change: () => {
+            const file = input.files?.[0];
+            if (!file) return;
+            clearGarageCoverPreviewImage(overlay);
+            overlay.garagePreviewImageObjectUrl = URL.createObjectURL(file);
+            overlay.garageHasImage = true;
+            persistSettings({
+              kind: 'garageCover',
+              overlayId: overlay.id,
+              action: 'import',
+              fileName: file.name
+            });
+            render();
+          }
+        });
+        input.style.position = 'fixed';
+        input.style.left = '-9999px';
+        document.body.append(input);
+        input.click();
+        setTimeout(() => input.remove(), 1000);
+      }
+
+      function clearGarageCoverPreviewImage(overlay) {
+        if (overlay?.garagePreviewImageObjectUrl) {
+          URL.revokeObjectURL(overlay.garagePreviewImageObjectUrl);
+          delete overlay.garagePreviewImageObjectUrl;
+        }
+      }
+
+      function handleGarageCoverPreviewImageError(image) {
+        if (!image) return;
+        if (image.dataset.fallback !== 'default') {
+          image.dataset.fallback = 'default';
+          image.src = '/api/garage-cover/default-image?v=stock';
+          return;
+        }
+
+        const fallback = node('div', 'cover-mark', {}, ['TMR']);
+        image.replaceWith(fallback);
+      }
+
+      function renderOverlayContent(overlay) {
+        if (overlay.id === 'stream-chat') return renderStreamChatContent(overlay);
+        if (overlay.id === 'track-map') {
+          return node('div', 'content-stack', {}, [
+            contentMatrix('Content Display', overlay.contentRows || [])
+          ]);
+        }
+        if (overlay.id === 'standings') {
+          return node('div', 'content-stack standings-content', {}, [
+            contentMatrix('Content Display', overlay.contentRows || [], 1, [standingsMulticlassRow(overlay)])
+          ]);
+        }
+        if (overlay.id === 'gap-to-leader') {
+          return node('div', 'content-stack', {}, [
+            contentMatrix('Content Display', [], 1, [gapWindowRow(overlay)])
+          ]);
+        }
+        if (overlay.id === 'relative') {
+          return node('div', 'content-stack', {}, [
+            contentMatrix('Content Display', overlay.contentRows || [], 1, [relativeRowsRow(overlay)])
+          ]);
+        }
+        return contentMatrix(overlay.contentTitle || 'Content Display', overlay.contentRows || [], overlay.gridColumns || 1);
+      }
+
+      function renderStreamChatContent(overlay) {
+        return node('div', 'content-stack stream-chat-content', {}, [
+          panel('Chat Source', '', [
+            row('Mode', choice(['Not configured', 'Streamlabs', 'Twitch'], overlay.providerLabel || 'Twitch', (value) => {
+              overlay.providerLabel = value;
+              persistSettings({ kind: 'streamChatProvider', overlayId: overlay.id, providerLabel: value });
+              render();
+            })),
+            row('Streamlabs URL', inputBox(overlay.streamlabsWidgetUrl || '', overlay.providerLabel === 'Streamlabs', (value) => {
+              overlay.streamlabsWidgetUrl = value;
+            })),
+            row('Twitch channel', inputBox(overlay.twitchChannel || 'techmatesracing', overlay.providerLabel === 'Twitch', (value) => {
+              overlay.twitchChannel = value;
+            })),
+            node('div', 'button-row small stream-chat-actions', {}, [
+              button('Save', () => {
+                persistSettings({
+                  kind: 'streamChatText',
+                  overlayId: overlay.id,
+                  streamlabsWidgetUrl: overlay.streamlabsWidgetUrl || '',
+                  twitchChannel: overlay.twitchChannel || ''
+                });
+              })
+            ])
+          ])
+        ]);
+      }
+
+      function renderStreamChatTwitch(overlay) {
+        return node('div', 'content-stack stream-chat-twitch', {}, [
+          contentMatrix('Twitch Metadata', overlay.contentRows || [], 2)
+        ]);
+      }
+
+      function renderChrome(overlay, title, rows) {
+        if (!overlay.supportsChrome) {
+          return panel(title, 'chrome-panel', [
+            node('p', 'panel-note', {}, [`No ${title.toLowerCase()} controls yet.`]),
+            node('p', 'panel-note', {}, ['This matches the current production settings surface for this overlay.'])
+          ]);
+        }
+        if (rows.length === 0) {
+          return panel(title, 'chrome-panel', [
+            node('p', 'panel-note', {}, [`No ${title.toLowerCase()} controls for this overlay.`])
+          ]);
+        }
+        const chromeSessions = chromeSessionLabels(overlay);
+        return panel(title, 'chrome-panel', [
+          node('div', 'chrome-table', { style: sessionColumnStyle(chromeSessions) }, [
+            node('div', 'chrome-head item', {}, ['Item']),
+            ...chromeSessions.map((label) => node('div', 'chrome-head', {}, [label])),
+            ...rows.flatMap((rowItem) => [
+              node('div', 'chrome-row-label', {}, [rowItem]),
+              ...chromeSessions.map((session) => {
+                const current = chromeEnabled(overlay, title, rowItem, session);
+                return node('div', 'chrome-check', {}, [checkbox(current, (isOn) => {
+                  setChromeEnabled(overlay, title, rowItem, session, isOn);
+                  persistSettings({ kind: 'chrome', overlayId: overlay.id, area: title.toLowerCase(), label: rowItem, session, enabled: isOn });
+                  render();
+                })]);
+              })
+            ])
+          ])
+        ]);
+      }
+
+      function contentMatrix(title, rows, columns = 1, extraRows = []) {
+        const overlay = currentOverlay();
+        const useSessionColumns = overlay?.showSessionFilters === true;
+        if (columns > 1) {
+          return panel(title, 'content-matrix grid', [
+            rows.length ? compactMatrixLegend(useSessionColumns) : null,
+            node('div', `toggle-grid ${useSessionColumns ? 'with-sessions' : 'with-visible'}`, {}, rows.map((item) => contentGridRow(item, overlay, useSessionColumns))),
+            ...extraRows
+          ].filter(Boolean));
+        }
+        return panel(title, 'content-matrix', [
+          rows.length ? node('div', `matrix-table ${useSessionColumns ? 'with-sessions' : 'with-visible'}`, {}, [
+            node('div', 'matrix-head item', {}, ['Item']),
+            ...(useSessionColumns
+              ? sessionLabels.map((label) => node('div', 'matrix-head', {}, [label]))
+              : [node('div', 'matrix-head visible', {}, ['Visible'])]),
+            ...rows.flatMap((item) => [
+              node('div', `matrix-item${item.locked ? ' fixed' : ''}`, {}, [
+                node('span', '', {}, [item.label])
+              ]),
+              ...(useSessionColumns
+                ? sessionLabels.map((session) => node('div', 'matrix-session', {}, [checkbox(contentEnabledForSession(overlay, item, session), (isOn) => {
+                    setContentEnabledForSession(overlay, item, session, isOn);
+                    persistSettings({ kind: 'content', overlayId: overlay?.id, key: item.key, label: item.label, session, enabled: isOn });
+                    render();
+                  })]))
+                : [node('div', 'matrix-visible', {}, [checkbox(contentEnabled(overlay, item), (isOn) => {
+                    setContentEnabled(overlay, item, isOn);
+                    persistSettings({ kind: 'content', overlayId: overlay?.id, key: item.key, label: item.label, enabled: isOn });
+                    render();
+                  })])])
+            ])
+          ]) : null,
+          ...extraRows
+        ].filter(Boolean));
+      }
+
+      function compactMatrixLegend(useSessionColumns) {
+        return node('div', `compact-matrix-legend ${useSessionColumns ? 'with-sessions' : 'with-visible'}`, {}, [
+          node('span', '', {}, ['Item']),
+          ...(useSessionColumns
+            ? sessionLabels.map((label) => node('span', '', { title: label }, [compactSessionLabel(label)]))
+            : [node('span', '', { title: 'Visible' }, ['On'])])
+        ]);
+      }
+
+      function standingsMulticlassRow(overlay) {
+        return node('div', 'matrix-control-row', {}, [
+          node('span', 'matrix-control-label', {}, ['Multiclass sections']),
+          node('div', 'matrix-control-visible', {}, [
+            node('span', 'matrix-control-head', {}, ['Visible']),
+            checkbox(overlay.classSeparatorsEnabled, (isOn) => {
+              overlay.classSeparatorsEnabled = isOn;
+              overlay.content ||= {};
+              overlay.content['standings.class-separators.enabled'] = isOn;
+              overlay.content['Multiclass sections'] = isOn;
+              persistSettings({
+                kind: 'content',
+                overlayId: overlay.id,
+                key: 'standings.class-separators.enabled',
+                label: 'Multiclass sections',
+                enabled: isOn
+              });
+              render();
+            })
+          ]),
+          node('div', 'matrix-control-count', {}, [
+            node('span', 'matrix-control-head', {}, ['Other-class cars']),
+            stepper(`${overlay.otherClassRows} rows`, 0, 6, overlay.otherClassRows, (value) => {
+              overlay.otherClassRows = value;
+              persistSettings({ kind: 'number', overlayId: overlay.id, key: 'otherClassRows', value });
+              render();
+            })
+          ])
+        ]);
+      }
+
+      function relativeRowsRow(overlay) {
+        return node('div', 'matrix-control-row one-count', {}, [
+          node('span', 'matrix-control-label', {}, ['Rows around focus']),
+          node('div', 'matrix-control-count', {}, [
+            node('span', 'matrix-control-head', {}, ['Cars each side']),
+            stepper(`${overlay.carsEachSide} each side`, 0, 8, overlay.carsEachSide, (value) => {
+              overlay.carsEachSide = value;
+              persistSettings({ kind: 'number', overlayId: overlay.id, key: 'carsEachSide', value });
+              render();
+            }),
+            node('span', 'matrix-control-note', {}, [`${overlay.carsEachSide * 2 + 1} rows`])
+          ])
+        ]);
+      }
+
+      function gapWindowRow(overlay) {
+        const carsEachSide = Math.max(Number(overlay.carsAhead ?? 5), Number(overlay.carsBehind ?? 5));
+        return node('div', 'matrix-control-row one-count', {}, [
+          node('span', 'matrix-control-label', {}, ['Class gap window']),
+          node('div', 'matrix-control-count', {}, [
+            node('span', 'matrix-control-head', {}, ['Cars each side']),
+            stepper(`${carsEachSide} each side`, 0, 12, carsEachSide, (value) => {
+              overlay.carsAhead = value;
+              overlay.carsBehind = value;
+              persistSettings({ kind: 'number', overlayId: overlay.id, key: 'carsAhead', value });
+              persistSettings({ kind: 'number', overlayId: overlay.id, key: 'carsBehind', value });
+              render();
+            })
+          ])
+        ]);
+      }
+
+      function contentGridRow(item, overlay, useSessionColumns) {
+        const enabled = useSessionColumns
+          ? sessionLabels.some((session) => contentEnabledForSession(overlay, item, session))
+          : contentEnabled(overlay, item);
+        return node('div', `grid-toggle-row${enabled ? '' : ' disabled'}${useSessionColumns ? ' sessions' : ' visible'}`, {}, [
+          node('span', '', {}, [item.label]),
+          ...(useSessionColumns
+            ? sessionLabels.map((session) => checkbox(contentEnabledForSession(overlay, item, session), (isOn) => {
+                setContentEnabledForSession(overlay, item, session, isOn);
+                persistSettings({ kind: 'content', overlayId: overlay?.id, key: item.key, label: item.label, session, enabled: isOn });
+                render();
+              }))
+            : [checkbox(contentEnabled(overlay, item), (isOn) => {
+                setContentEnabled(overlay, item, isOn);
+                persistSettings({ kind: 'content', overlayId: overlay?.id, key: item.key, label: item.label, enabled: isOn });
+                render();
+              })])
+        ]);
+      }
+
+      function browserSourcePanel(overlay) {
+        const url = overlay.route ? `${window.location.origin}${overlay.route}` : 'No localhost route';
+        return panel('Browser Source', 'browser-source-panel', [
+          node('code', 'browser-url', {}, [url]),
+          node('div', 'browser-details', {}, [
+            node('span', '', {}, [`OBS size ${browserSize(overlay)}`])
+          ]),
+          node('div', 'button-row small', {}, [button('Copy', (event) => copyBrowserSourceUrl(url, event.currentTarget))])
+        ]);
+      }
+
+      function panel(title, className, children) {
+        return node('section', `panel ${className || ''}`, {}, [
+          node('h2', '', {}, [title]),
+          ...children
+        ]);
+      }
+
+      function row(label, control) {
+        return node('div', 'field-row', {}, [
+          node('span', 'field-label', {}, [label]),
+          control
+        ]);
+      }
+
+      function statusRow(label, value, tone) {
+        return node('div', 'status-row', {}, [
+          node('span', 'field-label', {}, [label]),
+          node('span', `status-dot ${tone}`, {}, []),
+          node('strong', 'field-value', {}, [value])
+        ]);
+      }
+
+      function contentKey(item) {
+        return item?.key || item?.label || '';
+      }
+
+      function contentEnabled(overlay, item) {
+        const content = overlay?.content || {};
+        const key = contentKey(item);
+        if (Object.hasOwn(content, key)) return content[key] !== false;
+        if (Object.hasOwn(content, item.label)) return content[item.label] !== false;
+        if (typeof item?.enabled === 'boolean') return item.enabled;
+        return item?.defaultEnabled !== false;
+      }
+
+      function setContentEnabled(overlay, item, enabled) {
+        overlay.content ||= {};
+        overlay.content[contentKey(item)] = enabled;
+        item.enabled = enabled;
+      }
+
+      function contentEnabledForSession(overlay, item, session) {
+        const content = overlay?.content || {};
+        const key = contentKey(item);
+        const suffix = sessionKey(session);
+        for (const candidate of [`${key}.${suffix}`, `${item.label}.${suffix}`]) {
+          if (Object.hasOwn(content, candidate)) return content[candidate] !== false;
+        }
+        return contentEnabled(overlay, item);
+      }
+
+      function setContentEnabledForSession(overlay, item, session, enabled) {
+        overlay.content ||= {};
+        for (const suffix of sessionKeys(session)) {
+          overlay.content[`${contentKey(item)}.${suffix}`] = enabled;
+        }
+      }
+
+      function choice(options, selected, onChange, extraClass = '') {
+        return node('div', `segmented ${extraClass}`, { role: 'group' }, options.map((option) => node(
+          'button',
+          `segment${option === selected ? ' active' : ''}`,
+          { type: 'button', 'aria-pressed': option === selected ? 'true' : 'false' },
+          [option],
+          { click: () => onChange(option) })));
+      }
+
+      function toggle(isOn, onChange = null, ariaLabel = null) {
+        return node('button', `toggle${isOn ? ' on' : ''}`, { type: 'button', 'aria-pressed': isOn ? 'true' : 'false', 'aria-label': ariaLabel }, [
+          node('span', '', {}, [])
+        ], { click: () => onChange?.(!isOn) });
+      }
+
+      function checkbox(isOn, onChange = null) {
+        if (onChange) {
+          return node('button', `check${isOn ? ' on' : ''}`, {
+            type: 'button',
+            'aria-pressed': isOn ? 'true' : 'false'
+          }, [], { click: () => onChange(!isOn) });
+        }
+
+        return node('span', `check${isOn ? ' on' : ''}`, { 'aria-hidden': 'true' }, []);
+      }
+
+      function stateChip(isOn, text = null) {
+        return node('span', `state-chip ${isOn ? 'on' : 'off'}`, { 'aria-hidden': 'true' }, [text || (isOn ? 'On' : 'Off')]);
+      }
+
+      function percentSlider(label, currentValue, allowed, tone, onChange = null) {
+        const values = allowed.slice().sort((a, b) => a - b);
+        const numeric = Number(currentValue);
+        const index = closestAllowedIndex(Number.isFinite(numeric) ? numeric : values[0], values);
+        const fillPercent = values.length > 1 ? (index / (values.length - 1)) * 100 : 100;
+        return node('div', `slider ${tone}`, {}, [
+          node('input', 'slider-track', {
+            type: 'range',
+            min: '0',
+            max: String(Math.max(0, values.length - 1)),
+            step: '1',
+            value: String(index),
+            'aria-label': label,
+            'aria-valuetext': `${values[index]}%`,
+            style: `--slider-fill:${fillPercent.toFixed(1)}%;`
+          }, [], {
+            input: (event) => {
+              const selectedIndex = Math.max(0, Math.min(values.length - 1, Number(event.target.value)));
+              const selectedFill = values.length > 1 ? (selectedIndex / (values.length - 1)) * 100 : 100;
+              event.target.style.setProperty('--slider-fill', `${selectedFill.toFixed(1)}%`);
+              event.target.setAttribute('aria-valuetext', `${values[selectedIndex]}%`);
+              const valueEl = event.target.parentElement?.querySelector('.field-value');
+              if (valueEl) valueEl.textContent = `${values[selectedIndex]}%`;
+            },
+            change: (event) => {
+              const selectedIndex = Math.max(0, Math.min(values.length - 1, Number(event.target.value)));
+              onChange?.(values[selectedIndex]);
+            }
+          }),
+          node('strong', 'field-value', {}, [`${values[index]}%`])
+        ]);
+      }
+
+      function closestAllowedIndex(current, allowed) {
+        let closestIndex = 0;
+        let closestDelta = Number.POSITIVE_INFINITY;
+        for (let index = 0; index < allowed.length; index++) {
+          const delta = Math.abs(allowed[index] - current);
+          if (delta < closestDelta) {
+            closestDelta = delta;
+            closestIndex = index;
+          }
+        }
+        return closestIndex;
+      }
+
+      function stepper(label, min = 0, max = 10, value = 0, onChange = null) {
+        return node('div', 'stepper', {}, [
+          button('-', () => onChange?.(Math.max(min, value - 1))),
+          node('strong', 'field-value', {}, [label]),
+          button('+', () => onChange?.(Math.min(max, value + 1)))
+        ]);
+      }
+
+      function inputBox(value, enabled, onInput = null) {
+        return node('input', 'text-input', { value, disabled: enabled ? null : 'disabled' }, [], {
+          input: (event) => onInput?.(event.target.value)
+        });
+      }
+
+      function button(label, onClick = null, attrs = {}) {
+        const disabled = attrs.disabled === true;
+        return node('button', `action-button${disabled ? ' disabled' : ''}`, { type: 'button', ...attrs, disabled: disabled ? 'disabled' : null }, [label], { click: (event) => {
+          if (!disabled) onClick?.(event);
+        } });
+      }
+
+      async function copyBrowserSourceUrl(url, buttonEl) {
+        try {
+          await copyTextToClipboard(url);
+          showCopyButtonState(buttonEl, 'Copied');
+        } catch {
+          showCopyButtonState(buttonEl, 'Copy failed');
+        }
+      }
+
+      async function copyTextToClipboard(text) {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text);
+          return;
+        }
+
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.setAttribute('readonly', 'readonly');
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        document.body.append(textarea);
+        textarea.select();
+        try {
+          if (!document.execCommand('copy')) {
+            throw new Error('copy failed');
+          }
+        } finally {
+          textarea.remove();
+        }
+      }
+
+      function showCopyButtonState(buttonEl, text) {
+        if (!buttonEl) return;
+        const previous = buttonEl.textContent || 'Copy';
+        buttonEl.textContent = text;
+        window.setTimeout(() => {
+          buttonEl.textContent = previous;
+        }, 1400);
+      }
+
+      function closeSettingsReview() {
+        window.close();
+        window.setTimeout(() => {
+          if (document.visibilityState === 'hidden') return;
+          app.replaceChildren(node('section', 'settings-closed', {}, [
+            node('h1', '', {}, ['Settings preview closed']),
+            node('button', 'action-button', { type: 'button' }, ['Reopen'], { click: () => render() })
+          ]));
+        }, 0);
+      }
+
+      function setRawCaptureEnabled(isOn) {
+        state.support.rawCaptureEnabled = isOn;
+        setSupportStatus(isOn ? 'Diagnostic telemetry will start with live data.' : 'Diagnostic telemetry capture disabled.', 'success');
+        persistSettings({ kind: 'support', action: 'rawCapture', enabled: isOn });
+        render();
+      }
+
+      function trackMapOverlay() {
+        return config.overlays.find((overlay) => overlay.id === 'track-map') || null;
+      }
+
+      function trackMapBuildFromTelemetryEnabled() {
+        const overlay = trackMapOverlay();
+        return overlay
+          ? contentEnabled(overlay, { label: 'Local map building', key: 'track-map.build-from-telemetry', defaultEnabled: true })
+          : true;
+      }
+
+      function setTrackMapBuildFromTelemetry(isOn) {
+        const overlay = trackMapOverlay();
+        if (overlay) {
+          overlay.content ||= {};
+          overlay.content['track-map.build-from-telemetry'] = isOn;
+        }
+        setSupportStatus(isOn ? 'Local map building enabled.' : 'Local map building disabled.', 'success');
+        persistSettings({ kind: 'content', overlayId: 'track-map', key: 'track-map.build-from-telemetry', label: 'Local map building', enabled: isOn });
+        render();
+      }
+
+      function createReviewDiagnosticsBundle() {
+        const path = '/tmp/tmr-overlay-review/diagnostics/review-diagnostics-bundle.zip';
+        state.support.latestBundlePath = path;
+        setSupportStatus('Created diagnostics bundle.', 'success');
+        persistSettings({ kind: 'support', action: 'createBundle', path });
+        render();
+      }
+
+      async function copyLatestReviewBundlePath() {
+        const path = state.support.latestBundlePath || '';
+        if (!path) {
+          setSupportStatus('No diagnostics bundle yet.', 'error');
+          persistSettings({ kind: 'support', action: 'copyBundlePath', ok: false, reason: 'missingBundle' });
+          render();
+          return;
+        }
+
+        try {
+          await copyTextToClipboard(path);
+          setSupportStatus('Copied bundle path.', 'success');
+          persistSettings({ kind: 'support', action: 'copyBundlePath', ok: true });
+        } catch {
+          setSupportStatus('Clipboard unavailable. Select the path instead.', 'error');
+          persistSettings({ kind: 'support', action: 'copyBundlePath', ok: false, reason: 'clipboardUnavailable' });
+        }
+        render();
+      }
+
+      function latestBundleDisplayText(path) {
+        if (!path) return 'No bundle yet';
+        const normalized = String(path).replaceAll('\\\\', '/');
+        const fileName = normalized.split('/').filter(Boolean).pop();
+        return fileName ? `Latest bundle: ${fileName}` : 'Latest bundle ready';
+      }
+
+      function checkReviewUpdates() {
+        state.support.updateText = 'No update available.';
+        setSupportStatus('Checked for updates.', 'success');
+        persistSettings({ kind: 'support', action: 'checkUpdates' });
+        render();
+      }
+
+      function runSupportAction(action, message) {
+        setSupportStatus(message, 'success');
+        persistSettings({ kind: 'support', action });
+        render();
+      }
+
+      function setSupportStatus(text, tone = 'neutral') {
+        state.support.statusText = text;
+        state.support.statusTone = tone;
+      }
+
+      function regionTitle(region) {
+        return region[0].toUpperCase() + region.slice(1);
+      }
+
+      function previewChoice(mode) {
+        return mode === 'qualifying' ? 'Quali' : mode === 'race' ? 'Race' : mode === 'practice' ? 'Practice' : 'Off';
+      }
+
+      function previewModeFromChoice(choiceName) {
+        return choiceName === 'Quali' ? 'qualifying' : choiceName.toLowerCase();
+      }
+
+      function previewLabel(mode) {
+        return mode === 'off' ? 'Preview off' : `${mode === 'qualifying' ? 'Qualifying' : regionTitle(mode)} preview active`;
+      }
+
+      function sessionKey(label) {
+        const normalized = String(label || '').trim().toLowerCase();
+        if (normalized === 'test') return 'practice';
+        return normalized === 'qual' ? 'qualifying' : normalized;
+      }
+
+      function normalizedSessionLabels(labels) {
+        const normalized = [];
+        const seen = new Set();
+        for (const label of Array.isArray(labels) ? labels : []) {
+          const key = sessionKey(label);
+          if (!['practice', 'qualifying', 'race'].includes(key) || seen.has(key)) {
+            continue;
+          }
+
+          seen.add(key);
+          normalized.push(key === 'qualifying' ? 'Qualifying' : regionTitle(key));
+        }
+
+        return normalized.length > 0 ? normalized : ['Practice', 'Qualifying', 'Race'];
+      }
+
+      function applySessionLayoutVars() {
+        const count = Math.max(1, sessionLabels.length);
+        app.style.setProperty('--settings-session-check-grid', `repeat(${count}, minmax(0, 100px))`);
+        app.style.setProperty('--settings-session-check-min-width', `${count * 100 + Math.max(0, count - 1) * 16}px`);
+        app.style.setProperty('--settings-session-columns', `repeat(${count}, 104px)`);
+        app.style.setProperty('--settings-compact-session-columns', `repeat(${count}, 24px)`);
+      }
+
+      function applyReviewScale() {
+        const scale = Math.max(
+          0.25,
+          Math.min(
+            1,
+            (window.innerWidth - 20) / designWidth,
+            (window.innerHeight - 20) / designHeight
+          )
+        );
+        app.style.setProperty('--settings-review-scale', scale.toFixed(4));
+        if (scaleFrame) {
+          scaleFrame.style.width = `${Math.ceil(designWidth * scale)}px`;
+          scaleFrame.style.height = `${Math.ceil(designHeight * scale)}px`;
+        }
+      }
+
+      function sessionColumnStyle(labels) {
+        const count = Math.max(1, labels.length);
+        return `--settings-session-columns: repeat(${count}, 104px);`;
+      }
+
+      function chromeSessionLabels(overlay) {
+        return overlay?.id === 'gap-to-leader' ? ['Race'] : sessionLabels;
+      }
+
+      function compactSessionLabel(label) {
+        const key = sessionKey(label);
+        if (key === 'practice') return 'P';
+        if (key === 'qualifying') return 'Q';
+        if (key === 'race') return 'R';
+        return String(label || '').slice(0, 1).toUpperCase();
+      }
+
+      function sessionKeys(label) {
+        const key = sessionKey(label);
+        return key === 'practice' ? ['practice', 'test'] : [key];
+      }
+
+      function browserSize(overlay) {
+        const base = {
+          standings: [780, 520],
+          relative: [520, 360],
+          'gap-to-leader': [720, 360],
+          'track-map': [360, 360],
+          'stream-chat': [380, 520],
+          'garage-cover': [1280, 720],
+          'fuel-calculator': [600, 340],
+          'input-state': [520, 260],
+          'car-radar': [300, 300],
+          flags: [360, 170],
+          'session-weather': [480, 520],
+          'pit-service': [420, 560]
+        }[overlay?.id] || [400, 300];
+        if (overlay?.id === 'input-state') {
+          base[0] = inputStateBaseWidth(overlay, base[0]);
+        }
+        const scale = Math.max(0.6, Math.min(2, Number(overlay?.scalePercent || 100) / 100));
+        return `${Math.round(base[0] * scale)} x ${Math.round(base[1] * scale)}`;
+      }
+
+      function inputStateBaseWidth(overlay, fullWidth) {
+        const session = state.previewMode === 'off' ? 'Practice' : state.previewMode;
+        const hasGraph = contentEnabledForSession(overlay, { label: 'Throttle trace', key: 'input-state.trace.throttle', defaultEnabled: true }, session)
+          || contentEnabledForSession(overlay, { label: 'Brake trace', key: 'input-state.trace.brake', defaultEnabled: true }, session)
+          || contentEnabledForSession(overlay, { label: 'Clutch trace', key: 'input-state.trace.clutch', defaultEnabled: true }, session);
+        const hasRail = contentEnabledForSession(overlay, { label: 'Throttle %', key: 'input-state.current.throttle', defaultEnabled: true }, session)
+          || contentEnabledForSession(overlay, { label: 'Brake %', key: 'input-state.current.brake', defaultEnabled: true }, session)
+          || contentEnabledForSession(overlay, { label: 'Clutch %', key: 'input-state.current.clutch', defaultEnabled: true }, session)
+          || contentEnabledForSession(overlay, { label: 'Steering wheel', key: 'input-state.current.steering', defaultEnabled: true }, session)
+          || contentEnabledForSession(overlay, { label: 'Gear', key: 'input-state.current.gear', defaultEnabled: true }, session)
+          || contentEnabledForSession(overlay, { label: 'Speed', key: 'input-state.current.speed', defaultEnabled: true }, session);
+        if (hasGraph && hasRail) return fullWidth;
+        if (hasGraph) return 380;
+        return 276;
+      }
+
+      function chromeEnabled(overlay, area, label, session) {
+        const key = area.toLowerCase();
+        overlay.chrome ||= {};
+        overlay.chrome[key] ||= {};
+        overlay.chrome[key][label] ||= {};
+        return overlay.chrome[key][label][sessionKey(session)] !== false;
+      }
+
+      function setChromeEnabled(overlay, area, label, session, enabled) {
+        const key = area.toLowerCase();
+        overlay.chrome ||= {};
+        overlay.chrome[key] ||= {};
+        overlay.chrome[key][label] ||= {};
+        for (const suffix of sessionKeys(session)) {
+          overlay.chrome[key][label][suffix] = enabled;
+        }
+      }
+
+      function persistSettings(patch) {
+        fetch('/api/review/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(patch)
+        }).catch(() => {});
+      }
+
+      function node(tag, className, attrs, children, events = {}) {
+        const element = document.createElement(tag);
+        if (className) element.className = className;
+        for (const [name, value] of Object.entries(attrs || {})) {
+          if (value === null || value === undefined) continue;
+          element.setAttribute(name, value);
+        }
+        for (const child of children || []) {
+          if (child === null || child === undefined || child === false) continue;
+          element.append(child instanceof Node ? child : document.createTextNode(String(child)));
+        }
+        for (const [name, handler] of Object.entries(events || {})) {
+          element.addEventListener(name, handler);
+        }
+        return element;
+      }
+
+      render();
+      syncUrl();
     })();
   </script>
 </body>

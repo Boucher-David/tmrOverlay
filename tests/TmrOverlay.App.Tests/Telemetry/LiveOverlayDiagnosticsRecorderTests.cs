@@ -111,6 +111,93 @@ public sealed class LiveOverlayDiagnosticsRecorderTests
     }
 
     [Fact]
+    public void CompleteCollection_SummarizesFlagsTelemetry()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "tmr-overlay-live-overlay-diagnostics-test", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var storage = CreateStorage(root);
+            var captureDirectory = Path.Combine(storage.CaptureRoot, "capture-diagnostics");
+            Directory.CreateDirectory(captureDirectory);
+            var recorder = new LiveOverlayDiagnosticsRecorder(
+                new LiveOverlayDiagnosticsOptions
+                {
+                    Enabled = true,
+                    MinimumFrameSpacingSeconds = 0.1d,
+                    MaxSampleFramesPerSession = 10,
+                    MaxEventExamplesPerSession = 20
+                },
+                storage,
+                new AppEventRecorder(storage),
+                NullLogger<LiveOverlayDiagnosticsRecorder>.Instance);
+            var context = CreateRaceGridContext();
+            var startedAtUtc = DateTimeOffset.Parse("2026-05-02T12:00:00Z");
+            recorder.StartCollection("capture-diagnostics", startedAtUtc);
+
+            recorder.RecordFrame(CreateSnapshot(
+                context,
+                CreateSample(
+                    startedAtUtc,
+                    sessionTime: 0d,
+                    focusCarIdx: 10,
+                    carLeftRight: 0,
+                    focusF2TimeSeconds: 0d,
+                    classPosition: 1,
+                    observedPosition: 1,
+                    observedClassPosition: 1,
+                    observedLapDistPct: 0.1d,
+                    sessionState: 3,
+                    sessionFlags: 0x00000008 | 0x00000020),
+                sequence: 1));
+            recorder.RecordFrame(CreateSnapshot(
+                context,
+                CreateSample(
+                    startedAtUtc.AddSeconds(1),
+                    sessionTime: 1d,
+                    focusCarIdx: 10,
+                    carLeftRight: 0,
+                    focusF2TimeSeconds: 0d,
+                    classPosition: 1,
+                    observedPosition: 1,
+                    observedClassPosition: 1,
+                    observedLapDistPct: 0.1d,
+                    sessionState: 5,
+                    sessionFlags: 0),
+                sequence: 2));
+
+            var path = recorder.CompleteCollection(startedAtUtc.AddSeconds(2), captureDirectory);
+
+            using var document = JsonDocument.Parse(File.ReadAllText(path!));
+            var flags = document.RootElement.GetProperty("flags");
+            Assert.Equal(2, flags.GetProperty("framesWithSessionState").GetInt32());
+            Assert.Equal(2, flags.GetProperty("framesWithRawFlags").GetInt32());
+            Assert.Equal(1, flags.GetProperty("framesWithActiveRawFlags").GetInt32());
+            Assert.Equal(2, flags.GetProperty("framesWithDisplayFlags").GetInt32());
+            Assert.Equal(1, flags.GetProperty("stateOnlyDisplayFrames").GetInt32());
+            Assert.Equal(2, flags.GetProperty("maxDisplayFlags").GetInt32());
+            Assert.Equal(1, flags.GetProperty("rawFlagCounts").GetProperty("0x00000028").GetInt32());
+            Assert.Equal(1, flags.GetProperty("displayKindCounts").GetProperty("Yellow").GetInt32());
+            Assert.Equal(1, flags.GetProperty("displayKindCounts").GetProperty("Blue").GetInt32());
+            Assert.Equal(1, flags.GetProperty("displayKindCounts").GetProperty("Checkered").GetInt32());
+            Assert.Equal(1, flags.GetProperty("displayCategoryCounts").GetProperty("Yellow").GetInt32());
+            Assert.Equal(1, flags.GetProperty("displayCategoryCounts").GetProperty("Blue").GetInt32());
+            Assert.Equal(1, flags.GetProperty("displayCategoryCounts").GetProperty("Finish").GetInt32());
+
+            var sample = document.RootElement.GetProperty("sampleFrames").EnumerateArray().First();
+            Assert.Equal("0x00000028", sample.GetProperty("sessionFlagsHex").GetString());
+            Assert.Equal("Yellow + Blue", sample.GetProperty("flagStatus").GetString());
+            Assert.Equal(2, sample.GetProperty("flagDisplayCount").GetInt32());
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void CompleteCollection_SummarizesUnavailableFocusContext()
     {
         var root = Path.Combine(Path.GetTempPath(), "tmr-overlay-live-overlay-diagnostics-test", Guid.NewGuid().ToString("N"));
@@ -794,7 +881,9 @@ public sealed class LiveOverlayDiagnosticsRecorderTests
         double? pitRepairLeftSeconds = null,
         double? pitOptRepairLeftSeconds = null,
         int? fastRepairUsed = null,
-        int? teamFastRepairsUsed = null)
+        int? teamFastRepairsUsed = null,
+        int? sessionState = null,
+        int? sessionFlags = null)
     {
         return new HistoricalTelemetrySample(
             CapturedAtUtc: capturedAtUtc,
@@ -821,6 +910,8 @@ public sealed class LiveOverlayDiagnosticsRecorderTests
             WeatherDeclaredWet: false,
             PlayerTireCompound: 0,
             IsGarageVisible: isGarageVisible,
+            SessionState: sessionState,
+            SessionFlags: sessionFlags,
             PlayerCarIdx: 10,
             RawCamCarIdx: rawCamCarIdx,
             FocusCarIdx: focusCarIdx,

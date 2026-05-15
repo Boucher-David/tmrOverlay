@@ -47,6 +47,7 @@ SCALAR_FIELDS = [
     "CamCarIdx",
     "IsOnTrack",
     "IsInGarage",
+    "IsGarageVisible",
     "OnPitRoad",
     "PitstopActive",
     "PlayerCarInPitStall",
@@ -313,10 +314,21 @@ def drivers_by_car_idx(data: dict[str, Any]) -> dict[int, dict[str, Any]]:
 def normalize_color(value: Any) -> str | None:
     if value is None:
         return None
+    if isinstance(value, int):
+        return f"#{value & 0xFFFFFF:06x}"
     text = str(value).strip()
     if not text:
         return None
-    return text if text.startswith("#") else f"#{text}"
+    token = text[1:] if text.startswith("#") else text
+    if token.lower().startswith("0x"):
+        token = token[2:]
+        try:
+            return f"#{int(token, 16) & 0xFFFFFF:06x}"
+        except ValueError:
+            return None
+    if token.isdigit():
+        return f"#{int(token, 10) & 0xFFFFFF:06x}"
+    return f"#{token[-6:]}" if len(token) >= 6 else None
 
 
 def context_summary(data: dict[str, Any], raw_session_num: int | None) -> dict[str, Any]:
@@ -481,19 +493,20 @@ def car_progress(values: dict[str, list[Any]], car_idx: int, require_lap_progres
         return None
     lap_completed_raw = array_value(values, "CarIdxLapCompleted", car_idx)
     lap_dist_pct_raw = array_value(values, "CarIdxLapDistPct", car_idx)
-    has_lap_progress = isinstance(lap_completed_raw, int) and lap_completed_raw >= 0 and valid_lap_dist_pct(lap_dist_pct_raw) is not None
+    lap_dist_pct = valid_lap_dist_pct(lap_dist_pct_raw)
+    has_lap_progress = isinstance(lap_completed_raw, int) and lap_completed_raw >= 0 and lap_dist_pct is not None
     if require_lap_progress and not has_lap_progress:
         return None
     position = array_value(values, "CarIdxPosition", car_idx)
     class_position = array_value(values, "CarIdxClassPosition", car_idx)
     f2_time = valid_non_negative(array_value(values, "CarIdxF2Time", car_idx))
     estimated_time = valid_non_negative(array_value(values, "CarIdxEstTime", car_idx))
-    if not has_lap_progress and not has_standing_or_timing(position, class_position, f2_time, estimated_time):
+    if lap_dist_pct is None and not has_standing_or_timing(position, class_position, f2_time, estimated_time):
         return None
     return CarProgress(
         car_idx=car_idx,
         lap_completed=lap_completed_raw if has_lap_progress else None,
-        lap_dist_pct=valid_lap_dist_pct(lap_dist_pct_raw) if has_lap_progress else None,
+        lap_dist_pct=lap_dist_pct,
         f2_time=f2_time,
         estimated_time=estimated_time,
         last_lap_time=valid_positive(array_value(values, "CarIdxLastLapTime", car_idx)),
@@ -660,7 +673,7 @@ def build_timing_rows(
                         or car.last_lap_time is not None
                         or car.best_lap_time is not None
                     ),
-                    "hasSpatialProgress": car.progress_laps is not None,
+                    "hasSpatialProgress": car.lap_dist_pct is not None,
                     "progressLaps": car.progress_laps,
                     "f2TimeSeconds": car.f2_time,
                     "estimatedTimeSeconds": car.estimated_time,
@@ -700,6 +713,7 @@ def coverage(values: dict[str, list[Any]], cars: list[CarProgress]) -> dict[str,
         "positionCount": count("CarIdxPosition", lambda value: isinstance(value, int) and value > 0),
         "classPositionCount": count("CarIdxClassPosition", lambda value: isinstance(value, int) and value > 0),
         "lapProgressCount": sum(1 for car in cars if car.progress_laps is not None),
+        "lapDistanceCount": sum(1 for car in cars if car.lap_dist_pct is not None),
         "f2TimeNonNegativeCount": sum(1 for value in f2_values if value is not None),
         "f2TimePositiveCount": sum(1 for value in f2_values if value is not None and value > 0.05),
         "estimatedTimeNonNegativeCount": sum(1 for value in est_values if value is not None),

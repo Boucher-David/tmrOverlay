@@ -24,6 +24,7 @@ final class DesignV2OverlaySuiteView: NSView {
     private var gapPoints: [Double] = []
     private var inputTrace: [DesignV2InputPoint] = []
     private lazy var garageCoverLogoImage = TmrBrandAssets.loadLogoImage()
+    private lazy var garageCoverDefaultImage = TmrBrandAssets.loadGarageCoverDefaultImage()
     var theme = DesignV2Theme.outrun {
         didSet { needsDisplay = true }
     }
@@ -96,6 +97,22 @@ final class DesignV2OverlaySuiteView: NSView {
 
         let outer = bounds.insetBy(dx: 0.5, dy: 0.5)
         rounded(outer, radius: theme.layout.cornerRadius, fill: theme.colors.surface, stroke: theme.colors.border)
+        if case .chat = model.body {
+            rounded(
+                NSRect(x: outer.minX, y: outer.minY + 7, width: 2, height: max(1, outer.height - 14)),
+                radius: 2,
+                fill: theme.color(for: model.evidence),
+                stroke: nil
+            )
+            let bodyRect = NSRect(
+                x: outer.minX + Layout.padding,
+                y: outer.minY + Layout.padding,
+                width: outer.width - Layout.padding * 2,
+                height: max(1, outer.height - Layout.padding - 8)
+            )
+            drawBody(model.body, in: bodyRect)
+            return
+        }
 
         let header = NSRect(x: outer.minX + 1, y: outer.minY + 1, width: outer.width - 2, height: Layout.headerHeight)
         rounded(header, radius: max(2, theme.layout.cornerRadius - 1), fill: theme.colors.titleBar, stroke: nil)
@@ -118,28 +135,38 @@ final class DesignV2OverlaySuiteView: NSView {
             font: overlayFont(size: 14, weight: .bold),
             color: theme.colors.textPrimary
         )
-        drawText(
-            model.status,
-            in: NSRect(x: outer.minX + 232, y: header.midY - 8, width: outer.width - 248, height: 16),
-            font: overlayFont(size: 11, weight: .semibold),
-            color: theme.color(for: model.evidence),
-            alignment: .right
-        )
+        let headerValue = headerText(model: model)
+        if !headerValue.isEmpty {
+            drawText(
+                headerValue,
+                in: NSRect(x: outer.minX + 232, y: header.midY - 8, width: outer.width - 248, height: 16),
+                font: overlayFont(size: 11, weight: .semibold),
+                color: theme.color(for: model.evidence),
+                alignment: .right
+            )
+        }
 
+        let showFooter = overlayError != nil || DesignV2OverlayChromeVisibility.footerSourceEnabled(
+            settings: sourceSettings,
+            sessionKey: latestSnapshot.combo.sessionKey
+        )
+        let footerReserve = showFooter ? Layout.footerHeight : 8
         let bodyRect = NSRect(
             x: outer.minX + Layout.padding,
             y: header.maxY + Layout.bodyGap,
             width: outer.width - Layout.padding * 2,
-            height: max(1, outer.height - Layout.headerHeight - Layout.footerHeight - Layout.bodyGap - 1)
+            height: max(1, outer.height - Layout.headerHeight - footerReserve - Layout.bodyGap - 1)
         )
         drawBody(model.body, in: bodyRect)
 
-        drawText(
-            model.footer,
-            in: NSRect(x: outer.minX + 14, y: outer.maxY - 24, width: outer.width - 28, height: 14),
-            font: overlayFont(size: 10, weight: .regular),
-            color: theme.colors.textMuted
-        )
+        if showFooter {
+            drawText(
+                model.footer,
+                in: NSRect(x: outer.minX + 14, y: outer.maxY - 24, width: outer.width - 28, height: 14),
+                font: overlayFont(size: 10, weight: .regular),
+                color: theme.colors.textMuted
+            )
+        }
     }
 
     private func drawBody(_ body: DesignV2OverlayBody, in rect: NSRect) {
@@ -355,74 +382,255 @@ final class DesignV2OverlaySuiteView: NSView {
 
     private func drawChat(_ rows: [DesignV2ChatRow], in rect: NSRect) {
         rounded(rect, radius: 5, fill: theme.colors.surfaceInset, stroke: theme.colors.borderMuted)
-        let visibleRows = rows.prefix(max(1, Int(rect.height / 48)))
-        for (index, row) in visibleRows.enumerated() {
-            let rowRect = NSRect(x: rect.minX + 8, y: rect.minY + 8 + CGFloat(index) * 48, width: rect.width - 16, height: 40)
+        let innerHeight = max(1, rect.height - 16)
+        let rowWidth = max(1, rect.width - 16)
+        let visibleRows = measuredChatRows(rows, rowWidth: rowWidth, availableHeight: innerHeight)
+        let totalRowsHeight = visibleRows.reduce(CGFloat(0)) { $0 + $1.height } + CGFloat(max(0, visibleRows.count - 1)) * 8
+        var rowY = max(rect.minY + 8, rect.maxY - 8 - totalRowsHeight)
+        for row in visibleRows {
+            let rowRect = NSRect(x: rect.minX + 8, y: rowY, width: rowWidth, height: row.height)
             rounded(rowRect, radius: 5, fill: theme.colors.surfaceRaised, stroke: theme.colors.borderMuted.withAlphaComponent(0.30))
-            drawText(row.author, in: NSRect(x: rowRect.minX + 10, y: rowRect.minY + 6, width: rowRect.width - 20, height: 13), font: overlayFont(size: 10, weight: .bold), color: theme.color(for: row.evidence))
-            drawText(row.message, in: NSRect(x: rowRect.minX + 10, y: rowRect.minY + 21, width: rowRect.width - 20, height: 14), font: overlayFont(size: 11, weight: .regular), color: theme.colors.textSecondary)
+            let authorLeft = rowRect.minX + 10 + drawChatBadges(row.row.badges, in: rowRect)
+            drawText(
+                row.row.author,
+                in: NSRect(x: authorLeft, y: rowRect.minY + 6, width: rowRect.width * 0.42, height: 14),
+                font: overlayFont(size: 10, weight: .bold),
+                color: row.row.authorColorHex.flatMap(NSColor.init(tmrHex:)) ?? theme.color(for: row.row.evidence)
+            )
+            if !row.row.metadata.isEmpty {
+                drawChatMetadataChips(
+                    row.row.metadata,
+                    in: NSRect(x: rowRect.minX + rowRect.width * 0.44, y: rowRect.minY + 6, width: rowRect.width * 0.52, height: 16),
+                    font: overlayFont(size: 9, weight: .semibold)
+                )
+            }
+            drawChatSegments(
+                row.row.segments.isEmpty ? [.text(row.row.message)] : row.row.segments,
+                in: NSRect(x: rowRect.minX + 10, y: rowRect.minY + 23, width: rowRect.width - 20, height: rowRect.height - 29),
+                font: overlayFont(size: 11, weight: .regular)
+            )
+            rowY += row.height + 8
         }
     }
 
+    private func measuredChatRows(
+        _ rows: [DesignV2ChatRow],
+        rowWidth: CGFloat,
+        availableHeight: CGFloat
+    ) -> [(row: DesignV2ChatRow, height: CGFloat)] {
+        var measured: [(row: DesignV2ChatRow, height: CGFloat)] = []
+        var usedHeight: CGFloat = 0
+        let messageFont = overlayFont(size: 11, weight: .regular)
+        for row in rows.reversed() {
+            var height = measureChatRow(row, rowWidth: rowWidth, availableHeight: availableHeight, messageFont: messageFont)
+            let nextHeight = usedHeight + height + (measured.isEmpty ? 0 : 8)
+            if !measured.isEmpty, nextHeight > availableHeight {
+                break
+            }
+            if measured.isEmpty, height > availableHeight {
+                height = availableHeight
+            }
+            measured.append((row, height))
+            usedHeight += height + (measured.count == 1 ? 0 : 8)
+        }
+        return Array(measured.reversed())
+    }
+
+    private func measureChatRow(
+        _ row: DesignV2ChatRow,
+        rowWidth: CGFloat,
+        availableHeight: CGFloat,
+        messageFont: NSFont
+    ) -> CGFloat {
+        let messageWidth = max(80, rowWidth - 20)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byWordWrapping
+        let measured = NSString(string: row.displayMessage).boundingRect(
+            with: NSSize(width: messageWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [
+                .font: messageFont,
+                .paragraphStyle: paragraph
+            ]
+        )
+        return min(max(44, availableHeight), max(44, 31 + ceil(measured.height)))
+    }
+
+    private func drawChatBadges(_ badges: [String], in rowRect: NSRect) -> CGFloat {
+        guard !badges.isEmpty else {
+            return 0
+        }
+
+        let font = overlayFont(size: 9, weight: .bold)
+        var x = rowRect.minX + 10
+        let maxRight = rowRect.minX + rowRect.width * 0.34
+        for badge in badges.prefix(3) {
+            let label = badge.uppercased()
+            let textWidth = NSString(string: label).size(withAttributes: [.font: font]).width
+            let width = min(58, max(18, textWidth + 8))
+            if x + width > maxRight {
+                break
+            }
+            let badgeRect = NSRect(x: x, y: rowRect.minY + 7, width: width, height: 12)
+            rounded(badgeRect, radius: 2, fill: NSColor(red255: 145, green: 71, blue: 255, alpha: 0.44), stroke: nil)
+            drawText(label, in: badgeRect, font: font, color: .white, alignment: .center)
+            x += width + 4
+        }
+        return max(0, x - (rowRect.minX + 10))
+    }
+
+    private func drawChatMetadataChips(_ metadata: [String], in rect: NSRect, font: NSFont) {
+        guard !metadata.isEmpty else {
+            return
+        }
+
+        var x = rect.maxX
+        for item in metadata.filter({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }).reversed().prefix(4) {
+            let label = item.trimmingCharacters(in: .whitespacesAndNewlines)
+            let width = min(78, max(24, NSString(string: label).size(withAttributes: [.font: font]).width + 10))
+            x -= width
+            if x < rect.minX {
+                break
+            }
+
+            let chip = NSRect(x: x, y: rect.minY + 1, width: width, height: min(14, rect.height - 2))
+            rounded(chip, radius: 3, fill: theme.colors.accentPrimary.withAlphaComponent(0.13), stroke: theme.colors.accentPrimary.withAlphaComponent(0.22))
+            drawText(label, in: chip, font: font, color: theme.colors.textSecondary, alignment: .center)
+            x -= 4
+        }
+    }
+
+    private func drawChatSegments(_ segments: [DesignV2ChatSegment], in rect: NSRect, font: NSFont) {
+        let lineHeight = max(CGFloat(18), font.ascender - font.descender + 3)
+        let emoteFont = overlayFont(size: max(7.2, font.pointSize - 1.3), weight: .bold)
+        var x = rect.minX
+        var y = rect.minY
+
+        func nextLine() -> Bool {
+            x = rect.minX
+            y += lineHeight
+            return y + lineHeight <= rect.maxY
+        }
+
+        for segment in segments {
+            if segment.kind.lowercased() == "emote" {
+                let label = segment.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "emote" : segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                let width = min(72, max(28, NSString(string: label).size(withAttributes: [.font: emoteFont]).width + 12))
+                if x > rect.minX, x + width > rect.maxX, !nextLine() {
+                    break
+                }
+                if y + lineHeight <= rect.maxY {
+                    let chip = NSRect(x: x, y: y + max(0, (lineHeight - 18) / 2), width: width, height: 18)
+                    rounded(chip, radius: 3, fill: NSColor(red255: 145, green: 71, blue: 255, alpha: 0.16), stroke: NSColor(red255: 145, green: 71, blue: 255, alpha: 0.38))
+                    drawText(label, in: chip.insetBy(dx: 4, dy: 1), font: emoteFont, color: theme.colors.textPrimary, alignment: .center)
+                }
+                x += width + 3
+                continue
+            }
+
+            for run in chatTextRuns(segment.text) {
+                if run == "\n" {
+                    if !nextLine() {
+                        return
+                    }
+                    continue
+                }
+                if run.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    let width = NSString(string: " ").size(withAttributes: [.font: font]).width
+                    if x > rect.minX, x + width <= rect.maxX {
+                        x += width
+                    }
+                    continue
+                }
+
+                for chunk in chatTextChunks(run, font: font, maximumWidth: max(1, rect.width)) {
+                    let width = NSString(string: chunk).size(withAttributes: [.font: font]).width
+                    if x > rect.minX, x + width > rect.maxX, !nextLine() {
+                        return
+                    }
+                    if y + lineHeight <= rect.maxY {
+                        drawText(chunk, in: NSRect(x: x, y: y, width: width + 2, height: lineHeight), font: font, color: theme.colors.textSecondary)
+                    }
+                    x += width
+                }
+            }
+        }
+    }
+
+    private func chatTextRuns(_ text: String) -> [String] {
+        var runs: [String] = []
+        var current = ""
+        var currentWhitespace: Bool?
+        for scalar in text.unicodeScalars {
+            if scalar.value == 13 {
+                continue
+            }
+            if scalar.value == 10 {
+                if !current.isEmpty {
+                    runs.append(current)
+                    current = ""
+                }
+                runs.append("\n")
+                currentWhitespace = nil
+                continue
+            }
+            let character = String(scalar)
+            let isWhitespace = CharacterSet.whitespaces.contains(scalar)
+            if let currentWhitespace, currentWhitespace != isWhitespace, !current.isEmpty {
+                runs.append(current)
+                current = ""
+            }
+            current.append(character)
+            currentWhitespace = isWhitespace
+        }
+        if !current.isEmpty {
+            runs.append(current)
+        }
+        return runs
+    }
+
+    private func chatTextChunks(_ text: String, font: NSFont, maximumWidth: CGFloat) -> [String] {
+        if NSString(string: text).size(withAttributes: [.font: font]).width <= maximumWidth {
+            return [text]
+        }
+
+        var chunks: [String] = []
+        var current = ""
+        for character in text {
+            let candidate = current + String(character)
+            if !current.isEmpty, NSString(string: candidate).size(withAttributes: [.font: font]).width > maximumWidth {
+                chunks.append(current)
+                current = String(character)
+            } else {
+                current = candidate
+            }
+        }
+        if !current.isEmpty {
+            chunks.append(current)
+        }
+        return chunks
+    }
+
     private func drawGarageCover(_ model: DesignV2GarageCoverModel, in rect: NSRect) {
-        let background = NSBezierPath(rect: rect)
-        theme.colors.surfaceInset.setFill()
-        background.fill()
+        NSColor.black.setFill()
+        rect.fill()
 
-        let horizonY = rect.minY + rect.height * 0.57
-        NSColor(red255: 73, green: 19, blue: 83, alpha: 0.68).setFill()
-        NSRect(x: rect.minX, y: horizonY, width: rect.width, height: rect.height * 0.13).fill()
-        NSColor(red255: 5, green: 19, blue: 32, alpha: 0.96).setFill()
-        NSRect(x: rect.minX, y: horizonY + rect.height * 0.13, width: rect.width, height: rect.maxY - horizonY).fill()
+        if let garageCoverDefaultImage {
+            drawImage(garageCoverDefaultImage, coveredIn: rect)
+            return
+        }
 
-        drawGarageGrid(in: rect, horizonY: horizonY)
-        drawOutrunSun(in: NSRect(x: rect.maxX - 206, y: rect.minY + 24, width: 136, height: 136))
-
-        let borderRect = rect.insetBy(dx: 18, dy: 18)
-        rounded(borderRect, radius: 12, fill: nil, stroke: theme.colors.accentPrimary.withAlphaComponent(0.92))
-        let logoRect = NSRect(x: borderRect.minX + 50, y: borderRect.minY + 54, width: 116, height: 64)
-        rounded(logoRect, radius: 7, fill: theme.colors.surfaceRaised, stroke: theme.colors.accentSecondary)
         if let garageCoverLogoImage {
-            drawImage(garageCoverLogoImage, containedIn: logoRect.insetBy(dx: 10, dy: 8))
-        } else {
-            drawText("TMR", in: logoRect.insetBy(dx: 14, dy: 8), font: overlayFont(size: 26, weight: .bold), color: theme.colors.textPrimary)
+            drawImage(garageCoverLogoImage, containedIn: rect.insetBy(dx: rect.width * 0.22, dy: rect.height * 0.22))
+            return
         }
 
         drawText(
-            "Tech Mates Racing",
-            in: NSRect(x: logoRect.maxX + 28, y: logoRect.minY + 1, width: min(500, borderRect.maxX - logoRect.maxX - 260), height: 24),
-            font: overlayFont(size: 18, weight: .semibold),
-            color: theme.colors.accentPrimary
-        )
-        drawText(
-            "Garage Cover",
-            in: NSRect(x: logoRect.maxX + 26, y: logoRect.minY + 24, width: min(500, borderRect.maxX - logoRect.maxX - 260), height: 42),
-            font: overlayFont(size: max(30, rect.width / 29), weight: .bold),
-            color: theme.colors.textPrimary
-        )
-        drawText(
-            "Setup screen privacy surface",
-            in: NSRect(x: logoRect.maxX + 30, y: logoRect.maxY + 4, width: 380, height: 18),
-            font: overlayFont(size: 15, weight: .semibold),
-            color: theme.colors.textSecondary
-        )
-
-        let alertY = rect.minY + rect.height * 0.70
-        NSColor(red255: 255, green: 42, blue: 167, alpha: model.isGarageVisible || model.shouldFailClosed ? 0.78 : 0.42).setFill()
-        NSRect(x: rect.minX, y: alertY, width: rect.width, height: 64).fill()
-        NSColor(red255: 255, green: 209, blue: 91, alpha: 0.95).setFill()
-        NSRect(x: rect.minX, y: alertY + 64, width: rect.width, height: 10).fill()
-        drawText(
-            model.state,
-            in: NSRect(x: borderRect.minX + 50, y: alertY + 17, width: borderRect.width - 100, height: 22),
-            font: overlayFont(size: 19, weight: .bold),
-            color: theme.colors.textPrimary
-        )
-        drawText(
-            model.detail,
-            in: NSRect(x: borderRect.minX + 50, y: alertY + 88, width: borderRect.width - 100, height: 18),
-            font: overlayFont(size: 14, weight: .semibold),
-            color: theme.colors.textSecondary
+            "TMR",
+            in: rect,
+            font: overlayFont(size: max(36, rect.height / 6), weight: .bold),
+            color: theme.colors.textPrimary,
+            alignment: .center
         )
     }
 
@@ -462,8 +670,36 @@ final class DesignV2OverlaySuiteView: NSView {
         )
     }
 
+    private func imageCoverRect(imageSize: NSSize, bounds: NSRect) -> NSRect {
+        guard imageSize.width > 0,
+              imageSize.height > 0,
+              bounds.width > 0,
+              bounds.height > 0 else {
+            return bounds
+        }
+
+        let scale = max(bounds.width / imageSize.width, bounds.height / imageSize.height)
+        let width = imageSize.width * scale
+        let height = imageSize.height * scale
+        return NSRect(
+            x: bounds.midX - width / 2,
+            y: bounds.midY - height / 2,
+            width: width,
+            height: height
+        )
+    }
+
     private func drawImage(_ image: NSImage, containedIn bounds: NSRect) {
         let target = imageContainRect(imageSize: image.size, bounds: bounds)
+        drawImage(image, in: target)
+    }
+
+    private func drawImage(_ image: NSImage, coveredIn bounds: NSRect) {
+        let target = imageCoverRect(imageSize: image.size, bounds: bounds)
+        drawImage(image, in: target)
+    }
+
+    private func drawImage(_ image: NSImage, in target: NSRect) {
         NSGraphicsContext.saveGraphicsState()
         if isFlipped {
             let transform = NSAffineTransform()
@@ -588,14 +824,14 @@ final class DesignV2OverlaySuiteView: NSView {
         let graph = NSRect(x: content.minX, y: content.minY + 6, width: max(160, content.width - railWidth - 18), height: content.height - 12)
         rounded(graph, radius: 5, fill: theme.colors.surfaceInset, stroke: theme.colors.borderMuted)
         drawInputGrid(in: graph)
-        if inputBlockEnabled(OverlayContentColumns.inputThrottleBlockId) {
+        if inputBlockEnabled(OverlayContentColumns.inputThrottleTraceBlockId) {
             drawInputTrace(model.trace, in: graph, color: theme.colors.live) { $0.throttle }
         }
-        if inputBlockEnabled(OverlayContentColumns.inputBrakeBlockId) {
+        if inputBlockEnabled(OverlayContentColumns.inputBrakeTraceBlockId) {
             drawInputTrace(model.trace, in: graph, color: theme.colors.error) { $0.brake }
             drawInputAbsTrace(model.trace, in: graph)
         }
-        if inputBlockEnabled(OverlayContentColumns.inputClutchBlockId) {
+        if inputBlockEnabled(OverlayContentColumns.inputClutchTraceBlockId) {
             drawInputTrace(model.trace, in: graph, color: theme.colors.accentPrimary) { $0.clutch }
         }
 
@@ -790,8 +1026,9 @@ final class DesignV2OverlaySuiteView: NSView {
             return
         }
 
-        theme.colors.accentPrimary.withAlphaComponent(0.92).setStroke()
-        for progress in trackMapBoundaryProgresses(sectors) {
+        for boundary in trackMapBoundaryMarkers(sectors) {
+            let progress = boundary.progress
+            trackMapBoundaryColor(boundary.highlight).setStroke()
             let point = trackMapPoint(on: rect, progress: progress)
             let dx = point.x - rect.midX
             let dy = point.y - rect.midY
@@ -1115,7 +1352,7 @@ final class DesignV2OverlaySuiteView: NSView {
 
     private func sessionWeatherModel(_ snapshot: LiveTelemetrySnapshot) -> DesignV2OverlayModel {
         guard snapshot.isConnected, snapshot.isCollecting, let frame = snapshot.latestFrame else {
-            return DesignV2OverlayModel(title: "Session / Weather", status: "waiting for telemetry", footer: "source: waiting", evidence: .unavailable, body: .metricRows([]))
+            return DesignV2OverlayModel(title: "Session / Weather", status: "waiting for telemetry", footer: "", evidence: .unavailable, body: .metricRows([]))
         }
 
         let wet = frame.weatherDeclaredWet || frame.trackWetness > 1
@@ -1125,11 +1362,11 @@ final class DesignV2OverlaySuiteView: NSView {
             DesignV2OverlayMetricRow(label: "Laps", value: "\(max(0, 30 - frame.teamLapCompleted)) left | 30 total", evidence: .modeled),
             DesignV2OverlayMetricRow(label: "Track", value: "Nurburgring Combined | 24.36 km", evidence: .measured),
             DesignV2OverlayMetricRow(label: "Temps", value: "air \(temperature(21.5 + sin(frame.sessionTime / 300) * 2)) | track \(temperature(28 + sin(frame.sessionTime / 240) * 4))", evidence: .live),
-            DesignV2OverlayMetricRow(label: "Surface", value: wet ? "wet | declared wet | rubber moderate" : "dry | rubber moderate", evidence: wet ? .partial : .measured),
-            DesignV2OverlayMetricRow(label: "Sky", value: wet ? "overcast | rain 65%" : "partly cloudy | rain 12%", evidence: .live),
+            DesignV2OverlayMetricRow(label: "Surface", value: wet ? "Wet | Declared Wet | Rubber Moderate" : "Dry | Rubber Moderate", evidence: wet ? .partial : .measured),
+            DesignV2OverlayMetricRow(label: "Sky", value: wet ? "Overcast | rain 65%" : "Partly Cloudy | rain 12%", evidence: .live),
             DesignV2OverlayMetricRow(label: "Wind", value: "NW \(Int((3.6 + sin(frame.sessionTime / 420) * 1.2) * 3.6)) km/h", evidence: .live)
         ]
-        return DesignV2OverlayModel(title: "Session / Weather", status: wet ? "declared wet" : "Race", footer: "source: session + weather telemetry", evidence: wet ? .partial : .live, body: .metricRows(rows))
+        return DesignV2OverlayModel(title: "Session / Weather", status: wet ? "Declared Wet" : "Race", footer: "", evidence: wet ? .partial : .live, body: .metricRows(rows))
     }
 
     private func streamChatModel() -> DesignV2OverlayModel {
@@ -1142,8 +1379,16 @@ final class DesignV2OverlaySuiteView: NSView {
             status = channel.isEmpty ? "Twitch not configured" : "Twitch #\(channel)"
             rows = [
                 DesignV2ChatRow(author: "TMR", message: channel.isEmpty ? "Add a Twitch channel in settings." : "Connecting to #\(channel)...", evidence: channel.isEmpty ? .unavailable : .live),
-                DesignV2ChatRow(author: "spotterbot", message: "Fuel window opens in 3 laps.", evidence: .modeled),
-                DesignV2ChatRow(author: "crew", message: "Traffic after the stop should clear.", evidence: .history)
+                DesignV2ChatRow(author: "spotterbot", message: "Fuel window opens in 3 laps.", evidence: .modeled, authorColorHex: "#62C7FF", metadata: ["14:02"], badges: ["mod"]),
+                DesignV2ChatRow(
+                    author: "crew",
+                    message: "Traffic after the stop should clear. Kappa",
+                    evidence: .history,
+                    authorColorHex: "#FFD15B",
+                    metadata: ["reply @spotter"],
+                    badges: ["vip"],
+                    segments: [.text("Traffic after the stop should clear. "), .emote("Kappa")]
+                )
             ]
         case "streamlabs":
             status = sourceSettings.streamChatStreamlabsUrl.isEmpty ? "Streamlabs not configured" : "Streamlabs"
@@ -1160,12 +1405,13 @@ final class DesignV2OverlaySuiteView: NSView {
             ]
         }
 
-        return DesignV2OverlayModel(title: "Stream Chat", status: status, footer: "source: stream chat settings", evidence: provider == "none" || provider.isEmpty ? .unavailable : .live, body: .chat(rows))
+        return DesignV2OverlayModel(title: "Stream Chat", status: status, footer: "", evidence: provider == "none" || provider.isEmpty ? .unavailable : .live, body: .chat(rows))
     }
 
     private func garageCoverModel(_ snapshot: LiveTelemetrySnapshot) -> DesignV2OverlayModel {
         let isGarageVisible = snapshot.latestFrame?.isGarageVisible == true
-        let shouldFailClosed = !snapshot.isConnected || !snapshot.isCollecting || snapshot.latestFrame == nil
+        let telemetryFresh = snapshot.lastUpdatedAtUtc.map { Date().timeIntervalSince($0) <= 2.5 } ?? false
+        let shouldFailClosed = !snapshot.isConnected || !snapshot.isCollecting || !telemetryFresh || snapshot.latestFrame == nil
         let state: String
         let detail: String
         let evidence: DesignV2EvidenceKind
@@ -1259,6 +1505,23 @@ final class DesignV2OverlaySuiteView: NSView {
             evidence: available ? .live : .unavailable,
             body: .trackMap(DesignV2TrackMapModel(snapshot: snapshot, isAvailable: available))
         )
+    }
+
+    private func headerText(model: DesignV2OverlayModel) -> String {
+        let sessionKey = latestSnapshot.combo.sessionKey
+        var parts: [String] = []
+        if DesignV2OverlayChromeVisibility.headerStatusEnabled(settings: sourceSettings, sessionKey: sessionKey),
+           !model.status.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            parts.append(model.status)
+        }
+        if DesignV2OverlayChromeVisibility.headerTimeRemainingEnabled(settings: sourceSettings, sessionKey: sessionKey),
+           let seconds = latestSnapshot.latestFrame?.sessionTimeRemain {
+            let timeRemaining = formatHeaderDuration(seconds)
+            if !timeRemaining.isEmpty {
+                parts.append(timeRemaining)
+            }
+        }
+        return parts.joined(separator: " | ")
     }
 
     private func appendInputTrace(_ frame: MockLiveTelemetryFrame) {
@@ -1361,20 +1624,20 @@ final class DesignV2OverlaySuiteView: NSView {
         return [(start, min(max(end, 0), 1))]
     }
 
-    private func trackMapBoundaryProgresses(_ sectors: [LiveTrackSectorSegment]) -> [Double] {
+    private func trackMapBoundaryMarkers(_ sectors: [LiveTrackSectorSegment]) -> [(progress: Double, highlight: String)] {
         var seen: Set<Int> = []
-        var progresses: [Double] = []
+        var markers: [(progress: Double, highlight: String)] = []
         for sector in sectors {
-            let progress = normalizeTrackMapProgress(sector.startPct)
-            let key = Int((progress * 100_000).rounded())
+            let progress = sector.endPct >= 1 ? 1.0 : normalizeTrackMapProgress(sector.endPct)
+            let key = Int((normalizeTrackMapProgress(progress) * 100_000).rounded())
             guard !seen.contains(key) else {
                 continue
             }
 
             seen.insert(key)
-            progresses.append(progress)
+            markers.append((progress, sector.boundaryHighlight))
         }
-        return progresses
+        return markers
     }
 
     private func hasTrackMapHighlight(_ highlight: String) -> Bool {
@@ -1386,6 +1649,12 @@ final class DesignV2OverlaySuiteView: NSView {
         highlight == LiveTrackSectorHighlights.bestLap
             ? NSColor(red: 0.71, green: 0.36, blue: 1.0, alpha: 1.0)
             : NSColor(red: 0.18, green: 0.94, blue: 0.43, alpha: 1.0)
+    }
+
+    private func trackMapBoundaryColor(_ highlight: String) -> NSColor {
+        hasTrackMapHighlight(highlight)
+            ? trackMapSectorHighlightColor(highlight)
+            : theme.colors.accentPrimary.withAlphaComponent(0.92)
     }
 
     private var trackMapSectorBoundariesVisible: Bool {
@@ -1467,7 +1736,9 @@ final class DesignV2OverlaySuiteView: NSView {
         StandingsDisplayFormatting.gap(
             isClassLeader: car.isClassLeader,
             seconds: car.gapSecondsToClassLeader,
-            laps: car.gapLapsToClassLeader)
+            laps: car.gapLapsToClassLeader,
+            lapCompleted: car.lapCompleted,
+            lapDistPct: car.lapDistPct)
     }
 
     private func intervalText(_ delta: Double?, referenceGap: Double, isReference: Bool) -> String {
@@ -1680,6 +1951,17 @@ final class DesignV2OverlaySuiteView: NSView {
             : String(format: "%d:%02d", minutes, secs)
     }
 
+    private func formatHeaderDuration(_ seconds: TimeInterval) -> String {
+        guard seconds.isFinite, seconds >= 0 else {
+            return ""
+        }
+        let total = max(0, Int(ceil(seconds)))
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        let secs = total % 60
+        return String(format: "%02d:%02d:%02d", hours, minutes, secs)
+    }
+
     private func textAlignment(_ alignment: OverlayContentColumnAlignment) -> NSTextAlignment {
         switch alignment {
         case .left:
@@ -1699,8 +1981,15 @@ final class DesignV2OverlaySuiteView: NSView {
         DesignV2Drawing.rounded(rect, radius: radius, fill: fill, stroke: stroke)
     }
 
-    private func drawText(_ text: String, in rect: NSRect, font: NSFont, color: NSColor, alignment: NSTextAlignment = .left) {
-        DesignV2Drawing.text(text, in: rect, font: font, color: color, alignment: alignment)
+    private func drawText(
+        _ text: String,
+        in rect: NSRect,
+        font: NSFont,
+        color: NSColor,
+        alignment: NSTextAlignment = .left,
+        lineBreakMode: NSLineBreakMode = .byTruncatingTail
+    ) {
+        DesignV2Drawing.text(text, in: rect, font: font, color: color, alignment: alignment, lineBreakMode: lineBreakMode)
     }
 
     private func trim(_ value: String) -> String {

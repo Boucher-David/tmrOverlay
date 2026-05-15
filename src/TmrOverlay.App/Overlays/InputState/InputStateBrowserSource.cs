@@ -9,7 +9,9 @@ internal static class InputStateBrowserSource
         title: InputStateOverlayDefinition.Definition.DisplayName,
         canonicalRoute: "/overlays/input-state",
         aliases: ["/overlays/inputs"],
+        renderWhenTelemetryUnavailable: true,
         fadeWhenTelemetryUnavailable: InputStateOverlayDefinition.Definition.FadeWhenLiveTelemetryUnavailable,
         bodyClass: "input-state-page",
+        refreshIntervalMilliseconds: InputStateRenderModelBuilder.RefreshIntervalMilliseconds,
         moduleAssetName: "input-state");
 }

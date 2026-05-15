@@ -5,7 +5,8 @@ namespace TmrOverlay.Core.Settings;
 
 internal static class AppSettingsMigrator
 {
-    public const int CurrentVersion = 10;
+    public const int CurrentVersion = 11;
+    private const double LegacyDefaultOpacity = 0.88d;
     private const string FlagsOverlayId = "flags";
     private const string FlagsPrimaryScreenDefaultId = "primary-screen-default";
     private const int FlagsDefaultWidth = 360;
@@ -52,12 +53,24 @@ internal static class AppSettingsMigrator
         OverlayOptionKeys.RelativeCarsEachSide,
         OverlayOptionKeys.RelativeCarsAhead,
         OverlayOptionKeys.RelativeCarsBehind,
+        OverlayOptionKeys.InputShowThrottleTrace,
+        OverlayOptionKeys.InputShowBrakeTrace,
+        OverlayOptionKeys.InputShowClutchTrace,
         OverlayOptionKeys.InputShowThrottle,
         OverlayOptionKeys.InputShowBrake,
         OverlayOptionKeys.InputShowClutch,
         OverlayOptionKeys.InputShowSteering,
         OverlayOptionKeys.InputShowGear,
         OverlayOptionKeys.InputShowSpeed,
+        OverlayOptionKeys.PitServiceShowTireCompound,
+        OverlayOptionKeys.PitServiceShowTireChange,
+        OverlayOptionKeys.PitServiceShowTireSetLimit,
+        OverlayOptionKeys.PitServiceShowTireSetsAvailable,
+        OverlayOptionKeys.PitServiceShowTireSetsUsed,
+        OverlayOptionKeys.PitServiceShowTirePressure,
+        OverlayOptionKeys.PitServiceShowTireTemperature,
+        OverlayOptionKeys.PitServiceShowTireWear,
+        OverlayOptionKeys.PitServiceShowTireDistance,
         OverlayOptionKeys.GapCarsAhead,
         OverlayOptionKeys.GapCarsBehind,
         OverlayOptionKeys.GapRaceOnlyDefaultApplied,
@@ -66,6 +79,15 @@ internal static class AppSettingsMigrator
         OverlayOptionKeys.StreamChatProvider,
         OverlayOptionKeys.StreamChatStreamlabsUrl,
         OverlayOptionKeys.StreamChatTwitchChannel,
+        OverlayOptionKeys.StreamChatShowAuthorColor,
+        OverlayOptionKeys.StreamChatShowBadges,
+        OverlayOptionKeys.StreamChatShowBits,
+        OverlayOptionKeys.StreamChatShowFirstMessage,
+        OverlayOptionKeys.StreamChatShowReplies,
+        OverlayOptionKeys.StreamChatShowTimestamps,
+        OverlayOptionKeys.StreamChatShowEmotes,
+        OverlayOptionKeys.StreamChatShowAlerts,
+        OverlayOptionKeys.StreamChatShowMessageIds,
         OverlayOptionKeys.GarageCoverImagePath,
         OverlayOptionKeys.GarageCoverPreviewUntilUtc,
         OverlayOptionKeys.FlagsShowGreen,
@@ -78,11 +100,12 @@ internal static class AppSettingsMigrator
     public static ApplicationSettings Migrate(ApplicationSettings? settings)
     {
         settings ??= new ApplicationSettings();
+        var sourceVersion = settings.SettingsVersion;
         settings.General ??= new ApplicationGeneralSettings();
         settings.Overlays ??= [];
 
         NormalizeGeneral(settings.General);
-        NormalizeOverlays(settings.Overlays);
+        NormalizeOverlays(settings.Overlays, sourceVersion);
         settings.SettingsVersion = CurrentVersion;
         return settings;
     }
@@ -103,7 +126,7 @@ internal static class AppSettingsMigrator
             : "Metric";
     }
 
-    private static void NormalizeOverlays(List<OverlaySettings> overlays)
+    private static void NormalizeOverlays(List<OverlaySettings> overlays, int sourceVersion)
     {
         overlays.RemoveAll(overlay => string.IsNullOrWhiteSpace(overlay.Id));
 
@@ -120,10 +143,20 @@ internal static class AppSettingsMigrator
             overlay.Scale = ClampFinite(overlay.Scale, 0.6d, 2d, 1d);
             overlay.Width = Math.Max(0, overlay.Width);
             overlay.Height = Math.Max(0, overlay.Height);
-            overlay.Opacity = ClampFinite(overlay.Opacity, 0.2d, 1d, 0.88d);
+            if (sourceVersion < CurrentVersion && IsLegacyDefaultOpacity(overlay.Opacity))
+            {
+                overlay.Opacity = 1d;
+            }
+
+            overlay.Opacity = ClampFinite(overlay.Opacity, 0.2d, 1d, 1d);
             NormalizeFlagsOverlay(overlay);
             overlay.LegacyProperties = null;
         }
+    }
+
+    private static bool IsLegacyDefaultOpacity(double opacity)
+    {
+        return double.IsFinite(opacity) && Math.Abs(opacity - LegacyDefaultOpacity) <= 0.0001d;
     }
 
     private static void RemoveIrrelevantOverlayOptions(OverlaySettings overlay)
@@ -139,7 +172,7 @@ internal static class AppSettingsMigrator
 
     private static void EnsureScopedOverlayOptions(OverlaySettings overlay)
     {
-        if (SupportsSharedChromeSettings(overlay.Id))
+        if (SupportsSharedHeaderChromeSettings(overlay.Id))
         {
             EnsureOption(overlay, OverlayOptionKeys.ChromeHeaderStatusTest, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.ChromeHeaderStatusPractice, defaultValue: true);
@@ -149,6 +182,10 @@ internal static class AppSettingsMigrator
             EnsureOption(overlay, OverlayOptionKeys.ChromeHeaderTimeRemainingPractice, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.ChromeHeaderTimeRemainingQualifying, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.ChromeHeaderTimeRemainingRace, defaultValue: true);
+        }
+
+        if (SupportsFooterSourceChromeSettings(overlay.Id))
+        {
             EnsureOption(overlay, OverlayOptionKeys.ChromeFooterSourceTest, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.ChromeFooterSourcePractice, defaultValue: true);
             EnsureOption(overlay, OverlayOptionKeys.ChromeFooterSourceQualifying, defaultValue: true);
@@ -159,7 +196,6 @@ internal static class AppSettingsMigrator
         {
             case "fuel-calculator":
                 EnsureOption(overlay, OverlayOptionKeys.FuelAdvice, defaultValue: true);
-                EnsureOption(overlay, OverlayOptionKeys.FuelSource, defaultValue: true);
                 break;
             case "car-radar":
                 EnsureOption(overlay, OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true);
@@ -178,12 +214,26 @@ internal static class AppSettingsMigrator
                 NormalizeRelativeCarsEachSide(overlay);
                 break;
             case "input-state":
+                EnsureOption(overlay, OverlayOptionKeys.InputShowThrottleTrace, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.InputShowBrakeTrace, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.InputShowClutchTrace, defaultValue: true);
                 EnsureOption(overlay, OverlayOptionKeys.InputShowThrottle, defaultValue: true);
                 EnsureOption(overlay, OverlayOptionKeys.InputShowBrake, defaultValue: true);
                 EnsureOption(overlay, OverlayOptionKeys.InputShowClutch, defaultValue: true);
                 EnsureOption(overlay, OverlayOptionKeys.InputShowSteering, defaultValue: true);
                 EnsureOption(overlay, OverlayOptionKeys.InputShowGear, defaultValue: true);
                 EnsureOption(overlay, OverlayOptionKeys.InputShowSpeed, defaultValue: true);
+                break;
+            case "pit-service":
+                EnsureOption(overlay, OverlayOptionKeys.PitServiceShowTireCompound, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.PitServiceShowTireChange, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.PitServiceShowTireSetLimit, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.PitServiceShowTireSetsAvailable, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.PitServiceShowTireSetsUsed, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.PitServiceShowTirePressure, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.PitServiceShowTireTemperature, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.PitServiceShowTireWear, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.PitServiceShowTireDistance, defaultValue: true);
                 break;
             case "gap-to-leader":
                 EnsureOption(overlay, OverlayOptionKeys.GapCarsAhead, defaultValue: 5, minimum: 0, maximum: 12);
@@ -195,6 +245,15 @@ internal static class AppSettingsMigrator
                 break;
             case "stream-chat":
                 NormalizeStreamChatOptions(overlay);
+                EnsureOption(overlay, OverlayOptionKeys.StreamChatShowAuthorColor, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.StreamChatShowBadges, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.StreamChatShowBits, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.StreamChatShowFirstMessage, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.StreamChatShowReplies, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.StreamChatShowTimestamps, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.StreamChatShowEmotes, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.StreamChatShowAlerts, defaultValue: true);
+                EnsureOption(overlay, OverlayOptionKeys.StreamChatShowMessageIds, defaultValue: false);
                 break;
             case "flags":
                 EnsureOption(overlay, OverlayOptionKeys.FlagsShowGreen, defaultValue: true);
@@ -208,14 +267,19 @@ internal static class AppSettingsMigrator
 
     private static bool OverlayOwnsOption(string overlayId, string key)
     {
-        if (SupportsSharedChromeSettings(overlayId) && IsSharedChromeOption(key))
+        if (SupportsSharedHeaderChromeSettings(overlayId) && IsSharedHeaderChromeOption(key))
+        {
+            return true;
+        }
+
+        if (SupportsFooterSourceChromeSettings(overlayId) && IsFooterSourceChromeOption(key))
         {
             return true;
         }
 
         return overlayId.Trim().ToLowerInvariant() switch
         {
-            "fuel-calculator" => key is OverlayOptionKeys.FuelAdvice or OverlayOptionKeys.FuelSource,
+            "fuel-calculator" => key is OverlayOptionKeys.FuelAdvice,
             "car-radar" => key is OverlayOptionKeys.RadarMulticlassWarning,
             "standings" => key is
                 OverlayOptionKeys.StandingsClassSeparatorsEnabled
@@ -231,12 +295,25 @@ internal static class AppSettingsMigrator
                 or OverlayOptionKeys.RelativeCarsAhead
                 or OverlayOptionKeys.RelativeCarsBehind,
             "input-state" => key is
-                OverlayOptionKeys.InputShowThrottle
+                OverlayOptionKeys.InputShowThrottleTrace
+                or OverlayOptionKeys.InputShowBrakeTrace
+                or OverlayOptionKeys.InputShowClutchTrace
+                or OverlayOptionKeys.InputShowThrottle
                 or OverlayOptionKeys.InputShowBrake
                 or OverlayOptionKeys.InputShowClutch
                 or OverlayOptionKeys.InputShowSteering
                 or OverlayOptionKeys.InputShowGear
                 or OverlayOptionKeys.InputShowSpeed,
+            "pit-service" => key is
+                OverlayOptionKeys.PitServiceShowTireCompound
+                or OverlayOptionKeys.PitServiceShowTireChange
+                or OverlayOptionKeys.PitServiceShowTireSetLimit
+                or OverlayOptionKeys.PitServiceShowTireSetsAvailable
+                or OverlayOptionKeys.PitServiceShowTireSetsUsed
+                or OverlayOptionKeys.PitServiceShowTirePressure
+                or OverlayOptionKeys.PitServiceShowTireTemperature
+                or OverlayOptionKeys.PitServiceShowTireWear
+                or OverlayOptionKeys.PitServiceShowTireDistance,
             "gap-to-leader" => key is
                 OverlayOptionKeys.GapCarsAhead
                 or OverlayOptionKeys.GapCarsBehind
@@ -247,7 +324,16 @@ internal static class AppSettingsMigrator
             "stream-chat" => key is
                 OverlayOptionKeys.StreamChatProvider
                 or OverlayOptionKeys.StreamChatStreamlabsUrl
-                or OverlayOptionKeys.StreamChatTwitchChannel,
+                or OverlayOptionKeys.StreamChatTwitchChannel
+                or OverlayOptionKeys.StreamChatShowAuthorColor
+                or OverlayOptionKeys.StreamChatShowBadges
+                or OverlayOptionKeys.StreamChatShowBits
+                or OverlayOptionKeys.StreamChatShowFirstMessage
+                or OverlayOptionKeys.StreamChatShowReplies
+                or OverlayOptionKeys.StreamChatShowTimestamps
+                or OverlayOptionKeys.StreamChatShowEmotes
+                or OverlayOptionKeys.StreamChatShowAlerts
+                or OverlayOptionKeys.StreamChatShowMessageIds,
             "garage-cover" => key is
                 OverlayOptionKeys.GarageCoverImagePath
                 or OverlayOptionKeys.GarageCoverPreviewUntilUtc,
@@ -261,7 +347,7 @@ internal static class AppSettingsMigrator
         };
     }
 
-    private static bool SupportsSharedChromeSettings(string overlayId)
+    private static bool SupportsSharedHeaderChromeSettings(string overlayId)
     {
         return overlayId.Trim().ToLowerInvariant() is
             "standings"
@@ -272,7 +358,17 @@ internal static class AppSettingsMigrator
             or "pit-service";
     }
 
-    private static bool IsSharedChromeOption(string key)
+    private static bool SupportsFooterSourceChromeSettings(string overlayId)
+    {
+        return overlayId.Trim().ToLowerInvariant() is
+            "standings"
+            or "relative"
+            or "fuel-calculator"
+            or "gap-to-leader"
+            or "pit-service";
+    }
+
+    private static bool IsSharedHeaderChromeOption(string key)
     {
         return key is
             OverlayOptionKeys.ChromeHeaderStatusTest
@@ -282,8 +378,13 @@ internal static class AppSettingsMigrator
             or OverlayOptionKeys.ChromeHeaderTimeRemainingTest
             or OverlayOptionKeys.ChromeHeaderTimeRemainingPractice
             or OverlayOptionKeys.ChromeHeaderTimeRemainingQualifying
-            or OverlayOptionKeys.ChromeHeaderTimeRemainingRace
-            or OverlayOptionKeys.ChromeFooterSourceTest
+            or OverlayOptionKeys.ChromeHeaderTimeRemainingRace;
+    }
+
+    private static bool IsFooterSourceChromeOption(string key)
+    {
+        return key is
+            OverlayOptionKeys.ChromeFooterSourceTest
             or OverlayOptionKeys.ChromeFooterSourcePractice
             or OverlayOptionKeys.ChromeFooterSourceQualifying
             or OverlayOptionKeys.ChromeFooterSourceRace;
@@ -396,7 +497,6 @@ internal static class AppSettingsMigrator
         MigrateLegacyBoolean(overlay, "showStatusCaptureDetails", OverlayOptionKeys.StatusCaptureDetails);
         MigrateLegacyBoolean(overlay, "showStatusHealthDetails", OverlayOptionKeys.StatusHealthDetails);
         MigrateLegacyBoolean(overlay, "showFuelAdvice", OverlayOptionKeys.FuelAdvice);
-        MigrateLegacyBoolean(overlay, "showFuelSource", OverlayOptionKeys.FuelSource);
         MigrateLegacyBoolean(overlay, "showRadarMulticlassWarning", OverlayOptionKeys.RadarMulticlassWarning);
         MigrateLegacyInteger(overlay, "classGapCarsAhead", OverlayOptionKeys.GapCarsAhead, 0, 12);
         MigrateLegacyInteger(overlay, "classGapCarsBehind", OverlayOptionKeys.GapCarsBehind, 0, 12);

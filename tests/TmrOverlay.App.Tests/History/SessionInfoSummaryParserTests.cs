@@ -52,10 +52,19 @@ DriverInfo:
  Drivers:
  - CarIdx: 10
    UserName: Driver One
+   CarClassID: 4098
+   CarClassShortName: GT3
+   CarClassRelSpeed: 50
+   CarClassEstLapTime: 90.1234
  - CarIdx: 12
    UserName: Driver Two
 """);
 
+        var driver = Assert.Single(context.Drivers, driver => driver.CarIdx == 10);
+        Assert.Equal(4098, driver.CarClassId);
+        Assert.Equal("GT3", driver.CarClassShortName);
+        Assert.Equal(50, driver.CarClassRelSpeed);
+        Assert.Equal(90.1234d, driver.CarClassEstLapTimeSeconds);
         Assert.Equal("Race", context.Session.SessionType);
         Assert.Equal("RACE", context.Session.SessionName);
         Assert.Collection(
@@ -74,6 +83,36 @@ DriverInfo:
                 Assert.Equal(1, row.ClassPosition);
                 Assert.Equal(12, row.CarIdx);
                 Assert.Equal(4.5d, row.TimeSeconds!.Value);
+            });
+    }
+
+    [Fact]
+    public void Parse_ReadsDriverTireCompoundDefinitions()
+    {
+        var context = SessionInfoSummaryParser.Parse("""
+DriverInfo:
+ DriverCarIdx: 10
+ DriverTires:
+ - TireIndex: 0
+   TireCompoundType: "Hard"
+ - TireIndex: 1
+   TireCompoundType: "Wet"
+ Drivers:
+ - CarIdx: 10
+   UserName: Driver One
+""");
+
+        Assert.Collection(
+            context.TireCompounds,
+            tire =>
+            {
+                Assert.Equal(0, tire.TireIndex);
+                Assert.Equal("Hard", tire.TireCompoundType);
+            },
+            tire =>
+            {
+                Assert.Equal(1, tire.TireIndex);
+                Assert.Equal("Wet", tire.TireCompoundType);
             });
     }
 }

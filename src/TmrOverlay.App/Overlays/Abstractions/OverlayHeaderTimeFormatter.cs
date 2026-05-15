@@ -20,6 +20,14 @@ internal static class OverlayHeaderTimeFormatter
         int? sessionState,
         OverlaySessionKind? sessionKind)
     {
+        return FormatHoursMinutesSeconds(seconds);
+    }
+
+    internal static string FormatCompactTimeRemaining(
+        double? seconds,
+        int? sessionState,
+        OverlaySessionKind? sessionKind)
+    {
         if (seconds is not { } value || !IsFinite(value) || value < 0d)
         {
             return string.Empty;
@@ -28,6 +36,20 @@ internal static class OverlayHeaderTimeFormatter
         return IsRacePreGreenCountdown(sessionKind, sessionState)
             ? FormatMinutesSeconds(value)
             : FormatHoursMinutes(value);
+    }
+
+    private static string FormatHoursMinutesSeconds(double? seconds)
+    {
+        if (seconds is not { } value || !IsFinite(value) || value < 0d)
+        {
+            return string.Empty;
+        }
+
+        var totalSeconds = (int)Math.Ceiling(Math.Max(0d, value));
+        var hours = totalSeconds / 3600;
+        var minutes = totalSeconds % 3600 / 60;
+        var remainingSeconds = totalSeconds % 60;
+        return $"{hours.ToString("00", CultureInfo.InvariantCulture)}:{minutes.ToString("00", CultureInfo.InvariantCulture)}:{remainingSeconds.ToString("00", CultureInfo.InvariantCulture)}";
     }
 
     private static bool IsRacePreGreenCountdown(OverlaySessionKind? sessionKind, int? sessionState)

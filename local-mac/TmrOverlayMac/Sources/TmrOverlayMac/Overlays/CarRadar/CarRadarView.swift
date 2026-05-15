@@ -9,7 +9,7 @@ enum CarRadarColorMode {
 final class CarRadarView: NSView {
     private enum Layout {
         static let radarRangeSeconds = 2.0
-        static let multiclassWarningRangeSeconds = 25.0
+        static let multiclassWarningRangeSeconds = 5.0
         static let snapshotStaleSeconds = 1.5
         static let fadeInSeconds = 0.25
         static let fadeOutSeconds = 0.85
@@ -25,16 +25,21 @@ final class CarRadarView: NSView {
         static let gapLabelHeight: CGFloat = 14
         static let suspiciousZeroTimingSeconds = 0.05
         static let suspiciousZeroTimingLaps = 0.001
-        static let focusedCarWidth: CGFloat = 24
-        static let focusedCarHeight: CGFloat = 48
+        static let focusedCarWidth: CGFloat = 20
+        static let focusedCarHeight: CGFloat = 36
         static let radarCarWidth: CGFloat = 20
         static let radarCarHeight: CGFloat = 36
         static let carCornerRadius: CGFloat = 4
         static let separatedCarPaddingPixels: CGFloat = 2
+        static let radarEdgeCenterPaddingPixels: CGFloat = 2
+        static let gridRowReferenceMeters = 8.0
+        static let minimumDistinctRowGapPixels: CGFloat = 48
         static let wideRowBucketPixels: CGFloat = 30
+        static let wideRowLongitudinalBucketMeters = 2.0
         static let wideRowSlotPitchPixels: CGFloat = 36
         static let proximityWarningGapMeters = 2.0
         static let contactRedStart = 0.74
+        static let distinctRowPixelsPerMeter = Double(minimumDistinctRowGapPixels) / gridRowReferenceMeters
     }
 
     private var proximity = LiveProximitySnapshot.unavailable
@@ -99,7 +104,7 @@ final class CarRadarView: NSView {
         )
         NSColor(red255: 12, green: 18, blue: 22, alpha: scaledAlpha(0.32)).setFill()
         NSBezierPath(ovalIn: rect).fill()
-        NSColor(calibratedWhite: 1, alpha: scaledAlpha(0.47)).setStroke()
+        NSColor(red255: 0, green: 232, blue: 255, alpha: scaledAlpha(0.35)).setStroke()
         NSBezierPath(ovalIn: rect).stroke()
 
         drawMulticlassApproachWarning(in: rect)
@@ -222,7 +227,11 @@ final class CarRadarView: NSView {
 
         return proximity.multiclassApproaches
             .filter(isInMulticlassWarningRange)
-            .max { $0.urgency < $1.urgency }
+            .sorted {
+                abs($0.relativeSeconds ?? .infinity) < abs($1.relativeSeconds ?? .infinity)
+                    || ($0.relativeSeconds == $1.relativeSeconds && $0.urgency > $1.urgency)
+            }
+            .first
     }
 
     private func moveToward(_ current: Double, target: Double, delta: Double) -> Double {
@@ -270,7 +279,6 @@ final class CarRadarView: NSView {
     }
 
     private func drawDistanceRings(in rect: NSRect) {
-        NSColor(calibratedWhite: 1, alpha: scaledAlpha(0.16)).setStroke()
         let attrs: [NSAttributedString.Key: Any] = [
             .font: overlayFont(ofSize: 9, weight: .regular),
             .foregroundColor: NSColor(red255: 220, green: 230, blue: 236, alpha: scaledAlpha(0.46))
@@ -278,12 +286,17 @@ final class CarRadarView: NSView {
         for index in 1...2 {
             let inset = rect.width * CGFloat(index) / 6
             let radius = rect.width / 2 - inset
+            ringStrokeColor(index).setStroke()
             NSBezierPath(ovalIn: rect.insetBy(dx: inset, dy: inset)).stroke()
-            NSString(string: ringGapText(index)).draw(
+            NSString(string: ringDistanceText(radius)).draw(
                 in: NSRect(x: rect.midX + radius * 0.35, y: rect.midY + radius - 8, width: 58, height: 16),
                 withAttributes: attrs
             )
         }
+    }
+
+    private func ringStrokeColor(_ ringIndex: Int) -> NSColor {
+        return NSColor(calibratedWhite: 1, alpha: scaledAlpha(0.16))
     }
 
     private func drawPlayerCar(in rect: NSRect) {
@@ -295,8 +308,11 @@ final class CarRadarView: NSView {
         )
         NSColor(calibratedWhite: 1, alpha: scaledAlpha(0.94)).setFill()
         NSBezierPath(roundedRect: carRect, xRadius: Layout.carCornerRadius, yRadius: Layout.carCornerRadius).fill()
-        NSColor(red255: 20, green: 24, blue: 28, alpha: scaledAlpha(0.9)).setStroke()
-        NSBezierPath(roundedRect: carRect, xRadius: Layout.carCornerRadius, yRadius: Layout.carCornerRadius).stroke()
+        let strokePath = NSBezierPath(roundedRect: carRect, xRadius: Layout.carCornerRadius, yRadius: Layout.carCornerRadius)
+        strokePath.lineWidth = 2
+        (OverlayClassColor.color(proximity.referenceCarClassColorHex, alpha: scaledAlpha(0.96))
+            ?? NSColor(calibratedWhite: 1, alpha: scaledAlpha(0.96))).setStroke()
+        strokePath.stroke()
 
         if showGapLabels {
             drawCenterGapLabel(in: carRect)
@@ -343,8 +359,10 @@ final class CarRadarView: NSView {
             let visualAlpha = visual.alpha * radarAlpha * radarEntryOpacity(for: car)
             carColor(for: car, alphaMultiplier: visualAlpha).setFill()
             NSBezierPath(roundedRect: placement.bounds, xRadius: Layout.carCornerRadius, yRadius: Layout.carCornerRadius).fill()
-            NSColor(calibratedWhite: 1, alpha: CGFloat(min(1, 1.07 * visualAlpha))).setStroke()
-            NSBezierPath(roundedRect: placement.bounds, xRadius: Layout.carCornerRadius, yRadius: Layout.carCornerRadius).stroke()
+            let strokePath = NSBezierPath(roundedRect: placement.bounds, xRadius: Layout.carCornerRadius, yRadius: Layout.carCornerRadius)
+            strokePath.lineWidth = 2
+            classBorderColor(car.carClassColorHex, alphaMultiplier: visualAlpha).setStroke()
+            strokePath.stroke()
         }
 
         guard showGapLabels else {
@@ -361,7 +379,7 @@ final class CarRadarView: NSView {
     }
 
     private func radarCarPlacements(in rect: NSRect, sideAttachments: SideWarningAttachments) -> [RadarCarPlacement] {
-        let usableRadius = rect.width / 2 - 34
+        let usableRadius = rect.width / 2 - Layout.radarEdgeCenterPaddingPixels
         let visibleCars = Array(carVisuals.values
             .filter { $0.alpha > Layout.minimumVisibleAlpha }
             .filter { !sideAttachments.contains(carIdx: $0.car.carIdx) }
@@ -373,20 +391,19 @@ final class CarRadarView: NSView {
                 visual: visual,
                 sourceIndex: index,
                 idealOffset: offset,
+                longitudinalMeters: reliableRelativeMeters(for: visual.car),
                 direction: placementDirection(for: visual.car, index: index, idealOffset: offset)
             )
         }
         var rows: [WideRadarRow] = []
 
         for candidate in candidates.sorted(by: { $0.idealOffset < $1.idealOffset }) {
-            if let rowIndex = rows.firstIndex(where: {
-                $0.direction == candidate.direction
-                    && abs($0.anchorOffset - candidate.idealOffset) <= Layout.wideRowBucketPixels
-            }) {
+            if let rowIndex = rows.firstIndex(where: { isSameWideRadarRow($0, candidate) }) {
                 rows[rowIndex].candidates.append(candidate)
             } else {
                 rows.append(WideRadarRow(
                     anchorOffset: candidate.idealOffset,
+                    anchorMeters: candidate.longitudinalMeters,
                     direction: candidate.direction,
                     candidates: [candidate]
                 ))
@@ -396,6 +413,19 @@ final class CarRadarView: NSView {
         return rows.flatMap { row in
             placements(for: row, centerX: rect.midX, centerY: rect.midY, usableRadius: usableRadius)
         }
+    }
+
+    private func isSameWideRadarRow(_ row: WideRadarRow, _ candidate: WideRowCandidate) -> Bool {
+        guard abs(row.direction - candidate.direction) <= 0.001 else {
+            return false
+        }
+
+        if let rowMeters = row.anchorMeters,
+           let candidateMeters = candidate.longitudinalMeters {
+            return abs(rowMeters - candidateMeters) <= Layout.wideRowLongitudinalBucketMeters
+        }
+
+        return abs(row.anchorOffset - candidate.idealOffset) <= Layout.wideRowBucketPixels
     }
 
     private func placements(
@@ -412,7 +442,8 @@ final class CarRadarView: NSView {
         let clampedRowMagnitude = min(abs(rowOffset), usableRadius)
         let availableHalfWidth = sqrt(max(0, usableRadius * usableRadius - clampedRowMagnitude * clampedRowMagnitude))
         let maxCenterOffset = max(0, availableHalfWidth - Layout.radarCarWidth / 2 - 4)
-        let maxSlots = max(1, Int((maxCenterOffset * 2 / Layout.wideRowSlotPitchPixels).rounded(.down)) + 1)
+        let minimumSlots = row.candidates.count > 1 ? 2 : 1
+        let maxSlots = max(minimumSlots, Int((maxCenterOffset * 2 / Layout.wideRowSlotPitchPixels).rounded(.down)) + 1)
         let visibleCandidates = Array(row.candidates
             .sorted {
                 if $0.sourceIndex != $1.sourceIndex {
@@ -422,16 +453,57 @@ final class CarRadarView: NSView {
                 return $0.visual.car.carIdx < $1.visual.car.carIdx
             }
             .prefix(maxSlots))
-        let lineWidth = Layout.wideRowSlotPitchPixels * CGFloat(max(0, visibleCandidates.count - 1))
+        let xOffsets = focusOverlappingRow(rowOffset)
+            ? focusAvoidingXOffsets(count: visibleCandidates.count, maxCenterOffset: maxCenterOffset)
+            : centeredXOffsets(count: visibleCandidates.count)
 
-        return visibleCandidates.enumerated().map { slotIndex, candidate in
-            let xOffset = CGFloat(slotIndex) * Layout.wideRowSlotPitchPixels - lineWidth / 2
+        return zip(visibleCandidates, xOffsets).map { candidate, xOffset in
             return RadarCarPlacement(
                 visual: candidate.visual,
                 bounds: radarCarBounds(centerX: centerX + xOffset, centerY: centerY - rowOffset),
                 offset: rowOffset
             )
         }
+    }
+
+    private func centeredXOffsets(count: Int) -> [CGFloat] {
+        let lineWidth = Layout.wideRowSlotPitchPixels * CGFloat(max(0, count - 1))
+        return (0..<count).map { index in
+            CGFloat(index) * Layout.wideRowSlotPitchPixels - lineWidth / 2
+        }
+    }
+
+    private func focusOverlappingRow(_ rowOffset: CGFloat) -> Bool {
+        let verticalSeparation = Layout.focusedCarHeight / 2 + Layout.radarCarHeight / 2 + 4
+        return abs(rowOffset) < verticalSeparation
+    }
+
+    private func focusAvoidingXOffsets(count: Int, maxCenterOffset: CGFloat) -> [CGFloat] {
+        let minimumOffset = Layout.focusedCarWidth / 2 + Layout.radarCarWidth / 2 + 22
+        guard maxCenterOffset >= minimumOffset else {
+            return centeredXOffsets(count: count)
+        }
+
+        var offsets: [CGFloat] = []
+        let signs: [CGFloat] = count == 1 ? [1] : [-1, 1]
+        var lane = 0
+        while offsets.count < count {
+            for sign in signs {
+                let offset = sign * (minimumOffset + CGFloat(lane) * Layout.wideRowSlotPitchPixels)
+                if abs(offset) <= maxCenterOffset {
+                    offsets.append(offset)
+                }
+                if offsets.count >= count {
+                    break
+                }
+            }
+            if minimumOffset + CGFloat(lane) * Layout.wideRowSlotPitchPixels > maxCenterOffset + Layout.wideRowSlotPitchPixels {
+                break
+            }
+            lane += 1
+        }
+
+        return offsets.isEmpty ? centeredXOffsets(count: count) : offsets
     }
 
     private func placementDirection(for car: LiveProximityCar, index: Int, idealOffset: CGFloat) -> CGFloat {
@@ -561,13 +633,13 @@ final class CarRadarView: NSView {
             return
         }
 
-        let usableRadius = rect.width / 2 - 34
+        let usableRadius = rect.width / 2 - Layout.radarEdgeCenterPaddingPixels
         if leftSideAlpha > Layout.minimumVisibleAlpha {
             drawWarningCar(
                 x: rect.midX - 42,
                 y: sideWarningCenterY(centerY: rect.midY, usableRadius: usableRadius, visual: sideAttachments.left),
                 alphaMultiplier: leftSideAlpha * radarAlpha * sideAttachmentAlpha(sideAttachments.left),
-                mappedToTimedCar: sideAttachments.left != nil
+                visual: sideAttachments.left
             )
         }
 
@@ -576,7 +648,7 @@ final class CarRadarView: NSView {
                 x: rect.midX + 42,
                 y: sideWarningCenterY(centerY: rect.midY, usableRadius: usableRadius, visual: sideAttachments.right),
                 alphaMultiplier: rightSideAlpha * radarAlpha * sideAttachmentAlpha(sideAttachments.right),
-                mappedToTimedCar: sideAttachments.right != nil
+                visual: sideAttachments.right
             )
         }
     }
@@ -599,18 +671,20 @@ final class CarRadarView: NSView {
         return max(0.45, visual.alpha)
     }
 
-    private func drawWarningCar(x: CGFloat, y: CGFloat, alphaMultiplier: Double, mappedToTimedCar: Bool) {
+    private func drawWarningCar(x: CGFloat, y: CGFloat, alphaMultiplier: Double, visual: RadarCarVisual?) {
         let carRect = NSRect(
             x: x - Layout.radarCarWidth / 2,
             y: y - Layout.radarCarHeight / 2,
             width: Layout.radarCarWidth,
             height: Layout.radarCarHeight
         )
-        let fillAlpha = mappedToTimedCar ? 0.96 : 0.93
+        let fillAlpha = visual == nil ? 0.93 : 0.96
         NSColor(red255: 236, green: 112, blue: 99, alpha: CGFloat(min(1, fillAlpha * alphaMultiplier))).setFill()
         NSBezierPath(roundedRect: carRect, xRadius: Layout.carCornerRadius, yRadius: Layout.carCornerRadius).fill()
-        NSColor(calibratedWhite: 1, alpha: CGFloat(min(1, 0.96 * alphaMultiplier))).setStroke()
-        NSBezierPath(roundedRect: carRect, xRadius: Layout.carCornerRadius, yRadius: Layout.carCornerRadius).stroke()
+        let strokePath = NSBezierPath(roundedRect: carRect, xRadius: Layout.carCornerRadius, yRadius: Layout.carCornerRadius)
+        strokePath.lineWidth = 2
+        classBorderColor(visual?.car.carClassColorHex, alphaMultiplier: alphaMultiplier).setStroke()
+        strokePath.stroke()
     }
 
     private func longitudinalOffset(for car: LiveProximityCar, usableRadius: CGFloat) -> CGFloat {
@@ -629,10 +703,7 @@ final class CarRadarView: NSView {
 
         let absSeconds = abs(seconds)
         let contactSeconds = min(max(proximity.sideOverlapWindowSeconds, 0.05), Layout.radarRangeSeconds * 0.5)
-        let separatedCenterOffset = min(
-            usableRadius,
-            Layout.focusedCarHeight / 2 + Layout.radarCarHeight / 2 + Layout.separatedCarPaddingPixels
-        )
+        let separatedCenterOffset = separatedCenterOffset(usableRadius: usableRadius)
 
         if absSeconds <= contactSeconds {
             return CGFloat(sign) * CGFloat(absSeconds / contactSeconds) * separatedCenterOffset
@@ -660,10 +731,9 @@ final class CarRadarView: NSView {
             return CGFloat(sign) * CGFloat(absMeters / Layout.contactWindowMeters) * separatedCenterOffset
         }
 
-        let remainingMeters = max(0.001, Layout.radarRangeMeters - Layout.contactWindowMeters)
-        let remainingPixels = max(0, usableRadius - separatedCenterOffset)
-        let outerRatio = min(max((absMeters - Layout.contactWindowMeters) / remainingMeters, 0), 1)
-        return CGFloat(sign) * (separatedCenterOffset + CGFloat(outerRatio) * remainingPixels)
+        let rowAwareOffset = separatedCenterOffset
+            + CGFloat(absMeters - Layout.contactWindowMeters) * CGFloat(Layout.distinctRowPixelsPerMeter)
+        return CGFloat(sign) * rowAwareOffset
     }
 
     private func carColor(for car: LiveProximityCar, alphaMultiplier: Double) -> NSColor {
@@ -790,6 +860,11 @@ final class CarRadarView: NSView {
         NSColor(red255: 255, green: 255, blue: 255, alpha: alpha)
     }
 
+    private func classBorderColor(_ colorHex: String?, alphaMultiplier: Double) -> NSColor {
+        OverlayClassColor.color(colorHex, alpha: CGFloat(min(1, 0.96 * alphaMultiplier)))
+            ?? NSColor(calibratedWhite: 1, alpha: CGFloat(min(1, 0.96 * alphaMultiplier)))
+    }
+
     private func red255(_ color: NSColor) -> CGFloat {
         rgba(color).red * 255
     }
@@ -851,17 +926,35 @@ final class CarRadarView: NSView {
         return abs(seconds) <= Layout.radarRangeSeconds
     }
 
-    private func ringGapText(_ ringIndex: Int) -> String {
-        let seconds = Layout.radarRangeSeconds * (1 - Double(ringIndex) / 3)
-        return String(format: "%.1fs", seconds)
+    private func separatedCenterOffset(usableRadius: CGFloat) -> CGFloat {
+        min(
+            usableRadius,
+            Layout.focusedCarHeight / 2 + Layout.radarCarHeight / 2 + Layout.separatedCarPaddingPixels
+        )
+    }
+
+    private func ringDistanceText(_ offsetPixels: CGFloat) -> String {
+        String(format: "%.0fm", distanceForLongitudinalOffset(offsetPixels))
+    }
+
+    private func distanceForLongitudinalOffset(_ offsetPixels: CGFloat) -> Double {
+        let usableRadius: CGFloat = 146 - Layout.radarEdgeCenterPaddingPixels
+        let separatedCenterOffset = separatedCenterOffset(usableRadius: usableRadius)
+        let absOffset = min(max(abs(offsetPixels), 0), usableRadius)
+        if absOffset <= separatedCenterOffset {
+            return Layout.contactWindowMeters * Double(absOffset / max(0.001, separatedCenterOffset))
+        }
+
+        return Layout.contactWindowMeters
+            + Double(absOffset - separatedCenterOffset) / Layout.distinctRowPixelsPerMeter
     }
 
     private func multiclassWarningText(_ approach: LiveMulticlassApproach) -> String {
         if let seconds = approach.relativeSeconds {
-            return String(format: "multiclass %.1f seconds", abs(seconds))
+            return String(format: "Faster class approaching %.1fs", abs(seconds))
         }
 
-        return "multiclass approaching"
+        return "Faster class approaching"
     }
 
     private func gapLabelText(for car: LiveProximityCar) -> String? {
@@ -938,11 +1031,13 @@ final class CarRadarView: NSView {
         let visual: RadarCarVisual
         let sourceIndex: Int
         let idealOffset: CGFloat
+        let longitudinalMeters: Double?
         let direction: CGFloat
     }
 
     private struct WideRadarRow {
         let anchorOffset: CGFloat
+        let anchorMeters: Double?
         let direction: CGFloat
         var candidates: [WideRowCandidate]
     }

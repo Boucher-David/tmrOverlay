@@ -18,6 +18,15 @@ internal sealed class RelativeForm : PersistentOverlayForm
     private const int CompactRowHeight = 26;
     private const int RefreshIntervalMilliseconds = 250;
     private static readonly int MaximumColumns = OverlayContentColumnSettings.Relative.Columns.Count;
+    private static readonly Color PlaceholderRowBackground = OverlayClassColor.Blend(
+        OverlayTheme.Colors.PanelBackground,
+        OverlayTheme.Colors.WindowBorder,
+        panelWeight: 10,
+        accentWeight: 1);
+    private static readonly Color OneLapAheadText = Color.FromArgb(255, 155, 164);
+    private static readonly Color MultipleLapsAheadText = OverlayTheme.Colors.ErrorIndicator;
+    private static readonly Color OneLapBehindText = Color.FromArgb(150, 210, 255);
+    private static readonly Color MultipleLapsBehindText = Color.FromArgb(82, 158, 255);
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly ILogger<RelativeForm> _logger;
     private readonly AppPerformanceState _performanceState;
@@ -376,71 +385,39 @@ internal sealed class RelativeForm : PersistentOverlayForm
 
     private IReadOnlyList<RelativeOverlayRowViewModel?> BuildStableRows(RelativeOverlayViewModel viewModel)
     {
-        if (viewModel.Rows.Count == 0)
-        {
-            return [null];
-        }
-
-        var aheadCapacity = Math.Clamp(CarsAhead, 0, 8);
-        var behindCapacity = Math.Clamp(CarsBehind, 0, 8);
-        var reference = viewModel.Rows.FirstOrDefault(row => row.IsReference);
-        var hasReference = reference is not null;
-        var visibleRows = Math.Clamp(
-            aheadCapacity + behindCapacity + (hasReference ? 1 : 0),
-            1,
-            MaximumRows);
-        var stableRows = new RelativeOverlayRowViewModel?[visibleRows];
-        var ahead = viewModel.Rows.Where(row => row.IsAhead).ToArray();
-        var aheadStart = Math.Max(0, aheadCapacity - ahead.Length);
-        for (var index = 0; index < ahead.Length && aheadStart + index < stableRows.Length; index++)
-        {
-            stableRows[aheadStart + index] = ahead[index];
-        }
-
-        var behindStart = hasReference ? aheadCapacity + 1 : aheadCapacity;
-        if (hasReference && aheadCapacity < stableRows.Length)
-        {
-            stableRows[aheadCapacity] = reference;
-        }
-
-        var behind = viewModel.Rows.Where(row => row.IsBehind).ToArray();
-        for (var index = 0; index < behind.Length && behindStart + index < stableRows.Length; index++)
-        {
-            stableRows[behindStart + index] = behind[index];
-        }
-
-        if (!hasReference && ahead.Length == 0 && behind.Length == 0)
-        {
-            return [null];
-        }
-
-        return stableRows;
+        return viewModel.StableRows(CarsAhead, CarsBehind, MaximumRows);
     }
 
     private bool ApplyRow(int index, RelativeOverlayRowViewModel row, IReadOnlyList<OverlayContentColumnState> columns, bool visible)
     {
         var changed = false;
-        var backColor = row.IsReference
+        var baseBackColor = row.IsReference
             ? OverlayTheme.Colors.InfoBackground
             : row.IsPit
                 ? PitRowBackground
                 : OverlayTheme.Colors.PanelBackground;
-        var textColor = row.IsPartial
-            ? OverlayTheme.Colors.TextMuted
-            : row.IsReference
-                ? OverlayTheme.Colors.TextPrimary
-                : row.IsPit
+        var backColor = OverlayClassColor.TryParse(row.ClassColorHex) is { } classColor
+            ? OverlayClassColor.Blend(baseBackColor, classColor, panelWeight: row.IsReference ? 10 : 8, accentWeight: 1)
+            : baseBackColor;
+        var lappedTextColor = LappedTextColor(row.LapDeltaToReference);
+        var textColor = row.IsReference
+            ? OverlayTheme.Colors.TextPrimary
+            : lappedTextColor
+                ?? (row.IsPartial
                     ? OverlayTheme.Colors.TextMuted
-                    : OverlayTheme.Colors.TextSecondary;
+                    : row.IsPit
+                        ? OverlayTheme.Colors.TextMuted
+                        : OverlayTheme.Colors.TextSecondary);
         var gapColor = row.IsReference
             ? OverlayTheme.Colors.TextPrimary
-            : row.IsPartial
-                ? OverlayTheme.Colors.TextMuted
-                : row.IsPit
-                    ? OverlayTheme.Colors.TextSubtle
-                    : row.IsAhead
-                        ? OverlayTheme.Colors.InfoText
-                        : OverlayTheme.Colors.SuccessText;
+            : lappedTextColor
+                ?? (row.IsPartial
+                    ? OverlayTheme.Colors.TextMuted
+                    : row.IsPit
+                        ? OverlayTheme.Colors.TextSubtle
+                        : row.IsAhead
+                            ? OverlayTheme.Colors.InfoText
+                            : OverlayTheme.Colors.SuccessText);
 
         for (var column = 0; column < MaximumColumns; column++)
         {
@@ -464,7 +441,7 @@ internal sealed class RelativeForm : PersistentOverlayForm
             var label = _rowLabels[index, column];
             changed |= OverlayChrome.SetVisibleIfChanged(label, visible && columnState is not null);
             changed |= OverlayChrome.SetTextIfChanged(label, column == 0 ? placeholder : string.Empty);
-            changed |= OverlayChrome.SetBackColorIfChanged(label, OverlayTheme.Colors.PanelBackground);
+            changed |= OverlayChrome.SetBackColorIfChanged(label, PlaceholderRowBackground);
             changed |= OverlayChrome.SetForeColorIfChanged(label, OverlayTheme.Colors.TextMuted);
         }
 
@@ -625,6 +602,18 @@ internal sealed class RelativeForm : PersistentOverlayForm
         return string.Equals(column?.DataKey, OverlayContentColumnSettings.DataGap, StringComparison.Ordinal)
             ? gapColor
             : textColor;
+    }
+
+    private static Color? LappedTextColor(int? lapDeltaToReference)
+    {
+        return lapDeltaToReference switch
+        {
+            >= 2 => MultipleLapsAheadText,
+            1 => OneLapAheadText,
+            -1 => OneLapBehindText,
+            <= -2 => MultipleLapsBehindText,
+            _ => null
+        };
     }
 
     private static bool ApplyColumnAlignment(Label label, OverlayContentColumnState column)

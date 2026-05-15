@@ -45,7 +45,7 @@ extension DesignV2PreviewScenario {
         footer: "Relative should be a direct timing surface first; focus-safe caveats only appear in degraded states.",
         mode: .relativeTable,
         table: DesignV2Table(
-            columns: ["POS", "DRIVER", "GAP"],
+            columns: ["POS", "DRIVER", "DELTA"],
             rows: [
                 ["5", "#24 Avery Rowan", "-3.100"],
                 ["6", "#71 Maya Keller", "-1.400"],

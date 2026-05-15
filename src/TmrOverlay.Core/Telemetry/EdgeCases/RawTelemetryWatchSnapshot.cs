@@ -137,10 +137,13 @@ internal static class RawTelemetryWatchVariables
         ["pit.state"] =
         [
             "PlayerCarPitSvStatus", "PitRepairLeft", "PitOptRepairLeft",
+            "PlayerCarDryTireSetLimit",
             "FastRepairUsed", "FastRepairAvailable",
             "TireSetsUsed", "TireSetsAvailable",
             "LeftTireSetsUsed", "RightTireSetsUsed", "FrontTireSetsUsed", "RearTireSetsUsed",
-            "LFTiresUsed", "RFTiresUsed", "LRTiresUsed", "RRTiresUsed"
+            "LeftTireSetsAvailable", "RightTireSetsAvailable", "FrontTireSetsAvailable", "RearTireSetsAvailable",
+            "LFTiresUsed", "RFTiresUsed", "LRTiresUsed", "RRTiresUsed",
+            "LFTiresAvailable", "RFTiresAvailable", "LRTiresAvailable", "RRTiresAvailable"
         ],
         ["reset-tow"] = ["EnterExitReset", "PlayerCarTowTime"],
         ["engine"] =

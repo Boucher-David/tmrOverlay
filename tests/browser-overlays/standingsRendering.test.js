@@ -20,9 +20,9 @@ describe('standings browser rendering', () => {
 
     expect(rowText).toEqual([
       'LMP2 2 cars | ~10 laps',
-      '1 #8 Proto One Leader -45.0',
+      '1 #8 Proto One Lap 22 -45.0',
       'GT3 3 cars | ~12.4 laps',
-      '1 #11 GT3 Leader Leader -2.0',
+      '1 #11 GT3 Leader Lap 21 -2.0',
       '2 #71 Focus Racer +3.4 0.0',
       '3 #91 Chaser +8.9 +5.5 IN'
     ]);
@@ -30,7 +30,8 @@ describe('standings browser rendering', () => {
     expect(rows[4].classList.contains('focus')).toBe(true);
     expect(rows[5].classList.contains('pit')).toBe(true);
     expect(currentOverlay.document.getElementById('status').textContent).toBe('scoring | 5/5 live');
-    expect(currentOverlay.document.body.textContent).not.toContain('Proto Two');
+    expect(currentOverlay.document.getElementById('source').textContent).toBe('source: scoring snapshot + live timing');
+    expect(contentText(currentOverlay.document)).not.toContain('Proto Two');
   });
 
   it('renders placeholder-F2 race standings without lap-distance gap fallback', async () => {
@@ -47,7 +48,7 @@ describe('standings browser rendering', () => {
       '2 #10 Reference Driver -- --',
       '3 #12 Chase Driver -- --'
     ]);
-    expect(currentOverlay.document.body.textContent).not.toMatch(/\d(?:\.\d+)?L\b/i);
+    expect(contentText(currentOverlay.document)).not.toMatch(/\d(?:\.\d+)?L\b/i);
   });
 
 });
@@ -62,9 +63,9 @@ function standingsDisplayModel() {
     columns: standingsColumns(),
     rows: [
       headerRow('LMP2', '2 cars | ~10 laps', '#33CEFF'),
-      carRow(['1', '#8', 'Proto One', 'Leader', '-45.0', '']),
+      carRow(['1', '#8', 'Proto One', 'Lap 22', '-45.0', '']),
       headerRow('GT3', '3 cars | ~12.4 laps', '#FFAA00'),
-      carRow(['1', '#11', 'GT3 Leader', 'Leader', '-2.0', '']),
+      carRow(['1', '#11', 'GT3 Leader', 'Lap 21', '-2.0', '']),
       carRow(['2', '#71', 'Focus Racer', '+3.4', '0.0', ''], { isReference: true }),
       carRow(['3', '#91', 'Chaser', '+8.9', '+5.5', 'IN'], { isPit: true })
     ],
@@ -76,7 +77,7 @@ function placeholderF2StandingsDisplayModel() {
   return {
     overlayId: 'standings',
     title: 'Standings',
-    status: '2 - 3 rows',
+    status: 'P2 | 3 shown',
     source: 'source: live timing telemetry',
     bodyKind: 'table',
     columns: standingsColumns(),
@@ -102,6 +103,10 @@ function standingsColumns() {
 
 function rowCells(row) {
   return [...row.querySelectorAll('td')].map((cell) => cell.textContent.replace(/\s+/g, ' ').trim()).join(' ').trim();
+}
+
+function contentText(document) {
+  return document.getElementById('content').textContent;
 }
 
 function headerRow(headerTitle, headerDetail, carClassColorHex) {

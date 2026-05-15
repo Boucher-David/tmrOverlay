@@ -19,7 +19,7 @@ final class TrackMapView: NSView {
     private var lastMarkerSmoothingAt: Date?
 
     var fontFamily = OverlayTheme.defaultFontFamily
-    var internalOpacity: Double = 0.88 {
+    var internalOpacity: Double = 1.0 {
         didSet {
             needsDisplay = true
         }

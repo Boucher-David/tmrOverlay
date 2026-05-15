@@ -51,6 +51,7 @@ internal sealed class OverlayManager : IDisposable
     private readonly LocalhostOverlayOptions _localhostOverlayOptions;
     private readonly LocalhostOverlayState _localhostOverlayState;
     private readonly TrackMapStore _trackMapStore;
+    private readonly StreamChatOverlaySource _streamChatSource;
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly SessionHistoryQueryService _historyQueryService;
     private readonly AppEventRecorder _events;
@@ -93,6 +94,7 @@ internal sealed class OverlayManager : IDisposable
         LocalhostOverlayOptions localhostOverlayOptions,
         LocalhostOverlayState localhostOverlayState,
         TrackMapStore trackMapStore,
+        StreamChatOverlaySource streamChatSource,
         ILiveTelemetrySource liveTelemetrySource,
         SessionHistoryQueryService historyQueryService,
         AppEventRecorder events,
@@ -119,6 +121,7 @@ internal sealed class OverlayManager : IDisposable
         _localhostOverlayOptions = localhostOverlayOptions;
         _localhostOverlayState = localhostOverlayState;
         _trackMapStore = trackMapStore;
+        _streamChatSource = streamChatSource;
         _liveTelemetrySource = liveTelemetrySource;
         _historyQueryService = historyQueryService;
         _events = events;
@@ -162,6 +165,8 @@ internal sealed class OverlayManager : IDisposable
         _settings ??= _settingsStore.Load();
         EnsureManagedOverlaySettings();
         var defaultLocation = CenteredDefaultLocation(SettingsOverlayDefinition.Definition);
+        var hadSettingsOverlay = _settings.Overlays.Any(overlay =>
+            string.Equals(overlay.Id, SettingsOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase));
         var settings = _settings.GetOrAddOverlay(
             SettingsOverlayDefinition.Definition.Id,
             SettingsOverlayDefinition.Definition.DefaultWidth,
@@ -169,7 +174,14 @@ internal sealed class OverlayManager : IDisposable
             defaultLocation.X,
             defaultLocation.Y);
         var settingsSizeChanged = EnsureSettingsOverlayFixedSize(settings);
-        CenterSettingsOverlay(settings);
+        if (!hadSettingsOverlay
+            || !IsOverlayOnVisibleScreen(
+                settings,
+                SettingsOverlayDefinition.Definition.DefaultWidth,
+                SettingsOverlayDefinition.Definition.DefaultHeight))
+        {
+            CenterSettingsOverlay(settings);
+        }
 
         var form = EnsureForm(
             SettingsOverlayDefinition.Definition.Id,
@@ -206,6 +218,10 @@ internal sealed class OverlayManager : IDisposable
         {
             form.Show();
         }
+        else if (form.WindowState == FormWindowState.Minimized)
+        {
+            form.WindowState = FormWindowState.Normal;
+        }
 
         _settingsOverlayActive = true;
         ApplyEmergencyOverlayZOrder();
@@ -215,6 +231,7 @@ internal sealed class OverlayManager : IDisposable
         }
 
         form.Activate();
+        form.BringToFront();
     }
 
     public void Dispose()
@@ -326,6 +343,7 @@ internal sealed class OverlayManager : IDisposable
                 _streamChatLogger,
                 () => new StreamChatForm(
                     _settingsStore,
+                    _streamChatSource,
                     _streamChatLogger,
                     _performanceState,
                     settings,
@@ -370,7 +388,7 @@ internal sealed class OverlayManager : IDisposable
                         AppPerformanceMetricIds.OverlaySessionWeatherApplyUi,
                         AppPerformanceMetricIds.OverlaySessionWeatherRows,
                         AppPerformanceMetricIds.OverlaySessionWeatherPaint),
-                    SessionWeatherOverlayViewModel.CreateBuilder(),
+                    SessionWeatherOverlayViewModel.CreateBuilder(settings),
                     SaveSettings)),
             1070,
             24),
@@ -396,7 +414,7 @@ internal sealed class OverlayManager : IDisposable
                         AppPerformanceMetricIds.OverlayPitServiceApplyUi,
                         AppPerformanceMetricIds.OverlayPitServiceRows,
                         AppPerformanceMetricIds.OverlayPitServicePaint),
-                    PitServiceOverlayViewModel.CreateBuilder(),
+                    PitServiceOverlayViewModel.CreateBuilder(settings),
                     SaveSettings)),
             1070,
             320),
@@ -469,6 +487,7 @@ internal sealed class OverlayManager : IDisposable
             _liveTelemetrySource,
             _trackMapStore,
             _historyQueryService,
+            _streamChatSource,
             _performanceState,
             logger,
             settings,
@@ -653,7 +672,8 @@ internal sealed class OverlayManager : IDisposable
                 var overlayLiveTelemetryAvailable = liveTelemetryAvailable || settingsPreview;
                 var contextAvailability = EvaluateOverlayContext(registration.Definition, liveSnapshot);
                 var contextAllowed = settingsPreview || contextAvailability.IsAvailable;
-                var shouldShow = settingsPreview || (settings.Enabled && sessionAllowed && contextAllowed);
+                var contentAllowed = HasEnabledOverlayContent(registration.Definition, settings);
+                var shouldShow = settingsPreview || (settings.Enabled && sessionAllowed && contextAllowed && contentAllowed);
 
                 if (string.Equals(registration.Definition.Id, FlagsOverlayDefinition.Definition.Id, StringComparison.Ordinal))
                 {
@@ -830,13 +850,23 @@ internal sealed class OverlayManager : IDisposable
         settings.Height = size.Height;
         if (_appliedScales.TryGetValue(definition.Id, out var appliedScale)
             && Math.Abs(appliedScale - settings.Scale) < 0.001d
-            && form.ClientSize == size)
+            && (form.ClientSize == size || ShouldPreserveExpandedOverlayHeight(definition, form.ClientSize, size)))
         {
             return;
         }
 
         form.ClientSize = size;
         _appliedScales[definition.Id] = settings.Scale;
+    }
+
+    internal static bool ShouldPreserveExpandedOverlayHeight(
+        OverlayDefinition definition,
+        Size currentSize,
+        Size targetSize)
+    {
+        return string.Equals(definition.Id, StandingsOverlayDefinition.Definition.Id, StringComparison.Ordinal)
+            && currentSize.Width == targetSize.Width
+            && currentSize.Height > targetSize.Height;
     }
 
     private void ApplyOpacityIfChanged(OverlayDefinition definition, OverlaySettings settings, Form form)
@@ -975,7 +1005,12 @@ internal sealed class OverlayManager : IDisposable
             return false;
         }
 
-        return OverlayAvailabilityEvaluator.IsAllowedForSession(settings, sessionKind);
+        if (string.Equals(definition.Id, GapToLeaderOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return OverlayAvailabilityEvaluator.NormalizeSessionKind(sessionKind) == OverlaySessionKind.Race;
+        }
+
+        return true;
     }
 
     private static bool IsLiveTelemetryAvailable(LiveTelemetrySnapshot snapshot)
@@ -1138,6 +1173,11 @@ internal sealed class OverlayManager : IDisposable
         var baseWidth = definition.DefaultWidth;
         var baseHeight = definition.DefaultHeight;
 
+        if (string.Equals(definition.Id, InputStateOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            baseWidth = InputStateRenderModelBuilder.BaseWidthForEnabledContent(settings, definition.DefaultWidth);
+        }
+
         if (OverlayContentColumnSettings.TryGetContentDefinition(definition.Id, out var contentDefinition)
             && contentDefinition.Columns.Count > 0)
         {
@@ -1149,6 +1189,22 @@ internal sealed class OverlayManager : IDisposable
         return new Size(
             ScaleDimension(baseWidth, settings.Scale),
             ScaleDimension(baseHeight, settings.Scale));
+    }
+
+    private static bool HasEnabledOverlayContent(OverlayDefinition definition, OverlaySettings settings)
+    {
+        if (string.Equals(definition.Id, InputStateOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return InputStateRenderModelBuilder.HasEnabledContent(settings);
+        }
+
+        if (string.Equals(definition.Id, GapToLeaderOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return settings.GetIntegerOption(OverlayOptionKeys.GapCarsAhead, defaultValue: 5, minimum: 0, maximum: 12) > 0
+                || settings.GetIntegerOption(OverlayOptionKeys.GapCarsBehind, defaultValue: 5, minimum: 0, maximum: 12) > 0;
+        }
+
+        return true;
     }
 
     private static Size OverlayContentBaseSize(
@@ -1204,9 +1260,24 @@ internal sealed class OverlayManager : IDisposable
         settings.Y = area.Top + Math.Max(0, (area.Height - height) / 2);
     }
 
+    private static bool IsOverlayOnVisibleScreen(OverlaySettings settings, int width, int height)
+    {
+        var bounds = new Rectangle(
+            settings.X,
+            settings.Y,
+            Math.Max(1, width),
+            Math.Max(1, height));
+        return Screen.AllScreens.Any(screen => screen.WorkingArea.IntersectsWith(bounds));
+    }
+
     private static void ApplyGapToLeaderRaceOnlyPolicy(OverlayDefinition definition, OverlaySettings settings)
     {
         if (!string.Equals(definition.Id, GapToLeaderOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (settings.GetBooleanOption(OverlayOptionKeys.GapRaceOnlyDefaultApplied, defaultValue: false))
         {
             return;
         }

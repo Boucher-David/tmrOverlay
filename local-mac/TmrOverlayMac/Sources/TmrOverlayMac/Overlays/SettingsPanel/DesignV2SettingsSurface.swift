@@ -36,6 +36,9 @@ enum DesignV2SettingsRegion: String, CaseIterable {
     case content
     case header
     case footer
+    case preview
+    case twitch
+    case streamlabs
 
     var title: String {
         switch self {
@@ -47,11 +50,26 @@ enum DesignV2SettingsRegion: String, CaseIterable {
             return "Header"
         case .footer:
             return "Footer"
+        case .preview:
+            return "Preview"
+        case .twitch:
+            return "Twitch"
+        case .streamlabs:
+            return "Streamlabs"
         }
     }
 
     var segmentWidth: CGFloat {
-        self == .general ? 86 : 76
+        switch self {
+        case .general:
+            return 86
+        case .preview:
+            return 82
+        case .streamlabs:
+            return 104
+        default:
+            return 76
+        }
     }
 
     static var standardSegments: [DesignV2SettingsSegment] {
@@ -108,7 +126,7 @@ enum DesignV2SettingsChrome {
         DesignV2SettingsSidebarTab(id: "flags", label: "Flags"),
         DesignV2SettingsSidebarTab(id: "session-weather", label: "Session / Weather"),
         DesignV2SettingsSidebarTab(id: "pit-service", label: "Pit Service"),
-        DesignV2SettingsSidebarTab(id: "error-logging", label: "Support")
+        DesignV2SettingsSidebarTab(id: "error-logging", label: "Diagnostics")
     ]
 
     static var overlayTabOrder: [String] {
@@ -169,11 +187,15 @@ enum DesignV2SettingsOverlaySpecs {
 
     static func regions(for overlayId: String) -> [DesignV2SettingsRegion] {
         if overlayId == "garage-cover" {
-            return [.general]
+            return [.general, .preview]
+        }
+
+        if overlayId == "stream-chat" {
+            return [.general, .content, .twitch, .streamlabs]
         }
 
         return supportsSharedChromeSettings(overlayId)
-            ? DesignV2SettingsRegion.allCases
+            ? [.general, .content, .header, .footer]
             : [.general, .content]
     }
 
@@ -198,7 +220,7 @@ enum DesignV2SettingsOverlaySpecs {
         case "pit-service":
             return "Pit request state, service plan, and release context."
         case "track-map":
-            return "Live car location, sector context, and local map sources."
+            return "Live car location and sector context."
         case "stream-chat":
             return "Local browser-source chat setup for Streamlabs or Twitch."
         case "garage-cover":
@@ -206,7 +228,7 @@ enum DesignV2SettingsOverlaySpecs {
         case "input-state":
             return "Input rail visibility for pedal, steering, gear, and speed telemetry."
         case "car-radar":
-            return "Local proximity radar and multiclass approach warning controls."
+            return "Local proximity radar and faster-class warning controls."
         case "flags":
             return "Compact session flag strip display and size controls."
         default:
@@ -313,7 +335,6 @@ struct DesignV2SettingsRenderer {
             drawCentered("TMR", in: NSRect(x: 66, y: 53, width: 46, height: 24), size: 14, weight: .black, color: DesignV2SettingsPalette.text)
         }
         drawText("Tech Mates Racing Overlay", in: NSRect(x: 128, y: 52, width: 480, height: 28), size: 24, weight: .heavy, color: DesignV2SettingsPalette.text)
-        drawText("Settings control plane - mac Design V2", in: NSRect(x: 129, y: 75, width: 480, height: 16), size: 12, color: DesignV2SettingsPalette.muted)
         drawCentered("X", in: NSRect(x: 1132, y: 54, width: 30, height: 24), size: 13, weight: .black, color: NSColor(red255: 255, green: 200, blue: 239))
     }
 

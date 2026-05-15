@@ -35,7 +35,7 @@ python3 tools/validate_overlay_screenshots.py --profile release-tutorial --root 
 2. Create an annotated tag on the merge commit:
 
    ```bash
-   git tag -a v0.11.0 -m "v0.11.0 - Track map and localhost overlays" -m "Publishes a portable Windows tester build with standings, track map, and localhost browser overlays."
+   git tag -a v0.11.0 -m "v0.11.0 - Track map and localhost overlays" -m "Publishes a portable Windows tester build with standings, track map, and localhost overlays."
    git push origin v0.11.0
    ```
 

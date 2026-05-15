@@ -9,6 +9,7 @@ using TmrOverlay.App.Overlays.Abstractions;
 using TmrOverlay.App.Overlays.Content;
 using TmrOverlay.App.Overlays.Flags;
 using TmrOverlay.App.Overlays.GarageCover;
+using TmrOverlay.App.Overlays.GapToLeader;
 using TmrOverlay.App.Overlays.StreamChat;
 using TmrOverlay.App.Overlays.TrackMap;
 using TmrOverlay.App.Overlays.Styling;
@@ -97,7 +98,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private Label? _supportStatusLabel;
     private Label? _releaseUpdateStatusLabel;
     private TextBox? _garageCoverImagePathBox;
-    private Label? _garageCoverStateLabel;
     private Panel? _garageCoverPreviewPanel;
     private Label? _garageCoverPreviewCaptionLabel;
     private DateTimeOffset _nextSupportStatusRefreshAtUtc;
@@ -301,7 +301,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
                 SessionPreviewSnapshot = _sessionPreviewState.Snapshot,
                 ImportGarageCoverImage = ImportGarageCoverImage,
                 ClearGarageCoverImage = ClearGarageCoverImage,
-                ShowGarageCoverPreview = ShowGarageCoverPreview,
                 LatestDiagnosticsBundlePath = LatestDiagnosticsBundlePath,
                 AdvancedDiagnosticsText = AdvancedDiagnosticsText
             })
@@ -479,7 +478,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private void BuildTabs()
     {
         _garageCoverImagePathBox = null;
-        _garageCoverStateLabel = null;
         _garageCoverPreviewPanel = null;
         _garageCoverPreviewCaptionLabel = null;
 
@@ -590,11 +588,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
                 if (IsSupportTabSelected())
                 {
                     SyncRawCaptureCheckBox();
-                }
-
-                if (IsGarageCoverTabSelected())
-                {
-                    SyncGarageCoverStateLabel();
                 }
 
                 captureSucceeded = true;
@@ -835,11 +828,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         {
             SyncRawCaptureCheckBox();
             SyncErrorLoggingTab();
-        }
-
-        if (IsGarageCoverTabSelected())
-        {
-            SyncGarageCoverStateLabel();
         }
 
         if (force)
@@ -1179,6 +1167,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private TabPage CreateOverlayContentPage(OverlayDefinition definition, OverlaySettings settings)
     {
         var page = CreateTabPage("Content");
+        page.AutoScroll = true;
         var nextTop = 18;
         var hasContent = false;
 
@@ -1247,7 +1236,7 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
                 page,
                 settings,
                 "Footer",
-                FooterChromeRows,
+                FooterChromeRowsFor(definition.Id),
                 SaveAndApply);
             return page;
         }
@@ -1309,6 +1298,13 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             OverlayOptionKeys.ChromeFooterSourceRace)
     ];
 
+    private static IReadOnlyList<SettingsOverlayTabSections.OverlayChromeSettingsRow> FooterChromeRowsFor(string overlayId)
+    {
+        return string.Equals(overlayId, "session-weather", StringComparison.OrdinalIgnoreCase)
+            ? []
+            : FooterChromeRows;
+    }
+
     private static bool SuppressHeaderFooterTabs(string overlayId)
     {
         return overlayId is "input-state";
@@ -1334,6 +1330,12 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             return true;
         }
 
+        if (string.Equals(definition.Id, GapToLeaderOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            AddGapToLeaderOptions(page, settings, top);
+            return true;
+        }
+
         if (definition.SettingsOptions.Count == 0)
         {
             return false;
@@ -1341,6 +1343,28 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
         SettingsOverlayTabSections.AddDescriptorOptions(page, definition.SettingsOptions, settings, top, SaveAndApply);
         return true;
+    }
+
+    private void AddGapToLeaderOptions(TabPage page, OverlaySettings settings, int top)
+    {
+        page.Controls.Add(CreateSectionLabel("Class gap window", 18, top, 500));
+        page.Controls.Add(CreateLabel("Cars each side", 22, top + 42, 130));
+        var input = SettingsUi.CreateIntegerInput(
+            Math.Max(
+                settings.GetIntegerOption(OverlayOptionKeys.GapCarsAhead, defaultValue: 5, minimum: 0, maximum: 12),
+                settings.GetIntegerOption(OverlayOptionKeys.GapCarsBehind, defaultValue: 5, minimum: 0, maximum: 12)),
+            0,
+            12,
+            158,
+            top + 38);
+        input.ValueChanged += (_, _) =>
+        {
+            var value = (int)input.Value;
+            settings.SetIntegerOption(OverlayOptionKeys.GapCarsAhead, value, 0, 12);
+            settings.SetIntegerOption(OverlayOptionKeys.GapCarsBehind, value, 0, 12);
+            SaveAndApply();
+        };
+        page.Controls.Add(input);
     }
 
     private void AddGarageCoverOptions(TabPage page, OverlaySettings settings, int top)
@@ -1365,26 +1389,17 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         clearButton.Click += (_, _) => ClearGarageCoverImage(settings);
         page.Controls.Add(clearButton);
 
-        var previewButton = CreateActionButton("Show Test Cover", 346, top + 78, 150);
-        previewButton.Click += (_, _) => ShowGarageCoverPreview(settings);
-        page.Controls.Add(previewButton);
-
-        page.Controls.Add(CreateLabel("Detection", 22, top + 132, 90));
-        _garageCoverStateLabel = CreateValueLabel("waiting", 116, top + 126, 238, 28);
-        page.Controls.Add(_garageCoverStateLabel);
-        SyncGarageCoverStateLabel();
-
         page.Controls.Add(CreateMutedLabel(
-            "The browser source fails closed to the configured cover or TMR fallback while telemetry is unavailable or stale.",
+            "The browser source uses the configured cover or stock fallback while telemetry is unavailable or stale.",
             22,
-            top + 170,
+            top + 126,
             600));
 
         page.Controls.Add(CreateSectionLabel("Preview", 650, top, 220));
         _garageCoverPreviewPanel = CreateGarageCoverPreviewPanel(imagePath, 650, top + 36, 220, 124);
         page.Controls.Add(_garageCoverPreviewPanel);
         _garageCoverPreviewCaptionLabel = CreateMutedLabel(
-            imageStatus.IsUsable ? "Selected cover image" : "Fallback cover",
+            imageStatus.IsUsable ? "Selected cover image" : "Stock fallback cover",
             650,
             top + 168,
             220);
@@ -1412,19 +1427,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         }
     }
 
-    private void ShowGarageCoverPreview(OverlaySettings settings)
-    {
-        GarageCoverBrowserSettings.SetPreviewUntil(settings, DateTimeOffset.UtcNow.AddSeconds(10));
-        _events.Record("garage_cover_preview_requested", properties: new Dictionary<string, string?>
-        {
-            ["durationSeconds"] = "10"
-        });
-        SaveAndApply();
-        SetSupportStatus("Garage Cover test is visible in OBS for 10 seconds.", isError: false);
-        SyncGarageCoverStateLabel();
-        _v2Surface?.Invalidate();
-    }
-
     private void RefreshGarageCoverImageState(OverlaySettings settings)
     {
         var imagePath = settings.GetStringOption(OverlayOptionKeys.GarageCoverImagePath);
@@ -1434,58 +1436,23 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             imageStatus.IsUsable ? imagePath ?? string.Empty : GarageCoverImageStatusText(imageStatus));
         SetTextIfChanged(
             _garageCoverPreviewCaptionLabel,
-            imageStatus.IsUsable ? "Selected cover image" : "Fallback cover");
+            imageStatus.IsUsable ? "Selected cover image" : "Stock fallback cover");
 
         if (_garageCoverPreviewPanel is not null)
         {
             _garageCoverPreviewPanel.Tag = imagePath;
             _garageCoverPreviewPanel.Invalidate();
         }
-
-        SyncGarageCoverStateLabel();
-    }
-
-    private void SyncGarageCoverStateLabel()
-    {
-        if (_garageCoverStateLabel is null)
-        {
-            _v2Surface?.Invalidate();
-            return;
-        }
-
-        var now = DateTimeOffset.UtcNow;
-        var detection = GarageCoverBrowserSettings.DetectGarageState(_liveTelemetrySource.Snapshot(), now);
-        var settings = _applicationSettings.GetOrAddOverlay(
-            GarageCoverOverlayDefinition.Definition.Id,
-            GarageCoverOverlayDefinition.Definition.DefaultWidth,
-            GarageCoverOverlayDefinition.Definition.DefaultHeight,
-            defaultEnabled: false);
-        var previewUntil = GarageCoverBrowserSettings.ReadPreviewUntilUtc(settings);
-        var previewVisible = previewUntil is not null && previewUntil > now;
-        SetLabelText(
-            _garageCoverStateLabel,
-            previewVisible ? $"{detection.DisplayText} (test visible)" : detection.DisplayText);
-        SetLabelColor(
-            _garageCoverStateLabel,
-            previewVisible
-                ? OverlayTheme.Colors.InfoText
-                : detection.State switch
-                {
-                    "garage_visible" => OverlayTheme.Colors.SuccessText,
-                    "garage_hidden" => OverlayTheme.Colors.TextSecondary,
-                    _ => OverlayTheme.Colors.WarningText
-                });
-        _v2Surface?.Invalidate();
     }
 
     private static string GarageCoverImageStatusText(GarageCoverImageStatus status)
     {
         return status.Status switch
         {
-            "not_configured" => "No image imported; using TMR fallback",
+            "not_configured" => "No image imported; using stock fallback",
             "unsupported_extension" => "Saved image has an unsupported extension",
-            "file_missing" => "Saved image is missing; using TMR fallback",
-            _ => "Cover image unavailable; using TMR fallback"
+            "file_missing" => "Saved image is missing; using stock fallback",
+            _ => "Cover image unavailable; using stock fallback"
         };
     }
 
@@ -1517,6 +1484,20 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             var x = bounds.Left + (bounds.Width - width) / 2;
             var y = bounds.Top + (bounds.Height - height) / 2;
             graphics.DrawImage(image, new Rectangle(x, y, width, height));
+            return;
+        }
+
+        using var defaultImage = GarageCoverImageStore.TryLoadDefaultPreviewImage();
+        if (defaultImage is not null && defaultImage.Width > 0 && defaultImage.Height > 0)
+        {
+            var scale = Math.Max(
+                bounds.Width / (double)defaultImage.Width,
+                bounds.Height / (double)defaultImage.Height);
+            var width = (int)Math.Round(defaultImage.Width * scale);
+            var height = (int)Math.Round(defaultImage.Height * scale);
+            var x = bounds.Left + (bounds.Width - width) / 2;
+            var y = bounds.Top + (bounds.Height - height) / 2;
+            graphics.DrawImage(defaultImage, new Rectangle(x, y, width, height));
             return;
         }
 
@@ -1672,6 +1653,37 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         saveButton.Click += (_, _) => SaveStreamChatSettings(settings, providerCombo, streamlabsBox, twitchBox);
         page.Controls.Add(saveButton);
         page.Controls.Add(CreateMutedLabel("Open the localhost URL in a browser or OBS after saving. The overlay will show connected status, then append messages as they arrive.", 274, top + 242, 560));
+        AddStreamChatContentToggles(page, settings, top + 292);
+    }
+
+    private void AddStreamChatContentToggles(TabPage page, OverlaySettings settings, int top)
+    {
+        var blocks = OverlayContentColumnSettings.StreamChat.Blocks ?? [];
+        page.Controls.Add(CreateSectionLabel("Twitch metadata", 18, top, 500));
+        page.Controls.Add(CreateMutedLabel(
+            "These controls apply only to Twitch chat until Streamlabs payloads are verified.",
+            22,
+            top + 30,
+            620));
+
+        for (var index = 0; index < blocks.Count; index++)
+        {
+            var block = blocks[index];
+            var column = index < 5 ? 0 : 1;
+            var row = column == 0 ? index : index - 5;
+            var checkBox = CreateCheckBox(
+                block.Label,
+                OverlayContentColumnSettings.BlockEnabled(settings, block),
+                22 + column * 260,
+                top + 62 + row * 30,
+                230);
+            checkBox.CheckedChanged += (_, _) =>
+            {
+                settings.SetBooleanOption(block.EnabledOptionKey, checkBox.Checked);
+                SaveAndApply();
+            };
+            page.Controls.Add(checkBox);
+        }
     }
 
     private void SaveStreamChatSettings(

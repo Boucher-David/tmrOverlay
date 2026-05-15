@@ -6,27 +6,33 @@ For visual decision paths, see [Overlay Flow Diagrams](overlay-flow-diagrams.md)
 
 ## Global Rules
 
+Nomenclature:
+
+- **Browser** means the local review UI opened directly in a browser, such as `/review/app` or `/review/overlays/<overlay-id>`.
+- **Localhost** means the OBS source URL a user can add to OBS, such as `/overlays/<overlay-id>`.
+- **Native** means the Windows application and Windows overlay windows.
+
 All managed native overlays use the same outer visibility rules:
 
 1. The Settings window opens at startup. Driving/support overlays stay hidden unless the user enables them.
-2. An overlay is eligible to show when its setting is enabled and its session filter allows the current session kind.
-3. The General-tab Show Preview mode supplies deterministic Practice, Qualifying, or Race telemetry only. It does not enable hidden overlays, bypass session filters, move windows, change opacity, change topmost state, or force Stream Chat open.
+2. An overlay is eligible to show when its setting is enabled and its content/header/footer session gates allow the current session kind.
+3. The General-tab Show Preview mode supplies deterministic Practice, Qualifying, or Race telemetry only. It does not enable hidden overlays, bypass content/header/footer session gates, move windows, change opacity, change topmost state, or force Stream Chat open.
 4. Race-data overlays fade out when live telemetry is disconnected, not collecting, or stale. Status and Stream Chat are not race-data overlays for this fade policy.
 5. Local-only overlays also require their declared live context before their native windows are shown. Radar and Inputs require local player in-car focus; Fuel Calculator and Pit Service require local player focus plus active in-car or pit context.
 6. Settings preview controls can show an overlay for configuration review, but that is treated as a settings preview, not a normal runtime visibility decision.
-7. Browser-source pages read the same normalized overlay models where practical. The browser review server uses deterministic fixtures and is a development/review surface, not the production iRacing runtime.
+7. Localhost pages read the same normalized overlay models where practical. The browser review server uses deterministic fixtures and is a development/review surface, not the production iRacing runtime.
 
 ## Settings
 
-Purpose: Control the app, overlays, diagnostics, updates, browser-source hints, and support bundle workflow.
+Purpose: Control the app, overlays, diagnostics, updates, localhost hints, and support bundle workflow.
 
 Behavior:
 
 - Always opens at startup and is the normal control surface.
 - Keeps a fixed application-window size.
 - General owns units, session preview, broad app controls, and support/diagnostics.
-- Each overlay tab owns enabled state, size/scale, opacity where useful, session filters where useful, content settings, and browser-source sizing hints.
-- Overlay options are stored in keyed `OverlaySettings.Options` entries so new header, footer, and column controls can be added without expanding the durable settings model each time.
+- Each overlay tab owns enabled state, size/scale, opacity where useful, content settings, header/footer controls where supported, and localhost sizing hints.
+- Overlay options are stored in keyed `OverlaySettings.Options` entries so new header, footer, and content controls can be added without expanding the durable settings model each time.
 
 ## Standings
 
@@ -43,9 +49,9 @@ Behavior:
 - Waits for fresh telemetry, then waits for scoring or timing rows.
 - Uses the scoring model when available because it carries grouped multiclass standings.
 - Selects the reference car from scoring/timing focus rows or the driver directory focus reference.
-- In race-like sessions, hides rows until cars have valid lap evidence so pre-grid noise does not look like race order.
-- Keeps class groups in official table order, then chooses the reference class as the primary group.
-- Shows as many primary-class rows as possible while reserving bounded rows for other classes when class separators are enabled.
+- In race sessions, can render scoring/grid rows before green while keeping gap/interval cells unavailable until positive timing evidence exists.
+- Keeps class groups in official table order instead of reordering the table around the reference class.
+- Shows focused-class rows plus bounded rows for other classes when Multiclass sections are enabled.
 - Highlights the reference row, pit rows, class headers, and partial rows.
 - If scoring is missing, falls back to timing rows ordered by class position, overall position, class-leader gap, lap gap, then car index.
 
@@ -94,7 +100,7 @@ Inputs:
 
 Behavior:
 
-- Requires a local active driver/team context. In native overlay mode, focus on another car, unavailable focus, missing player car, garage/setup context, and no active local/pit context keep the enabled window hidden; browser/model callers show `waiting for local fuel context`.
+- Requires a local active driver/team context. In native overlay mode, focus on another car, unavailable focus, missing player car, garage/setup context, and no active local/pit context keep the enabled window hidden; localhost/model callers show `waiting for local fuel context`.
 - Shows planned race laps, stint count, and final stint target when those are known.
 - Otherwise shows current fuel, race laps remaining, and additional fuel needed.
 - Displays a strategy row when changing fuel rhythm avoids extra stops.
@@ -141,7 +147,7 @@ Inputs:
 
 - Stream Chat provider settings
 - Twitch IRC websocket when configured
-- Streamlabs/browser widget settings where supported
+- Streamlabs widget settings where supported
 
 Behavior:
 
@@ -160,7 +166,7 @@ Reviewer checks:
 
 ## Garage Cover
 
-Purpose: Provide an OBS/browser-source privacy cover for garage/setup screens.
+Purpose: Provide an OBS/localhost privacy cover for garage/setup screens.
 
 Inputs:
 
@@ -170,7 +176,7 @@ Inputs:
 
 Behavior:
 
-- Browser-source only.
+- Localhost-only.
 - Fails closed: if telemetry is missing, stale, unavailable, or the garage is visible, it renders the cover/fallback rather than exposing garage content.
 - Uses the configured image when available; otherwise renders a deterministic fallback.
 - Does not appear as a normal native driving overlay.
@@ -178,7 +184,7 @@ Behavior:
 Reviewer checks:
 
 - Does missing telemetry cover the screen instead of exposing setup details?
-- Does the browser route stay useful even without a user image?
+- Does the localhost route stay useful even without a user image?
 
 ## Flags
 
@@ -230,7 +236,7 @@ Reviewer checks:
 
 ## Pit Service
 
-Purpose: Summarize pit-service state and current pit action.
+Purpose: Summarize session context, pit release/service state, requested service, and tire-service evidence.
 
 Inputs:
 
@@ -240,16 +246,23 @@ Inputs:
 
 Behavior:
 
-- Requires fresh telemetry, local active driver/team context, and pit-service data. In native overlay mode, focus on another car, unavailable focus, missing player car, garage/setup context, and no active local/pit context keep the enabled window hidden; browser/model callers show `waiting for local pit-service context`.
+- Requires fresh telemetry, local active driver/team context, and pit-service data. In native overlay mode, focus on another car, unavailable focus, missing player car, garage/setup context, and no active local/pit context keep the enabled window hidden; localhost/model callers show `waiting for local pit-service context`.
 - Still renders during the local pit window: on pit road, in the pit stall, or while service is active.
-- Shows current service status, fuel add/target, tire selections, fast repair, pit-road/stall state, and service completion context when available.
-- Uses warning/info/success tones for service state rather than treating all pit messages equally.
+- Groups rows as `Session`, `Pit Signal`, `Service Request`, and `Tire Analysis` in both native and localhost surfaces.
+- Production localhost pages build the Pit Service model from the same normalized live snapshot and `PitServiceOverlayViewModel` path as native Design V2; spoofed all-row Pit Service data is limited to browser tooling.
+- Shows compact time plus lap context when telemetry exposes plausible values, so lap-based races can display remaining/total laps alongside the clock.
+- Shows release and pit-service status in `Pit Signal`; the old pit-location row is intentionally omitted because it duplicated lower-value context.
+- Shows service requests as segmented rows: fuel request is requested state plus selected fuel amount, tearoff is requested state, repair is required/optional time, and fast repair is selected state plus remaining availability.
+- Shows tire analysis as per-corner chip cells for compound, change/keep, set limits/availability/used state, cold pressure, temperature, wear, and distance when those rows are enabled and available.
+- Uses warning/info/success tones for release, repair, and tire availability/change state rather than treating all pit messages equally.
 - Formats fuel volume according to the selected unit system.
+- Does not show estimated fuel or in-car setup rows in this pass; estimated fuel belongs to the future Fuel Calculator V2 shared strategy model, and ARB/wing rows need deliberate raw-capture proof before promotion.
 
 Reviewer checks:
 
 - Does the overlay distinguish requested service from active/completed service?
 - Are repair and tire states understandable under partial telemetry?
+- Do the localhost and native Design V2 Pit Service layouts stay functionally identical?
 
 ## Input / Car State
 
@@ -337,14 +350,14 @@ Reviewer checks:
 
 ## Browser Review Surface
 
-Purpose: Fast mac-friendly review for browser-source overlays and broad app layout.
+Purpose: Fast local review for browser UI, localhost/OBS parity, and broad app layout.
 
 Behavior:
 
 - `npm run review:browser` starts a local fixture-backed server.
 - `/review/app` shows the Settings shell plus a full overlay validator stage.
 - `/review/settings/general` shows the General tab preview controls.
-- `/review/overlays/<overlay-id>` and `/overlays/<overlay-id>` render individual overlay pages from the same assets used by Windows localhost routes.
+- `/review/overlays/<overlay-id>` renders browser review pages, and `/overlays/<overlay-id>` renders localhost pages from the same assets used by Windows localhost routes.
 - Preview query parameters provide deterministic mock telemetry; they do not change production native overlay visibility rules.
 
 Reviewer checks:

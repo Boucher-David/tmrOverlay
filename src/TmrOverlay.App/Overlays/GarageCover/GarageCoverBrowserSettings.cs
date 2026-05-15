@@ -1,6 +1,4 @@
-using System.Globalization;
 using TmrOverlay.App.Localhost;
-using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 using TmrOverlay.Core.Telemetry.Live;
 
@@ -10,26 +8,7 @@ internal static class GarageCoverBrowserSettings
 {
     public static GarageCoverBrowserSettingsSnapshot From(ApplicationSettings settings)
     {
-        var overlay = GarageCoverOverlay(settings);
-        var imagePath = overlay.GetStringOption(OverlayOptionKeys.GarageCoverImagePath);
-        var imageStatus = GarageCoverImageStore.InspectImage(imagePath);
-        var previewUntilUtc = ReadPreviewUntilUtc(overlay);
-        var previewVisible = previewUntilUtc is not null && previewUntilUtc > DateTimeOffset.UtcNow;
-        return new GarageCoverBrowserSettingsSnapshot(
-            HasImage: imageStatus.IsUsable,
-            ImageVersion: imageStatus.IsUsable
-                ? $"{imageStatus.LastWriteTimeUtc!.Value.ToUnixTimeMilliseconds()}-{imageStatus.Length!.Value}"
-                : null,
-            ImageStatus: imageStatus.Status,
-            FallbackReason: imageStatus.IsUsable
-                ? null
-                : imageStatus.Status,
-            PreviewVisible: previewVisible,
-            PreviewUntilUtc: previewUntilUtc,
-            ImageFileName: imageStatus.FileName,
-            ImageExtension: imageStatus.Extension,
-            ImageLength: imageStatus.Length,
-            ImageLastWriteTimeUtc: imageStatus.LastWriteTimeUtc);
+        return GarageCoverViewModel.BrowserSettingsFrom(settings);
     }
 
     public static GarageCoverDiagnosticsSnapshot Diagnostics(
@@ -37,69 +16,24 @@ internal static class GarageCoverBrowserSettings
         LocalhostOverlaySnapshot localhost,
         LiveTelemetrySnapshot live)
     {
-        var browserSettings = From(settings);
-        var detection = DetectGarageState(live, DateTimeOffset.UtcNow);
-        return new GarageCoverDiagnosticsSnapshot(
-            RouteEnabled: localhost.Enabled,
-            RouteStatus: localhost.Status,
-            Route: "/overlays/garage-cover",
-            ImageStatus: browserSettings.ImageStatus,
-            ImageFileName: browserSettings.ImageFileName,
-            ImageExtension: browserSettings.ImageExtension,
-            ImageLength: browserSettings.ImageLength,
-            ImageLastWriteTimeUtc: browserSettings.ImageLastWriteTimeUtc,
-            PreviewVisible: browserSettings.PreviewVisible,
-            PreviewUntilUtc: browserSettings.PreviewUntilUtc,
-            LastDetectionState: detection.State,
-            LastGarageVisible: live.Models.RaceEvents.IsGarageVisible,
-            LastTelemetryAtUtc: live.LastUpdatedAtUtc,
-            FallbackReason: browserSettings.FallbackReason);
+        return GarageCoverViewModel.Diagnostics(settings, localhost, live);
     }
 
     public static GarageCoverDetectionSnapshot DetectGarageState(
         LiveTelemetrySnapshot snapshot,
         DateTimeOffset now)
     {
-        var availability = OverlayAvailabilityEvaluator.FromSnapshot(snapshot, now);
-        if (!availability.IsAvailable)
-        {
-            return availability.Reason switch
-            {
-                OverlayAvailabilityReason.Disconnected => new GarageCoverDetectionSnapshot("iracing_disconnected", "iRacing disconnected", IsFresh: false),
-                OverlayAvailabilityReason.StaleTelemetry => new GarageCoverDetectionSnapshot("telemetry_stale", "telemetry stale", IsFresh: false),
-                _ => new GarageCoverDetectionSnapshot("waiting_for_telemetry", availability.StatusText, IsFresh: false)
-            };
-        }
-
-        return snapshot.Models.RaceEvents.IsGarageVisible
-            ? new GarageCoverDetectionSnapshot("garage_visible", "garage visible", IsFresh: true)
-            : new GarageCoverDetectionSnapshot("garage_hidden", "garage hidden", IsFresh: true);
+        return GarageCoverViewModel.DetectGarageState(snapshot, now);
     }
 
     public static void SetPreviewUntil(OverlaySettings settings, DateTimeOffset untilUtc)
     {
-        settings.SetStringOption(OverlayOptionKeys.GarageCoverPreviewUntilUtc, untilUtc.ToString("O", CultureInfo.InvariantCulture));
+        GarageCoverViewModel.SetPreviewUntil(settings, untilUtc);
     }
 
     public static DateTimeOffset? ReadPreviewUntilUtc(OverlaySettings settings)
     {
-        var value = settings.GetStringOption(OverlayOptionKeys.GarageCoverPreviewUntilUtc);
-        return DateTimeOffset.TryParse(
-            value,
-            CultureInfo.InvariantCulture,
-            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
-            out var parsed)
-            ? parsed
-            : null;
-    }
-
-    private static OverlaySettings GarageCoverOverlay(ApplicationSettings settings)
-    {
-        return settings.GetOrAddOverlay(
-            GarageCoverOverlayDefinition.Definition.Id,
-            GarageCoverOverlayDefinition.Definition.DefaultWidth,
-            GarageCoverOverlayDefinition.Definition.DefaultHeight,
-            defaultEnabled: false);
+        return GarageCoverViewModel.ReadPreviewUntilUtc(settings);
     }
 }
 

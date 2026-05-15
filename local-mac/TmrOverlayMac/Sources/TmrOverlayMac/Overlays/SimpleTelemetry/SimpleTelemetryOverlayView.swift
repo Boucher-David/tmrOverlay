@@ -16,6 +16,9 @@ struct FlagDisplayOptions {
 }
 
 struct InputDisplayOptions {
+    var showThrottleTrace = true
+    var showBrakeTrace = true
+    var showClutchTrace = true
     var showThrottle = true
     var showBrake = true
     var showClutch = true
@@ -333,17 +336,17 @@ final class SimpleTelemetryOverlayView: NSView {
         let surface = trackWetnessLabel(frame.trackWetness)
         let changed = Int(frame.sessionTime / 45).isMultiple(of: 5)
         let tone: Tone = frame.weatherDeclaredWet || frame.trackWetness > 1 ? .info : .normal
-        let status = frame.weatherDeclaredWet ? "declared wet" : "Race"
-        let sky = frame.weatherDeclaredWet ? "overcast | realistic | rain 65%" : "partly cloudy | realistic | rain 12%"
+        let status = frame.weatherDeclaredWet ? "Declared Wet" : "Race"
+        let sky = frame.weatherDeclaredWet ? "Overcast | realistic | rain 65%" : "Partly Cloudy | realistic | rain 12%"
         let windSpeed = 3.6 + sin(frame.sessionTime / 420) * 1.2
         let wind = "NW \(Int((windSpeed * 3.6).rounded())) km/h | hum \(frame.weatherDeclaredWet ? 82 : 67)% | fog \(frame.weatherDeclaredWet ? 9 : 0)%"
         let surfaceText = frame.weatherDeclaredWet
-            ? "\(surface) | declared wet | rubber moderate"
-            : "\(surface) | rubber \(frame.sessionTime > 3_600 ? "moderate" : "clean")"
+            ? "\(surface) | Declared Wet | Rubber Moderate"
+            : "\(surface) | Rubber \(frame.sessionTime > 3_600 ? "Moderate" : "Clean")"
         return (
             "Session / Weather",
             status,
-            "source: session + weather telemetry",
+            "",
             changed ? .info : tone,
             [
                 Row("Session", "Race | team"),
@@ -625,10 +628,16 @@ final class SimpleTelemetryOverlayView: NSView {
             NSBezierPath.strokeLine(from: NSPoint(x: graph.minX, y: y), to: NSPoint(x: graph.maxX, y: y))
         }
 
-        drawTrace(in: graph, color: OverlayTheme.Colors.successText) { $0.throttle }
-        drawTrace(in: graph, color: OverlayTheme.Colors.errorIndicator) { $0.brake }
-        drawTrace(in: graph, color: NSColor(red255: 104, green: 193, blue: 255)) { $0.clutch }
-        drawActiveTraceSegments(in: graph, color: NSColor(red255: 255, green: 209, blue: 102), select: { $0.brake }, isActive: { $0.brakeAbsActive })
+        if inputDisplayOptions.showThrottleTrace {
+            drawTrace(in: graph, color: OverlayTheme.Colors.successText) { $0.throttle }
+        }
+        if inputDisplayOptions.showBrakeTrace {
+            drawTrace(in: graph, color: OverlayTheme.Colors.errorIndicator) { $0.brake }
+            drawActiveTraceSegments(in: graph, color: NSColor(red255: 255, green: 209, blue: 102), select: { $0.brake }, isActive: { $0.brakeAbsActive })
+        }
+        if inputDisplayOptions.showClutchTrace {
+            drawTrace(in: graph, color: NSColor(red255: 104, green: 193, blue: 255)) { $0.clutch }
+        }
         drawInputLegend(in: graph)
         if railEnabled {
             drawInputRail(frame, rect: NSRect(x: graph.maxX + 10, y: content.minY, width: railWidth, height: content.height))
@@ -649,10 +658,16 @@ final class SimpleTelemetryOverlayView: NSView {
             NSBezierPath.strokeLine(from: NSPoint(x: graph.minX, y: y), to: NSPoint(x: graph.maxX, y: y))
         }
 
-        drawTrace(in: graph, color: OverlayTheme.Colors.successText) { $0.throttle }
-        drawTrace(in: graph, color: OverlayTheme.Colors.errorIndicator) { $0.brake }
-        drawTrace(in: graph, color: NSColor(red255: 104, green: 193, blue: 255)) { $0.clutch }
-        drawActiveTraceSegments(in: graph, color: NSColor(red255: 255, green: 209, blue: 102), select: { $0.brake }, isActive: { $0.brakeAbsActive })
+        if inputDisplayOptions.showThrottleTrace {
+            drawTrace(in: graph, color: OverlayTheme.Colors.successText) { $0.throttle }
+        }
+        if inputDisplayOptions.showBrakeTrace {
+            drawTrace(in: graph, color: OverlayTheme.Colors.errorIndicator) { $0.brake }
+            drawActiveTraceSegments(in: graph, color: NSColor(red255: 255, green: 209, blue: 102), select: { $0.brake }, isActive: { $0.brakeAbsActive })
+        }
+        if inputDisplayOptions.showClutchTrace {
+            drawTrace(in: graph, color: NSColor(red255: 104, green: 193, blue: 255)) { $0.clutch }
+        }
         drawInputLegend(in: graph)
 
         let speedMetersPerSecond = 52 + sin(frame.sessionTime * 0.9) * 18
@@ -865,11 +880,16 @@ final class SimpleTelemetryOverlayView: NSView {
 
     private func drawInputLegend(in graph: NSRect) {
         let brakeAbsActive = latestFrame?.brakeAbsActive == true
-        let items: [(String, NSColor)] = [
-            ("Throttle", OverlayTheme.Colors.successText),
-            (brakeAbsActive ? "Brake ABS" : "Brake", brakeAbsActive ? NSColor(red255: 255, green: 209, blue: 102) : OverlayTheme.Colors.errorIndicator),
-            ("Clutch", NSColor(red255: 104, green: 193, blue: 255))
-        ]
+        var items: [(String, NSColor)] = []
+        if inputDisplayOptions.showThrottleTrace {
+            items.append(("Throttle", OverlayTheme.Colors.successText))
+        }
+        if inputDisplayOptions.showBrakeTrace {
+            items.append((brakeAbsActive ? "Brake ABS" : "Brake", brakeAbsActive ? NSColor(red255: 255, green: 209, blue: 102) : OverlayTheme.Colors.errorIndicator))
+        }
+        if inputDisplayOptions.showClutchTrace {
+            items.append(("Clutch", NSColor(red255: 104, green: 193, blue: 255)))
+        }
         var x = graph.minX + 8
         let y = graph.maxY - 22
         for item in items {
@@ -1489,15 +1509,23 @@ final class SimpleTelemetryOverlayView: NSView {
     private func trackWetnessLabel(_ wetness: Int) -> String {
         switch wetness {
         case 0:
-            return "dry"
+            return "Unknown"
         case 1:
-            return "mostly dry"
+            return "Dry"
         case 2:
-            return "damp"
+            return "Mostly Dry"
         case 3:
-            return "wet"
+            return "Very Lightly Wet"
+        case 4:
+            return "Lightly Wet"
+        case 5:
+            return "Moderately Wet"
+        case 6:
+            return "Very Wet"
+        case 7:
+            return "Extremely Wet"
         default:
-            return "wetness \(wetness)"
+            return "Value \(wetness)"
         }
     }
 

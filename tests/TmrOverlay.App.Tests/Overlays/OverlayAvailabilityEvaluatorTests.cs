@@ -83,16 +83,19 @@ public sealed class OverlayAvailabilityEvaluatorTests
     }
 
     [Fact]
-    public void IsAllowedForSession_HonorsOverlaySessionSettings()
+    public void IsAllowedForSession_IgnoresLegacyOverlaySessionSettings()
     {
         var settings = new OverlaySettings
         {
             Id = "test",
+            ShowInTest = true,
             ShowInPractice = false,
             ShowInRace = true
         };
 
-        Assert.False(OverlayAvailabilityEvaluator.IsAllowedForSession(settings, OverlaySessionKind.Practice));
+        Assert.Equal(OverlaySessionKind.Practice, OverlayAvailabilityEvaluator.ClassifySession("Test"));
+        Assert.True(OverlayAvailabilityEvaluator.IsAllowedForSession(settings, OverlaySessionKind.Test));
+        Assert.True(OverlayAvailabilityEvaluator.IsAllowedForSession(settings, OverlaySessionKind.Practice));
         Assert.True(OverlayAvailabilityEvaluator.IsAllowedForSession(settings, OverlaySessionKind.Race));
     }
 
@@ -100,11 +103,14 @@ public sealed class OverlayAvailabilityEvaluatorTests
     public void OverlayChromeSettings_HonorsSessionScopedHeaderAndFooterItems()
     {
         var settings = new OverlaySettings { Id = "relative" };
+        settings.SetBooleanOption(OverlayOptionKeys.ChromeHeaderStatusTest, true);
         settings.SetBooleanOption(OverlayOptionKeys.ChromeHeaderStatusPractice, false);
         settings.SetBooleanOption(OverlayOptionKeys.ChromeFooterSourceRace, false);
+        var test = SnapshotForSession("Test");
         var practice = SnapshotForSession("Practice");
         var race = SnapshotForSession("Race");
 
+        Assert.False(OverlayChromeSettings.ShowHeaderStatus(settings, test));
         Assert.False(OverlayChromeSettings.ShowHeaderStatus(settings, practice));
         Assert.True(OverlayChromeSettings.ShowFooterSource(settings, practice));
         Assert.True(OverlayChromeSettings.ShowHeaderStatus(settings, race));
@@ -170,6 +176,33 @@ public sealed class OverlayAvailabilityEvaluatorTests
         Assert.False(inCarOnly.IsAvailable);
         Assert.Equal("not_in_car", inCarOnly.Reason);
         Assert.Equal(LiveLocalStrategyContext.LocalInCarWaitingStatus, inCarOnly.StatusText);
+        Assert.True(inCarOrPit.IsAvailable);
+        Assert.Equal("available", inCarOrPit.Reason);
+    }
+
+    [Fact]
+    public void LiveLocalStrategyContext_InCarRequirementRejectsPitRoadEvenWhenOnTrackIsTrue()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = LocalStrategySnapshot(
+            now,
+            playerCarIdx: 10,
+            focusCarIdx: 10,
+            isOnTrack: true,
+            isInGarage: false,
+            onPitRoad: true);
+
+        var inCarOnly = LiveLocalStrategyContext.ForRequirement(
+            snapshot,
+            now,
+            OverlayContextRequirement.LocalPlayerInCar);
+        var inCarOrPit = LiveLocalStrategyContext.ForRequirement(
+            snapshot,
+            now,
+            OverlayContextRequirement.LocalPlayerInCarOrPit);
+
+        Assert.False(inCarOnly.IsAvailable);
+        Assert.Equal("not_in_car", inCarOnly.Reason);
         Assert.True(inCarOrPit.IsAvailable);
         Assert.Equal("available", inCarOrPit.Reason);
     }

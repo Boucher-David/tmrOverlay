@@ -9,9 +9,9 @@ The model-v2 layer is no longer just passive evidence. Core overlays are already
 Current production shape:
 
 - Windows tray app remains the production/iRacing runtime.
-- Settings is the real startup/app surface and owns overlay visibility, scale/custom size, content/header/footer options, session filters, shared font/units, browser-source routes, support capture, and diagnostics.
-- Tracked mac harness remains the mock-telemetry parity/review surface.
-- Supported V1-candidate overlay family includes Standings, Relative, Gap To Leader, Fuel Calculator, Session / Weather, Pit Service, Track Map, Stream Chat, Input / Car State, Car Radar, Flags, and Garage Cover, with local OBS/browser-source routes where supported.
+- Settings is the real startup/app surface and owns overlay visibility, scale/custom size, content/header/footer options, shared font/units, localhost routes, support capture, and diagnostics.
+- Browser review is the primary local review and screenshot surface; the current parity target is native plus localhost. The tracked mac harness is deprecated secondary scaffolding, not a V1 gate.
+- Supported V1-candidate overlay family includes Standings, Relative, Gap To Leader, Fuel Calculator, Session / Weather, Pit Service, Track Map, Stream Chat, Input / Car State, Car Radar, Flags, and Garage Cover, with local OBS/localhost routes where supported.
 - Local-only overlays are intentionally context-gated: Radar and Inputs require local player in-car context; Fuel Calculator and Pit Service require local player focus plus in-car or pit context.
 - Standings, Relative, Gap To Leader, and Track Map must remain usable in non-local focus/spectated contexts. Their data-source decisions should come from scoring/timing/focus arrays, not local-player-only scalar context.
 
@@ -25,22 +25,29 @@ Current evidence/tooling shape:
 
 - 2026-05-11: Added `skills/tmr-overlay-hot-start/SKILL.md` so future sessions read this file and `VERSION.md` before implementation instead of relying on chat memory.
 - 2026-05-11: Current telemetry investigation uses two uploaded v0.18.8 captures: AI multi-session Practice/Lone Qualify/Race at Oran Park and open player Practice at Spa, plus local four-hour and 24-hour endurance captures. Raw captures/zips stay local; compact redacted fixture corpus belongs under `fixtures/telemetry-analysis/`.
-- 2026-05-11: Source-selection pass landed from the compact corpus: Standings keeps race starting grid until meaningful official race coverage appears, Practice/Qualifying/Test still wait for valid laps, Relative only applies local garage/off-track suppression when the reference is local, and Gap/Relative timing require positive F2/estimated-time evidence instead of all-zero placeholders.
+- 2026-05-11: Source-selection pass landed from the compact corpus: Standings keeps race starting grid until meaningful official race coverage appears, practice/qualifying/test still wait for valid laps, Relative only applies local garage/off-track suppression when the reference is local, and Gap/Relative timing require positive F2/estimated-time evidence instead of all-zero placeholders. The current settings UI rolls Test visibility into the Practice column even though the model can still distinguish the session kind.
 - 2026-05-11: AI race class names can have blank `CarClassShortName`; the accepted grounded fallback derives names from session-info car names/paths when possible, such as common `GT3`/`GT4`/`TCR` tokens or a single-car class screen name.
 - 2026-05-11: Diagnostics for UI unclickable/freeze reports point to visible topmost overlay windows with `inputTransparent=false` and `noActivate=true`; these can intercept mouse input over Settings without taking focus. Patched Settings-visible protection so managed overlays become click-through/non-topmost while Settings is open, widened the diagnostics risk metric, gated Radar settings preview by its Visible toggle, and flushed pending settings saves before app exit to reduce restart/toggle mismatch risk.
 - 2026-05-12: v0.18.10 tagged after overlay z-order/input diagnostics hardening. The compact live telemetry corpus now includes 12 tracked states across AI multi-session, open-player practice, four-hour endurance, and 24-hour endurance captures, including four-hour pre-countdown/pre-grid race-start phases plus normal race-running and pit/service contexts. Remaining corpus gaps are AI race green with player focus and a degraded missing-focus state.
 - 2026-05-12: Added a redacted SDK field availability corpus with 334 fields from local four-hour and 24-hour endurance captures, including SDK-declared array/storage maximums, primitive type bounds, sampled observed ranges, and identity shape counts. New telemetry-backed work should first run `tools/analysis/check_sdk_schema_against_corpus.py` against available local raw-capture schemas so newly exposed iRacing SDK fields become corpus/product-planning inputs instead of invisible drift.
 - 2026-05-12: Race-start captures confirmed that active race `SessionNum` plus `SessionState` separates early pre-grid/countdown, gridding/pace, and green phases. Standings now stays on grounded starting-grid/scoring rows before green and dims rows for cars that have not taken the grid, while Relative can use observed estimated timing/lap-distance signals during race `SessionState == 3`, including tow/pit cases. Settings stays visible after Alt+Tab/focus loss and drops out of the topmost layer instead of auto-hiding; update installs preserve existing app data.
+- 2026-05-13: Tire compound context should live in Core live models before overlay use. `DriverInfo.DriverTires[]` maps SDK tire-compound indices to labels such as dry/hard/wet, while `CarIdxTireCompound` exposes each transmitted car's current compound. Future Pit Service work should also mine local tire-service counters and requests, especially `LFTiresUsed`/`RFTiresUsed`/`LRTiresUsed`/`RRTiresUsed`, left/right/front/rear set counters, `TireSetsAvailable`, `PitSvTireCompound`, `PitSvLFP/RFP/LRP/RRP`, and `dpLFTireChange`/`dpRFTireChange`/`dpLRTireChange`/`dpRRTireChange`; NASCAR tire-set-limit races make these first-class Pit Service overlay context rather than only diagnostics.
+- 2026-05-13: After Gap To Leader native/localhost parity work is saved, the recommended next overlay pass is Pit Service. It should use the newly normalized tire-compound model plus the SDK/service fields above to make tire set limits, selected tires, changed tires, fuel/repair state, and pit-service release context clearer without mixing read-only telemetry with command-capable pit controls.
+- 2026-05-13: Pit Service first-pass parity should show fuel request as Requested/Selected only. Do not add a production Pit Service estimated/recommended fuel field yet; Fuel Calculator v2 should own a future pit-service fuel recommendation model, which Pit Service can surface later after that source exists.
+- 2026-05-13: Hide Pit Service in-car setup rows for the first pass. ARB/wing-style pit-request telemetry probably exists somewhere in the SDK, but it needs a deliberate raw capture where the driver changes those values before it becomes production overlay content. Track this as a V1.x Pit Service v2 investigation, not as browser spoof data or unsupported native rows.
+- 2026-05-14: Fuel Calculator first-pass parity should keep shared/Core fuel work to the low-risk `LiveFuelStrategyModel` contract that centralizes local-context gating, history lookup, and existing `FuelStrategyCalculator` output for native and localhost consumers. Do not pull rolling measured-burn windows, pit-service refuel recommendations, or team-stint intelligence into this branch; those belong to Fuel Calculator v2. Neutral fuel facts such as Race, Remain, Laps, Target, Tank, Stints, and Stops should use data-presentation tones, not magenta/modelled warning-looking tones.
+- 2026-05-14: Stream Chat first-pass parity should keep the practical V1 enhancements only: Design V2 shell, fixed-height chat history, wrapping rows, author color, visible badges, inline Twitch emotes, native/localhost parity, and browser review replay coverage. The richer Twitch IRC/EventSub and Streamlabs API/widget analysis is parked in `docs/stream-v2.md` as a dedicated V1.x Stream Chat V2 branch/tag candidate, not as required V1 branch-complete scope.
 
-## Current v0.18.12 Branch Focus
+## Current v0.19.0 Branch Focus
 
-The current useful model-v2 work is evidence-backed live-reference hardening, not a broad overlay rewrite:
+The current useful model-v2 work is evidence-backed live-overlay parity and browser validation hardening, not a broad product expansion:
 
 - Keep the compact tracked "full-picture" live telemetry fixture corpus current as representative real states are collected. Keep it redacted and compact: no raw `telemetry.bin`, no source `.ibt`, no private chat/settings values, and no full-session payloads.
 - Keep the SDK field availability corpus current with local capture schemas before telemetry-backed feature work. If iRacing adds SDK fields or changes declared shape, update the corpus or document the gap before deciding overlay behavior from guesses.
 - Include labeled states for pre-grid/gridding, green start, green plus delay, normal race running, spectating another car, local player in-car, pit road/stall/service, garage/setup visible, replay if observed, multiclass coverage, and degraded/missing focus or official-position fields.
 - Use the corpus to validate AI/spectated Standings, Relative, and Gap To Leader behavior after implementation changes instead of relying on hypothetical fallback data.
-- Preserve the current valid-lap gate for Standings in Practice/Qualifying/Test.
+- Treat browser validation for Standings, Relative, and Gap To Leader as a native/localhost parity check: browser models should come from production-shaped telemetry contracts and settings, not from hand-authored rows or fake graph fields.
+- Preserve the current valid-lap gate for Standings in practice/qualifying/test; the UI should keep Test controlled by the visible Practice setting.
 - Keep broad validation, screenshot regeneration, installer/update polish, first-run docs, privacy/defaults review, and Windows-native behavior checks as V1-candidate readiness work.
 
 Current source-selection guardrails:
@@ -75,13 +82,13 @@ V1-candidate readiness discussion moved out of `VERSION.md`:
 
 - Treat the fundamental overlay logic as ready for V1-candidate validation once fixture-backed source selection lands. Overlay behavior should then be stable enough that adding a straightforward content field, such as a Standings `Team name` column, is a descriptor/model wiring change instead of a table-behavior rewrite.
 - New reusable telemetry fields should be consumed and normalized in Core/live models first, then mapped into overlay columns or rows; Standings/Relative should not own root data extraction for shared fields.
-- Lock the V1 product scope: decide the final overlay list, make sure experimental/future surfaces are not exposed as normal user-facing tabs, keep browser review dev-only, and decide whether the mac harness remains tracked secondary scaffolding or moves to a deprecation branch.
+- Lock the V1 product scope: decide the final overlay list, make sure experimental/future surfaces are not exposed as normal user-facing tabs, keep browser review dev-only, and keep the deprecated mac harness out of the V1 parity/release gate.
 - Prove installer/update polish: MSI install, upgrade, rollback, Velopack update checks, release notes, checksums, and the acceptable stance on unsigned SmartScreen warnings for V1.
-- Add the minimum user-facing first-run docs: starting the app, enabling overlays, configuring OBS browser-source URLs, Stream Chat setup, Garage Cover setup, diagnostics bundle creation, and raw capture being opt-in.
+- Add the minimum user-facing first-run docs: starting the app, enabling overlays, configuring OBS localhost URLs, Stream Chat setup, Garage Cover setup, diagnostics bundle creation, and raw capture being opt-in.
 - Complete an explicit privacy/defaults pass: logged fields, diagnostics bundle contents, redactions, retention defaults, app-data locations, and confirmation that raw `telemetry.bin` and source `.ibt` payloads stay out of support bundles.
 - Freeze durable settings/history schema unless a V1-blocking bug requires a change. Any schema change now needs version constants, migrations or compatible readers, docs, fixtures, and compatibility tests in the same pass.
 - Run a native Windows behavior sweep because browser review cannot prove focus, topmost, click-through, no-activate behavior, Stream Chat window behavior, iRacing SDK capture, installer/update behavior, or WinForms screenshot output.
-- Harden the support posture so one teammate diagnostics bundle is enough to answer version, settings, update state, overlay visibility, browser routes, runtime errors, recent telemetry state, and recent performance/freeze state without raw payloads.
+- Harden the support posture so one teammate diagnostics bundle is enough to answer version, settings, update state, overlay visibility, localhost routes, runtime errors, recent telemetry state, and recent performance/freeze state without raw payloads.
 - Keep V1.x performance and heavier analysis work out of this milestone unless validation finds a release-blocking regression. Use the V1.x roadmap for overlay lifecycle/timer efficiency, rendering/cache performance, capture replay, and larger post-race analysis products after the candidate is stable.
 
 ## Historical Branch Scope
@@ -105,7 +112,7 @@ V1.0 should be a polished core desktop overlay app, not the finish line for ever
 - Local in-car radar/blindspot.
 - Flags.
 - Gap To Leader, Fuel Calculator, Session / Weather, Pit Service, Track Map, Stream Chat, Input / Car State, and Garage Cover where current contracts remain telemetry-first, low-noise, and context-gated.
-- Localhost browser-source routes as local OBS/capture support, not as the teammate-to-teammate Overlay Bridge.
+- Localhost routes as local OBS/capture support, not as the teammate-to-teammate Overlay Bridge.
 
 Heavy analysis products should move to V1.x, where they can build on stable core telemetry contracts and teammate evidence without blocking the first product milestone. Scenario-based layout profiles and engineer/operator mode are large enough to be V2.0 product modes, and VR is a later V2.N platform item because it is a separate renderer with different performance, UX, and comfort constraints.
 
@@ -123,8 +130,8 @@ Likely scope:
 
 - Ship first-pass production Standings backed by normalized timing rows.
 - Ship a map-only Track Map overlay with bundled-map lookup, optional user IBT-derived map generation, circle fallback, live car dots, and model-v2 sector highlights.
-- Add `LocalhostOverlays` browser-source routes for OBS/local capture tools, separate from the future teammate-to-teammate Overlay Bridge.
-- Add Stream Chat as a normal read-only overlay for saved public Twitch channel chat plus a browser-source route for one selected saved source: Streamlabs Chat Box widget URL or public Twitch channel chat.
+- Add `LocalhostOverlays` routes for OBS/local capture tools, separate from the future teammate-to-teammate Overlay Bridge.
+- Add Stream Chat as a normal read-only overlay for saved public Twitch channel chat plus a localhost route for one selected saved source: Streamlabs Chat Box widget URL or public Twitch channel chat.
 - Keep settings as a flat-tab app control surface with selectable/copyable localhost URLs where routes exist.
 - Harden existing live overlays from tester feedback: Relative/Fuel repaint churn, Relative display-time fallback, smaller Inputs layout, clearer local Radar side warnings, and stale race-data overlay fade behavior.
 - Keep Windows build/test/publish and Windows-rendered screenshot validation CI-owned when local macOS validation cannot run `dotnet`.
@@ -160,7 +167,7 @@ Likely scope:
 - Add shared overlay availability/freshness and status/diagnostics health models so V1.0 overlays use consistent waiting, stale, unavailable, session, and app-health language.
 - Add passive once-per-startup/manual update checks in this branch if v0.12 teammate feedback shows release-discovery friction; keep prompts out of active sessions.
 - Keep legacy live slices stable until no production core overlay depends on them.
-- Use Windows screenshot artifacts and tracked mac mocks to catch visual regressions.
+- Use browser review screenshots and Windows screenshot artifacts to catch visual regressions.
 
 ### v0.14.0 - UI Polish And V1 Candidate Prep
 
@@ -170,9 +177,9 @@ Likely scope:
 
 - Promote shared visual primitives: overlay headers, quiet status badges, timing rows, relative rows, metric rows, flag strips, compact weather widgets, borders, state tones, and text-fitting rules.
 - Keep typography, row heights, spacing, opacity defaults, and semantic colors in shared tokens instead of scattered form-local constants.
-- Use the mac harness for fast style iteration, then port stable primitives back to Windows.
+- Use browser review for fast style iteration, then verify stable primitives against Windows/native.
 - Keep normal telemetry-first overlays quiet; only surface source/evidence chrome for stale, unavailable, modeled, or derived values.
-- Refresh tracked `mocks/` and compare Windows CI artifacts before calling the branch done.
+- Refresh browser review screenshot artifacts and compare Windows CI artifacts before calling the branch done.
 - Validate install, upgrade, support, diagnostics, and release/update handoff with real teammates.
 - Verify AppData compatibility for settings, history, logs, diagnostics, runtime state, and optional captures.
 - Tighten performance, startup behavior, and settings-window responsiveness for the core overlay set.
@@ -184,10 +191,10 @@ Goal: make the settings app layout V1-ready as its own product pass instead of w
 Likely scope:
 
 - Keep the shared per-overlay General/Content/Header/Footer settings behavior and make the surrounding settings surface clearer, easier to scan, and easier to extend.
-- Revisit the left-tab structure, overlay option grouping, support/status grouping, browser-source details, and shared preferences without exposing development-only surfaces as ordinary overlay tabs.
+- Revisit the left-tab structure, overlay option grouping, support/status grouping, localhost details, and shared preferences without exposing development-only surfaces as ordinary overlay tabs.
 - Preserve app-owned scale controls and header/footer slot-fitting assumptions while improving how crowded overlay option sets are presented.
 - Keep the Support tab as the product home for app-health, version/build, diagnostic capture, diagnostics bundles, and support folders.
-- Refresh tracked mac screenshots and compare Windows CI artifacts before calling the branch done.
+- Refresh browser review screenshots and compare Windows CI artifacts before calling the branch done.
 
 ### v0.16.0 - Release Channel And V1 Candidate Escape Hatch
 
@@ -229,7 +236,7 @@ Detailed performance backlog:
 5. Track Map rendering split: cache static map geometry/background separately from live cars, sectors, labels, and focus highlights so high-frequency updates do not redraw the full map.
 6. Input graph optimization: use fixed-size/ring sample buffers, avoid full repaints when driver input is unchanged, and keep ABS/TC active-state coloring tied to proven firing signals.
 7. Radar draw optimization: keep visible radar accuracy as the priority while skipping all hidden work and caching static rings, labels, brushes, and geometry helpers.
-8. Localhost/browser-source efficiency: keep localhost routes available, but reduce route work when no clients are connected and allow browser-source polling cadences to match each overlay's freshness needs.
+8. Localhost efficiency: keep localhost routes available, but reduce route work when no clients are connected and allow localhost polling cadences to match each overlay's freshness needs.
 9. Disk write batching: queue or batch low-priority app events, local logs, diagnostics, and performance snapshots so telemetry/UI paths do not block on frequent append writes.
 10. Settings save/apply debouncing: avoid saving and reapplying scale, opacity, numeric, and text settings on every intermediate control change when idle/commit behavior is enough.
 11. Diagnostics cost control: keep support bundles useful while avoiding repeated JSON/directory scans from hidden settings tabs or high-frequency overlay loops.
@@ -237,6 +244,26 @@ Detailed performance backlog:
 13. Shared font/theme cache: centralize `OverlayTheme` font/resource creation by family, size, style, theme, and scale so paint/layout paths do not recreate stable objects.
 14. Layout churn reduction: use set-if-changed helpers and suspend/resume layout patterns across overlay forms, not only the settings panel, and avoid rebuilding controls when value updates are enough.
 15. Performance harness: create a repeatable long-run profile for all overlays hidden, all overlays visible, static telemetry, replay/active telemetry, and browser clients connected/disconnected; capture UI-thread time, paint counts, timer counts, disk writes, memory, and GDI handle pressure.
+
+### V1.x Feature Addition - Stream Chat V2
+
+Goal: turn Stream Chat into a deliberately richer stream-facing overlay after the V1 parity pass, without expanding the current branch's finish line.
+
+Dedicated branch/tag candidate: Stream Chat V2 / `stream-v2` in the V1.x line.
+
+Design handoff: `docs/stream-v2.md`.
+
+Likely scope:
+
+- Promote the current Twitch IRC row parsing into a richer stream message/event model that can preserve raw tags plus normalized display fields.
+- Treat Twitch `PRIVMSG` and `USERNOTICE` as first-class row types so replies, bits/cheers, first messages, badges, resubs, raids, and other notice events can get purpose-built presentation.
+- Decide whether Twitch EventSub `channel.chat.notification` joins or replaces the IRC notice path for richer alert semantics.
+- Add deterministic rich fixtures for broadcaster/partner/premium rows, moderators, first-time chatters, inline emotes, bits, resubs, raids, and replies with parent message previews.
+- Keep Streamlabs as two different product paths: an opaque Chat Box widget URL mode and a future authenticated Socket API event-feed mode.
+- Model Streamlabs Socket API output as stream events/alerts, not as Twitch-style chat rows, unless a real payload proves structured row-level chat data is available.
+- Add Streamlabs-specific toggles for donations/tips, follows, subs/resubs/gifts, bits, raids/hosts, YouTube superchats, amounts, viewer messages, source platform, and debug event IDs.
+- Keep Twitch-only toggles, such as author color, Twitch badges, Twitch emote ranges, first-message, replies, and Twitch message IDs, scoped to Twitch until Streamlabs supplies equivalent verified payloads.
+- Define native/localhost badge and emote image caching, failure fallbacks, and privacy-safe diagnostics for stream payloads.
 
 ### V1.x Feature Addition - Timing Tower Overlay
 
@@ -267,9 +294,9 @@ Goal: make real race evidence easier to replay through overlays without manually
 
 Likely scope:
 
-- Add a development-only raw-capture replay provider for the mac harness or a separate tooling path.
+- Add a development-only raw-capture replay provider for browser review or a separate tooling path.
 - Decode selected four-hour/twenty-four-hour captures into normalized live snapshots at controllable playback speed.
-- Drive one instance of each overlay from replayed snapshots, generate screenshots/contact sheets, and emit replay-side `live-overlay-diagnostics.json`.
+- Drive one browser/localhost route for each overlay from replayed snapshots, generate screenshots/contact sheets, and emit replay-side validation diagnostics.
 - Keep replay isolated from the Windows runtime collector and private capture folders.
 - Use replay artifacts to decide model-v2 promotions, overlay simplifications, and edge-case UI behavior.
 
@@ -310,7 +337,7 @@ Likely scope:
 
 ### v1.5 - Overlay Bridge And External Clients
 
-Goal: turn future teammate-to-teammate data sharing into a documented developer/platform boundary after the core contracts have proven themselves. Local OBS/browser-source overlays are a separate localhost feature.
+Goal: turn future teammate-to-teammate data sharing into a documented developer/platform boundary after the core contracts have proven themselves. Local OBS/localhost overlays are a separate feature.
 
 Likely scope:
 
@@ -322,13 +349,13 @@ Likely scope:
 
 ### v1.6 - Streaming And Broadcast Overlays
 
-Goal: let the app support broadcast-style surfaces without coupling chat or browser rendering to the Windows collector.
+Goal: let the app support broadcast-style surfaces without coupling chat or web/widget rendering to the Windows collector.
 
 Likely scope:
 
-- Expand the current Streamlabs-widget browser source and public Twitch channel native/browser-source support into richer Twitch/YouTube chat overlays as a separate stream-facing feature set.
+- Expand the current Streamlabs-widget localhost source and public Twitch channel native/localhost support into richer Twitch/YouTube chat overlays as a separate stream-facing feature set.
 - Keep chat auth, tokens, moderation, reconnect behavior, and rate limits isolated from iRacing telemetry.
-- Keep browser-source stream overlays on the local `LocalhostOverlays` path unless they intentionally need peer data.
+- Keep localhost stream overlays on the local `LocalhostOverlays` path unless they intentionally need peer data.
 - Add deterministic offline preview states for chat-only and mixed telemetry/chat overlays.
 
 ### v1.7 - Overlay Builder And Designer Tooling
@@ -338,7 +365,7 @@ Goal: move toward configurable layouts only after the primitives and bridge cont
 Likely scope:
 
 - Start as a local development/designer tool for arranging simple telemetry widgets, choosing shared theme tokens, and exporting deterministic previews.
-- Generate or validate layouts against readability, session filters, stale-state handling, screenshot validation, and performance rules.
+- Generate or validate layouts against readability, content/header/footer session gates, stale-state handling, screenshot validation, and performance rules.
 - Treat exported layouts as development artifacts that can inform V2.0 user-facing layout profiles, not as a full in-app profile manager yet.
 - Keep production overlays hand-authored until generated layouts can meet the same quality bar.
 - Treat DDU-style builder research as primitive/layout work, not as a reason to collapse purpose-built overlays into one configurable mega-widget.
@@ -352,7 +379,7 @@ Goal: add scenario-specific overlay layouts plus a dedicated race engineer/spott
 Likely scope:
 
 - Add named layout profiles for scenarios such as practice, qualifying, race, endurance stint, engineer/spotter, and broadcast review.
-- Let a profile own overlay visibility, monitor/position/size, scale, opacity where supported, session filters, and per-overlay settings so a qualifying layout can differ from a race layout without hand-editing every overlay.
+- Let a profile own overlay visibility, monitor/position/size, scale, opacity where supported, session gates, and per-overlay settings so a qualifying layout can differ from a race layout without hand-editing every overlay.
 - Start with explicit user-selected profiles, then consider session-aware suggestions or switching once model-v2 session state and role state are reliable enough.
 - Version profile files and migrate them like other AppData schemas; missing monitors or changed screen resolutions should fall back to a readable default layout instead of losing the profile.
 - Validate saved profiles with screenshot and performance rules so a layout cannot silently produce unreadable tables, off-screen overlays, or too many expensive views.
@@ -391,6 +418,8 @@ Hide or degrade the local radar when the user is not in the car, is spectating, 
 
 Windows Car Radar now follows this v2 path by reading `LiveTelemetrySnapshot.Models.Spatial` for local side occupancy, physically placed local cars, and multiclass warning state. Timing-only nearby cars remain available to Relative and diagnostics, but they do not draw radar targets. The legacy `LiveProximitySnapshot` remains as an internal compatibility/diagnostic slice until parity and diagnostics no longer need it.
 
+Post-session radar calibration now has a car-scoped history scaffold for clean `CarLeftRight` side-window durations and identity-backed body-length estimates, including useful `SessionState = 3` pre-grid rows where cars are paired on the way to the grid. Live radar uses exact bundled car specifications first, trusted user calibration for unknown cars second, and low-confidence bundled estimates only as fallback. Local IBT inspection did not expose car length, width, wheelbase, or similar dimension fields, so the bundled spec catalog is keyed by `CarID`/`CarPath` and learned calibration stays conservative.
+
 ### Radar Focus And Multiclass V2
 
 Treat non-local focus, teammate focus, spectator mode, and multiclass warning as the advanced radar branch. Move those cases to model-v2 focus-relative evidence. Keep `CarLeftRight` local-player scoped, suppress or relabel it for non-player focus, and make teammate/team-car focus states explicit.
@@ -415,21 +444,21 @@ Treat mid-session joins as a first-class model-v2 availability case. The app sho
 
 Treat user-configured iRacing car coverage limits as a separate model-v2 completeness signal. Session YAML can describe the entered field, while live `CarIdx*` arrays may only carry currently transmitted cars. Standings, relative, gap, and post-race analysis should not silently treat missing live rows as retired or unknown competitors. Model v2 should expose roster count, live-row count, rows with timing, rows with spatial progress, missing-row reasons, and whether each overlay is showing full-field standings, nearby transmitted cars, or a partial mixed view.
 
-### Capture-Backed Mac Overlay Replay
+### Parked Mac Overlay Replay
 
-The mac harness now records live overlay diagnostics from mock/demo snapshots, including the four-hour preview and capture-derived radar/gap demos. A future harness branch should add a full raw-capture replay provider that decodes selected 4-hour/24-hour captures into normalized live snapshots at high playback speed, drives one instance of each overlay, and writes screenshots plus `live-overlay-diagnostics.json` from that replay.
+The deprecated mac harness records live overlay diagnostics from mock/demo snapshots, including the four-hour preview and capture-derived radar/gap demos. This is no longer the preferred replay direction. Future capture replay work should feed browser review and localhost first, then use Windows/native validation for product behavior.
 
-That replay provider should be a development tool only. It should read existing captures, skip or downsample aggressively, and avoid changing the Windows collector/runtime path.
+Any replay provider should be a development tool only. It should read existing captures, skip or downsample aggressively, and avoid changing the Windows collector/runtime path.
 
-### Windows Screenshot Parity Validation
+### Browser And Windows Screenshot Parity Validation
 
-The mac harness remains the fast local design surface, but Windows is the production/iRacing runtime. v0.10 adds a Windows-only screenshot generator that renders the real WinForms forms with deterministic telemetry fixtures and uploads the resulting contact sheet plus per-state PNGs as GitHub Actions artifacts.
+Browser review is the fast local design and screenshot surface, while Windows is the production/iRacing runtime. The browser screenshot generator captures `/review/app`, `/review/overlays/<id>`, and `/overlays/<id>` into `artifacts/browser-review-screenshots`. The Windows-only screenshot generator renders the real WinForms forms with deterministic telemetry fixtures and uploads the resulting contact sheet plus per-state PNGs as GitHub Actions artifacts.
 
-Use this as a parity gate, not as a replacement for the tracked `mocks/` screenshots. The tracked mac screenshots document the intended review states; the Windows artifacts prove the production forms still render, size, and arrange those states under the WinForms runtime. The parity set should cover settings tabs plus the current production overlays: standings, fuel calculator, relative, track map, flags, session/weather, pit service, inputs, radar, and gap to leader, with app status validated through Support and Garage Cover validated through its localhost browser route.
+Use browser and Windows artifacts together as the parity gate. Browser screenshots prove browser/localhost layout from the same assets OBS will use; Windows artifacts prove the production forms still render, size, and arrange those states under the WinForms runtime. The parity set should cover settings tabs plus the current production overlays: standings, fuel calculator, relative, track map, flags, session/weather, pit service, inputs, radar, and gap to leader, with app status validated through Support and Garage Cover validated through its localhost route.
 
 Keep the fixtures isolated from local history, app data, raw captures, and real machine paths. If a Windows screenshot state needs live telemetry, build it from normalized `LiveTelemetrySnapshot` data with explicit fixture values. If a future overlay needs replay evidence, add that through a separate capture-replay branch rather than letting the screenshot generator read private capture directories.
 
-Use the parity artifacts to identify which visual differences are intentional platform rendering and which should become shared tokens. The likely shared set is color roles, title/status/table font sizes, row heights, padding, border opacity, state tones, graph grid alpha, and empty/error/waiting treatment. Font parity should start with a fallback policy rather than a bundled font or user-facing font picker: Windows defaults to `Segoe UI`, mac defaults to SF/System, and both should keep matching sizes/weights/line heights closely enough for review. If the screenshots still drift after token cleanup, evaluate bundling an OFL font such as Inter as a separate asset/licensing change.
+Use the parity artifacts to identify which visual differences are intentional platform rendering and which should become shared tokens. The likely shared set is color roles, title/status/table font sizes, row heights, padding, border opacity, state tones, graph grid alpha, and empty/error/waiting treatment. Font parity should start with a fallback policy rather than a bundled font or user-facing font picker: native defaults to `Segoe UI`, localhost follows the resolved app theme/CSS stack, and both should keep matching sizes/weights/line heights closely enough for review. If the screenshots still drift after token cleanup, evaluate bundling an OFL font such as Inter as a separate asset/licensing change.
 
 ### IBT-Derived Track Map Store
 
@@ -468,13 +497,13 @@ The alignment is:
 
 A separate UI/style branch should promote reviewed semantic theme tokens and reusable primitives into Windows/mac overlay code for headers, quiet status badges, metric rows, timing tables, relative tables, flag strips, compact weather widgets, optional header/footer context slots, validation/admin source footers, graph panels, borders, class/severity colors, text fitting, and empty/error/waiting states. Those primitives should be able to consume model-v2 source/evidence state directly, but the normal rendering path should not make confidence the center of the UI.
 
-Use the tracked mac harness as the design-v2 proving ground while model-v2 evidence is still being collected. The mac preview path can render deterministic design-v2 states under `mocks/design-v2/` for standings, relative, flag display, and the narrower analysis-exception state. The component-review path renders overlay shells, controls, buttons, status pills, table rows, graph chrome, localhost blocks, sidebar tabs, section panels, and settings content blocks from the same views used by the live mac review overlay. Promote only the primitives and semantics that survive screenshot review back into Windows.
+Use browser review as the design-v2 proving ground while model-v2 evidence is still being collected. The deprecated mac preview path still owns legacy deterministic design-v2 states under `mocks/design-v2/`, but new screenshot review should be generated from browser fixtures. Promote only the primitives and semantics that survive browser screenshot review plus Windows/native validation.
 
 Migrate style one overlay at a time with screenshot validation.
 
 ### Overlay Bridge / External Overlay Platform
 
-Overlay Bridge should become the boundary for trusted teammate-to-teammate context sharing after the normalized live snapshot schema is stable enough. Treat it as a platform branch, not as another in-process overlay and not as the local OBS/browser-source server.
+Overlay Bridge should become the boundary for trusted teammate-to-teammate context sharing after the normalized live snapshot schema is stable enough. Treat it as a platform branch, not as another in-process overlay and not as the local OBS/localhost server.
 
 Bridge v2 should define:
 
@@ -500,7 +529,7 @@ The model-v2 implication is that VR needs compact, already-interpreted overlay s
 
 ### Streaming / Broadcast Overlays
 
-Twitch and YouTube chat overlays belong in a streaming/broadcast group. They are not model-v2 telemetry primitives, but they can sit beside telemetry overlays as stream-facing presentation surfaces. v0.11 includes a narrow read-only native Twitch overlay plus the local browser-source path: Streamlabs Chat Box widget embedding and public Twitch channel chat.
+Twitch and YouTube chat overlays belong in a streaming/broadcast group. They are not model-v2 telemetry primitives, but they can sit beside telemetry overlays as stream-facing presentation surfaces. v0.11 includes a narrow read-only native Twitch overlay plus the local localhost path: Streamlabs Chat Box widget embedding and public Twitch channel chat.
 
 A future streaming branch should keep chat ingestion isolated from iRacing telemetry and define rate limits, authentication/storage, moderation controls, reconnect behavior, and deterministic offline preview states. Browser-based stream overlays should use `LocalhostOverlays` for local OBS capture; Overlay Bridge should only enter the design when a stream overlay intentionally needs trusted peer/shared data.
 
@@ -516,15 +545,21 @@ The reviewed iRon DDU is useful product research, but it should not be interpret
 
 iRon's fuel block is the clearest functional reference. It averages recent valid green laps, ignores laps affected by pit road or caution-style flags, and applies a safety factor before estimating remaining laps and fuel-to-finish. TMR's fuel work should keep the richer stint/history/strategy model in purpose-built fuel and future engineer surfaces, but the DDU confirms that a compact "what do I need now" dashboard row can be valuable once those model-v2 facts are stable.
 
-The iRon Cover overlay is deliberately just a blank rectangle. TMR's Garage Cover V1 is stronger as a streamer privacy feature because it keys off `IsGarageVisible`, stays opaque, uses app-owned imported artwork, and has a black TMR fallback. The V2 opportunity is separate: a stream-facing garage/broadcast state can show safe session, standings, stint, sponsor, or team-art context while still covering setup details.
+The iRon Cover overlay is deliberately just a blank rectangle. TMR's Garage Cover V1 is stronger as a streamer privacy feature because it keys off `IsGarageVisible`, stays opaque, uses app-owned imported artwork, and has bundled stock fallback art. The V2 opportunity is separate: a stream-facing garage/broadcast state can show safe session, standings, stint, sponsor, or team-art context while still covering setup details.
 
 Product implication: keep pit release and garage privacy in V1 because they solve direct user pain now. Keep DDU-style layout composition, richer pit/engineer context, garage broadcast content, and user layout profiles in V2/design-v2, after the underlying model contracts and layout primitives are stable enough to make custom surfaces reliable.
 
 ### Layout Profiles
 
-Scenario layout profiles are the user-facing version of configurable overlay sets. A profile should save the combination of overlays and their scenario-specific options, not only window placement. For example, qualifying may show relative, inputs, and lap delta with one set of scale/opacity/session filters, while race may show standings, relative, flags, radar, and pit-service context with different rows and placement.
+Scenario layout profiles are the user-facing version of configurable overlay sets. A profile should save the combination of overlays and their scenario-specific options, not only window placement. For example, qualifying may show relative, inputs, and lap delta with one set of scale/opacity/session gates, while race may show standings, relative, flags, radar, and pit-service context with different rows and placement.
 
 Treat layout profiles as V2.0 because they need stable overlay metadata, durable settings schemas, monitor-aware placement, and validation. The first pass should be manual profile selection; automatic switching should wait until model-v2 session type, in-car/spectator role, driver-control state, and support diagnostics can explain why a profile changed.
+
+### Custom Overlay Settings Slideout
+
+A custom per-overlay settings slideout is V2 work, not part of the current V1 settings-polish branch. The V1 settings surface should stay on the shared flat regions that map directly to production behavior, such as General, Content, Header, Footer, Preview, and verified provider-specific tabs.
+
+Use the V2 slideout for advanced overlay-specific controls after the settings schema and overlay metadata can explain them cleanly. Good candidates include Standings/Relative table column width/order controls, richer provider-specific stream controls, and future custom layout or profile editing. Do not expose those advanced controls in V1 unless they are already clearly wired, validated, and needed for the branch.
 
 ### Application Publishing
 
@@ -557,7 +592,7 @@ Dominant exact image colors:
 | `#242424` | dark neutral detail |
 | `#6CFFEE` | secondary aqua tint |
 
-Current Design V2 tokens are centralized in `shared/tmr-overlay-contract.json` and consumed by Windows native overlays, localhost browser CSS, and the mac harness outrun palette. Future palette experiments should update that shared contract first, then verify contrast, readability, screenshot parity, and Windows/mac/browser parity before changing overlay-specific drawing code.
+Current Design V2 tokens are centralized in `shared/tmr-overlay-contract.json` and consumed by native overlays, browser review, and localhost CSS. Future palette experiments should update that shared contract first, then verify contrast, readability, browser screenshot parity, and native plus localhost parity before changing overlay-specific drawing code.
 
 ### Telemetry-First Overlay Branches
 
@@ -586,4 +621,4 @@ Before adding command controls, isolate simulator writes behind an explicit pit-
 
 Garage Cover V1 is a privacy cover. V2 can use the same `IsGarageVisible` trigger as a stream-facing context state: show team art, session status, standings snippets, recent stint context, strategy notes, or sponsor-safe messaging while setup details are hidden.
 
-Keep this separate from the native privacy requirement. The default cover must remain opaque and trustworthy; richer race information should be opt-in, deterministic, and sourced from model-v2 state that is already validated elsewhere. A future browser-source version may fit OBS workflows better than only a native always-on-top window.
+Keep this separate from the native privacy requirement. The default cover must remain opaque and trustworthy; richer race information should be opt-in, deterministic, and sourced from model-v2 state that is already validated elsewhere. A future localhost version may fit OBS workflows better than only a native always-on-top window.

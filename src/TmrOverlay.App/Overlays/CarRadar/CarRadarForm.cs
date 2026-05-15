@@ -29,15 +29,21 @@ internal sealed class CarRadarForm : PersistentOverlayForm
     private const int MaxWideRowRadarCars = 18;
     private const float MulticlassWarningArcStartDegrees = 62.5f;
     private const float MulticlassWarningArcSweepDegrees = 55f;
-    private const float FocusedCarWidth = 24f;
-    private const float FocusedCarHeight = 48f;
+    private const float FocusedCarWidth = 20f;
+    private const float FocusedCarHeight = 36f;
     private const float RadarCarWidth = 20f;
     private const float RadarCarHeight = 36f;
     private const float CarCornerRadius = 4f;
     private const float SeparatedCarPaddingPixels = 2f;
+    private const float RadarEdgeCenterPaddingPixels = 2f;
+    private const float GridRowReferenceMeters = 8f;
+    private const float MinimumDistinctRowGapPixels = 48f;
     private const float WideRowBucketPixels = 30f;
+    private const double WideRowLongitudinalBucketMeters = 2d;
     private const float WideRowSlotPitchPixels = 36f;
     private const double ProximityRedStart = 0.74d;
+    private const float UsableRadarRadiusInset = RadarEdgeCenterPaddingPixels;
+    private const float DistinctRowPixelsPerMeter = MinimumDistinctRowGapPixels / GridRowReferenceMeters;
 
     private readonly ILiveTelemetrySource _liveTelemetrySource;
     private readonly ILogger<CarRadarForm> _logger;
@@ -46,7 +52,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
     private readonly OverlaySettings _settings;
     private readonly string _fontFamily;
     private readonly Dictionary<int, RadarCarVisual> _carVisuals = [];
-    private LiveSpatialModel _spatial = LiveSpatialModel.Empty;
+    private CarRadarOverlayViewModel _viewModel = CarRadarOverlayViewModel.Empty;
     private DateTimeOffset? _lastRefreshAtUtc;
     private double _radarAlpha;
     private double _leftSideAlpha;
@@ -222,7 +228,11 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             {
                 snapshot = _liveTelemetrySource.Snapshot();
                 previousSequence = _lastRefreshSequence;
-                _spatial = IsFresh(snapshot, now) ? snapshot.Models.Spatial : LiveSpatialModel.Empty;
+                _viewModel = CarRadarOverlayViewModel.From(
+                    snapshot,
+                    now,
+                    _settingsPreviewVisible,
+                    ShowMulticlassWarning);
                 snapshotSucceeded = true;
             }
             finally
@@ -318,15 +328,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
     {
         return _overlayError is not null
             || _settingsPreviewVisible
-            || _spatial.HasCarLeft
-            || _spatial.HasCarRight
-            || CurrentRadarCars().Any()
-            || CurrentMulticlassApproach() is not null;
-    }
-
-    private static bool IsFresh(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
-    {
-        return OverlayAvailabilityEvaluator.FromSnapshot(snapshot, now).IsAvailable;
+            || _viewModel.HasCurrentSignal;
     }
 
     private bool UpdateFadeState(DateTimeOffset now, double elapsedSeconds)
@@ -358,8 +360,8 @@ internal sealed class CarRadarForm : PersistentOverlayForm
 
     private void UpdateSideWarningAlphas(double elapsedSeconds)
     {
-        _leftSideAlpha = MoveTowardSideAlpha(_leftSideAlpha, _spatial.HasCarLeft, elapsedSeconds);
-        _rightSideAlpha = MoveTowardSideAlpha(_rightSideAlpha, _spatial.HasCarRight, elapsedSeconds);
+        _leftSideAlpha = MoveTowardSideAlpha(_leftSideAlpha, _viewModel.HasCarLeft, elapsedSeconds);
+        _rightSideAlpha = MoveTowardSideAlpha(_rightSideAlpha, _viewModel.HasCarRight, elapsedSeconds);
     }
 
     private static double MoveTowardSideAlpha(double current, bool visible, double elapsedSeconds)
@@ -430,19 +432,12 @@ internal sealed class CarRadarForm : PersistentOverlayForm
 
     private IEnumerable<LiveSpatialCar> CurrentRadarCars()
     {
-        return _spatial.Cars.Where(IsInRadarRange);
+        return _viewModel.Cars;
     }
 
     private LiveMulticlassApproach? CurrentMulticlassApproach()
     {
-        if (!ShowMulticlassWarning)
-        {
-            return null;
-        }
-
-        return _spatial.MulticlassApproaches
-            .Where(IsInMulticlassWarningRange)
-            .MaxBy(approach => approach.Urgency);
+        return _viewModel.StrongestMulticlassApproach;
     }
 
     private static double MoveToward(double current, double target, double delta)
@@ -473,7 +468,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             diameter);
 
         using var circleBrush = new SolidBrush(WithAlpha(82, 12, 18, 22));
-        using var circlePen = new Pen(WithAlpha(120, 255, 255, 255), 1.2f);
+        using var circlePen = new Pen(WithAlpha(88, 0, 232, 255), 1.2f);
         graphics.FillEllipse(circleBrush, bounds);
         graphics.DrawEllipse(circlePen, bounds);
 
@@ -531,7 +526,6 @@ internal sealed class CarRadarForm : PersistentOverlayForm
 
     private void DrawDistanceRings(Graphics graphics, RectangleF bounds)
     {
-        using var ringPen = new Pen(WithAlpha(40, 255, 255, 255), 1f);
         using var labelFont = OverlayTheme.Font(_fontFamily, 7.5f);
         using var labelBrush = new SolidBrush(WithAlpha(118, 220, 230, 236));
         using var labelFormat = new StringFormat
@@ -546,6 +540,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
         {
             var inset = bounds.Width * index / 6f;
             var radius = bounds.Width / 2f - inset;
+            using var ringPen = new Pen(RingStrokeColor(index), 1f);
             graphics.DrawEllipse(
                 ringPen,
                 bounds.X + inset,
@@ -557,8 +552,13 @@ internal sealed class CarRadarForm : PersistentOverlayForm
                 centerY - radius - 8f,
                 58f,
                 16f);
-            graphics.DrawString(FormatRingGap(index), labelFont, labelBrush, labelBounds, labelFormat);
+            graphics.DrawString(FormatRingDistance(radius), labelFont, labelBrush, labelBounds, labelFormat);
         }
+    }
+
+    private Color RingStrokeColor(int ringIndex)
+    {
+        return WithAlpha(40, 255, 255, 255);
     }
 
     private void DrawPlayerCar(Graphics graphics, RectangleF bounds)
@@ -571,7 +571,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             FocusedCarWidth,
             FocusedCarHeight);
         using var brush = new SolidBrush(WithAlpha(240, 255, 255, 255));
-        using var pen = new Pen(WithAlpha(230, 20, 24, 28));
+        using var pen = new Pen(ClassBorderColor(_viewModel.Spatial.ReferenceCarClassColorHex, _radarAlpha), 2f);
         graphics.FillRoundedRectangle(brush, carRect, CarCornerRadius);
         graphics.DrawRoundedRectangle(pen, carRect, CarCornerRadius);
     }
@@ -620,7 +620,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             var color = ProximityColor(ProximityTint(car), renderedAlpha);
 
             using var brush = new SolidBrush(color);
-            using var pen = new Pen(Color.FromArgb(ScaleAlpha(245, renderedAlpha), 255, 255, 255), 1f);
+            using var pen = new Pen(ClassBorderColor(car.CarClassColorHex, renderedAlpha), 2f);
             graphics.FillRoundedRectangle(brush, placement.Bounds, CarCornerRadius);
             graphics.DrawRoundedRectangle(pen, placement.Bounds, CarCornerRadius);
         }
@@ -639,7 +639,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
     {
         var centerX = bounds.X + bounds.Width / 2f;
         var centerY = bounds.Y + bounds.Height / 2f;
-        var usableRadius = bounds.Width / 2f - 34f;
+        var usableRadius = bounds.Width / 2f - UsableRadarRadiusInset;
         var visibleCars = _carVisuals.Values
             .Where(visual => visual.Alpha > MinimumVisibleAlpha)
             .Where(visual => !sideAttachments.Contains(visual.Car.CarIdx))
@@ -654,6 +654,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
                     visual,
                     index,
                     offset,
+                    ReliableRelativeMeters(visual.Car),
                     PlacementDirection(visual.Car, index, offset));
             })
             .ToArray();
@@ -661,13 +662,12 @@ internal sealed class CarRadarForm : PersistentOverlayForm
 
         foreach (var candidate in candidates.OrderBy(candidate => candidate.IdealOffset))
         {
-            var row = rows.FirstOrDefault(row =>
-                row.Direction == candidate.Direction
-                && Math.Abs(row.AnchorOffset - candidate.IdealOffset) <= WideRowBucketPixels);
+            var row = rows.FirstOrDefault(row => IsSameWideRadarRow(row, candidate));
             if (row is null)
             {
                 rows.Add(new WideRadarRow(
                     candidate.IdealOffset,
+                    candidate.LongitudinalMeters,
                     candidate.Direction,
                     [candidate]));
                 continue;
@@ -679,6 +679,21 @@ internal sealed class CarRadarForm : PersistentOverlayForm
         return rows
             .SelectMany(row => PlacementsForRow(row, centerX, centerY, usableRadius))
             .ToArray();
+    }
+
+    private static bool IsSameWideRadarRow(WideRadarRow row, WideRowCandidate candidate)
+    {
+        if (Math.Abs(row.Direction - candidate.Direction) > 0.001f)
+        {
+            return false;
+        }
+
+        if (row.AnchorMeters is { } rowMeters && candidate.LongitudinalMeters is { } candidateMeters)
+        {
+            return Math.Abs(rowMeters - candidateMeters) <= WideRowLongitudinalBucketMeters;
+        }
+
+        return Math.Abs(row.AnchorOffset - candidate.IdealOffset) <= WideRowBucketPixels;
     }
 
     private static IReadOnlyList<RadarCarPlacement> PlacementsForRow(
@@ -698,7 +713,8 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             0f,
             usableRadius * usableRadius - clampedRowMagnitude * clampedRowMagnitude));
         var maxCenterOffset = Math.Max(0f, availableHalfWidth - RadarCarWidth / 2f - 4f);
-        var maxSlots = Math.Max(1, (int)MathF.Floor(maxCenterOffset * 2f / WideRowSlotPitchPixels) + 1);
+        var minimumSlots = row.Candidates.Count > 1 ? 2 : 1;
+        var maxSlots = Math.Max(minimumSlots, (int)MathF.Floor(maxCenterOffset * 2f / WideRowSlotPitchPixels) + 1);
         var visibleCandidates = row.Candidates
             .OrderBy(candidate => candidate.SourceIndex)
             .ThenBy(candidate => candidate.Visual.Car.CarIdx)
@@ -804,7 +820,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
 
         var centerX = bounds.X + bounds.Width / 2f;
         var centerY = bounds.Y + bounds.Height / 2f;
-        var usableRadius = bounds.Width / 2f - 34f;
+        var usableRadius = bounds.Width / 2f - UsableRadarRadiusInset;
         if (_leftSideAlpha > MinimumVisibleAlpha)
         {
             DrawWarningCar(
@@ -812,7 +828,8 @@ internal sealed class CarRadarForm : PersistentOverlayForm
                 centerX - 42f,
                 SideWarningCenterY(centerY, usableRadius, sideAttachments.Left),
                 _leftSideAlpha * _radarAlpha * SideAttachmentAlpha(sideAttachments.Left),
-                mappedToTimedCar: sideAttachments.Left is not null);
+                mappedToTimedCar: sideAttachments.Left is not null,
+                sideAttachments.Left?.Car.CarClassColorHex);
         }
 
         if (_rightSideAlpha > MinimumVisibleAlpha)
@@ -822,7 +839,8 @@ internal sealed class CarRadarForm : PersistentOverlayForm
                 centerX + 42f,
                 SideWarningCenterY(centerY, usableRadius, sideAttachments.Right),
                 _rightSideAlpha * _radarAlpha * SideAttachmentAlpha(sideAttachments.Right),
-                mappedToTimedCar: sideAttachments.Right is not null);
+                mappedToTimedCar: sideAttachments.Right is not null,
+                sideAttachments.Right?.Car.CarClassColorHex);
         }
     }
 
@@ -843,7 +861,13 @@ internal sealed class CarRadarForm : PersistentOverlayForm
         return visual is null ? 1d : Math.Max(0.45d, visual.Alpha);
     }
 
-    private static void DrawWarningCar(Graphics graphics, float x, float y, double alphaMultiplier, bool mappedToTimedCar)
+    private static void DrawWarningCar(
+        Graphics graphics,
+        float x,
+        float y,
+        double alphaMultiplier,
+        bool mappedToTimedCar,
+        string? carClassColorHex)
     {
         var carRect = new RectangleF(
             x - RadarCarWidth / 2f,
@@ -852,7 +876,7 @@ internal sealed class CarRadarForm : PersistentOverlayForm
             RadarCarHeight);
         var fillAlpha = mappedToTimedCar ? 245 : 238;
         using var brush = new SolidBrush(Color.FromArgb(ScaleAlpha(fillAlpha, alphaMultiplier), 236, 112, 99));
-        using var pen = new Pen(Color.FromArgb(ScaleAlpha(fillAlpha, alphaMultiplier), 255, 255, 255), 1f);
+        using var pen = new Pen(ClassBorderColor(carClassColorHex, alphaMultiplier), 2f);
         graphics.FillRoundedRectangle(brush, carRect, CarCornerRadius);
         graphics.DrawRoundedRectangle(pen, carRect, CarCornerRadius);
     }
@@ -876,19 +900,16 @@ internal sealed class CarRadarForm : PersistentOverlayForm
         }
 
         var absMeters = Math.Abs(meters);
-        var separatedCenterOffset = Math.Min(
-            usableRadius,
-            FocusedCarHeight / 2f + RadarCarHeight / 2f + SeparatedCarPaddingPixels);
+        var separatedCenterOffset = SeparatedCenterOffset(usableRadius);
 
         if (absMeters <= ContactWindowMeters)
         {
             return (float)(sign * (absMeters / ContactWindowMeters) * separatedCenterOffset);
         }
 
-        var remainingMeters = Math.Max(0.001d, RadarRangeMeters - ContactWindowMeters);
-        var remainingPixels = Math.Max(0f, usableRadius - separatedCenterOffset);
-        var outerRatio = Math.Clamp((absMeters - ContactWindowMeters) / remainingMeters, 0d, 1d);
-        return (float)(sign * (separatedCenterOffset + outerRatio * remainingPixels));
+        var rowAwareOffset = separatedCenterOffset
+            + (float)(absMeters - ContactWindowMeters) * DistinctRowPixelsPerMeter;
+        return sign * rowAwareOffset;
     }
 
     private Color WithAlpha(int alpha, int red, int green, int blue)
@@ -981,6 +1002,14 @@ internal sealed class CarRadarForm : PersistentOverlayForm
         return (int)Math.Round(Math.Clamp(alpha * multiplier, 0d, 255d));
     }
 
+    private static Color ClassBorderColor(string? colorHex, double alphaMultiplier)
+    {
+        var alpha = ScaleAlpha(245, alphaMultiplier);
+        return OverlayClassColor.TryParse(colorHex) is { } color
+            ? Color.FromArgb(alpha, color.R, color.G, color.B)
+            : Color.FromArgb(alpha, 255, 255, 255);
+    }
+
     private static int Lerp(int start, int end, double ratio)
     {
         return (int)Math.Round(start + (end - start) * ratio);
@@ -1004,42 +1033,45 @@ internal sealed class CarRadarForm : PersistentOverlayForm
 
     private bool IsInRadarRange(LiveSpatialCar car)
     {
-        if (ReliableRelativeMeters(car) is { } meters)
-        {
-            return Math.Abs(meters) <= RadarRangeMeters;
-        }
-
-        return false;
+        return CarRadarOverlayViewModel.IsInRadarRange(car);
     }
 
     private static double? ReliableRelativeMeters(LiveSpatialCar car)
     {
-        return car.RelativeMeters is { } meters && !double.IsNaN(meters) && !double.IsInfinity(meters)
-            ? meters
-            : null;
+        return CarRadarOverlayViewModel.ReliableRelativeMeters(car);
     }
 
-    private static bool IsInMulticlassWarningRange(LiveMulticlassApproach approach)
+    private static float SeparatedCenterOffset(float usableRadius)
     {
-        if (approach.RelativeSeconds is not { } seconds || double.IsNaN(seconds) || double.IsInfinity(seconds))
+        return Math.Min(
+            usableRadius,
+            FocusedCarHeight / 2f + RadarCarHeight / 2f + SeparatedCarPaddingPixels);
+    }
+
+    private static string FormatRingDistance(float offsetPixels)
+    {
+        var meters = DistanceForLongitudinalOffset(offsetPixels);
+        return FormattableString.Invariant($"{meters:0}m");
+    }
+
+    private static double DistanceForLongitudinalOffset(float offsetPixels)
+    {
+        var usableRadius = 146f - UsableRadarRadiusInset;
+        var separatedCenterOffset = SeparatedCenterOffset(usableRadius);
+        var absOffset = Math.Clamp(Math.Abs(offsetPixels), 0f, usableRadius);
+        if (absOffset <= separatedCenterOffset)
         {
-            return false;
+            return ContactWindowMeters * absOffset / Math.Max(0.001f, separatedCenterOffset);
         }
 
-        return seconds < -RadarRangeSeconds && seconds >= -MulticlassWarningRangeSeconds;
-    }
-
-    private static string FormatRingGap(int ringIndex)
-    {
-        var meters = RadarRangeMeters * (1d - ringIndex / 3d);
-        return FormattableString.Invariant($"{meters:0}m");
+        return ContactWindowMeters + (absOffset - separatedCenterOffset) / DistinctRowPixelsPerMeter;
     }
 
     private static string FormatMulticlassWarning(LiveMulticlassApproach approach)
     {
         return approach.RelativeSeconds is { } seconds
-            ? FormattableString.Invariant($"multiclass {Math.Abs(seconds):0.0} seconds")
-            : "multiclass approaching";
+            ? FormattableString.Invariant($"Faster class approaching {Math.Abs(seconds):0.0}s")
+            : "Faster class approaching";
     }
 
     private static string TrimError(string? message)
@@ -1081,10 +1113,12 @@ internal sealed class CarRadarForm : PersistentOverlayForm
         RadarCarVisual Visual,
         int SourceIndex,
         float IdealOffset,
+        double? LongitudinalMeters,
         float Direction);
 
     private sealed record WideRadarRow(
         float AnchorOffset,
+        double? AnchorMeters,
         float Direction,
         List<WideRowCandidate> Candidates);
 }

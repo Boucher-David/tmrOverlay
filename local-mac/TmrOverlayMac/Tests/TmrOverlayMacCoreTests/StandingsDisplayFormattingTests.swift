@@ -16,6 +16,28 @@ final class StandingsDisplayFormattingTests: XCTestCase {
         )
     }
 
+    func testGapUsesWholeLapContextWhenAvailable() {
+        XCTAssertEqual(
+            StandingsDisplayFormatting.gap(isClassLeader: false, seconds: nil, laps: 1),
+            "+1L"
+        )
+    }
+
+    func testLeaderGapUsesLapProgressWhenAvailable() {
+        XCTAssertEqual(
+            StandingsDisplayFormatting.gap(isClassLeader: true, seconds: 0, lapCompleted: 12, lapDistPct: 0.35),
+            "Lap 13"
+        )
+        XCTAssertEqual(
+            StandingsDisplayFormatting.gap(isClassLeader: true, seconds: 0),
+            "Leader"
+        )
+        XCTAssertEqual(
+            StandingsDisplayFormatting.gap(isClassLeader: true, seconds: 0, lapCompleted: 0, lapDistPct: 0),
+            "Leader"
+        )
+    }
+
     func testRelativeGapSuppressesLapDistanceFallback() {
         XCTAssertEqual(
             RelativeDisplayFormatting.gap(seconds: nil, meters: nil, laps: 0.002, direction: .behind),

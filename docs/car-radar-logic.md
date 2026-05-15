@@ -4,11 +4,15 @@ This file explains how the car radar decides when to appear, where cars are draw
 
 Implementation files:
 
+- `src/TmrOverlay.App/Cars/CarSpecificationCatalog.cs`
 - `src/TmrOverlay.Core/Telemetry/Live/LiveRaceModels.cs`
 - `src/TmrOverlay.Core/Telemetry/Live/LiveRaceModelBuilder.cs`
 - `src/TmrOverlay.Core/Telemetry/Live/LiveTelemetrySnapshot.cs`
 - `src/TmrOverlay.Core/Telemetry/Live/LiveTelemetryStore.cs`
-- `src/TmrOverlay.App/Overlays/CarRadar/CarRadarForm.cs`
+- `src/TmrOverlay.App/Overlays/CarRadar/CarRadarOverlayViewModel.cs`
+- `src/TmrOverlay.App/Overlays/CarRadar/CarRadarRenderModel.cs`
+- `src/TmrOverlay.App/Overlays/DesignV2/DesignV2LiveOverlayForm.cs`
+- `src/TmrOverlay.App/Overlays/BrowserSources/Assets/modules/car-radar.js`
 
 ## Purpose
 
@@ -21,9 +25,10 @@ It renders from `LiveTelemetrySnapshot.Models.Spatial`, which is populated from 
 - Local player/team lap-distance, timing, and car-class fields. `Focus*` fields are used only when focus is not explicitly another car.
 - `CarLeftRight` for side occupancy.
 - Nearby `CarIdxLapDistPct` and lap completion for physical-distance placement when track length is known.
-- Nearby `CarIdxEstTime` or `CarIdxF2Time` for diagnostics, Relative, and optional multiclass warning context when available and plausible.
+- Nearby `CarIdxEstTime` or `CarIdxF2Time` for diagnostics, Relative, and optional faster-class warning context when available and plausible.
+- Session YAML class pace fields (`CarClassRelSpeed`, with `CarClassEstLapTime` as fallback) to decide which other classes are actually faster than the local class.
 
-Non-local focus, teammate/spectator camera states, and richer multiclass interpretation are collected as diagnostics and future model-v2 analysis inputs. They are not the first product radar contract.
+Non-local focus and teammate/spectator camera states are collected as diagnostics and future model-v2 analysis inputs. They are not the first product radar contract.
 
 If live timing is missing or suspicious, the car may remain in the live proximity snapshot for diagnostics and non-radar consumers. Radar car rectangles require physical distance from live lap-distance progress plus known track length. Timing-only rows do not draw radar targets.
 
@@ -134,7 +139,7 @@ When a side warning exists, the radar may attach that side slot to a rendered de
 
 - The car has reliable relative meters inside the contact-length window.
 
-The distance window uses a 4.746 m local-car-length baseline.
+The distance window uses the current local car body-length model.
 
 If no physically placed car qualifies, the radar still draws the generic side-warning rectangle from `CarLeftRight`. This keeps the actual spotter warning visible without pretending a random timed car is alongside.
 
@@ -155,7 +160,7 @@ The radar fades in when any current signal exists:
 - Left side occupancy.
 - Right side occupancy.
 - At least one car in radar range.
-- Multiclass warning.
+- Faster-class warning.
 
 It fades out when no signal exists.
 
@@ -167,13 +172,20 @@ The Windows form clips the overlay window to a circular region, uses a black tra
 
 Radar car range is:
 
-- 6 local-car lengths, currently `4.746 m * 6 = 28.476 m`.
+- 6 local-car lengths. The length source is exact bundled car spec, trusted user calibration, bundled estimate, then the default `4.746 m` fallback.
 
 Cars are in range when physical relative meters are inside that range. Timing-only cars are deliberately excluded from radar placement because this overlay is a local safety instrument, not a relative table.
 
+There is also a conservative timing-aware visibility envelope for fast closures:
+
+- If a car is outside the physical range but has reliable relative meters and relative seconds, infer `abs(relativeMeters) / abs(relativeSeconds)`.
+- The visibility envelope expands up to 2 seconds of inferred closure distance.
+- The expansion is capped at 15 local-car lengths, currently `4.746 m * 15 = 71.19 m`.
+- This only affects whether a distant fast-closing car can fade in faintly at the radar edge. Placement is still clamped to the physical radar edge, and proximity color still uses physical bumper gap.
+
 Range ratio:
 
-- `relativeMeters / RadarRangeMeters`.
+- `relativeMeters / VisualRadarRangeMeters`.
 - Clamped from `-1` to `1`.
 
 Range ratio drives color and ordering.
@@ -210,20 +222,22 @@ The refresh loop records whether the timer tick saw a new live snapshot sequence
 The radar draws:
 
 1. Circular dark radar background.
-2. Optional multiclass warning arc.
+2. Optional faster-class warning arc.
 3. Two range rings with labels.
 4. Nearby car rectangles.
 5. Side-warning rectangles.
 6. Focused car rectangle.
+7. Ring and warning labels.
 
-Ring labels show approximate physical distance:
+Ring labels show timing boundaries rather than meter labels:
 
-- Inner/outer labels show meters inside the radar range, for example `19m` and `9m`.
+- Inner/outer labels show timing boundaries inside the radar range, for example `1.3s` and `0.7s`.
 - Timing remains available to Relative and diagnostics, but it does not place radar cars.
+- The outer distance ring uses the design cyan/blue stroke. The faster-class warning arc stays warm red so the two signals do not compete.
 
 ## Car Color
 
-The production car color is neutral proximity color, not iRacing class color. Class color is still parsed and carried in the live model for future overlays, but the radar does not use it because common yellow or red class colors can make normal traffic look like a warning.
+The production car fill is neutral proximity color, not iRacing class color. Class color is used as a thin rectangle border so multiclass context is visible without making normal traffic look like a warning.
 
 Proximity color does not begin across the full radar range; it begins only when bumper gap is inside the close warning buffer:
 
@@ -235,9 +249,9 @@ Proximity color does not begin across the full radar range; it begins only when 
 
 Timing-only nearby cars do not draw radar rectangles, so there is no timing fallback proximity color.
 
-The focused/user car remains white.
+The focused/user car remains white. Its border, and nearby car borders, use iRacing class colors so multiclass context is visible without taking over the proximity fill color.
 
-The car alpha is based on visual fade, radar fade, and distance inside the radar range. A car entering at the outer radar range is faint, then fades toward full opacity by the time it reaches the yellow-warning threshold. The overlay itself fades in/out; cars do not turn purple as a proximity state.
+The car alpha is based on visual fade, radar fade, physical distance inside the radar range, and the capped timing-aware visibility envelope. A car entering at the outer radar range is faint, then fades toward full opacity by the time it reaches the yellow-warning threshold. The overlay itself fades in/out; cars do not turn purple as a proximity state.
 
 ## Lateral Placement
 
@@ -250,14 +264,22 @@ Approximation:
 - Otherwise distribute multiple radar cars across three simple lanes based on `CarIdx` and draw index.
 - A single visible car is centered.
 
-## Multiclass Warning
+## Faster-Class Warning
 
-`LiveTelemetryStore` tracks short per-car local proximity history and can build early multiclass warnings from other-class traffic behind the local car.
+`LiveTelemetryStore` tracks short per-car local proximity history and can build early faster-class warnings from other-class traffic behind the local car.
+
+Only classes faster than the local class qualify:
+
+- Prefer iRacing `CarClassRelSpeed` from session YAML.
+- If relative speed is missing or equal, fall back to lower `CarClassEstLapTime`.
+- If neither signal can establish ordering, suppress the warning instead of guessing.
 
 The early-warning seconds range is outside the physical radar-car range:
 
 - Physical radar-car range: 6 local-car lengths when track length is known.
-- Multiclass warning range: greater than 2 seconds behind and up to 5 seconds behind.
+- Faster-class warning range: greater than 2 seconds behind and up to 5 seconds behind.
+
+If multiple faster-class cars are in range, the warning uses the nearest reliable relative-seconds gap behind the local car, then urgency as a tie-breaker. The label reads `Faster class approaching Ns` and counts down from the real relative gap.
 
 When the local radar context is unavailable, or the local reference car changes, the short closing-rate history is reset so approach rates measured against an old reference are not applied to the next local radar frame.
 
@@ -266,18 +288,33 @@ The radar can draw:
 - A red outer arc.
 - A small text label with the relative seconds when known.
 
-This is still live-only derived state. It is not persisted into compact history. Treat it as an advanced radar branch: the simple first radar contract is local side/proximity traffic, while multiclass approach behavior should be reviewed from diagnostics before it becomes a design-v2 centerpiece.
+This is still live-only derived state. It is not persisted into compact history.
+
+## Radar Calibration History
+
+Session history now stores a small radar calibration evidence scaffold:
+
+- Clean `CarLeftRight` side-window durations are collected while the local player car is on track, out of garage and pit context, moving, and attached to a valid player car index.
+- `SessionState = 3` pre-grid/rolling-to-grid rows remain valid evidence. Those rows often put cars beside each other in ordered pairs and can provide strong side-window samples.
+- Summary fields are explicitly marked by confidence flags such as `carleft-right-clean-transition`, `identity-backed-window`, `identity-backed-body-length`, `no-car-identity`, and `not-live-consumed`.
+- Learned body-length calibration is stored at `history/user/cars/{carKey}/radar-calibration.json`, not inside the car/track/session aggregate.
+- Exact bundled specs in `Assets/CarSpecs/car-specs.json` are treated as already calibrated and win over learned history.
+- Trusted learned calibration is used for cars without an exact bundled spec. Once a learned body-length metric is trusted, the car-level aggregate stops accepting new samples.
+- Low-confidence bundled estimates are only fallback data; trusted learned user calibration wins over them.
+
+A compact fixture derived from the four-hour Nurburgring capture keeps this behavior covered without committing the raw multi-GB capture. That capture produced 13 clean side-window samples from 35 raw side windows, with a mean clean overlap duration of about `0.619s`.
 
 ## Design Notes
 
 - Keep radar logic live-only.
 - Do not use fuel estimates or historical lap times to invent radar seconds.
 - Prefer physical distance from lap-distance progress and track length for radar thresholds.
-- Use live relative seconds as a fallback and for multiclass warning timing.
+- Use live relative seconds as a fallback and for faster-class warning timing.
 - Do not render pit-road traffic on radar.
 - Color should stay neutral white until close bumper-gap proximity, then move through yellow toward saturated alert red.
 - Car opacity should also communicate early proximity: faint at the radar edge, full near the yellow-warning threshold.
 - Visibility should be communicated by alpha fade only.
+- Consume only exact specs or trusted car-scoped calibration for body-size changes; weak side-window evidence remains diagnostics/history only.
 
 ## 24-Hour Race Findings
 
@@ -285,7 +322,7 @@ Live endurance-race review found that radar focus handling needs a deeper model-
 
 - The radar did not handle arbitrary focused cars well.
 - It also struggled when the user's team car was active but another driver was in the car.
-- Multiclass warning likely failed for the same root reason: focus-relative timing/progress and local-player side occupancy are different signal families.
+- Faster-class warning likely failed for the same root reason: focus-relative timing/progress and local-player side occupancy are different signal families.
 
 Current product direction is to keep the production radar local-only while the diagnostics collector captures the suppressed/partial cases:
 

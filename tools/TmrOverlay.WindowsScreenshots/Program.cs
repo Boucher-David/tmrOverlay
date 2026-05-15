@@ -260,7 +260,7 @@ internal static class Program
                     AppPerformanceMetricIds.OverlayPitServiceApplyUi,
                     AppPerformanceMetricIds.OverlayPitServiceRows,
                     AppPerformanceMetricIds.OverlayPitServicePaint),
-                PitServiceOverlayViewModel.From,
+                PitServiceOverlayViewModel.CreateBuilder(OverlaySettingsFor(PitServiceOverlayDefinition.Definition)),
                 Noop)));
         screenshots.Add(RenderForm(
             outputRoot,
@@ -378,7 +378,7 @@ internal static class Program
                 "Settings Components - Browser Source",
                 "Relative",
                 null,
-                new Rectangle(306, 518, 716, 92))
+                new Rectangle(726, 272, 296, 132))
         ];
     }
 
@@ -437,6 +437,9 @@ internal static class Program
             new LiveOverlayWindowCaptureStore(storage),
             new ForegroundWindowTracker(),
             releaseUpdates,
+            new StreamChatOverlaySource(
+                NullLogger<StreamChatOverlaySource>.Instance,
+                performanceState),
             NullLogger<DiagnosticsBundleService>.Instance);
         var settings = CreateApplicationSettings();
 
@@ -830,7 +833,7 @@ internal static class Program
             Enabled = true,
             Width = width ?? definition.DefaultWidth,
             Height = height ?? definition.DefaultHeight,
-            Opacity = definition.ShowOpacityControl ? 0.88d : 1d,
+            Opacity = 1d,
             AlwaysOnTop = false
         };
         foreach (var option in definition.SettingsOptions)

@@ -1642,8 +1642,9 @@ final class OverlayManager {
             return
         }
 
-        let sessionKind = currentSessionKind(liveSnapshot: liveSnapshot ?? liveTelemetryStore.snapshot())
-        refreshFuelOverlay(sessionKind: sessionKind)
+        let currentSnapshot = liveSnapshot ?? liveTelemetryStore.snapshot()
+        let sessionKind = currentSessionKind(liveSnapshot: currentSnapshot)
+        refreshFuelOverlay(sessionKind: sessionKind, liveSnapshot: currentSnapshot)
         refreshRelativeOverlay(sessionKind: sessionKind)
         refreshStandingsOverlay(sessionKind: sessionKind)
         refreshTrackMapOverlay(sessionKind: sessionKind)
@@ -1653,7 +1654,7 @@ final class OverlayManager {
         refreshInputStateOverlay(sessionKind: sessionKind)
         refreshCarRadarOverlay(sessionKind: sessionKind)
         refreshGapOverlay(sessionKind: sessionKind)
-        applyLiveTelemetryFade(liveSnapshot: liveSnapshot ?? liveTelemetryStore.snapshot())
+        applyLiveTelemetryFade(liveSnapshot: currentSnapshot)
     }
 
     private func applyDisplaySettingsToOpenOverlays(captureSnapshot: TelemetryCaptureStatusSnapshot? = nil) {
@@ -1664,7 +1665,6 @@ final class OverlayManager {
 
         if let fuelSettings = settings.overlays.first(where: { $0.id == FuelCalculatorOverlayDefinition.definition.id }) {
             fuelCalculatorView?.showAdvice = fuelSettings.showFuelAdvice
-            fuelCalculatorView?.showSource = fuelSettings.showFuelSource
         }
         fuelCalculatorView?.fontFamily = fontFamily
         fuelCalculatorView?.unitSystem = settings.general.unitSystem
@@ -1757,6 +1757,9 @@ final class OverlayManager {
         if id == InputStateOverlayDefinition.definition.id,
            let inputSettings = settings.overlays.first(where: { $0.id == id }) {
             view.inputDisplayOptions = InputDisplayOptions(
+                showThrottleTrace: optionBool(inputSettings, key: "input-state.trace.throttle", defaultValue: true),
+                showBrakeTrace: optionBool(inputSettings, key: "input-state.trace.brake", defaultValue: true),
+                showClutchTrace: optionBool(inputSettings, key: "input-state.trace.clutch", defaultValue: true),
                 showThrottle: optionBool(inputSettings, key: "input-state.current.throttle", defaultValue: true),
                 showBrake: optionBool(inputSettings, key: "input-state.current.brake", defaultValue: true),
                 showClutch: optionBool(inputSettings, key: "input-state.current.clutch", defaultValue: true),
@@ -1783,9 +1786,10 @@ final class OverlayManager {
         return defaultValue
     }
 
-    private func refreshFuelOverlay(sessionKind: OverlaySessionKind?) {
+    private func refreshFuelOverlay(sessionKind: OverlaySessionKind?, liveSnapshot: LiveTelemetrySnapshot) {
         let definition = FuelCalculatorOverlayDefinition.definition
-        guard shouldShow(definition: definition, sessionKind: sessionKind) else {
+        guard shouldShow(definition: definition, sessionKind: sessionKind),
+              shouldRenderFuelCalculatorOverlay(liveSnapshot) else {
             overlayWindows[definition.id]?.orderOut(nil)
             return
         }
@@ -2134,18 +2138,17 @@ final class OverlayManager {
             return false
         }
 
-        switch sessionKind {
-        case .test:
-            return overlaySettings.showInTest
-        case .practice:
-            return overlaySettings.showInPractice
-        case .qualifying:
-            return overlaySettings.showInQualifying
-        case .race:
-            return overlaySettings.showInRace
-        case nil:
-            return true
+        if definition.id == GapToLeaderOverlayDefinition.definition.id,
+           overlaySettings.classGapCarsAhead <= 0,
+           overlaySettings.classGapCarsBehind <= 0 {
+            return false
         }
+
+        if definition.id == GapToLeaderOverlayDefinition.definition.id {
+            return sessionKind == .race
+        }
+
+        return true
     }
 
     private var isSettingsWindowActive: Bool {
@@ -2209,7 +2212,9 @@ final class OverlayManager {
     private func scaledOverlaySize(definition: OverlayDefinition, settings overlaySettings: OverlaySettings) -> NSSize {
         let scale = clampedOverlayScale(overlaySettings.scale)
         var baseSize = definition.defaultSize
-        if let content = OverlayContentColumns.definition(for: definition.id) {
+        if definition.id == InputStateOverlayDefinition.definition.id {
+            baseSize.width = inputStateNativeBaseWidth(settings: overlaySettings, fullWidth: definition.defaultSize.width)
+        } else if let content = OverlayContentColumns.definition(for: definition.id) {
             baseSize = contentDrivenNativeBaseSize(
                 definition: definition,
                 content: content,
@@ -2225,6 +2230,34 @@ final class OverlayManager {
             size.width = debugWidth
         }
         return size
+    }
+
+    private func inputStateNativeBaseWidth(settings overlaySettings: OverlaySettings, fullWidth: CGFloat) -> CGFloat {
+        let hasGraph = inputStateBlockEnabled(OverlayContentColumns.inputThrottleTraceBlockId, settings: overlaySettings)
+            || inputStateBlockEnabled(OverlayContentColumns.inputBrakeTraceBlockId, settings: overlaySettings)
+            || inputStateBlockEnabled(OverlayContentColumns.inputClutchTraceBlockId, settings: overlaySettings)
+        let hasRail = inputStateBlockEnabled(OverlayContentColumns.inputThrottleBlockId, settings: overlaySettings)
+            || inputStateBlockEnabled(OverlayContentColumns.inputBrakeBlockId, settings: overlaySettings)
+            || inputStateBlockEnabled(OverlayContentColumns.inputClutchBlockId, settings: overlaySettings)
+            || inputStateBlockEnabled(OverlayContentColumns.inputSteeringBlockId, settings: overlaySettings)
+            || inputStateBlockEnabled(OverlayContentColumns.inputGearBlockId, settings: overlaySettings)
+            || inputStateBlockEnabled(OverlayContentColumns.inputSpeedBlockId, settings: overlaySettings)
+
+        if hasGraph && hasRail {
+            return fullWidth
+        }
+        if hasGraph {
+            return 380
+        }
+        return 276
+    }
+
+    private func inputStateBlockEnabled(_ id: String, settings overlaySettings: OverlaySettings) -> Bool {
+        guard let block = OverlayContentColumns.inputState.blocks.first(where: { $0.id == id }) else {
+            return true
+        }
+
+        return OverlayContentColumns.blockEnabled(block, settings: overlaySettings)
     }
 
     private func contentDrivenNativeBaseSize(
@@ -2461,6 +2494,23 @@ final class OverlayManager {
         }
 
         return Date().timeIntervalSince(lastUpdatedAtUtc) <= Self.liveTelemetryFreshnessSeconds
+    }
+
+    private func shouldRenderFuelCalculatorOverlay(_ snapshot: LiveTelemetrySnapshot) -> Bool {
+        guard isLiveTelemetryAvailable(snapshot),
+              let frame = snapshot.latestFrame,
+              let playerCarIdx = frame.playerCarIdx,
+              let focusCarIdx = frame.focusCarIdx else {
+            return false
+        }
+
+        guard playerCarIdx == focusCarIdx,
+              !frame.isInGarage,
+              !frame.isGarageVisible else {
+            return false
+        }
+
+        return frame.isOnTrack || frame.onPitRoad
     }
 
     private func setBaseOverlayOpacity(definition: OverlayDefinition, window: OverlayWindow, opacity: Double) {
@@ -2793,11 +2843,7 @@ final class OverlayManager {
         }
 
         let normalized = value.lowercased()
-        if normalized.contains("test") {
-            return .test
-        }
-
-        if normalized.contains("practice") {
+        if normalized.contains("test") || normalized.contains("practice") {
             return .practice
         }
 

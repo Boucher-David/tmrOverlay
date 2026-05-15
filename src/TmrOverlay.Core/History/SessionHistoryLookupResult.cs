@@ -20,3 +20,26 @@ internal sealed record SessionHistoryLookupResult(
         return new SessionHistoryLookupResult(combo, UserAggregate: null, BaselineAggregate: null);
     }
 }
+
+internal sealed record CarRadarCalibrationLookupResult(
+    HistoricalComboIdentity Combo,
+    HistoricalCarRadarCalibrationAggregate? UserAggregate,
+    HistoricalCarRadarCalibrationAggregate? BaselineAggregate)
+{
+    public string CarKey => Combo.CarKey;
+
+    public HistoricalCarRadarCalibrationAggregate? PreferredAggregate => UserAggregate ?? BaselineAggregate;
+
+    public string? PreferredAggregateSource => UserAggregate is not null
+        ? "user"
+        : BaselineAggregate is not null
+            ? "baseline"
+            : null;
+
+    public bool HasAnyData => PreferredAggregate is not null;
+
+    public static CarRadarCalibrationLookupResult Empty(HistoricalComboIdentity combo)
+    {
+        return new CarRadarCalibrationLookupResult(combo, UserAggregate: null, BaselineAggregate: null);
+    }
+}

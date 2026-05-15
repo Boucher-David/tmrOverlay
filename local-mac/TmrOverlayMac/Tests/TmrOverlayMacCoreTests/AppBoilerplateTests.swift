@@ -2,6 +2,15 @@
 import XCTest
 
 final class AppBoilerplateTests: XCTestCase {
+    func testMacHarnessVersionMatchesSharedBuildVersion() throws {
+        let propsURL = try repositoryRoot()
+            .appendingPathComponent("Directory.Build.props")
+        let props = try String(contentsOf: propsURL, encoding: .utf8)
+        let versionPrefix = try XCTUnwrap(extractVersionPrefix(from: props))
+
+        XCTAssertEqual(AppVersionInfo.current.version, versionPrefix)
+    }
+
     func testSettingsStorePersistsOverlaySettings() throws {
         let root = temporaryRoot("settings")
         defer {
@@ -90,10 +99,43 @@ final class AppBoilerplateTests: XCTestCase {
         XCTAssertEqual(streamChat.options[SharedOverlayContract.streamChatTwitchChannelKey], "techmatesracing")
     }
 
+    func testSettingsStoreMigratesLegacyDefaultOpacityToFullOpacity() throws {
+        let root = temporaryRoot("settings")
+        defer {
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let settingsURL = root.appendingPathComponent("settings.json")
+        try """
+        {
+          "settingsVersion": 10,
+          "overlays": [
+            {
+              "id": "standings",
+              "opacity": 0.88
+            },
+            {
+              "id": "relative",
+              "opacity": 0.72
+            }
+          ]
+        }
+        """.write(to: settingsURL, atomically: true, encoding: .utf8)
+
+        let reloaded = AppSettingsStore(settingsRoot: root).load()
+        let standings = try XCTUnwrap(reloaded.overlays.first { $0.id == "standings" })
+        let relative = try XCTUnwrap(reloaded.overlays.first { $0.id == "relative" })
+
+        XCTAssertEqual(reloaded.settingsVersion, SharedOverlayContract.current.settingsVersion)
+        XCTAssertEqual(standings.opacity, 1.0)
+        XCTAssertEqual(relative.opacity, 0.72)
+    }
+
     func testSharedContractDrivesStreamChatDefaultsAndDesignTokens() {
         XCTAssertEqual(StreamChatProviderOptions.defaultProvider, "twitch")
         XCTAssertEqual(StreamChatProviderOptions.defaultTwitchChannel, "techmatesracing")
-        XCTAssertEqual(SharedOverlayContract.current.settingsVersion, 10)
+        XCTAssertEqual(SharedOverlayContract.current.settingsVersion, 11)
         XCTAssertEqual(SharedOverlayContract.current.designV2ColorHex("cyan", fallback: ""), "#00E8FF")
     }
 
@@ -241,5 +283,34 @@ final class AppBoilerplateTests: XCTestCase {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("tmr-overlay-mac-\(purpose)-tests", isDirectory: true)
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    }
+
+    private func repositoryRoot() throws -> URL {
+        var candidate = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+        while true {
+            if FileManager.default.fileExists(atPath: candidate.appendingPathComponent("Directory.Build.props").path) {
+                return candidate
+            }
+
+            let parent = candidate.deletingLastPathComponent()
+            if parent.path == candidate.path {
+                throw XCTSkip("Repository root not available for version parity check.")
+            }
+
+            candidate = parent
+        }
+    }
+
+    private func extractVersionPrefix(from props: String) -> String? {
+        guard let openRange = props.range(of: "<VersionPrefix>") else {
+            return nil
+        }
+
+        let searchStart = openRange.upperBound
+        guard let closeRange = props[searchStart...].range(of: "</VersionPrefix>") else {
+            return nil
+        }
+
+        return String(props[searchStart..<closeRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

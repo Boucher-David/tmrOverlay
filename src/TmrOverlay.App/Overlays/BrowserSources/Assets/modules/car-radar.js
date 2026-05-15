@@ -1,178 +1,239 @@
 ensureRadarStyle();
-const radarModel = window.TmrBrowserModel;
+let carRadarDisplayModel = null;
+let displayedRenderModel = null;
+let fadeClearTimer = null;
 
 TmrBrowserOverlay.register({
-  render(live) {
-    const spatial = radarModel.spatial(live);
-    const cars = (spatial.cars || [])
-      .filter((row) => radarModel.hasRelativePlacement(row));
-    contentEl.innerHTML = radarMarkup(spatial, cars.slice(0, 10));
-    setStatus(live, spatial.hasData ? `live | ${spatial.sideStatus || 'radar'}` : 'waiting for radar');
+  async beforeRefresh() {
+    carRadarDisplayModel = await fetchOverlayModel('car-radar');
+  },
+  render() {
+    const renderModel = carRadarDisplayModel?.carRadar?.renderModel || null;
+    if (!isRenderableModel(renderModel)) {
+      clearRadarSurface();
+      renderHeaderItems(carRadarDisplayModel, carRadarDisplayModel?.status || 'waiting');
+      renderFooterSource(carRadarDisplayModel);
+      return;
+    }
+
+    if (renderModel.shouldRender) {
+      displayedRenderModel = renderModel;
+      clearFadeTimer();
+      renderRadarSurface(renderModel);
+    } else if (displayedRenderModel) {
+      fadeOutRadarSurface(renderModel);
+    } else {
+      clearRadarSurface();
+    }
+
+    renderHeaderItems(carRadarDisplayModel, carRadarDisplayModel?.status || 'live');
+    renderFooterSource(carRadarDisplayModel);
+  },
+  renderOffline() {
+    clearRadarSurface();
+    renderHeaderItems(null, '');
+    clearFooterSource();
   }
 });
 
 function ensureRadarStyle() {
-  if (document.getElementById('car-radar-browser-v2-style')) {
+  if (document.getElementById('car-radar-render-model-style')) {
     return;
   }
 
   const style = document.createElement('style');
-  style.id = 'car-radar-browser-v2-style';
+  style.id = 'car-radar-render-model-style';
   style.textContent = `
-    body.car-radar-page .overlay {
-      min-width: 300px;
-    }
-
     .radar-v2 {
-      position: relative;
-      width: min(300px, calc(100vw - 8px));
-      aspect-ratio: 1;
-      display: grid;
-      place-items: center;
-      border: 2px solid var(--tmr-cyan);
-      border-radius: 50%;
-      background: var(--tmr-surface);
+      width: min(var(--radar-width), 100vmin);
+      aspect-ratio: var(--radar-aspect);
+      display: block;
       overflow: visible;
-      box-shadow: 0 0 26px rgba(var(--tmr-cyan-rgb), 0.16);
+      opacity: var(--radar-opacity);
+      transition-property: opacity;
+      transition-duration: var(--radar-fade-duration);
+      transition-timing-function: linear;
     }
 
-    .radar-v2::before,
-    .radar-v2::after {
-      content: "";
-      position: absolute;
-      inset: 22px;
-      border: 1px solid rgba(var(--tmr-text-muted-rgb), 0.24);
-      border-radius: 50%;
+    .radar-v2 svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
     }
 
-    .radar-v2::after {
-      inset: 68px;
-    }
-
-    .radar-axis {
-      position: absolute;
-      background: rgba(var(--tmr-text-muted-rgb), 0.22);
-    }
-
-    .radar-axis-x {
-      left: 20px;
-      right: 20px;
-      top: 50%;
-      height: 1px;
-    }
-
-    .radar-axis-y {
-      top: 20px;
-      bottom: 20px;
-      left: 50%;
-      width: 1px;
-    }
-
-    .radar-status,
-    .radar-multiclass-label {
-      position: absolute;
-      z-index: 5;
-      font-weight: 800;
+    .radar-label {
+      font-family: "Segoe UI", Arial, sans-serif;
       letter-spacing: 0;
-      white-space: nowrap;
-    }
-
-    .radar-status {
-      left: 0;
-      right: 0;
-      top: -19px;
-      color: var(--tmr-error);
-      font-size: 10px;
-      text-align: center;
-    }
-
-    .radar-multiclass-label {
-      left: 58px;
-      right: 58px;
-      bottom: 36px;
-      color: var(--tmr-amber);
-      font-size: 10px;
-      text-align: center;
-    }
-
-    .radar-approach {
-      position: absolute;
-      inset: 14px;
-      z-index: 2;
+      dominant-baseline: middle;
       pointer-events: none;
-    }
-
-    .radar-car {
-      position: absolute;
-      width: 24px;
-      height: 50px;
-      border-radius: 5px;
-      border: 1px solid rgba(var(--tmr-text-rgb), 0.30);
-      background: var(--tmr-text-secondary);
-      transform: translate(-50%, -50%);
-      box-shadow: 0 0 14px rgba(var(--tmr-cyan-rgb), 0.14);
-    }
-
-    .radar-car.focus {
-      width: 24px;
-      height: 48px;
-      background: var(--tmr-text);
-      box-shadow: 0 0 18px rgba(var(--tmr-text-rgb), 0.22);
-      z-index: 4;
-    }
-
-    .radar-car.side-left,
-    .radar-car.side-right {
-      background: var(--tmr-error);
-      opacity: 0.98;
-      z-index: 3;
+      user-select: none;
     }
   `;
   document.head.appendChild(style);
 }
 
-function radarMarkup(spatial, cars) {
-  const sideLeft = spatial.hasCarLeft === true;
-  const sideRight = spatial.hasCarRight === true;
-  const approach = spatial.strongestMulticlassApproach;
-  const carMarkup = cars.map((car, index) => radarCarMarkup(car, index)).join('');
-  const approachSeconds = Number.isFinite(approach?.relativeSeconds)
-    ? Math.abs(approach.relativeSeconds).toFixed(1)
-    : null;
+function radarMarkup(renderModel, opacity, transitionModel = renderModel) {
+  const width = renderModel.width;
+  const height = renderModel.height;
+  const duration = opacity > 0
+    ? transitionModel.fadeInMilliseconds
+    : transitionModel.fadeOutMilliseconds;
   return `
-    <div class="radar-v2">
-      <div class="radar-status">${escapeHtml(radarStatusText(spatial))}</div>
-      <div class="radar-axis radar-axis-x"></div>
-      <div class="radar-axis radar-axis-y"></div>
-      ${approachSeconds ? `
-        <svg class="radar-approach" viewBox="0 0 272 272" aria-hidden="true">
-          <path d="M83 233 A118 118 0 0 1 137 254" fill="none" stroke="var(--tmr-amber)" stroke-width="5" stroke-linecap="round"></path>
-        </svg>
-        <div class="radar-multiclass-label">${approachSeconds}s</div>` : ''}
-      ${carMarkup}
-      ${sideLeft ? '<div class="radar-car side-left" style="left:28%;top:50%;"></div>' : ''}
-      ${sideRight ? '<div class="radar-car side-right" style="left:72%;top:50%;"></div>' : ''}
-      <div class="radar-car focus" style="left:50%;top:50%;"></div>
+    <div class="radar-v2" aria-label="Car Radar" style="--radar-width:${num(width)}px;--radar-aspect:${num(width)} / ${num(height)};--radar-opacity:${num(opacity)};--radar-fade-duration:${num(duration)}ms;">
+      <svg viewBox="0 0 ${formatNumber(width, 3)} ${formatNumber(height, 3)}" role="img">
+        ${circleMarkup(renderModel.background)}
+        ${(renderModel.multiclassArc ? [arcMarkup(renderModel.multiclassArc)] : []).join('')}
+        ${(renderModel.rings || []).map(circleMarkup).join('')}
+        ${(renderModel.cars || []).map(rectMarkup).join('')}
+        ${(renderModel.labels || []).map(textMarkup).join('')}
+      </svg>
     </div>`;
 }
 
-function radarCarMarkup(car, index) {
-  const seconds = Number.isFinite(car.relativeSeconds)
-    ? car.relativeSeconds
-    : Number.isFinite(car.relativeLaps) ? car.relativeLaps * 120 : 0;
-  const normalized = Math.max(-1, Math.min(1, seconds / 3.5));
-  const lane = (index % 3) - 1;
-  const left = 50 + lane * 12;
-  const top = 50 - normalized * 37;
-  return `<div class="radar-car" style="left:${left.toFixed(1)}%;top:${top.toFixed(1)}%;background:${classColorCss(car.carClassColorHex)};"></div>`;
+function renderRadarSurface(renderModel) {
+  const hasExistingSurface = contentEl.querySelector('.radar-v2') !== null;
+  contentEl.innerHTML = radarMarkup(renderModel, hasExistingSurface ? 1 : 0);
+  const surface = contentEl.querySelector('.radar-v2');
+  if (!surface) {
+    return;
+  }
+
+  if (hasExistingSurface) {
+    setRadarOpacity(surface, 1, renderModel);
+    return;
+  }
+
+  window.requestAnimationFrame(() => setRadarOpacity(surface, 1, renderModel));
 }
 
-function radarStatusText(spatial) {
-  if (Number.isFinite(spatial?.strongestMulticlassApproach?.relativeSeconds)) {
-    return `${Math.abs(spatial.strongestMulticlassApproach.relativeSeconds).toFixed(1)}s`;
+function fadeOutRadarSurface(renderModel) {
+  let surface = contentEl.querySelector('.radar-v2');
+  if (!surface) {
+    contentEl.innerHTML = radarMarkup(displayedRenderModel, 1, renderModel);
+    surface = contentEl.querySelector('.radar-v2');
   }
-  if (spatial?.hasCarLeft || spatial?.hasCarRight) {
-    return 'SIDE';
+
+  if (surface) {
+    window.requestAnimationFrame(() => setRadarOpacity(surface, 0, renderModel));
   }
-  return spatial?.hasData ? 'CLEAR' : 'WAIT';
+
+  scheduleRadarClear(renderModel);
+}
+
+function setRadarOpacity(surface, opacity, transitionModel) {
+  const duration = opacity > 0
+    ? transitionModel.fadeInMilliseconds
+    : transitionModel.fadeOutMilliseconds;
+  surface.style.setProperty('--radar-opacity', num(opacity));
+  surface.style.setProperty('--radar-fade-duration', `${num(duration)}ms`);
+}
+
+function isRenderableModel(renderModel) {
+  return renderModel
+    && Number.isFinite(renderModel.width)
+    && renderModel.width > 0
+    && Number.isFinite(renderModel.height)
+    && renderModel.height > 0;
+}
+
+function scheduleRadarClear(renderModel) {
+  clearFadeTimer();
+  const duration = Math.max(0, Number.isFinite(renderModel.fadeOutMilliseconds) ? renderModel.fadeOutMilliseconds : 0);
+  fadeClearTimer = window.setTimeout(() => {
+    if (carRadarDisplayModel?.carRadar?.renderModel?.shouldRender) {
+      return;
+    }
+
+    clearRadarSurface();
+  }, duration);
+}
+
+function clearFadeTimer() {
+  if (fadeClearTimer !== null) {
+    window.clearTimeout(fadeClearTimer);
+    fadeClearTimer = null;
+  }
+}
+
+function clearRadarSurface() {
+  clearFadeTimer();
+  displayedRenderModel = null;
+  contentEl.innerHTML = '';
+}
+
+function circleMarkup(circle) {
+  if (!circle) return '';
+  return `<ellipse cx="${num(circle.x + circle.width / 2)}" cy="${num(circle.y + circle.height / 2)}" rx="${num(circle.width / 2)}" ry="${num(circle.height / 2)}"${paintAttrs(circle)}></ellipse>`;
+}
+
+function rectMarkup(rect) {
+  if (!rect) return '';
+  const classes = ['radar-car-shape', rect.kind ? `radar-car-${escapeAttribute(rect.kind)}` : ''].filter(Boolean).join(' ');
+  return `<rect class="${classes}" x="${num(rect.x)}" y="${num(rect.y)}" width="${num(rect.width)}" height="${num(rect.height)}" rx="${num(rect.radius)}" ry="${num(rect.radius)}"${paintAttrs(rect)}></rect>`;
+}
+
+function arcMarkup(arc) {
+  if (!arc) return '';
+  const path = arcPath(arc);
+  return `<path d="${path}" fill="none" stroke="${colorCss(arc.stroke)}" stroke-width="${num(arc.strokeWidth)}" stroke-linecap="round"></path>`;
+}
+
+function textMarkup(label) {
+  if (!label) return '';
+  const anchor = label.alignment === 'center'
+    ? 'middle'
+    : label.alignment === 'far'
+      ? 'end'
+      : 'start';
+  const x = label.alignment === 'center'
+    ? label.x + label.width / 2
+    : label.alignment === 'far'
+      ? label.x + label.width
+      : label.x;
+  return `<text class="radar-label" x="${num(x)}" y="${num(label.y + label.height / 2)}" fill="${colorCss(label.color)}" font-size="${num(label.fontSize)}" font-weight="${label.bold ? 800 : 400}" text-anchor="${anchor}">${escapeHtml(label.text || '')}</text>`;
+}
+
+function paintAttrs(shape) {
+  const attrs = [];
+  attrs.push(` fill="${shape.fill ? colorCss(shape.fill) : 'none'}"`);
+  if (shape.stroke) {
+    attrs.push(` stroke="${colorCss(shape.stroke)}"`);
+    attrs.push(` stroke-width="${num(shape.strokeWidth || 1)}"`);
+  }
+  return attrs.join('');
+}
+
+function arcPath(arc) {
+  const centerX = arc.x + arc.width / 2;
+  const centerY = arc.y + arc.height / 2;
+  const radiusX = arc.width / 2;
+  const radiusY = arc.height / 2;
+  const start = polarPoint(centerX, centerY, radiusX, radiusY, arc.startDegrees);
+  const end = polarPoint(centerX, centerY, radiusX, radiusY, arc.startDegrees + arc.sweepDegrees);
+  const largeArc = Math.abs(arc.sweepDegrees) > 180 ? 1 : 0;
+  const sweep = arc.sweepDegrees >= 0 ? 1 : 0;
+  return `M ${num(start.x)} ${num(start.y)} A ${num(radiusX)} ${num(radiusY)} 0 ${largeArc} ${sweep} ${num(end.x)} ${num(end.y)}`;
+}
+
+function polarPoint(centerX, centerY, radiusX, radiusY, degrees) {
+  const radians = degrees * Math.PI / 180;
+  return {
+    x: centerX + Math.cos(radians) * radiusX,
+    y: centerY + Math.sin(radians) * radiusY
+  };
+}
+
+function colorCss(color) {
+  if (!color) return 'transparent';
+  const alpha = Number.isFinite(color.alpha) ? Math.max(0, Math.min(255, color.alpha)) / 255 : 1;
+  return `rgba(${clampByte(color.red)}, ${clampByte(color.green)}, ${clampByte(color.blue)}, ${Number(alpha.toFixed(3))})`;
+}
+
+function clampByte(value) {
+  return Math.max(0, Math.min(255, Math.round(Number.isFinite(value) ? value : 0)));
+}
+
+function num(value) {
+  return formatNumber(Number(value), 3);
 }

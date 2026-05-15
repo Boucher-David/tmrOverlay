@@ -18,7 +18,7 @@ internal static class InputStateOverlayViewModel
             return SimpleTelemetryOverlayViewModel.Waiting("Input / Car State", availability.StatusText);
         }
 
-        if (!IsPlayerInCar(snapshot))
+        if (!IsPlayerInCar(snapshot, now))
         {
             return SimpleTelemetryOverlayViewModel.Waiting("Input / Car State", "waiting for player in car");
         }
@@ -66,10 +66,12 @@ internal static class InputStateOverlayViewModel
             $"C {SimpleTelemetryOverlayViewModel.FormatPercent(inputs.Clutch)}");
     }
 
-    private static bool IsPlayerInCar(LiveTelemetrySnapshot snapshot)
+    private static bool IsPlayerInCar(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
     {
-        var race = snapshot.Models.RaceEvents;
-        return !race.HasData || (race.IsOnTrack && !race.IsInGarage);
+        return LiveLocalStrategyContext.ForRequirement(
+            snapshot,
+            now,
+            OverlayContextRequirement.LocalPlayerInCar).IsAvailable;
     }
 
     private static string FormatStatus(LiveInputTelemetryModel inputs)

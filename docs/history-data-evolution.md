@@ -153,8 +153,12 @@ The current implementation is intentionally narrow:
 - `aggregate.json` is rebuilt from all compatible summaries in each car/track/session folder
 - corrupt, unsupported, or future-version summaries are skipped and recorded in the maintenance manifest
 - `SessionHistoryQueryService` rejects incompatible aggregate versions instead of feeding them to overlays
+- `aggregateVersion = 3` keeps combo aggregates track/session scoped and removes radar calibration from `aggregate.json`
+- car radar body-size calibration is stored separately at `history/user/cars/{carKey}/radar-calibration.json`, versioned by `carRadarCalibrationAggregateVersion`
 - diagnostics bundles include `history/user/.maintenance/manifest.json` when present
 - `HistorySchemaCompatibilityTests` snapshots durable summary, aggregate, and analysis model shapes so schema changes force a compatibility review during test validation
+
+Radar calibration history is car-scoped, not track/session-scoped. Summaries may store clean `CarLeftRight` side-window durations, identity-backed body-length estimates, and confidence flags. The car-level aggregate stops accepting new learned samples once the body-length metric is trusted. Live radar uses exact bundled car specifications first, trusted user calibration second, low-confidence bundled estimates third, and the hard-coded default only when none of those are available.
 
 Settings already use `AppSettingsMigrator`; history maintenance should follow that pattern but operate on directories of files instead of one settings document.
 

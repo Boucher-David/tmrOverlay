@@ -142,8 +142,23 @@ enum DesignV2OverlayChromeVisibility {
         )
     }
 
-    static func footerSourceEnabled(settings: OverlaySettings, sessionKey: String?) -> Bool {
+    static func headerTimeRemainingEnabled(settings: OverlaySettings, sessionKey: String?) -> Bool {
         chromeOption(
+            settings: settings,
+            sessionKey: sessionKey,
+            testKey: "chrome.header.time-remaining.test",
+            practiceKey: "chrome.header.time-remaining.practice",
+            qualifyingKey: "chrome.header.time-remaining.qualifying",
+            raceKey: "chrome.header.time-remaining.race"
+        )
+    }
+
+    static func footerSourceEnabled(settings: OverlaySettings, sessionKey: String?) -> Bool {
+        guard settings.id.lowercased() != "session-weather" else {
+            return false
+        }
+
+        return chromeOption(
             settings: settings,
             sessionKey: sessionKey,
             testKey: "chrome.footer.source.test",
@@ -167,7 +182,7 @@ enum DesignV2OverlayChromeVisibility {
 
         switch sessionKind {
         case "test":
-            return boolOption(settings.options[testKey], defaultValue: true)
+            return boolOption(settings.options[practiceKey], defaultValue: true)
         case "practice":
             return boolOption(settings.options[practiceKey], defaultValue: true)
         case "qualifying":
@@ -185,10 +200,7 @@ enum DesignV2OverlayChromeVisibility {
         }
 
         let normalized = sessionKey.lowercased()
-        if normalized.contains("test") {
-            return "test"
-        }
-        if normalized.contains("practice") {
+        if normalized.contains("test") || normalized.contains("practice") {
             return "practice"
         }
         if normalized.contains("qual") {

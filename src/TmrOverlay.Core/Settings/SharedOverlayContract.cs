@@ -12,7 +12,7 @@ internal static class SharedOverlayContract
     public const string StreamChatProviderTwitch = "twitch";
 
     private const int FallbackContractVersion = 1;
-    private const int FallbackSettingsVersion = 10;
+    private const int FallbackSettingsVersion = 11;
     private const string FallbackFontFamily = "Segoe UI";
     private const string FallbackUnitSystem = "Metric";
     private const string FallbackTwitchChannel = "techmatesracing";
@@ -173,7 +173,16 @@ internal static class SharedOverlayContract
         var streamChatDefaults = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             [OverlayOptionKeys.StreamChatProvider] = StreamChatProviderTwitch,
-            [OverlayOptionKeys.StreamChatTwitchChannel] = FallbackTwitchChannel
+            [OverlayOptionKeys.StreamChatTwitchChannel] = FallbackTwitchChannel,
+            [OverlayOptionKeys.StreamChatShowAuthorColor] = "true",
+            [OverlayOptionKeys.StreamChatShowBadges] = "true",
+            [OverlayOptionKeys.StreamChatShowBits] = "true",
+            [OverlayOptionKeys.StreamChatShowFirstMessage] = "true",
+            [OverlayOptionKeys.StreamChatShowReplies] = "true",
+            [OverlayOptionKeys.StreamChatShowTimestamps] = "true",
+            [OverlayOptionKeys.StreamChatShowEmotes] = "true",
+            [OverlayOptionKeys.StreamChatShowAlerts] = "true",
+            [OverlayOptionKeys.StreamChatShowMessageIds] = "false"
         };
         var overlayDefaults = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.OrdinalIgnoreCase)
         {

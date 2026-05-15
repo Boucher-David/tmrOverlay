@@ -31,6 +31,20 @@ internal sealed class SessionHistoryQueryService
         return new SessionHistoryLookupResult(combo, userAggregate, baselineAggregate);
     }
 
+    public CarRadarCalibrationLookupResult LookupCarRadarCalibration(HistoricalComboIdentity combo)
+    {
+        if (!_options.Enabled)
+        {
+            return CarRadarCalibrationLookupResult.Empty(combo);
+        }
+
+        var userAggregate = ReadCarRadarCalibrationAggregate(_options.ResolvedUserHistoryRoot, combo.CarKey);
+        var baselineAggregate = _options.UseBaselineHistory
+            ? ReadCarRadarCalibrationAggregate(_options.ResolvedBaselineHistoryRoot, combo.CarKey)
+            : null;
+        return new CarRadarCalibrationLookupResult(combo, userAggregate, baselineAggregate);
+    }
+
     private static HistoricalSessionAggregate? ReadAggregate(string root, HistoricalComboIdentity combo)
     {
         var path = Path.Combine(
@@ -53,6 +67,35 @@ internal sealed class SessionHistoryQueryService
             using var stream = File.OpenRead(path);
             var aggregate = JsonSerializer.Deserialize<HistoricalSessionAggregate>(stream, JsonOptions);
             return aggregate?.AggregateVersion == HistoricalDataVersions.AggregateVersion
+                ? aggregate
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static HistoricalCarRadarCalibrationAggregate? ReadCarRadarCalibrationAggregate(
+        string root,
+        string carKey)
+    {
+        var path = Path.Combine(
+            root,
+            "cars",
+            carKey,
+            "radar-calibration.json");
+
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var stream = File.OpenRead(path);
+            var aggregate = JsonSerializer.Deserialize<HistoricalCarRadarCalibrationAggregate>(stream, JsonOptions);
+            return aggregate?.AggregateVersion == HistoricalDataVersions.CarRadarCalibrationAggregateVersion
                 ? aggregate
                 : null;
         }

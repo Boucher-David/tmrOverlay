@@ -11,7 +11,7 @@ The Relative overlay is the first production overlay using the model-v2 live sta
 - `src/TmrOverlay.App/Overlays/Relative/RelativeForm.cs`
 - `src/TmrOverlay.Core/Telemetry/Live/LiveRaceModelBuilder.cs`
 
-The mac harness mirrors the surface in `local-mac/TmrOverlayMac/Sources/TmrOverlayMac/Overlays/Relative/` using mock proximity telemetry for local design iteration.
+Browser review is the primary local design surface for Relative. The deprecated mac harness still has a legacy mirror in `local-mac/TmrOverlayMac/Sources/TmrOverlayMac/Overlays/Relative/`, but it is not the product parity target.
 
 ## Inputs
 
@@ -65,9 +65,11 @@ Rows show:
 - Seconds first, then physical distance when available. Lap-fraction-only rows render unavailable instead of showing `L` units in the Relative overlay.
 - Optional pit column when enabled in Content settings.
 
-Relative uses the shared content-column manager. Columns have Relative-owned option keys, remain in one ordered list even when disabled, expose pixel widths, and drive both native/browser rendering plus the OBS size recommendation. The default content keeps the table compact: position, full driver name, and gap are visible; pit is available but disabled by default.
+Relative uses the shared content-column manager. Columns have Relative-owned option keys and drive both native/localhost rendering plus the OBS size recommendation. The current V1 Design V2 settings surface exposes visible content rows plus the rows-around-focus count control; advanced table width/order editing is deferred to the future V2 custom settings slideout. The default content keeps the table compact: position, full driver name, and gap are visible; pit is available but disabled by default.
 
 Normal rows are quiet. Reference rows are visually emphasized; pit rows remain visible but are de-emphasized with muted text/background so the driver can see they are being passed in pit lane rather than treated as an on-track threat. Fully degraded rows are muted.
+
+Whole-lap relationships are visual text states, not extra columns. A car one lap ahead of the reference uses light red text, two or more laps ahead uses the stronger error red, one lap behind uses light blue text, and two or more laps behind uses stronger blue text. This text color is independent of car class; class color remains a row accent/background cue.
 
 Relative seconds come from live proximity timing when available. If proximity has only lap-distance placement, the model-v2 relative row can infer a display seconds gap from live lap-distance delta multiplied by the current local/focus lap-time signal. Radar does not consume that inferred seconds value; it remains stricter and uses only live proximity seconds or physical distance for proximity placement.
 
@@ -102,7 +104,7 @@ Unexpected refresh/render failures are logged through the overlay logger and sur
 - Default id: `relative`.
 - Default size: `520x360`.
 - Default position: `(650, 24)`, near the right-side driver stack.
-- Settings expose cars ahead, cars behind, and Content-tab column controls.
-- Theme font, visibility, scale, opacity, session filters, and persistence follow the same managed-overlay behavior as the other product overlays.
+- Settings expose a symmetric rows-around-focus count and Content-tab row visibility controls.
+- Theme font, visibility, scale, opacity, content/header/footer session gates, and persistence follow the same managed-overlay behavior as the other product overlays.
 
-The localhost browser-source route also reads `/api/relative` so it can honor the same cars-ahead, cars-behind, and content-column settings as the native overlay.
+The localhost route also reads `/api/relative` so it can honor the same rows-around-focus and content settings as the native overlay. Browser review replay validation should spoof settings/API options when testing content and header/footer states, while keeping relative row values, lap relationships, class positions, and timing evidence capture-derived when available.

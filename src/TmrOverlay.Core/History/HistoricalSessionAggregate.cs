@@ -53,6 +53,102 @@ internal sealed class HistoricalSessionAggregate
     public RunningHistoricalMetric AverageNoTirePitServiceSeconds { get; set; } = new();
 }
 
+internal sealed class HistoricalCarRadarCalibrationAggregate
+{
+    public int AggregateVersion { get; set; } = HistoricalDataVersions.CarRadarCalibrationAggregateVersion;
+
+    public string? CarKey { get; set; }
+
+    public HistoricalCarIdentity? Car { get; set; }
+
+    public DateTimeOffset UpdatedAtUtc { get; set; }
+
+    public int SessionCount { get; set; }
+
+    public HistoricalRadarCalibrationAggregate RadarCalibration { get; set; } = new();
+}
+
+internal sealed class HistoricalRadarCalibrationAggregate
+{
+    public int SourceSessionCount { get; set; }
+
+    public HistoricalRadarCalibrationMetric SideOverlapWindowSeconds { get; set; } = new();
+
+    public HistoricalRadarCalibrationMetric EstimatedBodyLengthMeters { get; set; } = new();
+
+    public string[] ConfidenceFlags { get; set; } = [];
+
+    public void Add(HistoricalRadarCalibrationSummary? summary)
+    {
+        if (summary is null)
+        {
+            return;
+        }
+
+        var hadData = summary.SideOverlapWindowSeconds.SampleCount > 0
+            || summary.EstimatedBodyLengthMeters.SampleCount > 0;
+        if (!hadData)
+        {
+            return;
+        }
+
+        SourceSessionCount++;
+        SideOverlapWindowSeconds.Add(summary.SideOverlapWindowSeconds);
+        EstimatedBodyLengthMeters.Add(summary.EstimatedBodyLengthMeters);
+        ConfidenceFlags = ConfidenceFlags
+            .Concat(summary.ConfidenceFlags)
+            .Where(flag => !string.IsNullOrWhiteSpace(flag))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Order(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+}
+
+internal static class HistoricalRadarCalibrationTrust
+{
+    private const int MinimumEstimatedBodyLengthSamples = 3;
+    private const double MinimumEstimatedBodyLengthMeters = 3.5d;
+    private const double MaximumEstimatedBodyLengthMeters = 6.5d;
+    private const double MaximumEstimatedBodyLengthSpreadMeters = 1.5d;
+
+    public static bool TryGetTrustedBodyLengthMeters(
+        HistoricalRadarCalibrationMetric? metric,
+        out double bodyLengthMeters)
+    {
+        bodyLengthMeters = 0d;
+        if (metric is null
+            || metric.SampleCount < MinimumEstimatedBodyLengthSamples
+            || metric.Mean is not { } mean
+            || metric.Minimum is not { } minimum
+            || metric.Maximum is not { } maximum)
+        {
+            return false;
+        }
+
+        if (double.IsNaN(mean)
+            || double.IsInfinity(mean)
+            || double.IsNaN(minimum)
+            || double.IsInfinity(minimum)
+            || double.IsNaN(maximum)
+            || double.IsInfinity(maximum))
+        {
+            return false;
+        }
+
+        if (mean < MinimumEstimatedBodyLengthMeters
+            || mean > MaximumEstimatedBodyLengthMeters
+            || minimum < MinimumEstimatedBodyLengthMeters
+            || maximum > MaximumEstimatedBodyLengthMeters
+            || maximum - minimum > MaximumEstimatedBodyLengthSpreadMeters)
+        {
+            return false;
+        }
+
+        bodyLengthMeters = mean;
+        return true;
+    }
+}
+
 internal sealed class RunningHistoricalMetric
 {
     public int SampleCount { get; set; }

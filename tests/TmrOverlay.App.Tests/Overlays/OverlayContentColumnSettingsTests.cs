@@ -3,8 +3,10 @@ using System.Reflection;
 using TmrOverlay.App.Overlays;
 using TmrOverlay.App.Overlays.BrowserSources;
 using TmrOverlay.App.Overlays.Content;
+using TmrOverlay.App.Overlays.InputState;
 using TmrOverlay.App.Overlays.Relative;
 using TmrOverlay.App.Overlays.Standings;
+using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 using Xunit;
 
@@ -121,6 +123,10 @@ public sealed class OverlayContentColumnSettingsTests
             && column.Label == "Pos"
             && column.SettingsLabel == "Relative position");
         Assert.Contains(relativeColumns, column =>
+            column.Id == OverlayContentColumnSettings.RelativeGapColumnId
+            && column.Label == "Delta"
+            && column.SettingsLabel == "Relative delta");
+        Assert.Contains(relativeColumns, column =>
             column.Id == OverlayContentColumnSettings.RelativePitColumnId
             && column.Label == "Pit"
             && column.SettingsLabel == "Pit status");
@@ -144,6 +150,52 @@ public sealed class OverlayContentColumnSettingsTests
 
         Assert.Equal(736, size.Width);
         Assert.Equal(650, size.Height);
+    }
+
+    [Fact]
+    public void InputStateOverlaySizesShrinkToEnabledContent()
+    {
+        var method = typeof(OverlayManager).GetMethod(
+            "ScaledOverlaySize",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var full = NewInputStateSettings();
+        Assert.Equal(new Size(520, 260), ScaledInputStateSize(method, full));
+        Assert.Equal(new Size(520, 260), BrowserOverlayRecommendedSize.For(InputStateOverlayDefinition.Definition, full));
+
+        var railOnly = NewInputStateSettings();
+        SetInputBlocks(railOnly, InputGraphBlockIds, false);
+        Assert.Equal(new Size(276, 260), ScaledInputStateSize(method, railOnly));
+        Assert.Equal(new Size(276, 260), BrowserOverlayRecommendedSize.For(InputStateOverlayDefinition.Definition, railOnly));
+
+        var graphOnly = NewInputStateSettings();
+        SetInputBlocks(graphOnly, InputRailBlockIds, false);
+        Assert.Equal(new Size(380, 260), ScaledInputStateSize(method, graphOnly));
+        Assert.Equal(new Size(380, 260), BrowserOverlayRecommendedSize.For(InputStateOverlayDefinition.Definition, graphOnly));
+
+        var empty = NewInputStateSettings();
+        SetInputBlocks(empty, InputGraphBlockIds, false);
+        SetInputBlocks(empty, InputRailBlockIds, false);
+        Assert.Equal(new Size(276, 260), ScaledInputStateSize(method, empty));
+        Assert.False(InputStateRenderModelBuilder.HasEnabledContent(empty));
+    }
+
+    [Fact]
+    public void OverlayManagerPreservesExpandedStandingsHeightWithoutFreezingOtherSizes()
+    {
+        Assert.True(OverlayManager.ShouldPreserveExpandedOverlayHeight(
+            StandingsOverlayDefinition.Definition,
+            new Size(780, 720),
+            new Size(780, 520)));
+        Assert.False(OverlayManager.ShouldPreserveExpandedOverlayHeight(
+            StandingsOverlayDefinition.Definition,
+            new Size(760, 720),
+            new Size(780, 520)));
+        Assert.False(OverlayManager.ShouldPreserveExpandedOverlayHeight(
+            RelativeOverlayDefinition.Definition,
+            new Size(520, 520),
+            new Size(520, 360)));
     }
 
     [Fact]
@@ -182,8 +234,84 @@ public sealed class OverlayContentColumnSettingsTests
             dataKey => Assert.Equal(OverlayContentColumnSettings.DataGap, dataKey));
     }
 
+    [Fact]
+    public void PitServiceContentDefinitionExposesMetricAndTireAnalysisToggles()
+    {
+        Assert.True(OverlayContentColumnSettings.TryGetContentDefinition("pit-service", out var definition));
+        Assert.Empty(definition.Columns);
+        Assert.Contains(OverlayContentColumnSettings.All, item => item.OverlayId == "pit-service");
+        var blocks = definition.Blocks ?? [];
+        Assert.Contains(blocks, block => block.Id == OverlayContentColumnSettings.PitServiceReleaseBlockId);
+        Assert.Contains(blocks, block => block.Id == OverlayContentColumnSettings.PitServiceFuelSelectedBlockId);
+        Assert.Contains(blocks, block => block.Id == OverlayContentColumnSettings.PitServiceRepairRequiredBlockId);
+        Assert.Contains(blocks, block => block.EnabledOptionKey == OverlayOptionKeys.PitServiceShowTireCompound);
+        Assert.Contains(blocks, block => block.EnabledOptionKey == OverlayOptionKeys.PitServiceShowTireChange);
+        Assert.Contains(blocks, block => block.EnabledOptionKey == OverlayOptionKeys.PitServiceShowTireSetLimit);
+        Assert.Contains(blocks, block => block.EnabledOptionKey == OverlayOptionKeys.PitServiceShowTireSetsAvailable);
+        Assert.Contains(blocks, block => block.EnabledOptionKey == OverlayOptionKeys.PitServiceShowTireSetsUsed);
+        Assert.Contains(blocks, block => block.EnabledOptionKey == OverlayOptionKeys.PitServiceShowTirePressure);
+        Assert.Contains(blocks, block => block.EnabledOptionKey == OverlayOptionKeys.PitServiceShowTireTemperature);
+        Assert.Contains(blocks, block => block.EnabledOptionKey == OverlayOptionKeys.PitServiceShowTireWear);
+        Assert.Contains(blocks, block => block.EnabledOptionKey == OverlayOptionKeys.PitServiceShowTireDistance);
+    }
+
+    [Fact]
+    public void SessionWeatherContentDefinitionExposesMetricCellToggles()
+    {
+        Assert.True(OverlayContentColumnSettings.TryGetContentDefinition("session-weather", out var definition));
+        Assert.Empty(definition.Columns);
+        Assert.Contains(OverlayContentColumnSettings.All, item => item.OverlayId == "session-weather");
+        var blocks = definition.Blocks ?? [];
+        Assert.Contains(blocks, block => block.Id == OverlayContentColumnSettings.SessionWeatherSessionTypeBlockId);
+        Assert.Contains(blocks, block => block.Id == OverlayContentColumnSettings.SessionWeatherClockRemainingBlockId);
+        Assert.Contains(blocks, block => block.Id == OverlayContentColumnSettings.SessionWeatherSurfaceDeclaredBlockId);
+        Assert.Contains(blocks, block => block.Id == OverlayContentColumnSettings.SessionWeatherWindFacingBlockId);
+        Assert.Contains(blocks, block => block.Id == OverlayContentColumnSettings.SessionWeatherAtmospherePressureBlockId);
+    }
+
     private static OverlayContentColumnDefinition Column(string id)
     {
         return OverlayContentColumnSettings.Standings.Columns.Single(column => column.Id == id);
+    }
+
+    private static readonly string[] InputGraphBlockIds =
+    [
+        OverlayContentColumnSettings.InputThrottleTraceBlockId,
+        OverlayContentColumnSettings.InputBrakeTraceBlockId,
+        OverlayContentColumnSettings.InputClutchTraceBlockId
+    ];
+
+    private static readonly string[] InputRailBlockIds =
+    [
+        OverlayContentColumnSettings.InputThrottleBlockId,
+        OverlayContentColumnSettings.InputBrakeBlockId,
+        OverlayContentColumnSettings.InputClutchBlockId,
+        OverlayContentColumnSettings.InputSteeringBlockId,
+        OverlayContentColumnSettings.InputGearBlockId,
+        OverlayContentColumnSettings.InputSpeedBlockId
+    ];
+
+    private static OverlaySettings NewInputStateSettings()
+    {
+        return new ApplicationSettings().GetOrAddOverlay(
+            InputStateOverlayDefinition.Definition.Id,
+            InputStateOverlayDefinition.Definition.DefaultWidth,
+            InputStateOverlayDefinition.Definition.DefaultHeight);
+    }
+
+    private static Size ScaledInputStateSize(MethodInfo method, OverlaySettings settings)
+    {
+        return (Size)method.Invoke(null, [InputStateOverlayDefinition.Definition, settings])!;
+    }
+
+    private static void SetInputBlocks(OverlaySettings settings, IEnumerable<string> blockIds, bool enabled)
+    {
+        Assert.NotNull(OverlayContentColumnSettings.InputState.Blocks);
+        var blocks = OverlayContentColumnSettings.InputState.Blocks!;
+        foreach (var blockId in blockIds)
+        {
+            var block = blocks.Single(block => block.Id == blockId);
+            settings.SetBooleanOption(block.EnabledOptionKey, enabled);
+        }
     }
 }

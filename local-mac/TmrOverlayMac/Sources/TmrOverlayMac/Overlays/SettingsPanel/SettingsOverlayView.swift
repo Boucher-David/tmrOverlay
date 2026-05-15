@@ -1,6 +1,11 @@
 import AppKit
 
 final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate {
+    private struct ChromeSettingsRow {
+        var label: String
+        var keys: [String]
+    }
+
     private static let designV2Theme = DesignV2Theme.outrun
     private var settings: ApplicationSettings
     private var captureSnapshot: TelemetryCaptureStatusSnapshot
@@ -332,11 +337,11 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
 
     private func errorLoggingTab() -> NSTabViewItem {
         let item = NSTabViewItem(identifier: "error-logging")
-        item.label = "Support"
+        item.label = "Diagnostics"
         let content = tabContentView()
 
-        content.addSubview(label("Support", frame: NSRect(x: 18, y: 500, width: 520, height: 24), bold: true))
-        content.addSubview(label("Use this tab when we ask for diagnostics or version details.", frame: NSRect(x: 22, y: 470, width: 640, height: 24)))
+        content.addSubview(label("Diagnostics", frame: NSRect(x: 18, y: 500, width: 520, height: 24), bold: true))
+        content.addSubview(label("Use this tab when we ask for diagnostics or support bundles.", frame: NSRect(x: 22, y: 470, width: 640, height: 24)))
 
         content.addSubview(label("App version", frame: NSRect(x: 22, y: 432, width: 120, height: 22)))
         let appVersion = valueLabel(appVersionText(), frame: NSRect(x: 150, y: 428, width: 380, height: 28))
@@ -418,24 +423,12 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
             tabs.addTabViewItem(regionTab("Header", view: overlayChromeRegion(
                 overlayId: definition.id,
                 title: "Header",
-                itemLabel: "Status",
-                keys: [
-                    "chrome.header.status.test",
-                    "chrome.header.status.practice",
-                    "chrome.header.status.qualifying",
-                    "chrome.header.status.race"
-                ]
+                rows: Self.headerChromeRows
             )))
             tabs.addTabViewItem(regionTab("Footer", view: overlayChromeRegion(
                 overlayId: definition.id,
                 title: "Footer",
-                itemLabel: "Source",
-                keys: [
-                    "chrome.footer.source.test",
-                    "chrome.footer.source.practice",
-                    "chrome.footer.source.qualifying",
-                    "chrome.footer.source.race"
-                ]
+                rows: Self.footerChromeRows(for: definition.id)
             )))
         }
         return tabs
@@ -463,8 +456,7 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
                 definition: definition,
                 overlay: overlay,
                 top: 376,
-                includeVisibility: false,
-                includeSessionFilters: false
+                includeVisibility: false
             )
             addLocalhostOptions(to: content, definition: definition, overlay: overlay, top: nextTop)
             return content
@@ -475,8 +467,7 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
             definition: definition,
             overlay: overlay,
             top: 376,
-            includeVisibility: true,
-            includeSessionFilters: definition.showSessionFilters
+            includeVisibility: true
         )
         addLocalhostOptions(to: content, definition: definition, overlay: overlay, top: nextTop)
         return content
@@ -517,8 +508,7 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
     private func overlayChromeRegion(
         overlayId: String,
         title: String,
-        itemLabel: String,
-        keys: [String]
+        rows: [ChromeSettingsRow]
     ) -> NSView {
         let content = regionContentView()
         guard supportsSharedChromeSettings(overlayId) else {
@@ -528,25 +518,68 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         }
 
         content.addSubview(label(title, frame: NSRect(x: 18, y: 376, width: 520, height: 24), bold: true))
+        if rows.isEmpty {
+            content.addSubview(label("No \(title.lowercased()) controls for this overlay.", frame: NSRect(x: 22, y: 334, width: 420, height: 24)))
+            return content
+        }
+
         content.addSubview(label("Item", frame: NSRect(x: 22, y: 334, width: 120, height: 24)))
-        content.addSubview(label("Test", frame: NSRect(x: 196, y: 334, width: 90, height: 24)))
-        content.addSubview(label("Practice", frame: NSRect(x: 296, y: 334, width: 110, height: 24)))
-        content.addSubview(label("Qualifying", frame: NSRect(x: 416, y: 334, width: 120, height: 24)))
-        content.addSubview(label("Race", frame: NSRect(x: 548, y: 334, width: 90, height: 24)))
-        content.addSubview(label(itemLabel, frame: NSRect(x: 22, y: 292, width: 150, height: 24)))
+        content.addSubview(label("Practice", frame: NSRect(x: 196, y: 334, width: 110, height: 24)))
+        content.addSubview(label("Qualifying", frame: NSRect(x: 326, y: 334, width: 120, height: 24)))
+        content.addSubview(label("Race", frame: NSRect(x: 468, y: 334, width: 90, height: 24)))
         let overlay = settings.overlay(id: overlayId, defaultSize: .zero)
-        for (index, key) in keys.enumerated() {
-            let x = [196, 296, 416, 548][index]
-            let checked = optionBool(overlay, key: key, defaultValue: true)
-            content.addSubview(checkbox(
-                title: "",
-                state: checked,
-                frame: NSRect(x: CGFloat(x), y: 292, width: 32, height: 24),
-                identifier: "\(overlayId)|\(key)"
-            ))
+        for (rowIndex, row) in rows.enumerated() {
+            let y = 292 - CGFloat(rowIndex) * 42
+            content.addSubview(label(row.label, frame: NSRect(x: 22, y: y, width: 150, height: 24)))
+            for (index, key) in chromeDisplayKeys(row.keys).enumerated() {
+                let x = [196, 326, 468][index]
+                let checked = optionBool(overlay, key: key, defaultValue: true)
+                content.addSubview(checkbox(
+                    title: "",
+                    state: checked,
+                    frame: NSRect(x: CGFloat(x), y: y, width: 32, height: 24),
+                    identifier: "\(overlayId)|\(key)"
+                ))
+            }
         }
 
         return content
+    }
+
+    private static let headerChromeRows = [
+        ChromeSettingsRow(label: "Status", keys: [
+            "chrome.header.status.test",
+            "chrome.header.status.practice",
+            "chrome.header.status.qualifying",
+            "chrome.header.status.race"
+        ]),
+        ChromeSettingsRow(label: "Time remaining", keys: [
+            "chrome.header.time-remaining.test",
+            "chrome.header.time-remaining.practice",
+            "chrome.header.time-remaining.qualifying",
+            "chrome.header.time-remaining.race"
+        ])
+    ]
+
+    private static let footerChromeRows = [
+        ChromeSettingsRow(label: "Source", keys: [
+            "chrome.footer.source.test",
+            "chrome.footer.source.practice",
+            "chrome.footer.source.qualifying",
+            "chrome.footer.source.race"
+        ])
+    ]
+
+    private static func footerChromeRows(for overlayId: String) -> [ChromeSettingsRow] {
+        overlayId.lowercased() == "session-weather" ? [] : footerChromeRows
+    }
+
+    private func chromeDisplayKeys(_ keys: [String]) -> [String] {
+        guard keys.count == 4 else {
+            return keys
+        }
+
+        return [keys[1], keys[2], keys[3]]
     }
 
     private func supportsSharedChromeSettings(_ overlayId: String) -> Bool {
@@ -562,8 +595,7 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         definition: OverlayDefinition,
         overlay: OverlaySettings,
         top: CGFloat,
-        includeVisibility: Bool,
-        includeSessionFilters: Bool
+        includeVisibility: Bool
     ) -> CGFloat {
         var controlsY = top
         if includeVisibility {
@@ -594,7 +626,7 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         if definition.showOpacityControl {
             content.addSubview(label(definition.id == "track-map" ? "Map fill" : "Opacity", frame: NSRect(x: 22, y: controlsY, width: 120, height: 24)))
             let opacity = NSPopUpButton(frame: NSRect(x: 170, y: controlsY - 4, width: 120, height: 28), pullsDown: false)
-            let opacityValues = [20, 30, 40, 50, 60, 70, 80, 88, 90, 100]
+            let opacityValues = [20, 30, 40, 50, 60, 70, 80, 90, 100]
             opacity.addItems(withTitles: opacityValues.map { "\($0)%" })
             let selectedOpacity = closestOpacityValue(to: overlay.opacity, allowedValues: opacityValues)
             opacity.selectItem(withTitle: "\(selectedOpacity)%")
@@ -603,37 +635,6 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
             opacity.action = #selector(opacityChanged(_:))
             content.addSubview(opacity)
             controlsY -= 46
-        }
-
-        if includeSessionFilters {
-            let sessionBox = NSBox(frame: NSRect(x: 22, y: controlsY - 76, width: 430, height: 76))
-            sessionBox.title = "Display in sessions"
-            sessionBox.contentView?.addSubview(checkbox(
-                title: "Test",
-                state: overlay.showInTest,
-                frame: NSRect(x: 14, y: 22, width: 78, height: 24),
-                identifier: "\(definition.id)|test"
-            ))
-            sessionBox.contentView?.addSubview(checkbox(
-                title: "Practice",
-                state: overlay.showInPractice,
-                frame: NSRect(x: 104, y: 22, width: 98, height: 24),
-                identifier: "\(definition.id)|practice"
-            ))
-            sessionBox.contentView?.addSubview(checkbox(
-                title: "Qualifying",
-                state: overlay.showInQualifying,
-                frame: NSRect(x: 214, y: 22, width: 112, height: 24),
-                identifier: "\(definition.id)|qualifying"
-            ))
-            sessionBox.contentView?.addSubview(checkbox(
-                title: "Race",
-                state: overlay.showInRace,
-                frame: NSRect(x: 338, y: 22, width: 76, height: 24),
-                identifier: "\(definition.id)|race"
-            ))
-            content.addSubview(sessionBox)
-            controlsY -= 98
         }
 
         return controlsY - 12
@@ -783,16 +784,10 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
                 frame: NSRect(x: 22, y: top, width: 190, height: 24),
                 identifier: "\(definition.id)|fuelAdvice"
             ))
-            content.addSubview(checkbox(
-                title: "Show source row",
-                state: overlay.showFuelSource,
-                frame: NSRect(x: 220, y: top, width: 190, height: 24),
-                identifier: "\(definition.id)|fuelSource"
-            ))
             return true
         case "car-radar":
             content.addSubview(checkbox(
-                title: "Show multiclass warning",
+                title: "Show faster-class warning",
                 state: overlay.showRadarMulticlassWarning,
                 frame: NSRect(x: 22, y: top, width: 220, height: 24),
                 identifier: "\(definition.id)|radarMulticlass"
@@ -813,20 +808,13 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
             content.addSubview(label("Source", frame: NSRect(x: 22, y: top - 42, width: 120, height: 24)))
             content.addSubview(valueLabel("Best bundled or local map; circle fallback", frame: NSRect(x: 150, y: top - 46, width: 390, height: 28)))
             content.addSubview(label("Generation", frame: NSRect(x: 22, y: top - 84, width: 120, height: 24)))
-            content.addSubview(valueLabel("Automatic after sessions; complete maps are skipped", frame: NSRect(x: 150, y: top - 88, width: 390, height: 28)))
+            content.addSubview(valueLabel("Controlled from Diagnostics; complete maps are skipped", frame: NSRect(x: 150, y: top - 88, width: 390, height: 28)))
             content.addSubview(checkbox(
                 title: "Show sector boundaries",
                 state: optionBool(overlay, key: "track-map.sector-boundaries.enabled", defaultValue: true),
                 frame: NSRect(x: 22, y: top - 128, width: 230, height: 24),
                 identifier: "\(definition.id)|track-map.sector-boundaries.enabled"
             ))
-            content.addSubview(checkbox(
-                title: "Build local maps from IBT telemetry",
-                state: overlay.trackMapBuildFromTelemetry,
-                frame: NSRect(x: 22, y: top - 164, width: 310, height: 24),
-                identifier: "\(definition.id)|trackMapBuildFromTelemetry"
-            ))
-            content.addSubview(label("Derived geometry stays local. Bundled maps still work when this is off.", frame: NSRect(x: 22, y: top - 200, width: 520, height: 24)))
             content.addSubview(label("Bundled coverage", frame: NSRect(x: 560, y: 278, width: 520, height: 24), bold: true))
             content.addSubview(label("Reviewed app maps load automatically for matching tracks.", frame: NSRect(x: 564, y: 236, width: 430, height: 24)))
             return true
@@ -834,12 +822,13 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
             addGarageCoverOptions(to: content, overlay: overlay, top: top)
             return true
         case "gap-to-leader":
-            content.addSubview(label("Cars ahead", frame: NSRect(x: 22, y: top, width: 110, height: 24)))
-            let ahead = countPopup(value: overlay.classGapCarsAhead, frame: NSRect(x: 136, y: top - 2, width: 76, height: 28), identifier: "\(definition.id)|gapAhead", maximum: 12)
-            content.addSubview(ahead)
-            content.addSubview(label("Cars behind", frame: NSRect(x: 238, y: top, width: 110, height: 24)))
-            let behind = countPopup(value: overlay.classGapCarsBehind, frame: NSRect(x: 356, y: top - 2, width: 76, height: 28), identifier: "\(definition.id)|gapBehind", maximum: 12)
-            content.addSubview(behind)
+            content.addSubview(label("Cars each side", frame: NSRect(x: 22, y: top, width: 130, height: 24)))
+            let eachSide = countPopup(
+                value: max(overlay.classGapCarsAhead, overlay.classGapCarsBehind),
+                frame: NSRect(x: 164, y: top - 2, width: 76, height: 28),
+                identifier: "\(definition.id)|gapEachSide",
+                maximum: 12)
+            content.addSubview(eachSide)
             return true
         default:
             return false
@@ -882,7 +871,23 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
         saveButton.identifier = NSUserInterfaceItemIdentifier(overlay.id)
         content.addSubview(saveButton)
         content.addSubview(label("Open the localhost URL in a browser or OBS after saving.", frame: NSRect(x: 274, y: top - 246, width: 560, height: 24)))
+        addStreamChatMetadataOptions(to: content, overlay: overlay, top: top - 292)
         syncStreamChatFields(in: content, overlayId: overlay.id, provider: provider)
+    }
+
+    private func addStreamChatMetadataOptions(to content: NSView, overlay: OverlaySettings, top: CGFloat) {
+        content.addSubview(label("Twitch metadata", frame: NSRect(x: 18, y: top, width: 520, height: 24), bold: true))
+        content.addSubview(label("These controls apply only to Twitch chat until Streamlabs payloads are verified.", frame: NSRect(x: 22, y: top - 30, width: 620, height: 24)))
+        for (index, block) in OverlayContentColumns.streamChat.blocks.enumerated() {
+            let column = index < 5 ? 0 : 1
+            let row = column == 0 ? index : index - 5
+            content.addSubview(checkbox(
+                title: block.label,
+                state: OverlayContentColumns.blockEnabled(block, settings: overlay),
+                frame: NSRect(x: 22 + CGFloat(column) * 260, y: top - 62 - CGFloat(row) * 30, width: 230, height: 24),
+                identifier: "\(overlay.id)|\(block.enabledOptionKey)"
+            ))
+        }
     }
 
     private func addGarageCoverOptions(to content: NSView, overlay: OverlaySettings, top: CGFloat) {
@@ -1083,6 +1088,7 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
             overlay.showInTest = isOn
         case "practice":
             overlay.showInPractice = isOn
+            overlay.showInTest = isOn
         case "qualifying":
             overlay.showInQualifying = isOn
         case "race":
@@ -1093,8 +1099,6 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
             overlay.showStatusHealthDetails = isOn
         case "fuelAdvice":
             overlay.showFuelAdvice = isOn
-        case "fuelSource":
-            overlay.showFuelSource = isOn
         case "radarMulticlass":
             overlay.showRadarMulticlassWarning = isOn
         case "flagsShowGreen":
@@ -1115,10 +1119,21 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
             }
 
             overlay.options[key] = isOn ? "true" : "false"
+            if let mirroredTestKey = mirroredTestOptionKey(for: key) {
+                overlay.options[mirroredTestKey] = isOn ? "true" : "false"
+            }
         }
 
         settings.updateOverlay(overlay)
         onSettingsChanged(settings)
+    }
+
+    private func mirroredTestOptionKey(for key: String) -> String? {
+        guard key.hasSuffix(".practice") else {
+            return nil
+        }
+
+        return String(key.dropLast(".practice".count)) + ".test"
     }
 
     @objc private func countChanged(_ sender: NSStepper) {
@@ -1132,10 +1147,10 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
             let value = min(max(Int(sender.integerValue), 0), 8)
             overlay.relativeCarsAhead = value
             overlay.relativeCarsBehind = value
-        case "gapAhead":
-            overlay.classGapCarsAhead = Int(sender.integerValue)
-        case "gapBehind":
-            overlay.classGapCarsBehind = Int(sender.integerValue)
+        case "gapEachSide":
+            let value = min(max(Int(sender.integerValue), 0), 12)
+            overlay.classGapCarsAhead = value
+            overlay.classGapCarsBehind = value
         default:
             return
         }
@@ -1157,10 +1172,10 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
             let value = min(max(selectedValue, 0), 8)
             overlay.relativeCarsAhead = value
             overlay.relativeCarsBehind = value
-        case "gapAhead":
-            overlay.classGapCarsAhead = min(max(selectedValue, 0), 12)
-        case "gapBehind":
-            overlay.classGapCarsBehind = min(max(selectedValue, 0), 12)
+        case "gapEachSide":
+            let value = min(max(selectedValue, 0), 12)
+            overlay.classGapCarsAhead = value
+            overlay.classGapCarsBehind = value
         default:
             let key = String(parts[1])
             guard key.contains(".") else {
@@ -1579,7 +1594,7 @@ final class SettingsOverlayView: NSView, NSTabViewDelegate, NSTextFieldDelegate 
 
     private func closestOpacityValue(to opacity: Double, allowedValues: [Int]) -> Int {
         let percent = Int((min(max(opacity, 0.2), 1.0) * 100).rounded())
-        return allowedValues.min(by: { abs($0 - percent) < abs($1 - percent) }) ?? 88
+        return allowedValues.min(by: { abs($0 - percent) < abs($1 - percent) }) ?? 100
     }
 
     private func selectedStreamChatProvider(_ popup: NSPopUpButton) -> String {

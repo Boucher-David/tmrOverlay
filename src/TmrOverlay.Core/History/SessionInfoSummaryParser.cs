@@ -77,6 +77,10 @@ internal static class SessionInfoSummaryParser
                 .Select(ToDriver)
                 .Where(driver => driver.CarIdx is not null)
                 .ToArray(),
+            TireCompounds = parsed.DriverTires
+                .Select(ToTireCompound)
+                .Where(tire => tire.TireIndex is not null)
+                .ToArray(),
             Sectors = parsed.Sectors
                 .Select(ToSector)
                 .Where(sector => sector.SectorStartPct >= 0d && sector.SectorStartPct < 1d)
@@ -101,9 +105,11 @@ internal static class SessionInfoSummaryParser
         Dictionary<string, string>? currentResultPosition = null;
         Dictionary<string, string>? currentQualifyResult = null;
         Dictionary<string, string>? currentDriver = null;
+        Dictionary<string, string>? currentDriverTire = null;
         Dictionary<string, string>? currentSector = null;
         var inSessions = false;
         var inDrivers = false;
+        var inDriverTires = false;
         var inSectors = false;
         var inResultPositions = false;
         var inQualifyResults = false;
@@ -125,10 +131,12 @@ internal static class SessionInfoSummaryParser
                 FinishCurrentQualifyResult();
                 FinishCurrentSession();
                 FinishCurrentDriver();
+                FinishCurrentDriverTire();
                 FinishCurrentSector();
                 section = trimmed.TrimEnd(':');
                 inSessions = false;
                 inDrivers = false;
+                inDriverTires = false;
                 inSectors = false;
                 inResultPositions = false;
                 inQualifyResults = false;
@@ -217,11 +225,24 @@ internal static class SessionInfoSummaryParser
                 case "DriverInfo":
                     if (indent == 1 && trimmed == "Drivers:")
                     {
+                        FinishCurrentDriverTire();
                         inDrivers = true;
+                        inDriverTires = false;
                         break;
                     }
 
-                    if (!inDrivers && indent == 1 && TryReadKeyValue(trimmed, out var driverInfoKey, out var driverInfoValue))
+                    if (indent == 1 && trimmed == "DriverTires:")
+                    {
+                        FinishCurrentDriver();
+                        inDrivers = false;
+                        inDriverTires = true;
+                        break;
+                    }
+
+                    if (!inDrivers
+                        && !inDriverTires
+                        && indent == 1
+                        && TryReadKeyValue(trimmed, out var driverInfoKey, out var driverInfoValue))
                     {
                         parsed.DriverInfo[driverInfoKey] = driverInfoValue;
                         break;
@@ -243,6 +264,27 @@ internal static class SessionInfoSummaryParser
                         if (currentDriver is not null && TryReadKeyValue(trimmed, out var driverKey, out var driverValue))
                         {
                             currentDriver[driverKey] = driverValue;
+                        }
+
+                        break;
+                    }
+
+                    if (inDriverTires)
+                    {
+                        if (trimmed.StartsWith("- ", StringComparison.Ordinal))
+                        {
+                            FinishCurrentDriverTire();
+                            currentDriverTire = [];
+                            if (TryReadKeyValue(trimmed, out var listKey, out var listValue))
+                            {
+                                currentDriverTire[listKey] = listValue;
+                            }
+                            break;
+                        }
+
+                        if (currentDriverTire is not null && TryReadKeyValue(trimmed, out var tireKey, out var tireValue))
+                        {
+                            currentDriverTire[tireKey] = tireValue;
                         }
                     }
                     break;
@@ -308,6 +350,7 @@ internal static class SessionInfoSummaryParser
         FinishCurrentQualifyResult();
         FinishCurrentSession();
         FinishCurrentDriver();
+        FinishCurrentDriverTire();
         FinishCurrentSector();
         return parsed;
 
@@ -344,6 +387,15 @@ internal static class SessionInfoSummaryParser
             {
                 parsed.Drivers.Add(currentDriver);
                 currentDriver = null;
+            }
+        }
+
+        void FinishCurrentDriverTire()
+        {
+            if (currentDriverTire is not null)
+            {
+                parsed.DriverTires.Add(currentDriverTire);
+                currentDriverTire = null;
             }
         }
 
@@ -404,8 +456,19 @@ internal static class SessionInfoSummaryParser
             CarScreenNameShort = ReadString(values, "CarScreenNameShort"),
             CarClassId = ReadInt(values, "CarClassID"),
             CarClassShortName = ReadString(values, "CarClassShortName"),
+            CarClassRelSpeed = ReadInt(values, "CarClassRelSpeed"),
+            CarClassEstLapTimeSeconds = ReadDouble(values, "CarClassEstLapTime"),
             CarClassColorHex = NormalizeColorHex(ReadString(values, "CarClassColor")),
             IsSpectator = ReadBool(values, "IsSpectator")
+        };
+    }
+
+    private static HistoricalSessionTireCompound ToTireCompound(IReadOnlyDictionary<string, string> values)
+    {
+        return new HistoricalSessionTireCompound
+        {
+            TireIndex = ReadInt(values, "TireIndex"),
+            TireCompoundType = ReadString(values, "TireCompoundType")
         };
     }
 
@@ -570,6 +633,8 @@ internal static class SessionInfoSummaryParser
         public List<ParsedSession> Sessions { get; } = [];
 
         public List<Dictionary<string, string>> Drivers { get; } = [];
+
+        public List<Dictionary<string, string>> DriverTires { get; } = [];
 
         public List<Dictionary<string, string>> Sectors { get; } = [];
 

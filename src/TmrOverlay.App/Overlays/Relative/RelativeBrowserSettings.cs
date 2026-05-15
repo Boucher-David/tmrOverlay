@@ -14,7 +14,9 @@ internal sealed record RelativeBrowserSettings(
         CarsBehind: 5,
         Columns: OverlayContentColumnSettings.BrowserColumnsFor(null, OverlayContentColumnSettings.Relative));
 
-    public static RelativeBrowserSettings From(ApplicationSettings settings)
+    public static RelativeBrowserSettings From(
+        ApplicationSettings settings,
+        OverlaySessionKind? sessionKind = null)
     {
         var relative = settings.Overlays.FirstOrDefault(
             overlay => string.Equals(overlay.Id, RelativeOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase));
@@ -24,7 +26,8 @@ internal sealed record RelativeBrowserSettings(
             CarsBehind: carsEachSide,
             Columns: OverlayContentColumnSettings.BrowserColumnsFor(
                 relative,
-                OverlayContentColumnSettings.Relative));
+                OverlayContentColumnSettings.Relative,
+                sessionKind));
     }
 
     internal static int CarsEachSide(OverlaySettings? relative)

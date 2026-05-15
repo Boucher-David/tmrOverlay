@@ -98,11 +98,11 @@ WINDOWS_EXPECTED_PNGS = {
     "states/standings-live.png": (780, 520),
     "states/track-map-placeholder.png": (360, 360),
     "states/flags-blue.png": (360, 170),
-    "states/session-weather-live.png": (420, 330),
-    "states/pit-service-active.png": (420, 330),
-    "states/input-state-trace.png": (520, 220),
+    "states/session-weather-live.png": (480, 520),
+    "states/pit-service-active.png": (420, 560),
+    "states/input-state-trace.png": (520, 260),
     "states/car-radar-side-pressure.png": (300, 300),
-    "states/gap-to-leader-trend.png": (560, 260),
+    "states/gap-to-leader-trend.png": (720, 360),
 }
 
 WINDOWS_EXPECTED_SIZE_SOURCES = {
@@ -147,7 +147,7 @@ WINDOWS_MINIMUM_PNGS = {
     "components/settings/content-matrix.png": (690, 222),
     "components/settings/chat-inputs.png": (650, 204),
     "components/settings/support-buttons.png": (716, 202),
-    "components/settings/browser-source.png": (716, 92),
+    "components/settings/browser-source.png": (296, 132),
 }
 
 WINDOWS_MIN_UNIQUE_BYTES = {

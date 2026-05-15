@@ -7,6 +7,15 @@ enum SharedOverlayContract {
     static let streamChatProviderKey = "stream-chat.provider"
     static let streamChatStreamlabsUrlKey = "stream-chat.streamlabs-url"
     static let streamChatTwitchChannelKey = "stream-chat.twitch-channel"
+    static let streamChatShowAuthorColorKey = "stream-chat.twitch.author-color"
+    static let streamChatShowBadgesKey = "stream-chat.twitch.badges"
+    static let streamChatShowBitsKey = "stream-chat.twitch.bits"
+    static let streamChatShowFirstMessageKey = "stream-chat.twitch.first-message"
+    static let streamChatShowRepliesKey = "stream-chat.twitch.replies"
+    static let streamChatShowTimestampsKey = "stream-chat.twitch.timestamps"
+    static let streamChatShowEmotesKey = "stream-chat.twitch.emotes"
+    static let streamChatShowAlertsKey = "stream-chat.twitch.alerts"
+    static let streamChatShowMessageIdsKey = "stream-chat.twitch.message-ids"
 
     static let current = load()
 
@@ -123,13 +132,22 @@ enum SharedOverlayContract {
     private static func fallbackSnapshot(loadedPath: String?) -> Snapshot {
         Snapshot(
             contractVersion: 1,
-            settingsVersion: 10,
+            settingsVersion: 11,
             defaultFontFamily: "Segoe UI",
             defaultUnitSystem: "Metric",
             overlayOptionDefaults: [
                 "stream-chat": [
                     streamChatProviderKey: "twitch",
-                    streamChatTwitchChannelKey: "techmatesracing"
+                    streamChatTwitchChannelKey: "techmatesracing",
+                    streamChatShowAuthorColorKey: "true",
+                    streamChatShowBadgesKey: "true",
+                    streamChatShowBitsKey: "true",
+                    streamChatShowFirstMessageKey: "true",
+                    streamChatShowRepliesKey: "true",
+                    streamChatShowTimestampsKey: "true",
+                    streamChatShowEmotesKey: "true",
+                    streamChatShowAlertsKey: "true",
+                    streamChatShowMessageIdsKey: "false"
                 ]
             ],
             designV2Colors: [
@@ -222,7 +240,7 @@ private extension String {
     }
 }
 
-private extension NSColor {
+extension NSColor {
     convenience init?(tmrHex value: String) {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.hasPrefix("#") else {

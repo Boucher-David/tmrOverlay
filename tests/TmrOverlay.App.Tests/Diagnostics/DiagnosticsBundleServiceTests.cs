@@ -192,6 +192,10 @@ public sealed class DiagnosticsBundleServiceTests
                 NullLogger<ReleaseUpdateService>.Instance);
             var sessionPreview = new SessionPreviewState(new AppEventRecorder(storage));
             sessionPreview.SetMode(TmrOverlay.Core.Overlays.OverlaySessionKind.Qualifying);
+            using var streamChatSource = new StreamChatOverlaySource(
+                NullLogger<StreamChatOverlaySource>.Instance,
+                performance);
+            _ = streamChatSource.Snapshot(StreamChatOverlaySettings.From(settingsStore.Load()));
             var liveTelemetry = new TestLiveTelemetrySource(LiveTelemetrySnapshot.Empty with
             {
                 IsConnected = true,
@@ -223,6 +227,7 @@ public sealed class DiagnosticsBundleServiceTests
                     PlayerTireCompound: 0,
                     IsGarageVisible: true,
                     SessionState: 3,
+                    SessionFlags: 0x00000008 | 0x00000020,
                     PlayerCarIdx: 10,
                     RawCamCarIdx: 42,
                     FocusCarIdx: 42,
@@ -254,19 +259,396 @@ public sealed class DiagnosticsBundleServiceTests
                     ]),
                 Models = LiveRaceModels.Empty with
                 {
+                    Session = LiveSessionModel.Empty with
+                    {
+                        HasData = true,
+                        Quality = LiveModelQuality.Reliable,
+                        SessionType = "Race",
+                        EventType = "Race",
+                        SessionState = 3,
+                        SessionFlags = 0x00000008 | 0x00000020,
+                        SessionTimeRemainSeconds = 300d,
+                        SessionLapsRemain = 4,
+                        RaceLaps = 5
+                    },
                     DriverDirectory = LiveDriverDirectoryModel.Empty with
                     {
                         HasData = true,
                         Quality = LiveModelQuality.Reliable,
                         PlayerCarIdx = 10,
-                        FocusCarIdx = 42
+                        FocusCarIdx = 42,
+                        ReferenceCarClass = 12,
+                        PlayerDriver = new LiveDriverIdentity(
+                            CarIdx: 10,
+                            DriverName: "Player Driver",
+                            AbbrevName: "P Driver",
+                            Initials: "PD",
+                            UserId: 1001,
+                            TeamId: 2001,
+                            TeamName: "Player Team",
+                            CarNumber: "10",
+                            CarClassId: 12,
+                            CarClassName: "GT3",
+                            CarClassColorHex: "#ff0000",
+                            IsSpectator: false),
+                        FocusDriver = new LiveDriverIdentity(
+                            CarIdx: 42,
+                            DriverName: "Focus Driver",
+                            AbbrevName: "F Driver",
+                            Initials: "FD",
+                            UserId: 1002,
+                            TeamId: 2002,
+                            TeamName: "Focus Team",
+                            CarNumber: "42",
+                            CarClassId: 12,
+                            CarClassName: "GT3",
+                            CarClassColorHex: "#ff0000",
+                            IsSpectator: false),
+                        Drivers =
+                        [
+                            new LiveDriverIdentity(
+                                CarIdx: 10,
+                                DriverName: "Player Driver",
+                                AbbrevName: "P Driver",
+                                Initials: "PD",
+                                UserId: 1001,
+                                TeamId: 2001,
+                                TeamName: "Player Team",
+                                CarNumber: "10",
+                                CarClassId: 12,
+                                CarClassName: "GT3",
+                                CarClassColorHex: "#ff0000",
+                                IsSpectator: false),
+                            new LiveDriverIdentity(
+                                CarIdx: 42,
+                                DriverName: "Focus Driver",
+                                AbbrevName: "F Driver",
+                                Initials: "FD",
+                                UserId: 1002,
+                                TeamId: 2002,
+                                TeamName: "Focus Team",
+                                CarNumber: "42",
+                                CarClassId: 12,
+                                CarClassName: "GT3",
+                                CarClassColorHex: "#ff0000",
+                                IsSpectator: false)
+                        ]
+                    },
+                    Reference = LiveReferenceModel.Empty with
+                    {
+                        HasData = true,
+                        Quality = LiveModelQuality.Reliable,
+                        PlayerCarIdx = 10,
+                        FocusCarIdx = 42,
+                        HasExplicitNonPlayerFocus = true,
+                        ReferenceCarClass = 12,
+                        OverallPosition = 3,
+                        ClassPosition = 1,
+                        LapCompleted = 0,
+                        LapDistPct = 0.05d,
+                        ProgressLaps = 0.05d,
+                        EstimatedTimeSeconds = 23.4d,
+                        TrackSurface = 3,
+                        OnPitRoad = false,
+                        PlayerCarClass = 12,
+                        PlayerLapCompleted = 0,
+                        PlayerLapDistPct = 0.04d,
+                        PlayerProgressLaps = 0.04d,
+                        PlayerTrackSurface = 3,
+                        PlayerOnPitRoad = true,
+                        PlayerYawNorthRadians = 1.57d,
+                        IsOnTrack = true,
+                        PlayerCarInPitStall = false,
+                        HasTimingReference = true,
+                        HasTrackPlacement = true,
+                        TimingEvidence = LiveSignalEvidence.Reliable("CarIdxEstTime"),
+                        SpatialEvidence = LiveSignalEvidence.Reliable("CarIdxLapDistPct")
                     },
                     RaceEvents = LiveRaceEventModel.Empty with
                     {
                         HasData = true,
                         Quality = LiveModelQuality.Reliable,
+                        IsOnTrack = true,
                         IsGarageVisible = true,
-                        OnPitRoad = true
+                        OnPitRoad = true,
+                        Lap = 1,
+                        LapCompleted = 0,
+                        LapDistPct = 0.05d,
+                        DriversSoFar = 2,
+                        DriverChangeLapStatus = 1
+                    },
+                    RaceProgress = LiveRaceProgressModel.Empty with
+                    {
+                        HasData = true,
+                        Quality = LiveModelQuality.Inferred,
+                        StrategyCarProgressLaps = 1.25d,
+                        ReferenceCarProgressLaps = 1.3d,
+                        RacePaceSeconds = 92.4d,
+                        RacePaceSource = "session-best",
+                        RaceLapsRemaining = 19.5d,
+                        RaceLapsRemainingSource = "session-laps-remain"
+                    },
+                    RaceProjection = LiveRaceProjectionModel.Empty with
+                    {
+                        HasData = true,
+                        Quality = LiveModelQuality.Inferred,
+                        TeamPaceSeconds = 92.4d,
+                        TeamPaceSource = "fuel-strategy",
+                        TeamPaceConfidence = 0.72d,
+                        EstimatedTeamLapsRemaining = 19.5d,
+                        EstimatedTeamLapsRemainingSource = "race-projection",
+                        ClassProjections =
+                        [
+                            new LiveClassRaceProjection(
+                                CarClass: 12,
+                                ClassName: "GT3",
+                                PaceSeconds: 92.1d,
+                                PaceSource: "class-leader",
+                                PaceConfidence: 0.81d,
+                                EstimatedLapsRemaining: 20d,
+                                EstimatedLapsRemainingSource: "leader-pace")
+                        ]
+                    },
+                    TireCompounds = LiveTireCompoundModel.Empty with
+                    {
+                        HasData = true,
+                        Quality = LiveModelQuality.Reliable,
+                        Definitions =
+                        [
+                            new LiveTireCompoundDefinition(0, "Dry", "D", IsWet: false),
+                            new LiveTireCompoundDefinition(1, "Wet", "W", IsWet: true)
+                        ],
+                        PlayerCar = new LiveCarTireCompound(
+                            CarIdx: 10,
+                            CompoundIndex: 0,
+                            Label: "Dry",
+                            ShortLabel: "D",
+                            IsWet: false,
+                            IsPlayer: true,
+                            IsFocus: false,
+                            Evidence: LiveSignalEvidence.Reliable("PlayerTireCompound")),
+                        FocusCar = new LiveCarTireCompound(
+                            CarIdx: 42,
+                            CompoundIndex: 1,
+                            Label: "Wet",
+                            ShortLabel: "W",
+                            IsWet: true,
+                            IsPlayer: false,
+                            IsFocus: true,
+                            Evidence: LiveSignalEvidence.Reliable("CarIdxTireCompound")),
+                        Cars =
+                        [
+                            new LiveCarTireCompound(
+                                CarIdx: 10,
+                                CompoundIndex: 0,
+                                Label: "Dry",
+                                ShortLabel: "D",
+                                IsWet: false,
+                                IsPlayer: true,
+                                IsFocus: false,
+                                Evidence: LiveSignalEvidence.Reliable("PlayerTireCompound")),
+                            new LiveCarTireCompound(
+                                CarIdx: 42,
+                                CompoundIndex: 1,
+                                Label: "Wet",
+                                ShortLabel: "W",
+                                IsWet: true,
+                                IsPlayer: false,
+                                IsFocus: true,
+                                Evidence: LiveSignalEvidence.Reliable("CarIdxTireCompound"))
+                        ]
+                    },
+                    TireCondition = LiveTireConditionModel.Empty with
+                    {
+                        HasData = true,
+                        Quality = LiveModelQuality.Partial,
+                        Evidence = LiveSignalEvidence.Partial("tire telemetry", "pit_service_pressure_missing"),
+                        LeftFront = new LiveTireCornerCondition(
+                            Corner: "LF",
+                            Wear: new LiveTireAcrossTreadValues(Left: 0.91d, Middle: 0.9d, Right: 0.89d),
+                            TemperatureC: new LiveTireAcrossTreadValues(Left: 82d, Middle: 84d, Right: 83d),
+                            ColdPressureKpa: 178d,
+                            OdometerMeters: 2048d,
+                            PitServicePressureKpa: null,
+                            BlackBoxColdPressurePa: null,
+                            ChangeRequested: true)
+                    },
+                    Weather = LiveWeatherModel.Empty with
+                    {
+                        HasData = true,
+                        Quality = LiveModelQuality.Reliable,
+                        AirTempC = 20d,
+                        TrackTempCrewC = 30d,
+                        TrackWetness = 1,
+                        TrackWetnessLabel = "slightly wet",
+                        WeatherDeclaredWet = true,
+                        DeclaredWetSurfaceMismatch = true,
+                        WeatherType = "constant",
+                        SkiesLabel = "partly cloudy",
+                        PrecipitationPercent = 12d,
+                        WindVelocityMetersPerSecond = 4.5d,
+                        WindDirectionRadians = 1.2d,
+                        RelativeHumidityPercent = 53d,
+                        FogLevelPercent = 0d,
+                        AirPressurePa = 101325d,
+                        SolarAltitudeRadians = 0.42d,
+                        SolarAzimuthRadians = 2.4d,
+                        RubberState = "moderate"
+                    },
+                    Inputs = LiveInputTelemetryModel.Empty with
+                    {
+                        HasData = true,
+                        Quality = LiveModelQuality.Reliable,
+                        HasPedalInputs = true,
+                        HasSteeringInput = true,
+                        SpeedMetersPerSecond = 58d,
+                        Gear = 4,
+                        Rpm = 7200d,
+                        Throttle = 0.74d,
+                        Brake = 0.12d,
+                        Clutch = 0d,
+                        SteeringWheelAngle = -0.08d,
+                        BrakeAbsActive = false,
+                        EngineWarnings = 0,
+                        Voltage = 13.8d,
+                        WaterTempC = 91d,
+                        OilTempC = 104d,
+                        OilPressureBar = 4.2d,
+                        FuelPressureBar = 3.1d
+                    },
+                    FuelPit = LiveFuelPitModel.Empty with
+                    {
+                        HasData = true,
+                        Quality = LiveModelQuality.Reliable,
+                        Fuel = new LiveFuelSnapshot(
+                            HasValidFuel: true,
+                            Source: "local-driver-scalar",
+                            FuelLevelLiters: 42d,
+                            FuelLevelPercent: 0.5d,
+                            FuelUsePerHourKg: 0d,
+                            FuelUsePerHourLiters: 24d,
+                            FuelPerLapLiters: 2.1d,
+                            LapTimeSeconds: 92.4d,
+                            LapTimeSource: "session-best",
+                            EstimatedMinutesRemaining: 105d,
+                            EstimatedLapsRemaining: 20d,
+                            Confidence: "medium"),
+                        OnPitRoad = true,
+                        PitstopActive = false,
+                        PlayerCarInPitStall = false,
+                        TeamOnPitRoad = true,
+                        FuelLevelEvidence = LiveSignalEvidence.Reliable("FuelLevel"),
+                        InstantaneousBurnEvidence = LiveSignalEvidence.DiagnosticOnly("FuelUsePerHour", "instantaneous_burn_requires_smoothing"),
+                        MeasuredBurnEvidence = LiveSignalEvidence.Partial("rolling-local-fuel-delta", "requires_two_green_distance_samples"),
+                        BaselineEligibilityEvidence = LiveSignalEvidence.Reliable("measured-local-fuel-baseline"),
+                        PitServiceStatus = 2,
+                        PitServiceFlags = 0x11,
+                        PitServiceFuelLiters = 18d,
+                        PitRepairLeftSeconds = 4d,
+                        PitOptRepairLeftSeconds = 12d,
+                        PlayerCarDryTireSetLimit = 5,
+                        TireSetsUsed = 1,
+                        TireSetsAvailable = 4,
+                        RequestedTireCompound = 0,
+                        FastRepairUsed = 0,
+                        FastRepairAvailable = 1,
+                        TeamFastRepairsUsed = 0
+                    },
+                    PitService = LivePitServiceModel.Empty with
+                    {
+                        HasData = true,
+                        Quality = LiveModelQuality.Reliable,
+                        OnPitRoad = true,
+                        PlayerCarInPitStall = false,
+                        TeamOnPitRoad = true,
+                        Status = 2,
+                        Flags = 0x11,
+                        Request = new LivePitServiceRequest(
+                            LeftFrontTire: true,
+                            RightFrontTire: false,
+                            LeftRearTire: false,
+                            RightRearTire: false,
+                            Fuel: true,
+                            Tearoff: false,
+                            FastRepair: false,
+                            FuelLiters: 18d,
+                            RequestedTireCompoundIndex: 0,
+                            RequestedTireCompoundLabel: "Dry",
+                            RequestedTireCompoundShortLabel: "D"),
+                        Repair = new LivePitServiceRepairState(
+                            RequiredSeconds: 4d,
+                            OptionalSeconds: 12d),
+                        Tires = LivePitServiceTireState.Empty with
+                        {
+                            RequestedTireCount = 1,
+                            DryTireSetLimit = 5,
+                            TireSetsUsed = 1,
+                            TireSetsAvailable = 4,
+                            RequestedCompoundIndex = 0,
+                            RequestedCompoundLabel = "Dry",
+                            RequestedCompoundShortLabel = "D",
+                            CurrentCompoundIndex = 0,
+                            CurrentCompoundLabel = "Dry",
+                            CurrentCompoundShortLabel = "D",
+                            LeftFrontChangeRequested = true
+                        },
+                        FastRepair = new LivePitServiceFastRepairState(
+                            Selected: false,
+                            LocalUsed: 0,
+                            LocalAvailable: 1,
+                            TeamUsed: 0)
+                    },
+                    Spatial = LiveSpatialModel.Empty with
+                    {
+                        HasData = true,
+                        Quality = LiveModelQuality.Inferred,
+                        ReferenceCarIdx = 42,
+                        ReferenceCarClass = 12,
+                        CarLeftRight = 1,
+                        SideStatus = "car_left",
+                        HasCarLeft = true,
+                        HasCarRight = false,
+                        SideOverlapWindowSeconds = 0.22d,
+                        TrackLengthMeters = 5148d,
+                        ReferenceLapDistPct = 0.05d,
+                        Cars =
+                        [
+                            new LiveSpatialCar(
+                                CarIdx: 10,
+                                Quality: LiveModelQuality.Reliable,
+                                PlacementEvidence: LiveSignalEvidence.Reliable("CarIdxLapDistPct+track-length"),
+                                RelativeLaps: -0.01d,
+                                RelativeSeconds: -1.2d,
+                                RelativeMeters: -18d,
+                                OverallPosition: 3,
+                                ClassPosition: 1,
+                                CarClass: 12,
+                                TrackSurface: 3,
+                                OnPitRoad: true)
+                        ],
+                        NearestBehind = new LiveSpatialCar(
+                            CarIdx: 10,
+                            Quality: LiveModelQuality.Reliable,
+                            PlacementEvidence: LiveSignalEvidence.Reliable("CarIdxLapDistPct+track-length"),
+                            RelativeLaps: -0.01d,
+                            RelativeSeconds: -1.2d,
+                            RelativeMeters: -18d,
+                            OverallPosition: 3,
+                            ClassPosition: 1,
+                            CarClass: 12,
+                            TrackSurface: 3,
+                            OnPitRoad: true)
+                    },
+                    TrackMap = LiveTrackMapModel.Empty with
+                    {
+                        HasSectors = true,
+                        HasLiveTiming = true,
+                        Quality = LiveModelQuality.Reliable,
+                        Sectors =
+                        [
+                            new LiveTrackSectorSegment(1, 0d, 0.5d, LiveTrackSectorHighlights.PersonalBest),
+                            new LiveTrackSectorSegment(2, 0.5d, 1d, LiveTrackSectorHighlights.None, LiveTrackSectorHighlights.BestLap)
+                        ]
                     }
                 }
             });
@@ -285,6 +667,7 @@ public sealed class DiagnosticsBundleServiceTests
                 liveOverlayWindowStore,
                 new ForegroundWindowTracker(),
                 releaseUpdates,
+                streamChatSource,
                 NullLogger<DiagnosticsBundleService>.Instance);
 
             var bundlePath = service.CreateBundle();
@@ -306,6 +689,8 @@ public sealed class DiagnosticsBundleServiceTests
             Assert.Contains("metadata/installer-cleanup.json", entryNames);
             Assert.Contains("metadata/track-maps.json", entryNames);
             Assert.Contains("metadata/garage-cover.json", entryNames);
+            Assert.Contains("metadata/stream-chat.json", entryNames);
+            Assert.Contains("metadata/flags.json", entryNames);
             Assert.Contains("metadata/live-telemetry-synthesis.json", entryNames);
             Assert.Contains("metadata/window-z-order.json", entryNames);
             Assert.Contains("metadata/performance.json", entryNames);
@@ -423,7 +808,7 @@ public sealed class DiagnosticsBundleServiceTests
             using (var sharedContractReader = new StreamReader(sharedContractEntry.Open()))
             {
                 var sharedContractJson = JsonNode.Parse(sharedContractReader.ReadToEnd());
-                Assert.Equal(10, ((int?)sharedContractJson?["settingsVersion"]) ?? -1);
+                Assert.Equal(11, ((int?)sharedContractJson?["settingsVersion"]) ?? -1);
                 Assert.Equal("twitch", (string?)sharedContractJson?["streamChatDefaultProvider"]);
                 Assert.Equal("techmatesracing", (string?)sharedContractJson?["streamChatDefaultTwitchChannel"]);
                 Assert.Equal("#00E8FF", (string?)sharedContractJson?["designV2Colors"]?["cyan"]);
@@ -475,8 +860,33 @@ public sealed class DiagnosticsBundleServiceTests
                 Assert.Equal(42, ((int?)liveTelemetrySynthesisJson?["focus"]?["focusCarIdx"]) ?? -1);
                 Assert.True(((bool?)liveTelemetrySynthesisJson?["focus"]?["focusDiffersFromPlayer"]) == true);
                 Assert.Equal("parade-laps", (string?)liveTelemetrySynthesisJson?["sessionPhase"]?["label"]);
+                Assert.Equal("0x00000028", (string?)liveTelemetrySynthesisJson?["flagsModel"]?["rawFlagsHex"]);
+                Assert.Equal(2, ((int?)liveTelemetrySynthesisJson?["flagsModel"]?["enabledDisplayFlagCount"]) ?? -1);
+                Assert.Equal("Yellow", (string?)liveTelemetrySynthesisJson?["flagsModel"]?["enabledDisplayFlags"]?[0]?["kind"]);
+                Assert.Equal("Blue", (string?)liveTelemetrySynthesisJson?["flagsModel"]?["enabledDisplayFlags"]?[1]?["kind"]);
+                Assert.Equal(1.57d, ((double?)liveTelemetrySynthesisJson?["referenceModel"]?["playerYawNorthRadians"]) ?? -1d, 2);
+                Assert.Equal(2, ((int?)liveTelemetrySynthesisJson?["driverDirectoryModel"]?["driverCount"]) ?? -1);
+                Assert.Equal(92.4d, ((double?)liveTelemetrySynthesisJson?["raceProgressModel"]?["racePaceSeconds"]) ?? -1d, 1);
+                Assert.Equal(1, ((int?)liveTelemetrySynthesisJson?["raceProjectionModel"]?["classProjectionCount"]) ?? -1);
+                Assert.True(((bool?)liveTelemetrySynthesisJson?["raceEventsModel"]?["isGarageVisible"]) == true);
+                Assert.Equal(2, ((int?)liveTelemetrySynthesisJson?["raceEventsModel"]?["driversSoFar"]) ?? -1);
+                Assert.Equal("Wet", (string?)liveTelemetrySynthesisJson?["tireCompoundModel"]?["focusCar"]?["label"]);
+                Assert.Equal(2, ((int?)liveTelemetrySynthesisJson?["tireCompoundModel"]?["definitionCount"]) ?? -1);
+                Assert.True(((bool?)liveTelemetrySynthesisJson?["tireConditionModel"]?["corners"]?[0]?["hasData"]) == true);
                 Assert.Equal(2, ((int?)liveTelemetrySynthesisJson?["carFieldCoverage"]?["rowCount"]) ?? -1);
                 Assert.Equal(1, ((int?)liveTelemetrySynthesisJson?["carFieldCoverage"]?["officialPositionValidCount"]) ?? -1);
+                Assert.True(((bool?)liveTelemetrySynthesisJson?["weatherModel"]?["hasData"]) == true);
+                Assert.Equal("slightly wet", (string?)liveTelemetrySynthesisJson?["weatherModel"]?["trackWetnessLabel"]);
+                Assert.True(((bool?)liveTelemetrySynthesisJson?["inputsModel"]?["hasPedalInputs"]) == true);
+                Assert.True(((bool?)liveTelemetrySynthesisJson?["inputsModel"]?["hasSteeringWheelAngle"]) == true);
+                Assert.Equal("local-driver-scalar", (string?)liveTelemetrySynthesisJson?["fuelPitModel"]?["fuel"]?["source"]);
+                Assert.True(((bool?)liveTelemetrySynthesisJson?["fuelPitModel"]?["pitService"]?["hasAnySignal"]) == true);
+                Assert.True(((bool?)liveTelemetrySynthesisJson?["pitServiceModel"]?["request"]?["fuel"]) == true);
+                Assert.Equal("Dry", (string?)liveTelemetrySynthesisJson?["pitServiceModel"]?["tires"]?["requestedCompoundLabel"]);
+                Assert.Equal(1, ((int?)liveTelemetrySynthesisJson?["spatialRadarModel"]?["carCount"]) ?? -1);
+                Assert.Equal(1, ((int?)liveTelemetrySynthesisJson?["spatialRadarModel"]?["placementEvidenceCounts"]?["usable:CarIdxLapDistPct+track-length"]) ?? -1);
+                Assert.True(((bool?)liveTelemetrySynthesisJson?["trackMapModel"]?["hasSectors"]) == true);
+                Assert.Equal(2, ((int?)liveTelemetrySynthesisJson?["trackMapModel"]?["sectorCount"]) ?? -1);
                 Assert.Contains(
                     "gridding/startup/replay",
                     (string?)liveTelemetrySynthesisJson?["fieldSemantics"]?["sentinelNote"]);
@@ -508,6 +918,29 @@ public sealed class DiagnosticsBundleServiceTests
             Assert.Equal("ready", (string?)garageCoverJson?["imageStatus"]);
             Assert.Equal("cover.png", (string?)garageCoverJson?["imageFileName"]);
             Assert.True((bool?)garageCoverJson?["lastGarageVisible"]);
+
+            var streamChatEntry = archive.GetEntry("metadata/stream-chat.json");
+            Assert.NotNull(streamChatEntry);
+            using var streamChatReader = new StreamReader(streamChatEntry.Open());
+            var streamChatText = streamChatReader.ReadToEnd();
+            var streamChatJson = JsonNode.Parse(streamChatText);
+            Assert.Equal("streamlabs", (string?)streamChatJson?["provider"]);
+            Assert.True(((bool?)streamChatJson?["isConfigured"]) == true);
+            Assert.False(((bool?)streamChatJson?["hasValidTwitchChannel"]) ?? true);
+            Assert.Equal("not_selected", (string?)streamChatJson?["twitchChannelStatus"]);
+            Assert.True(((bool?)streamChatJson?["hasValidStreamlabsUrl"]) == true);
+            Assert.Equal("valid", (string?)streamChatJson?["streamlabsUrlStatus"]);
+            Assert.True(((bool?)streamChatJson?["activeSettingsMatch"]) == true);
+            Assert.DoesNotContain("private-token", streamChatText);
+            Assert.DoesNotContain("streamlabsWidgetUrl", streamChatText, StringComparison.OrdinalIgnoreCase);
+
+            var flagsEntry = archive.GetEntry("metadata/flags.json");
+            Assert.NotNull(flagsEntry);
+            using var flagsReader = new StreamReader(flagsEntry.Open());
+            var flagsJson = JsonNode.Parse(flagsReader.ReadToEnd());
+            Assert.Equal("/overlays/flags", (string?)flagsJson?["route"]);
+            Assert.Equal("0x00000028", (string?)flagsJson?["rawFlagsHex"]);
+            Assert.Equal(2, ((int?)flagsJson?["enabledDisplayFlagCount"]) ?? -1);
         }
         finally
         {
@@ -593,6 +1026,9 @@ public sealed class DiagnosticsBundleServiceTests
             var performanceRecorder = new AppPerformanceSnapshotRecorder(storage);
             var trackMapStore = new TrackMapStore(storage);
             var settingsStore = new AppSettingsStore(storage);
+            using var streamChatSource = new StreamChatOverlaySource(
+                NullLogger<StreamChatOverlaySource>.Instance,
+                performance);
             var releaseUpdates = new ReleaseUpdateService(
                 new ReleaseUpdateOptions { Enabled = false },
                 new AppEventRecorder(storage),
@@ -614,6 +1050,7 @@ public sealed class DiagnosticsBundleServiceTests
                 new LiveOverlayWindowCaptureStore(storage),
                 new ForegroundWindowTracker(),
                 releaseUpdates,
+                streamChatSource,
                 NullLogger<DiagnosticsBundleService>.Instance);
 
             var bundlePath = service.CreateBundle(DiagnosticsBundleSources.SessionFinalization);

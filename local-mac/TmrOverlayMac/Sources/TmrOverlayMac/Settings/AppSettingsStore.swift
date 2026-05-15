@@ -8,7 +8,7 @@ struct OverlaySettings: Codable {
     var y = 24.0
     var width = 304.0
     var height = 92.0
-    var opacity = 0.88
+    var opacity = 1.0
     var alwaysOnTop = true
     var showInTest = true
     var showInPractice = true
@@ -17,7 +17,6 @@ struct OverlaySettings: Codable {
     var showStatusCaptureDetails = true
     var showStatusHealthDetails = true
     var showFuelAdvice = true
-    var showFuelSource = true
     var showRadarMulticlassWarning = true
     var relativeCarsAhead = 5
     var relativeCarsBehind = 5
@@ -56,7 +55,6 @@ struct OverlaySettings: Codable {
         case showStatusCaptureDetails
         case showStatusHealthDetails
         case showFuelAdvice
-        case showFuelSource
         case showRadarMulticlassWarning
         case relativeCarsAhead
         case relativeCarsBehind
@@ -87,7 +85,7 @@ struct OverlaySettings: Codable {
         y: Double = 24.0,
         width: Double = 304.0,
         height: Double = 92.0,
-        opacity: Double = 0.88,
+        opacity: Double = 1.0,
         alwaysOnTop: Bool = true,
         showInTest: Bool = true,
         showInPractice: Bool = true,
@@ -96,7 +94,6 @@ struct OverlaySettings: Codable {
         showStatusCaptureDetails: Bool = true,
         showStatusHealthDetails: Bool = true,
         showFuelAdvice: Bool = true,
-        showFuelSource: Bool = true,
         showRadarMulticlassWarning: Bool = true,
         relativeCarsAhead: Int = 5,
         relativeCarsBehind: Int = 5,
@@ -134,7 +131,6 @@ struct OverlaySettings: Codable {
         self.showStatusCaptureDetails = showStatusCaptureDetails
         self.showStatusHealthDetails = showStatusHealthDetails
         self.showFuelAdvice = showFuelAdvice
-        self.showFuelSource = showFuelSource
         self.showRadarMulticlassWarning = showRadarMulticlassWarning
         self.relativeCarsAhead = relativeCarsAhead
         self.relativeCarsBehind = relativeCarsBehind
@@ -166,7 +162,7 @@ struct OverlaySettings: Codable {
         y = try container.decodeIfPresent(Double.self, forKey: .y) ?? 24.0
         width = try container.decodeIfPresent(Double.self, forKey: .width) ?? 304.0
         height = try container.decodeIfPresent(Double.self, forKey: .height) ?? 92.0
-        opacity = try container.decodeIfPresent(Double.self, forKey: .opacity) ?? 0.88
+        opacity = try container.decodeIfPresent(Double.self, forKey: .opacity) ?? 1.0
         alwaysOnTop = try container.decodeIfPresent(Bool.self, forKey: .alwaysOnTop) ?? true
         showInTest = try container.decodeIfPresent(Bool.self, forKey: .showInTest) ?? true
         showInPractice = try container.decodeIfPresent(Bool.self, forKey: .showInPractice) ?? true
@@ -175,7 +171,6 @@ struct OverlaySettings: Codable {
         showStatusCaptureDetails = try container.decodeIfPresent(Bool.self, forKey: .showStatusCaptureDetails) ?? true
         showStatusHealthDetails = try container.decodeIfPresent(Bool.self, forKey: .showStatusHealthDetails) ?? true
         showFuelAdvice = try container.decodeIfPresent(Bool.self, forKey: .showFuelAdvice) ?? true
-        showFuelSource = try container.decodeIfPresent(Bool.self, forKey: .showFuelSource) ?? true
         showRadarMulticlassWarning = try container.decodeIfPresent(Bool.self, forKey: .showRadarMulticlassWarning) ?? true
         relativeCarsAhead = try container.decodeIfPresent(Int.self, forKey: .relativeCarsAhead) ?? 5
         relativeCarsBehind = try container.decodeIfPresent(Int.self, forKey: .relativeCarsBehind) ?? 5
@@ -286,6 +281,7 @@ struct ApplicationSettings: Codable {
 
 enum AppSettingsMigrator {
     static let currentVersion = SharedOverlayContract.current.settingsVersion
+    private static let legacyDefaultOpacity = 0.88
     private static let flagsOverlayId = "flags"
     private static let flagsPrimaryScreenDefaultId = "primary-screen-default"
     private static let flagsDefaultWidth = 360.0
@@ -295,11 +291,12 @@ enum AppSettingsMigrator {
 
     static func migrate(_ settings: ApplicationSettings) -> ApplicationSettings {
         var migrated = settings
+        let sourceVersion = migrated.settingsVersion
         migrated.settingsVersion = currentVersion
         migrated.general = normalizedGeneral(migrated.general)
         migrated.overlays = migrated.overlays
             .filter { !$0.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            .map(normalizedOverlay)
+            .map { normalizedOverlay($0, sourceVersion: sourceVersion) }
         return migrated
     }
 
@@ -311,12 +308,15 @@ enum AppSettingsMigrator {
         )
     }
 
-    private static func normalizedOverlay(_ overlay: OverlaySettings) -> OverlaySettings {
+    private static func normalizedOverlay(_ overlay: OverlaySettings, sourceVersion: Int) -> OverlaySettings {
         var normalized = overlay
         normalized.scale = clampFinite(normalized.scale, minimum: 0.6, maximum: 2.0, fallback: 1.0)
         normalized.width = max(0, normalized.width)
         normalized.height = max(0, normalized.height)
-        normalized.opacity = clampFinite(normalized.opacity, minimum: 0.2, maximum: 1.0, fallback: 0.88)
+        if sourceVersion < currentVersion && normalized.opacity.isFinite && abs(normalized.opacity - legacyDefaultOpacity) <= 0.0001 {
+            normalized.opacity = 1.0
+        }
+        normalized.opacity = clampFinite(normalized.opacity, minimum: 0.2, maximum: 1.0, fallback: 1.0)
         let relativeCarsEachSide = min(max(max(normalized.relativeCarsAhead, normalized.relativeCarsBehind), 0), 8)
         normalized.relativeCarsAhead = relativeCarsEachSide
         normalized.relativeCarsBehind = relativeCarsEachSide
@@ -352,6 +352,23 @@ enum AppSettingsMigrator {
         let channel = normalizeTwitchChannel(channelSource) ?? StreamChatProviderOptions.defaultTwitchChannel
         overlay.streamChatTwitchChannel = channel
         overlay.options[SharedOverlayContract.streamChatTwitchChannelKey] = channel
+
+        ensureBoolOption(&overlay, key: SharedOverlayContract.streamChatShowAuthorColorKey, defaultValue: true)
+        ensureBoolOption(&overlay, key: SharedOverlayContract.streamChatShowBadgesKey, defaultValue: true)
+        ensureBoolOption(&overlay, key: SharedOverlayContract.streamChatShowBitsKey, defaultValue: true)
+        ensureBoolOption(&overlay, key: SharedOverlayContract.streamChatShowFirstMessageKey, defaultValue: true)
+        ensureBoolOption(&overlay, key: SharedOverlayContract.streamChatShowRepliesKey, defaultValue: true)
+        ensureBoolOption(&overlay, key: SharedOverlayContract.streamChatShowTimestampsKey, defaultValue: true)
+        ensureBoolOption(&overlay, key: SharedOverlayContract.streamChatShowEmotesKey, defaultValue: true)
+        ensureBoolOption(&overlay, key: SharedOverlayContract.streamChatShowAlertsKey, defaultValue: true)
+        ensureBoolOption(&overlay, key: SharedOverlayContract.streamChatShowMessageIdsKey, defaultValue: false)
+    }
+
+    private static func ensureBoolOption(_ overlay: inout OverlaySettings, key: String, defaultValue: Bool) {
+        let value = overlay.options[key]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        overlay.options[key] = (value == "true" || value == "false")
+            ? value
+            : (defaultValue ? "true" : "false")
     }
 
     private static func normalizeTwitchChannel(_ value: String) -> String? {

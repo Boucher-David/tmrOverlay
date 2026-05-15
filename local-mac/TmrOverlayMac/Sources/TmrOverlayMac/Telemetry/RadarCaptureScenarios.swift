@@ -30,6 +30,7 @@ struct RadarCaptureScenario {
             hasData: carLeftRight != nil || !onTrackCars.isEmpty,
             carLeftRight: carLeftRight,
             referenceCarClass: referenceCarClass,
+            referenceCarClassColorHex: classColorHex(referenceCarClass),
             sideStatus: sideStatus,
             hasCarLeft: hasCarLeft,
             hasCarRight: hasCarRight,

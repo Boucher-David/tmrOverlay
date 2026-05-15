@@ -51,6 +51,8 @@ internal sealed record StandingsOverlayViewModel(
         {
             var showPendingGridRows = scoring.Source == LiveScoringSource.StartingGrid
                 && IsRacePreGreen(snapshot);
+            var allowLeaderProgress = scoring.Source == LiveScoringSource.SessionResults
+                && !IsRacePreGreen(snapshot);
             var scoringRows = ScoringRows(
                 snapshot,
                 referenceCarIdx,
@@ -58,7 +60,8 @@ internal sealed record StandingsOverlayViewModel(
                 requestedOtherClassRows,
                 showClassSeparators,
                 requiresValidLap,
-                showPendingGridRows);
+                showPendingGridRows,
+                allowLeaderProgress);
             if (scoringRows.Length == 0)
             {
                 return Waiting(requiresValidLap ? "waiting for valid laps" : "waiting for scoring rows");
@@ -69,10 +72,7 @@ internal sealed record StandingsOverlayViewModel(
             var scoringRowCount = requiresValidLap
                 ? scoring.Rows.Count(HasValidLap)
                 : scoring.Rows.Count;
-            var scoringStatus = IsPositionLabel(scoringReference?.ClassPosition)
-                && scoringReference?.ClassPosition is { } scoringClassPosition
-                ? $"{scoringClassPosition} - {shownCars}/{scoringRowCount} rows"
-                : $"{shownCars}/{scoringRowCount} rows";
+            var scoringStatus = StatusText(scoringReference?.ClassPosition, shownCars, scoringRowCount);
             return new StandingsOverlayViewModel(
                 scoringStatus,
                 SourceText(scoring, snapshot.Models.Coverage),
@@ -92,12 +92,14 @@ internal sealed record StandingsOverlayViewModel(
             .ThenBy(row => row.GapLapsToClassLeader ?? double.MaxValue)
             .ThenBy(row => row.CarIdx)
             .ToArray();
+        var allowTimingLeaderProgress = !IsRacePreGreen(snapshot);
         var candidateRows = SelectRowsAroundReference(
                 orderedCandidateRows,
                 referenceCarIdx,
                 requestedMaximumRows,
-                row => row.CarIdx)
-            .Select(row => ToRow(row, referenceCarIdx))
+                row => row.CarIdx,
+                preserveFirstRow: true)
+            .Select(row => ToRow(row, referenceCarIdx, allowTimingLeaderProgress))
             .ToArray();
 
         if (candidateRows.Length == 0)
@@ -106,10 +108,7 @@ internal sealed record StandingsOverlayViewModel(
         }
 
         var timingReference = candidateRows.FirstOrDefault(row => row.IsReference);
-        var timingStatus = IsPositionLabel(timingReference?.ClassPosition)
-            && timingReference?.ClassPosition is { } timingClassPosition
-            ? $"{timingClassPosition} - {candidateRows.Length} rows"
-            : $"{candidateRows.Length} rows";
+        var timingStatus = StatusText(timingReference?.ClassPosition, candidateRows.Length, null);
         return new StandingsOverlayViewModel(
             timingStatus,
             SourceText(timing),
@@ -123,7 +122,8 @@ internal sealed record StandingsOverlayViewModel(
         int otherClassRowsPerClass,
         bool showClassSeparators,
         bool requiresValidLap,
-        bool showPendingGridRows)
+        bool showPendingGridRows,
+        bool allowLeaderProgress)
     {
         var scoring = snapshot.Models.Scoring;
         var groups = scoring.ClassGroups.Count > 0
@@ -172,11 +172,13 @@ internal sealed record StandingsOverlayViewModel(
         var visibleGroups = orderedGroups
             .Where(group => groupLimits.ContainsKey(group))
             .ToArray();
-        var rows = new List<StandingsOverlayRowViewModel>();
         var timingByCarIdx = snapshot.Models.Timing.OverallRows
             .Concat(snapshot.Models.Timing.ClassRows)
             .GroupBy(row => row.CarIdx)
             .ToDictionary(group => group.Key, SelectTimingRow);
+        allowLeaderProgress = allowLeaderProgress
+            && VisibleClassLeadersHaveProgress(visibleGroups, timingByCarIdx);
+        var rows = new List<StandingsOverlayRowViewModel>();
         var includeHeaders = showClassSeparators && visibleGroups.Length > 1;
 
         foreach (var group in visibleGroups)
@@ -196,10 +198,34 @@ internal sealed record StandingsOverlayViewModel(
                 Math.Min(rowBudget - rows.Count, groupLimits[group]),
                 ReferenceEquals(group, primaryGroup),
                 includeHeaders,
-                showPendingGridRows);
+                showPendingGridRows,
+                allowLeaderProgress);
         }
 
         return rows.ToArray();
+    }
+
+    private static bool VisibleClassLeadersHaveProgress(
+        IReadOnlyList<LiveScoringClassGroup> visibleGroups,
+        IReadOnlyDictionary<int, LiveTimingRow> timingByCarIdx)
+    {
+        foreach (var group in visibleGroups)
+        {
+            var leader = OrderedClassRows(group.Rows).FirstOrDefault(row => row.ClassPosition == 1)
+                ?? OrderedClassRows(group.Rows).FirstOrDefault();
+            if (leader is null)
+            {
+                continue;
+            }
+
+            timingByCarIdx.TryGetValue(leader.CarIdx, out var timingRow);
+            if (FormatLeaderProgress(leader, timingRow) is null)
+            {
+                return false;
+            }
+        }
+
+        return visibleGroups.Count > 0;
     }
 
     internal static int ExpandRowBudgetForClassGroups(
@@ -216,7 +242,7 @@ internal sealed record StandingsOverlayViewModel(
         }
 
         var otherGroupCount = Math.Max(0, orderedGroups.Count - 1);
-        var otherGroupRows = otherGroupCount * (1 + visibleOtherClassRows);
+        var otherGroupRows = otherGroupCount * visibleOtherClassRows;
         var classHeaderRows = orderedGroups.Count;
         return Math.Clamp(baseRows + classHeaderRows + otherGroupRows, 1, MaximumRenderedRows);
     }
@@ -283,7 +309,8 @@ internal sealed record StandingsOverlayViewModel(
         int groupLimit,
         bool useReferenceWindow,
         bool includeHeader,
-        bool showPendingGridRows)
+        bool showPendingGridRows,
+        bool allowLeaderProgress)
     {
         if (groupLimit <= 0 || rows.Count >= maximumRows)
         {
@@ -296,12 +323,13 @@ internal sealed record StandingsOverlayViewModel(
             groupLimit--;
         }
 
-        var orderedRows = group.Rows;
+        var orderedRows = OrderedClassRows(group.Rows);
         foreach (var scoringRow in SelectRowsAroundReference(
             orderedRows,
             useReferenceWindow ? referenceCarIdx : null,
             Math.Max(0, groupLimit),
-            row => row.CarIdx))
+            row => row.CarIdx,
+            preserveFirstRow: useReferenceWindow))
         {
             if (rows.Count >= maximumRows)
             {
@@ -313,8 +341,18 @@ internal sealed record StandingsOverlayViewModel(
                 scoringRow,
                 timingRow,
                 referenceCarIdx,
-                showPendingGridRows));
+                showPendingGridRows,
+                allowLeaderProgress));
         }
+    }
+
+    private static LiveScoringRow[] OrderedClassRows(IReadOnlyList<LiveScoringRow> rows)
+    {
+        return rows
+            .OrderBy(row => row.ClassPosition ?? int.MaxValue)
+            .ThenBy(row => row.OverallPosition ?? int.MaxValue)
+            .ThenBy(row => row.CarIdx)
+            .ToArray();
     }
 
     private static StandingsOverlayRowViewModel ClassHeaderRow(LiveScoringClassGroup group, string classEstimatedLaps)
@@ -408,7 +446,8 @@ internal sealed record StandingsOverlayViewModel(
         IReadOnlyList<T> orderedRows,
         int? referenceCarIdx,
         int limit,
-        Func<T, int> carIdx)
+        Func<T, int> carIdx,
+        bool preserveFirstRow = false)
     {
         if (limit <= 0 || orderedRows.Count <= limit)
         {
@@ -433,6 +472,22 @@ internal sealed record StandingsOverlayViewModel(
         if (referenceIndex < 0)
         {
             return orderedRows.Take(limit).ToArray();
+        }
+
+        if (preserveFirstRow && referenceIndex > 0)
+        {
+            if (limit == 1)
+            {
+                return new[] { orderedRows[0] };
+            }
+
+            var selected = new List<T>(limit) { orderedRows[0] };
+            selected.AddRange(SelectRowsAroundReference(
+                orderedRows.Skip(1).ToArray(),
+                referenceCarIdx,
+                limit - 1,
+                carIdx));
+            return selected;
         }
 
         var ahead = limit / 2;
@@ -489,14 +544,17 @@ internal sealed record StandingsOverlayViewModel(
             .Select(row => row!);
     }
 
-    private static StandingsOverlayRowViewModel ToRow(LiveTimingRow row, int? referenceCarIdx)
+    private static StandingsOverlayRowViewModel ToRow(
+        LiveTimingRow row,
+        int? referenceCarIdx,
+        bool allowLeaderProgress)
     {
         var isReference = referenceCarIdx is not null && row.CarIdx == referenceCarIdx;
         return new StandingsOverlayRowViewModel(
             ClassPosition: row.ClassPosition is { } classPosition ? $"{classPosition}" : "--",
             CarNumber: FormatCarNumber(row),
             Driver: DriverName(row.DriverName, row.TeamName, row.CarIdx),
-            Gap: FormatGap(row),
+            Gap: FormatGap(row, allowLeaderProgress),
             Interval: FormatInterval(row, isReference),
             Pit: row.OnPitRoad == true ? "IN" : string.Empty,
             IsReference: isReference,
@@ -511,6 +569,7 @@ internal sealed record StandingsOverlayViewModel(
         LiveTimingRow? timingRow,
         int? referenceCarIdx,
         bool showPendingGridRows,
+        bool allowLeaderProgress,
         int? classPositionOverride = null,
         string? intervalOverride = null)
     {
@@ -522,7 +581,7 @@ internal sealed record StandingsOverlayViewModel(
                 : scoringRow.ClassPosition is { } classPosition ? $"{classPosition}" : "--",
             CarNumber: FormatCarNumber(scoringRow),
             Driver: DriverName(scoringRow.DriverName, scoringRow.TeamName, scoringRow.CarIdx),
-            Gap: FormatGap(scoringRow, timingRow),
+            Gap: FormatGap(scoringRow, timingRow, allowLeaderProgress),
             Interval: intervalOverride ?? (timingRow is not null ? FormatInterval(timingRow, isReference) : "--"),
             Pit: timingRow?.OnPitRoad == true ? "IN" : string.Empty,
             IsReference: isReference,
@@ -587,11 +646,18 @@ internal sealed record StandingsOverlayViewModel(
         return name.Trim();
     }
 
-    private static string FormatGap(LiveTimingRow row)
+    private static string FormatGap(LiveTimingRow row, bool allowLeaderProgress)
     {
         if (row.IsClassLeader)
         {
-            return "Leader";
+            return allowLeaderProgress
+                ? FormatLeaderProgress(row) ?? "Leader"
+                : "Leader";
+        }
+
+        if (row.GapLapsToClassLeader is { } laps && IsFinite(laps))
+        {
+            return FormatLaps(laps);
         }
 
         if (row.GapSecondsToClassLeader is { } seconds && IsFinite(seconds))
@@ -602,14 +668,49 @@ internal sealed record StandingsOverlayViewModel(
         return "--";
     }
 
-    private static string FormatGap(LiveScoringRow scoringRow, LiveTimingRow? timingRow)
+    private static string FormatGap(
+        LiveScoringRow scoringRow,
+        LiveTimingRow? timingRow,
+        bool allowLeaderProgress)
     {
         if (scoringRow.ClassPosition == 1)
         {
-            return "Leader";
+            return allowLeaderProgress
+                ? FormatLeaderProgress(scoringRow, timingRow) ?? "Leader"
+                : "Leader";
         }
 
-        return timingRow is not null ? FormatGap(timingRow) : "--";
+        return timingRow is not null ? FormatGap(timingRow, allowLeaderProgress) : "--";
+    }
+
+    private static string? FormatLeaderProgress(LiveScoringRow scoringRow, LiveTimingRow? timingRow)
+    {
+        return timingRow is not null
+            ? FormatLeaderProgress(timingRow) ?? FormatLeaderProgress(scoringRow)
+            : FormatLeaderProgress(scoringRow);
+    }
+
+    private static string? FormatLeaderProgress(LiveTimingRow row)
+    {
+        if (row.LapCompleted is not { } completed || completed < 0)
+        {
+            return null;
+        }
+
+        var displayLap = completed + (row.LapDistPct is > 0d and < 1d ? 1 : 0);
+        return displayLap > 0 ? $"Lap {displayLap}" : null;
+    }
+
+    private static string? FormatLeaderProgress(LiveScoringRow row)
+    {
+        if (row.Lap is > 0)
+        {
+            return $"Lap {row.Lap.Value}";
+        }
+
+        return row.LapsComplete is > 0
+            ? $"{row.LapsComplete.Value}L"
+            : null;
     }
 
     private static string FormatInterval(LiveTimingRow row, bool isReference)
@@ -617,6 +718,11 @@ internal sealed record StandingsOverlayViewModel(
         if (row.ClassPosition == 1 || row.IsClassLeader)
         {
             return "0.0";
+        }
+
+        if (row.IntervalLapsToPreviousClassRow is { } laps && IsFinite(laps))
+        {
+            return FormatLaps(laps);
         }
 
         if (row.IntervalSecondsToPreviousClassRow is { } delta && IsFinite(delta))
@@ -640,6 +746,29 @@ internal sealed record StandingsOverlayViewModel(
     private static bool IsPositionLabel(string? value)
     {
         return !string.IsNullOrWhiteSpace(value) && !string.Equals(value, "--", StringComparison.Ordinal);
+    }
+
+    private static string FormatLaps(double laps)
+    {
+        var positiveLaps = Math.Max(0d, laps);
+        if (positiveLaps < 0.9999d)
+        {
+            return "--";
+        }
+
+        return Math.Abs(positiveLaps - Math.Round(positiveLaps)) <= 0.0001d
+            ? $"+{positiveLaps:0}L"
+            : $"+{positiveLaps:0.000}L";
+    }
+
+    private static string StatusText(string? classPosition, int shownRows, int? totalRows)
+    {
+        var shownText = totalRows is { } total
+            ? $"{shownRows}/{total} shown"
+            : $"{shownRows} shown";
+        return IsPositionLabel(classPosition)
+            ? $"P{classPosition} | {shownText}"
+            : shownText;
     }
 
     private static bool IsFinite(double value)

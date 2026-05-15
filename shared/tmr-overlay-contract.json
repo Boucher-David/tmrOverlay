@@ -2,7 +2,7 @@
   "$schema": "./tmr-overlay-contract.schema.json",
   "contractVersion": 1,
   "settings": {
-    "settingsVersion": 10,
+    "settingsVersion": 11,
     "general": {
       "fontFamily": "Segoe UI",
       "unitSystem": "Metric"
@@ -11,14 +11,32 @@
       "stream-chat": {
         "options": {
           "stream-chat.provider": "twitch",
-          "stream-chat.twitch-channel": "techmatesracing"
+          "stream-chat.twitch-channel": "techmatesracing",
+          "stream-chat.twitch.author-color": "true",
+          "stream-chat.twitch.badges": "true",
+          "stream-chat.twitch.bits": "true",
+          "stream-chat.twitch.first-message": "true",
+          "stream-chat.twitch.replies": "true",
+          "stream-chat.twitch.timestamps": "true",
+          "stream-chat.twitch.emotes": "true",
+          "stream-chat.twitch.alerts": "true",
+          "stream-chat.twitch.message-ids": "false"
         }
       }
     },
     "optionKeys": {
       "streamChatProvider": "stream-chat.provider",
       "streamChatStreamlabsUrl": "stream-chat.streamlabs-url",
-      "streamChatTwitchChannel": "stream-chat.twitch-channel"
+      "streamChatTwitchChannel": "stream-chat.twitch-channel",
+      "streamChatShowAuthorColor": "stream-chat.twitch.author-color",
+      "streamChatShowBadges": "stream-chat.twitch.badges",
+      "streamChatShowBits": "stream-chat.twitch.bits",
+      "streamChatShowFirstMessage": "stream-chat.twitch.first-message",
+      "streamChatShowReplies": "stream-chat.twitch.replies",
+      "streamChatShowTimestamps": "stream-chat.twitch.timestamps",
+      "streamChatShowEmotes": "stream-chat.twitch.emotes",
+      "streamChatShowAlerts": "stream-chat.twitch.alerts",
+      "streamChatShowMessageIds": "stream-chat.twitch.message-ids"
     }
   },
   "design": {

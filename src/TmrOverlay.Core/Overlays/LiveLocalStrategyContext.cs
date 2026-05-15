@@ -115,18 +115,31 @@ internal static class LiveLocalStrategyContext
     {
         var race = snapshot.Models.RaceEvents;
         var sample = snapshot.LatestSample;
+        if (IsPitContext(snapshot))
+        {
+            return allowPitContext;
+        }
+
         if ((race.HasData && race.IsOnTrack) || sample?.IsOnTrack == true)
         {
             return true;
         }
 
-        if (!allowPitContext)
-        {
-            return false;
-        }
+        return false;
+    }
 
+    private static bool IsPitContext(LiveTelemetrySnapshot snapshot)
+    {
+        var reference = snapshot.Models.Reference;
+        var race = snapshot.Models.RaceEvents;
         var pit = snapshot.Models.FuelPit;
+        var sample = snapshot.LatestSample;
         return (race.HasData && race.OnPitRoad)
+            || reference.OnPitRoad == true
+            || reference.PlayerOnPitRoad == true
+            || reference.PlayerCarInPitStall
+            || IsPitRoadTrackSurface(reference.TrackSurface)
+            || IsPitRoadTrackSurface(reference.PlayerTrackSurface)
             || pit.OnPitRoad
             || pit.PitstopActive
             || pit.PlayerCarInPitStall
@@ -134,7 +147,15 @@ internal static class LiveLocalStrategyContext
             || sample?.OnPitRoad == true
             || sample?.PitstopActive == true
             || sample?.PlayerCarInPitStall == true
-            || sample?.TeamOnPitRoad == true;
+            || sample?.TeamOnPitRoad == true
+            || sample?.FocusOnPitRoad == true
+            || IsPitRoadTrackSurface(sample?.FocusTrackSurface)
+            || IsPitRoadTrackSurface(sample?.PlayerTrackSurface);
+    }
+
+    private static bool IsPitRoadTrackSurface(int? trackSurface)
+    {
+        return trackSurface is 1 or 2;
     }
 
     private static int? ValidCarIdx(int? carIdx)

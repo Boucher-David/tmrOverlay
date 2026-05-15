@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using TmrOverlay.App.Cars;
 using TmrOverlay.App.Events;
 using TmrOverlay.Core.AppInfo;
 using TmrOverlay.Core.History;
@@ -97,6 +98,7 @@ internal sealed class HistoryMaintenanceService : IHostedService, IDisposable
         var runAtUtc = DateTimeOffset.UtcNow;
         var files = new List<HistoryMaintenanceFileResult>();
         var compatibleSummariesBySessionDirectory = new Dictionary<string, List<HistoricalSessionSummary>>(StringComparer.OrdinalIgnoreCase);
+        var compatibleSummariesByCarKey = new Dictionary<string, List<HistoricalSessionSummary>>(StringComparer.OrdinalIgnoreCase);
         var summaryFilesScanned = 0;
         var summaryFilesCompatible = 0;
         var summaryFilesMigrated = 0;
@@ -156,6 +158,19 @@ internal sealed class HistoryMaintenanceService : IHostedService, IDisposable
             }
 
             summaries.Add(result.Summary);
+
+            if (CarSpecificationCatalog.Bundled.HasExactSpec(result.Summary.Combo))
+            {
+                continue;
+            }
+
+            if (!compatibleSummariesByCarKey.TryGetValue(result.Summary.Combo.CarKey, out var carSummaries))
+            {
+                carSummaries = [];
+                compatibleSummariesByCarKey[result.Summary.Combo.CarKey] = carSummaries;
+            }
+
+            carSummaries.Add(result.Summary);
         }
 
         foreach (var session in compatibleSummariesBySessionDirectory.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
@@ -163,6 +178,34 @@ internal sealed class HistoryMaintenanceService : IHostedService, IDisposable
             cancellationToken.ThrowIfCancellationRequested();
             var aggregate = SessionHistoryAggregateBuilder.Rebuild(session.Value, runAtUtc);
             var aggregatePath = Path.Combine(session.Key, "aggregate.json");
+            await WriteTextAtomicAsync(
+                    aggregatePath,
+                    JsonSerializer.Serialize(aggregate, JsonOptions),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            aggregateFilesRebuilt++;
+            files.Add(new HistoryMaintenanceFileResult(
+                RelativePath(aggregatePath),
+                HistoryMaintenanceActions.AggregateRebuilt,
+                null,
+                null,
+                null));
+        }
+
+        foreach (var car in compatibleSummariesByCarKey.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var aggregate = SessionHistoryAggregateBuilder.RebuildCarRadarCalibration(car.Value, runAtUtc);
+            if (aggregate.SessionCount == 0)
+            {
+                continue;
+            }
+
+            var aggregatePath = Path.Combine(
+                _options.ResolvedUserHistoryRoot,
+                "cars",
+                car.Key,
+                "radar-calibration.json");
             await WriteTextAtomicAsync(
                     aggregatePath,
                     JsonSerializer.Serialize(aggregate, JsonOptions),

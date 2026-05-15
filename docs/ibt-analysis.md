@@ -72,7 +72,7 @@ ibt-analysis/ibt-local-car-summary.json
 
 ## Track Map Generation
 
-The current IBT path can write a reusable user track-map asset after successful IBT analysis when the Track Map setting `track-map.build-from-telemetry` is enabled. The default is enabled, and the Track Map settings tab exposes the `Build local maps from IBT telemetry` checkbox as the user control. Fresh installs use bundled app map JSON when available and otherwise keep the circle fallback until local IBT-derived map generation creates a user map. Disabling the setting returns runtime lookup to bundled app maps plus circle fallback; stored user maps remain on disk but are not used by the overlay while disabled.
+The current IBT path can write a reusable user track-map asset after successful IBT analysis when the app-level `track-map.build-from-telemetry` capture setting is enabled. The default is enabled, and the Support/Diagnostics tab exposes the `Build local maps from IBT telemetry` checkbox as the user control. Fresh installs use bundled app map JSON when available and otherwise keep the circle fallback until local IBT-derived map generation creates a user map. Disabling the setting returns runtime lookup to bundled app maps plus circle fallback; stored user maps remain on disk but are not used by the overlay while disabled.
 
 The app keeps source `.ibt` files external, extracts compact derived geometry, and saves generated user maps under app-owned local storage:
 
@@ -179,5 +179,6 @@ May 2026 uploaded-data pass:
 - `captures/IBT` contained 876 parseable `.ibt` files totaling about 21.4 GiB.
 - All parsed files contained local-position fields such as `Lat`, `Lon`, and `Alt`.
 - None of the parsed files contained the live opponent/timing arrays used by current overlays, including `CarIdxLapDistPct`, `CarIdxF2Time`, `CarIdxEstTime`, `CarIdxPosition`, `CarIdxClassPosition`, `CarIdxOnPitRoad`, or `CarLeftRight`.
+- A local search across the IBT inventory and representative `strings` output did not find car dimension metadata such as `CarLength`, `CarWidth`, `Wheelbase`, body length, or vehicle dimensions. IBT can identify the car by `CarID`/`CarPath`, but radar body-size calibration still needs a curated external metadata table or another proven source for physical dimensions.
 - Treat IBT as a strong local-car post-race enrichment source, especially for trajectory, fuel-level, tire, wheel, ride-height, and vehicle-dynamics analysis. Do not treat it as a replacement for raw/live capture when the analysis needs opponent timing, side occupancy, camera focus, team/focus `CarIdx`, or standings context.
 - The repo keeps compact examples under `fixtures/telemetry-analysis/`. Do not commit raw `.ibt` files or raw `telemetry.bin` captures; commit derived example JSON when a new signal assumption needs to be preserved.

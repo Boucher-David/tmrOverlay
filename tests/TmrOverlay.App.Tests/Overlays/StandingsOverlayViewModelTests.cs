@@ -104,7 +104,7 @@ public sealed class StandingsOverlayViewModelTests
 
         var viewModel = StandingsOverlayViewModel.From(snapshot, now);
 
-        Assert.Equal("3 - 3 rows", viewModel.Status);
+        Assert.Equal("P3 | 3 shown", viewModel.Status);
         Assert.Equal("source: live timing telemetry", viewModel.Source);
         Assert.Collection(
             viewModel.Rows,
@@ -287,7 +287,7 @@ public sealed class StandingsOverlayViewModelTests
 
         var viewModel = StandingsOverlayViewModel.From(snapshot, now, maximumRows: 3);
 
-        Assert.Equal("3 - 3/3 rows", viewModel.Status);
+        Assert.Equal("P3 | 3/3 shown", viewModel.Status);
         Assert.Equal("source: scoring snapshot (partial live)", viewModel.Source);
         Assert.Collection(
             viewModel.Rows,
@@ -383,6 +383,204 @@ public sealed class StandingsOverlayViewModelTests
             },
             row => Assert.Equal("#10", row.CarNumber),
             row => Assert.Equal("#11", row.CarNumber));
+    }
+
+    [Fact]
+    public void From_UsesLeaderLapProgressInGapColumnWhenAvailable()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var scoringRows = new[]
+        {
+            ScoringRow(1, overallPosition: 1, classPosition: 1, carNumber: "1", driverName: "Leader"),
+            ScoringRow(2, overallPosition: 2, classPosition: 2, carNumber: "2", driverName: "Chase", isFocus: true)
+        };
+        var leader = TimingRow(
+            carIdx: 1,
+            driverName: "Leader",
+            carNumber: "1",
+            classPosition: 1,
+            gapSeconds: 0d,
+            deltaSeconds: null,
+            isLeader: true,
+            lapCompleted: 12,
+            lapDistPct: 0.35d);
+        var chase = TimingRow(
+            carIdx: 2,
+            driverName: "Chase",
+            carNumber: "2",
+            classPosition: 2,
+            gapSeconds: 4d,
+            deltaSeconds: 4d,
+            isFocus: true);
+        var snapshot = Snapshot(now, LiveRaceModels.Empty with
+        {
+            Scoring = new LiveScoringModel(
+                HasData: true,
+                Quality: LiveModelQuality.Reliable,
+                Source: LiveScoringSource.SessionResults,
+                ReferenceCarIdx: 2,
+                ReferenceCarClass: 4098,
+                ClassGroups:
+                [
+                    new LiveScoringClassGroup(
+                        CarClass: 4098,
+                        ClassName: "GT3",
+                        CarClassColorHex: "#FFDA59",
+                        IsReferenceClass: true,
+                        RowCount: scoringRows.Length,
+                        Rows: scoringRows)
+                ],
+                Rows: scoringRows),
+            Timing = LiveTimingModel.Empty with
+            {
+                HasData = true,
+                Quality = LiveModelQuality.Reliable,
+                FocusCarIdx = 2,
+                FocusRow = chase,
+                OverallRows = [leader, chase],
+                ClassRows = [leader, chase]
+            }
+        });
+
+        var viewModel = StandingsOverlayViewModel.From(snapshot, now, maximumRows: 2);
+
+        Assert.Equal(new[] { "Lap 13", "+4.0" }, viewModel.Rows.Select(row => row.Gap));
+    }
+
+    [Fact]
+    public void From_UsesClassLeaderWhenOtherClassLimitIsOne()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var referenceClassRows = new[]
+        {
+            ScoringRow(10, overallPosition: 4, classPosition: 1, carNumber: "10", driverName: "Reference", carClass: 4098, className: "GT3", isFocus: true),
+            ScoringRow(11, overallPosition: 6, classPosition: 2, carNumber: "11", driverName: "GT3 Chase", carClass: 4098, className: "GT3")
+        };
+        var unsortedPrototypeRows = new[]
+        {
+            ScoringRow(22, overallPosition: 3, classPosition: 2, carNumber: "22", driverName: "Proto Chase", carClass: 4000, className: "GTP"),
+            ScoringRow(21, overallPosition: 1, classPosition: 1, carNumber: "21", driverName: "Proto Leader", carClass: 4000, className: "GTP"),
+            ScoringRow(23, overallPosition: 5, classPosition: 3, carNumber: "23", driverName: "Proto Third", carClass: 4000, className: "GTP")
+        };
+        var allRows = unsortedPrototypeRows.Concat(referenceClassRows)
+            .OrderBy(row => row.OverallPosition)
+            .ToArray();
+        var snapshot = Snapshot(now, LiveRaceModels.Empty with
+        {
+            Scoring = new LiveScoringModel(
+                HasData: true,
+                Quality: LiveModelQuality.Reliable,
+                Source: LiveScoringSource.SessionResults,
+                ReferenceCarIdx: 10,
+                ReferenceCarClass: 4098,
+                ClassGroups:
+                [
+                    new LiveScoringClassGroup(
+                        CarClass: 4000,
+                        ClassName: "GTP",
+                        CarClassColorHex: "#33CEFF",
+                        IsReferenceClass: false,
+                        RowCount: unsortedPrototypeRows.Length,
+                        Rows: unsortedPrototypeRows),
+                    new LiveScoringClassGroup(
+                        CarClass: 4098,
+                        ClassName: "GT3",
+                        CarClassColorHex: "#FFDA59",
+                        IsReferenceClass: true,
+                        RowCount: referenceClassRows.Length,
+                        Rows: referenceClassRows)
+                ],
+                Rows: allRows)
+        });
+
+        var viewModel = StandingsOverlayViewModel.From(
+            snapshot,
+            now,
+            maximumRows: 5,
+            otherClassRowsPerClass: 1);
+
+        Assert.Contains(viewModel.Rows, row => row.IsClassHeader && row.Driver == "GTP");
+        Assert.Contains(viewModel.Rows, row => row.CarNumber == "#21" && row.Driver == "Proto Leader");
+        Assert.DoesNotContain(viewModel.Rows, row => row.CarNumber == "#22" || row.CarNumber == "#23");
+    }
+
+    [Fact]
+    public void From_DoesNotLetClassHeadersExpandPrimaryClassBeyondMaximumRows()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var lmp2Rows = Enumerable.Range(0, 15)
+            .Select(index => ScoringRow(
+                100 + index,
+                overallPosition: 3 + index,
+                classPosition: index + 1,
+                carNumber: $"L{index + 1}",
+                driverName: $"LMP2 Driver {index + 1}",
+                carClass: 4100,
+                className: "LMP2",
+                isFocus: index == 14))
+            .ToArray();
+        var prototypeRows = new[]
+        {
+            ScoringRow(21, overallPosition: 1, classPosition: 1, carNumber: "P1", driverName: "Proto Leader", carClass: 4000, className: "GTP"),
+            ScoringRow(22, overallPosition: 2, classPosition: 2, carNumber: "P2", driverName: "Proto Chase", carClass: 4000, className: "GTP")
+        };
+        var gt3Rows = new[]
+        {
+            ScoringRow(31, overallPosition: 18, classPosition: 1, carNumber: "G1", driverName: "GT3 Leader", carClass: 4098, className: "GT3"),
+            ScoringRow(32, overallPosition: 19, classPosition: 2, carNumber: "G2", driverName: "GT3 Chase", carClass: 4098, className: "GT3")
+        };
+        var allRows = prototypeRows.Concat(lmp2Rows).Concat(gt3Rows)
+            .OrderBy(row => row.OverallPosition)
+            .ToArray();
+        var snapshot = Snapshot(now, LiveRaceModels.Empty with
+        {
+            Scoring = new LiveScoringModel(
+                HasData: true,
+                Quality: LiveModelQuality.Reliable,
+                Source: LiveScoringSource.SessionResults,
+                ReferenceCarIdx: 114,
+                ReferenceCarClass: 4100,
+                ClassGroups:
+                [
+                    new LiveScoringClassGroup(
+                        CarClass: 4000,
+                        ClassName: "GTP",
+                        CarClassColorHex: "#33CEFF",
+                        IsReferenceClass: false,
+                        RowCount: prototypeRows.Length,
+                        Rows: prototypeRows),
+                    new LiveScoringClassGroup(
+                        CarClass: 4100,
+                        ClassName: "LMP2",
+                        CarClassColorHex: "#FFFFFF",
+                        IsReferenceClass: true,
+                        RowCount: lmp2Rows.Length,
+                        Rows: lmp2Rows),
+                    new LiveScoringClassGroup(
+                        CarClass: 4098,
+                        ClassName: "GT3",
+                        CarClassColorHex: "#FFDA59",
+                        IsReferenceClass: false,
+                        RowCount: gt3Rows.Length,
+                        Rows: gt3Rows)
+                ],
+                Rows: allRows)
+        });
+
+        var viewModel = StandingsOverlayViewModel.From(
+            snapshot,
+            now,
+            maximumRows: 14,
+            otherClassRowsPerClass: 2);
+
+        var lmp2CarRows = viewModel.Rows
+            .Where(row => !row.IsClassHeader && row.Driver.StartsWith("LMP2 Driver ", StringComparison.Ordinal))
+            .ToArray();
+        Assert.Equal(14, lmp2CarRows.Length);
+        Assert.Contains(lmp2CarRows, row => row.IsLeader && row.Driver == "LMP2 Driver 1");
+        Assert.Contains(lmp2CarRows, row => row.IsReference && row.Driver == "LMP2 Driver 15");
+        Assert.DoesNotContain(lmp2CarRows, row => row.Driver == "LMP2 Driver 2");
+        Assert.Equal("P15 | 18/19 shown", viewModel.Status);
     }
 
     [Fact]
@@ -485,6 +683,39 @@ public sealed class StandingsOverlayViewModelTests
     }
 
     [Fact]
+    public void From_OrdersClassHeadersByIracingOverallOrderNotReferenceClassFirst()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var referenceGt3 = ScoringGroup(5000, "GT3", 10, firstOverallPosition: 4, isReferenceClass: true);
+        var leadingPrototype = ScoringGroup(5001, "GTP", 20, firstOverallPosition: 1);
+        var allRows = referenceGt3.Rows.Concat(leadingPrototype.Rows)
+            .OrderBy(row => row.OverallPosition)
+            .ToArray();
+        var snapshot = Snapshot(now, LiveRaceModels.Empty with
+        {
+            Scoring = new LiveScoringModel(
+                HasData: true,
+                Quality: LiveModelQuality.Reliable,
+                Source: LiveScoringSource.SessionResults,
+                ReferenceCarIdx: 10,
+                ReferenceCarClass: 5000,
+                ClassGroups: [referenceGt3, leadingPrototype],
+                Rows: allRows)
+        });
+
+        var viewModel = StandingsOverlayViewModel.From(
+            snapshot,
+            now,
+            maximumRows: 8,
+            otherClassRowsPerClass: 1);
+
+        Assert.Equal(
+            new[] { "GTP", "GT3" },
+            viewModel.Rows.Where(row => row.IsClassHeader).Select(row => row.Driver));
+        Assert.True(viewModel.Rows.Single(row => row.CarNumber == "#10").IsReference);
+    }
+
+    [Fact]
     public void From_UsesCurrentReferenceCarClassForPrimaryMulticlassWindow()
     {
         var now = DateTimeOffset.UtcNow;
@@ -579,8 +810,10 @@ public sealed class StandingsOverlayViewModelTests
 
         var viewModel = StandingsOverlayViewModel.From(snapshot, now, maximumRows: 5);
 
-        Assert.Equal(new[] { "#5", "#6", "#7", "#8", "#9" }, viewModel.Rows.Select(row => row.CarNumber));
+        Assert.Equal(new[] { "#1", "#5", "#6", "#7", "#8" }, viewModel.Rows.Select(row => row.CarNumber));
+        Assert.True(viewModel.Rows.Single(row => row.CarNumber == "#1").IsLeader);
         Assert.True(viewModel.Rows.Single(row => row.CarNumber == "#7").IsReference);
+        Assert.DoesNotContain(viewModel.Rows, row => row.CarNumber == "#9");
     }
 
     [Fact]
@@ -724,7 +957,7 @@ public sealed class StandingsOverlayViewModelTests
         var row = Assert.Single(viewModel.Rows);
         Assert.False(row.IsClassHeader);
         Assert.Equal("#10", row.CarNumber);
-        Assert.Equal("1 - 1/1 rows", viewModel.Status);
+        Assert.Equal("P1 | 1/1 shown", viewModel.Status);
     }
 
     [Fact]
@@ -943,7 +1176,7 @@ public sealed class StandingsOverlayViewModelTests
 
         var viewModel = StandingsOverlayViewModel.From(snapshot, now, maximumRows: 3);
 
-        Assert.Equal("3 - 3/3 rows", viewModel.Status);
+        Assert.Equal("P3 | 3/3 shown", viewModel.Status);
         Assert.Equal(new[] { "#1", "#2", "#3" }, viewModel.Rows.Select(row => row.CarNumber));
         Assert.Equal(new[] { "1", "2", "3" }, viewModel.Rows.Select(row => row.ClassPosition));
         Assert.Equal(new[] { "Leader", "+4.0", "+1.0" }, viewModel.Rows.Select(row => row.Gap));
@@ -962,7 +1195,9 @@ public sealed class StandingsOverlayViewModelTests
         bool onPitRoad = false,
         double? gapLaps = null,
         double? bestLapTimeSeconds = null,
-        double? lastLapTimeSeconds = null)
+        double? lastLapTimeSeconds = null,
+        int? lapCompleted = null,
+        double? lapDistPct = null)
     {
         return new LiveTimingRow(
             CarIdx: carIdx,
@@ -987,9 +1222,11 @@ public sealed class StandingsOverlayViewModelTests
             OverallPosition: classPosition + 2,
             ClassPosition: classPosition,
             CarClass: 4098,
-            LapCompleted: null,
-            LapDistPct: null,
-            ProgressLaps: null,
+            LapCompleted: lapCompleted,
+            LapDistPct: lapDistPct,
+            ProgressLaps: lapCompleted is { } completed && lapDistPct is { } progress
+                ? completed + progress
+                : null,
             F2TimeSeconds: null,
             EstimatedTimeSeconds: null,
             LastLapTimeSeconds: lastLapTimeSeconds,
@@ -997,6 +1234,7 @@ public sealed class StandingsOverlayViewModelTests
             GapSecondsToClassLeader: gapSeconds,
             GapLapsToClassLeader: gapLaps,
             IntervalSecondsToPreviousClassRow: deltaSeconds,
+            IntervalLapsToPreviousClassRow: null,
             DeltaSecondsToFocus: deltaSeconds,
             TrackSurface: null,
             OnPitRoad: onPitRoad);

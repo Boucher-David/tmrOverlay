@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using TmrOverlay.App.Overlays.Content;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 
@@ -27,6 +28,7 @@ internal static partial class StreamChatOverlaySettings
         var provider = NormalizeProvider(overlay.GetStringOption(OverlayOptionKeys.StreamChatProvider, DefaultProvider));
         var streamlabsUrl = NormalizeStreamlabsUrl(overlay.GetStringOption(OverlayOptionKeys.StreamChatStreamlabsUrl));
         var twitchChannel = NormalizeTwitchChannel(overlay.GetStringOption(OverlayOptionKeys.StreamChatTwitchChannel, DefaultTwitchChannel));
+        var contentOptions = StreamChatContentOptions.From(overlay);
 
         return provider switch
         {
@@ -35,16 +37,22 @@ internal static partial class StreamChatOverlaySettings
                 IsConfigured: true,
                 StreamlabsWidgetUrl: streamlabsUrl,
                 TwitchChannel: null,
-                Status: "configured_streamlabs"),
+                Status: "configured_streamlabs")
+            {
+                ContentOptions = contentOptions
+            },
             ProviderTwitch when twitchChannel is not null => new StreamChatBrowserSettings(
                 Provider: ProviderTwitch,
                 IsConfigured: true,
                 StreamlabsWidgetUrl: null,
                 TwitchChannel: twitchChannel,
-                Status: "configured_twitch"),
-            ProviderStreamlabs => Unconfigured(ProviderStreamlabs, "missing_or_invalid_streamlabs_url"),
-            ProviderTwitch => Unconfigured(ProviderTwitch, "missing_or_invalid_twitch_channel"),
-            _ => Unconfigured(ProviderNone, "not_configured")
+                Status: "configured_twitch")
+            {
+                ContentOptions = contentOptions
+            },
+            ProviderStreamlabs => Unconfigured(ProviderStreamlabs, "missing_or_invalid_streamlabs_url", contentOptions),
+            ProviderTwitch => Unconfigured(ProviderTwitch, "missing_or_invalid_twitch_channel", contentOptions),
+            _ => Unconfigured(ProviderNone, "not_configured", contentOptions)
         };
     }
 
@@ -88,14 +96,17 @@ internal static partial class StreamChatOverlaySettings
         return TwitchChannelRegex().IsMatch(value) ? value : null;
     }
 
-    private static StreamChatBrowserSettings Unconfigured(string provider, string status)
+    private static StreamChatBrowserSettings Unconfigured(string provider, string status, StreamChatContentOptions contentOptions)
     {
         return new StreamChatBrowserSettings(
             Provider: provider,
             IsConfigured: false,
             StreamlabsWidgetUrl: null,
             TwitchChannel: null,
-            Status: status);
+            Status: status)
+        {
+            ContentOptions = contentOptions
+        };
     }
 
     private static bool IsStreamlabsHost(string host)
@@ -119,4 +130,61 @@ internal sealed record StreamChatBrowserSettings(
     bool IsConfigured,
     string? StreamlabsWidgetUrl,
     string? TwitchChannel,
-    string Status);
+    string Status)
+{
+    public StreamChatContentOptions ContentOptions { get; init; } = StreamChatContentOptions.Default;
+}
+
+internal sealed record StreamChatContentOptions(
+    bool ShowAuthorColor,
+    bool ShowBadges,
+    bool ShowBits,
+    bool ShowFirstMessage,
+    bool ShowReplies,
+    bool ShowTimestamps,
+    bool ShowEmotes,
+    bool ShowAlerts,
+    bool ShowMessageIds)
+{
+    public static StreamChatContentOptions Default { get; } = new(
+        ShowAuthorColor: true,
+        ShowBadges: true,
+        ShowBits: true,
+        ShowFirstMessage: true,
+        ShowReplies: true,
+        ShowTimestamps: true,
+        ShowEmotes: true,
+        ShowAlerts: true,
+        ShowMessageIds: false);
+
+    public static StreamChatContentOptions From(OverlaySettings? settings)
+    {
+        if (settings is null)
+        {
+            return Default;
+        }
+
+        return new StreamChatContentOptions(
+            ShowAuthorColor: BlockEnabled(settings, OverlayContentColumnSettings.StreamChatAuthorColorBlockId),
+            ShowBadges: BlockEnabled(settings, OverlayContentColumnSettings.StreamChatBadgesBlockId),
+            ShowBits: BlockEnabled(settings, OverlayContentColumnSettings.StreamChatBitsBlockId),
+            ShowFirstMessage: BlockEnabled(settings, OverlayContentColumnSettings.StreamChatFirstMessageBlockId),
+            ShowReplies: BlockEnabled(settings, OverlayContentColumnSettings.StreamChatRepliesBlockId),
+            ShowTimestamps: BlockEnabled(settings, OverlayContentColumnSettings.StreamChatTimestampsBlockId),
+            ShowEmotes: BlockEnabled(settings, OverlayContentColumnSettings.StreamChatEmotesBlockId),
+            ShowAlerts: BlockEnabled(settings, OverlayContentColumnSettings.StreamChatAlertsBlockId),
+            ShowMessageIds: BlockEnabled(settings, OverlayContentColumnSettings.StreamChatMessageIdsBlockId));
+    }
+
+    public bool ShouldShow(StreamChatMessage message)
+    {
+        return message.Kind != StreamChatMessageKind.Notice || !message.IsTwitch || ShowAlerts;
+    }
+
+    private static bool BlockEnabled(OverlaySettings settings, string blockId)
+    {
+        var block = OverlayContentColumnSettings.StreamChat.Blocks?.FirstOrDefault(
+            block => string.Equals(block.Id, blockId, StringComparison.Ordinal));
+        return block is null || OverlayContentColumnSettings.BlockEnabled(settings, block);
+    }
+}

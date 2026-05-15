@@ -4,6 +4,8 @@ namespace TmrOverlay.App.Overlays.GapToLeader;
 
 internal static class GapToLeaderLiveModelAdapter
 {
+    private const int OnTrackSurface = 3;
+
     public static LiveLeaderGapSnapshot Select(LiveTelemetrySnapshot snapshot)
     {
         var timing = snapshot.Models.Timing;
@@ -95,6 +97,11 @@ internal static class GapToLeaderLiveModelAdapter
         LiveTimingRow? referenceRow,
         double? progressGapLaps)
     {
+        if (referenceRow is not null && IsPlaceholderPitGapRow(referenceRow))
+        {
+            return LiveGapValue.Unavailable;
+        }
+
         if (position == 1 || (leaderCarIdx is not null && leaderCarIdx == referenceCarIdx))
         {
             return new LiveGapValue(
@@ -170,17 +177,18 @@ internal static class GapToLeaderLiveModelAdapter
 
     private static LiveClassGapCar ToClassGapCar(LiveTimingRow row, LiveRaceProgressModel progress)
     {
-        double? gapSeconds = row.IsClassLeader
+        var canUseRowGap = !IsPlaceholderPitGapRow(row);
+        double? gapSeconds = row.IsClassLeader && canUseRowGap
             ? 0d
-            : row.GapEvidence.IsUsable
+            : canUseRowGap && row.GapEvidence.IsUsable
                 ? ValidGapSeconds(row.GapSecondsToClassLeader)
                 : null;
-        double? gapLaps = row.IsClassLeader
+        double? gapLaps = row.IsClassLeader && canUseRowGap
             ? 0d
-            : row.GapEvidence.IsUsable
+            : canUseRowGap && row.GapEvidence.IsUsable
                 ? ValidGapLaps(row.GapLapsToClassLeader)
                 : null;
-        if (row.IsFocus && gapSeconds is null && gapLaps is null)
+        if (canUseRowGap && row.IsFocus && gapSeconds is null && gapLaps is null)
         {
             gapLaps = ValidGapLaps(progress.ReferenceClassLeaderGapLaps);
         }
@@ -192,7 +200,53 @@ internal static class GapToLeaderLiveModelAdapter
             ClassPosition: row.ClassPosition,
             GapSecondsToClassLeader: gapSeconds,
             GapLapsToClassLeader: gapLaps,
-            DeltaSecondsToReference: row.GapEvidence.IsUsable ? row.DeltaSecondsToFocus : null);
+            DeltaSecondsToReference: canUseRowGap && row.GapEvidence.IsUsable ? row.DeltaSecondsToFocus : null,
+            IsOnPitRoad: IsPitRoadLike(row.TrackSurface, row.OnPitRoad),
+            CurrentLap: row.LapCompleted is >= 0 ? row.LapCompleted.Value + 1 : null);
+    }
+
+    private static bool IsPlaceholderPitGapRow(LiveTimingRow row)
+    {
+        if (row.HasTakenGrid)
+        {
+            return false;
+        }
+
+        if (row.OnPitRoad != true && !IsKnownNonTrackSurface(row.TrackSurface))
+        {
+            return false;
+        }
+
+        return !HasUsableRaceTiming(row)
+            && row.LapCompleted is null or <= 0;
+    }
+
+    private static bool HasUsableRaceTiming(LiveTimingRow row)
+    {
+        return ValidGapSeconds(row.F2TimeSeconds) is { } f2
+            && f2 >= 0.1d
+            && !IsRaceF2Placeholder(row.F2TimeSeconds, row.OverallPosition);
+    }
+
+    private static bool IsKnownNonTrackSurface(int? trackSurface)
+    {
+        return trackSurface is not null && trackSurface != OnTrackSurface;
+    }
+
+    private static bool IsPitRoadLike(int? trackSurface, bool? onPitRoad)
+    {
+        return onPitRoad == true || trackSurface is 1 or 2;
+    }
+
+    private static bool IsRaceF2Placeholder(double? f2TimeSeconds, int? overallPosition)
+    {
+        if (overallPosition is not > 1
+            || ValidGapSeconds(f2TimeSeconds) is not { } f2)
+        {
+            return false;
+        }
+
+        return Math.Abs(f2 - ((overallPosition.Value - 1) / 1000d)) <= 0.00002d;
     }
 
     private static bool HasChartGap(LiveClassGapCar car)

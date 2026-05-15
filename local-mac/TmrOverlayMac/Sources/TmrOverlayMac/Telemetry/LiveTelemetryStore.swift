@@ -87,11 +87,12 @@ struct LiveFuelSnapshot {
 
 struct LiveProximitySnapshot {
     private static let closeRadarRangeSeconds = 2.0
-    private static let multiclassWarningRangeSeconds = 25.0
+    private static let multiclassWarningRangeSeconds = 5.0
 
     var hasData: Bool
     var carLeftRight: Int?
     var referenceCarClass: Int?
+    var referenceCarClassColorHex: String?
     var sideStatus: String
     var hasCarLeft: Bool
     var hasCarRight: Bool
@@ -106,6 +107,7 @@ struct LiveProximitySnapshot {
         hasData: false,
         carLeftRight: nil,
         referenceCarClass: nil,
+        referenceCarClassColorHex: nil,
         sideStatus: "waiting",
         hasCarLeft: false,
         hasCarRight: false,
@@ -133,7 +135,7 @@ struct LiveProximitySnapshot {
         let phase = frame.sessionTime.truncatingRemainder(dividingBy: 18) / 18
         let aheadSeconds = 2.4 + sin(phase * Double.pi * 2) * 1.1
         let behindSeconds = -3.2 + cos(phase * Double.pi * 2) * 1.4
-        let multiclassSeconds = -18.0 + sin(frame.sessionTime / 11) * 3.0
+        let multiclassSeconds = -4.0 + sin(frame.sessionTime / 11) * 0.8
         let cars = [
             LiveProximityCar(
                 carIdx: 12,
@@ -166,7 +168,8 @@ struct LiveProximitySnapshot {
                 classPosition: 1,
                 carClass: 4099,
                 carClassColorHex: "#33CEFF",
-                onPitRoad: false
+                onPitRoad: false,
+                lapDeltaToReference: -1
             )
         ].sorted { abs($0.relativeLaps) < abs($1.relativeLaps) }
         let approaches = cars
@@ -198,6 +201,7 @@ struct LiveProximitySnapshot {
             hasData: true,
             carLeftRight: frame.carLeftRight,
             referenceCarClass: 4098,
+            referenceCarClassColorHex: "#FFDA59",
             sideStatus: sideStatus(frame.carLeftRight),
             hasCarLeft: hasCarLeft(frame.carLeftRight),
             hasCarRight: hasCarRight(frame.carLeftRight),
@@ -205,7 +209,7 @@ struct LiveProximitySnapshot {
             nearestAhead: cars.filter { $0.relativeLaps > 0 }.min { $0.relativeLaps < $1.relativeLaps },
             nearestBehind: cars.filter { $0.relativeLaps < 0 }.max { $0.relativeLaps < $1.relativeLaps },
             multiclassApproaches: approaches,
-            strongestMulticlassApproach: approaches.max { $0.urgency < $1.urgency },
+            strongestMulticlassApproach: nearestMulticlassApproach(approaches),
             sideOverlapWindowSeconds: 0.22
         )
     }
@@ -238,7 +242,8 @@ struct LiveProximitySnapshot {
                     onPitRoad: car.onPitRoad,
                     driverName: car.driverName,
                     carNumber: car.carNumber,
-                    carClassName: car.carClassName
+                    carClassName: car.carClassName,
+                    lapDeltaToReference: lapDelta(car, reference)
                 )
             }
             .filter {
@@ -280,6 +285,7 @@ struct LiveProximitySnapshot {
             hasData: true,
             carLeftRight: frame.carLeftRight,
             referenceCarClass: reference.carClass,
+            referenceCarClassColorHex: reference.carClassColorHex,
             sideStatus: sideStatus(frame.carLeftRight),
             hasCarLeft: hasCarLeft(frame.carLeftRight),
             hasCarRight: hasCarRight(frame.carLeftRight),
@@ -287,7 +293,7 @@ struct LiveProximitySnapshot {
             nearestAhead: cars.filter { $0.relativeLaps > 0 }.min { $0.relativeLaps < $1.relativeLaps },
             nearestBehind: cars.filter { $0.relativeLaps < 0 }.max { $0.relativeLaps < $1.relativeLaps },
             multiclassApproaches: approaches,
-            strongestMulticlassApproach: approaches.max { $0.urgency < $1.urgency },
+            strongestMulticlassApproach: nearestMulticlassApproach(approaches),
             sideOverlapWindowSeconds: 0.22
         )
     }
@@ -305,6 +311,38 @@ struct LiveProximitySnapshot {
             value += 1
         }
         return value
+    }
+
+    private static func nearestMulticlassApproach(_ approaches: [LiveMulticlassApproach]) -> LiveMulticlassApproach? {
+        approaches
+            .filter { $0.relativeSeconds?.isFinite == true }
+            .min {
+                abs($0.relativeSeconds ?? .infinity) < abs($1.relativeSeconds ?? .infinity)
+                    || ($0.relativeSeconds == $1.relativeSeconds && $0.urgency > $1.urgency)
+            }
+    }
+
+    private static func lapDelta(_ car: CapturedReplayCar, _ reference: CapturedReplayCar) -> Int? {
+        guard let carLap = completedLap(car),
+              let referenceLap = completedLap(reference) else {
+            return nil
+        }
+
+        return carLap - referenceLap
+    }
+
+    private static func completedLap(_ car: CapturedReplayCar) -> Int? {
+        if let lapCompleted = car.lapCompleted, lapCompleted >= 0 {
+            return lapCompleted
+        }
+
+        guard let progress = car.trackProgress,
+              progress.isFinite,
+              progress >= 0 else {
+            return nil
+        }
+
+        return Int(progress.rounded(.down))
     }
 
     private static func sideStatus(_ carLeftRight: Int?) -> String {
@@ -350,6 +388,7 @@ struct LiveProximityCar {
     var driverName: String?
     var carNumber: String?
     var carClassName: String?
+    var lapDeltaToReference: Int?
 
     init(
         carIdx: Int,
@@ -363,7 +402,8 @@ struct LiveProximityCar {
         onPitRoad: Bool?,
         driverName: String? = nil,
         carNumber: String? = nil,
-        carClassName: String? = nil
+        carClassName: String? = nil,
+        lapDeltaToReference: Int? = nil
     ) {
         self.carIdx = carIdx
         self.relativeLaps = relativeLaps
@@ -377,6 +417,7 @@ struct LiveProximityCar {
         self.driverName = driverName
         self.carNumber = carNumber
         self.carClassName = carClassName
+        self.lapDeltaToReference = lapDeltaToReference
     }
 }
 
@@ -465,6 +506,7 @@ struct LiveTrackSectorSegment {
     var startPct: Double
     var endPct: Double
     var highlight: String
+    var boundaryHighlight: String = LiveTrackSectorHighlights.none
 }
 
 struct LiveLeaderGapSnapshot {
@@ -643,6 +685,8 @@ struct LiveLeaderGapSnapshot {
                 carNumber: car.carNumber,
                 carClass: car.carClass,
                 carClassName: car.carClassName,
+                lapCompleted: car.lapCompleted,
+                lapDistPct: car.lapDistPct,
                 onPitRoad: car.onPitRoad
             )
         }
@@ -752,6 +796,8 @@ struct LiveClassGapCar {
     var carNumber: String? = nil
     var carClass: Int? = nil
     var carClassName: String? = nil
+    var lapCompleted: Int? = nil
+    var lapDistPct: Double? = nil
     var onPitRoad: Bool? = nil
 }
 
@@ -969,11 +1015,13 @@ private final class TrackMapSectorTracker {
         hasLiveTiming: Bool = true
     ) -> LiveTrackMapModel {
         let sectors = Self.sectors.map { sector in
-            LiveTrackSectorSegment(
+            let sectorHighlight = highlights[sector.sectorNum] ?? LiveTrackSectorHighlights.none
+            return LiveTrackSectorSegment(
                 sectorNum: sector.sectorNum,
                 startPct: sector.startPct,
                 endPct: sector.endPct,
-                highlight: fullLapHighlight ?? highlights[sector.sectorNum] ?? LiveTrackSectorHighlights.none
+                highlight: fullLapHighlight ?? sectorHighlight,
+                boundaryHighlight: sectorHighlight
             )
         }
         return LiveTrackMapModel(

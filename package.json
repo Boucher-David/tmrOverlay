@@ -9,6 +9,7 @@
     "test:browser:playwright": "playwright test",
     "test:browser:install": "playwright install chromium",
     "review:browser": "node tools/browser-review/server.mjs",
+    "screenshots:browser": "node tools/browser-review/render-screenshots.mjs",
     "validate:browser:race-start": "node tools/browser-review/validate-race-start-replay.mjs"
   },
   "devDependencies": {

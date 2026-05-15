@@ -191,6 +191,8 @@ Primary source:
 - `BrakeABSactive`
 - future clutch-like fields by name/description, so dual-clutch support can be validated before UI promotion
 
+`Clutch` and `ClutchRaw` use the iRacing engagement scale (`0=disengaged`, `1=fully engaged`). The live Inputs overlay converts that into a driver-control scale before rendering, so `1` means the clutch control is pressed/disengaging.
+
 #### Motion and powertrain
 
 - `Speed`
@@ -247,6 +249,9 @@ Primary source:
 - `CarIdxGear`
 - `CarIdxBestLapTime`
 - `CarIdxTireCompound`
+- `CarIdxTireCompound` and `PlayerTireCompound` values are indices into `DriverInfo.DriverTires[]`.
+  Treat `-1` as unknown/unavailable, not as wet or as a wraparound list index.
+  `CarIdxQualTireCompound` is qualifying metadata and should not be used as current tire state.
 - `CamCarIdx`
 - `CarLeftRight`
 

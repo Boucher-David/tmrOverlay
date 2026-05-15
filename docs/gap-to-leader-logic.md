@@ -13,7 +13,7 @@ Implementation files:
 
 The gap-to-leader overlay is a live in-class race trend graph. It shows how the currently focused car and nearby same-class cars relate to the nearest eligible same-lap reference over time. That reference is normally the class leader, but it can move down the order when the focused car is more than a lap behind the cars ahead.
 
-The overlay is race-only product UI. The settings tab omits ordinary session filters, and the overlay manager normalizes its visibility to race sessions only.
+The overlay is race-only product UI. The settings tab omits ordinary display-in-session controls, and the overlay manager normalizes its visibility to race sessions only.
 
 It is separate from radar. Radar needs live proximity placement. The gap graph can use same-class timing rows even when lap-distance placement is unavailable.
 
@@ -121,7 +121,7 @@ For each `LiveClassGapCar`:
 - Otherwise convert laps to seconds using a lap reference, falling back to 60 seconds when no valid reference is available.
 
 Lap reference is selected from live lap-time context and kept only when it looks valid.
-The compact Design V2 and browser-source gap graphs use the same conversion for their focused-car point buffer, so lap-distance placement fallback still advances the trend when second-based leader timing is partial or missing.
+The compact Design V2 native and localhost gap graphs use the same conversion for their focused-car point buffer, so lap-distance placement fallback still advances the trend when second-based leader timing is partial or missing.
 
 ## Recording Points
 
@@ -213,7 +213,7 @@ Y-axis maximum is based on visible points in the current X-axis domain.
 
 The current same-lap reference baseline is always drawn at the top. When that reference is the class leader, the Y-axis label still reads `Leader`; when the focused car is lapped, the label uses the nearest eligible position context instead of pretending the out-of-reach leader is still a comparable zero line.
 
-The browser-source graph uses the same orientation: the zero/reference line is the top of the plot and larger positive gaps draw downward. Browser validation rejects invalid, negative, and outlier gap points before drawing so a placeholder sample cannot invert the chart or drag the leader baseline to the bottom.
+The localhost graph uses the same orientation: the zero/reference line is the top of the plot and larger positive gaps draw downward. Browser review validation rejects invalid, negative, and outlier gap points before drawing so a placeholder sample cannot invert the chart or drag the leader baseline to the bottom.
 
 ## Drawing Order
 

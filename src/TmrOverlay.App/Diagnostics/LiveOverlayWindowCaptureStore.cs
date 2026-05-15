@@ -340,6 +340,7 @@ internal sealed class LiveOverlayWindowCaptureStore
         {
             using var bitmap = new Bitmap(size.Width, size.Height);
             form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, size));
+            ApplyTransparencyKeyForCapture(bitmap, form.TransparencyKey);
             bitmap.Save(path, ImageFormat.Png);
             return new LiveOverlayCaptureAttempt(fileName, "form-render-fallback", capturedAtUtc, screenCaptureError, signature);
         }
@@ -349,6 +350,26 @@ internal sealed class LiveOverlayWindowCaptureStore
                 ? exception.Message
                 : $"{screenCaptureError}; fallback: {exception.Message}";
             return new LiveOverlayCaptureAttempt(null, null, null, error, signature);
+        }
+    }
+
+    internal static void ApplyTransparencyKeyForCapture(Bitmap bitmap, Color transparencyKey)
+    {
+        if (transparencyKey.IsEmpty)
+        {
+            return;
+        }
+
+        var keyArgb = transparencyKey.ToArgb();
+        for (var y = 0; y < bitmap.Height; y++)
+        {
+            for (var x = 0; x < bitmap.Width; x++)
+            {
+                if (bitmap.GetPixel(x, y).ToArgb() == keyArgb)
+                {
+                    bitmap.SetPixel(x, y, Color.Transparent);
+                }
+            }
         }
     }
 

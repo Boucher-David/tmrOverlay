@@ -8,7 +8,9 @@ internal static class CarRadarBrowserSource
         id: CarRadarOverlayDefinition.Definition.Id,
         title: CarRadarOverlayDefinition.Definition.DisplayName,
         canonicalRoute: "/overlays/car-radar",
+        renderWhenTelemetryUnavailable: true,
         fadeWhenTelemetryUnavailable: CarRadarOverlayDefinition.Definition.FadeWhenLiveTelemetryUnavailable,
         bodyClass: "car-radar-page",
-        moduleAssetName: "car-radar");
+        moduleAssetName: "car-radar",
+        refreshIntervalMilliseconds: CarRadarRenderModel.RefreshIntervalMilliseconds);
 }

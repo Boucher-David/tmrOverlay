@@ -38,3 +38,6 @@ If local iRacing SDK output exposes fields or declared shapes that are not in th
 - `raw-capture-overlay-assumptions.example.json`
   - Compact summary of the long raw-capture assumptions pass for fuel, radar, class-gap, and position-cadence logic.
   - Keeps the important measured risks in git without tracking the multi-GB captures.
+- `radar-calibration-4h-side-windows.json`
+  - Compact clean `CarLeftRight` side-window fixture derived from the local four-hour Nurburgring raw capture.
+  - Used by history tests to verify the radar calibration scaffold accepts real pre-grid/side-by-side evidence without requiring the raw `telemetry.bin`.

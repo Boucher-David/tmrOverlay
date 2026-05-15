@@ -118,7 +118,7 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
             proximity = proximity with
             {
                 MulticlassApproaches = multiclassApproaches,
-                StrongestMulticlassApproach = multiclassApproaches.MaxBy(approach => approach.Urgency)
+                StrongestMulticlassApproach = NearestMulticlassApproach(multiclassApproaches)
             };
             UpdateProximityHistory(sample.CapturedAtUtc, proximity);
 
@@ -175,7 +175,6 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
 
         if (sample.SessionState is null or >= 4)
         {
-            _griddedCarIdxs.Clear();
             return;
         }
 
@@ -259,10 +258,16 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
             return [];
         }
 
+        var classPaces = BuildClassPaces();
         var approaches = new List<LiveMulticlassApproach>();
         foreach (var car in proximity.NearbyCars)
         {
             if (car.CarClass is null || car.CarClass == localCarClass)
+            {
+                continue;
+            }
+
+            if (!IsFasterClass(classPaces, car.CarClass.Value, localCarClass.Value))
             {
                 continue;
             }
@@ -296,8 +301,49 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
         }
 
         return approaches
-            .OrderByDescending(approach => approach.Urgency)
+            .OrderBy(approach => approach.RelativeSeconds is { } seconds ? Math.Abs(seconds) : double.MaxValue)
+            .ThenByDescending(approach => approach.Urgency)
             .ToArray();
+    }
+
+    private static bool IsFasterClass(
+        IReadOnlyDictionary<int, CarClassPace> classPaces,
+        int candidateCarClass,
+        int localCarClass)
+    {
+        if (!classPaces.TryGetValue(candidateCarClass, out var candidate)
+            || !classPaces.TryGetValue(localCarClass, out var local))
+        {
+            return false;
+        }
+
+        if (candidate.RelativeSpeed is { } candidateRelativeSpeed
+            && local.RelativeSpeed is { } localRelativeSpeed
+            && candidateRelativeSpeed != localRelativeSpeed)
+        {
+            return candidateRelativeSpeed > localRelativeSpeed;
+        }
+
+        if (candidate.EstimatedLapTimeSeconds is { } candidateLapTime
+            && local.EstimatedLapTimeSeconds is { } localLapTime
+            && Math.Abs(candidateLapTime - localLapTime) > 0.001d)
+        {
+            return candidateLapTime < localLapTime;
+        }
+
+        return false;
+    }
+
+    private IReadOnlyDictionary<int, CarClassPace> BuildClassPaces()
+    {
+        return _context.Drivers
+            .Where(driver => driver.CarClassId is not null)
+            .GroupBy(driver => driver.CarClassId!.Value)
+            .ToDictionary(
+                group => group.Key,
+                group => new CarClassPace(
+                    RelativeSpeed: MaxPositive(group.Select(driver => driver.CarClassRelSpeed)),
+                    EstimatedLapTimeSeconds: MinPositive(group.Select(driver => driver.CarClassEstLapTimeSeconds))));
     }
 
     private double? CalculateClosingRate(DateTimeOffset timestampUtc, LiveProximityCar car)
@@ -372,6 +418,31 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
         return Math.Clamp(ratio + closingBoost, 0.05d, 1d);
     }
 
+    private static LiveMulticlassApproach? NearestMulticlassApproach(IReadOnlyList<LiveMulticlassApproach> approaches)
+    {
+        return approaches
+            .Where(approach => approach.RelativeSeconds is { } seconds && IsFinite(seconds))
+            .MinBy(approach => Math.Abs(approach.RelativeSeconds!.Value));
+    }
+
+    private static int? MaxPositive(IEnumerable<int?> values)
+    {
+        var positiveValues = values
+            .Where(value => value is > 0)
+            .Select(value => value!.Value)
+            .ToArray();
+        return positiveValues.Length == 0 ? null : positiveValues.Max();
+    }
+
+    private static double? MinPositive(IEnumerable<double?> values)
+    {
+        var positiveValues = values
+            .Where(value => value is { } number && IsFinite(number) && number > 0d)
+            .Select(value => value!.Value)
+            .ToArray();
+        return positiveValues.Length == 0 ? null : positiveValues.Min();
+    }
+
     private static double RangeUrgency(double distance, double closeRange, double warningRange)
     {
         if (warningRange <= closeRange)
@@ -381,6 +452,13 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
 
         return 1d - Math.Clamp((distance - closeRange) / Math.Max(0.001d, warningRange - closeRange), 0d, 1d);
     }
+
+    private static bool IsFinite(double value)
+    {
+        return !double.IsNaN(value) && !double.IsInfinity(value);
+    }
+
+    private sealed record CarClassPace(int? RelativeSpeed, double? EstimatedLapTimeSeconds);
 
     private sealed class TrackMapSectorTracker
     {
@@ -685,14 +763,18 @@ internal sealed class LiveTelemetryStore : ILiveTelemetrySource, ILiveTelemetryS
         {
             var fullLapHighlight = _fullLapHighlight;
             var segments = _sectors
-                .Select(sector => new LiveTrackSectorSegment(
-                    SectorNum: sector.SectorNum,
-                    StartPct: Math.Round(sector.StartPct, 6),
-                    EndPct: Math.Round(sector.EndPct, 6),
-                    Highlight: fullLapHighlight
-                        ?? (_activeSectorHighlights.TryGetValue(sector.SectorNum, out var highlight)
-                            ? highlight
-                            : LiveTrackSectorHighlights.None)))
+                .Select(sector =>
+                {
+                    var sectorHighlight = _activeSectorHighlights.TryGetValue(sector.SectorNum, out var highlight)
+                        ? highlight
+                        : LiveTrackSectorHighlights.None;
+                    return new LiveTrackSectorSegment(
+                        SectorNum: sector.SectorNum,
+                        StartPct: Math.Round(sector.StartPct, 6),
+                        EndPct: Math.Round(sector.EndPct, 6),
+                        Highlight: fullLapHighlight ?? sectorHighlight,
+                        BoundaryHighlight: sectorHighlight);
+                })
                 .ToArray();
 
             return new LiveTrackMapModel(

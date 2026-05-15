@@ -13,24 +13,45 @@ public sealed class GarageCoverBrowserSettingsTests
     public void DetectGarageState_UsesGarageVisibleInsteadOfInGarage()
     {
         var now = DateTimeOffset.UtcNow;
-        var snapshot = FreshSnapshot(now) with
-        {
-            Models = LiveRaceModels.Empty with
-            {
-                RaceEvents = LiveRaceEventModel.Empty with
-                {
-                    HasData = true,
-                    Quality = LiveModelQuality.Reliable,
-                    IsInGarage = true,
-                    IsGarageVisible = false
-                }
-            }
-        };
+        var snapshot = FreshGarageSnapshot(now, isInGarage: true, isGarageVisible: false);
 
         var detection = GarageCoverBrowserSettings.DetectGarageState(snapshot, now);
 
         Assert.Equal("garage_hidden", detection.State);
         Assert.True(detection.IsFresh);
+    }
+
+    [Fact]
+    public void From_CoversOnlyWhenGarageUiIsVisibleForFreshTelemetry()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var settings = new ApplicationSettings();
+
+        var hidden = GarageCoverViewModel.From(
+            settings,
+            FreshGarageSnapshot(now, isInGarage: true, isGarageVisible: false),
+            now);
+        var visible = GarageCoverViewModel.From(
+            settings,
+            FreshGarageSnapshot(now, isInGarage: false, isGarageVisible: true),
+            now);
+
+        Assert.False(hidden.ShouldCover);
+        Assert.Equal("garage_hidden", hidden.Detection.State);
+        Assert.True(visible.ShouldCover);
+        Assert.Equal("garage_visible", visible.Detection.State);
+    }
+
+    [Fact]
+    public void From_FailsClosedWhenTelemetryIsUnavailable()
+    {
+        var now = DateTimeOffset.UtcNow;
+
+        var model = GarageCoverViewModel.From(new ApplicationSettings(), LiveTelemetrySnapshot.Empty, now);
+
+        Assert.True(model.ShouldCover);
+        Assert.False(model.Detection.IsFresh);
+        Assert.Equal("iracing_disconnected", model.Detection.State);
     }
 
     [Fact]
@@ -147,6 +168,26 @@ public sealed class GarageCoverBrowserSettingsTests
             IsConnected = true,
             IsCollecting = true,
             LastUpdatedAtUtc = updatedAtUtc
+        };
+    }
+
+    private static LiveTelemetrySnapshot FreshGarageSnapshot(
+        DateTimeOffset updatedAtUtc,
+        bool isInGarage,
+        bool isGarageVisible)
+    {
+        return FreshSnapshot(updatedAtUtc) with
+        {
+            Models = LiveRaceModels.Empty with
+            {
+                RaceEvents = LiveRaceEventModel.Empty with
+                {
+                    HasData = true,
+                    Quality = LiveModelQuality.Reliable,
+                    IsInGarage = isInGarage,
+                    IsGarageVisible = isGarageVisible
+                }
+            }
         };
     }
 }

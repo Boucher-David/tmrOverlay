@@ -18,7 +18,9 @@ internal sealed record StandingsBrowserSettings(
         OtherClassRowsPerClass: 2,
         Columns: OverlayContentColumnSettings.BrowserColumnsFor(null, OverlayContentColumnSettings.Standings));
 
-    public static StandingsBrowserSettings From(ApplicationSettings settings)
+    public static StandingsBrowserSettings From(
+        ApplicationSettings settings,
+        OverlaySessionKind? sessionKind = null)
     {
         var standings = settings.Overlays.FirstOrDefault(
             overlay => string.Equals(overlay.Id, StandingsOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase));
@@ -26,7 +28,7 @@ internal sealed record StandingsBrowserSettings(
             .FirstOrDefault(block => string.Equals(block.Id, OverlayContentColumnSettings.StandingsClassSeparatorBlockId, StringComparison.Ordinal));
         var classSeparatorsEnabled = standings is null
             || classSeparatorBlock is null
-            || OverlayContentColumnSettings.BlockEnabled(standings, classSeparatorBlock);
+            || OverlayContentColumnSettings.BlockEnabled(standings, classSeparatorBlock, sessionKind);
         return new StandingsBrowserSettings(
             MaximumRows: DefaultMaximumRows,
             ClassSeparatorsEnabled: classSeparatorsEnabled,
@@ -39,6 +41,7 @@ internal sealed record StandingsBrowserSettings(
                 : 0,
             Columns: OverlayContentColumnSettings.BrowserColumnsFor(
                 standings,
-                OverlayContentColumnSettings.Standings));
+                OverlayContentColumnSettings.Standings,
+                sessionKind));
     }
 }

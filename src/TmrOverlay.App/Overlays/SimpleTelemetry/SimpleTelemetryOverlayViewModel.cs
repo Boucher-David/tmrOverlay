@@ -1,5 +1,7 @@
 using System.Globalization;
+using TmrOverlay.App.Overlays.Content;
 using TmrOverlay.Core.Overlays;
+using TmrOverlay.Core.Settings;
 using TmrOverlay.Core.Telemetry.Live;
 
 namespace TmrOverlay.App.Overlays.SimpleTelemetry;
@@ -9,8 +11,34 @@ internal sealed record SimpleTelemetryOverlayViewModel(
     string Status,
     string Source,
     SimpleTelemetryTone Tone,
-    IReadOnlyList<SimpleTelemetryRowViewModel> Rows)
+    IReadOnlyList<SimpleTelemetryRowViewModel> Rows,
+    IReadOnlyList<SimpleTelemetryGridSectionViewModel> Sections)
 {
+    public IReadOnlyList<SimpleTelemetryMetricSectionViewModel> MetricSections { get; init; } = [];
+
+    public SimpleTelemetryOverlayViewModel(
+        string Title,
+        string Status,
+        string Source,
+        SimpleTelemetryTone Tone,
+        IReadOnlyList<SimpleTelemetryRowViewModel> Rows)
+        : this(Title, Status, Source, Tone, Rows, [])
+    {
+    }
+
+    public SimpleTelemetryOverlayViewModel(
+        string Title,
+        string Status,
+        string Source,
+        SimpleTelemetryTone Tone,
+        IReadOnlyList<SimpleTelemetryRowViewModel> Rows,
+        IReadOnlyList<SimpleTelemetryMetricSectionViewModel> MetricSections,
+        IReadOnlyList<SimpleTelemetryGridSectionViewModel> Sections)
+        : this(Title, Status, Source, Tone, Rows, Sections)
+    {
+        this.MetricSections = MetricSections;
+    }
+
     public static SimpleTelemetryOverlayViewModel Waiting(string title, string status)
     {
         return new SimpleTelemetryOverlayViewModel(
@@ -19,6 +47,85 @@ internal sealed record SimpleTelemetryOverlayViewModel(
             Source: "source: waiting",
             Tone: SimpleTelemetryTone.Waiting,
             Rows: []);
+    }
+
+    public static SimpleTelemetryOverlayViewModel ApplyContentSettings(
+        SimpleTelemetryOverlayViewModel model,
+        OverlaySettings? settings,
+        OverlayContentDefinition contentDefinition,
+        OverlaySessionKind? sessionKind = null)
+    {
+        if (settings is null || contentDefinition.Blocks is not { Count: > 0 } blocks)
+        {
+            return model;
+        }
+
+        if (blocks.All(block => OverlayContentColumnSettings.BlockEnabled(settings, block, sessionKind)))
+        {
+            return model;
+        }
+
+        var blockById = blocks.ToDictionary(block => block.Id, StringComparer.OrdinalIgnoreCase);
+        var rows = FilterRows(model.Rows).ToArray();
+        var metricSections = model.MetricSections
+            .Select(section => new SimpleTelemetryMetricSectionViewModel(section.Title, FilterRows(section.Rows).ToArray()))
+            .Where(section => section.Rows.Count > 0)
+            .ToArray();
+
+        return model with
+        {
+            Rows = rows,
+            MetricSections = metricSections
+        };
+
+        IEnumerable<SimpleTelemetryRowViewModel> FilterRows(IReadOnlyList<SimpleTelemetryRowViewModel> sourceRows)
+        {
+            foreach (var row in sourceRows)
+            {
+                if (FilterRow(row) is { } filtered)
+                {
+                    yield return filtered;
+                }
+            }
+        }
+
+        SimpleTelemetryRowViewModel? FilterRow(SimpleTelemetryRowViewModel row)
+        {
+            if (row.Segments.Count == 0)
+            {
+                return row;
+            }
+
+            var filteredSegments = row.Segments
+                .Where(SegmentEnabled)
+                .ToArray();
+            if (filteredSegments.Length == 0)
+            {
+                return null;
+            }
+
+            if (filteredSegments.Length == row.Segments.Count)
+            {
+                return row;
+            }
+
+            return row with
+            {
+                Value = JoinAvailable(filteredSegments.Select(segment => segment.Value).ToArray()),
+                Segments = filteredSegments
+            };
+        }
+
+        bool SegmentEnabled(SimpleTelemetryMetricSegmentViewModel segment)
+        {
+            if (string.IsNullOrWhiteSpace(segment.Key)
+                || !blockById.TryGetValue(segment.Key, out var block))
+            {
+                return true;
+            }
+
+            return OverlayContentColumnSettings.BlockEnabled(settings, block, sessionKind);
+        }
     }
 
     public static bool IsFresh(LiveTelemetrySnapshot snapshot, DateTimeOffset now, out string waitingStatus)
@@ -130,6 +237,37 @@ internal sealed record SimpleTelemetryOverlayViewModel(
 internal sealed record SimpleTelemetryRowViewModel(
     string Label,
     string Value,
+    SimpleTelemetryTone Tone = SimpleTelemetryTone.Normal)
+{
+    public IReadOnlyList<SimpleTelemetryMetricSegmentViewModel> Segments { get; init; } = [];
+
+    public string? RowColorHex { get; init; }
+}
+
+internal sealed record SimpleTelemetryMetricSegmentViewModel(
+    string Label,
+    string Value,
+    SimpleTelemetryTone Tone = SimpleTelemetryTone.Normal,
+    string? AccentHex = null,
+    double? RotationDegrees = null,
+    string? Key = null);
+
+internal sealed record SimpleTelemetryMetricSectionViewModel(
+    string Title,
+    IReadOnlyList<SimpleTelemetryRowViewModel> Rows);
+
+internal sealed record SimpleTelemetryGridSectionViewModel(
+    string Title,
+    IReadOnlyList<string> Headers,
+    IReadOnlyList<SimpleTelemetryGridRowViewModel> Rows);
+
+internal sealed record SimpleTelemetryGridRowViewModel(
+    string Label,
+    IReadOnlyList<SimpleTelemetryGridCellViewModel> Cells,
+    SimpleTelemetryTone Tone = SimpleTelemetryTone.Normal);
+
+internal sealed record SimpleTelemetryGridCellViewModel(
+    string Value,
     SimpleTelemetryTone Tone = SimpleTelemetryTone.Normal);
 
 internal enum SimpleTelemetryTone
@@ -138,6 +276,7 @@ internal enum SimpleTelemetryTone
     Waiting,
     Info,
     Success,
+    Modeled,
     Warning,
     Error
 }

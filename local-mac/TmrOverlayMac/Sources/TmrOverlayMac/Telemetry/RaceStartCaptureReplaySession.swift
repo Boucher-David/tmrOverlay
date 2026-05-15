@@ -164,6 +164,7 @@ private final class RaceStartCaptureReader {
         let lapDistPct = doubleValue("LapDistPct", payload: payload) ?? playerCar?.lapDistPct ?? 0
         let onPitRoad = playerCar?.onPitRoad ?? false
         let isInGarage = boolValue("IsInGarage", payload: payload) ?? false
+        let isGarageVisible = boolValue("IsGarageVisible", payload: payload) ?? false
         let isOnTrack = boolValue("IsOnTrack", payload: payload) ?? (playerCar?.trackSurface.map { $0 > 0 } ?? true)
 
         return MockLiveTelemetryFrame(
@@ -195,7 +196,7 @@ private final class RaceStartCaptureReader {
             lapDeltaToSessionBestLapOk: nil,
             isOnTrack: isOnTrack,
             isInGarage: isInGarage,
-            isGarageVisible: isInGarage,
+            isGarageVisible: isGarageVisible,
             onPitRoad: onPitRoad,
             brakeAbsActive: boolValue("BrakeABSactive", payload: payload) ?? false,
             trackWetness: intValue("TrackWetness", payload: payload) ?? 0,

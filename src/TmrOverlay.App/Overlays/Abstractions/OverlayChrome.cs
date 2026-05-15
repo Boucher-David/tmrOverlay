@@ -10,8 +10,8 @@ internal static class OverlayChrome
     private const string HeaderTimeRemainingSlotKey = "header.time-remaining";
     private const string FooterSourceSlotKey = "footer.source";
     private const int HeaderStatusMinimumSlotWidth = 80;
-    private const int HeaderTimeRemainingMinimumSlotWidth = 66;
-    private const int HeaderTimeRemainingValueWidth = 56;
+    private const int HeaderTimeRemainingMinimumSlotWidth = 78;
+    private const int HeaderTimeRemainingValueWidth = 70;
     private const int HeaderSlotGap = 10;
     private const int FooterSourceMinimumSlotWidth = 120;
 

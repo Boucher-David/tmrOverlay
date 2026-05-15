@@ -81,7 +81,7 @@ internal static class TimingColumnRegistry
             DefaultOrder: 70,
             FormatValue: row => row.IsClassLeader || row.ClassPosition == 1
                 ? "0.000"
-                : FormatPositiveSeconds(row.IntervalSecondsToPreviousClassRow)),
+                : FormatInterval(row)),
         new LiveTimingColumnDescriptor(
             Key: LastLap,
             Label: "Last",
@@ -134,17 +134,27 @@ internal static class TimingColumnRegistry
             return "Leader";
         }
 
+        if (row.GapLapsToClassLeader is { } laps)
+        {
+            return FormatLaps(laps);
+        }
+
         if (row.GapSecondsToClassLeader is { } seconds)
         {
             return FormatSeconds(seconds);
         }
 
-        if (row.GapLapsToClassLeader is { } laps)
+        return string.Empty;
+    }
+
+    private static string FormatInterval(LiveTimingRow row)
+    {
+        if (row.IntervalLapsToPreviousClassRow is { } laps)
         {
-            return laps >= 1d ? $"+{laps:0.0}L" : $"+{laps:0.000}L";
+            return FormatLaps(laps);
         }
 
-        return string.Empty;
+        return FormatPositiveSeconds(row.IntervalSecondsToPreviousClassRow);
     }
 
     private static string FormatSignedSeconds(double? value)
@@ -175,6 +185,24 @@ internal static class TimingColumnRegistry
     private static string FormatSeconds(double seconds)
     {
         return IsFinite(seconds) ? $"{seconds:0.000}" : string.Empty;
+    }
+
+    private static string FormatLaps(double laps)
+    {
+        if (!IsFinite(laps))
+        {
+            return string.Empty;
+        }
+
+        var positiveLaps = Math.Max(0d, laps);
+        if (positiveLaps < 0.9999d)
+        {
+            return string.Empty;
+        }
+
+        return Math.Abs(positiveLaps - Math.Round(positiveLaps)) <= 0.0001d
+            ? $"+{positiveLaps:0}L"
+            : $"+{positiveLaps:0.000}L";
     }
 
     private static string FormatLapTime(double? seconds)

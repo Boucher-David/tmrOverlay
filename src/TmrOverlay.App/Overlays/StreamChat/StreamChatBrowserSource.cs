@@ -9,5 +9,6 @@ internal static class StreamChatBrowserSource
         title: StreamChatOverlayDefinition.Definition.DisplayName,
         canonicalRoute: "/overlays/stream-chat",
         requiresTelemetry: false,
-        moduleAssetName: "stream-chat");
+        moduleAssetName: "stream-chat",
+        bodyClass: "stream-chat-page");
 }

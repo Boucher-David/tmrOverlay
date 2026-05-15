@@ -1,50 +1,34 @@
 let garageCoverSettings = { hasImage: false, imageVersion: null, fallbackReason: 'not_configured', previewVisible: false };
-let nextGarageCoverSettingsFetchAt = 0;
+let garageCoverDisplayModel = null;
 let lastGarageCoverRenderKey = '';
-const garageCoverModel = window.TmrBrowserModel;
 
 TmrBrowserOverlay.register({
   async beforeRefresh() {
-    await refreshGarageCoverSettings();
+    garageCoverDisplayModel = await fetchOverlayModel('garage-cover');
   },
-  render(live) {
-    renderGarageCover(live);
+  render() {
+    renderGarageCover(garageCoverDisplayModel);
   },
   renderOffline() {
     renderGarageCover(null);
   }
 });
 
-async function refreshGarageCoverSettings() {
-  if (Date.now() < nextGarageCoverSettingsFetchAt) {
-    return;
-  }
-
-  nextGarageCoverSettingsFetchAt = Date.now() + 1000;
-  try {
-    const response = await fetch(TmrBrowserApiPath('/api/garage-cover'), { cache: 'no-store' });
-    if (!response.ok) return;
-    const payload = await response.json();
-    garageCoverSettings = payload.garageCover || garageCoverSettings;
-  } catch {
-    garageCoverSettings = { hasImage: false, imageVersion: null, fallbackReason: 'settings_unavailable', previewVisible: false };
-  }
-}
-
-function renderGarageCover(live) {
-  const detection = garageCoverDetection(live);
-  const shouldCover = Boolean(garageCoverSettings.previewVisible)
-    || detection.shouldFailClosed
-    || detection.isGarageVisible;
+function renderGarageCover(model) {
+  const garageCover = model?.garageCover;
+  const settings = garageCover?.browserSettings || garageCoverSettings;
+  const detection = garageCover?.detection || { displayText: 'localhost offline', isFresh: false };
+  const shouldCover = garageCover?.shouldCover ?? true;
   overlayEl.style.opacity = shouldCover ? '1' : '0';
 
-  const renderKey = `${garageCoverSettings.hasImage}:${garageCoverSettings.imageVersion ?? ''}:${garageCoverSettings.fallbackReason ?? ''}`;
+  const renderKey = `${settings.hasImage}:${settings.imageVersion ?? ''}:${settings.fallbackReason ?? ''}`;
   if (renderKey !== lastGarageCoverRenderKey) {
     lastGarageCoverRenderKey = renderKey;
-    contentEl.innerHTML = garageCoverContent(garageCoverSettings);
+    contentEl.innerHTML = garageCoverContent(settings);
   }
 
-  setStatus(live, garageCoverSettings.previewVisible ? 'preview visible' : detection.status);
+  renderHeaderItems(model, model?.status || detection.displayText || 'garage cover');
+  renderFooterSource(model);
 }
 
 function garageCoverContent(settings) {
@@ -52,28 +36,29 @@ function garageCoverContent(settings) {
     const version = encodeURIComponent(settings.imageVersion || 'latest');
     return `
       <div class="garage-cover">
-        <img alt="" src="/api/garage-cover/image?v=${version}" onerror="const p=this.parentElement;p.classList.add('garage-cover-fallback');this.remove();p.innerHTML='<div>TMR</div>';">
+        <img alt="" src="/api/garage-cover/image?v=${version}" onerror="renderGarageCoverTextFallback(this);">
       </div>`;
   }
 
-  return '<div class="garage-cover garage-cover-fallback"><div>TMR</div></div>';
+  return `
+    <div class="garage-cover">
+      <img alt="" src="/api/garage-cover/default-image?v=stock" onerror="renderGarageCoverTextFallback(this);">
+    </div>`;
 }
 
-function garageCoverDetection(live) {
-  if (!live?.isConnected) {
-    return { status: 'iRacing disconnected', isGarageVisible: false, shouldFailClosed: true };
-  }
-  if (!live?.isCollecting) {
-    return { status: 'waiting for telemetry', isGarageVisible: false, shouldFailClosed: true };
-  }
-  if (!garageCoverModel.isLiveTelemetryAvailable(live)) {
-    return { status: 'telemetry stale', isGarageVisible: false, shouldFailClosed: true };
+function renderGarageCoverTextFallback(image) {
+  const parent = image?.parentElement;
+  if (!parent) {
+    return;
   }
 
-  const isGarageVisible = garageCoverModel.raceEvents(live).isGarageVisible === true;
-  return {
-    status: isGarageVisible ? 'garage visible' : 'garage hidden',
-    isGarageVisible,
-    shouldFailClosed: false
-  };
+  if (image.dataset.fallback !== 'default' && !String(image.getAttribute('src') || '').includes('/api/garage-cover/default-image')) {
+    image.dataset.fallback = 'default';
+    image.src = '/api/garage-cover/default-image?v=stock';
+    return;
+  }
+
+  parent.classList.add('garage-cover-fallback');
+  image.remove();
+  parent.innerHTML = '<div>TMR</div>';
 }

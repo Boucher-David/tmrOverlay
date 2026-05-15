@@ -32,6 +32,58 @@ public sealed class FuelStrategyCalculatorTests
     }
 
     [Fact]
+    public void LiveFuelStrategyModel_UsesExistingStrategyWhenLocalContextIsAvailable()
+    {
+        var live = CreateLiveSnapshot(
+            fuelLevelLiters: 100d,
+            fuelUsePerHourKg: 75d,
+            teamLapCompleted: 4,
+            teamLapDistPct: 0.2d,
+            leaderLapCompleted: 4,
+            leaderLapDistPct: 0.5d,
+            sessionTimeRemain: 250d,
+            teamLastLapTimeSeconds: 100d);
+        var now = live.LastUpdatedAtUtc ?? DateTimeOffset.UtcNow;
+
+        var model = LiveFuelStrategyModel.From(live, now, combo => EmptyHistory(combo));
+
+        Assert.True(model.IsAvailable);
+        Assert.Equal("fuel covers finish", model.Status);
+        Assert.NotNull(model.Strategy);
+        Assert.Equal(2.8d, model.Strategy.RaceLapsRemaining!.Value, precision: 3);
+    }
+
+    [Fact]
+    public void LiveFuelStrategyModel_DoesNotLookupHistoryWhenLocalContextIsUnavailable()
+    {
+        var live = CreateLiveSnapshot(
+            fuelLevelLiters: 100d,
+            fuelUsePerHourKg: 75d,
+            teamLapCompleted: 4,
+            teamLapDistPct: 0.2d,
+            leaderLapCompleted: 4,
+            leaderLapDistPct: 0.5d,
+            sessionTimeRemain: 250d,
+            teamLastLapTimeSeconds: 100d) with
+        {
+            IsConnected = false,
+            Models = LiveRaceModels.Empty
+        };
+        var now = live.LastUpdatedAtUtc ?? DateTimeOffset.UtcNow;
+        var lookupCount = 0;
+
+        var model = LiveFuelStrategyModel.From(live, now, combo =>
+        {
+            lookupCount++;
+            return EmptyHistory(combo);
+        });
+
+        Assert.False(model.IsAvailable);
+        Assert.Null(model.Strategy);
+        Assert.Equal(0, lookupCount);
+    }
+
+    [Fact]
     public void From_UsesOverallLeaderPaceForTimedRaceProjection()
     {
         var live = CreateLiveSnapshot(
@@ -417,6 +469,7 @@ public sealed class FuelStrategyCalculatorTests
             SessionState: 4,
             RaceLaps: teamLapCompleted,
             PlayerCarIdx: 15,
+            FocusCarIdx: 15,
             TeamLapCompleted: teamLapCompleted,
             TeamLapDistPct: teamLapDistPct,
             TeamLastLapTimeSeconds: teamLastLapTimeSeconds,

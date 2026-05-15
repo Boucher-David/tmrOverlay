@@ -22,6 +22,8 @@ internal sealed class HistoricalSessionContext
 
     public IReadOnlyList<HistoricalSessionDriver> Drivers { get; init; } = [];
 
+    public IReadOnlyList<HistoricalSessionTireCompound> TireCompounds { get; init; } = [];
+
     public IReadOnlyList<HistoricalTrackSector> Sectors { get; init; } = [];
 
     public IReadOnlyList<HistoricalSessionResultPosition> ResultPositions { get; init; } = [];
@@ -56,6 +58,8 @@ internal sealed class HistoricalSessionSummary
     public IReadOnlyList<HistoricalStintSummary> Stints { get; init; } = [];
 
     public IReadOnlyList<HistoricalPitStopSummary> PitStops { get; init; } = [];
+
+    public HistoricalRadarCalibrationSummary? RadarCalibration { get; init; }
 
     public required HistoricalDataQuality Quality { get; init; }
 
@@ -220,9 +224,20 @@ internal sealed class HistoricalSessionDriver
 
     public string? CarClassShortName { get; init; }
 
+    public int? CarClassRelSpeed { get; init; }
+
+    public double? CarClassEstLapTimeSeconds { get; init; }
+
     public string? CarClassColorHex { get; init; }
 
     public bool? IsSpectator { get; init; }
+}
+
+internal sealed class HistoricalSessionTireCompound
+{
+    public int? TireIndex { get; init; }
+
+    public string? TireCompoundType { get; init; }
 }
 
 internal sealed class HistoricalSessionResultPosition
@@ -406,6 +421,79 @@ internal sealed class HistoricalPitStopSummary
     public required string[] ConfidenceFlags { get; init; }
 }
 
+internal sealed class HistoricalRadarCalibrationSummary
+{
+    public HistoricalRadarCalibrationMetric SideOverlapWindowSeconds { get; init; } = new();
+
+    public HistoricalRadarCalibrationMetric EstimatedBodyLengthMeters { get; init; } = new();
+
+    public string[] ConfidenceFlags { get; init; } = [];
+}
+
+internal sealed class HistoricalRadarCalibrationMetric
+{
+    public int SampleCount { get; set; }
+
+    public double? Mean { get; set; }
+
+    public double? Minimum { get; set; }
+
+    public double? Maximum { get; set; }
+
+    public void Add(double? value)
+    {
+        if (value is null || double.IsNaN(value.Value) || double.IsInfinity(value.Value))
+        {
+            return;
+        }
+
+        if (SampleCount == 0)
+        {
+            SampleCount = 1;
+            Mean = value;
+            Minimum = value;
+            Maximum = value;
+            return;
+        }
+
+        Mean = ((Mean ?? 0d) * SampleCount + value.Value) / (SampleCount + 1);
+        Minimum = Math.Min(Minimum ?? value.Value, value.Value);
+        Maximum = Math.Max(Maximum ?? value.Value, value.Value);
+        SampleCount++;
+    }
+
+    public void Add(HistoricalRadarCalibrationMetric? metric)
+    {
+        if (metric is null || metric.SampleCount <= 0 || metric.Mean is null)
+        {
+            return;
+        }
+
+        if (SampleCount == 0)
+        {
+            SampleCount = metric.SampleCount;
+            Mean = metric.Mean;
+            Minimum = metric.Minimum;
+            Maximum = metric.Maximum;
+            return;
+        }
+
+        var nextCount = SampleCount + metric.SampleCount;
+        Mean = ((Mean ?? 0d) * SampleCount + metric.Mean.Value * metric.SampleCount) / nextCount;
+        Minimum = Minimum is null
+            ? metric.Minimum
+            : metric.Minimum is { } minimum
+                ? Math.Min(Minimum.Value, minimum)
+                : Minimum;
+        Maximum = Maximum is null
+            ? metric.Maximum
+            : metric.Maximum is { } maximum
+                ? Math.Max(Maximum.Value, maximum)
+                : Maximum;
+        SampleCount = nextCount;
+    }
+}
+
 internal sealed class HistoricalDataQuality
 {
     public required string Confidence { get; init; }
@@ -544,6 +632,7 @@ internal sealed record HistoricalTelemetrySample(
     int? FocusPosition = null,
     int? FocusClassPosition = null,
     int? FocusCarClass = null,
+    int? FocusTireCompound = null,
     bool? FocusOnPitRoad = null,
     int? FocusTrackSurface = null,
     int? TeamLapCompleted = null,
@@ -555,6 +644,7 @@ internal sealed record HistoricalTelemetrySample(
     int? TeamPosition = null,
     int? TeamClassPosition = null,
     int? TeamCarClass = null,
+    int? TeamTireCompound = null,
     int? LeaderCarIdx = null,
     int? LeaderLapCompleted = null,
     double? LeaderLapDistPct = null,
@@ -562,6 +652,7 @@ internal sealed record HistoricalTelemetrySample(
     double? LeaderEstimatedTimeSeconds = null,
     double? LeaderLastLapTimeSeconds = null,
     double? LeaderBestLapTimeSeconds = null,
+    int? LeaderTireCompound = null,
     int? ClassLeaderCarIdx = null,
     int? ClassLeaderLapCompleted = null,
     double? ClassLeaderLapDistPct = null,
@@ -569,6 +660,7 @@ internal sealed record HistoricalTelemetrySample(
     double? ClassLeaderEstimatedTimeSeconds = null,
     double? ClassLeaderLastLapTimeSeconds = null,
     double? ClassLeaderBestLapTimeSeconds = null,
+    int? ClassLeaderTireCompound = null,
     int? FocusClassLeaderCarIdx = null,
     int? FocusClassLeaderLapCompleted = null,
     double? FocusClassLeaderLapDistPct = null,
@@ -576,6 +668,7 @@ internal sealed record HistoricalTelemetrySample(
     double? FocusClassLeaderEstimatedTimeSeconds = null,
     double? FocusClassLeaderLastLapTimeSeconds = null,
     double? FocusClassLeaderBestLapTimeSeconds = null,
+    int? FocusClassLeaderTireCompound = null,
     int? PlayerTrackSurface = null,
     int? CarLeftRight = null,
     IReadOnlyList<HistoricalCarProximity>? NearbyCars = null,
@@ -588,8 +681,27 @@ internal sealed record HistoricalTelemetrySample(
     double? PitServiceFuelLiters = null,
     double? PitRepairLeftSeconds = null,
     double? PitOptRepairLeftSeconds = null,
+    int? PlayerCarDryTireSetLimit = null,
     int? TireSetsUsed = null,
+    int? TireSetsAvailable = null,
+    int? LeftTireSetsUsed = null,
+    int? RightTireSetsUsed = null,
+    int? FrontTireSetsUsed = null,
+    int? RearTireSetsUsed = null,
+    int? LeftTireSetsAvailable = null,
+    int? RightTireSetsAvailable = null,
+    int? FrontTireSetsAvailable = null,
+    int? RearTireSetsAvailable = null,
+    int? LeftFrontTiresUsed = null,
+    int? RightFrontTiresUsed = null,
+    int? LeftRearTiresUsed = null,
+    int? RightRearTiresUsed = null,
+    int? LeftFrontTiresAvailable = null,
+    int? RightFrontTiresAvailable = null,
+    int? LeftRearTiresAvailable = null,
+    int? RightRearTiresAvailable = null,
     int? FastRepairUsed = null,
+    int? FastRepairAvailable = null,
     int? DriversSoFar = null,
     int? DriverChangeLapStatus = null,
     double? LapCurrentLapTimeSeconds = null,
@@ -615,6 +727,7 @@ internal sealed record HistoricalTelemetrySample(
     double? Clutch = null,
     double? ClutchRaw = null,
     double? SteeringWheelAngle = null,
+    double? PlayerYawNorthRadians = null,
     int? EngineWarnings = null,
     double? Voltage = null,
     double? WaterTempC = null,
@@ -623,7 +736,9 @@ internal sealed record HistoricalTelemetrySample(
     double? OilPressureBar = null,
     bool? BrakeAbsActive = null,
     bool? IsReplayPlaying = null,
-    IReadOnlyList<HistoricalCarProximity>? AllCars = null);
+    IReadOnlyList<HistoricalCarProximity>? AllCars = null,
+    HistoricalTireConditionSnapshot? TireCondition = null,
+    HistoricalPitServiceTireRequest? PitServiceTireRequest = null);
 
 internal sealed record HistoricalCarProximity(
     int CarIdx,
@@ -635,4 +750,36 @@ internal sealed record HistoricalCarProximity(
     int? ClassPosition,
     int? CarClass,
     int? TrackSurface,
-    bool? OnPitRoad);
+    bool? OnPitRoad,
+    int? TireCompound = null);
+
+internal sealed record HistoricalTireConditionSnapshot(
+    HistoricalTireCornerCondition? LeftFront,
+    HistoricalTireCornerCondition? RightFront,
+    HistoricalTireCornerCondition? LeftRear,
+    HistoricalTireCornerCondition? RightRear);
+
+internal sealed record HistoricalTireCornerCondition(
+    double? WearLeft,
+    double? WearMiddle,
+    double? WearRight,
+    double? TemperatureCLeft,
+    double? TemperatureCMiddle,
+    double? TemperatureCRight,
+    double? ColdPressureKpa,
+    double? OdometerMeters);
+
+internal sealed record HistoricalPitServiceTireRequest(
+    int? RequestedTireCompound,
+    double? LeftFrontServicePressureKpa,
+    double? RightFrontServicePressureKpa,
+    double? LeftRearServicePressureKpa,
+    double? RightRearServicePressureKpa,
+    double? LeftFrontColdPressurePa,
+    double? RightFrontColdPressurePa,
+    double? LeftRearColdPressurePa,
+    double? RightRearColdPressurePa,
+    bool? LeftFrontChangeRequested,
+    bool? RightFrontChangeRequested,
+    bool? LeftRearChangeRequested,
+    bool? RightRearChangeRequested);

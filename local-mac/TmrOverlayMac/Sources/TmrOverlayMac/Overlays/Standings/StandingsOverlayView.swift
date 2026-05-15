@@ -288,7 +288,9 @@ final class StandingsOverlayView: NSView {
         StandingsDisplayFormatting.gap(
             isClassLeader: car.isClassLeader,
             seconds: car.gapSecondsToClassLeader,
-            laps: car.gapLapsToClassLeader)
+            laps: car.gapLapsToClassLeader,
+            lapCompleted: car.lapCompleted,
+            lapDistPct: car.lapDistPct)
     }
 
     private func formatInterval(_ delta: Double?, referenceGap: Double, isReference: Bool) -> String {

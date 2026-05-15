@@ -1,5 +1,6 @@
 using System.Drawing;
 using TmrOverlay.App.Overlays.Content;
+using TmrOverlay.App.Overlays.InputState;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 
@@ -12,6 +13,13 @@ internal static class BrowserOverlayRecommendedSize
         var baseSize = new Size(
             settings.Width > 0 ? settings.Width : definition.DefaultWidth,
             settings.Height > 0 ? settings.Height : definition.DefaultHeight);
+
+        if (string.Equals(definition.Id, InputStateOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return new Size(
+                InputStateRenderModelBuilder.BaseWidthForEnabledContent(settings, definition.DefaultWidth),
+                Math.Max(baseSize.Height, definition.DefaultHeight));
+        }
 
         if (OverlayContentColumnSettings.TryGetContentDefinition(definition.Id, out var contentDefinition)
             && contentDefinition.Columns.Count > 0)

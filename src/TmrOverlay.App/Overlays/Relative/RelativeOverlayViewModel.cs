@@ -59,6 +59,49 @@ internal sealed record RelativeOverlayViewModel(
             Rows: []);
     }
 
+    public IReadOnlyList<RelativeOverlayRowViewModel?> StableRows(
+        int carsAhead,
+        int carsBehind,
+        int maximumRows)
+    {
+        if (Rows.Count == 0)
+        {
+            return [null];
+        }
+
+        var aheadCapacity = Math.Clamp(carsAhead, 0, 8);
+        var behindCapacity = Math.Clamp(carsBehind, 0, 8);
+        var reference = Rows.FirstOrDefault(row => row.IsReference);
+        var hasReference = reference is not null;
+        var visibleRows = Math.Clamp(
+            aheadCapacity + behindCapacity + (hasReference ? 1 : 0),
+            1,
+            Math.Max(1, maximumRows));
+        var stableRows = new RelativeOverlayRowViewModel?[visibleRows];
+        var ahead = Rows.Where(row => row.IsAhead).ToArray();
+        var aheadStart = Math.Max(0, aheadCapacity - ahead.Length);
+        for (var index = 0; index < ahead.Length && aheadStart + index < stableRows.Length; index++)
+        {
+            stableRows[aheadStart + index] = ahead[index];
+        }
+
+        var behindStart = hasReference ? aheadCapacity + 1 : aheadCapacity;
+        if (hasReference && aheadCapacity < stableRows.Length)
+        {
+            stableRows[aheadCapacity] = reference;
+        }
+
+        var behind = Rows.Where(row => row.IsBehind).ToArray();
+        for (var index = 0; index < behind.Length && behindStart + index < stableRows.Length; index++)
+        {
+            stableRows[behindStart + index] = behind[index];
+        }
+
+        return !hasReference && ahead.Length == 0 && behind.Length == 0
+            ? [null]
+            : stableRows;
+    }
+
     private static RelativeOverlayRowViewModel? ReferenceRow(LiveTelemetrySnapshot snapshot)
     {
         var referenceCarIdx = snapshot.Models.Reference.FocusCarIdx
@@ -100,7 +143,8 @@ internal sealed record RelativeOverlayViewModel(
             IsBehind: false,
             IsSameClass: true,
             IsPit: timing?.OnPitRoad == true,
-            IsPartial: false);
+            IsPartial: false,
+            LapDeltaToReference: 0);
     }
 
     private static RelativeOverlayRowViewModel ToRow(
@@ -126,7 +170,8 @@ internal sealed record RelativeOverlayViewModel(
             IsBehind: direction == RelativeRowDirection.Behind,
             IsSameClass: row.IsSameClass,
             IsPit: row.OnPitRoad == true,
-            IsPartial: !row.TimingEvidence.IsUsable && !row.PlacementEvidence.IsUsable);
+            IsPartial: !row.TimingEvidence.IsUsable && !row.PlacementEvidence.IsUsable,
+            LapDeltaToReference: row.LapDeltaToReference);
     }
 
     private static string BuildStatus(
@@ -336,7 +381,8 @@ internal sealed record RelativeOverlayRowViewModel(
     bool IsBehind,
     bool IsSameClass,
     bool IsPit,
-    bool IsPartial);
+    bool IsPartial,
+    int? LapDeltaToReference = null);
 
 internal enum RelativeRowDirection
 {
