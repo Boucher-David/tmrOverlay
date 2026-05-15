@@ -30,7 +30,7 @@ When raw capture is not active, it is written under the logs root:
 %LOCALAPPDATA%\TmrOverlay\logs\overlay-diagnostics\*-live-overlay-diagnostics.json
 ```
 
-The mac harness mirrors this path under `~/Library/Application Support/TmrOverlayMac/logs/overlay-diagnostics/` and can also write into mock capture directories.
+The deprecated mac harness has a secondary diagnostics mirror under `~/Library/Application Support/TmrOverlayMac/logs/overlay-diagnostics/` and can also write into mock capture directories, but Windows diagnostics remain the product path.
 
 ## Guardrails
 

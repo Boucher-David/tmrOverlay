@@ -11,7 +11,7 @@ The Relative overlay is the first production overlay using the model-v2 live sta
 - `src/TmrOverlay.App/Overlays/Relative/RelativeForm.cs`
 - `src/TmrOverlay.Core/Telemetry/Live/LiveRaceModelBuilder.cs`
 
-The mac harness mirrors the surface in `local-mac/TmrOverlayMac/Sources/TmrOverlayMac/Overlays/Relative/` using mock proximity telemetry for local design iteration.
+Browser review is the primary local design surface for Relative. The deprecated mac harness still has a legacy mirror in `local-mac/TmrOverlayMac/Sources/TmrOverlayMac/Overlays/Relative/`, but it is not the product parity target.
 
 ## Inputs
 

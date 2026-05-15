@@ -145,7 +145,7 @@ public sealed class BrowserOverlayModelFactoryTests
         Assert.Equal("flags", response.Model.BodyKind);
         Assert.True(response.Model.ShouldRender);
         Assert.NotNull(response.Model.Flags);
-        Assert.Equal(["yellow", "green"], response.Model.Flags.Flags.Select(flag => flag.Kind).ToArray());
+        Assert.Equal(new[] { "yellow", "green" }, response.Model.Flags.Flags.Select(flag => flag.Kind).ToArray());
         Assert.DoesNotContain(response.Model.Flags.Flags, flag => flag.Kind == "blue");
         Assert.Equal("source: session flags telemetry", response.Model.Source);
     }

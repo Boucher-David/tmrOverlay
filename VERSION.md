@@ -44,7 +44,7 @@ Planned scope:
 
 Technical implementation checklist:
 
-1. Bump shared product/version metadata to `0.19.0` across Windows and the tracked mac harness.
+1. Bump shared product/version metadata to `0.19.0` across the Windows product surfaces and shared browser/localhost contracts.
 2. Add `LiveReferenceModel` and route shared overlay consumers through it.
 3. Update Standings, Relative, Gap To Leader, Track Map, diagnostics, and browser replay tooling to consume normalized reference facts.
 4. Keep overlay-specific contexts local to overlays that need them, especially Radar local/in-car spatial gating.
@@ -73,9 +73,9 @@ Likely squash body:
 - Finished the V2 settings surface pass: simplified overlay controls, removed redundant session filters, rolled Test into Practice, normalized scale/opacity defaults, hid non-functional/development-only controls, moved capture/diagnostic behaviors into Support, and kept settings changes wired to the same contracts native and localhost consume.
 - Hardened overlay availability and persistence around local-player gating, race-data freshness, settings preview, Alt+Tab/topmost behavior, update/restart persistence, and all-content-disabled states.
 - Added or completed targeted model improvements needed for parity: raw `ClutchRaw` input fallback, shared fuel strategy wrapper, radar body-length calibration and bundled car specs, track-map sector/incident rendering, stream-chat row retention/wrapping, Garage Cover stock-image fallback, session/weather metric cells, and flags diagnostics.
-- Extended browser review and replay tooling so validation uses telemetry-derived production-shaped overlay models instead of hand-authored demo rows, including dense 4h race-start replay coverage across the localhost overlay catalog.
-- Regenerated product/teammate screenshots and refreshed docs, repo notes, validation guidance, and future-branch notes for the V1 candidate behavior and native/localhost parity target.
-- Validated local release hygiene: git diff checks, merge-marker scan, C# compile-shape scan, browser unit tests, browser Playwright tests, browser review replay script checks, Python compile checks, deterministic screenshot validation, Windows screenshot expectation validation, Swift build/test with the Xcode toolchain, and dense 4h race-start browser review replay across the overlay catalog.
+- Extended browser review, browser screenshot, and replay tooling so validation uses production-shaped overlay models instead of hand-authored demo rows, including dense 4h race-start replay coverage across the localhost overlay catalog.
+- Regenerated product/teammate screenshots and refreshed docs, repo notes, validation guidance, and future-branch notes for the V1 candidate behavior and browser/localhost/native parity target.
+- Validated local release hygiene: git diff checks, merge-marker scan, C# compile-shape scan, browser unit tests, browser Playwright tests, browser review screenshot generation, browser review replay script checks, Python compile checks, deterministic screenshot validation, Windows screenshot expectation validation, and dense 4h race-start browser review replay across the overlay catalog.
 - Windows .NET restore/build/test, real WinForms behavior, installer/update, iRacing SDK, and OBS-localhost validation remain the required Windows/CI gates before tagging or calling V1 ready.
 ```
 

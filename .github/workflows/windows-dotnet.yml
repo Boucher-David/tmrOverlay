@@ -16,50 +16,6 @@ env:
   VELOPACK_VERSION: 0.0.1589-ga2c5a97
 
 jobs:
-  mac_harness_build:
-    name: macOS harness build
-    runs-on: macos-latest
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Select Xcode when available
-        run: |
-          if [ -d /Applications/Xcode.app/Contents/Developer ]; then
-            sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-          fi
-          xcode-select -p
-
-      - name: Swift version
-        run: swift --version
-
-      - name: Build mac harness
-        working-directory: local-mac/TmrOverlayMac
-        run: swift build
-
-  mac_harness_tests:
-    name: macOS harness tests
-    runs-on: macos-latest
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Select Xcode when available
-        run: |
-          if [ -d /Applications/Xcode.app/Contents/Developer ]; then
-            sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-          fi
-          xcode-select -p
-
-      - name: Swift version
-        run: swift --version
-
-      - name: Test mac harness
-        working-directory: local-mac/TmrOverlayMac
-        run: swift test
-
   browser_overlay_tests:
     name: Browser overlay tests
     runs-on: ubuntu-latest
@@ -82,6 +38,38 @@ jobs:
 
       - name: Test browser overlays
         run: npm run test:browser
+
+  browser_review_screenshots:
+    name: Browser review screenshots
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install browser screenshot dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Generate browser review screenshots
+        run: npm run screenshots:browser -- --output artifacts/browser-review-screenshots
+
+      - name: Upload browser review screenshots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-review-screenshots
+          path: artifacts/browser-review-screenshots
+          if-no-files-found: error
+          retention-days: 14
 
   windows_static_validation:
     name: Windows static validation

@@ -42,7 +42,7 @@ public sealed class StreamChatIrcParserTests
         Assert.Equal("25", emote.Id);
         Assert.Equal("Kappa", emote.Token);
         var badges = StreamChatMessageDisplay.BadgeParts(message, StreamChatContentOptions.Default);
-        Assert.Equal(["mod", "sub 12"], badges.Select(badge => badge.Label).ToArray());
+        Assert.Equal(new[] { "mod", "sub 12" }, badges.Select(badge => badge.Label).ToArray());
         var segments = StreamChatMessageDisplay.MessageSegments(message, StreamChatContentOptions.Default);
         Assert.Collection(
             segments,

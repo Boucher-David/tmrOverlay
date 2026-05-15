@@ -81,7 +81,7 @@ Live overlay diagnostics count pit-service signal frames, request frames, value-
 
 The overlay does not send iRacing pit commands. A future pit crew/engineer overlay should own command-capable controls for refuel amount, tire/repair/tearoff choices, and operator workflow so read-only pit telemetry and active simulator control do not get mixed. Suggested refuel numbers should consume the shared Fuel strategy/race-progress model instead of recalculating laps-to-go inside Pit Service; this first pass intentionally omits estimated fuel from Pit Service. In-car setup rows such as ARB and wing are also hidden until a deliberate raw capture proves live request/change telemetry for those values. Future spotter/engineer surfaces should normalize viewer context from `IsOnTrack`, `IsOnTrackCar`, `IsReplayPlaying`, `IsInGarage`, `IsGarageVisible`, `CamCarIdx`, and camera group data so in-car, replay/watching, garage, and other-car focus modes do not accidentally reuse driver-only assumptions. Do not show teammate/spotter pit-value-change notifications until a capture proves which telemetry signal distinguishes a teammate changing service requests from the local user changing them.
 
-The mac harness standings view uses synthetic pit windows derived from the four-hour preview pit entry/exit timing so the local review surface can exercise the same `Pit` column now exposed by the production Windows standings overlay.
+Browser review fixtures should exercise the same `Pit` column now exposed by the production Windows standings overlay; the deprecated mac harness may still carry legacy synthetic pit-window scenes, but it is no longer the product review surface.
 
 ## Input / Car State
 

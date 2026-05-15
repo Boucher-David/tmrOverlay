@@ -10,7 +10,7 @@ Current production shape:
 
 - Windows tray app remains the production/iRacing runtime.
 - Settings is the real startup/app surface and owns overlay visibility, scale/custom size, content/header/footer options, shared font/units, localhost routes, support capture, and diagnostics.
-- Tracked mac harness remains secondary mock-telemetry review scaffolding; the current parity target is native plus localhost, with browser as the local review UI.
+- Browser review is the primary local review and screenshot surface; the current parity target is native plus localhost. The tracked mac harness is deprecated secondary scaffolding, not a V1 gate.
 - Supported V1-candidate overlay family includes Standings, Relative, Gap To Leader, Fuel Calculator, Session / Weather, Pit Service, Track Map, Stream Chat, Input / Car State, Car Radar, Flags, and Garage Cover, with local OBS/localhost routes where supported.
 - Local-only overlays are intentionally context-gated: Radar and Inputs require local player in-car context; Fuel Calculator and Pit Service require local player focus plus in-car or pit context.
 - Standings, Relative, Gap To Leader, and Track Map must remain usable in non-local focus/spectated contexts. Their data-source decisions should come from scoring/timing/focus arrays, not local-player-only scalar context.
@@ -82,7 +82,7 @@ V1-candidate readiness discussion moved out of `VERSION.md`:
 
 - Treat the fundamental overlay logic as ready for V1-candidate validation once fixture-backed source selection lands. Overlay behavior should then be stable enough that adding a straightforward content field, such as a Standings `Team name` column, is a descriptor/model wiring change instead of a table-behavior rewrite.
 - New reusable telemetry fields should be consumed and normalized in Core/live models first, then mapped into overlay columns or rows; Standings/Relative should not own root data extraction for shared fields.
-- Lock the V1 product scope: decide the final overlay list, make sure experimental/future surfaces are not exposed as normal user-facing tabs, keep browser review dev-only, and decide whether the mac harness remains tracked secondary scaffolding or moves to a deprecation branch.
+- Lock the V1 product scope: decide the final overlay list, make sure experimental/future surfaces are not exposed as normal user-facing tabs, keep browser review dev-only, and keep the deprecated mac harness out of the V1 parity/release gate.
 - Prove installer/update polish: MSI install, upgrade, rollback, Velopack update checks, release notes, checksums, and the acceptable stance on unsigned SmartScreen warnings for V1.
 - Add the minimum user-facing first-run docs: starting the app, enabling overlays, configuring OBS localhost URLs, Stream Chat setup, Garage Cover setup, diagnostics bundle creation, and raw capture being opt-in.
 - Complete an explicit privacy/defaults pass: logged fields, diagnostics bundle contents, redactions, retention defaults, app-data locations, and confirmation that raw `telemetry.bin` and source `.ibt` payloads stay out of support bundles.
@@ -167,7 +167,7 @@ Likely scope:
 - Add shared overlay availability/freshness and status/diagnostics health models so V1.0 overlays use consistent waiting, stale, unavailable, session, and app-health language.
 - Add passive once-per-startup/manual update checks in this branch if v0.12 teammate feedback shows release-discovery friction; keep prompts out of active sessions.
 - Keep legacy live slices stable until no production core overlay depends on them.
-- Use Windows screenshot artifacts and tracked mac mocks to catch visual regressions.
+- Use browser review screenshots and Windows screenshot artifacts to catch visual regressions.
 
 ### v0.14.0 - UI Polish And V1 Candidate Prep
 
@@ -177,9 +177,9 @@ Likely scope:
 
 - Promote shared visual primitives: overlay headers, quiet status badges, timing rows, relative rows, metric rows, flag strips, compact weather widgets, borders, state tones, and text-fitting rules.
 - Keep typography, row heights, spacing, opacity defaults, and semantic colors in shared tokens instead of scattered form-local constants.
-- Use the mac harness for fast style iteration, then port stable primitives back to Windows.
+- Use browser review for fast style iteration, then verify stable primitives against Windows/native.
 - Keep normal telemetry-first overlays quiet; only surface source/evidence chrome for stale, unavailable, modeled, or derived values.
-- Refresh tracked `mocks/` and compare Windows CI artifacts before calling the branch done.
+- Refresh browser review screenshot artifacts and compare Windows CI artifacts before calling the branch done.
 - Validate install, upgrade, support, diagnostics, and release/update handoff with real teammates.
 - Verify AppData compatibility for settings, history, logs, diagnostics, runtime state, and optional captures.
 - Tighten performance, startup behavior, and settings-window responsiveness for the core overlay set.
@@ -194,7 +194,7 @@ Likely scope:
 - Revisit the left-tab structure, overlay option grouping, support/status grouping, localhost details, and shared preferences without exposing development-only surfaces as ordinary overlay tabs.
 - Preserve app-owned scale controls and header/footer slot-fitting assumptions while improving how crowded overlay option sets are presented.
 - Keep the Support tab as the product home for app-health, version/build, diagnostic capture, diagnostics bundles, and support folders.
-- Refresh tracked mac screenshots and compare Windows CI artifacts before calling the branch done.
+- Refresh browser review screenshots and compare Windows CI artifacts before calling the branch done.
 
 ### v0.16.0 - Release Channel And V1 Candidate Escape Hatch
 
@@ -294,9 +294,9 @@ Goal: make real race evidence easier to replay through overlays without manually
 
 Likely scope:
 
-- Add a development-only raw-capture replay provider for the mac harness or a separate tooling path.
+- Add a development-only raw-capture replay provider for browser review or a separate tooling path.
 - Decode selected four-hour/twenty-four-hour captures into normalized live snapshots at controllable playback speed.
-- Drive one instance of each overlay from replayed snapshots, generate screenshots/contact sheets, and emit replay-side `live-overlay-diagnostics.json`.
+- Drive one browser/localhost route for each overlay from replayed snapshots, generate screenshots/contact sheets, and emit replay-side validation diagnostics.
 - Keep replay isolated from the Windows runtime collector and private capture folders.
 - Use replay artifacts to decide model-v2 promotions, overlay simplifications, and edge-case UI behavior.
 
@@ -444,17 +444,17 @@ Treat mid-session joins as a first-class model-v2 availability case. The app sho
 
 Treat user-configured iRacing car coverage limits as a separate model-v2 completeness signal. Session YAML can describe the entered field, while live `CarIdx*` arrays may only carry currently transmitted cars. Standings, relative, gap, and post-race analysis should not silently treat missing live rows as retired or unknown competitors. Model v2 should expose roster count, live-row count, rows with timing, rows with spatial progress, missing-row reasons, and whether each overlay is showing full-field standings, nearby transmitted cars, or a partial mixed view.
 
-### Capture-Backed Mac Overlay Replay
+### Parked Mac Overlay Replay
 
-The mac harness now records live overlay diagnostics from mock/demo snapshots, including the four-hour preview and capture-derived radar/gap demos. A future harness branch should add a full raw-capture replay provider that decodes selected 4-hour/24-hour captures into normalized live snapshots at high playback speed, drives one instance of each overlay, and writes screenshots plus `live-overlay-diagnostics.json` from that replay.
+The deprecated mac harness records live overlay diagnostics from mock/demo snapshots, including the four-hour preview and capture-derived radar/gap demos. This is no longer the preferred replay direction. Future capture replay work should feed browser review and localhost first, then use Windows/native validation for product behavior.
 
-That replay provider should be a development tool only. It should read existing captures, skip or downsample aggressively, and avoid changing the Windows collector/runtime path.
+Any replay provider should be a development tool only. It should read existing captures, skip or downsample aggressively, and avoid changing the Windows collector/runtime path.
 
-### Windows Screenshot Parity Validation
+### Browser And Windows Screenshot Parity Validation
 
-The mac harness remains the fast local design surface, but Windows is the production/iRacing runtime. v0.10 adds a Windows-only screenshot generator that renders the real WinForms forms with deterministic telemetry fixtures and uploads the resulting contact sheet plus per-state PNGs as GitHub Actions artifacts.
+Browser review is the fast local design and screenshot surface, while Windows is the production/iRacing runtime. The browser screenshot generator captures `/review/app`, `/review/overlays/<id>`, and `/overlays/<id>` into `artifacts/browser-review-screenshots`. The Windows-only screenshot generator renders the real WinForms forms with deterministic telemetry fixtures and uploads the resulting contact sheet plus per-state PNGs as GitHub Actions artifacts.
 
-Use this as a parity gate, not as a replacement for the tracked `mocks/` screenshots. The tracked mac screenshots document the intended review states; the Windows artifacts prove the production forms still render, size, and arrange those states under the WinForms runtime. The parity set should cover settings tabs plus the current production overlays: standings, fuel calculator, relative, track map, flags, session/weather, pit service, inputs, radar, and gap to leader, with app status validated through Support and Garage Cover validated through its localhost route.
+Use browser and Windows artifacts together as the parity gate. Browser screenshots prove browser/localhost layout from the same assets OBS will use; Windows artifacts prove the production forms still render, size, and arrange those states under the WinForms runtime. The parity set should cover settings tabs plus the current production overlays: standings, fuel calculator, relative, track map, flags, session/weather, pit service, inputs, radar, and gap to leader, with app status validated through Support and Garage Cover validated through its localhost route.
 
 Keep the fixtures isolated from local history, app data, raw captures, and real machine paths. If a Windows screenshot state needs live telemetry, build it from normalized `LiveTelemetrySnapshot` data with explicit fixture values. If a future overlay needs replay evidence, add that through a separate capture-replay branch rather than letting the screenshot generator read private capture directories.
 
@@ -497,7 +497,7 @@ The alignment is:
 
 A separate UI/style branch should promote reviewed semantic theme tokens and reusable primitives into Windows/mac overlay code for headers, quiet status badges, metric rows, timing tables, relative tables, flag strips, compact weather widgets, optional header/footer context slots, validation/admin source footers, graph panels, borders, class/severity colors, text fitting, and empty/error/waiting states. Those primitives should be able to consume model-v2 source/evidence state directly, but the normal rendering path should not make confidence the center of the UI.
 
-Use the tracked mac harness as the design-v2 proving ground while model-v2 evidence is still being collected. The mac preview path can render deterministic design-v2 states under `mocks/design-v2/` for standings, relative, flag display, and the narrower analysis-exception state. The component-review path renders overlay shells, controls, buttons, status pills, table rows, graph chrome, localhost blocks, sidebar tabs, section panels, and settings content blocks from the same views used by the live mac review overlay. Promote only the primitives and semantics that survive screenshot review back into Windows.
+Use browser review as the design-v2 proving ground while model-v2 evidence is still being collected. The deprecated mac preview path still owns legacy deterministic design-v2 states under `mocks/design-v2/`, but new screenshot review should be generated from browser fixtures. Promote only the primitives and semantics that survive browser screenshot review plus Windows/native validation.
 
 Migrate style one overlay at a time with screenshot validation.
 
@@ -592,7 +592,7 @@ Dominant exact image colors:
 | `#242424` | dark neutral detail |
 | `#6CFFEE` | secondary aqua tint |
 
-Current Design V2 tokens are centralized in `shared/tmr-overlay-contract.json` and consumed by native overlays and localhost CSS, with the mac harness mirroring them for secondary review. Future palette experiments should update that shared contract first, then verify contrast, readability, screenshot parity, and native plus localhost parity before changing overlay-specific drawing code.
+Current Design V2 tokens are centralized in `shared/tmr-overlay-contract.json` and consumed by native overlays, browser review, and localhost CSS. Future palette experiments should update that shared contract first, then verify contrast, readability, browser screenshot parity, and native plus localhost parity before changing overlay-specific drawing code.
 
 ### Telemetry-First Overlay Branches
 

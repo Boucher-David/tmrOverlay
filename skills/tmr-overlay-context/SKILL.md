@@ -1,6 +1,6 @@
 ---
 name: tmr-overlay-context
-description: Use when continuing work in the tmrOverlay repo and deeper product/current-state context is needed beyond AGENTS.md. Summarizes the Windows tray app, normal-desktop settings UI, live overlay suite, iRacing telemetry pipeline, opt-in raw capture format, diagnostics/performance support paths, mac harness, screenshot validation workflow, fuel-overlay findings, overlay research notes, known limitations, and next priorities.
+description: Use when continuing work in the tmrOverlay repo and deeper product/current-state context is needed beyond AGENTS.md. Summarizes the Windows tray app, normal-desktop settings UI, live overlay suite, iRacing telemetry pipeline, opt-in raw capture format, diagnostics/performance support paths, browser review screenshot workflow, deprecated mac scaffold, fuel-overlay findings, overlay research notes, known limitations, and next priorities.
 ---
 
 # TmrOverlay Context
@@ -35,6 +35,7 @@ Use this repo-local skill when the task is about continuing or extending `tmrOve
 - `src/TmrOverlay.App/Overlays/CarRadar/`
 - `src/TmrOverlay.App/Overlays/GapToLeader/`
 - `src/TmrOverlay.App/Telemetry/`
+- `tools/browser-review/render-screenshots.mjs`
 - `local-mac/TmrOverlayMac/Sources/TmrOverlayMac/Preview/OverlayScreenshotGenerator.swift`
 - `tools/validate_overlay_screenshots.py`
 - `mocks/README.md`
@@ -54,4 +55,4 @@ The current goal is a dependable Windows iRacing companion with a small customiz
 - users can manage overlay visibility, scale, sessions, font, units, and basic overlay display options
 - raw capture remains an opt-in diagnostic/development mode
 
-The next major milestone is hardening the live overlay suite, settings/customization surface, diagnostics/performance visibility, and update-notification path enough for a v1.0 production pass while keeping the mac harness useful for mock-telemetry and screenshot iteration.
+The next major milestone is hardening the live overlay suite, settings/customization surface, diagnostics/performance visibility, and update-notification path enough for a v1.0 production pass while using browser review for mock-telemetry and screenshot iteration.
