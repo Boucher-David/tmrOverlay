@@ -281,6 +281,10 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     public string DiagnosticKind => KindName(_kind);
 
+    public string DiagnosticStatus => _model.Status;
+
+    public string DiagnosticEvidence => _model.Evidence.ToString();
+
     public string DiagnosticBodyKind => BodyName(_model.Body);
 
     public void SetFlagsManagedState(bool managedEnabled, bool settingsOverlayActive)
@@ -322,7 +326,8 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     protected override bool ShouldReceiveInputWhileTransparent(Point clientPoint)
     {
-        return IsStreamChatCloseButtonHit(clientPoint);
+        return _kind == DesignV2LiveOverlayKind.StreamChat
+            && (IsStreamChatCloseButtonHit(clientPoint) || IsStreamChatDragHit(clientPoint, ClientSize));
     }
 
     protected override void OnMouseUp(MouseEventArgs e)
@@ -5828,7 +5833,11 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     internal static bool IsStreamChatDragHit(Point clientPoint, Size clientSize)
     {
-        return false;
+        var closeButtonLeft = Math.Max(4, clientSize.Width - 22 - 10);
+        return clientPoint.X >= 0
+            && clientPoint.X < closeButtonLeft
+            && clientPoint.Y >= 0
+            && clientPoint.Y < HeaderHeight;
     }
 
     private static bool HasTrackMapHighlight(LiveTrackSectorSegment sector)

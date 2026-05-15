@@ -505,11 +505,10 @@ internal static class Program
             "native",
             Guid.NewGuid().ToString("N")));
         var performanceState = new AppPerformanceState();
-        var now = DateTimeOffset.Parse("2026-05-03T15:00:00Z");
         var telemetry = new SequenceTelemetrySource(frame =>
             SessionPreviewTelemetryFixtures.Build(
                 previewMode,
-                now.AddMilliseconds(frame.Index * 250),
+                DateTimeOffset.UtcNow,
                 generation: frame.Index + 1));
         var settings = OverlaySettingsFor(overlay.Definition);
         if (overlay.Kind == DesignV2LiveOverlayKind.StreamChat)
@@ -962,6 +961,16 @@ internal static class Program
         var completed = metadata ?? new ScreenshotMetadata(
             Surface: relativeDirectory.Replace('\\', '/'),
             Fixture: "deterministic-telemetry-fixture");
+        if (form is DesignV2LiveOverlayForm designV2)
+        {
+            completed = completed with
+            {
+                Status = designV2.DiagnosticStatus,
+                Evidence = designV2.DiagnosticEvidence,
+                Body = designV2.DiagnosticBodyKind
+            };
+        }
+
         return completed with
         {
             Renderer = completed.Renderer ?? form.GetType().FullName ?? form.GetType().Name
@@ -1043,7 +1052,10 @@ internal static class Program
                     region = screenshot.Metadata.Region,
                     previewMode = screenshot.Metadata.PreviewMode,
                     fixture = screenshot.Metadata.Fixture,
-                    sourceContract = screenshot.Metadata.SourceContract
+                    sourceContract = screenshot.Metadata.SourceContract,
+                    status = screenshot.Metadata.Status,
+                    evidence = screenshot.Metadata.Evidence,
+                    body = screenshot.Metadata.Body
                 }
             })
         };
@@ -1119,7 +1131,10 @@ internal static class Program
         string? Region = null,
         string? PreviewMode = null,
         string? Fixture = null,
-        string? SourceContract = null);
+        string? SourceContract = null,
+        string? Status = null,
+        string? Evidence = null,
+        string? Body = null);
 
     private sealed record SettingsRegionSpec(string Id, string Label);
 

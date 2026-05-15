@@ -30,6 +30,8 @@ public sealed class SessionPreviewStateTests
         Assert.True(availability.IsAvailable);
         Assert.Equal(mode, OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot));
         Assert.True(snapshot.Models.Session.HasData);
+        Assert.NotNull(snapshot.Models.Session.SessionFlags);
+        Assert.NotEqual(0, snapshot.Models.Session.SessionFlags.Value);
         Assert.True(snapshot.Models.Scoring.HasData);
         Assert.True(snapshot.Models.Relative.HasData);
     }

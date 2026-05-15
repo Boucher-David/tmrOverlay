@@ -168,6 +168,8 @@ async function captureRoute(page, route, manifest) {
   const element = page.locator(route.selector).first();
   await element.waitFor({ state: 'visible', timeout: 5_000 });
   await page.waitForTimeout(settleMilliseconds);
+  const model = await readOverlayModel(route);
+  const dom = await readDomDiagnostics(element);
 
   const screenshotPath = join(outputRoot, route.relativePath);
   mkdirSync(dirname(screenshotPath), { recursive: true });
@@ -189,10 +191,100 @@ async function captureRoute(page, route, manifest) {
     tab: route.tab || null,
     region: route.region || null,
     previewMode: route.previewMode || null,
+    status: stringOrNull(model?.status),
+    source: stringOrNull(model?.source),
+    bodyKind: stringOrNull(model?.bodyKind),
+    shouldRender: booleanOrNull(model?.shouldRender),
+    rowCount: arrayLength(model?.rows),
+    metricCount: arrayLength(model?.metrics) + arrayLength(model?.metricSections) + arrayLength(model?.gridSections),
+    flagCount: arrayLength(model?.flags?.flags),
+    radarShouldRender: booleanOrNull(model?.carRadar?.renderModel?.shouldRender),
+    trackMapMarkerCount: arrayLength(model?.trackMap?.markers),
+    textSample: dom.textSample,
+    contentBounds: dom.contentBounds,
     width: artifact.width,
     height: artifact.height,
     bytes: artifact.bytes
   });
+}
+
+async function readOverlayModel(route) {
+  if (!route.overlayId || !route.surface?.endsWith('-overlay')) {
+    return null;
+  }
+
+  const query = route.urlPath.includes('?') ? route.urlPath.slice(route.urlPath.indexOf('?')) : '';
+  const response = await fetch(`${baseUrl}/api/overlay-model/${encodeURIComponent(route.overlayId)}${query}`, {
+    headers: { accept: 'application/json' }
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to read ${route.overlayId} model for ${route.relativePath}: HTTP ${response.status}`);
+  }
+
+  const payload = await response.json();
+  return payload?.model || null;
+}
+
+async function readDomDiagnostics(element) {
+  return element.evaluate((node) => {
+    const text = String(node.innerText || node.textContent || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 500);
+    const selectors = [
+      '.overlay-panel',
+      '.overlay-content',
+      '.content',
+      '.metric-list',
+      '.table',
+      '.model-graph-panel',
+      '.flags-v2',
+      '.car-radar-v2',
+      '.track-map-v2',
+      '.garage-cover',
+      '.stream-chat-body',
+      'canvas',
+      'svg'
+    ];
+    const rootRect = node.getBoundingClientRect();
+    const rects = selectors
+      .flatMap((selector) => Array.from(node.querySelectorAll(selector)))
+      .map((element) => element.getBoundingClientRect())
+      .filter((rect) => rect.width > 0 && rect.height > 0);
+    if (!rects.length) {
+      return { textSample: text || null, contentBounds: null };
+    }
+
+    const left = Math.min(...rects.map((rect) => rect.left));
+    const top = Math.min(...rects.map((rect) => rect.top));
+    const right = Math.max(...rects.map((rect) => rect.right));
+    const bottom = Math.max(...rects.map((rect) => rect.bottom));
+    const width = right - left;
+    const height = bottom - top;
+    return {
+      textSample: text || null,
+      contentBounds: {
+        x: Math.round(left - rootRect.left),
+        y: Math.round(top - rootRect.top),
+        width: Math.round(width),
+        height: Math.round(height),
+        aspectRatio: height > 0 ? Number((width / height).toFixed(4)) : null
+      }
+    };
+  });
+}
+
+function stringOrNull(value) {
+  const text = typeof value === 'string' ? value.trim() : '';
+  return text || null;
+}
+
+function booleanOrNull(value) {
+  return typeof value === 'boolean' ? value : null;
+}
+
+function arrayLength(value) {
+  return Array.isArray(value) ? value.length : 0;
 }
 
 function inspectPng(path, minBytes) {

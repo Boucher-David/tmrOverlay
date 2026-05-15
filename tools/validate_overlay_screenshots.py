@@ -247,6 +247,51 @@ BROWSER_ONLY_OVERLAY_IDS = {
     "garage-cover",
 }
 
+WINDOWS_NATIVE_OVERLAY_BODIES = {
+    "standings": "table",
+    "fuel-calculator": "metric-rows",
+    "relative": "table",
+    "track-map": "track-map",
+    "stream-chat": "chat",
+    "flags": "flags",
+    "session-weather": "metric-rows",
+    "pit-service": "metric-rows",
+    "input-state": "inputs",
+    "car-radar": "radar",
+    "gap-to-leader": "graph",
+}
+
+BROWSER_REVIEW_OVERLAY_BODIES = {
+    "standings": "table",
+    "relative": "table",
+    "fuel-calculator": "metrics",
+    "session-weather": "metrics",
+    "pit-service": "metrics",
+    "input-state": "inputs",
+    "car-radar": "car-radar",
+    "gap-to-leader": "graph",
+    "track-map": "track-map",
+    "flags": "flags",
+    "garage-cover": "garage-cover",
+    "stream-chat": "stream-chat",
+}
+
+SEMANTIC_WAITING_EXEMPT_OVERLAYS = {
+    # Stream Chat can validly render a configured/unconfigured provider state
+    # without live telemetry rows.
+    "stream-chat",
+}
+
+WAITING_STATUS_TOKENS = (
+    "waiting for fresh",
+    "waiting for telemetry",
+    "waiting for timing",
+    "waiting for overlay model",
+    "waiting for live values",
+    "waiting for player in car",
+    "waiting for radar",
+)
+
 BROWSER_REVIEW_SETTINGS_PNGS = [
     "settings/general.png",
     "settings/diagnostics.png",
@@ -524,9 +569,17 @@ def validate_windows_manifest(root: Path, expected_paths: set[str], failures: li
             continue
         require_manifest_fields(path, metadata, ["surface", "renderer"], failures)
         if path.startswith("native-overlays/"):
-            require_manifest_fields(path, metadata, ["overlayId", "previewMode", "fixture", "sourceContract"], failures)
+            require_manifest_fields(path, metadata, ["overlayId", "previewMode", "fixture", "sourceContract", "status", "evidence", "body"], failures)
             if metadata.get("surface") != "windows-native-overlay":
                 failures.append(f"{path}: expected windows-native-overlay surface, got {metadata.get('surface')!r}")
+            validate_overlay_semantics(
+                path,
+                values=metadata,
+                overlay_id=metadata.get("overlayId"),
+                body_field="body",
+                expected_bodies=WINDOWS_NATIVE_OVERLAY_BODIES,
+                failures=failures,
+            )
         if path.startswith("states/settings-"):
             require_manifest_fields(path, metadata, ["tab", "region", "fixture", "sourceContract"], failures)
 
@@ -544,9 +597,54 @@ def validate_browser_review_manifest(root: Path, expected_paths: set[str], failu
     for path, screenshot in screenshots.items():
         require_manifest_fields(path, screenshot, ["surface", "renderer", "sourceContract"], failures)
         if path.startswith(("browser-overlays/", "localhost-overlays/")):
-            require_manifest_fields(path, screenshot, ["overlayId", "previewMode", "moduleAsset"], failures)
+            require_manifest_fields(path, screenshot, ["overlayId", "previewMode", "moduleAsset", "status", "bodyKind"], failures)
+            validate_overlay_semantics(
+                path,
+                values=screenshot,
+                overlay_id=screenshot.get("overlayId"),
+                body_field="bodyKind",
+                expected_bodies=BROWSER_REVIEW_OVERLAY_BODIES,
+                failures=failures,
+            )
         if path.startswith("settings/"):
             require_manifest_fields(path, screenshot, ["tab", "region"], failures)
+
+
+def validate_overlay_semantics(
+    path: str,
+    values: dict[str, object],
+    overlay_id: object,
+    body_field: str,
+    expected_bodies: dict[str, str],
+    failures: list[str],
+) -> None:
+    if not isinstance(overlay_id, str) or not overlay_id:
+        return
+
+    expected_body = expected_bodies.get(overlay_id)
+    actual_body = values.get(body_field)
+    if expected_body is not None and actual_body != expected_body:
+        failures.append(f"{path}: expected {body_field} {expected_body!r}, got {actual_body!r}")
+
+    status = str(values.get("status") or "").strip().lower()
+    if overlay_id not in SEMANTIC_WAITING_EXEMPT_OVERLAYS:
+        for token in WAITING_STATUS_TOKENS:
+            if token in status:
+                failures.append(f"{path}: manifest status {status!r} indicates the preview rendered a waiting state")
+                break
+
+    if overlay_id == "flags":
+        if status in ("", "none", "waiting"):
+            failures.append(f"{path}: flags preview did not expose any active flags")
+        flag_count = values.get("flagCount")
+        if isinstance(flag_count, int) and flag_count <= 0:
+            failures.append(f"{path}: flags preview model contains no visible flags")
+
+    if overlay_id == "car-radar" and values.get("radarShouldRender") is False:
+        failures.append(f"{path}: car radar preview model reported radarShouldRender=false")
+
+    if values.get("shouldRender") is False and overlay_id not in SEMANTIC_WAITING_EXEMPT_OVERLAYS:
+        failures.append(f"{path}: preview model reported shouldRender=false")
 
 
 def read_manifest(root: Path, failures: list[str]) -> Optional[dict[str, object]]:

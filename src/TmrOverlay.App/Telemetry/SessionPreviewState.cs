@@ -312,7 +312,7 @@ internal static class SessionPreviewTelemetryFixtures
             SessionLapsRemainEx: mode == OverlaySessionKind.Race ? 32767 : null,
             SessionLapsTotal: mode == OverlaySessionKind.Race ? 32767 : null,
             SessionState: mode == OverlaySessionKind.Race ? 4 : 3,
-            SessionFlags: 0,
+            SessionFlags: PreviewSessionFlags(mode),
             RaceLaps: mode == OverlaySessionKind.Race ? 32767 : null,
             PlayerCarIdx: PlayerCarIdx,
             FocusCarIdx: PlayerCarIdx,
@@ -485,6 +485,21 @@ internal static class SessionPreviewTelemetryFixtures
             OverlaySessionKind.Qualifying => "qualifying",
             OverlaySessionKind.Race => "race",
             _ => "test"
+        };
+    }
+
+    private static int PreviewSessionFlags(OverlaySessionKind mode)
+    {
+        const int checkeredFlag = 0x00000001;
+        const int yellowFlag = 0x00000008;
+        const int blueFlag = 0x00000020;
+
+        return mode switch
+        {
+            OverlaySessionKind.Practice => blueFlag,
+            OverlaySessionKind.Qualifying => yellowFlag | blueFlag,
+            OverlaySessionKind.Race => checkeredFlag | yellowFlag | blueFlag,
+            _ => blueFlag
         };
     }
 
