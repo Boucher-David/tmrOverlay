@@ -1,0 +1,77 @@
+{
+  "contractSnapshotVersion": 1,
+  "release": "v0.19.0",
+  "productVersion": "0.19.0",
+  "createdFromGitTag": "v0.19.0",
+  "snapshotPurpose": "V1-candidate durable user-data baseline for vN-1 to vN migration validation.",
+  "durableContracts": {
+    "appSettings": {
+      "settingsVersion": 11,
+      "samplePath": "settings/settings.json",
+      "currentReader": "AppSettingsMigrator",
+      "migrationRule": "Older readable settings are normalized and rewritten to the current settings version; unreadable settings remain untouched on disk.",
+      "unknownFieldSamplePath": "settings/settings-with-unknown-fields.json",
+      "coverage": "Representative full overlay settings surface for all v0.19.0 overlay ids plus an unknown-field tolerance sample."
+    },
+    "sharedOverlayContract": {
+      "contractVersion": 1,
+      "settingsVersion": 11,
+      "sourcePath": "shared/tmr-overlay-contract.json",
+      "migrationRule": "Shared defaults are source-controlled. User-local settings store resolved option values through app settings.",
+      "samplePath": "shared/tmr-overlay-contract.json"
+    },
+    "history": {
+      "summaryVersion": 1,
+      "collectionModelVersion": 1,
+      "aggregateVersion": 3,
+      "carRadarCalibrationAggregateVersion": 1,
+      "analysisVersion": 1,
+      "sampleRoot": "history/samples",
+      "currentReader": "HistoryMaintenanceService and SessionHistoryQueryService",
+      "migrationRule": "Summaries are canonical and migrate first. Aggregates are rebuilt from compatible summaries. Future, corrupt, or unsupported summaries remain on disk and are skipped.",
+      "sampleFiles": [
+        "session-summary.json",
+        "aggregate.json",
+        "radar-calibration.json"
+      ],
+      "storageMaterialization": "Tests copy schema samples into app-style car/track/session paths derived from combo keys before running current history readers."
+    },
+    "trackMaps": {
+      "schemaVersion": 2,
+      "generationVersion": 1,
+      "sampleRoot": "track-maps/samples",
+      "currentReader": "TrackMapStore",
+      "migrationRule": "Runtime readers accept supported schemas. Complete maps are reused until schema or generation changes, confidence is improved, or the user forces regeneration.",
+      "sampleFiles": [
+        "generated-map.json"
+      ],
+      "storageMaterialization": "Tests copy the schema sample to the app-generated map filename derived from track identity before running current map readers."
+    },
+    "rawCapture": {
+      "captureManifestFormatVersion": 1,
+      "telemetryFileMagic": "TMRCAP01",
+      "telemetryHeaderBytes": 32,
+      "frameHeaderBytes": 32,
+      "sampleRoot": "captures",
+      "currentReader": "Telemetry capture analysis tools",
+      "migrationRule": "Raw captures are immutable diagnostics. New tools should branch by manifest format/schema metadata instead of rewriting raw capture folders."
+    },
+    "runtimeState": {
+      "runtimeStateVersion": 1,
+      "samplePath": "runtime-state.json",
+      "currentReader": "RuntimeStateService",
+      "migrationRule": "Runtime state is diagnostic and disposable. It may be ignored or overwritten when incompatible."
+    }
+  },
+  "requiredValidation": [
+    "Current app settings code loads and preserves the full-overlay settings snapshot.",
+    "Current app settings code tolerates unknown future JSON fields without corrupting known settings.",
+    "Current shared overlay contract parser reads the frozen v0.19.0 shared defaults snapshot.",
+    "Current history maintenance accepts compatible v0.19.0 summary samples and rebuilds current aggregates after materializing app-style paths.",
+    "Current track-map store reads the generated map sample as a supported runtime map after materializing app-style paths.",
+    "Current diagnostic readers can parse raw-capture manifest/schema and runtime-state snapshots.",
+    "Current browser review settings UI maps the frozen release settings into the expected overlay controls.",
+    "Current localhost overlay model builders map the frozen release settings into the expected overlay output.",
+    "Current native overlay consumers map the frozen release settings into the expected overlay output."
+  ]
+}

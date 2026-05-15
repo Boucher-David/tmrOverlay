@@ -56,6 +56,8 @@ By default, TmrOverlay stores user data outside the install folder under:
 
 That app-data root contains settings, history, logs, diagnostics, runtime state, generated track maps, and optional captures. Updating or replacing the app does not delete this data. Startup/update cleanup only removes stale legacy installer identity folders/shortcuts; uninstalling an installed Velopack build removes this app-data root as part of uninstall cleanup.
 
+Durable app data is protected by versioned release snapshots under `fixtures/data-contracts/`. Each future durable schema change should keep the previous released snapshot loading through current code and should add a new snapshot when the release changes the persisted contract. See [docs/data-contracts.md](docs/data-contracts.md).
+
 Raw telemetry capture is opt-in. Use the Support checkbox or a `TelemetryCapture:RawCaptureEnabled=true` configuration override when a tester intentionally needs raw evidence. Normal diagnostics are compact summaries and logs; diagnostics bundles intentionally exclude raw `telemetry.bin` and source `.ibt` files.
 
 Streamlabs widget URLs and other private local settings are redacted from diagnostics bundles.
@@ -118,6 +120,7 @@ Useful local validation:
 
 ```bash
 npm run test:browser
+npm run test:localhost
 npm run test:browser:install # first run only, when Playwright's Chromium cache is missing
 npm run screenshots:browser
 git diff --check
@@ -177,6 +180,7 @@ Those snapshots include telemetry throughput, iRacing network/system values, ove
 - [docs/overlay-behavior-reference.md](docs/overlay-behavior-reference.md) - plain-English behavior reference for each overlay.
 - [docs/overlay-flow-diagrams.md](docs/overlay-flow-diagrams.md) - Mermaid flow diagrams for overlay decision paths.
 - [docs/capture-format.md](docs/capture-format.md) - raw capture file format.
+- [docs/data-contracts.md](docs/data-contracts.md) - durable settings/history/map/capture contract snapshots and migration rules.
 - [docs/history-data-evolution.md](docs/history-data-evolution.md) - durable user-history compatibility rules.
 - [docs/repo-surface.md](docs/repo-surface.md) - what belongs in source, docs, validation artifacts, runtime data, and release packages.
 - [VERSION.md](VERSION.md) - milestone history and current branch release summary.

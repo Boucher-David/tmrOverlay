@@ -1,0 +1,32 @@
+{
+  "aggregateVersion": 1,
+  "carKey": "car-99-mercedes-amg-gt3",
+  "car": {
+    "carId": 99,
+    "carPath": "mercedesamggt3",
+    "carScreenName": "Mercedes-AMG GT3 2020",
+    "carScreenNameShort": "Mercedes GT3",
+    "carClassId": 12,
+    "carClassShortName": "GT3"
+  },
+  "updatedAtUtc": "2026-05-15T01:00:00+00:00",
+  "sessionCount": 999,
+  "radarCalibration": {
+    "sourceSessionCount": 999,
+    "sideOverlapWindowSeconds": {
+      "sampleCount": 999,
+      "mean": 0.5,
+      "minimum": 0.5,
+      "maximum": 0.5
+    },
+    "estimatedBodyLengthMeters": {
+      "sampleCount": 999,
+      "mean": 9.9,
+      "minimum": 9.9,
+      "maximum": 9.9
+    },
+    "confidenceFlags": [
+      "stale-fixture-aggregate"
+    ]
+  }
+}

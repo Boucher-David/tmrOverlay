@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "captureId": "v0190-contract-capture",
+  "collectionId": "v0190-contract-capture",
+  "startedAtUtc": "2026-05-15T00:00:00+00:00",
+  "finishedAtUtc": "2026-05-15T00:00:10+00:00",
+  "telemetryFile": "telemetry.bin",
+  "schemaFile": "telemetry-schema.json",
+  "latestSessionInfoFile": "latest-session.yaml",
+  "sessionInfoDirectory": "session-info",
+  "sdkVersion": 1,
+  "tickRate": 60,
+  "bufferLength": 64,
+  "variableCount": 4,
+  "frameCount": 0,
+  "droppedFrameCount": 0,
+  "sessionInfoSnapshotCount": 0,
+  "appVersion": {
+    "productName": "Tech Mates Racing Overlay",
+    "version": "0.19.0.0",
+    "informationalVersion": "0.19.0",
+    "runtimeVersion": ".NET 8.0",
+    "operatingSystem": "Windows",
+    "processArchitecture": "X64"
+  }
+}

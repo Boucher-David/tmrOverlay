@@ -1,0 +1,24 @@
+ApplicationSettings
+  General: ApplicationGeneralSettings
+  Overlays: List<OverlaySettings>
+  SettingsVersion: int
+ApplicationGeneralSettings
+  FontFamily: string
+  UnitSystem: string
+OverlaySettings
+  AlwaysOnTop: bool
+  Enabled: bool
+  Height: int
+  Id: string
+  LegacyProperties: Dictionary<string, JsonElement>
+  Opacity: double
+  Options: Dictionary<string, string>
+  Scale: double
+  ScreenId: string
+  ShowInPractice: bool
+  ShowInQualifying: bool
+  ShowInRace: bool
+  ShowInTest: bool
+  Width: int
+  X: int
+  Y: int

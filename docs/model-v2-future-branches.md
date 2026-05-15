@@ -37,10 +37,21 @@ Current evidence/tooling shape:
 - 2026-05-13: Hide Pit Service in-car setup rows for the first pass. ARB/wing-style pit-request telemetry probably exists somewhere in the SDK, but it needs a deliberate raw capture where the driver changes those values before it becomes production overlay content. Track this as a V1.x Pit Service v2 investigation, not as browser spoof data or unsupported native rows.
 - 2026-05-14: Fuel Calculator first-pass parity should keep shared/Core fuel work to the low-risk `LiveFuelStrategyModel` contract that centralizes local-context gating, history lookup, and existing `FuelStrategyCalculator` output for native and localhost consumers. Do not pull rolling measured-burn windows, pit-service refuel recommendations, or team-stint intelligence into this branch; those belong to Fuel Calculator v2. Neutral fuel facts such as Race, Remain, Laps, Target, Tank, Stints, and Stops should use data-presentation tones, not magenta/modelled warning-looking tones.
 - 2026-05-14: Stream Chat first-pass parity should keep the practical V1 enhancements only: Design V2 shell, fixed-height chat history, wrapping rows, author color, visible badges, inline Twitch emotes, native/localhost parity, and browser review replay coverage. The richer Twitch IRC/EventSub and Streamlabs API/widget analysis is parked in `docs/stream-v2.md` as a dedicated V1.x Stream Chat V2 branch/tag candidate, not as required V1 branch-complete scope.
+- 2026-05-15: The current data-contract hardening branch after the v0.19.0 V1-candidate merge keeps shared product/version metadata at 0.19.0 and is not planned as a release tag unless Windows-tested runtime fixes are added. `fixtures/data-contracts/v0.19.0/` is now the first release snapshot for durable user-data validation. Future durable schema branches should keep the previous release snapshot loading through current code, add a new snapshot when the persisted contract changes, and update `docs/data-contracts.md` plus history/settings compatibility tests in the same pass.
 
-## Current v0.19.0 Branch Focus
+## Current Data-Contract Branch Focus
 
-The current useful model-v2 work is evidence-backed live-overlay parity and browser validation hardening, not a broad product expansion:
+The current branch is a narrow data-contract hardening pass after the v0.19.0 V1-candidate merge. Do not use it for broad overlay or settings churn unless Windows v0.19.0 testing finds a small compatibility fix that should become a tagged patch release.
+
+Current data-contract focus:
+
+- Keep `fixtures/data-contracts/v0.19.0/` as the first release snapshot for durable user-data validation.
+- Validate vN-1 to vN compatibility by loading the previous release snapshot through current app readers before publishing durable schema changes.
+- Preserve explicit v0.19.0 user settings choices, including opacity and content/header/footer options, when future settings migrations run.
+- Treat settings, compact history, user-generated track maps, raw-capture metadata, and runtime-state diagnostics according to `docs/data-contracts.md`.
+- Keep the V1-candidate overlay logic stable while this branch is in flight.
+
+Ongoing telemetry/model-v2 guardrails from v0.19.0 still apply:
 
 - Keep the compact tracked "full-picture" live telemetry fixture corpus current as representative real states are collected. Keep it redacted and compact: no raw `telemetry.bin`, no source `.ibt`, no private chat/settings values, and no full-session payloads.
 - Keep the SDK field availability corpus current with local capture schemas before telemetry-backed feature work. If iRacing adds SDK fields or changes declared shape, update the corpus or document the gap before deciding overlay behavior from guesses.
@@ -86,7 +97,7 @@ V1-candidate readiness discussion moved out of `VERSION.md`:
 - Prove installer/update polish: MSI install, upgrade, rollback, Velopack update checks, release notes, checksums, and the acceptable stance on unsigned SmartScreen warnings for V1.
 - Add the minimum user-facing first-run docs: starting the app, enabling overlays, configuring OBS localhost URLs, Stream Chat setup, Garage Cover setup, diagnostics bundle creation, and raw capture being opt-in.
 - Complete an explicit privacy/defaults pass: logged fields, diagnostics bundle contents, redactions, retention defaults, app-data locations, and confirmation that raw `telemetry.bin` and source `.ibt` payloads stay out of support bundles.
-- Freeze durable settings/history schema unless a V1-blocking bug requires a change. Any schema change now needs version constants, migrations or compatible readers, docs, fixtures, and compatibility tests in the same pass.
+- Freeze durable settings/history schema unless a V1-blocking bug requires a change. Any schema change now needs version constants, migrations or compatible readers, docs, versioned data-contract snapshots, and compatibility tests in the same pass.
 - Run a native Windows behavior sweep because browser review cannot prove focus, topmost, click-through, no-activate behavior, Stream Chat window behavior, iRacing SDK capture, installer/update behavior, or WinForms screenshot output.
 - Harden the support posture so one teammate diagnostics bundle is enough to answer version, settings, update state, overlay visibility, localhost routes, runtime errors, recent telemetry state, and recent performance/freeze state without raw payloads.
 - Keep V1.x performance and heavier analysis work out of this milestone unless validation finds a release-blocking regression. Use the V1.x roadmap for overlay lifecycle/timer efficiency, rendering/cache performance, capture replay, and larger post-race analysis products after the candidate is stable.
@@ -252,6 +263,8 @@ Goal: turn Stream Chat into a deliberately richer stream-facing overlay after th
 Dedicated branch/tag candidate: Stream Chat V2 / `stream-v2` in the V1.x line.
 
 Design handoff: `docs/stream-v2.md`.
+
+Live validation notes: `docs/stream-v2.md` includes a 2026-05-15 Twitch live-review pass against `techmatesracing`, including fixed-height behavior, long-row wrapping, author color, badge fallback behavior, and remaining gaps for badge images, dense metadata chips, emotes, replies, bits, raids, and resubs.
 
 Likely scope:
 

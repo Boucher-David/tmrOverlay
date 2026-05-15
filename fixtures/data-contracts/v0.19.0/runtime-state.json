@@ -1,0 +1,15 @@
+{
+  "runtimeStateVersion": 1,
+  "startedAtUtc": "2026-05-15T00:00:00+00:00",
+  "lastHeartbeatAtUtc": "2026-05-15T00:05:00+00:00",
+  "stoppedAtUtc": null,
+  "stoppedCleanly": false,
+  "appVersion": {
+    "productName": "Tech Mates Racing Overlay",
+    "version": "0.19.0.0",
+    "informationalVersion": "0.19.0",
+    "runtimeVersion": ".NET 8.0",
+    "operatingSystem": "Windows",
+    "processArchitecture": "X64"
+  }
+}

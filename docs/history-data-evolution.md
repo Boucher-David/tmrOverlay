@@ -90,6 +90,8 @@ Use these version scopes:
 
 The app should write only the current versions. Readers may accept older versions only through migration or explicit compatibility adapters.
 
+`fixtures/data-contracts/v0.19.0/` is the first checked-in release snapshot for this policy. Future durable schema branches should add the next versioned snapshot there and keep tests proving the previous release snapshot can load into the current app. See `docs/data-contracts.md` for the full snapshot workflow.
+
 ## Validation Sweep
 
 Schema changes are compatibility events. If a durable user-data model changes shape or meaning, the same sweep that checks stale docs and tests must also verify backwards compatibility:
@@ -97,6 +99,7 @@ Schema changes are compatibility events. If a durable user-data model changes sh
 - decide whether to bump `summaryVersion`, `collectionModelVersion`, `aggregateVersion`, or `analysisVersion`
 - add or update migrations, rebuild logic, or compatible readers before overlays consume the data
 - add tests for old data, unsupported future data, and degraded/corrupt data where the change can affect user history
+- update the versioned release snapshot under `fixtures/data-contracts/` and keep the previous release snapshot covered by tests
 - update `HistorySchemaCompatibilityTests` so the durable schema snapshot changes only after the compatibility decision is explicit
 - update this note, repo context, and any user-facing docs that describe persisted history
 

@@ -18,6 +18,21 @@ The deeper model below is intentionally not the required v1 finish line. It exis
 http://127.0.0.1:5187/overlays/stream-chat?streamChatFixture=all
 ```
 
+## Live Twitch Validation Findings
+
+2026-05-15 live review against `techmatesracing`:
+
+- The browser review localhost route connected anonymously to Twitch IRC for `#techmatesracing` and reported `chat connected | twitch`.
+- `/api/overlay-model/stream-chat` updated from the initial connection row to real live chat rows without requiring iRacing telemetry.
+- The rendered overlay kept the normal Stream Chat title/status shell and did not show an invented footer/source row.
+- Overlay height stayed fixed while new rows pushed older rows up from the bottom; the page did not grow or add body scroll.
+- Long real chat messages wrapped inside their row and increased row height instead of clipping or overflowing horizontally.
+- Twitch author colors were visible in the browser route.
+- Moderator/founder/premium badges rendered as compact text fallbacks such as `MOD`, `FOU`, and `PRE`. Badge image lookup did not resolve during the live pass, so V2 should define badge image caching, failure fallback behavior, and native/localhost parity for those assets.
+- Timestamp metadata chips rendered, but DOM measurement showed the chip height is very tight and can report vertical overflow. V2 should revisit chip sizing before adding denser metadata.
+- The live sample did not include emotes, replies, bits, raids, resubs, or other `USERNOTICE` events, so those still need deterministic fixtures plus real-channel validation before treating them as complete.
+- The current browser review live path still needs a replay-server shell even though Stream Chat itself is not telemetry-derived. V2 can consider a dedicated stream-chat review harness or explicit fixture/live mode so chat validation is not tied to standings replay setup.
+
 ## V2 Product Boundary
 
 Stream Chat V2 should decide how to present rich stream events instead of only drawing generic chat rows.
@@ -379,6 +394,7 @@ Mode 1: Streamlabs Chat Box URL
 - TMR can validate/store/embed the widget URL.
 - Streamlabs controls chat platforms, badges, extra emotes, filters, hide delay, and widget styling.
 - TMR cannot reliably inspect or restyle internal rows from the parent localhost page because the widget is cross-origin.
+- Live URL validation on 2026-05-15 against a real Techmates Racing Streamlabs Chat Box widget returned HTTP 200 HTML with `content-type: text/html; charset=UTF-8` and no `x-frame-options` header, which supports keeping v1 Streamlabs mode as an embeddable opaque localhost browser source.
 
 Mode 2: Streamlabs Socket API
 

@@ -1,0 +1,31 @@
+{
+  "aggregateVersion": 3,
+  "combo": {
+    "carKey": "car-99-mercedes-amg-gt3",
+    "trackKey": "track-42-synthetic-circle",
+    "sessionKey": "race"
+  },
+  "car": {
+    "carId": 99,
+    "carPath": "mercedesamggt3",
+    "carScreenName": "Mercedes-AMG GT3 2020",
+    "carScreenNameShort": "Mercedes GT3",
+    "carClassId": 12,
+    "carClassShortName": "GT3"
+  },
+  "track": {
+    "trackId": 42,
+    "trackName": "synthetic_circle",
+    "trackDisplayName": "Synthetic Circle",
+    "trackConfigName": "Full",
+    "trackLengthKm": 1.5,
+    "trackVersion": "2026.05"
+  },
+  "session": {
+    "sessionType": "Race",
+    "sessionName": "Race"
+  },
+  "updatedAtUtc": "2026-05-15T01:00:00+00:00",
+  "sessionCount": 999,
+  "baselineSessionCount": 999
+}

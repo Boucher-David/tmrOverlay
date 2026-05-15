@@ -6,6 +6,7 @@ namespace TmrOverlay.Core.Settings;
 internal static class AppSettingsMigrator
 {
     public const int CurrentVersion = 11;
+    public const int V1BaselineVersion = 11;
     private const double LegacyDefaultOpacity = 0.88d;
     private const string FlagsOverlayId = "flags";
     private const string FlagsPrimaryScreenDefaultId = "primary-screen-default";
@@ -143,7 +144,7 @@ internal static class AppSettingsMigrator
             overlay.Scale = ClampFinite(overlay.Scale, 0.6d, 2d, 1d);
             overlay.Width = Math.Max(0, overlay.Width);
             overlay.Height = Math.Max(0, overlay.Height);
-            if (sourceVersion < CurrentVersion && IsLegacyDefaultOpacity(overlay.Opacity))
+            if (sourceVersion < V1BaselineVersion && IsLegacyDefaultOpacity(overlay.Opacity))
             {
                 overlay.Opacity = 1d;
             }

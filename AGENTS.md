@@ -31,6 +31,7 @@ Start here when continuing work in this repo.
 - `skills/tmr-overlay-context/references/overlay-research.md`
 - `docs/overlay-logic.md`
 - `docs/capture-format.md`
+- `docs/data-contracts.md`
 - `telemetry.md`
 - `README.md`
 
@@ -48,7 +49,8 @@ Start here when continuing work in this repo.
 - Waiting/unavailable/error preview states must use deterministic isolated fixtures. Do not let local user history, cached telemetry, or machine-specific paths make an empty state look populated unless the scenario explicitly tests history fallback or support-path display.
 - For wider app changes, carry validation discipline into tests and fixtures: assert both data that should appear and data that must stay hidden, cover failure/degraded paths, and keep performance/diagnostics/update flows fixture-driven where possible.
 - During exploratory or iterative implementation, do not run the full docs/tests/validation sweep after every prompt. Use targeted checks only when they directly de-risk the current edit, and defer broader docs, fixtures, screenshots, and validation until the user-approved stopping point or branch-complete pass.
-- If a durable user-data schema changes, treat backwards compatibility as part of the same validation sweep: update version constants, migrations or compatible readers, docs, and the schema-compatibility test before final validation.
+- If a durable user-data schema changes, treat backwards compatibility as part of the same validation sweep: update version constants, migrations or compatible readers, docs, the schema-compatibility test, and the versioned snapshots under `fixtures/data-contracts/` before final validation.
+- Treat data-contract snapshot tests as product-contract evidence. When a snapshot mapping or compatibility test fails, first decide whether the snapshot is exposing a real product/reader/fixture mismatch before changing assertions; do not blanket-update expected values just to make the test pass.
 - When implementation behavior, calculations, defaults, source labels, fixture data, or validation semantics change, update the affected build test assertions and test fixtures in the same pass. Treat stale passing or failing assertions as stale references, not as a separate cleanup task.
 - Before declaring a branch complete, run the branch-complete release hygiene in `skills/tmr-overlay-validation/SKILL.md`: patch stale docs/context references, regenerate and validate screenshot artifacts for overlay/settings UI changes, inspect branch commits, sanitize the first commit or planned squash text, update `VERSION.md`, align `Directory.Build.props` version metadata for milestone branches, and create annotated tags only after the release commit is on `main` or explicitly designated as the release point.
 - The authoring machine used for the initial scaffold did not have `dotnet` installed, so build/test verification still needs to happen on Windows.

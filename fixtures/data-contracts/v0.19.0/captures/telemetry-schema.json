@@ -1,0 +1,46 @@
+[
+  {
+    "name": "SessionTime",
+    "typeName": "double",
+    "typeCode": 4,
+    "count": 1,
+    "offset": 0,
+    "byteSize": 8,
+    "length": 8,
+    "unit": "s",
+    "description": "Seconds since session start"
+  },
+  {
+    "name": "SessionNum",
+    "typeName": "int",
+    "typeCode": 2,
+    "count": 1,
+    "offset": 8,
+    "byteSize": 4,
+    "length": 4,
+    "unit": "",
+    "description": "Session number"
+  },
+  {
+    "name": "Throttle",
+    "typeName": "float",
+    "typeCode": 3,
+    "count": 1,
+    "offset": 12,
+    "byteSize": 4,
+    "length": 4,
+    "unit": "%",
+    "description": "Throttle position"
+  },
+  {
+    "name": "CarIdxLapDistPct",
+    "typeName": "float",
+    "typeCode": 3,
+    "count": 64,
+    "offset": 16,
+    "byteSize": 4,
+    "length": 256,
+    "unit": "%",
+    "description": "Lap distance percent by car index"
+  }
+]
