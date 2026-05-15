@@ -1,6 +1,7 @@
 using System.Globalization;
 using TmrOverlay.App.Overlays.Content;
 using TmrOverlay.App.Overlays.SimpleTelemetry;
+using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 using TmrOverlay.Core.Telemetry.Live;
 
