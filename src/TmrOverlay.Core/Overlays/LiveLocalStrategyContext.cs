@@ -65,17 +65,18 @@ internal static class LiveLocalStrategyContext
             return Unavailable(ReasonCode(telemetryAvailability.Reason), telemetryAvailability.StatusText);
         }
 
+        var models = snapshot.CompleteModels();
         var playerCarIdx = ValidCarIdx(
-            snapshot.Models.DriverDirectory.PlayerCarIdx
-            ?? snapshot.LatestSample?.PlayerCarIdx);
+            models.DriverDirectory.PlayerCarIdx
+            ?? models.Reference.PlayerCarIdx);
         if (playerCarIdx is null)
         {
             return Unavailable("player_car_unavailable", localWaitingStatus);
         }
 
         var focusCarIdx = ValidCarIdx(
-            snapshot.Models.DriverDirectory.FocusCarIdx
-            ?? snapshot.LatestSample?.FocusCarIdx);
+            models.Reference.FocusCarIdx
+            ?? models.DriverDirectory.FocusCarIdx);
         if (focusCarIdx is null)
         {
             return Unavailable("focus_unavailable", localWaitingStatus);
@@ -86,12 +87,12 @@ internal static class LiveLocalStrategyContext
             return Unavailable("focus_on_another_car", localWaitingStatus);
         }
 
-        if (IsGarageContext(snapshot))
+        if (IsGarageContext(models))
         {
             return Unavailable("garage", localWaitingStatus);
         }
 
-        if (!IsLocalActiveContext(snapshot, allowPitContext))
+        if (!IsLocalActiveContext(models, allowPitContext))
         {
             return Unavailable("not_in_car", localWaitingStatus);
         }
@@ -102,25 +103,24 @@ internal static class LiveLocalStrategyContext
             StatusText: "live");
     }
 
-    private static bool IsGarageContext(LiveTelemetrySnapshot snapshot)
+    private static bool IsGarageContext(LiveRaceModels models)
     {
-        var race = snapshot.Models.RaceEvents;
-        var sample = snapshot.LatestSample;
+        var race = models.RaceEvents;
+        var reference = models.Reference;
         return (race.HasData && (race.IsInGarage || race.IsGarageVisible))
-            || sample?.IsInGarage == true
-            || sample?.IsGarageVisible == true;
+            || reference.IsInGarage;
     }
 
-    private static bool IsLocalActiveContext(LiveTelemetrySnapshot snapshot, bool allowPitContext)
+    private static bool IsLocalActiveContext(LiveRaceModels models, bool allowPitContext)
     {
-        var race = snapshot.Models.RaceEvents;
-        var sample = snapshot.LatestSample;
-        if (IsPitContext(snapshot))
+        var race = models.RaceEvents;
+        var reference = models.Reference;
+        if (IsPitContext(models))
         {
             return allowPitContext;
         }
 
-        if ((race.HasData && race.IsOnTrack) || sample?.IsOnTrack == true)
+        if ((race.HasData && race.IsOnTrack) || reference.IsOnTrack)
         {
             return true;
         }
@@ -128,12 +128,11 @@ internal static class LiveLocalStrategyContext
         return false;
     }
 
-    private static bool IsPitContext(LiveTelemetrySnapshot snapshot)
+    private static bool IsPitContext(LiveRaceModels models)
     {
-        var reference = snapshot.Models.Reference;
-        var race = snapshot.Models.RaceEvents;
-        var pit = snapshot.Models.FuelPit;
-        var sample = snapshot.LatestSample;
+        var reference = models.Reference;
+        var race = models.RaceEvents;
+        var pit = models.FuelPit;
         return (race.HasData && race.OnPitRoad)
             || reference.OnPitRoad == true
             || reference.PlayerOnPitRoad == true
@@ -143,14 +142,7 @@ internal static class LiveLocalStrategyContext
             || pit.OnPitRoad
             || pit.PitstopActive
             || pit.PlayerCarInPitStall
-            || pit.TeamOnPitRoad == true
-            || sample?.OnPitRoad == true
-            || sample?.PitstopActive == true
-            || sample?.PlayerCarInPitStall == true
-            || sample?.TeamOnPitRoad == true
-            || sample?.FocusOnPitRoad == true
-            || IsPitRoadTrackSurface(sample?.FocusTrackSurface)
-            || IsPitRoadTrackSurface(sample?.PlayerTrackSurface);
+            || pit.TeamOnPitRoad == true;
     }
 
     private static bool IsPitRoadTrackSurface(int? trackSurface)

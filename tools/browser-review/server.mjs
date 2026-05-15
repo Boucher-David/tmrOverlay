@@ -486,6 +486,21 @@ function reviewLiveSnapshot(previewMode = 'off') {
       isGarageVisible: false,
       lapDistPct: 0.42
     },
+    reference: {
+      hasData: true,
+      playerCarIdx: 71,
+      focusCarIdx: 71,
+      focusIsPlayer: true,
+      isOnTrack: true,
+      isInGarage: false,
+      lapDistPct: 0.42,
+      playerYawNorthRadians: 0.35
+    },
+    driverDirectory: {
+      hasData: true,
+      playerCarIdx: 71,
+      focusCarIdx: 71
+    },
     spatial: {
       hasData: true,
       referenceCarIdx: 71,
@@ -1023,9 +1038,28 @@ function filterRelativeReviewRows(model, overlayState) {
     return model;
   }
 
+  const ahead = rows.slice(0, focusIndex).slice(-eachSide);
+  const behind = rows.slice(focusIndex + 1).slice(0, eachSide);
+  const visibleRows = Math.max(1, Math.min(17, eachSide + eachSide + 1));
+  const stableRows = Array.from(
+    { length: visibleRows },
+    () => relativePlaceholderRow(model.columns?.length || 0));
+  const referenceSlot = Math.min(eachSide, stableRows.length - 1);
+  const aheadStart = Math.max(0, referenceSlot - ahead.length);
+  ahead.forEach((row, index) => {
+    stableRows[aheadStart + index] = row;
+  });
+  stableRows[referenceSlot] = rows[focusIndex];
+  const behindStart = referenceSlot + 1;
+  behind.forEach((row, index) => {
+    if (behindStart + index < stableRows.length) {
+      stableRows[behindStart + index] = row;
+    }
+  });
+
   return {
     ...model,
-    rows: rows.slice(Math.max(0, focusIndex - eachSide), focusIndex + eachSide + 1)
+    rows: stableRows
   };
 }
 
@@ -1165,6 +1199,12 @@ function relativeRow(cells, extra = {}) {
     headerDetail: null,
     ...extra
   };
+}
+
+function relativePlaceholderRow(cellCount) {
+  return relativeRow(
+    Array.from({ length: Math.max(0, cellCount) }, () => ''),
+    { isPlaceholder: true });
 }
 
 function metricsModel(

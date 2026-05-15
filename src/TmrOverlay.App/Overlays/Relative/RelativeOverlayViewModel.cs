@@ -15,6 +15,7 @@ internal sealed record RelativeOverlayViewModel(
         int carsAhead,
         int carsBehind)
     {
+        snapshot = snapshot with { Models = snapshot.CompleteModels() };
         var availability = OverlayAvailabilityEvaluator.FromSnapshot(snapshot, now);
         if (!availability.IsAvailable)
         {
@@ -321,19 +322,20 @@ internal sealed record RelativeOverlayViewModel(
 
     private static bool ReferenceUsesLocalPlayer(LiveTelemetrySnapshot snapshot, LiveTimingRow? timing)
     {
-        var reference = snapshot.Models.Reference;
+        var models = snapshot.CompleteModels();
+        var reference = models.Reference;
         if (reference.HasData)
         {
             return reference.FocusIsPlayer;
         }
 
-        var focusCarIdx = snapshot.Models.Relative.ReferenceCarIdx
+        var focusCarIdx = models.Relative.ReferenceCarIdx
             ?? timing?.CarIdx
-            ?? snapshot.Models.Timing.FocusRow?.CarIdx
-            ?? snapshot.Models.Timing.FocusCarIdx
-            ?? snapshot.Models.DriverDirectory.FocusCarIdx;
-        var playerCarIdx = snapshot.Models.DriverDirectory.PlayerCarIdx
-            ?? snapshot.LatestSample?.PlayerCarIdx;
+            ?? models.Timing.FocusRow?.CarIdx
+            ?? models.Timing.FocusCarIdx
+            ?? models.DriverDirectory.FocusCarIdx;
+        var playerCarIdx = models.DriverDirectory.PlayerCarIdx
+            ?? models.Reference.PlayerCarIdx;
         return focusCarIdx is not null
             && playerCarIdx is not null
             && focusCarIdx == playerCarIdx;

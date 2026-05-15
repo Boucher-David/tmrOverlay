@@ -12,6 +12,7 @@ internal static class InputStateOverlayViewModel
         DateTimeOffset now,
         string unitSystem)
     {
+        snapshot = snapshot with { Models = snapshot.CompleteModels() };
         var availability = OverlayAvailabilityEvaluator.FromSnapshot(snapshot, now);
         if (!availability.IsAvailable)
         {

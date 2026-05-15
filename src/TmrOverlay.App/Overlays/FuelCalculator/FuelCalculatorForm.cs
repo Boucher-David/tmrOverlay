@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Drawing;
 using TmrOverlay.App.History;
 using TmrOverlay.App.Overlays.Abstractions;
+using TmrOverlay.App.Overlays.Content;
 using TmrOverlay.App.Overlays.Styling;
 using TmrOverlay.App.Performance;
 using TmrOverlay.Core.Fuel;
@@ -44,7 +45,14 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
     private bool? _lastRefreshShowAdvice;
     private string? _lastRefreshChromeSettings;
 
-    private bool ShowAdvice => _settings.GetBooleanOption(OverlayOptionKeys.FuelAdvice, defaultValue: true);
+    private bool ShowAdvice(LiveTelemetrySnapshot snapshot)
+    {
+        return OverlayContentColumnSettings.ContentEnabledForSession(
+            _settings,
+            OverlayOptionKeys.FuelAdvice,
+            defaultEnabled: true,
+            OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot));
+    }
 
     public FuelCalculatorForm(
         ILiveTelemetrySource liveTelemetrySource,
@@ -211,6 +219,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
             try
             {
                 live = _liveTelemetrySource.Snapshot();
+                live = live with { Models = live.CompleteModels() };
                 snapshotSucceeded = true;
             }
             finally
@@ -221,7 +230,7 @@ internal sealed class FuelCalculatorForm : PersistentOverlayForm
                     snapshotSucceeded);
             }
 
-            var showAdvice = ShowAdvice;
+            var showAdvice = ShowAdvice(live);
             var now = DateTimeOffset.UtcNow;
             var previousSequence = _lastRefreshSequence;
             if (previousSequence == live.Sequence

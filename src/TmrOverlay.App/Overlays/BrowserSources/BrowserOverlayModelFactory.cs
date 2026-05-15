@@ -115,25 +115,26 @@ internal sealed class BrowserOverlayModelFactory
         DateTimeOffset now,
         out BrowserOverlayModelResponse response)
     {
+        var modelSnapshot = snapshot with { Models = snapshot.CompleteModels() };
         var unitSystem = UnitSystem(settings);
         BrowserOverlayDisplayModel? model = null;
         if (string.Equals(overlayId, StandingsOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
-            model = BuildStandings(snapshot, settings, now);
+            model = BuildStandings(modelSnapshot, settings, now);
         }
         else if (string.Equals(overlayId, RelativeOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
-            model = BuildRelative(snapshot, settings, now);
+            model = BuildRelative(modelSnapshot, settings, now);
         }
         else if (string.Equals(overlayId, FuelCalculatorOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
-            model = BuildFuel(snapshot, settings, unitSystem, now);
+            model = BuildFuel(modelSnapshot, settings, unitSystem, now);
         }
         else if (string.Equals(overlayId, SessionWeatherOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
             var overlay = FindOverlay(settings, SessionWeatherOverlayDefinition.Definition.Id);
-            var viewModel = _sessionWeatherBuilder.Build(snapshot, now, unitSystem, overlay);
-            var headerItems = HeaderItems(overlay, snapshot, viewModel.Status);
+            var viewModel = _sessionWeatherBuilder.Build(modelSnapshot, now, unitSystem, overlay);
+            var headerItems = HeaderItems(overlay, modelSnapshot, viewModel.Status);
             model = FromSimple(
                 SessionWeatherOverlayDefinition.Definition.Id,
                 viewModel,
@@ -143,41 +144,41 @@ internal sealed class BrowserOverlayModelFactory
         else if (string.Equals(overlayId, PitServiceOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
             var overlay = FindOverlay(settings, PitServiceOverlayDefinition.Definition.Id);
-            var viewModel = _pitServiceBuilder.Build(snapshot, now, unitSystem, overlay);
-            var headerItems = HeaderItems(overlay, snapshot, PitServiceOverlayViewModel.HeaderStatus(viewModel.Status));
+            var viewModel = _pitServiceBuilder.Build(modelSnapshot, now, unitSystem, overlay);
+            var headerItems = HeaderItems(overlay, modelSnapshot, PitServiceOverlayViewModel.HeaderStatus(viewModel.Status));
             model = FromSimple(
                 PitServiceOverlayDefinition.Definition.Id,
                 viewModel,
                 headerItems,
-                SourceText(overlay, snapshot, viewModel.Source));
+                SourceText(overlay, modelSnapshot, viewModel.Source));
         }
         else if (string.Equals(overlayId, InputStateOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
-            model = BuildInputState(snapshot, settings, unitSystem, now);
+            model = BuildInputState(modelSnapshot, settings, unitSystem, now);
         }
         else if (string.Equals(overlayId, CarRadarOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
-            model = BuildCarRadar(snapshot, settings, now);
+            model = BuildCarRadar(modelSnapshot, settings, now);
         }
         else if (string.Equals(overlayId, GapToLeaderOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
-            model = BuildGapToLeader(snapshot, settings, now);
+            model = BuildGapToLeader(modelSnapshot, settings, now);
         }
         else if (string.Equals(overlayId, FlagsOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
-            model = BuildFlags(snapshot, settings, now);
+            model = BuildFlags(modelSnapshot, settings, now);
         }
         else if (string.Equals(overlayId, TrackMapOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
-            model = BuildTrackMap(snapshot, settings, now);
+            model = BuildTrackMap(modelSnapshot, settings, now);
         }
         else if (string.Equals(overlayId, GarageCoverOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
-            model = BuildGarageCover(snapshot, settings, now);
+            model = BuildGarageCover(modelSnapshot, settings, now);
         }
         else if (string.Equals(overlayId, StreamChatOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
         {
-            model = BuildStreamChat(snapshot, settings, now);
+            model = BuildStreamChat(modelSnapshot, settings, now);
         }
 
         if (model is null)
@@ -744,18 +745,18 @@ internal sealed class BrowserOverlayModelFactory
             return;
         }
 
+        var modelSnapshot = snapshot with { Models = snapshot.CompleteModels() };
         _lastGapSequence = snapshot.Sequence;
-        var timestamp = snapshot.LatestSample?.CapturedAtUtc
-            ?? snapshot.LastUpdatedAtUtc
+        var timestamp = snapshot.LastUpdatedAtUtc
             ?? DateTimeOffset.UtcNow;
-        var axisSeconds = SelectGapAxisSeconds(timestamp, snapshot.Models.Session.SessionTimeSeconds ?? snapshot.LatestSample?.SessionTime);
+        var axisSeconds = SelectGapAxisSeconds(timestamp, modelSnapshot.Models.Session.SessionTimeSeconds);
         _latestGapAxisSeconds = axisSeconds;
         if (_gapTrendStartAxisSeconds is null || axisSeconds < _gapTrendStartAxisSeconds.Value)
         {
             _gapTrendStartAxisSeconds = axisSeconds;
         }
 
-        var context = SelectGapReferenceContext(snapshot);
+        var context = SelectGapReferenceContext(modelSnapshot);
         if (_lastGapReferenceContext is not null && _lastGapReferenceContext != context)
         {
             _gapSeries.Clear();
@@ -770,11 +771,11 @@ internal sealed class BrowserOverlayModelFactory
         }
 
         _lastGapReferenceContext = context;
-        var lapReferenceSeconds = GapToLeaderLiveModelAdapter.SelectLapReferenceSeconds(snapshot);
+        var lapReferenceSeconds = GapToLeaderLiveModelAdapter.SelectLapReferenceSeconds(modelSnapshot);
         _lastGapLapReferenceSeconds = lapReferenceSeconds;
-        RecordGapFuelStint(snapshot, axisSeconds);
-        RecordGapWeather(snapshot, axisSeconds);
-        RecordGapDriverChangeMarkers(snapshot, gap, timestamp, axisSeconds, lapReferenceSeconds);
+        RecordGapFuelStint(modelSnapshot, axisSeconds);
+        RecordGapWeather(modelSnapshot, axisSeconds);
+        RecordGapDriverChangeMarkers(modelSnapshot, gap, timestamp, axisSeconds, lapReferenceSeconds);
         RecordGapLeaderChange(gap, timestamp, axisSeconds);
         foreach (var car in gap.ClassCars)
         {
@@ -816,7 +817,7 @@ internal sealed class BrowserOverlayModelFactory
             }
         }
 
-        UpdateGapCarRenderStates(snapshot, gap, settings, axisSeconds, lapReferenceSeconds);
+        UpdateGapCarRenderStates(modelSnapshot, gap, settings, axisSeconds, lapReferenceSeconds);
         PruneGapSeries(axisSeconds);
     }
 
@@ -840,10 +841,7 @@ internal sealed class BrowserOverlayModelFactory
 
     private void RecordGapFuelStint(LiveTelemetrySnapshot snapshot, double axisSeconds)
     {
-        var fuelLevelLiters = FirstValidFuelLevel(
-            snapshot.Models.FuelPit.Fuel.FuelLevelLiters,
-            snapshot.Fuel.FuelLevelLiters,
-            snapshot.LatestSample?.FuelLevelLiters);
+        var fuelLevelLiters = FirstValidFuelLevel(snapshot.Models.FuelPit.Fuel.FuelLevelLiters);
         if (fuelLevelLiters is null)
         {
             return;

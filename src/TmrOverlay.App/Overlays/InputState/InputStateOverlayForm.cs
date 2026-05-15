@@ -137,6 +137,7 @@ internal sealed class InputStateOverlayForm : PersistentOverlayForm
             try
             {
                 snapshot = _liveTelemetrySource.Snapshot();
+                snapshot = snapshot with { Models = snapshot.CompleteModels() };
                 snapshotSucceeded = true;
             }
             finally

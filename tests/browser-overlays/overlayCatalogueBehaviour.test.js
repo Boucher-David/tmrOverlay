@@ -16,6 +16,24 @@ afterEach(() => {
   currentOverlay = null;
 });
 
+function localPlayerModels({ isOnTrack = true, isInGarage = false } = {}) {
+  return {
+    reference: {
+      hasData: true,
+      playerCarIdx: 10,
+      focusCarIdx: 10,
+      focusIsPlayer: true,
+      isOnTrack,
+      isInGarage
+    },
+    driverDirectory: {
+      hasData: true,
+      playerCarIdx: 10,
+      focusCarIdx: 10
+    }
+  };
+}
+
 describe('browser overlay catalogue behaviour', () => {
   it('covers every supported browser overlay route', () => {
     expect(browserOverlayPages().map((page) => page.page.id).sort()).toEqual([
@@ -590,6 +608,7 @@ function browserScenarios() {
       id: 'input-state',
       fixture: () => ({
         live: freshLiveSnapshot({
+          ...localPlayerModels(),
           raceEvents: { hasData: true, isOnTrack: true, isInGarage: false },
           inputs: {
             hasData: true,
@@ -623,6 +642,7 @@ function browserScenarios() {
       id: 'input-state',
       fixture: () => ({
         live: freshLiveSnapshot({
+          ...localPlayerModels(),
           raceEvents: { hasData: true, isOnTrack: true, isInGarage: false },
           inputs: {
             hasData: true,
@@ -662,6 +682,7 @@ function browserScenarios() {
       id: 'car-radar',
       fixture: () => ({
         live: freshLiveSnapshot({
+          ...localPlayerModels(),
           raceEvents: { hasData: true, isOnTrack: true, isInGarage: false },
           spatial: {
             hasData: true,
@@ -687,6 +708,7 @@ function browserScenarios() {
       id: 'car-radar',
       fixture: () => ({
         live: freshLiveSnapshot({
+          ...localPlayerModels(),
           raceEvents: { hasData: true, isOnTrack: true, isInGarage: false },
           spatial: {
             hasData: false,
@@ -709,6 +731,7 @@ function browserScenarios() {
       id: 'car-radar',
       fixture: () => ({
         live: freshLiveSnapshot({
+          ...localPlayerModels({ isOnTrack: false }),
           raceEvents: { hasData: true, isOnTrack: false, isInGarage: false },
           spatial: {
             hasData: true,
@@ -733,8 +756,16 @@ function browserScenarios() {
       id: 'track-map',
       fixture: () => ({
         live: freshLiveSnapshot({
-          latestSample: { focusCarIdx: 10, playerCarIdx: 10, focusLapDistPct: 0.42, onPitRoad: false, playerTrackSurface: 3 },
-          reference: { focusCarIdx: 10 },
+          reference: {
+            hasData: true,
+            playerCarIdx: 10,
+            focusCarIdx: 10,
+            focusIsPlayer: true,
+            isOnTrack: true,
+            lapDistPct: 0.42,
+            playerTrackSurface: 3
+          },
+          driverDirectory: { hasData: true, playerCarIdx: 10, focusCarIdx: 10 },
           timing: {
             focusCarIdx: 10,
             focusRow: { carIdx: 10, isFocus: true, lapDistPct: 0.42, hasSpatialProgress: true, hasTakenGrid: false, classPosition: 5 },

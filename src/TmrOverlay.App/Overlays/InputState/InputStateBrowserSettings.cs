@@ -1,3 +1,4 @@
+using TmrOverlay.App.Overlays.Content;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 
@@ -25,19 +26,32 @@ internal sealed record InputStateBrowserSettings(
         ShowGear: true,
         ShowSpeed: true);
 
-    public static InputStateBrowserSettings From(ApplicationSettings settings)
+    public static InputStateBrowserSettings From(
+        ApplicationSettings settings,
+        OverlaySessionKind? sessionKind = null)
     {
         var input = settings.Overlays.FirstOrDefault(
             overlay => string.Equals(overlay.Id, InputStateOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase));
         return new InputStateBrowserSettings(
-            ShowThrottleTrace: input?.GetBooleanOption(OverlayOptionKeys.InputShowThrottleTrace, defaultValue: Default.ShowThrottleTrace) ?? Default.ShowThrottleTrace,
-            ShowBrakeTrace: input?.GetBooleanOption(OverlayOptionKeys.InputShowBrakeTrace, defaultValue: Default.ShowBrakeTrace) ?? Default.ShowBrakeTrace,
-            ShowClutchTrace: input?.GetBooleanOption(OverlayOptionKeys.InputShowClutchTrace, defaultValue: Default.ShowClutchTrace) ?? Default.ShowClutchTrace,
-            ShowThrottle: input?.GetBooleanOption(OverlayOptionKeys.InputShowThrottle, defaultValue: Default.ShowThrottle) ?? Default.ShowThrottle,
-            ShowBrake: input?.GetBooleanOption(OverlayOptionKeys.InputShowBrake, defaultValue: Default.ShowBrake) ?? Default.ShowBrake,
-            ShowClutch: input?.GetBooleanOption(OverlayOptionKeys.InputShowClutch, defaultValue: Default.ShowClutch) ?? Default.ShowClutch,
-            ShowSteering: input?.GetBooleanOption(OverlayOptionKeys.InputShowSteering, defaultValue: Default.ShowSteering) ?? Default.ShowSteering,
-            ShowGear: input?.GetBooleanOption(OverlayOptionKeys.InputShowGear, defaultValue: Default.ShowGear) ?? Default.ShowGear,
-            ShowSpeed: input?.GetBooleanOption(OverlayOptionKeys.InputShowSpeed, defaultValue: Default.ShowSpeed) ?? Default.ShowSpeed);
+            ShowThrottleTrace: ContentEnabled(input, OverlayOptionKeys.InputShowThrottleTrace, Default.ShowThrottleTrace, sessionKind),
+            ShowBrakeTrace: ContentEnabled(input, OverlayOptionKeys.InputShowBrakeTrace, Default.ShowBrakeTrace, sessionKind),
+            ShowClutchTrace: ContentEnabled(input, OverlayOptionKeys.InputShowClutchTrace, Default.ShowClutchTrace, sessionKind),
+            ShowThrottle: ContentEnabled(input, OverlayOptionKeys.InputShowThrottle, Default.ShowThrottle, sessionKind),
+            ShowBrake: ContentEnabled(input, OverlayOptionKeys.InputShowBrake, Default.ShowBrake, sessionKind),
+            ShowClutch: ContentEnabled(input, OverlayOptionKeys.InputShowClutch, Default.ShowClutch, sessionKind),
+            ShowSteering: ContentEnabled(input, OverlayOptionKeys.InputShowSteering, Default.ShowSteering, sessionKind),
+            ShowGear: ContentEnabled(input, OverlayOptionKeys.InputShowGear, Default.ShowGear, sessionKind),
+            ShowSpeed: ContentEnabled(input, OverlayOptionKeys.InputShowSpeed, Default.ShowSpeed, sessionKind));
+    }
+
+    private static bool ContentEnabled(
+        OverlaySettings? input,
+        string key,
+        bool defaultEnabled,
+        OverlaySessionKind? sessionKind)
+    {
+        return input is null
+            ? defaultEnabled
+            : OverlayContentColumnSettings.ContentEnabledForSession(input, key, defaultEnabled, sessionKind);
     }
 }

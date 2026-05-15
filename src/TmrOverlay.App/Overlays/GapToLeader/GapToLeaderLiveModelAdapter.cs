@@ -8,12 +8,13 @@ internal static class GapToLeaderLiveModelAdapter
 
     public static LiveLeaderGapSnapshot Select(LiveTelemetrySnapshot snapshot)
     {
-        var timing = snapshot.Models.Timing;
-        var progress = snapshot.Models.RaceProgress;
-        var reference = snapshot.Models.Reference;
+        var models = snapshot.CompleteModels();
+        var timing = models.Timing;
+        var progress = models.RaceProgress;
+        var reference = models.Reference;
         if (!timing.HasData && !progress.HasData)
         {
-            return snapshot.LeaderGap;
+            return LiveLeaderGapSnapshot.Unavailable;
         }
 
         var focusRow = timing.FocusRow;
@@ -59,7 +60,8 @@ internal static class GapToLeaderLiveModelAdapter
 
     public static double? SelectLapReferenceSeconds(LiveTelemetrySnapshot snapshot)
     {
-        var focusRow = snapshot.Models.Timing.FocusRow;
+        var models = snapshot.CompleteModels();
+        var focusRow = models.Timing.FocusRow;
         if (IsValidLapReference(focusRow?.LastLapTimeSeconds))
         {
             return focusRow?.LastLapTimeSeconds;
@@ -70,22 +72,22 @@ internal static class GapToLeaderLiveModelAdapter
             return focusRow?.BestLapTimeSeconds;
         }
 
-        if (ReferenceUsesPlayerCar(snapshot) && IsValidLapReference(snapshot.Models.FuelPit.Fuel.LapTimeSeconds))
+        if (ReferenceUsesPlayerCar(models) && IsValidLapReference(models.FuelPit.Fuel.LapTimeSeconds))
         {
-            return snapshot.Models.FuelPit.Fuel.LapTimeSeconds;
+            return models.FuelPit.Fuel.LapTimeSeconds;
         }
 
-        if (IsValidLapReference(snapshot.Models.RaceProgress.StrategyLapTimeSeconds))
+        if (IsValidLapReference(models.RaceProgress.StrategyLapTimeSeconds))
         {
-            return snapshot.Models.RaceProgress.StrategyLapTimeSeconds;
+            return models.RaceProgress.StrategyLapTimeSeconds;
         }
 
-        if (ReferenceUsesPlayerCar(snapshot) && IsValidLapReference(snapshot.Context.Car.DriverCarEstLapTimeSeconds))
+        if (ReferenceUsesPlayerCar(models) && IsValidLapReference(snapshot.Context.Car.DriverCarEstLapTimeSeconds))
         {
             return snapshot.Context.Car.DriverCarEstLapTimeSeconds;
         }
 
-        return ReferenceUsesTeamClass(snapshot) && IsValidLapReference(snapshot.Context.Car.CarClassEstLapTimeSeconds)
+        return ReferenceUsesTeamClass(models) && IsValidLapReference(snapshot.Context.Car.CarClassEstLapTimeSeconds)
             ? snapshot.Context.Car.CarClassEstLapTimeSeconds
             : null;
     }
@@ -276,23 +278,23 @@ internal static class GapToLeaderLiveModelAdapter
         return lapReferenceSeconds is { } seconds && IsValidLapReference(seconds) ? seconds : 60d;
     }
 
-    private static bool ReferenceUsesPlayerCar(LiveTelemetrySnapshot snapshot)
+    private static bool ReferenceUsesPlayerCar(LiveRaceModels models)
     {
-        var reference = snapshot.Models.Reference;
+        var reference = models.Reference;
         if (reference.HasData)
         {
             return reference.FocusIsPlayer;
         }
 
-        var directory = snapshot.Models.DriverDirectory;
+        var directory = models.DriverDirectory;
         return directory.FocusCarIdx is not null
             && directory.PlayerCarIdx is not null
             && directory.FocusCarIdx == directory.PlayerCarIdx;
     }
 
-    private static bool ReferenceUsesTeamClass(LiveTelemetrySnapshot snapshot)
+    private static bool ReferenceUsesTeamClass(LiveRaceModels models)
     {
-        var reference = snapshot.Models.Reference;
+        var reference = models.Reference;
         if (reference.HasData && reference.FocusCarIdx is null)
         {
             return false;
@@ -306,7 +308,7 @@ internal static class GapToLeaderLiveModelAdapter
             return reference.ReferenceCarClass == reference.PlayerCarClass;
         }
 
-        var directory = snapshot.Models.DriverDirectory;
+        var directory = models.DriverDirectory;
         if (directory.FocusCarIdx is null)
         {
             return false;

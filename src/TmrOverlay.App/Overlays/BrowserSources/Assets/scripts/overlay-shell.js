@@ -4,7 +4,6 @@
     const timeRemainingEl = document.getElementById('time-remaining');
     const contentEl = document.getElementById('content');
     const sourceEl = document.getElementById('source');
-    let lastSequence = null;
     let modelRootOpacity = 1;
     const browserOverlay = {
       module: null,
@@ -90,252 +89,6 @@
     }
     const parsedHexColors = new Map();
     const classHeaderStyles = new Map();
-    const browserModel = {
-      model(live, name) {
-        return live?.models?.[name] || {};
-      },
-      session(live) {
-        return browserModel.model(live, 'session');
-      },
-      scoring(live) {
-        return browserModel.model(live, 'scoring');
-      },
-      timing(live) {
-        return browserModel.model(live, 'timing');
-      },
-      driverDirectory(live) {
-        return browserModel.model(live, 'driverDirectory');
-      },
-      coverage(live) {
-        return browserModel.model(live, 'coverage');
-      },
-      relative(live) {
-        return browserModel.model(live, 'relative');
-      },
-      spatial(live) {
-        return browserModel.model(live, 'spatial');
-      },
-      raceEvents(live) {
-        return browserModel.model(live, 'raceEvents');
-      },
-      trackMap(live) {
-        return browserModel.model(live, 'trackMap');
-      },
-      raceProgress(live) {
-        return browserModel.model(live, 'raceProgress');
-      },
-      raceProjection(live) {
-        return browserModel.model(live, 'raceProjection');
-      },
-      weather(live) {
-        return browserModel.model(live, 'weather');
-      },
-      fuelPit(live) {
-        return browserModel.model(live, 'fuelPit');
-      },
-      fuel(live) {
-        return browserModel.fuelPit(live).fuel || live?.fuel || {};
-      },
-      inputs(live) {
-        return browserModel.model(live, 'inputs');
-      },
-      currentSessionKind(live) {
-        const session = browserModel.session(live);
-        const selected = [
-          session.sessionType,
-          session.sessionName,
-          session.eventType,
-          live?.context?.session?.sessionType,
-          live?.context?.session?.sessionName,
-          live?.context?.session?.eventType
-        ].map((value) => String(value || '').trim().toLowerCase())
-          .find((value) => value.length > 0) || '';
-        if (selected.includes('test') || selected.includes('practice')) return 'practice';
-        if (selected.includes('qual')) return 'qualifying';
-        if (selected.includes('race')) return 'race';
-        return null;
-      },
-      sessionKind(live) {
-        return browserModel.currentSessionKind(live);
-      },
-      requiresValidLapBeforeRendering(live) {
-        return ['test', 'practice', 'qualifying'].includes(browserModel.currentSessionKind(live));
-      },
-      isRaceSession(live) {
-        const kind = browserModel.currentSessionKind(live);
-        return kind == null || kind === 'race';
-      },
-      referenceCarIdx(live, options = {}) {
-        const reference = live?.models?.reference || {};
-        const scoring = browserModel.scoring(live);
-        const timing = browserModel.timing(live);
-        const directory = browserModel.driverDirectory(live);
-        const relative = browserModel.relative(live);
-        const spatial = browserModel.spatial(live);
-        const latest = live?.latestSample || {};
-        const candidates = [];
-        candidates.push(reference.focusCarIdx);
-        if (options.preferRelative) candidates.push(relative.referenceCarIdx);
-        if (options.preferSpatial) candidates.push(spatial.referenceCarIdx);
-        candidates.push(
-          scoring.referenceCarIdx,
-          timing.focusRow?.carIdx,
-          timing.focusCarIdx,
-          directory.focusCarIdx);
-        if (!options.preferRelative) candidates.push(relative.referenceCarIdx);
-        if (!options.preferSpatial) candidates.push(spatial.referenceCarIdx);
-        if (options.includeLatestSample !== false) {
-          candidates.push(latest.focusCarIdx);
-        }
-        return candidates.find((value) => Number.isFinite(value)) ?? null;
-      },
-      rowsByCarIdx(rows) {
-        return new Map((Array.isArray(rows) ? rows : [])
-          .filter((row) => row && Number.isFinite(row.carIdx))
-          .map((row) => [row.carIdx, row]));
-      },
-      scoringByCarIdx(live) {
-        return browserModel.rowsByCarIdx(browserModel.scoring(live).rows || []);
-      },
-      driverByCarIdx(live) {
-        return browserModel.rowsByCarIdx(browserModel.driverDirectory(live).drivers || []);
-      },
-      timingRows(live) {
-        const timing = browserModel.timing(live);
-        return [
-          ...(timing.overallRows || []),
-          ...(timing.classRows || []),
-          timing.focusRow,
-          timing.playerRow
-        ].filter((row) => row && Number.isFinite(row.carIdx));
-      },
-      timingByCarIdx(live) {
-        return browserModel.rowsByCarIdx(browserModel.timingRows(live));
-      },
-      isFiniteNumber(value) {
-        return Number.isFinite(value);
-      },
-      positive(value) {
-        return Number.isFinite(value) && value > 0;
-      },
-      isUsableLapTime(seconds) {
-        return Number.isFinite(seconds) && seconds > 20 && seconds < 1800;
-      },
-      hasValidLap(row) {
-        return browserModel.isUsableLapTime(row?.bestLapTimeSeconds)
-          || browserModel.isUsableLapTime(row?.lastLapTimeSeconds);
-      },
-      hasDriverIdentity(row, referenceCarIdx) {
-        return row?.isPlayer
-          || row?.isFocus
-          || row?.carIdx === referenceCarIdx
-          || Boolean(row?.driverName)
-          || Boolean(row?.teamName)
-          || Boolean(row?.carNumber);
-      },
-      firstText(...values) {
-        return values.find((value) => typeof value === 'string' && value.trim().length > 0) || null;
-      },
-      positionLabel(row, fallbackRow = null) {
-        const classPosition = row?.classPosition ?? fallbackRow?.classPosition;
-        if (Number.isFinite(classPosition) && classPosition > 0) return `${classPosition}`;
-        const overallPosition = row?.overallPosition ?? fallbackRow?.overallPosition;
-        return Number.isFinite(overallPosition) && overallPosition > 0 ? `${overallPosition}` : null;
-      },
-      samplePositionLabel(sample) {
-        const position = sample?.focusClassPosition
-          ?? sample?.focusPosition;
-        return Number.isFinite(position) && position > 0 ? `${position}` : null;
-      },
-      hasRelativePlacement(row) {
-        return Number.isFinite(row?.relativeMeters)
-          || Number.isFinite(row?.relativeSeconds)
-          || Number.isFinite(row?.relativeLaps);
-      },
-      relativeSortKey(row) {
-        if (Number.isFinite(row?.relativeSeconds)) return Math.abs(row.relativeSeconds);
-        if (Number.isFinite(row?.relativeMeters)) return Math.abs(row.relativeMeters);
-        if (Number.isFinite(row?.relativeLaps)) return Math.abs(row.relativeLaps);
-        return Number.MAX_VALUE;
-      },
-      relativeGap(row, direction) {
-        const sign = direction === 'ahead' ? '-' : '+';
-        if (Number.isFinite(row?.relativeSeconds)) return `${sign}${Math.abs(row.relativeSeconds).toFixed(3)}`;
-        if (Number.isFinite(row?.relativeMeters)) return `${sign}${Math.abs(row.relativeMeters).toFixed(0)}m`;
-        return '--';
-      },
-      hasUsableGap(row) {
-        return row?.gapEvidence?.isUsable === true;
-      },
-      normalizeProgress(value) {
-        if (!Number.isFinite(value)) return 0;
-        const normalized = value % 1;
-        return normalized < 0 ? normalized + 1 : normalized;
-      },
-      isPlayerInCar(live) {
-        const race = browserModel.raceEvents(live);
-        const reference = browserModel.model(live, 'reference');
-        const fuelPit = browserModel.fuelPit(live);
-        if (reference.focusIsPlayer === false) return false;
-        if (Number.isFinite(reference.focusCarIdx)
-          && Number.isFinite(reference.playerCarIdx)
-          && reference.focusCarIdx !== reference.playerCarIdx) {
-          return false;
-        }
-        if (race.isInGarage === true
-          || race.isGarageVisible === true
-          || reference.isInGarage === true
-          || localPitContext(race, reference, fuelPit)) {
-          return false;
-        }
-        const hasRaceContext = race.hasData === true || reference.hasData === true;
-        if (!hasRaceContext) return true;
-        return race.isOnTrack === true || reference.isOnTrack === true;
-      },
-      isLiveTelemetryAvailable(live) {
-        return telemetryAvailability(live).isAvailable;
-      },
-      selectRowsAroundReference(rows, referenceCarIdx, limit, carIdxForRow) {
-        const sourceRows = Array.isArray(rows) ? rows : [];
-        const getCarIdx = typeof carIdxForRow === 'function' ? carIdxForRow : (row) => row?.carIdx;
-        const boundedLimit = Math.max(0, limit);
-        if (boundedLimit <= 0 || sourceRows.length <= boundedLimit) {
-          return sourceRows.slice(0, boundedLimit);
-        }
-
-        if (referenceCarIdx == null) {
-          return sourceRows.slice(0, boundedLimit);
-        }
-
-        const referenceIndex = sourceRows.findIndex((row) => getCarIdx(row) === referenceCarIdx);
-        if (referenceIndex < 0) {
-          return sourceRows.slice(0, boundedLimit);
-        }
-
-        const ahead = Math.floor(boundedLimit / 2);
-        const start = Math.max(0, Math.min(referenceIndex - ahead, Math.max(0, sourceRows.length - boundedLimit)));
-        return sourceRows.slice(start, start + boundedLimit);
-      }
-    };
-    window.TmrBrowserModel = browserModel;
-    const telemetryAvailability = (live) => {
-      if (!live?.isConnected) {
-        return { isAvailable: false, isFresh: false, reason: 'disconnected', status: 'iRacing disconnected' };
-      }
-      if (!live?.isCollecting) {
-        return { isAvailable: false, isFresh: false, reason: 'waiting-for-telemetry', status: 'waiting for telemetry' };
-      }
-      if (!live?.lastUpdatedAtUtc) {
-        return { isAvailable: false, isFresh: false, reason: 'stale-telemetry', status: 'waiting for fresh telemetry' };
-      }
-      const lastUpdated = Date.parse(live.lastUpdatedAtUtc);
-      const ageMilliseconds = Date.now() - lastUpdated;
-      if (!Number.isFinite(lastUpdated) || Math.abs(ageMilliseconds) > 1500) {
-        return { isAvailable: false, isFresh: false, reason: 'stale-telemetry', status: 'waiting for fresh telemetry' };
-      }
-      return { isAvailable: true, isFresh: true, reason: 'available', status: 'live' };
-    };
-    const quality = (model) => model?.quality ?? 'unavailable';
 
     function clamp01(value, fallback = 1) {
       const numeric = Number(value);
@@ -349,49 +102,6 @@
     function applyOverlayOpacity(visibilityAlpha = 1) {
       if (!overlayEl) return;
       overlayEl.style.opacity = String(clamp01(modelRootOpacity, 1) * clamp01(visibilityAlpha, 1));
-    }
-
-    function updateTelemetryFade(live) {
-      if (!page.fadeWhenTelemetryUnavailable || !overlayEl) return;
-      applyOverlayOpacity(telemetryAvailability(live).isAvailable ? 1 : 0);
-    }
-
-    function setStatus(live, detail) {
-      const availability = telemetryAvailability(live);
-      clearFooterSource();
-      if (!availability.isAvailable) {
-        statusEl.textContent = availability.status;
-        if (timeRemainingEl) {
-          timeRemainingEl.hidden = true;
-          timeRemainingEl.textContent = '';
-        }
-        return;
-      }
-      const sequence = live.sequence ?? 0;
-      const changed = sequence !== lastSequence;
-      lastSequence = sequence;
-      statusEl.textContent = detail || `${changed ? 'live' : 'steady'} | seq ${sequence}`;
-      if (timeRemainingEl) {
-        timeRemainingEl.hidden = true;
-        timeRemainingEl.textContent = '';
-      }
-    }
-
-    function localPitContext(race, reference, fuelPit) {
-      return race.onPitRoad === true
-        || reference.onPitRoad === true
-        || reference.playerOnPitRoad === true
-        || reference.playerCarInPitStall === true
-        || isPitRoadTrackSurface(reference.trackSurface)
-        || isPitRoadTrackSurface(reference.playerTrackSurface)
-        || fuelPit.onPitRoad === true
-        || fuelPit.pitstopActive === true
-        || fuelPit.playerCarInPitStall === true
-        || fuelPit.teamOnPitRoad === true;
-    }
-
-    function isPitRoadTrackSurface(trackSurface) {
-      return trackSurface === 1 || trackSurface === 2;
     }
 
     function rowsTable(headers, rows) {
@@ -1613,9 +1323,8 @@
 
     {{MODULE_SCRIPT}}
 
-    function render(live) {
+    function render() {
       const module = browserOverlay.module;
-      updateTelemetryFade(live);
       if (!module?.render) {
         contentEl.innerHTML = '<div class="empty">Unknown overlay route.</div>';
         statusEl.textContent = 'not configured';
@@ -1627,13 +1336,7 @@
         return;
       }
 
-      if (page.requiresTelemetry && !telemetryAvailability(live).isAvailable && !page.renderWhenTelemetryUnavailable) {
-        contentEl.innerHTML = '<div class="empty">Waiting for iRacing telemetry.</div>';
-        setStatus(live);
-        return;
-      }
-
-      module.render(live);
+      module.render();
     }
 
     async function refresh() {
@@ -1643,17 +1346,8 @@
           await module.beforeRefresh();
         }
 
-        if (!page.requiresTelemetry) {
-          render(null);
-          return;
-        }
-
-        const response = await fetch(apiPath('/api/snapshot'), { cache: 'no-store' });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const payload = await response.json();
-        render(payload.live);
+        render();
       } catch (error) {
-        updateTelemetryFade(null);
         if (module?.renderOffline) {
           module.renderOffline(error);
           return;

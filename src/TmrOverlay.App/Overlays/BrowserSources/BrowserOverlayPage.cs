@@ -2,6 +2,12 @@ namespace TmrOverlay.App.Overlays.BrowserSources;
 
 internal sealed class BrowserOverlayPage
 {
+    private static readonly IReadOnlyList<string> DefaultForwardQueryParameters =
+    [
+        "preview",
+        "rel"
+    ];
+
     public BrowserOverlayPage(
         string id,
         string title,
@@ -12,6 +18,7 @@ internal sealed class BrowserOverlayPage
         bool fadeWhenTelemetryUnavailable = false,
         string bodyClass = "",
         int refreshIntervalMilliseconds = 250,
+        IReadOnlyList<string>? forwardQueryParameters = null,
         IReadOnlyList<string>? aliases = null)
     {
         Id = id;
@@ -23,6 +30,7 @@ internal sealed class BrowserOverlayPage
         FadeWhenTelemetryUnavailable = fadeWhenTelemetryUnavailable;
         BodyClass = bodyClass;
         RefreshIntervalMilliseconds = refreshIntervalMilliseconds;
+        ForwardQueryParameters = forwardQueryParameters ?? DefaultForwardQueryParameters;
         Aliases = aliases?.Select(NormalizeRoute).ToArray() ?? [];
         Routes = [CanonicalRoute, .. Aliases];
     }
@@ -46,6 +54,8 @@ internal sealed class BrowserOverlayPage
     public string BodyClass { get; }
 
     public int RefreshIntervalMilliseconds { get; }
+
+    public IReadOnlyList<string> ForwardQueryParameters { get; }
 
     public IReadOnlyList<string> Aliases { get; }
 

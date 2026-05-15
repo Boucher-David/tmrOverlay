@@ -740,12 +740,13 @@ internal sealed class DesignV2SettingsSurface : Control
             return;
         }
 
+        var sessionColumns = OverlaySettingsSessionColumns.ChromeColumnsFor(settings.Id);
         for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
         {
             var row = rows[rowIndex];
-            for (var index = 0; index < ContentSessionKinds.Length; index++)
+            for (var index = 0; index < sessionColumns.Count; index++)
             {
-                var sessionKind = ContentSessionKinds[index];
+                var sessionKind = sessionColumns[index].Kind;
                 AddDynamic(new V2CheckControl(
                     new Rectangle(454 + index * 116, 370 + rowIndex * 48, 38, 22),
                     string.Empty,
@@ -1290,9 +1291,10 @@ internal sealed class DesignV2SettingsSurface : Control
         }
 
         DrawText(graphics, "Item", new Rectangle(328, 330, 110, 16), 10f, FontStyle.Bold, TextMuted);
-        for (var index = 0; index < SessionLabels.Length; index++)
+        var sessionColumns = OverlaySettingsSessionColumns.ChromeColumnsFor(definition.Id);
+        for (var index = 0; index < sessionColumns.Count; index++)
         {
-            DrawText(graphics, SessionLabels[index], new Rectangle(454 + index * 116, 330, 104, 16), 10f, FontStyle.Bold, TextMuted);
+            DrawText(graphics, sessionColumns[index].Label, new Rectangle(454 + index * 116, 330, 104, 16), 10f, FontStyle.Bold, TextMuted);
         }
 
         for (var index = 0; index < rows.Count; index++)

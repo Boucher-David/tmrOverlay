@@ -1,4 +1,3 @@
-using TmrOverlay.Core.History;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 using TmrOverlay.Core.Telemetry.Live;
@@ -39,13 +38,14 @@ internal sealed record TrackMapOverlayViewModel(
     {
         var availability = OverlayAvailabilityEvaluator.FromSnapshot(snapshot, now);
         var sessionKind = OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot);
+        var models = snapshot.CompleteModels();
         return new TrackMapOverlayViewModel(
             Title: "Track Map",
             Status: availability.IsAvailable ? "live" : availability.StatusText,
             Source: availability.IsAvailable ? "source: live position telemetry" : "source: waiting",
             IsAvailable: availability.IsAvailable,
-            Markers: BuildMarkers(snapshot),
-            Sectors: snapshot.Models.TrackMap.Sectors,
+            Markers: BuildMarkers(snapshot with { Models = models }),
+            Sectors: models.TrackMap.Sectors,
             ShowSectorBoundaries: OverlayContentColumnSettings.ContentEnabledForSession(
                 settings,
                 OverlayOptionKeys.TrackMapSectorBoundariesEnabled,
@@ -60,29 +60,43 @@ internal sealed record TrackMapOverlayViewModel(
             TrackMap: trackMap);
     }
 
-    public static TrackMapBrowserSettings BrowserSettingsFrom(ApplicationSettings settings)
+    public static TrackMapBrowserSettings BrowserSettingsFrom(
+        ApplicationSettings settings,
+        OverlaySessionKind? sessionKind = null)
     {
         var trackMap = settings.Overlays.FirstOrDefault(
             overlay => string.Equals(overlay.Id, TrackMapOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase));
         return new TrackMapBrowserSettings(
-            IncludeUserMaps: trackMap?.GetBooleanOption(OverlayOptionKeys.TrackMapBuildFromTelemetry, defaultValue: true) ?? true,
+            IncludeUserMaps: trackMap is null
+                ? true
+                : OverlayContentColumnSettings.ContentEnabledForSession(
+                    trackMap,
+                    OverlayOptionKeys.TrackMapBuildFromTelemetry,
+                    defaultEnabled: true,
+                    sessionKind),
             InternalOpacity: Math.Clamp(trackMap?.Opacity ?? TrackMapBrowserSettings.Default.InternalOpacity, 0.2d, 1d),
-            ShowSectorBoundaries: trackMap?.GetBooleanOption(OverlayOptionKeys.TrackMapSectorBoundariesEnabled, defaultValue: true) ?? true);
+            ShowSectorBoundaries: trackMap is null
+                ? true
+                : OverlayContentColumnSettings.ContentEnabledForSession(
+                    trackMap,
+                    OverlayOptionKeys.TrackMapSectorBoundariesEnabled,
+                    defaultEnabled: true,
+                    sessionKind));
     }
 
     public static IReadOnlyList<TrackMapOverlayMarker> BuildMarkers(LiveTelemetrySnapshot snapshot)
     {
+        var models = snapshot.CompleteModels();
         var markers = new Dictionary<int, TrackMapOverlayMarker>();
-        var scoringByCarIdx = snapshot.Models.Scoring.Rows
+        var scoringByCarIdx = models.Scoring.Rows
             .GroupBy(row => row.CarIdx)
             .ToDictionary(group => group.Key, group => group.First());
-        var referenceCarIdx = snapshot.Models.Reference.FocusCarIdx
-            ?? snapshot.Models.Scoring.ReferenceCarIdx
-            ?? snapshot.Models.Timing.FocusCarIdx
-            ?? snapshot.Models.Spatial.ReferenceCarIdx
-            ?? snapshot.LatestSample?.FocusCarIdx;
+        var referenceCarIdx = models.Reference.FocusCarIdx
+            ?? models.Scoring.ReferenceCarIdx
+            ?? models.Timing.FocusCarIdx
+            ?? models.Spatial.ReferenceCarIdx;
 
-        foreach (var row in snapshot.Models.Timing.OverallRows.Concat(snapshot.Models.Timing.ClassRows))
+        foreach (var row in models.Timing.OverallRows.Concat(models.Timing.ClassRows))
         {
             scoringByCarIdx.TryGetValue(row.CarIdx, out var scoringRow);
             var isFocus = row.IsFocus
@@ -109,7 +123,7 @@ internal sealed record TrackMapOverlayViewModel(
             }
         }
 
-        var focusProgress = MarkerProgress(snapshot.LatestSample);
+        var focusProgress = MarkerProgress(models.Reference);
         if (referenceCarIdx is { } focusMarkerCarIdx
             && focusProgress is { } progress
             && TrackMapMarkerPolicy.IsValidProgress(progress))
@@ -119,8 +133,8 @@ internal sealed record TrackMapOverlayViewModel(
                 NormalizeProgress(progress),
                 IsFocus: true,
                 ClassColorHex: null,
-                Position: FocusPosition(snapshot, scoringByCarIdx, focusMarkerCarIdx),
-                TrackSurface: snapshot.LatestSample?.PlayerTrackSurface);
+                Position: FocusPosition(models, scoringByCarIdx, focusMarkerCarIdx),
+                TrackSurface: FocusTrackSurface(models.Reference));
         }
 
         return markers.Values
@@ -144,7 +158,7 @@ internal sealed record TrackMapOverlayViewModel(
     }
 
     private static int? FocusPosition(
-        LiveTelemetrySnapshot snapshot,
+        LiveRaceModels models,
         IReadOnlyDictionary<int, LiveScoringRow> scoringByCarIdx,
         int focusCarIdx)
     {
@@ -153,25 +167,31 @@ internal sealed record TrackMapOverlayViewModel(
             return Position(scoringRow);
         }
 
-        return Position(snapshot.Models.Timing.FocusRow)
-            ?? FocusPosition(snapshot.LatestSample);
+        return Position(models.Timing.FocusRow)
+            ?? Position(models.Reference);
     }
 
-    private static int? FocusPosition(HistoricalTelemetrySample? sample)
+    private static int? Position(LiveReferenceModel reference)
     {
-        var position = sample?.FocusClassPosition
-            ?? sample?.FocusPosition;
+        var position = reference.ClassPosition ?? reference.OverallPosition;
         return position is > 0 ? position : null;
     }
 
-    private static double? MarkerProgress(HistoricalTelemetrySample? sample)
+    private static double? MarkerProgress(LiveReferenceModel reference)
     {
-        if (!TrackMapMarkerPolicy.ShouldRenderFocusSampleMarker(sample))
+        if (!TrackMapMarkerPolicy.ShouldRenderFocusReferenceMarker(reference))
         {
             return null;
         }
 
-        return sample?.FocusLapDistPct;
+        return reference.LapDistPct;
+    }
+
+    private static int? FocusTrackSurface(LiveReferenceModel reference)
+    {
+        return reference.FocusIsPlayer
+            ? reference.PlayerTrackSurface ?? reference.TrackSurface
+            : reference.TrackSurface;
     }
 
     private static double NormalizeProgress(double value)

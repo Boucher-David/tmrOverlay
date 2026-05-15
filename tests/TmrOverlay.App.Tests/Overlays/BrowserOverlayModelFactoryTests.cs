@@ -23,7 +23,7 @@ public sealed class BrowserOverlayModelFactoryTests
         var rendered = BrowserOverlayPageRenderer.TryRender("/overlays/pit-service", out var html);
 
         Assert.True(rendered);
-        Assert.DoesNotContain("\"forwardQueryParameters\"", html, StringComparison.Ordinal);
+        Assert.Contains("\"forwardQueryParameters\":[\"preview\",\"rel\"]", html, StringComparison.Ordinal);
         Assert.DoesNotContain("pitService=all", html, StringComparison.Ordinal);
         Assert.DoesNotContain("spoofFocus", html, StringComparison.Ordinal);
     }

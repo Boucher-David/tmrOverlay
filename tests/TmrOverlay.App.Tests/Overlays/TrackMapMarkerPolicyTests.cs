@@ -108,6 +108,26 @@ public sealed class TrackMapMarkerPolicyTests
     }
 
     [Fact]
+    public void TrackMapMarkers_CompleteV2ReferenceFromLatestSampleWhenTimingRowsAreUnavailable()
+    {
+        var snapshot = LiveTelemetrySnapshot.Empty with
+        {
+            LatestSample = Sample(
+                focusCarIdx: 10,
+                playerCarIdx: 10,
+                onPitRoad: false,
+                playerTrackSurface: 3)
+        };
+
+        var marker = Assert.Single(TrackMapOverlayViewModel.BuildMarkers(snapshot));
+
+        Assert.Equal(10, marker.CarIdx);
+        Assert.True(marker.IsFocus);
+        Assert.Equal(0.20d, marker.LapDistPct, precision: 6);
+        Assert.Equal(3, marker.TrackSurface);
+    }
+
+    [Fact]
     public void TrackMapRenderModel_UsesUniformNonFocusLabelRadius()
     {
         var viewModel = ViewModel(

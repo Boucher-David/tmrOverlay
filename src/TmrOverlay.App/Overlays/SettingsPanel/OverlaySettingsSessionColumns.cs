@@ -18,6 +18,18 @@ internal static class OverlaySettingsSessionColumns
         new(OverlaySessionKind.Race, "Race", "R")
     ];
 
+    public static readonly OverlaySettingsSessionColumn[] RaceOnly =
+    [
+        new(OverlaySessionKind.Race, "Race", "R")
+    ];
+
+    public static IReadOnlyList<OverlaySettingsSessionColumn> ChromeColumnsFor(string overlayId)
+    {
+        return string.Equals(overlayId, "gap-to-leader", StringComparison.OrdinalIgnoreCase)
+            ? RaceOnly
+            : Display;
+    }
+
     public static bool ContentEnabledFor(
         OverlaySettings settings,
         string enabledOptionKey,

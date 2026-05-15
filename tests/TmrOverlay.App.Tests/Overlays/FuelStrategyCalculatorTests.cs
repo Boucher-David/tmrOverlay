@@ -160,6 +160,31 @@ public sealed class FuelStrategyCalculatorTests
     }
 
     [Fact]
+    public void From_CompletesV2FuelPitAndRaceProgressFromLatestSampleWhenModelsAreMissing()
+    {
+        var live = CreateLiveSnapshot(
+            fuelLevelLiters: 72d,
+            fuelUsePerHourKg: 75d,
+            teamLapCompleted: 4,
+            teamLapDistPct: 0.2d,
+            leaderLapCompleted: 4,
+            leaderLapDistPct: 0.5d,
+            sessionTimeRemain: 250d,
+            teamLastLapTimeSeconds: 100d) with
+        {
+            Models = LiveRaceModels.Empty
+        };
+
+        var strategy = FuelStrategyCalculator.From(live, EmptyHistory(live.Combo));
+
+        Assert.Equal(72d, strategy.CurrentFuelLiters);
+        Assert.Equal("live burn", strategy.FuelPerLapSource);
+        Assert.Equal(2.8d, strategy.RaceLapsRemaining!.Value, precision: 3);
+        Assert.Equal(0.3d, strategy.OverallLeaderGapLaps!.Value, precision: 3);
+        Assert.Equal(2, strategy.TeamOverallPosition);
+    }
+
+    [Fact]
     public void From_UsesFourHourHistoryToPlanEightLapTargets()
     {
         var live = CreateLiveSnapshot(

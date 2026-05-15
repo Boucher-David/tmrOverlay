@@ -51,6 +51,7 @@ internal static class PitServiceOverlayViewModel
             return SimpleTelemetryOverlayViewModel.Waiting("Pit Service", waitingStatus);
         }
 
+        snapshot = snapshot with { Models = snapshot.CompleteModels() };
         var localContext = LiveLocalStrategyContext.ForPitService(snapshot, now);
         if (!localContext.IsAvailable)
         {

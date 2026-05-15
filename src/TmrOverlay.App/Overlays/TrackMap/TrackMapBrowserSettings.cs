@@ -1,3 +1,4 @@
+using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 
 namespace TmrOverlay.App.Overlays.TrackMap;
@@ -9,8 +10,10 @@ internal sealed record TrackMapBrowserSettings(bool IncludeUserMaps, double Inte
         InternalOpacity: 1d,
         ShowSectorBoundaries: true);
 
-    public static TrackMapBrowserSettings From(ApplicationSettings settings)
+    public static TrackMapBrowserSettings From(
+        ApplicationSettings settings,
+        OverlaySessionKind? sessionKind = null)
     {
-        return TrackMapOverlayViewModel.BrowserSettingsFrom(settings);
+        return TrackMapOverlayViewModel.BrowserSettingsFrom(settings, sessionKind);
     }
 }

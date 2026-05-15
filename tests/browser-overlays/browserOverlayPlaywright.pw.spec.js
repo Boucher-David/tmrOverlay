@@ -29,7 +29,7 @@ test.describe('browser overlay Playwright integration', () => {
     expect(overlayBox?.height).toBeGreaterThan(180);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(requests).toContain('/api/overlay-model/standings');
-    expect(requests).toContain('/api/snapshot');
+    expect(requests).not.toContain('/api/snapshot');
   });
 
   test('applies production model root opacity in localhost overlay routes', async ({ page }) => {
@@ -817,7 +817,7 @@ test.describe('browser overlay Playwright integration', () => {
     await page.goto('http://localhost:8765/overlays/standings?preview=race&rel=0');
     await expect(page.locator('tbody tr')).toHaveCount(6);
 
-    expect(requests).toContain('/api/snapshot?preview=race&rel=0');
+    expect(requests).not.toContain('/api/snapshot?preview=race&rel=0');
     expect(requests).toContain('/api/overlay-model/standings?preview=race&rel=0');
   });
 });
@@ -842,12 +842,10 @@ async function installBrowserOverlayRoutes(page, overlayId, fixture) {
       return;
     }
 
-    const advancesLiveFrame = overlayId === 'input-state'
-      ? url.pathname === '/api/overlay-model/input-state'
-      : url.pathname === '/api/snapshot';
+    const advancesLiveFrame = url.pathname === `/api/overlay-model/${overlayId}`;
     const payload = browserOverlayApiResponse(overlayId, url.pathname, {
       ...fixture,
-      live: resolveLiveFixture(fixture.live, advancesLiveFrame ? '/api/snapshot' : url.pathname, liveFrameIndex)
+      live: resolveLiveFixture(fixture.live, advancesLiveFrame ? 'frame' : url.pathname, liveFrameIndex)
     });
     if (advancesLiveFrame) {
       liveFrameIndex += 1;
@@ -887,7 +885,7 @@ async function boundingBoxWidth(locator) {
 }
 
 function resolveLiveFixture(live, path, frameIndex) {
-  if (path !== '/api/snapshot') {
+  if (path !== 'frame') {
     return Array.isArray(live) ? live[0] : typeof live === 'function' ? live(0) : live;
   }
 
@@ -905,6 +903,19 @@ function inputStateLiveSnapshot(index, throttle) {
         hasData: true,
         isOnTrack: true,
         isInGarage: false
+      },
+      reference: {
+        hasData: true,
+        playerCarIdx: 10,
+        focusCarIdx: 10,
+        focusIsPlayer: true,
+        isOnTrack: true,
+        isInGarage: false
+      },
+      driverDirectory: {
+        hasData: true,
+        playerCarIdx: 10,
+        focusCarIdx: 10
       },
       inputs: {
         hasData: true,

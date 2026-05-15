@@ -50,7 +50,8 @@ internal static class BrowserOverlayPageRenderer
             page.RequiresTelemetry,
             page.RenderWhenTelemetryUnavailable,
             page.FadeWhenTelemetryUnavailable,
-            page.RefreshIntervalMilliseconds), JsonOptions);
+            page.RefreshIntervalMilliseconds,
+            page.ForwardQueryParameters), JsonOptions);
         var overlayCss = BrowserOverlayAssets.Style("overlay.css")
             .Replace("{{THEME_CSS_VARIABLES}}", OverlayTheme.DesignV2CssVariables(), StringComparison.Ordinal);
         var overlayScript = BrowserOverlayAssets.ShellScript()
@@ -75,5 +76,6 @@ internal static class BrowserOverlayPageRenderer
         bool RequiresTelemetry,
         bool RenderWhenTelemetryUnavailable,
         bool FadeWhenTelemetryUnavailable,
-        int RefreshIntervalMilliseconds);
+        int RefreshIntervalMilliseconds,
+        IReadOnlyList<string> ForwardQueryParameters);
 }

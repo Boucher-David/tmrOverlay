@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using TmrOverlay.Core.History;
 
 namespace TmrOverlay.Core.Telemetry.Live;
@@ -62,6 +63,9 @@ internal sealed record LiveRaceModels(
     LiveRaceEventModel RaceEvents,
     LiveInputTelemetryModel Inputs)
 {
+    [JsonIgnore]
+    public bool IsLiveSampleModel { get; init; }
+
     public static LiveRaceModels Empty { get; } = new(
         Session: LiveSessionModel.Empty,
         DriverDirectory: LiveDriverDirectoryModel.Empty,

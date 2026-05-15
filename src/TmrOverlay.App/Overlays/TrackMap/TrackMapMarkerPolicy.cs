@@ -24,6 +24,19 @@ internal static class TrackMapMarkerPolicy
             || (sample.OnPitRoad != true && !IsPitRoadTrackSurface(sample.PlayerTrackSurface));
     }
 
+    public static bool ShouldRenderFocusReferenceMarker(LiveReferenceModel reference)
+    {
+        if (reference.LapDistPct is not { } lapDistPct || !IsValidProgress(lapDistPct))
+        {
+            return false;
+        }
+
+        return !reference.FocusIsPlayer
+            || (reference.OnPitRoad != true
+                && reference.PlayerOnPitRoad != true
+                && !IsPitRoadTrackSurface(reference.PlayerTrackSurface));
+    }
+
     public static bool IsValidProgress(double value)
     {
         return !double.IsNaN(value) && !double.IsInfinity(value) && value >= 0d;

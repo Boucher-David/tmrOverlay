@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using Microsoft.Extensions.Logging;
 using TmrOverlay.App.Overlays.Abstractions;
+using TmrOverlay.App.Overlays.Content;
 using TmrOverlay.App.Overlays.Styling;
 using TmrOverlay.App.Performance;
 using TmrOverlay.App.TrackMaps;
@@ -51,6 +52,7 @@ internal sealed class TrackMapForm : PersistentOverlayForm
     private TrackMapOverlayViewModel _viewModel = TrackMapOverlayViewModel.Empty;
     private TrackMapDocument? _trackMap;
     private string? _trackMapIdentityKey;
+    private bool? _trackMapIncludeUserMaps;
     private readonly Dictionary<int, double> _smoothedMarkerProgress = [];
     private DateTimeOffset? _lastMarkerSmoothingAtUtc;
     private DateTimeOffset _nextMapReloadAtUtc = DateTimeOffset.MinValue;
@@ -196,24 +198,32 @@ internal sealed class TrackMapForm : PersistentOverlayForm
     private void RefreshTrackMap(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
     {
         var identity = TrackMapIdentity.From(snapshot.Context.Track);
+        var includeUserMaps = OverlayContentColumnSettings.ContentEnabledForSession(
+            _settings,
+            OverlayOptionKeys.TrackMapBuildFromTelemetry,
+            defaultEnabled: true,
+            OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot));
         var identityChanged = !string.Equals(identity.Key, _trackMapIdentityKey, StringComparison.Ordinal);
+        var mapSourceChanged = _trackMapIncludeUserMaps != includeUserMaps;
         if (!identityChanged
+            && !mapSourceChanged
             && now < _nextMapReloadAtUtc)
         {
             return;
         }
 
-        if (identityChanged)
+        if (identityChanged || mapSourceChanged)
         {
             _smoothedMarkerProgress.Clear();
             _lastMarkerSmoothingAtUtc = null;
         }
 
         _trackMapIdentityKey = identity.Key;
+        _trackMapIncludeUserMaps = includeUserMaps;
         _nextMapReloadAtUtc = now.AddSeconds(MapReloadIntervalSeconds);
         _trackMap = _trackMapStore.TryReadBest(
             snapshot.Context.Track,
-            includeUserMaps: _settings.GetBooleanOption(OverlayOptionKeys.TrackMapBuildFromTelemetry, defaultValue: true));
+            includeUserMaps: includeUserMaps);
     }
 
     private void DrawMap(Graphics graphics)

@@ -785,10 +785,11 @@ function fuelLocalContext(live) {
   }
 
   const reference = live?.models?.reference || {};
+  const directory = live?.models?.driverDirectory || {};
   const race = live?.models?.raceEvents || {};
   const fuelPit = live?.models?.fuelPit || {};
-  const playerCarIdx = validCarIdx(reference.playerCarIdx ?? live?.latestSample?.playerCarIdx);
-  const focusCarIdx = validCarIdx(reference.focusCarIdx ?? live?.latestSample?.focusCarIdx);
+  const playerCarIdx = validCarIdx(reference.playerCarIdx ?? directory.playerCarIdx);
+  const focusCarIdx = validCarIdx(reference.focusCarIdx ?? directory.focusCarIdx);
   if (playerCarIdx == null) {
     return { isAvailable: false, reason: 'player_car_unavailable', statusText };
   }
@@ -811,13 +812,14 @@ function fuelLocalContext(live) {
 
   if (race.onPitRoad === true
     || reference.onPitRoad === true
+    || reference.playerOnPitRoad === true
     || reference.playerCarInPitStall === true
+    || isPitRoadTrackSurface(reference.trackSurface)
+    || isPitRoadTrackSurface(reference.playerTrackSurface)
     || fuelPit.onPitRoad === true
     || fuelPit.pitstopActive === true
     || fuelPit.playerCarInPitStall === true
-    || fuelPit.teamOnPitRoad === true
-    || live?.latestSample?.onPitRoad === true
-    || live?.latestSample?.playerCarInPitStall === true) {
+    || fuelPit.teamOnPitRoad === true) {
     return { isAvailable: true, reason: 'available', statusText: 'live' };
   }
 
@@ -826,6 +828,10 @@ function fuelLocalContext(live) {
 
 function validCarIdx(value) {
   return Number.isInteger(value) && value >= 0 && value < 64 ? value : null;
+}
+
+function isPitRoadTrackSurface(value) {
+  return value === 1 || value === 2;
 }
 
 function fuelStrategy(live, unitSystem) {
@@ -2082,10 +2088,12 @@ function garageCoverDetection(live, garageVisible) {
 function isPlayerInCar(live) {
   const race = live?.models?.raceEvents || {};
   const reference = live?.models?.reference || {};
+  const directory = live?.models?.driverDirectory || {};
+  const playerCarIdx = Number.isFinite(reference.playerCarIdx) ? reference.playerCarIdx : directory.playerCarIdx;
+  const focusCarIdx = Number.isFinite(reference.focusCarIdx) ? reference.focusCarIdx : directory.focusCarIdx;
+  if (!Number.isFinite(playerCarIdx) || !Number.isFinite(focusCarIdx)) return false;
   if (reference.focusIsPlayer === false) return false;
-  if (Number.isFinite(reference.focusCarIdx)
-    && Number.isFinite(reference.playerCarIdx)
-    && reference.focusCarIdx !== reference.playerCarIdx) {
+  if (focusCarIdx !== playerCarIdx) {
     return false;
   }
   if (race.isInGarage === true || race.isGarageVisible === true || reference.isInGarage === true) {
@@ -2101,9 +2109,10 @@ function trackMapMarkers(live) {
     ...(live?.models?.timing?.overallRows || []),
     ...(live?.models?.timing?.classRows || [])
   ];
+  const reference = live?.models?.reference || {};
   const referenceCarIdx = live?.models?.reference?.focusCarIdx
     ?? live?.models?.timing?.focusCarIdx
-    ?? live?.latestSample?.focusCarIdx;
+    ?? live?.models?.driverDirectory?.focusCarIdx;
   const markers = new Map();
   for (const row of rows) {
     if (row.hasSpatialProgress === false || !Number.isFinite(row.lapDistPct) || row.lapDistPct < 0) continue;
@@ -2121,27 +2130,33 @@ function trackMapMarkers(live) {
     });
   }
 
-  const latest = live?.latestSample || {};
+  const referenceProgress = Number.isFinite(reference.lapDistPct) ? reference.lapDistPct : null;
+  const referenceTrackSurface = Number.isFinite(reference.playerTrackSurface)
+    ? reference.playerTrackSurface
+    : Number.isFinite(reference.trackSurface)
+      ? reference.trackSurface
+      : null;
   if (Number.isFinite(referenceCarIdx)
-    && Number.isFinite(latest.focusLapDistPct)
-    && latest.focusLapDistPct >= 0
-    && latest.onPitRoad !== true
-    && latest.playerTrackSurface !== 1
-    && latest.playerTrackSurface !== 2) {
+    && referenceProgress !== null
+    && referenceProgress >= 0
+    && reference.onPitRoad !== true
+    && reference.playerOnPitRoad !== true
+    && referenceTrackSurface !== 1
+    && referenceTrackSurface !== 2) {
     const existing = markers.get(referenceCarIdx);
     const focusRow = live?.models?.timing?.focusRow;
     markers.set(referenceCarIdx, {
       carIdx: referenceCarIdx,
-      lapDistPct: normalizeProgress(latest.focusLapDistPct),
+      lapDistPct: normalizeProgress(referenceProgress),
       isFocus: true,
       classColorHex: null,
       position: existing?.position
         ?? focusRow?.classPosition
         ?? focusRow?.overallPosition
-        ?? latest.focusClassPosition
-        ?? latest.focusPosition
+        ?? reference.classPosition
+        ?? reference.overallPosition
         ?? null,
-      trackSurface: Number.isFinite(latest.playerTrackSurface) ? latest.playerTrackSurface : null,
+      trackSurface: referenceTrackSurface,
       alertKind: null,
       alertPulseProgress: 0
     });

@@ -20,6 +20,43 @@ internal sealed record LiveTelemetrySnapshot(
 
     public LiveRaceModels Models { get; init; } = LiveRaceModels.Empty;
 
+    public LiveRaceModels CompleteModels()
+    {
+        if (Models.IsLiveSampleModel || LatestSample is not { } sample)
+        {
+            return Models;
+        }
+
+        var fuel = Fuel.HasValidFuel
+            ? Fuel
+            : LiveFuelSnapshot.From(Context, sample);
+        var proximity = HasLegacyProximity(Proximity)
+            ? Proximity
+            : LiveProximitySnapshot.From(Context, sample);
+        var leaderGap = LeaderGap.HasData
+            ? LeaderGap
+            : LiveLeaderGapSnapshot.From(sample);
+        var trackMap = Models.TrackMap.HasSectors || Models.TrackMap.HasLiveTiming
+            ? Models.TrackMap
+            : null;
+        var models = LiveRaceModelBuilder.From(
+            Context,
+            sample,
+            fuel,
+            proximity,
+            leaderGap,
+            trackMap);
+        var raceProjection = Models.RaceProjection;
+
+        return models with
+        {
+            RaceProjection = raceProjection,
+            RaceProgress = LiveRaceProjectionMapper.ApplyToRaceProgress(
+                models.RaceProgress,
+                raceProjection)
+        };
+    }
+
     public static LiveTelemetrySnapshot Empty { get; } = new(
         IsConnected: false,
         IsCollecting: false,
@@ -33,6 +70,16 @@ internal sealed record LiveTelemetrySnapshot(
         Fuel: LiveFuelSnapshot.Unavailable,
         Proximity: LiveProximitySnapshot.Unavailable,
         LeaderGap: LiveLeaderGapSnapshot.Unavailable);
+
+    private static bool HasLegacyProximity(LiveProximitySnapshot proximity)
+    {
+        return proximity.HasData
+            || proximity.CarLeftRight is not null
+            || proximity.HasCarLeft
+            || proximity.HasCarRight
+            || proximity.NearbyCars.Count > 0
+            || proximity.MulticlassApproaches.Count > 0;
+    }
 }
 
 internal sealed record LiveProximitySnapshot(
