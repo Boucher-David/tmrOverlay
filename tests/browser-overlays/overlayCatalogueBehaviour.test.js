@@ -761,7 +761,7 @@ function browserScenarios() {
         }),
         settings: {
           trackMap: trackMapAsset(),
-          trackMapSettings: { internalOpacity: 0.88, showSectorBoundaries: true }
+          trackMapSettings: { internalOpacity: 1, showSectorBoundaries: true }
         },
         waitForSelector: '.track svg'
       }),

@@ -3,6 +3,7 @@ using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 using TmrOverlay.Core.Telemetry.Live;
 using TmrOverlay.Core.TrackMaps;
+using TmrOverlay.App.Overlays.Content;
 
 namespace TmrOverlay.App.Overlays.TrackMap;
 
@@ -37,6 +38,7 @@ internal sealed record TrackMapOverlayViewModel(
         TrackMapDocument? trackMap)
     {
         var availability = OverlayAvailabilityEvaluator.FromSnapshot(snapshot, now);
+        var sessionKind = OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot);
         return new TrackMapOverlayViewModel(
             Title: "Track Map",
             Status: availability.IsAvailable ? "live" : availability.StatusText,
@@ -44,13 +46,17 @@ internal sealed record TrackMapOverlayViewModel(
             IsAvailable: availability.IsAvailable,
             Markers: BuildMarkers(snapshot),
             Sectors: snapshot.Models.TrackMap.Sectors,
-            ShowSectorBoundaries: settings.GetBooleanOption(
+            ShowSectorBoundaries: OverlayContentColumnSettings.ContentEnabledForSession(
+                settings,
                 OverlayOptionKeys.TrackMapSectorBoundariesEnabled,
-                defaultValue: true),
+                defaultEnabled: true,
+                sessionKind),
             InternalOpacity: Math.Clamp(settings.Opacity, 0.2d, 1d),
-            IncludeUserMaps: settings.GetBooleanOption(
+            IncludeUserMaps: OverlayContentColumnSettings.ContentEnabledForSession(
+                settings,
                 OverlayOptionKeys.TrackMapBuildFromTelemetry,
-                defaultValue: true),
+                defaultEnabled: true,
+                sessionKind),
             TrackMap: trackMap);
     }
 

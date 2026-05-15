@@ -5,6 +5,7 @@
     const contentEl = document.getElementById('content');
     const sourceEl = document.getElementById('source');
     let lastSequence = null;
+    let modelRootOpacity = 1;
     const browserOverlay = {
       module: null,
       register(module) {
@@ -149,8 +150,7 @@
           live?.context?.session?.eventType
         ].map((value) => String(value || '').trim().toLowerCase())
           .find((value) => value.length > 0) || '';
-        if (selected.includes('test')) return 'test';
-        if (selected.includes('practice')) return 'practice';
+        if (selected.includes('test') || selected.includes('practice')) return 'practice';
         if (selected.includes('qual')) return 'qualifying';
         if (selected.includes('race')) return 'race';
         return null;
@@ -337,9 +337,23 @@
     };
     const quality = (model) => model?.quality ?? 'unavailable';
 
+    function clamp01(value, fallback = 1) {
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? Math.max(0, Math.min(1, numeric)) : fallback;
+    }
+
+    function rootOpacityFromModel(model) {
+      return clamp01(model?.rootOpacity, 1);
+    }
+
+    function applyOverlayOpacity(visibilityAlpha = 1) {
+      if (!overlayEl) return;
+      overlayEl.style.opacity = String(clamp01(modelRootOpacity, 1) * clamp01(visibilityAlpha, 1));
+    }
+
     function updateTelemetryFade(live) {
       if (!page.fadeWhenTelemetryUnavailable || !overlayEl) return;
-      overlayEl.style.opacity = telemetryAvailability(live).isAvailable ? '1' : '0';
+      applyOverlayOpacity(telemetryAvailability(live).isAvailable ? 1 : 0);
     }
 
     function setStatus(live, detail) {
@@ -623,13 +637,16 @@
       }
 
       if (model.shouldRender === false) {
-        overlayEl.style.opacity = '0';
+        modelRootOpacity = rootOpacityFromModel(model);
+        applyOverlayOpacity(0);
         contentEl.innerHTML = '';
         renderHeaderItems(model, '');
         clearFooterSource();
         return;
       }
 
+      modelRootOpacity = rootOpacityFromModel(model);
+      applyOverlayOpacity(1);
       const metrics = Array.isArray(model.metrics) ? model.metrics : [];
       const metricSections = Array.isArray(model.metricSections) ? model.metricSections : [];
       const gridSections = Array.isArray(model.gridSections) ? model.gridSections : [];
@@ -714,7 +731,7 @@
         return;
       }
 
-      const { plot, labelLane, metricsRect } = gapGraphLayout(width, height);
+      const { plot, axisWidth } = gapGraphLayout(width, height);
       const max = Math.max(1, ...values.map((value) => Math.max(0, value)));
       ctx.strokeStyle = themeRgba('--tmr-text-muted-rgb', 0.28, 'rgba(140, 174, 212, 0.28)');
       ctx.lineWidth = 1;
@@ -859,7 +876,7 @@
         width: Math.max(40, labelLane.left - axisWidth),
         height: plotHeight
       };
-      return { plot, labelLane, metricsRect, plotHeight };
+      return { plot, labelLane, metricsRect, plotHeight, axisWidth };
     }
 
     function drawEmptyGapTrendFrame(ctx, width, height, graph) {

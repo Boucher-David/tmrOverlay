@@ -110,9 +110,9 @@ internal static class SessionWeatherOverlayViewModel
         {
             Segments = LapsSegments(session, raceProgress, raceProjection)
         };
-        var trackRow = new SimpleTelemetryRowViewModel("Track", FormatTrack(session))
+        var trackRow = new SimpleTelemetryRowViewModel("Track", FormatTrack(session, unitSystem))
         {
-            Segments = TrackSegments(session)
+            Segments = TrackSegments(session, unitSystem)
         };
         var tempsTone = StrongestTone(TemperatureTone(weather.TrackTempCrewC), tempsChanged ? SimpleTelemetryTone.Info : SimpleTelemetryTone.Normal);
         var tempsRow = new SimpleTelemetryRowViewModel("Temps", temps, tempsTone)
@@ -170,7 +170,8 @@ internal static class SessionWeatherOverlayViewModel
         return SimpleTelemetryOverlayViewModel.ApplyContentSettings(
             model,
             settings,
-            OverlayContentColumnSettings.SessionWeather);
+            OverlayContentColumnSettings.SessionWeather,
+            OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot));
     }
 
     private static SimpleTelemetryOverlayViewModel Waiting(string status)
@@ -316,17 +317,22 @@ internal static class SessionWeatherOverlayViewModel
             : null;
     }
 
-    private static string FormatTrack(LiveSessionModel session)
+    private static string FormatTrack(LiveSessionModel session, string unitSystem)
     {
-        var (_, length) = TrackParts(session);
+        var (_, length) = TrackParts(session, unitSystem);
         return SimpleTelemetryOverlayViewModel.JoinAvailable(Trim(session.TrackDisplayName), length);
     }
 
-    private static (string? Name, string? Length) TrackParts(LiveSessionModel session)
+    private static (string? Name, string? Length) TrackParts(LiveSessionModel session, string unitSystem)
     {
-        string? length = session.TrackLengthKm is { } km && SimpleTelemetryOverlayViewModel.IsFinite(km)
-            ? $"{km.ToString("0.00", CultureInfo.InvariantCulture)} km"
-            : null;
+        string? length = null;
+        if (session.TrackLengthKm is { } km && SimpleTelemetryOverlayViewModel.IsFinite(km))
+        {
+            length = SimpleTelemetryOverlayViewModel.IsImperial(unitSystem)
+                ? $"{(km * 0.621371192d).ToString("0.00", CultureInfo.InvariantCulture)} mi"
+                : $"{km.ToString("0.00", CultureInfo.InvariantCulture)} km";
+        }
+
         return (Trim(session.TrackDisplayName), length);
     }
 
@@ -482,9 +488,9 @@ internal static class SessionWeatherOverlayViewModel
         ];
     }
 
-    private static IReadOnlyList<SimpleTelemetryMetricSegmentViewModel> TrackSegments(LiveSessionModel session)
+    private static IReadOnlyList<SimpleTelemetryMetricSegmentViewModel> TrackSegments(LiveSessionModel session, string unitSystem)
     {
-        var (name, length) = TrackParts(session);
+        var (name, length) = TrackParts(session, unitSystem);
         return
         [
             Segment("Name", name, key: OverlayContentColumnSettings.SessionWeatherTrackNameBlockId),

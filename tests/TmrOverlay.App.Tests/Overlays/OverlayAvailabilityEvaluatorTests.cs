@@ -83,16 +83,19 @@ public sealed class OverlayAvailabilityEvaluatorTests
     }
 
     [Fact]
-    public void IsAllowedForSession_HonorsOverlaySessionSettings()
+    public void IsAllowedForSession_IgnoresLegacyOverlaySessionSettings()
     {
         var settings = new OverlaySettings
         {
             Id = "test",
+            ShowInTest = true,
             ShowInPractice = false,
             ShowInRace = true
         };
 
-        Assert.False(OverlayAvailabilityEvaluator.IsAllowedForSession(settings, OverlaySessionKind.Practice));
+        Assert.Equal(OverlaySessionKind.Practice, OverlayAvailabilityEvaluator.ClassifySession("Test"));
+        Assert.True(OverlayAvailabilityEvaluator.IsAllowedForSession(settings, OverlaySessionKind.Test));
+        Assert.True(OverlayAvailabilityEvaluator.IsAllowedForSession(settings, OverlaySessionKind.Practice));
         Assert.True(OverlayAvailabilityEvaluator.IsAllowedForSession(settings, OverlaySessionKind.Race));
     }
 
@@ -100,11 +103,14 @@ public sealed class OverlayAvailabilityEvaluatorTests
     public void OverlayChromeSettings_HonorsSessionScopedHeaderAndFooterItems()
     {
         var settings = new OverlaySettings { Id = "relative" };
+        settings.SetBooleanOption(OverlayOptionKeys.ChromeHeaderStatusTest, true);
         settings.SetBooleanOption(OverlayOptionKeys.ChromeHeaderStatusPractice, false);
         settings.SetBooleanOption(OverlayOptionKeys.ChromeFooterSourceRace, false);
+        var test = SnapshotForSession("Test");
         var practice = SnapshotForSession("Practice");
         var race = SnapshotForSession("Race");
 
+        Assert.False(OverlayChromeSettings.ShowHeaderStatus(settings, test));
         Assert.False(OverlayChromeSettings.ShowHeaderStatus(settings, practice));
         Assert.True(OverlayChromeSettings.ShowFooterSource(settings, practice));
         Assert.True(OverlayChromeSettings.ShowHeaderStatus(settings, race));

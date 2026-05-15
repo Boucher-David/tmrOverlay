@@ -97,7 +97,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private Label? _supportStatusLabel;
     private Label? _releaseUpdateStatusLabel;
     private TextBox? _garageCoverImagePathBox;
-    private Label? _garageCoverStateLabel;
     private Panel? _garageCoverPreviewPanel;
     private Label? _garageCoverPreviewCaptionLabel;
     private DateTimeOffset _nextSupportStatusRefreshAtUtc;
@@ -301,7 +300,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
                 SessionPreviewSnapshot = _sessionPreviewState.Snapshot,
                 ImportGarageCoverImage = ImportGarageCoverImage,
                 ClearGarageCoverImage = ClearGarageCoverImage,
-                ShowGarageCoverPreview = ShowGarageCoverPreview,
                 LatestDiagnosticsBundlePath = LatestDiagnosticsBundlePath,
                 AdvancedDiagnosticsText = AdvancedDiagnosticsText
             })
@@ -479,7 +477,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
     private void BuildTabs()
     {
         _garageCoverImagePathBox = null;
-        _garageCoverStateLabel = null;
         _garageCoverPreviewPanel = null;
         _garageCoverPreviewCaptionLabel = null;
 
@@ -590,11 +587,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
                 if (IsSupportTabSelected())
                 {
                     SyncRawCaptureCheckBox();
-                }
-
-                if (IsGarageCoverTabSelected())
-                {
-                    SyncGarageCoverStateLabel();
                 }
 
                 captureSucceeded = true;
@@ -835,11 +827,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         {
             SyncRawCaptureCheckBox();
             SyncErrorLoggingTab();
-        }
-
-        if (IsGarageCoverTabSelected())
-        {
-            SyncGarageCoverStateLabel();
         }
 
         if (force)
@@ -1342,6 +1329,12 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             return true;
         }
 
+        if (string.Equals(definition.Id, GapToLeaderOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            AddGapToLeaderOptions(page, settings, top);
+            return true;
+        }
+
         if (definition.SettingsOptions.Count == 0)
         {
             return false;
@@ -1349,6 +1342,28 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
 
         SettingsOverlayTabSections.AddDescriptorOptions(page, definition.SettingsOptions, settings, top, SaveAndApply);
         return true;
+    }
+
+    private void AddGapToLeaderOptions(TabPage page, OverlaySettings settings, int top)
+    {
+        page.Controls.Add(CreateSectionLabel("Class gap window", 18, top, 500));
+        page.Controls.Add(CreateLabel("Cars each side", 22, top + 42, 130));
+        var input = SettingsUi.CreateIntegerInput(
+            Math.Max(
+                settings.GetIntegerOption(OverlayOptionKeys.GapCarsAhead, defaultValue: 5, minimum: 0, maximum: 12),
+                settings.GetIntegerOption(OverlayOptionKeys.GapCarsBehind, defaultValue: 5, minimum: 0, maximum: 12)),
+            0,
+            12,
+            158,
+            top + 38);
+        input.ValueChanged += (_, _) =>
+        {
+            var value = (int)input.Value;
+            settings.SetIntegerOption(OverlayOptionKeys.GapCarsAhead, value, 0, 12);
+            settings.SetIntegerOption(OverlayOptionKeys.GapCarsBehind, value, 0, 12);
+            SaveAndApply();
+        };
+        page.Controls.Add(input);
     }
 
     private void AddGarageCoverOptions(TabPage page, OverlaySettings settings, int top)
@@ -1373,19 +1388,10 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         clearButton.Click += (_, _) => ClearGarageCoverImage(settings);
         page.Controls.Add(clearButton);
 
-        var previewButton = CreateActionButton("Show Test Cover", 346, top + 78, 150);
-        previewButton.Click += (_, _) => ShowGarageCoverPreview(settings);
-        page.Controls.Add(previewButton);
-
-        page.Controls.Add(CreateLabel("Detection", 22, top + 132, 90));
-        _garageCoverStateLabel = CreateValueLabel("waiting", 116, top + 126, 238, 28);
-        page.Controls.Add(_garageCoverStateLabel);
-        SyncGarageCoverStateLabel();
-
         page.Controls.Add(CreateMutedLabel(
-            "The browser source fails closed to the configured cover or stock fallback while telemetry is unavailable or stale.",
+            "The browser source uses the configured cover or stock fallback while telemetry is unavailable or stale.",
             22,
-            top + 170,
+            top + 126,
             600));
 
         page.Controls.Add(CreateSectionLabel("Preview", 650, top, 220));
@@ -1420,19 +1426,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
         }
     }
 
-    private void ShowGarageCoverPreview(OverlaySettings settings)
-    {
-        GarageCoverBrowserSettings.SetPreviewUntil(settings, DateTimeOffset.UtcNow.AddSeconds(10));
-        _events.Record("garage_cover_preview_requested", properties: new Dictionary<string, string?>
-        {
-            ["durationSeconds"] = "10"
-        });
-        SaveAndApply();
-        SetSupportStatus("Garage Cover test is visible in OBS for 10 seconds.", isError: false);
-        SyncGarageCoverStateLabel();
-        _v2Surface?.Invalidate();
-    }
-
     private void RefreshGarageCoverImageState(OverlaySettings settings)
     {
         var imagePath = settings.GetStringOption(OverlayOptionKeys.GarageCoverImagePath);
@@ -1449,41 +1442,6 @@ internal sealed class SettingsOverlayForm : PersistentOverlayForm
             _garageCoverPreviewPanel.Tag = imagePath;
             _garageCoverPreviewPanel.Invalidate();
         }
-
-        SyncGarageCoverStateLabel();
-    }
-
-    private void SyncGarageCoverStateLabel()
-    {
-        if (_garageCoverStateLabel is null)
-        {
-            _v2Surface?.Invalidate();
-            return;
-        }
-
-        var now = DateTimeOffset.UtcNow;
-        var detection = GarageCoverBrowserSettings.DetectGarageState(_liveTelemetrySource.Snapshot(), now);
-        var settings = _applicationSettings.GetOrAddOverlay(
-            GarageCoverOverlayDefinition.Definition.Id,
-            GarageCoverOverlayDefinition.Definition.DefaultWidth,
-            GarageCoverOverlayDefinition.Definition.DefaultHeight,
-            defaultEnabled: false);
-        var previewUntil = GarageCoverBrowserSettings.ReadPreviewUntilUtc(settings);
-        var previewVisible = previewUntil is not null && previewUntil > now;
-        SetLabelText(
-            _garageCoverStateLabel,
-            previewVisible ? $"{detection.DisplayText} (test visible)" : detection.DisplayText);
-        SetLabelColor(
-            _garageCoverStateLabel,
-            previewVisible
-                ? OverlayTheme.Colors.InfoText
-                : detection.State switch
-                {
-                    "garage_visible" => OverlayTheme.Colors.SuccessText,
-                    "garage_hidden" => OverlayTheme.Colors.TextSecondary,
-                    _ => OverlayTheme.Colors.WarningText
-                });
-        _v2Surface?.Invalidate();
     }
 
     private static string GarageCoverImageStatusText(GarageCoverImageStatus status)

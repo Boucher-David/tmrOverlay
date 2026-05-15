@@ -8,9 +8,9 @@ Start here when continuing work in this repo.
 - Platform-neutral settings, history, live telemetry, fuel, overlay metadata, and post-race analysis models in `src/TmrOverlay.Core/`
 - Tracked local macOS harness in `local-mac/TmrOverlayMac/` for mock-telemetry UI parity and review demos
 - Startup surface: fixed-size settings app window; driving/support overlays are opt-in from settings and default hidden
-- Settings panel owns overlay visibility, scale/custom size, session filters where relevant, shared font/units, and support capture/diagnostics controls; future product surfaces such as Overlay Bridge and post-race analysis should not be exposed as ordinary overlay tabs without a product pass
+- Settings panel owns overlay visibility, scale/custom size, content/header/footer session gates where relevant, shared font/units, and support capture/diagnostics controls; future product surfaces such as Overlay Bridge and post-race analysis should not be exposed as ordinary overlay tabs without a product pass
 - iRacing ingestion through `irsdkSharp`
-- Default-on localhost browser-source routes for supported OBS overlays; future Overlay Bridge work remains separate from localhost
+- Default-on localhost routes for supported OBS overlays; future Overlay Bridge work remains separate from localhost
 - Raw capture pipeline that writes:
   - `capture-manifest.json`
   - `telemetry-schema.json`
@@ -41,7 +41,7 @@ Start here when continuing work in this repo.
 - The mac harness under `local-mac/TmrOverlayMac/` is tracked source now. Keep source/config/tests in sync with shared overlay/settings behavior where practical, while generated `.build`, local app data, captures, logs, and screenshots stay ignored.
 - If you change the raw capture format, update `docs/capture-format.md` and `README.md` in the same pass.
 - Prefer shared Core models/read services, descriptor-driven overlay options, and `OverlayTheme` tokens over one-off UI contracts.
-- Design mocks should combine new visual treatment with current production content contracts by default. Keep the displayed fields, ordering, data source semantics, settings-driven content options, and native/browser parity aligned with the current product unless the mock is explicitly proposing a content change.
+- Design mocks should combine new visual treatment with current production content contracts by default. Keep the displayed fields, ordering, data source semantics, settings-driven content options, and native/localhost parity aligned with the current product unless the mock is explicitly proposing a content change. Browser review is the local development surface for checking that parity, not a separate product runtime.
 - Product overlays should read normalized live state through `ILiveTelemetrySource`; telemetry providers should write through `ILiveTelemetrySink`.
 - Mirror shared app/overlay/boilerplate changes in both the Windows app and tracked mac harness unless the work is explicitly Windows/iRacing-specific.
 - In the Windows app, fully qualify timer types: use `System.Threading.Timer` for hosted/background services and `System.Windows.Forms.Timer` for UI refresh loops. WinForms implicit globals import both namespaces, so bare `Timer` is ambiguous on Windows.

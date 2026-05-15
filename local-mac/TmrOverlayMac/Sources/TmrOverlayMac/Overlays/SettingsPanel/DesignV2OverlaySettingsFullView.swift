@@ -1,6 +1,13 @@
 import AppKit
 
 final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
+    private static let matrixControlContentWidth: CGFloat = 768
+    private static let matrixControlLabelWidth: CGFloat = 244
+    private static let matrixControlVisibleWidth: CGFloat = 104
+    private static let matrixControlGap: CGFloat = 12
+    private static let matrixControlCellPadding: CGFloat = 12
+    private static let matrixControlStepperWidth: CGFloat = 220
+
     private struct ContentMatrixRow {
         var label: String
         var enabled: Bool
@@ -184,23 +191,32 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
             buildChromeControls(rows: Self.headerChromeRows)
         case .footer:
             buildChromeControls(rows: Self.footerChromeRows(for: definition.id))
+        case .preview:
+            break
+        case .twitch:
+            addStreamChatMetadataControls()
+        case .streamlabs:
+            break
         }
     }
 
     private func buildGeneralControls() {
-        addDynamic(DesignV2SettingsToggleControl(
-            frame: NSRect(x: 600, y: 328, width: 56, height: 28),
-            isOn: overlay.enabled,
-            theme: theme,
-            onChange: { [weak self] isOn in
-                self?.overlay.enabled = isOn
-                self?.saveOverlay()
-            }
-        ))
+        let isGarageCover = definition.id == "garage-cover"
+        if !isGarageCover {
+            addDynamic(DesignV2SettingsToggleControl(
+                frame: NSRect(x: 600, y: 328, width: 56, height: 28),
+                isOn: overlay.enabled,
+                theme: theme,
+                onChange: { [weak self] isOn in
+                    self?.overlay.enabled = isOn
+                    self?.saveOverlay()
+                }
+            ))
+        }
 
         if definition.showScaleControl {
             addDynamic(DesignV2SettingsPercentSliderControl(
-                frame: NSRect(x: 454, y: 368, width: 180, height: 28),
+                frame: NSRect(x: 454, y: isGarageCover ? 328 : 368, width: 180, height: 28),
                 value: closestPercent(overlay.scale, allowedValues: [60, 75, 100, 125, 150, 175, 200]),
                 allowedValues: [60, 75, 100, 125, 150, 175, 200],
                 activeColor: theme.colors.accentPrimary,
@@ -217,11 +233,30 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
             ))
         }
 
+        if isGarageCover {
+            addDynamic(DesignV2SettingsActionButtonControl(
+                frame: NSRect(x: 454, y: 368, width: 112, height: 30),
+                title: "Import",
+                font: font(size: 12, weight: .heavy),
+                onClick: { [weak self] in
+                    self?.importGarageCoverImage()
+                }
+            ))
+            addDynamic(DesignV2SettingsActionButtonControl(
+                frame: NSRect(x: 580, y: 368, width: 86, height: 30),
+                title: "Clear",
+                font: font(size: 12, weight: .heavy),
+                onClick: { [weak self] in
+                    self?.clearGarageCoverImage()
+                }
+            ))
+        }
+
         if definition.showOpacityControl {
             addDynamic(DesignV2SettingsPercentSliderControl(
                 frame: NSRect(x: 454, y: 408, width: 180, height: 28),
-                value: closestPercent(overlay.opacity, allowedValues: [20, 30, 40, 50, 60, 70, 80, 88, 90, 100]),
-                allowedValues: [20, 30, 40, 50, 60, 70, 80, 88, 90, 100],
+                value: closestPercent(overlay.opacity, allowedValues: [20, 30, 40, 50, 60, 70, 80, 90, 100]),
+                allowedValues: [20, 30, 40, 50, 60, 70, 80, 90, 100],
                 activeColor: theme.colors.accentSecondary,
                 theme: theme,
                 onChange: { [weak self] percent in
@@ -231,49 +266,8 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
             ))
         }
 
-        if definition.showSessionFilters {
-            let sessions: [(String, WritableKeyPath<OverlaySettings, Bool>, CGFloat, CGFloat)] = [
-                ("Test", \.showInTest, 454, 62),
-                ("Practice", \.showInPractice, 548, 94),
-                ("Qual", \.showInQualifying, 454, 62),
-                ("Race", \.showInRace, 548, 76)
-            ]
-            for (index, session) in sessions.enumerated() {
-                addDynamic(DesignV2SettingsCheckControl(
-                    frame: NSRect(x: session.2, y: index < 2 ? 442 : 468, width: session.3, height: 20),
-                    title: session.0,
-                    isOn: overlay[keyPath: session.1],
-                    theme: theme,
-                    font: font(size: 12, weight: .semibold),
-                    onChange: { [weak self] isOn in
-                        self?.overlay[keyPath: session.1] = isOn
-                        self?.saveOverlay()
-                    }
-                ))
-            }
-        }
-
-        if definition.id == "garage-cover" {
-            addDynamic(DesignV2SettingsActionButtonControl(
-                frame: NSRect(x: 750, y: 428, width: 112, height: 30),
-                title: "Import",
-                font: font(size: 12, weight: .heavy),
-                onClick: { [weak self] in
-                    self?.importGarageCoverImage()
-                }
-            ))
-            addDynamic(DesignV2SettingsActionButtonControl(
-                frame: NSRect(x: 876, y: 428, width: 86, height: 30),
-                title: "Clear",
-                font: font(size: 12, weight: .heavy),
-                onClick: { [weak self] in
-                    self?.clearGarageCoverImage()
-                }
-            ))
-        }
-
         addDynamic(DesignV2SettingsActionButtonControl(
-            frame: NSRect(x: 950, y: 542, width: 70, height: 30),
+            frame: NSRect(x: 1048, y: 382, width: 70, height: 30),
             title: "Copy",
             font: font(size: 12, weight: .heavy),
             onClick: { [weak self] in
@@ -285,9 +279,11 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
     private func buildContentControls() {
         switch definition.id {
         case "relative":
-            addColumnToggleControls(definition: OverlayContentColumns.relative, rect: NSRect(x: 306, y: 272, width: 834, height: 222))
+            let relativeRect = NSRect(x: 306, y: 272, width: 834, height: 280)
+            let relativeRows = columnContentRows(definition: OverlayContentColumns.relative)
+            addColumnToggleControls(definition: OverlayContentColumns.relative, rect: relativeRect)
             addDynamic(DesignV2SettingsStepperControl(
-                frame: NSRect(x: 454, y: 562, width: 220, height: 38),
+                frame: matrixControlCountStepperFrame(rect: relativeRect, rowIndex: relativeRows.count),
                 value: min(max(max(overlay.relativeCarsAhead, overlay.relativeCarsBehind), 0), 8),
                 minimum: 0,
                 maximum: 8,
@@ -302,14 +298,16 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
         case "standings":
             addColumnToggleControls(
                 definition: OverlayContentColumns.standings,
-                rect: NSRect(x: 306, y: 272, width: 834, height: 236),
+                rect: NSRect(x: 306, y: 272, width: 834, height: 344),
                 rowHeight: 22,
                 rowGap: 3
             )
             if let block = OverlayContentColumns.standings.blocks.first {
+                let standingsRect = NSRect(x: 306, y: 272, width: 834, height: 344)
+                let rowIndex = standingsContentRows().count
                 addDynamic(DesignV2SettingsCheckControl(
-                    frame: NSRect(x: 328, y: 582, width: 190, height: 20),
-                    title: block.label,
+                    frame: matrixControlVisibleCheckFrame(rect: standingsRect, rowIndex: rowIndex, precedingRowHeight: 22, precedingRowGap: 3),
+                    title: "",
                     isOn: OverlayContentColumns.blockEnabled(block, settings: overlay),
                     theme: theme,
                     font: font(size: 12, weight: .semibold),
@@ -320,7 +318,7 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
                 ))
                 if let key = block.countOptionKey {
                     addDynamic(DesignV2SettingsStepperControl(
-                        frame: NSRect(x: 552, y: 572, width: 220, height: 38),
+                        frame: matrixControlCountStepperFrame(rect: standingsRect, rowIndex: rowIndex, precedingRowHeight: 22, precedingRowGap: 3, hasVisibleColumn: true),
                         value: OverlayContentColumns.blockCount(block, settings: overlay),
                         minimum: block.minimumCount,
                         maximum: block.maximumCount,
@@ -334,8 +332,9 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
                 }
             }
         case "gap-to-leader":
+            let gapRect = NSRect(x: 306, y: 272, width: 834, height: 126)
             addDynamic(DesignV2SettingsStepperControl(
-                frame: NSRect(x: 454, y: 484, width: 220, height: 38),
+                frame: matrixControlCountStepperFrame(rect: gapRect, rowIndex: 0, followsMatrixRows: false),
                 value: min(max(max(overlay.classGapCarsAhead, overlay.classGapCarsBehind), 0), 12),
                 minimum: 0,
                 maximum: 12,
@@ -359,20 +358,11 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
             )
         case "track-map":
             addMatrixCheckControl(
-                rowIndex: 1,
-                rect: NSRect(x: 306, y: 272, width: 834, height: 190),
+                rowIndex: 0,
+                rect: NSRect(x: 306, y: 272, width: 834, height: 150),
                 isOn: optionBool(key: "track-map.sector-boundaries.enabled", defaultValue: true),
                 onChange: { [weak self] isOn in
                     self?.overlay.options["track-map.sector-boundaries.enabled"] = isOn ? "true" : "false"
-                    self?.saveOverlay()
-                }
-            )
-            addMatrixCheckControl(
-                rowIndex: 2,
-                rect: NSRect(x: 306, y: 272, width: 834, height: 190),
-                isOn: overlay.trackMapBuildFromTelemetry,
-                onChange: { [weak self] isOn in
-                    self?.overlay.trackMapBuildFromTelemetry = isOn
                     self?.saveOverlay()
                 }
             )
@@ -412,25 +402,7 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
         case "flags":
             addFlagDisplayControls()
         case "stream-chat":
-            addDynamic(DesignV2SettingsToggleControl(
-                frame: NSRect(x: 454, y: 330, width: 56, height: 28),
-                isOn: overlay.enabled,
-                theme: theme,
-                onChange: { [weak self] isOn in
-                    self?.overlay.enabled = isOn
-                    self?.saveOverlay()
-                }
-            ))
             addStreamChatControls()
-            addStreamChatMetadataControls()
-            addDynamic(DesignV2SettingsActionButtonControl(
-                frame: NSRect(x: 950, y: 552, width: 70, height: 30),
-                title: "Copy",
-                font: font(size: 12, weight: .heavy),
-                onClick: { [weak self] in
-                    self?.copyLocalhostURL()
-                }
-            ))
         default:
             break
         }
@@ -470,7 +442,7 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
 
     private func addStreamChatControls() {
         addDynamic(DesignV2SettingsChoiceControl(
-            frame: NSRect(x: 454, y: 366, width: 258, height: 30),
+            frame: NSRect(x: 454, y: 330, width: 258, height: 30),
             options: StreamChatProviderOptions.compactLabels,
             selected: StreamChatProviderOptions.compactLabel(for: overlay.streamChatProvider),
             font: font(size: 11, weight: .heavy),
@@ -484,19 +456,19 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
             }
         ))
         addDynamic(textField(
-            frame: NSRect(x: 454, y: 404, width: 420, height: 28),
+            frame: NSRect(x: 454, y: 368, width: 420, height: 28),
             value: overlay.streamChatStreamlabsUrl,
             identifier: "streamChatStreamlabsUrl",
             enabled: StreamChatProviderOptions.normalize(overlay.streamChatProvider) == "streamlabs"
         ))
         addDynamic(textField(
-            frame: NSRect(x: 454, y: 442, width: 210, height: 28),
+            frame: NSRect(x: 454, y: 406, width: 210, height: 28),
             value: overlay.streamChatTwitchChannel,
             identifier: "streamChatTwitchChannel",
             enabled: StreamChatProviderOptions.normalize(overlay.streamChatProvider) == "twitch"
         ))
         addDynamic(DesignV2SettingsActionButtonControl(
-            frame: NSRect(x: 682, y: 440, width: 92, height: 30),
+            frame: NSRect(x: 682, y: 404, width: 92, height: 30),
             title: "Save",
             font: font(size: 12, weight: .heavy),
             onClick: { [weak self] in
@@ -506,11 +478,21 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
     }
 
     private func addStreamChatMetadataControls() {
+        let rect = NSRect(x: 306, y: 272, width: 834, height: 200)
+        let columns = 2
+        let rowHeight: CGFloat = 16
+        let rowGap: CGFloat = 2
+        let rowsPerColumn = Int(ceil(Double(OverlayContentColumns.streamChat.blocks.count) / Double(columns)))
+        let columnGap: CGFloat = 18
+        let contentLeft = rect.minX + 22
+        let columnWidth = (rect.width - 44 - columnGap * CGFloat(columns - 1)) / CGFloat(columns)
         for (index, block) in OverlayContentColumns.streamChat.blocks.enumerated() {
-            let column = index < 5 ? 0 : 1
-            let row = column == 0 ? index : index - 5
+            let column = index / max(1, rowsPerColumn)
+            let row = index % max(1, rowsPerColumn)
+            let rowX = contentLeft + CGFloat(column) * (columnWidth + columnGap)
+            let rowY = rect.minY + 78 + CGFloat(row) * (rowHeight + rowGap)
             addDynamic(DesignV2SettingsCheckControl(
-                frame: NSRect(x: 454 + CGFloat(column) * 236, y: 516 + CGFloat(row) * 24, width: 218, height: 22),
+                frame: NSRect(x: rowX + 10, y: rowY + max(1, (rowHeight - 19) / 2), width: columnWidth - 20, height: 22),
                 title: block.label,
                 isOn: OverlayContentColumns.blockEnabled(block, settings: overlay),
                 theme: theme,
@@ -612,7 +594,7 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
         }
 
         for (rowIndex, row) in rows.enumerated() {
-            for (index, key) in row.keys.enumerated() {
+            for (index, key) in chromeDisplayKeys(row.keys).enumerated() {
                 let x = 454 + CGFloat(index) * 116
                 addDynamic(DesignV2SettingsCheckControl(
                     frame: NSRect(x: x, y: 370 + CGFloat(rowIndex) * 48, width: 38, height: 22),
@@ -622,6 +604,9 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
                     font: font(size: 12, weight: .semibold),
                     onChange: { [weak self] isOn in
                         self?.overlay.options[key] = isOn ? "true" : "false"
+                        if let mirroredTestKey = self?.mirroredTestOptionKey(for: key) {
+                            self?.overlay.options[mirroredTestKey] = isOn ? "true" : "false"
+                        }
                         self?.saveOverlay()
                     }
                 ))
@@ -762,50 +747,32 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
             drawChromeRegion(title: "Header", rows: Self.headerChromeRows)
         case .footer:
             drawChromeRegion(title: "Footer", rows: Self.footerChromeRows(for: definition.id))
+        case .preview:
+            drawGarageCoverPreviewRegion()
+        case .twitch:
+            drawStreamChatTwitchRegion()
+        case .streamlabs:
+            drawStreamChatStreamlabsRegion()
         }
     }
 
     private func drawGeneralRegion() {
-        drawPanel(NSRect(x: 306, y: 272, width: 392, height: 226), title: "Overlay Controls")
-        drawText("Visible", in: NSRect(x: 328, y: 334, width: 100, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
-        if definition.showScaleControl {
-            drawText("Scale", in: NSRect(x: 328, y: 374, width: 100, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
-            drawText("\(Int((overlay.scale * 100).rounded()))%", in: NSRect(x: 642, y: 371, width: 40, height: 18), size: 12, weight: .bold, color: DesignV2SettingsPalette.text, alignment: .right)
-        }
-        if definition.showOpacityControl {
-            drawText(definition.id == "track-map" ? "Map fill" : "Opacity", in: NSRect(x: 328, y: 414, width: 100, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
-            drawText("\(Int((overlay.opacity * 100).rounded()))%", in: NSRect(x: 642, y: 411, width: 40, height: 18), size: 12, weight: .bold, color: DesignV2SettingsPalette.text, alignment: .right)
-        }
-        if definition.showSessionFilters {
-            drawText("Sessions", in: NSRect(x: 328, y: 454, width: 100, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
+        let isGarageCover = definition.id == "garage-cover"
+        drawPanel(NSRect(x: 306, y: 272, width: 392, height: isGarageCover ? 166 : 226), title: "Overlay Controls")
+        if isGarageCover {
+            drawText("Scale", in: NSRect(x: 328, y: 334, width: 100, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
+            drawText("\(Int((overlay.scale * 100).rounded()))%", in: NSRect(x: 642, y: 331, width: 40, height: 18), size: 12, weight: .bold, color: DesignV2SettingsPalette.text, alignment: .right)
+            drawText("Cover image", in: NSRect(x: 328, y: 374, width: 100, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
         } else {
-            drawText("Sessions", in: NSRect(x: 328, y: 454, width: 100, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
-            drawText("Managed by overlay logic", in: NSRect(x: 454, y: 454, width: 180, height: 18), size: 12, color: DesignV2SettingsPalette.muted)
-        }
-
-        let previewTitle = definition.id == "garage-cover" ? "Cover Image" : "\(definition.displayName) Preview"
-        drawPanel(NSRect(x: 726, y: 272, width: 414, height: 226), title: previewTitle)
-        let previewRect = definition.id == "garage-cover"
-            ? NSRect(x: 750, y: 324, width: 366, height: 96)
-            : NSRect(x: 750, y: 324, width: 366, height: 132)
-        fillRounded(previewRect, radius: 10, color: NSColor(red255: 3, green: 8, blue: 18))
-        strokeRounded(previewRect, radius: 10, color: DesignV2SettingsPalette.cyan.withAlphaComponent(0.65), lineWidth: 1)
-        if let image = definition.id == "garage-cover" ? garageCoverImage : previewImage {
-            drawAspectFit(image, in: previewRect.insetBy(dx: 12, dy: 10))
-        }
-        if definition.id == "garage-cover" {
-            drawText("Image", in: NSRect(x: 750, y: 468, width: 60, height: 18), size: 12, color: DesignV2SettingsPalette.muted)
-            drawText(garageCoverImageLabel, in: NSRect(x: 814, y: 468, width: 292, height: 18), size: 12, weight: .bold, color: DesignV2SettingsPalette.secondary)
-        } else {
-            drawText("Default size", in: NSRect(x: 750, y: 468, width: 100, height: 18), size: 12, color: DesignV2SettingsPalette.muted)
-            drawText(
-                "\(Int(definition.defaultSize.width)) x \(Int(definition.defaultSize.height))",
-                in: NSRect(x: 852, y: 468, width: 120, height: 18),
-                size: 12,
-                weight: .bold,
-                color: DesignV2SettingsPalette.secondary,
-                monospaced: true
-            )
+            drawText("Visible", in: NSRect(x: 328, y: 334, width: 100, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
+            if definition.showScaleControl {
+                drawText("Scale", in: NSRect(x: 328, y: 374, width: 100, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
+                drawText("\(Int((overlay.scale * 100).rounded()))%", in: NSRect(x: 642, y: 371, width: 40, height: 18), size: 12, weight: .bold, color: DesignV2SettingsPalette.text, alignment: .right)
+            }
+            if definition.showOpacityControl {
+                drawText(definition.id == "track-map" ? "Map fill" : "Opacity", in: NSRect(x: 328, y: 414, width: 100, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
+                drawText("\(Int((overlay.opacity * 100).rounded()))%", in: NSRect(x: 642, y: 411, width: 40, height: 18), size: 12, weight: .bold, color: DesignV2SettingsPalette.text, alignment: .right)
+            }
         }
 
         drawBrowserSourcePanel(summary: browserSummary)
@@ -841,39 +808,56 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
     }
 
     private func drawRelativeContentRegion() {
+        let relativeRect = NSRect(x: 306, y: 272, width: 834, height: 280)
+        let rows = columnContentRows(definition: OverlayContentColumns.relative)
         drawContentMatrix(
             title: "Content Display",
-            rows: columnContentRows(definition: OverlayContentColumns.relative),
-            rect: NSRect(x: 306, y: 272, width: 834, height: 222)
+            rows: rows,
+            rect: relativeRect
         )
-
-        drawPanel(NSRect(x: 306, y: 512, width: 834, height: 104), title: "Relative Rows")
-        drawText("Cars each side", in: NSRect(x: 328, y: 574, width: 130, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
-        drawText("\(overlay.relativeCarsAhead + overlay.relativeCarsBehind + 1) visible rows", in: NSRect(x: 700, y: 574, width: 112, height: 18), size: 12, weight: .bold, color: DesignV2SettingsPalette.text, alignment: .right)
+        let eachSide = max(overlay.relativeCarsAhead, overlay.relativeCarsBehind)
+        drawMatrixControlRow(label: "Rows around focus", enabled: eachSide > 0, rect: relativeRect, rowIndex: rows.count, countLabel: "Cars each side")
+        let labelFrame = matrixControlLabelFrame(rect: relativeRect, rowIndex: rows.count)
+        drawText("\(eachSide * 2 + 1) rows", in: NSRect(x: labelFrame.maxX - 86, y: labelFrame.minY + (labelFrame.height - 16) / 2, width: 70, height: 16), size: 11, weight: .bold, color: DesignV2SettingsPalette.muted, alignment: .right)
     }
 
     private func drawStandingsContentRegion() {
+        let standingsRect = NSRect(x: 306, y: 272, width: 834, height: 344)
+        let rows = standingsContentRows()
         drawContentMatrix(
             title: "Content Display",
-            rows: standingsContentRows(),
-            rect: NSRect(x: 306, y: 272, width: 834, height: 236),
+            rows: rows,
+            rect: standingsRect,
             rowHeight: 22,
             rowGap: 3
         )
-        if !OverlayContentColumns.standings.blocks.isEmpty {
-            drawPanel(NSRect(x: 306, y: 520, width: 834, height: 102), title: "Class Separators")
+        if let block = OverlayContentColumns.standings.blocks.first {
+            drawMatrixControlRow(
+                label: block.label,
+                enabled: OverlayContentColumns.blockEnabled(block, settings: overlay),
+                rect: standingsRect,
+                rowIndex: rows.count,
+                precedingRowHeight: 22,
+                precedingRowGap: 3,
+                visibleLabel: "Visible",
+                countLabel: block.countLabel ?? "Other-class cars"
+            )
+            drawCheckBox(in: matrixControlVisibleCheckFrame(rect: standingsRect, rowIndex: rows.count, precedingRowHeight: 22, precedingRowGap: 3), checked: OverlayContentColumns.blockEnabled(block, settings: overlay))
         }
     }
 
     private func drawGapContentRegion() {
-        drawContentMatrix(
-            title: "Content Display",
-            rows: [ContentMatrixRow(label: "Class gap window", enabled: true)],
-            rect: NSRect(x: 306, y: 272, width: 834, height: 126)
+        let gapRect = NSRect(x: 306, y: 272, width: 834, height: 126)
+        let eachSide = max(overlay.classGapCarsAhead, overlay.classGapCarsBehind)
+        drawPanel(gapRect, title: "Content Display")
+        drawMatrixControlRow(
+            label: "Class gap window",
+            enabled: eachSide > 0,
+            rect: gapRect,
+            rowIndex: 0,
+            countLabel: "Cars each side",
+            followsMatrixRows: false
         )
-        drawPanel(NSRect(x: 306, y: 426, width: 834, height: 126), title: "Class Gap Window")
-        drawText("Cars each side", in: NSRect(x: 328, y: 498, width: 130, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
-        drawText("Keeps the focused class gap trend bounded around the team car.", in: NSRect(x: 328, y: 532, width: 560, height: 18), size: 12, color: DesignV2SettingsPalette.muted)
     }
 
     private func drawFuelContentRegion() {
@@ -890,30 +874,43 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
         drawContentMatrix(
             title: "Content Display",
             rows: [
-                ContentMatrixRow(label: "Map source", enabled: true),
-                ContentMatrixRow(label: "Sector boundaries", enabled: optionBool(key: "track-map.sector-boundaries.enabled", defaultValue: true)),
-                ContentMatrixRow(label: "Local map building", enabled: overlay.trackMapBuildFromTelemetry)
+                ContentMatrixRow(label: "Sector boundaries", enabled: optionBool(key: "track-map.sector-boundaries.enabled", defaultValue: true))
             ],
-            rect: NSRect(x: 306, y: 272, width: 834, height: 190)
+            rect: NSRect(x: 306, y: 272, width: 834, height: 150)
         )
-
-        drawPanel(NSRect(x: 306, y: 484, width: 834, height: 110), title: "Map Sources")
-        drawText("Source", in: NSRect(x: 328, y: 542, width: 90, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
-        drawText("Best bundled or local map; circle fallback", in: NSRect(x: 454, y: 542, width: 320, height: 18), size: 12, color: DesignV2SettingsPalette.text)
-        drawText("Local maps", in: NSRect(x: 328, y: 574, width: 110, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
-        drawText("Reviewed app maps load automatically for matching tracks.", in: NSRect(x: 454, y: 574, width: 390, height: 18), size: 12, color: DesignV2SettingsPalette.secondary)
     }
 
     private func drawStreamChatContentRegion() {
-        drawPanel(NSRect(x: 306, y: 272, width: 834, height: 204), title: "Chat Source")
-        drawText("Visible", in: NSRect(x: 328, y: 336, width: 90, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
-        drawText("Mode", in: NSRect(x: 328, y: 374, width: 90, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
-        drawText("Streamlabs URL", in: NSRect(x: 328, y: 412, width: 120, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
-        drawText("Twitch channel", in: NSRect(x: 328, y: 450, width: 120, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
+        drawPanel(NSRect(x: 306, y: 272, width: 834, height: 170), title: "Chat Source")
+        drawText("Mode", in: NSRect(x: 328, y: 336, width: 90, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
+        drawText("Streamlabs URL", in: NSRect(x: 328, y: 374, width: 120, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
+        drawText("Twitch channel", in: NSRect(x: 328, y: 412, width: 120, height: 18), size: 13, color: DesignV2SettingsPalette.secondary)
+    }
 
-        drawPanel(NSRect(x: 306, y: 500, width: 834, height: 132), title: "Twitch Metadata")
-        drawText("These controls apply only to Twitch IRC metadata until Streamlabs payloads are verified.", in: NSRect(x: 328, y: 532, width: 500, height: 18), size: 12, color: DesignV2SettingsPalette.muted)
-        drawText("OBS URL", in: NSRect(x: 862, y: 532, width: 70, height: 18), size: 12, color: DesignV2SettingsPalette.secondary)
+    private func drawGarageCoverPreviewRegion() {
+        let previewRect = NSRect(x: 423, y: 272, width: 600, height: 338)
+        fillRounded(previewRect, radius: 10, color: NSColor(red255: 3, green: 8, blue: 18))
+        strokeRounded(previewRect, radius: 10, color: DesignV2SettingsPalette.cyan.withAlphaComponent(0.65), lineWidth: 1)
+        if let image = garageCoverImage {
+            drawAspectFit(image, in: previewRect.insetBy(dx: 12, dy: 10))
+        }
+    }
+
+    private func drawStreamChatTwitchRegion() {
+        drawBlockToggleGrid(
+            title: "Twitch Metadata",
+            rows: contentBlockRows(definition: OverlayContentColumns.streamChat),
+            rect: NSRect(x: 306, y: 272, width: 834, height: 200),
+            columns: 2,
+            rowHeight: 16,
+            rowGap: 2
+        )
+    }
+
+    private func drawStreamChatStreamlabsRegion() {
+        drawPanel(NSRect(x: 306, y: 272, width: 834, height: 150), title: "Streamlabs")
+        drawText("No Streamlabs-specific message controls yet.", in: NSRect(x: 328, y: 334, width: 440, height: 18), size: 12, color: DesignV2SettingsPalette.muted)
+        drawText("This page is reserved for provider-specific controls after Streamlabs payloads are verified.", in: NSRect(x: 328, y: 362, width: 640, height: 18), size: 12, color: DesignV2SettingsPalette.muted)
     }
 
     private func drawInputStateContentRegion() {
@@ -999,7 +996,7 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
         }
 
         drawText("Item", in: NSRect(x: 328, y: 330, width: 110, height: 16), size: 10, weight: .bold, color: DesignV2SettingsPalette.muted)
-        for (index, session) in ["Test", "Practice", "Qualifying", "Race"].enumerated() {
+        for (index, session) in ["Practice", "Qualifying", "Race"].enumerated() {
             drawText(session, in: NSRect(x: 454 + CGFloat(index) * 116, y: 330, width: 104, height: 16), size: 10, weight: .bold, color: DesignV2SettingsPalette.muted)
         }
         for (rowIndex, row) in rows.enumerated() {
@@ -1019,7 +1016,7 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
     ) {
         drawPanel(rect, title: title)
         drawText("Item", in: NSRect(x: 328, y: rect.minY + 58, width: 110, height: 16), size: 10, weight: .bold, color: DesignV2SettingsPalette.muted)
-        for (index, session) in ["Test", "Practice", "Qualifying", "Race"].enumerated() {
+        for (index, session) in ["Practice", "Qualifying", "Race"].enumerated() {
             drawText(session, in: NSRect(x: 548 + CGFloat(index) * 116, y: rect.minY + 58, width: 104, height: 16), size: 10, weight: .bold, color: DesignV2SettingsPalette.muted)
         }
 
@@ -1082,6 +1079,135 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
         return NSRect(x: 344, y: rowY + max(2, (rowHeight - 19) / 2), width: 19, height: 19)
     }
 
+    private func drawMatrixControlRow(
+        label: String,
+        enabled: Bool,
+        rect: NSRect,
+        rowIndex: Int,
+        precedingRowHeight: CGFloat = 24,
+        precedingRowGap: CGFloat = 5,
+        visibleLabel: String? = nil,
+        countLabel: String? = nil,
+        followsMatrixRows: Bool = true
+    ) {
+        let labelFrame = matrixControlLabelFrame(
+            rect: rect,
+            rowIndex: rowIndex,
+            precedingRowHeight: precedingRowHeight,
+            precedingRowGap: precedingRowGap,
+            hasVisibleColumn: visibleLabel != nil,
+            followsMatrixRows: followsMatrixRows
+        )
+        fillRounded(labelFrame, radius: 8, color: DesignV2SettingsPalette.panelRaised.withAlphaComponent(0.78))
+        strokeRounded(labelFrame, radius: 8, color: DesignV2SettingsPalette.borderDim, lineWidth: 1)
+        drawText(label, in: NSRect(x: labelFrame.minX + 18, y: labelFrame.minY + (labelFrame.height - 16) / 2, width: labelFrame.width - 36, height: 16), size: 12, color: enabled ? DesignV2SettingsPalette.secondary : DesignV2SettingsPalette.dim)
+
+        if let visibleLabel {
+            let visibleFrame = matrixControlVisibleFrame(
+                rect: rect,
+                rowIndex: rowIndex,
+                precedingRowHeight: precedingRowHeight,
+                precedingRowGap: precedingRowGap,
+                followsMatrixRows: followsMatrixRows
+            )
+            fillRounded(visibleFrame, radius: 8, color: DesignV2SettingsPalette.panelRaised.withAlphaComponent(0.78))
+            strokeRounded(visibleFrame, radius: 8, color: DesignV2SettingsPalette.borderDim, lineWidth: 1)
+            drawText(visibleLabel, in: NSRect(x: visibleFrame.minX + 8, y: visibleFrame.minY + 7, width: visibleFrame.width - 16, height: 14), size: 9.5, weight: .bold, color: DesignV2SettingsPalette.muted, alignment: .center)
+        }
+
+        if let countLabel {
+            let countFrame = matrixControlCountFrame(
+                rect: rect,
+                rowIndex: rowIndex,
+                precedingRowHeight: precedingRowHeight,
+                precedingRowGap: precedingRowGap,
+                hasVisibleColumn: visibleLabel != nil,
+                followsMatrixRows: followsMatrixRows
+            )
+            fillRounded(countFrame, radius: 8, color: DesignV2SettingsPalette.panelRaised.withAlphaComponent(0.78))
+            strokeRounded(countFrame, radius: 8, color: DesignV2SettingsPalette.borderDim, lineWidth: 1)
+            drawText(countLabel, in: NSRect(x: countFrame.minX + Self.matrixControlCellPadding, y: countFrame.minY + 7, width: countFrame.width - Self.matrixControlCellPadding * 2, height: 14), size: 9.5, weight: .bold, color: DesignV2SettingsPalette.muted)
+        }
+    }
+
+    private func matrixControlLabelFrame(
+        rect: NSRect,
+        rowIndex: Int,
+        precedingRowHeight: CGFloat = 24,
+        precedingRowGap: CGFloat = 5,
+        hasVisibleColumn: Bool = false,
+        followsMatrixRows: Bool = true
+    ) -> NSRect {
+        let rowY = matrixControlRowY(rect: rect, rowIndex: rowIndex, precedingRowHeight: precedingRowHeight, precedingRowGap: precedingRowGap, followsMatrixRows: followsMatrixRows)
+        return NSRect(x: rect.minX + 22, y: rowY, width: Self.matrixControlLabelWidth, height: 56)
+    }
+
+    private func matrixControlVisibleFrame(
+        rect: NSRect,
+        rowIndex: Int,
+        precedingRowHeight: CGFloat = 24,
+        precedingRowGap: CGFloat = 5,
+        followsMatrixRows: Bool = true
+    ) -> NSRect {
+        let labelFrame = matrixControlLabelFrame(rect: rect, rowIndex: rowIndex, precedingRowHeight: precedingRowHeight, precedingRowGap: precedingRowGap, hasVisibleColumn: true, followsMatrixRows: followsMatrixRows)
+        return NSRect(x: labelFrame.maxX + Self.matrixControlGap, y: labelFrame.minY, width: Self.matrixControlVisibleWidth, height: labelFrame.height)
+    }
+
+    private func matrixControlVisibleCheckFrame(
+        rect: NSRect,
+        rowIndex: Int,
+        precedingRowHeight: CGFloat = 24,
+        precedingRowGap: CGFloat = 5,
+        followsMatrixRows: Bool = true
+    ) -> NSRect {
+        let visibleFrame = matrixControlVisibleFrame(rect: rect, rowIndex: rowIndex, precedingRowHeight: precedingRowHeight, precedingRowGap: precedingRowGap, followsMatrixRows: followsMatrixRows)
+        return NSRect(x: visibleFrame.minX + (visibleFrame.width - 19) / 2, y: visibleFrame.minY + (visibleFrame.height - 19) / 2, width: 19, height: 19)
+    }
+
+    private func matrixControlCountFrame(
+        rect: NSRect,
+        rowIndex: Int,
+        precedingRowHeight: CGFloat = 24,
+        precedingRowGap: CGFloat = 5,
+        hasVisibleColumn: Bool = false,
+        followsMatrixRows: Bool = true
+    ) -> NSRect {
+        let labelFrame = matrixControlLabelFrame(rect: rect, rowIndex: rowIndex, precedingRowHeight: precedingRowHeight, precedingRowGap: precedingRowGap, hasVisibleColumn: hasVisibleColumn, followsMatrixRows: followsMatrixRows)
+        var left = labelFrame.maxX + Self.matrixControlGap
+        if hasVisibleColumn {
+            left += Self.matrixControlVisibleWidth + Self.matrixControlGap
+        }
+        let width = Self.matrixControlContentWidth
+            - Self.matrixControlLabelWidth
+            - Self.matrixControlGap
+            - (hasVisibleColumn ? Self.matrixControlVisibleWidth + Self.matrixControlGap : 0)
+        return NSRect(x: left, y: labelFrame.minY, width: width, height: labelFrame.height)
+    }
+
+    private func matrixControlCountStepperFrame(
+        rect: NSRect,
+        rowIndex: Int,
+        precedingRowHeight: CGFloat = 24,
+        precedingRowGap: CGFloat = 5,
+        hasVisibleColumn: Bool = false,
+        followsMatrixRows: Bool = true
+    ) -> NSRect {
+        let countFrame = matrixControlCountFrame(rect: rect, rowIndex: rowIndex, precedingRowHeight: precedingRowHeight, precedingRowGap: precedingRowGap, hasVisibleColumn: hasVisibleColumn, followsMatrixRows: followsMatrixRows)
+        return NSRect(x: countFrame.maxX - Self.matrixControlCellPadding - Self.matrixControlStepperWidth, y: countFrame.minY + 20, width: Self.matrixControlStepperWidth, height: 32)
+    }
+
+    private func matrixControlRowY(
+        rect: NSRect,
+        rowIndex: Int,
+        precedingRowHeight: CGFloat,
+        precedingRowGap: CGFloat,
+        followsMatrixRows: Bool
+    ) -> CGFloat {
+        return followsMatrixRows
+            ? rect.minY + 78 + CGFloat(rowIndex) * (precedingRowHeight + precedingRowGap)
+            : rect.minY + 58
+    }
+
     private func blockGridCheckFrame(
         index: Int,
         rect: NSRect,
@@ -1124,19 +1250,18 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
 
     private func situationStates(rowEnabled: Bool) -> [Bool] {
         guard rowEnabled else {
-            return [false, false, false, false]
+            return [false, false, false]
         }
 
         if definition.id == "gap-to-leader" {
-            return [false, false, false, true]
+            return [false, false, true]
         }
 
         guard definition.showSessionFilters else {
-            return [true, true, true, true]
+            return [true, true, true]
         }
 
         return [
-            overlay.showInTest,
             overlay.showInPractice,
             overlay.showInQualifying,
             overlay.showInRace
@@ -1202,7 +1327,7 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
 
     private var browserSummary: String {
         let browserSize = OverlayContentColumns.recommendedBrowserSize(overlay: definition, settings: overlay)
-        return "OBS browser size \(Int(browserSize.width)) x \(Int(browserSize.height)); native visibility is controlled separately."
+        return "OBS browser size \(Int(browserSize.width)) x \(Int(browserSize.height))"
     }
 
     private var previewImage: NSImage? {
@@ -1249,6 +1374,22 @@ final class DesignV2OverlaySettingsFullView: NSView, NSTextFieldDelegate {
         dynamicControls.compactMap { $0 as? NSTextField }.first {
             $0.identifier?.rawValue == identifier
         }?.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private func chromeDisplayKeys(_ keys: [String]) -> [String] {
+        guard keys.count == 4 else {
+            return keys
+        }
+
+        return [keys[1], keys[2], keys[3]]
+    }
+
+    private func mirroredTestOptionKey(for key: String) -> String? {
+        guard key.hasSuffix(".practice") else {
+            return nil
+        }
+
+        return String(key.dropLast(".practice".count)) + ".test"
     }
 
     private func font(size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {

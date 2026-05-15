@@ -382,6 +382,11 @@ public sealed class BrowserOverlayModelFactoryTests
             Sequence = 1,
             Models = LiveRaceModels.Empty with
             {
+                Session = LiveSessionModel.Empty with
+                {
+                    HasData = true,
+                    SessionType = "Race"
+                },
                 Timing = LiveTimingModel.Empty with
                 {
                     HasData = true,
@@ -447,6 +452,11 @@ public sealed class BrowserOverlayModelFactoryTests
             Sequence = 1,
             Models = LiveRaceModels.Empty with
             {
+                Session = LiveSessionModel.Empty with
+                {
+                    HasData = true,
+                    SessionType = "Race"
+                },
                 Timing = LiveTimingModel.Empty with
                 {
                     HasData = true,

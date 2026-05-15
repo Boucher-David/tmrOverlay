@@ -961,7 +961,7 @@ internal sealed class DiagnosticsBundleService
                         0,
                         0,
                         defaultEnabled: false);
-                    var sessionAllowed = OverlayAvailabilityEvaluator.IsAllowedForSession(settings, availability.SessionKind);
+                    var sessionAllowed = OverlaySessionAllowedForDiagnostics(definition, availability.SessionKind);
                     var context = LiveLocalStrategyContext.ForRequirement(snapshot, now, definition.ContextRequirement);
                     return new
                     {
@@ -1939,6 +1939,24 @@ internal sealed class DiagnosticsBundleService
         {
             AddFileIfExists(archive, schemaPath, SharedOverlayContract.DefaultSchemaRelativePath);
         }
+    }
+
+    private static bool OverlaySessionAllowedForDiagnostics(
+        OverlayDefinition definition,
+        OverlaySessionKind? sessionKind)
+    {
+        if (string.Equals(definition.Id, FlagsOverlayDefinition.Definition.Id, StringComparison.Ordinal)
+            && sessionKind is null)
+        {
+            return false;
+        }
+
+        if (string.Equals(definition.Id, GapToLeaderOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return OverlayAvailabilityEvaluator.NormalizeSessionKind(sessionKind) == OverlaySessionKind.Race;
+        }
+
+        return true;
     }
 
     private static void RedactStreamChatSecrets(JsonNode node)

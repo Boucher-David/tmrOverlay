@@ -8,7 +8,7 @@ struct OverlaySettings: Codable {
     var y = 24.0
     var width = 304.0
     var height = 92.0
-    var opacity = 0.88
+    var opacity = 1.0
     var alwaysOnTop = true
     var showInTest = true
     var showInPractice = true
@@ -85,7 +85,7 @@ struct OverlaySettings: Codable {
         y: Double = 24.0,
         width: Double = 304.0,
         height: Double = 92.0,
-        opacity: Double = 0.88,
+        opacity: Double = 1.0,
         alwaysOnTop: Bool = true,
         showInTest: Bool = true,
         showInPractice: Bool = true,
@@ -162,7 +162,7 @@ struct OverlaySettings: Codable {
         y = try container.decodeIfPresent(Double.self, forKey: .y) ?? 24.0
         width = try container.decodeIfPresent(Double.self, forKey: .width) ?? 304.0
         height = try container.decodeIfPresent(Double.self, forKey: .height) ?? 92.0
-        opacity = try container.decodeIfPresent(Double.self, forKey: .opacity) ?? 0.88
+        opacity = try container.decodeIfPresent(Double.self, forKey: .opacity) ?? 1.0
         alwaysOnTop = try container.decodeIfPresent(Bool.self, forKey: .alwaysOnTop) ?? true
         showInTest = try container.decodeIfPresent(Bool.self, forKey: .showInTest) ?? true
         showInPractice = try container.decodeIfPresent(Bool.self, forKey: .showInPractice) ?? true
@@ -281,6 +281,7 @@ struct ApplicationSettings: Codable {
 
 enum AppSettingsMigrator {
     static let currentVersion = SharedOverlayContract.current.settingsVersion
+    private static let legacyDefaultOpacity = 0.88
     private static let flagsOverlayId = "flags"
     private static let flagsPrimaryScreenDefaultId = "primary-screen-default"
     private static let flagsDefaultWidth = 360.0
@@ -290,11 +291,12 @@ enum AppSettingsMigrator {
 
     static func migrate(_ settings: ApplicationSettings) -> ApplicationSettings {
         var migrated = settings
+        let sourceVersion = migrated.settingsVersion
         migrated.settingsVersion = currentVersion
         migrated.general = normalizedGeneral(migrated.general)
         migrated.overlays = migrated.overlays
             .filter { !$0.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            .map(normalizedOverlay)
+            .map { normalizedOverlay($0, sourceVersion: sourceVersion) }
         return migrated
     }
 
@@ -306,12 +308,15 @@ enum AppSettingsMigrator {
         )
     }
 
-    private static func normalizedOverlay(_ overlay: OverlaySettings) -> OverlaySettings {
+    private static func normalizedOverlay(_ overlay: OverlaySettings, sourceVersion: Int) -> OverlaySettings {
         var normalized = overlay
         normalized.scale = clampFinite(normalized.scale, minimum: 0.6, maximum: 2.0, fallback: 1.0)
         normalized.width = max(0, normalized.width)
         normalized.height = max(0, normalized.height)
-        normalized.opacity = clampFinite(normalized.opacity, minimum: 0.2, maximum: 1.0, fallback: 0.88)
+        if sourceVersion < currentVersion && normalized.opacity.isFinite && abs(normalized.opacity - legacyDefaultOpacity) <= 0.0001 {
+            normalized.opacity = 1.0
+        }
+        normalized.opacity = clampFinite(normalized.opacity, minimum: 0.2, maximum: 1.0, fallback: 1.0)
         let relativeCarsEachSide = min(max(max(normalized.relativeCarsAhead, normalized.relativeCarsBehind), 0), 8)
         normalized.relativeCarsAhead = relativeCarsEachSide
         normalized.relativeCarsBehind = relativeCarsEachSide

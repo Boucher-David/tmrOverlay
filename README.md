@@ -2,7 +2,7 @@
 
 TmrOverlay is a pre-1.0 Windows companion app for iRacing. It runs as a tray application, reads live iRacing telemetry, and renders small purpose-built overlays for racing, streaming, and support workflows.
 
-The production app is Windows-only because it talks to iRacing through the SDK. Browser-source overlays are the primary mac-friendly review surface; the tracked macOS harness is now secondary native-shell scaffolding for cases that still need it.
+The production app is Windows-only because it talks to iRacing through the SDK. The browser review UI is the primary local parity surface for localhost/OBS behavior; the tracked macOS harness is now secondary native-shell scaffolding for cases that still need it.
 
 TmrOverlay is not affiliated with or endorsed by iRacing.
 
@@ -15,15 +15,15 @@ Current releases focus on:
 - reliable Windows install/update flow
 - clear settings and support surfaces
 - standings, relative, radar, flags, track map, fuel, and race-state overlays
-- local OBS/browser-source routes
+- local OBS/localhost routes
 - diagnostic capture and support bundles that help validate behavior from real sessions
 
 ## Features
 
-- **Settings app:** a fixed-size WinForms control surface for overlay visibility, scale, opacity where useful, session filters, units, content columns, OBS browser-source size hints, update state, support actions, and diagnostics.
+- **Settings app:** a fixed-size WinForms control surface for overlay visibility, scale, opacity where useful, units, content/header/footer controls, OBS localhost size hints, update state, support actions, and diagnostics.
 - **Native overlays:** Standings, Relative, Track Map, Fuel Calculator, Flags, Session / Weather, Pit Service, Input / Car State, local in-car Radar, Gap To Leader, and Stream Chat.
-- **Browser-source overlays:** localhost routes for OBS/capture workflows, including Standings, Relative, Fuel, Session / Weather, Pit Service, Inputs, Radar, Gap To Leader, Track Map, Stream Chat, and Garage Cover.
-- **Garage Cover:** an OBS/browser-source privacy cover that hides garage/setup details with a user-imported image or a fail-closed fallback.
+- **Localhost overlays:** OBS routes for capture workflows, including Standings, Relative, Fuel, Session / Weather, Pit Service, Inputs, Radar, Gap To Leader, Track Map, Stream Chat, and Garage Cover.
+- **Garage Cover:** a localhost privacy cover for OBS that hides garage/setup details with a user-imported image or a fail-closed fallback.
 - **Telemetry model:** normalized live snapshot models for timing, relative, spatial/radar, weather, fuel/pit, race events, inputs, race projection, and track-map state.
 - **Local history:** compact per-car/track/session summaries for fuel and stint context without making raw telemetry the normal data path.
 - **Diagnostics:** support bundles, rolling logs, performance snapshots, model parity evidence, live overlay diagnostics, and opt-in raw capture for deeper investigation.
@@ -60,7 +60,7 @@ Raw telemetry capture is opt-in. Use the Support checkbox or a `TelemetryCapture
 
 Streamlabs widget URLs and other private local settings are redacted from diagnostics bundles.
 
-Shared app defaults live in `shared/tmr-overlay-contract.json`, with the file shape documented by `shared/tmr-overlay-contract.schema.json`. Windows and the tracked mac harness both use that contract for the durable settings schema version, stream-chat defaults, and Design V2 color tokens; localhost browser overlays receive the resolved V2 tokens from the Windows renderer instead of reading local files directly. User-local Windows theme overrides can still live in `overlay-theme.json` under the app settings root and are applied after the shared contract.
+Shared app defaults live in `shared/tmr-overlay-contract.json`, with the file shape documented by `shared/tmr-overlay-contract.schema.json`. Native Windows and the tracked mac harness both use that contract for the durable settings schema version, stream-chat defaults, and Design V2 color tokens; localhost routes receive the resolved V2 tokens from the Windows renderer instead of reading local files directly. User-local Windows theme overrides can still live in `overlay-theme.json` under the app settings root and are applied after the shared contract.
 
 ## Build From Source
 
@@ -88,22 +88,28 @@ dotnet run --project .\src\TmrOverlay.App\TmrOverlay.App.csproj
 
 The Windows app is the production runtime:
 
-- `src/TmrOverlay.App/` contains the WinForms app, tray shell, overlays, telemetry collector, diagnostics, release update service, and localhost browser-source server.
+- `src/TmrOverlay.App/` contains the WinForms app, tray shell, overlays, telemetry collector, diagnostics, release update service, and localhost server.
 - `src/TmrOverlay.Core/` contains platform-neutral settings, overlay metadata, live telemetry models, history models, post-race analysis models, and fuel logic.
 - `tests/TmrOverlay.App.Tests/` contains xUnit tests for non-UI behavior.
 - `.github/workflows/windows-dotnet.yml` is the Windows CI and release-packaging gate.
 
+Terminology going forward:
+
+- **Browser** means the local review UI you open directly in a browser, such as `/review/app` or `/review/overlays/<overlay-id>`.
+- **Localhost** means the OBS source URL a user can add to OBS, such as `/overlays/<overlay-id>`.
+- **Native** means the Windows application and Windows overlay windows.
+
 The browser review server is the preferred non-Windows overlay development loop:
 
-- `npm run review:browser` serves fixture-backed overlay URLs from the same browser assets used by localhost/OBS pages.
+- `npm run review:browser` serves fixture-backed browser review URLs from the same assets used by localhost pages.
 - Review routes are available under `/review/app`, `/review/settings/general`, `/review/overlays/<overlay-id>`, and `/overlays/<overlay-id>`.
 - Asset changes are read from source and trigger browser reloads through lightweight polling.
-- This validates browser layout, JavaScript behavior, and localhost/OBS parity; Windows CI or a real Windows run still owns native focus, topmost, click-through, and iRacing SDK behavior.
+- This validates browser layout, JavaScript behavior, and localhost parity; Windows CI or a real Windows run still owns native focus, topmost, click-through, and iRacing SDK behavior.
 
 The macOS harness is for secondary local development only:
 
 - `local-mac/TmrOverlayMac/` mirrors enough app shape to iterate on native-shell ideas with mock telemetry.
-- Its source is tracked so existing mac review coverage can keep moving while browser review replaces it as the primary parity surface.
+- Its source is tracked so existing mac review coverage can keep moving while browser review remains the primary local review surface.
 - Generated review screenshots live under `mocks/`.
 - Windows-rendered screenshots are generated by CI from real WinForms forms and uploaded as workflow artifacts.
 
@@ -120,7 +126,7 @@ python3 tools/validate_overlay_screenshots.py --profile release-tutorial --root 
 
 On Windows, also run the full .NET restore/build/test gate before relying on local changes. On non-Windows machines, the C# scanner is only a fallback; CI must still prove the real WinForms build.
 
-## Localhost Browser Sources
+## Localhost OBS Sources
 
 The localhost overlay server is enabled by default for local OBS/capture workflows. It listens on the configured local port and serves overlay pages such as:
 
@@ -131,7 +137,7 @@ The localhost overlay server is enabled by default for local OBS/capture workflo
 - `/overlays/stream-chat`
 - `/overlays/garage-cover`
 
-The browser-source pages consume normalized app snapshots from localhost. They do not talk to iRacing directly. Overlay Bridge, a future trusted peer/client data-sharing boundary, is intentionally separate from these local OBS routes.
+The localhost pages consume normalized app snapshots from localhost. They do not talk to iRacing directly. Overlay Bridge, a future trusted peer/client data-sharing boundary, is intentionally separate from these local OBS routes.
 
 For local design and functionality review without Windows/iRacing, run:
 

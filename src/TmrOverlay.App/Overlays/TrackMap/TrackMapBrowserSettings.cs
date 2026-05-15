@@ -6,7 +6,7 @@ internal sealed record TrackMapBrowserSettings(bool IncludeUserMaps, double Inte
 {
     public static TrackMapBrowserSettings Default { get; } = new(
         IncludeUserMaps: true,
-        InternalOpacity: 0.88d,
+        InternalOpacity: 1d,
         ShowSectorBoundaries: true);
 
     public static TrackMapBrowserSettings From(ApplicationSettings settings)

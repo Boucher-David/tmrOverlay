@@ -99,10 +99,43 @@ final class AppBoilerplateTests: XCTestCase {
         XCTAssertEqual(streamChat.options[SharedOverlayContract.streamChatTwitchChannelKey], "techmatesracing")
     }
 
+    func testSettingsStoreMigratesLegacyDefaultOpacityToFullOpacity() throws {
+        let root = temporaryRoot("settings")
+        defer {
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let settingsURL = root.appendingPathComponent("settings.json")
+        try """
+        {
+          "settingsVersion": 10,
+          "overlays": [
+            {
+              "id": "standings",
+              "opacity": 0.88
+            },
+            {
+              "id": "relative",
+              "opacity": 0.72
+            }
+          ]
+        }
+        """.write(to: settingsURL, atomically: true, encoding: .utf8)
+
+        let reloaded = AppSettingsStore(settingsRoot: root).load()
+        let standings = try XCTUnwrap(reloaded.overlays.first { $0.id == "standings" })
+        let relative = try XCTUnwrap(reloaded.overlays.first { $0.id == "relative" })
+
+        XCTAssertEqual(reloaded.settingsVersion, SharedOverlayContract.current.settingsVersion)
+        XCTAssertEqual(standings.opacity, 1.0)
+        XCTAssertEqual(relative.opacity, 0.72)
+    }
+
     func testSharedContractDrivesStreamChatDefaultsAndDesignTokens() {
         XCTAssertEqual(StreamChatProviderOptions.defaultProvider, "twitch")
         XCTAssertEqual(StreamChatProviderOptions.defaultTwitchChannel, "techmatesracing")
-        XCTAssertEqual(SharedOverlayContract.current.settingsVersion, 10)
+        XCTAssertEqual(SharedOverlayContract.current.settingsVersion, 11)
         XCTAssertEqual(SharedOverlayContract.current.designV2ColorHex("cyan", fallback: ""), "#00E8FF")
     }
 

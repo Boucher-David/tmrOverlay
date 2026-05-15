@@ -79,9 +79,8 @@ internal static class OverlayChromeSettings
         string qualifyingKey,
         string raceKey)
     {
-        return sessionKind switch
+        return OverlayAvailabilityEvaluator.NormalizeSessionKind(sessionKind) switch
         {
-            OverlaySessionKind.Test => settings.GetBooleanOption(testKey, defaultValue: true),
             OverlaySessionKind.Practice => settings.GetBooleanOption(practiceKey, defaultValue: true),
             OverlaySessionKind.Qualifying => settings.GetBooleanOption(qualifyingKey, defaultValue: true),
             OverlaySessionKind.Race => settings.GetBooleanOption(raceKey, defaultValue: true),

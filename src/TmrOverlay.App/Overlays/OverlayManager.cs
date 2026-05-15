@@ -1005,7 +1005,12 @@ internal sealed class OverlayManager : IDisposable
             return false;
         }
 
-        return OverlayAvailabilityEvaluator.IsAllowedForSession(settings, sessionKind);
+        if (string.Equals(definition.Id, GapToLeaderOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return OverlayAvailabilityEvaluator.NormalizeSessionKind(sessionKind) == OverlaySessionKind.Race;
+        }
+
+        return true;
     }
 
     private static bool IsLiveTelemetryAvailable(LiveTelemetrySnapshot snapshot)
@@ -1188,9 +1193,18 @@ internal sealed class OverlayManager : IDisposable
 
     private static bool HasEnabledOverlayContent(OverlayDefinition definition, OverlaySettings settings)
     {
-        return string.Equals(definition.Id, InputStateOverlayDefinition.Definition.Id, StringComparison.Ordinal)
-            ? InputStateRenderModelBuilder.HasEnabledContent(settings)
-            : true;
+        if (string.Equals(definition.Id, InputStateOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return InputStateRenderModelBuilder.HasEnabledContent(settings);
+        }
+
+        if (string.Equals(definition.Id, GapToLeaderOverlayDefinition.Definition.Id, StringComparison.Ordinal))
+        {
+            return settings.GetIntegerOption(OverlayOptionKeys.GapCarsAhead, defaultValue: 5, minimum: 0, maximum: 12) > 0
+                || settings.GetIntegerOption(OverlayOptionKeys.GapCarsBehind, defaultValue: 5, minimum: 0, maximum: 12) > 0;
+        }
+
+        return true;
     }
 
     private static Size OverlayContentBaseSize(

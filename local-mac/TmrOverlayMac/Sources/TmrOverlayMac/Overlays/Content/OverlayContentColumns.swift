@@ -162,8 +162,8 @@ enum OverlayContentColumns {
         blocks: [
             OverlayContentBlockDefinition(
                 id: standingsClassSeparatorBlockId,
-                label: "Class separators",
-                description: "Show iRacing class-colored separators and a limited sample of other multiclass rows.",
+                label: "Multiclass sections",
+                description: "Show class header rows and a limited sample of other multiclass rows.",
                 enabledOptionKey: "standings.class-separators.enabled",
                 defaultEnabled: true,
                 countOptionKey: "standings.other-class-rows",

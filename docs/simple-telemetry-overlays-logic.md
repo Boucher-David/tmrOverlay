@@ -4,7 +4,7 @@ The simple telemetry overlays are small read-only windows into normalized iRacin
 
 Session / Weather and Pit Service use the shared `SimpleTelemetryOverlayForm` shell. Flags and Input / Car State now use custom lightweight forms because their first useful shape is graphical rather than table-first.
 
-- availability uses `OverlayAvailabilityEvaluator` so native and browser overlays share the same connected/collecting/fresh rules
+- availability uses `OverlayAvailabilityEvaluator` so native and localhost overlays share the same connected/collecting/fresh rules
 - snapshots older than 1.5 seconds show a waiting state
 - disconnected telemetry shows `waiting for iRacing`; connected but not collecting telemetry shows `waiting for telemetry`
 - unexpected refresh/render exceptions show a compact visible error and are logged
@@ -50,7 +50,7 @@ The live model carries additional atmospheric fields such as pressure and solar 
 
 ## Pit Service
 
-`Pit Service` reads `LiveFuelPitModel` and is read-only in this branch. Product-wise it belongs with Fuel, not Input / Car State: for V1 it is a local active driver/team context overlay. Native overlay management hides the window when the camera focus is unavailable, focused on another car, in garage/setup context, or otherwise lacks a valid local player car; browser/model callers still receive a waiting state for the same condition. It still renders while the local car is on pit road, in the pit stall, or service is active because that is the primary moment for this overlay.
+`Pit Service` reads `LiveFuelPitModel` and is read-only in this branch. Product-wise it belongs with Fuel, not Input / Car State: for V1 it is a local active driver/team context overlay. Native overlay management hides the window when the camera focus is unavailable, focused on another car, in garage/setup context, or otherwise lacks a valid local player car; localhost/model callers still receive a waiting state for the same condition. It still renders while the local car is on pit road, in the pit stall, or service is active because that is the primary moment for this overlay.
 
 It displays:
 
@@ -99,6 +99,6 @@ It displays:
 - water temperature
 - oil temperature plus oil/fuel pressure
 
-The default native and browser input overlays are graph-first. The line graph remains the primary surface, while current-value widgets live in a right-side content rail. Pedals are shown as vertical percentage bars, steering remains a wheel visualization, and gear/speed are numeric. Steering telemetry is treated as radians from iRacing and formatted to degrees only for display. iRacing `Clutch`/`ClutchRaw` report clutch engagement (`1` means fully engaged), so `LiveInputTelemetryModel.Clutch` inverts the preferred raw channel and displays driver clutch control input (`1` means pressed/disengaging). The graph trace uses a smoothed path for readability without changing the underlying 0..1 pedal/control samples. Throttle, brake, clutch, steering, gear, and speed are independent Content-tab options that can be turned on or off. Input / Car State does not expose Header/Footer settings in this branch.
+The default native and localhost input overlays are graph-first. The line graph remains the primary surface, while current-value widgets live in a right-side content rail. Pedals are shown as vertical percentage bars, steering remains a wheel visualization, and gear/speed are numeric. Steering telemetry is treated as radians from iRacing and formatted to degrees only for display. iRacing `Clutch`/`ClutchRaw` report clutch engagement (`1` means fully engaged), so `LiveInputTelemetryModel.Clutch` inverts the preferred raw channel and displays driver clutch control input (`1` means pressed/disengaging). The graph trace uses a smoothed path for readability without changing the underlying 0..1 pedal/control samples. Throttle, brake, clutch, steering, gear, and speed are independent Content-tab options that can be turned on or off. Input / Car State does not expose Header/Footer settings in this branch.
 
 Engine warning bits use a warning tone. Otherwise this overlay stays neutral and acts as a compact local-driver input surface. TC firing is deliberately not shown yet: current captures expose TC toggle/adjustment-style fields, but not a proven traction-control intervention signal equivalent to `BrakeABSactive`. Current captures also expose `Clutch` and `ClutchRaw`, while future clutch-like schema fields such as dual-clutch channels are watched diagnostically before being promoted into the production overlay.

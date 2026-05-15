@@ -5,7 +5,8 @@ namespace TmrOverlay.Core.Settings;
 
 internal static class AppSettingsMigrator
 {
-    public const int CurrentVersion = 10;
+    public const int CurrentVersion = 11;
+    private const double LegacyDefaultOpacity = 0.88d;
     private const string FlagsOverlayId = "flags";
     private const string FlagsPrimaryScreenDefaultId = "primary-screen-default";
     private const int FlagsDefaultWidth = 360;
@@ -99,11 +100,12 @@ internal static class AppSettingsMigrator
     public static ApplicationSettings Migrate(ApplicationSettings? settings)
     {
         settings ??= new ApplicationSettings();
+        var sourceVersion = settings.SettingsVersion;
         settings.General ??= new ApplicationGeneralSettings();
         settings.Overlays ??= [];
 
         NormalizeGeneral(settings.General);
-        NormalizeOverlays(settings.Overlays);
+        NormalizeOverlays(settings.Overlays, sourceVersion);
         settings.SettingsVersion = CurrentVersion;
         return settings;
     }
@@ -124,7 +126,7 @@ internal static class AppSettingsMigrator
             : "Metric";
     }
 
-    private static void NormalizeOverlays(List<OverlaySettings> overlays)
+    private static void NormalizeOverlays(List<OverlaySettings> overlays, int sourceVersion)
     {
         overlays.RemoveAll(overlay => string.IsNullOrWhiteSpace(overlay.Id));
 
@@ -141,10 +143,20 @@ internal static class AppSettingsMigrator
             overlay.Scale = ClampFinite(overlay.Scale, 0.6d, 2d, 1d);
             overlay.Width = Math.Max(0, overlay.Width);
             overlay.Height = Math.Max(0, overlay.Height);
-            overlay.Opacity = ClampFinite(overlay.Opacity, 0.2d, 1d, 0.88d);
+            if (sourceVersion < CurrentVersion && IsLegacyDefaultOpacity(overlay.Opacity))
+            {
+                overlay.Opacity = 1d;
+            }
+
+            overlay.Opacity = ClampFinite(overlay.Opacity, 0.2d, 1d, 1d);
             NormalizeFlagsOverlay(overlay);
             overlay.LegacyProperties = null;
         }
+    }
+
+    private static bool IsLegacyDefaultOpacity(double opacity)
+    {
+        return double.IsFinite(opacity) && Math.Abs(opacity - LegacyDefaultOpacity) <= 0.0001d;
     }
 
     private static void RemoveIrrelevantOverlayOptions(OverlaySettings overlay)

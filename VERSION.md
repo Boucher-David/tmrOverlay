@@ -13,7 +13,7 @@ Use `docs/model-v2-future-branches.md` for session-handoff notes, current model-
 
 ## Current Branch Target
 
-### v0.19.0 - Live Overlay Browser Parity And Race-Start Hardening
+### v0.19.0 - Live Overlay Localhost Parity And Race-Start Hardening
 
 Planned branch name:
 
@@ -23,23 +23,23 @@ fix/live-overlay-capture-regressions
 
 Planned scope:
 
-- Promote normalized live reference facts so Standings, Relative, Gap To Leader, Track Map, diagnostics, and browser validation agree on focus/player/reference identity before overlay-specific interpretation.
-- Keep Radar as the explicit local in-car spatial special case while allowing Relative, Standings, Gap To Leader, and Track Map to work from timing/scoring evidence in pits, spectated focus, and replayed browser validation contexts.
-- Bring Standings, Relative, and Gap To Leader native/browser behavior into production-contract parity: settings-backed chrome/content, stable row/window sizing, grounded source selection, and no fabricated browser-only fields.
+- Promote normalized live reference facts so Standings, Relative, Gap To Leader, Track Map, diagnostics, and browser review validation agree on focus/player/reference identity before overlay-specific interpretation.
+- Keep Radar as the explicit local in-car spatial special case while allowing Relative, Standings, Gap To Leader, and Track Map to work from timing/scoring evidence in pits, spectated focus, and replayed browser review contexts.
+- Bring Standings, Relative, and Gap To Leader native/localhost behavior into production-contract parity: settings-backed chrome/content, stable row/window sizing, grounded source selection, and no fabricated localhost-only fields.
 - Keep Standings grounded in scoring/results order, keep race row membership stable from field/class settings, preserve leader rows when row caps are smaller than class size, and calculate gap/interval only from explicit timing evidence.
 - Keep Relative centered and stable around the reference car, use numerical position and delta semantics, preserve blank slots instead of resizing, and avoid radar-only locality rules.
 - Port Gap To Leader V2 parity features from legacy/mac where agreed: filtered focused range, threat highlighting, trend metrics, endpoint labels, weather/leader/driver markers, and the 4h growing focus window, while intentionally leaving tactical relative mode out of GtL.
-- Align Pit Service native/browser V2 behavior around the accepted grouped layout, compact session time/lap context, segmented service rows, tire analysis chips, and evidence-backed omission of estimated fuel and in-car setup rows.
-- Align Fuel Calculator native/browser V2 behavior around local player context gating, grouped race/stint metric sections, shared chrome controls, and replay production-model parity while leaving deeper fuel strategy changes for Fuel Calculator v2.
-- Align Input State native/browser behavior around the shared render model, 50 ms refresh, smoothed graph/bar progression, settings-driven graph/right-rail visibility, and in-car-only availability.
-- Align Radar native/browser behavior around the shared render model, distance-based proximity display, class-colour outlines, faster-class approach warning, fade behavior, and bundled/user car-length calibration.
-- Align Track Map native/browser behavior around live-model replay data, fallback map rendering, class-coloured position markers, sector/lap highlight clearing, track-surface incident pulses, and telemetry-built map capture.
-- Align Stream Chat native/browser behavior around fixed-height row flow, shared chrome/content settings, Twitch/live-review message display parity, retained chat history, and documented v1.X stream-v2 follow-up scope for rich event payloads.
-- Align Garage Cover native/browser behavior around stock privacy-cover imagery, garage-signal activation, localhost image routes, and textless browser validation.
-- Align Session / Weather native/browser behavior around grouped session/weather rows, settings-driven content cells, metric/imperial units, weather colouring, local wind-facing direction, shared header chrome, and no source footer option for that overlay.
-- Fix settings visibility/persistence and overlay chrome persistence for visibility, position, opacity, scale, content/header/footer options, session filters, and browser-source settings.
+- Align Pit Service native/localhost V2 behavior around the accepted grouped layout, compact session time/lap context, segmented service rows, tire analysis chips, and evidence-backed omission of estimated fuel and in-car setup rows.
+- Align Fuel Calculator native/localhost V2 behavior around local player context gating, grouped race/stint metric sections, shared chrome controls, and replay production-model parity while leaving deeper fuel strategy changes for Fuel Calculator v2.
+- Align Input State native/localhost behavior around the shared render model, 50 ms refresh, smoothed graph/bar progression, settings-driven graph/right-rail visibility, and in-car-only availability.
+- Align Radar native/localhost behavior around the shared render model, distance-based proximity display, class-colour outlines, faster-class approach warning, fade behavior, and bundled/user car-length calibration.
+- Align Track Map native/localhost behavior around live-model replay data, fallback map rendering, class-coloured position markers, sector/lap highlight clearing, track-surface incident pulses, and telemetry-built map capture.
+- Align Stream Chat native/localhost behavior around fixed-height row flow, shared chrome/content settings, Twitch/live-review message display parity, retained chat history, and documented v1.X stream-v2 follow-up scope for rich event payloads.
+- Align Garage Cover localhost behavior around stock privacy-cover imagery, garage-signal activation, localhost image routes, and textless browser review validation.
+- Align Session / Weather native/localhost behavior around grouped session/weather rows, settings-driven content cells, metric/imperial units, weather colouring, local wind-facing direction, shared header chrome, and no source footer option for that overlay.
+- Fix settings visibility/persistence and overlay chrome persistence for visibility, position, opacity, scale, content/header/footer options, content/header/footer session gates, and localhost settings.
 - Add raw `ClutchRaw` capture and input-display fallback while preserving brake behavior for pit/engine-off captures and addressing input wheel clipping.
-- Extend browser replay validation to stream real telemetry-derived overlay models instead of hand-authored demos, with Road Atlanta, four-hour, and 24-hour mid-race rejoin captures as the preferred scenario set.
+- Extend browser review replay validation to stream real telemetry-derived overlay models instead of hand-authored demos, with Road Atlanta, four-hour, and 24-hour mid-race rejoin captures as the preferred scenario set.
 - Keep uploaded raw captures, screenshots, and diagnostic bundles local unless they are deliberately promoted into compact redacted fixtures or review artifacts.
 
 Technical implementation checklist:
@@ -48,46 +48,46 @@ Technical implementation checklist:
 2. Add `LiveReferenceModel` and route shared overlay consumers through it.
 3. Update Standings, Relative, Gap To Leader, Track Map, diagnostics, and browser replay tooling to consume normalized reference facts.
 4. Keep overlay-specific contexts local to overlays that need them, especially Radar local/in-car spatial gating.
-5. Align native and browser contracts for Standings, Relative, and Gap To Leader, including settings-backed content/header/footer behavior.
-6. Align Pit Service native and browser contracts around grouped sections, segmented service rows, tire analysis chips, and the first-pass feature boundary for fuel estimates and in-car setup rows.
-7. Align Fuel Calculator native/browser contracts around shared local strategy gating, grouped race/stint metric sections, shared source-footer controls, and production-shaped browser replay models.
-8. Align Input State, Radar, Track Map, Stream Chat, Garage Cover, and Session / Weather native/browser contracts around shared render/view models and settings-backed browser replay.
+5. Align native and localhost contracts for Standings, Relative, and Gap To Leader, including settings-backed content/header/footer behavior.
+6. Align Pit Service native and localhost contracts around grouped sections, segmented service rows, tire analysis chips, and the first-pass feature boundary for fuel estimates and in-car setup rows.
+7. Align Fuel Calculator native/localhost contracts around shared local strategy gating, grouped race/stint metric sections, shared source-footer controls, and production-shaped browser review replay models.
+8. Align Input State, Radar, Track Map, Stream Chat, Garage Cover, and Session / Weather native/localhost contracts around shared render/view models and settings-backed browser review replay.
 9. Add clutch raw capture/read models and use `ClutchRaw` as an input fallback when normalized clutch remains flat zero.
 10. Update Settings z-order, persistence, and diagnostics behavior so update/restart and focus transitions preserve visible overlays and settings choices.
-11. Extend browser replay validation to fetch real telemetry-derived overlay models, assert live-model invariants, and preserve generated review artifacts.
+11. Extend browser review replay validation to fetch real telemetry-derived overlay models, assert live-model invariants, and preserve generated review artifacts.
 12. Validate local static checks, browser tests, screenshot expectations, and git hygiene; use Windows CI or a Windows machine for the full .NET build/test and real WinForms behavior pass.
 
 Likely squash title:
 
 ```text
-[v0.19.0] Align live overlays and browser validation
+[v0.19.0] Align live overlays and localhost parity
 ```
 
 Likely squash body:
 
 ```text
 - Bumped shared product/version metadata to 0.19.0 across Windows and the tracked mac harness, with a mac test guard for version drift.
-- Added a normalized `LiveReferenceModel` and routed Standings, Relative, Gap To Leader, Track Map, diagnostics, and browser validation through shared focus/player/reference facts.
+- Added a normalized `LiveReferenceModel` and routed Standings, Relative, Gap To Leader, Track Map, diagnostics, and browser review validation through shared focus/player/reference facts.
 - Kept Radar as an overlay-specific local in-car spatial context while allowing Relative to render from pits when reference timing/progress evidence exists.
-- Aligned Standings native/browser behavior around scoring order, row caps, class leaders, stable race sizing, and grounded `GAP`/`INT` timing evidence.
-- Aligned Relative native/browser behavior around stable centered rows, numerical positions, delta semantics, lap-ahead/behind styling, and non-local timing contexts.
+- Aligned Standings native/localhost behavior around scoring order, row caps, class leaders, stable race sizing, and grounded `GAP`/`INT` timing evidence.
+- Aligned Relative native/localhost behavior around stable centered rows, numerical positions, delta semantics, lap-ahead/behind styling, and non-local timing contexts.
 - Ported agreed Gap To Leader V2 parity behavior: filtered focused range, threat highlighting, trend metrics, endpoint label lanes, weather bands, leader/driver markers, and the 4h growing focus window.
 - Kept tactical relative mode out of Gap To Leader V2 by design.
-- Aligned Pit Service native/browser V2 behavior around grouped Session/Pit Signal/Service Request/Tire Analysis sections, segmented service rows, tire analysis chips, and evidence-backed omission of estimated fuel and in-car setup rows.
-- Aligned Fuel Calculator native/browser V2 behavior around local player context gating, grouped Race Information/Stint Targets sections, neutral data-presentation tones, shared source-footer controls, and production-shaped browser replay models.
-- Aligned Input State native/browser behavior around the shared render model, 50 ms refresh, smoothed bars/traces, settings-driven graph/right-rail collapse, metric/imperial speed, and in-car-only visibility.
-- Aligned Radar native/browser behavior around the shared render model, distance-based proximity display, class-colour outlines, faster-class approach warnings, fade behavior, bundled car specs, and user-history body-length calibration.
-- Aligned Track Map native/browser behavior around live-model replay data, fallback-map rendering, uniform class-coloured position markers, sector/lap highlight clearing, track-surface incident pulses, and telemetry-built map capture.
-- Aligned Stream Chat native/browser behavior around fixed-height row flow, shared chrome/content settings, Twitch/live-review message rendering, retained chat history, and a documented v1.X stream-v2 follow-up for richer Twitch/Streamlabs payloads.
-- Aligned Garage Cover native/browser behavior around stock privacy-cover imagery, garage-signal activation, localhost image routes, and textless browser validation.
-- Aligned Session / Weather native/browser behavior around grouped session/weather rows, settings-driven content cells, metric/imperial units, weather colouring, local wind-facing direction, shared header chrome, and no source footer option for that overlay.
-- Kept Settings visible after Alt+Tab/focus loss while demoting it from the topmost layer, and preserved overlay visibility, position, opacity, scale, content/header/footer, and session-filter settings across update/restart flows.
+- Aligned Pit Service native/localhost V2 behavior around grouped Session/Pit Signal/Service Request/Tire Analysis sections, segmented service rows, tire analysis chips, and evidence-backed omission of estimated fuel and in-car setup rows.
+- Aligned Fuel Calculator native/localhost V2 behavior around local player context gating, grouped Race Information/Stint Targets sections, neutral data-presentation tones, shared source-footer controls, and production-shaped browser review replay models.
+- Aligned Input State native/localhost behavior around the shared render model, 50 ms refresh, smoothed bars/traces, settings-driven graph/right-rail collapse, metric/imperial speed, and in-car-only visibility.
+- Aligned Radar native/localhost behavior around the shared render model, distance-based proximity display, class-colour outlines, faster-class approach warnings, fade behavior, bundled car specs, and user-history body-length calibration.
+- Aligned Track Map native/localhost behavior around live-model replay data, fallback-map rendering, uniform class-coloured position markers, sector/lap highlight clearing, track-surface incident pulses, and telemetry-built map capture.
+- Aligned Stream Chat native/localhost behavior around fixed-height row flow, shared chrome/content settings, Twitch/live-review message rendering, retained chat history, and a documented v1.X stream-v2 follow-up for richer Twitch/Streamlabs payloads.
+- Aligned Garage Cover localhost behavior around stock privacy-cover imagery, garage-signal activation, localhost image routes, and textless browser review validation.
+- Aligned Session / Weather native/localhost behavior around grouped session/weather rows, settings-driven content cells, metric/imperial units, weather colouring, local wind-facing direction, shared header chrome, and no source footer option for that overlay.
+- Kept Settings visible after Alt+Tab/focus loss while demoting it from the topmost layer, and preserved overlay visibility, position, opacity, scale, content/header/footer, and session-gate settings across update/restart flows.
 - Normalized live-overlay and freeze-watch diagnostics so settings and overlay visibility state cannot be reported as active while hidden.
 - Captured raw clutch telemetry and used `ClutchRaw` as the input-display fallback when normalized clutch remains flat zero.
 - Fixed input wheel clipping and preserved pit/engine-off brake behavior.
-- Extended browser race-start replay validation to inspect telemetry-derived overlay models in addition to screenshot artifacts, aligned replay/corpus tooling with meaningful race-scoring coverage, and documented real-capture replay expectations.
-- Updated live-model, Relative, Standings, Gap To Leader, Pit Service, Fuel Calculator, Settings, browser replay, and future-branch docs for the normalized-reference model and browser-equals-native validation target.
-- Validated git hygiene, C# compile-shape scanning, browser unit tests, browser Playwright tests, browser replay script syntax, Python compile checks, deterministic mac screenshots, Windows screenshot expectations, and dense 4h race-start browser replay across the overlay catalog; Windows .NET build/test and real WinForms behavior validation remain CI/Windows-machine gates.
+- Extended browser review race-start replay validation to inspect telemetry-derived overlay models in addition to screenshot artifacts, aligned replay/corpus tooling with meaningful race-scoring coverage, and documented real-capture replay expectations.
+- Updated live-model, Relative, Standings, Gap To Leader, Pit Service, Fuel Calculator, Settings, browser review, localhost, and future-branch docs for the normalized-reference model and native-equals-localhost validation target.
+- Validated git hygiene, C# compile-shape scanning, browser unit tests, browser Playwright tests, browser review replay script syntax, Python compile checks, deterministic mac screenshots, Windows screenshot expectations, and dense 4h race-start browser review replay across the overlay catalog; Windows .NET build/test and real WinForms behavior validation remain CI/Windows-machine gates.
 ```
 
 ## Next Planned Milestone
@@ -138,7 +138,7 @@ Summary:
 - Kept product overlays in their saved topmost band while making Settings temporarily topmost only while active, so overlays can stay above iRacing after focus returns to the sim.
 - Preserved Stream Chat and transparent overlay click-through/no-activate behavior while avoiding the previous Settings z-order demotion path.
 - Added `metadata/window-z-order.json` diagnostics with current foreground HWND, recent foreground-window changes, and top-level desktop window topmost/z-order state.
-- Fixed Input / Car State steering conversion from iRacing radians to displayed degrees, smoothed native/browser/mac input traces, and guarded browser/native wheel rendering against bottom clipping.
+- Fixed Input / Car State steering conversion from iRacing radians to displayed degrees, smoothed native/localhost/mac input traces, and guarded native/localhost wheel rendering against bottom clipping.
 - Updated docs and Windows screenshot tool wiring for the foreground-window diagnostics dependency.
 
 ### v0.18.7 - V1 Candidate Focus And Diagnostics Hardening
@@ -162,7 +162,7 @@ Summary:
 - Added a Velopack uninstall hook that removes TmrOverlay's LocalAppData stores while guarding against unsafe configured paths.
 - Added startup/update cleanup for stale TechMatesRacing.TmrOverlay package folders and shortcuts, plus diagnostics bundle metadata for the cleanup result.
 - Updated release packaging to request Desktop and Start Menu shortcuts and added branded installer welcome/splash assets.
-- Fixed invisible/topmost overlay input diagnostics, support/browser-source screenshot crops, simple telemetry overlay heights, and blank fuel calculator rows.
+- Fixed invisible/topmost overlay input diagnostics, support/localhost screenshot crops, simple telemetry overlay heights, and blank fuel calculator rows.
 - Regenerated MSI banner/logo artwork with a brighter first-screen treatment and updated installer release docs.
 
 ### v0.18.3 - Refresh Windows Overlay Screenshots And Settings Typography
@@ -251,7 +251,7 @@ Summary:
 - Bumped shared .NET product/version metadata to 0.17.0.
 - Made the tracked mac harness Design V2 settings shell the primary mac settings surface for the main app and current overlay tabs.
 - Promoted Design V2 into the Windows production settings app through an additive WinForms V2 surface over the existing settings contracts.
-- Preserved production settings behavior for visibility, scale, opacity, sessions, header/footer/content toggles, browser-source routes, Garage Cover image import, and Stream Chat setup.
+- Preserved production settings behavior for visibility, scale, opacity, sessions, header/footer/content toggles, localhost routes, Garage Cover image import, and Stream Chat setup.
 - Added shared Design V2 tokens, component screenshots, and screenshot validation coverage for mac and Windows settings review.
 
 ### v0.16.1 - Overlay Feedback Hardening
@@ -267,11 +267,11 @@ Squash title:
 Summary:
 
 - Bumped shared .NET product/version metadata to 0.16.1.
-- Added shared content-column architecture for Standings, Relative, and Inputs with overlay-owned keys, visible/editable pixel widths, stable disabled ordering, matching native/browser defaults, and recommended OBS browser-source dimensions.
-- Reworked Standings native/browser behavior around scoring-first start rows, configurable columns, class-colored separators, configurable other-class row blocks, projection-backed class lap estimates, class color caching, and a wider default layout.
+- Added shared content-column architecture for Standings, Relative, and Inputs with overlay-owned keys, visible/editable pixel widths, stable disabled ordering, matching native/localhost defaults, and recommended OBS source dimensions.
+- Reworked Standings native/localhost behavior around scoring-first start rows, configurable columns, class-colored separators, configurable other-class row blocks, projection-backed class lap estimates, class color caching, and a wider default layout.
 - Hardened Gap To Leader for long races with a four-hour visible window, same-lap reference selection, leader/reference transitions, clearer axis labels, and local 4-hour/24-hour telemetry demo coverage.
-- Added shared live race projection data for timed-race lap estimates and reused it in Fuel, Session / Weather, Flags, Standings separators, browser-source metadata, and future strategy/fuel calculations.
-- Updated Input / Car State native/browser rendering so the line graph is primary and current speed/gear/pedal/steering widgets are toggleable right-side content.
+- Added shared live race projection data for timed-race lap estimates and reused it in Fuel, Session / Weather, Flags, Standings separators, localhost metadata, and future strategy/fuel calculations.
+- Updated Input / Car State native/localhost rendering so the line graph is primary and current speed/gear/pedal/steering widgets are toggleable right-side content.
 - Reworked Settings overlay tabs into left-side General/Content/Header/Footer sections, with Inputs suppressing unused header/footer tabs and settings save/apply work coalesced to avoid recursive UI churn.
 - Added flags/settings freeze hardening and diagnostics, brought the mac harness into source control and CI, and aligned release packaging around the `TMROverlay` package id and `TMROverlay.exe` executable name.
 
@@ -290,7 +290,7 @@ Summary:
 - Bumped shared .NET product/version metadata to 0.13.0.
 - Added shared model-v2 race-progress, overlay availability/freshness, and app diagnostics status contracts.
 - Promoted core overlays to normalized model-v2 consumers across Standings, Relative, local Radar, Flags, Session / Weather, Pit Service, Input / Car State, Fuel, Gap To Leader, and Track Map.
-- Reworked Standings around scoring-snapshot ordering, class grouping, configurable other-class rows, pit labels, and localhost browser-source settings.
+- Reworked Standings around scoring-snapshot ordering, class grouping, configurable other-class rows, pit labels, and localhost settings.
 - Kept Track Map marker placement honest under partial live coverage by plotting only cars with usable spatial progress and using scoring rows only for identity/color enrichment.
 - Scoped Radar to accurate local player-in-car proximity and side-warning telemetry while leaving non-local focus and timing-only placement as future evidence-aware work.
 - Added Garage Cover image import, preview, localhost fail-closed behavior, and diagnostics.
@@ -330,7 +330,7 @@ Summary:
 - Added production Standings and Track Map overlay registrations, settings tabs, Windows screenshot fixtures, and mac harness review surfaces.
 - Added compact Standings rendering from normalized model-v2 timing rows, including leader gap, focus interval, and pit-road status.
 - Added a transparent map-only Track Map surface with bundled-map support, circle fallback, live car dots, IBT-derived local map generation, confidence diagnostics, bundled-map assets, and sector-highlight diagnostics.
-- Added `LocalhostOverlays` browser-source support for the supported overlay suite while keeping Overlay Bridge separate as a future trusted teammate-to-teammate sharing boundary.
+- Added `LocalhostOverlays` support for the supported overlay suite while keeping Overlay Bridge separate as a future trusted teammate-to-teammate sharing boundary.
 - Added Stream Chat source selection for Streamlabs Chat Box widget URLs or public Twitch channel chat, with diagnostics redaction for private Streamlabs URLs.
 - Restored flat settings tabs, kept the larger fixed settings window, and hardened live overlay refresh/fade behavior for Relative, Fuel Calculator, Inputs, and local Radar.
 - Regenerated tracked settings/overlay screenshots and updated docs/context for the v0.11 product shape.

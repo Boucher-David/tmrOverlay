@@ -220,6 +220,48 @@ public sealed class AppSettingsStoreTests
     }
 
     [Fact]
+    public void Load_MigratesLegacyDefaultOpacityToFullOpacity()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "tmr-overlay-settings-test", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var storage = CreateStorage(root);
+            Directory.CreateDirectory(storage.SettingsRoot);
+            var settingsPath = Path.Combine(storage.SettingsRoot, "settings.json");
+            File.WriteAllText(
+                settingsPath,
+                """
+                {
+                  "settingsVersion": 10,
+                  "overlays": [
+                    {
+                      "id": "standings",
+                      "opacity": 0.88
+                    },
+                    {
+                      "id": "relative",
+                      "opacity": 0.72
+                    }
+                  ]
+                }
+                """);
+
+            var settings = new AppSettingsStore(storage).Load();
+
+            Assert.Equal(AppSettingsMigrator.CurrentVersion, settings.SettingsVersion);
+            Assert.Equal(1d, settings.Overlays.Single(overlay => overlay.Id == "standings").Opacity);
+            Assert.Equal(0.72d, settings.Overlays.Single(overlay => overlay.Id == "relative").Opacity);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void Load_CompactsLegacyFullScreenFlagsOverlay()
     {
         var root = Path.Combine(Path.GetTempPath(), "tmr-overlay-settings-test", Guid.NewGuid().ToString("N"));

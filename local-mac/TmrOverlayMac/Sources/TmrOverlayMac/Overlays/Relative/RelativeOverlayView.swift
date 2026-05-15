@@ -633,7 +633,7 @@ final class RelativeOverlayView: NSView {
 
         switch sessionKind {
         case "test":
-            return boolOption(testKey, defaultValue: true)
+            return boolOption(practiceKey, defaultValue: true)
         case "practice":
             return boolOption(practiceKey, defaultValue: true)
         case "qualifying":
@@ -651,10 +651,7 @@ final class RelativeOverlayView: NSView {
         }
 
         let normalized = sessionKey.lowercased()
-        if normalized.contains("test") {
-            return "test"
-        }
-        if normalized.contains("practice") {
+        if normalized.contains("test") || normalized.contains("practice") {
             return "practice"
         }
         if normalized.contains("qual") {

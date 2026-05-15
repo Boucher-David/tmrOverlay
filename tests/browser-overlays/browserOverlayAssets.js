@@ -84,6 +84,14 @@ export const pages = {
   })
 };
 
+const opacityExcludedOverlayIds = new Set([
+  'stream-chat',
+  'car-radar',
+  'flags',
+  'garage-cover',
+  'track-map'
+]);
+
 export function browserOverlayPages() {
   return Object.values(pages);
 }
@@ -104,7 +112,7 @@ export function browserOverlayPage(nameOrRoute) {
 
 export function renderOverlayIndexHtml(port = 8765) {
   const links = [
-    '<a href="/review/app">Application Validator</a>',
+    '<a href="/review/app">Settings App Review</a>',
     '<a href="/review/settings/general">Settings - General</a>',
     ...Object.values(pages)
     .map((page) => `<a href="${page.route}">${page.title}</a>`)
@@ -115,51 +123,51 @@ export function renderOverlayIndexHtml(port = 8765) {
     .replace('{{INDEX_CSS}}', assetText('styles/index.css'));
 }
 
-export function renderSettingsGeneralReviewHtml({ previewMode = 'off' } = {}) {
+export function renderSettingsGeneralReviewHtml({ previewMode = 'off', reviewState = null } = {}) {
   return renderSettingsReviewHtml({
     previewMode,
-    appActive: false,
-    generalActive: true,
-    pageTitle: 'General',
-    pageSubtitle: 'Shared units and preview tools.',
-    previewTitle: 'Show Preview',
-    previewLabel: 'Automatic application overlay preview stage'
+    selectedTab: 'general',
+    selectedRegion: 'general',
+    reviewState
   });
 }
 
-export function renderAppValidatorReviewHtml({ previewMode = 'off' } = {}) {
+export function renderAppValidatorReviewHtml({ previewMode = 'off', selectedTab = 'general', selectedRegion = 'general', reviewState = null } = {}) {
   return renderSettingsReviewHtml({
     previewMode,
-    appActive: true,
-    generalActive: false,
-    pageTitle: 'Application Validator',
-    pageSubtitle: 'Settings shell and live overlay review.',
-    previewTitle: 'Live Application Preview',
-    previewLabel: 'Full application overlay validator stage'
+    selectedTab,
+    selectedRegion,
+    reviewState
   });
 }
 
 function renderSettingsReviewHtml({
   previewMode = 'off',
-  appActive,
-  generalActive,
-  pageTitle,
-  pageSubtitle,
-  previewTitle,
-  previewLabel
+  selectedTab = 'general',
+  selectedRegion = 'general',
+  reviewState = null
 }) {
   const settingsCss = assetText('styles/settings-general.css')
     .replace('{{THEME_CSS_VARIABLES}}', themeCssVariables());
+  const config = settingsAppConfig({
+    previewMode,
+    selectedTab,
+    selectedRegion,
+    reviewState
+  });
 
   return assetText('templates/settings-general.html')
-    .replace('{{PREVIEW_MODE}}', normalizePreviewMode(previewMode))
-    .replace('{{APP_ACTIVE}}', appActive ? 'active' : '')
-    .replace('{{GENERAL_ACTIVE}}', generalActive ? 'active' : '')
-    .replace('{{PAGE_TITLE}}', pageTitle)
-    .replace('{{PAGE_SUBTITLE}}', pageSubtitle)
-    .replace('{{PREVIEW_TITLE}}', previewTitle)
-    .replace('{{PREVIEW_LABEL}}', previewLabel)
-    .replace('{{SETTINGS_CSS}}', settingsCss);
+    .replace('{{SETTINGS_CSS}}', settingsCss)
+    .replace('{{APP_CONFIG_JSON}}', escapeHtml(JSON.stringify(config)));
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '\\u0026')
+    .replaceAll('<', '\\u003c')
+    .replaceAll('>', '\\u003e')
+    .replaceAll('\u2028', '\\u2028')
+    .replaceAll('\u2029', '\\u2029');
 }
 
 export function renderOverlayHtml(name) {
@@ -197,6 +205,407 @@ export function browserOverlayApiResponse(name, path, { live, settings = {}, mod
   }
 
   return null;
+}
+
+function settingsAppConfig({ previewMode = 'off', selectedTab = 'general', selectedRegion = 'general', reviewState = null } = {}) {
+  return {
+    previewMode: normalizePreviewMode(previewMode),
+    selectedTab,
+    selectedRegion,
+    unitSystem: normalizeUnitSystem(reviewState?.unitSystem || 'Metric'),
+    support: {
+      rawCaptureEnabled: reviewState?.support?.rawCaptureEnabled === true,
+      latestBundlePath: reviewState?.support?.latestBundlePath || '',
+      statusText: reviewState?.support?.statusText || '',
+      statusTone: reviewState?.support?.statusTone || 'neutral',
+      updateText: reviewState?.support?.updateText || 'No update available.',
+      canCheckUpdates: reviewState?.support?.canCheckUpdates ?? true,
+      canInstallUpdate: reviewState?.support?.canInstallUpdate ?? false,
+      canRestartUpdate: reviewState?.support?.canRestartUpdate ?? false,
+      updatePendingRestart: reviewState?.support?.updatePendingRestart ?? false,
+      releasePageAvailable: reviewState?.support?.releasePageAvailable ?? false
+    },
+    sessionLabels: ['Practice', 'Qualifying', 'Race'],
+    overlays: settingsAppOverlays(reviewState)
+  };
+}
+
+function settingsAppOverlays(reviewState = null) {
+  const order = [
+    'standings',
+    'relative',
+    'gap-to-leader',
+    'track-map',
+    'stream-chat',
+    'garage-cover',
+    'fuel-calculator',
+    'input-state',
+    'car-radar',
+    'flags',
+    'session-weather',
+    'pit-service'
+  ];
+  return order.map((id) => settingsOverlayDefinition(id, reviewState));
+}
+
+function settingsOverlayDefinition(id, reviewState = null) {
+  const page = pages[id];
+  const overlayState = reviewState?.overlays?.[id] || {};
+  const sharedChrome = ['standings', 'relative', 'fuel-calculator', 'gap-to-leader', 'session-weather', 'pit-service'].includes(id);
+  const noSessionFilters = ['stream-chat', 'gap-to-leader', 'flags'].includes(id);
+  const noOpacity = ['stream-chat', 'car-radar', 'flags', 'garage-cover'].includes(id);
+  return {
+    id,
+    title: page?.title || titleCase(id.replaceAll('-', ' ')),
+    subtitle: settingsOverlaySubtitle(id),
+    route: page?.route || null,
+    browserSize: settingsBrowserSize(id, overlayState),
+    enabled: overlayState.enabled ?? false,
+    scalePercent: overlayState.scalePercent ?? 100,
+    opacityPercent: overlayState.opacityPercent ?? 100,
+    showScale: true,
+    showOpacity: !noOpacity,
+    showSessionFilters: !noSessionFilters && id !== 'garage-cover',
+    supportsChrome: sharedChrome,
+    content: overlayState.content || {},
+    sessions: overlayState.sessions ?? (id === 'gap-to-leader'
+      ? { test: false, practice: false, qualifying: false, race: true }
+      : { test: true, practice: true, qualifying: true, race: true }),
+    providerLabel: providerLabelFromState(overlayState.provider),
+    provider: overlayState.provider || 'twitch',
+    twitchChannel: overlayState.twitchChannel || 'techmatesracing',
+    streamlabsWidgetUrl: overlayState.streamlabsWidgetUrl || '',
+    garageHasImage: overlayState.garageHasImage === true,
+    garagePreviewVisible: overlayState.garagePreviewVisible === true,
+    classSeparatorsEnabled: contentStateValue(
+      overlayState,
+      'standings.class-separators.enabled',
+      'Multiclass sections',
+      contentStateValue(overlayState, 'standings.class-separators.enabled', 'Class separators', true)),
+    otherClassRows: overlayState.otherClassRows ?? 2,
+    carsEachSide: overlayState.carsEachSide ?? 5,
+    carsAhead: overlayState.carsAhead ?? 5,
+    carsBehind: overlayState.carsBehind ?? 5,
+    chrome: overlayState.chrome || {},
+    headerRows: sharedChrome ? ['Status', 'Time remaining'] : [],
+    footerRows: sharedChrome && id !== 'session-weather' ? ['Source'] : [],
+    contentTitle: settingsContentTitle(id),
+    gridColumns: ['session-weather', 'pit-service', 'stream-chat'].includes(id) ? 2 : 1,
+    contentRows: settingsContentRows(id, overlayState)
+  };
+}
+
+function providerLabelFromState(provider) {
+  return provider === 'streamlabs' ? 'Streamlabs' : provider === 'none' ? 'Not configured' : 'Twitch';
+}
+
+function settingsOverlaySubtitle(id) {
+  return {
+    standings: 'Class and overall running order for the current session.',
+    relative: 'Nearby-car timing around the local in-car reference.',
+    'gap-to-leader': 'Focused class gap trend and nearby leader context.',
+    'fuel-calculator': 'Fuel strategy, stint targets, and source confidence.',
+    'session-weather': 'Session timing, track state, and weather telemetry.',
+    'pit-service': 'Pit request state, service plan, and release context.',
+    'track-map': 'Live car location and sector context.',
+    'stream-chat': 'Local browser-source chat setup for Streamlabs or Twitch.',
+    'garage-cover': 'Local browser-source privacy cover for garage and setup scenes.',
+    'input-state': 'Input rail visibility for pedal, steering, gear, and speed telemetry.',
+    'car-radar': 'Local proximity radar and multiclass approach warning controls.',
+    flags: 'Compact session flag strip display and size controls.'
+  }[id] || 'Overlay settings and browser-source controls.';
+}
+
+function settingsBrowserSize(id, overlayState = {}) {
+  const base = {
+    standings: [780, 520],
+    relative: [520, 360],
+    'gap-to-leader': [720, 360],
+    'track-map': [360, 360],
+    'stream-chat': [380, 520],
+    'garage-cover': [1280, 720],
+    'fuel-calculator': [600, 340],
+    'input-state': [520, 260],
+    'car-radar': [300, 300],
+    flags: [360, 170],
+    'session-weather': [480, 520],
+    'pit-service': [420, 560]
+  }[id] || [400, 300];
+  if (id === 'input-state') {
+    base[0] = inputStateBaseWidth(overlayState, base[0]);
+  }
+  const scale = Math.max(0.6, Math.min(2, Number(overlayState.scalePercent || 100) / 100));
+  return `${Math.round(base[0] * scale)} x ${Math.round(base[1] * scale)}`;
+}
+
+function inputStateBaseWidth(overlayState, fullWidth) {
+  const hasGraph = contentStateValue(overlayState, 'input-state.trace.throttle', 'Throttle trace', true)
+    || contentStateValue(overlayState, 'input-state.trace.brake', 'Brake trace', true)
+    || contentStateValue(overlayState, 'input-state.trace.clutch', 'Clutch trace', true);
+  const hasRail = contentStateValue(overlayState, 'input-state.current.throttle', 'Throttle %', true)
+    || contentStateValue(overlayState, 'input-state.current.brake', 'Brake %', true)
+    || contentStateValue(overlayState, 'input-state.current.clutch', 'Clutch %', true)
+    || contentStateValue(overlayState, 'input-state.current.steering', 'Steering wheel', true)
+    || contentStateValue(overlayState, 'input-state.current.gear', 'Gear', true)
+    || contentStateValue(overlayState, 'input-state.current.speed', 'Speed', true);
+  if (hasGraph && hasRail) return fullWidth;
+  if (hasGraph) return 380;
+  return 276;
+}
+
+function settingsContentTitle(id) {
+  return {
+    'session-weather': 'Session / Weather Cells',
+    'pit-service': 'Pit Service Cells',
+    'stream-chat': 'Twitch Metadata'
+  }[id] || 'Content Display';
+}
+
+function settingsContentRows(id, overlayState = {}) {
+  const enabled = (label, value = true, extra = {}) => {
+    const key = extra.key || settingsContentOptionKey(id, label) || label;
+    return {
+      label,
+      key,
+      defaultEnabled: value,
+      enabled: contentStateValue(overlayState, key, label, value),
+      ...extra
+    };
+  };
+  switch (id) {
+    case 'standings':
+      return [
+        enabled('Class position'),
+        enabled('Car number'),
+        enabled('Driver'),
+        enabled('Class gap'),
+        enabled('Focus interval'),
+        enabled('Pit status')
+      ];
+    case 'relative':
+      return [
+        enabled('Relative position'),
+        enabled('Driver'),
+        enabled('Relative delta'),
+        enabled('Pit status', false)
+      ];
+    case 'gap-to-leader':
+      return [];
+    case 'fuel-calculator':
+      return [enabled('Advice column')];
+    case 'track-map':
+      return [
+        enabled('Sector boundaries')
+      ];
+    case 'stream-chat':
+      return [
+        enabled('Author color'),
+        enabled('Badges'),
+        enabled('Bits'),
+        enabled('First message'),
+        enabled('Replies'),
+        enabled('Timestamps'),
+        enabled('Emotes'),
+        enabled('Alerts'),
+        enabled('Message IDs', false)
+      ];
+    case 'input-state':
+      return [
+        enabled('Throttle trace'),
+        enabled('Brake trace'),
+        enabled('Clutch trace'),
+        enabled('Throttle %'),
+        enabled('Brake %'),
+        enabled('Clutch %'),
+        enabled('Steering wheel'),
+        enabled('Gear'),
+        enabled('Speed')
+      ];
+    case 'car-radar':
+      return [
+        enabled('Faster-class warning')
+      ];
+    case 'flags':
+      return [
+        enabled('Green'),
+        enabled('Blue'),
+        enabled('Yellow'),
+        enabled('Red / black'),
+        enabled('White / checkered')
+      ];
+    case 'session-weather':
+      return [
+        enabled('Session type'),
+        enabled('Session name'),
+        enabled('Session mode'),
+        enabled('Elapsed time'),
+        enabled('Remaining time'),
+        enabled('Total time'),
+        enabled('Event type'),
+        enabled('Car'),
+        enabled('Track name'),
+        enabled('Track length'),
+        enabled('Laps remaining'),
+        enabled('Laps total'),
+        enabled('Wetness'),
+        enabled('Declared surface'),
+        enabled('Rubber'),
+        enabled('Skies'),
+        enabled('Weather'),
+        enabled('Rain'),
+        enabled('Wind direction'),
+        enabled('Wind speed'),
+        enabled('Facing wind'),
+        enabled('Air temp'),
+        enabled('Track temp'),
+        enabled('Humidity'),
+        enabled('Fog'),
+        enabled('Pressure')
+      ];
+    case 'pit-service':
+      return [
+        enabled('Session time'),
+        enabled('Session laps'),
+        enabled('Release'),
+        enabled('Pit status'),
+        enabled('Fuel requested'),
+        enabled('Fuel selected'),
+        enabled('Tearoff requested'),
+        enabled('Required repair'),
+        enabled('Optional repair'),
+        enabled('Fast repair selected'),
+        enabled('Fast repairs available'),
+        enabled('Compound'),
+        enabled('Change request'),
+        enabled('Set limit'),
+        enabled('Sets available'),
+        enabled('Sets used'),
+        enabled('Pressure'),
+        enabled('Temperature'),
+        enabled('Wear'),
+        enabled('Distance')
+      ];
+    default:
+      return [enabled('Content')];
+  }
+}
+
+function contentStateValue(overlayState, key, label, defaultValue) {
+  const content = overlayState.content || {};
+  if (Object.hasOwn(content, key)) return content[key] !== false;
+  if (Object.hasOwn(content, label)) return content[label] !== false;
+  return defaultValue;
+}
+
+function settingsContentOptionKey(id, label) {
+  const maps = {
+    standings: {
+      'Class position': 'standings.content.standings.class-position.enabled',
+      'Car number': 'standings.content.standings.car-number.enabled',
+      Driver: 'standings.content.standings.driver.enabled',
+      'Class gap': 'standings.content.standings.gap.enabled',
+      'Focus interval': 'standings.content.standings.interval.enabled',
+      'Pit status': 'standings.content.standings.pit.enabled',
+      'Multiclass sections': 'standings.class-separators.enabled',
+      'Class separators': 'standings.class-separators.enabled'
+    },
+    relative: {
+      'Relative position': 'relative.content.relative.position.enabled',
+      Driver: 'relative.content.relative.driver.enabled',
+      'Relative delta': 'relative.content.relative.gap.enabled',
+      'Pit status': 'relative.content.relative.pit.enabled'
+    },
+    'fuel-calculator': {
+      'Advice column': 'fuel.advice'
+    },
+    'track-map': {
+      'Sector boundaries': 'track-map.sector-boundaries.enabled',
+      'Local map building': 'track-map.build-from-telemetry'
+    },
+    'input-state': {
+      'Throttle trace': 'input-state.trace.throttle',
+      'Brake trace': 'input-state.trace.brake',
+      'Clutch trace': 'input-state.trace.clutch',
+      'Throttle %': 'input-state.current.throttle',
+      'Brake %': 'input-state.current.brake',
+      'Clutch %': 'input-state.current.clutch',
+      'Steering wheel': 'input-state.current.steering',
+      Gear: 'input-state.current.gear',
+      Speed: 'input-state.current.speed'
+    },
+    'car-radar': {
+      'Faster-class warning': 'radar.multiclass-warning'
+    },
+    flags: {
+      Green: 'flags.show-green',
+      Blue: 'flags.show-blue',
+      Yellow: 'flags.show-yellow',
+      'Red / black': 'flags.show-critical',
+      'White / checkered': 'flags.show-finish'
+    },
+    'stream-chat': {
+      'Author color': 'stream-chat.twitch.author-color',
+      Badges: 'stream-chat.twitch.badges',
+      Bits: 'stream-chat.twitch.bits',
+      'First message': 'stream-chat.twitch.first-message',
+      Replies: 'stream-chat.twitch.replies',
+      Timestamps: 'stream-chat.twitch.timestamps',
+      Emotes: 'stream-chat.twitch.emotes',
+      Alerts: 'stream-chat.twitch.alerts',
+      'Message IDs': 'stream-chat.twitch.message-ids'
+    },
+    'session-weather': {
+      'Session type': 'session-weather.session.type.enabled',
+      'Session name': 'session-weather.session.name.enabled',
+      'Session mode': 'session-weather.session.mode.enabled',
+      'Elapsed time': 'session-weather.clock.elapsed.enabled',
+      'Remaining time': 'session-weather.clock.remaining.enabled',
+      'Total time': 'session-weather.clock.total.enabled',
+      'Event type': 'session-weather.event.type.enabled',
+      Car: 'session-weather.event.car.enabled',
+      'Track name': 'session-weather.track.name.enabled',
+      'Track length': 'session-weather.track.length.enabled',
+      'Laps remaining': 'session-weather.laps.remaining.enabled',
+      'Laps total': 'session-weather.laps.total.enabled',
+      Wetness: 'session-weather.surface.wetness.enabled',
+      'Declared surface': 'session-weather.surface.declared.enabled',
+      Rubber: 'session-weather.surface.rubber.enabled',
+      Skies: 'session-weather.sky.skies.enabled',
+      Weather: 'session-weather.sky.weather.enabled',
+      Rain: 'session-weather.sky.rain.enabled',
+      'Wind direction': 'session-weather.wind.direction.enabled',
+      'Wind speed': 'session-weather.wind.speed.enabled',
+      'Facing wind': 'session-weather.wind.facing.enabled',
+      'Air temp': 'session-weather.temps.air.enabled',
+      'Track temp': 'session-weather.temps.track.enabled',
+      Humidity: 'session-weather.atmosphere.humidity.enabled',
+      Fog: 'session-weather.atmosphere.fog.enabled',
+      Pressure: 'session-weather.atmosphere.pressure.enabled'
+    },
+    'pit-service': {
+      'Session time': 'pit-service.session.time.enabled',
+      'Session laps': 'pit-service.session.laps.enabled',
+      Release: 'pit-service.signal.release.enabled',
+      'Pit status': 'pit-service.signal.status.enabled',
+      'Fuel requested': 'pit-service.service.fuel-requested.enabled',
+      'Fuel selected': 'pit-service.service.fuel-selected.enabled',
+      'Tearoff requested': 'pit-service.service.tearoff-requested.enabled',
+      'Required repair': 'pit-service.service.repair-required.enabled',
+      'Optional repair': 'pit-service.service.repair-optional.enabled',
+      'Fast repair selected': 'pit-service.service.fast-repair-selected.enabled',
+      'Fast repairs available': 'pit-service.service.fast-repair-available.enabled',
+      Compound: 'pit-service.tire-analysis.compound',
+      'Change request': 'pit-service.tire-analysis.change',
+      'Set limit': 'pit-service.tire-analysis.set-limit',
+      'Sets available': 'pit-service.tire-analysis.sets-available',
+      'Sets used': 'pit-service.tire-analysis.sets-used',
+      Pressure: 'pit-service.tire-analysis.pressure',
+      Temperature: 'pit-service.tire-analysis.temperature',
+      Wear: 'pit-service.tire-analysis.wear',
+      Distance: 'pit-service.tire-analysis.distance'
+    }
+  };
+  return maps[id]?.[label] || null;
 }
 
 export function freshLiveSnapshot(models) {
@@ -252,24 +661,45 @@ function emptyDisplayModel(overlayId, title) {
 }
 
 function defaultDisplayModel(page, live, settings) {
+  let model;
   switch (page.page.id) {
     case 'fuel-calculator':
-      return fuelCalculatorDisplayModel(page, live, settings);
+      model = fuelCalculatorDisplayModel(page, live, settings);
+      break;
     case 'car-radar':
-      return carRadarDisplayModel(page, live);
+      model = carRadarDisplayModel(page, live, settings);
+      break;
     case 'track-map':
-      return trackMapDisplayModel(page, live, settings);
+      model = trackMapDisplayModel(page, live, settings);
+      break;
     case 'flags':
-      return flagsDisplayModel(page, live, settings);
+      model = flagsDisplayModel(page, live, settings);
+      break;
     case 'garage-cover':
-      return garageCoverDisplayModel(page, live, settings);
+      model = garageCoverDisplayModel(page, live, settings);
+      break;
     case 'stream-chat':
-      return streamChatDisplayModel(page, live, settings);
+      model = streamChatDisplayModel(page, live, settings);
+      break;
     case 'input-state':
-      return inputStateDisplayModel(page, live, settings);
+      model = inputStateDisplayModel(page, live, settings);
+      break;
     default:
-      return emptyDisplayModel(page.page.id, page.title);
+      model = emptyDisplayModel(page.page.id, page.title);
+      break;
   }
+
+  return withBrowserRootOpacity(model, page.page.id, settings);
+}
+
+function withBrowserRootOpacity(model, overlayId, settings = {}) {
+  if (!model || opacityExcludedOverlayIds.has(overlayId)) {
+    return model ? { ...model, rootOpacity: 1 } : model;
+  }
+
+  const percent = Number(settings?.opacityPercent ?? 100);
+  const opacity = Number.isFinite(percent) ? Math.max(0.2, Math.min(1, percent / 100)) : 1;
+  return { ...model, rootOpacity: opacity };
 }
 
 function flagsDisplayModel(page, live, settings) {
@@ -882,14 +1312,15 @@ function clamp01(value) {
   return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
 }
 
-function carRadarDisplayModel(page, live) {
+function carRadarDisplayModel(page, live, settings = {}) {
   const spatial = live?.models?.spatial || {};
   const inCar = isPlayerInCar(live);
   const strongestMulticlassApproach = carRadarMulticlassApproach(spatial);
+  const showMulticlassWarning = settings?.showMulticlassWarning ?? true;
   const hasCurrentSignal = Boolean(
     spatial.hasCarLeft
     || spatial.hasCarRight
-    || strongestMulticlassApproach
+    || (showMulticlassWarning && strongestMulticlassApproach)
     || spatial.cars?.length);
   const status = !inCar
     ? 'waiting for player in car'
@@ -915,8 +1346,8 @@ function carRadarDisplayModel(page, live) {
       hasCarLeft: spatial.hasCarLeft === true,
       hasCarRight: spatial.hasCarRight === true,
       cars: spatial.cars || [],
-      strongestMulticlassApproach,
-      showMulticlassWarning: true,
+      strongestMulticlassApproach: showMulticlassWarning ? strongestMulticlassApproach : null,
+      showMulticlassWarning,
       previewVisible: false,
       hasCurrentSignal,
       renderModel: carRadarRenderModelFromState({
@@ -924,8 +1355,8 @@ function carRadarDisplayModel(page, live) {
         hasCarLeft: spatial.hasCarLeft === true,
         hasCarRight: spatial.hasCarRight === true,
         cars: spatial.cars || [],
-        strongestMulticlassApproach,
-        showMulticlassWarning: true,
+        strongestMulticlassApproach: showMulticlassWarning ? strongestMulticlassApproach : null,
+        showMulticlassWarning,
         previewVisible: false,
         hasCurrentSignal,
         referenceCarClassColorHex: spatial.referenceCarClassColorHex
@@ -1462,6 +1893,7 @@ function rgba(red, green, blue, alpha) {
 }
 
 function trackMapDisplayModel(page, live, settings) {
+  const includeUserMaps = settings?.trackMapSettings?.includeUserMaps ?? settings?.includeUserMaps ?? true;
   return {
     ...emptyDisplayModel(page.page.id, page.title),
     status: 'live | track map',
@@ -1472,8 +1904,8 @@ function trackMapDisplayModel(page, live, settings) {
       markers: trackMapMarkers(live),
       sectors: live?.models?.trackMap?.sectors || [],
       showSectorBoundaries: settings?.trackMapSettings?.showSectorBoundaries ?? settings?.showSectorBoundaries ?? true,
-      internalOpacity: settings?.trackMapSettings?.internalOpacity ?? settings?.internalOpacity ?? 0.88,
-      includeUserMaps: true,
+      internalOpacity: settings?.trackMapSettings?.internalOpacity ?? settings?.internalOpacity ?? 1,
+      includeUserMaps,
       renderModel: trackMapRenderModel(live, settings)
     }
   };
@@ -1722,7 +2154,7 @@ function trackMapRenderModel(live, settings) {
   const markers = trackMapMarkers(live);
   const sectors = live?.models?.trackMap?.sectors || [];
   const trackMap = settings?.trackMap ?? null;
-  const internalOpacity = settings?.trackMapSettings?.internalOpacity ?? settings?.internalOpacity ?? 0.88;
+  const internalOpacity = settings?.trackMapSettings?.internalOpacity ?? settings?.internalOpacity ?? 1;
   const showSectorBoundaries = settings?.trackMapSettings?.showSectorBoundaries ?? settings?.showSectorBoundaries ?? true;
   const primitives = trackMap?.racingLine?.points?.length >= 3
     ? generatedTrackMapPrimitives(trackMap, sectors, internalOpacity, showSectorBoundaries)
@@ -2059,6 +2491,8 @@ function themeCssVariables() {
     ['--tmr-text-secondary-rgb', colors.textSecondary],
     ['--tmr-text-muted', colors.textMuted],
     ['--tmr-text-muted-rgb', colors.textMuted],
+    ['--tmr-text-dim', colors.textDim],
+    ['--tmr-text-dim-rgb', colors.textDim],
     ['--tmr-cyan', colors.cyan],
     ['--tmr-cyan-rgb', colors.cyan],
     ['--tmr-magenta', colors.magenta],

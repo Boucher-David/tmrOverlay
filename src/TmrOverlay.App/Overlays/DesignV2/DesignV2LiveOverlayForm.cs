@@ -493,8 +493,9 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     private DesignV2OverlayModel BuildStandingsModel(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
     {
+        var sessionKind = OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot);
         var showClassSeparators = OverlayContentColumnSettings.Standings.Blocks is { Count: > 0 } blocks
-            && OverlayContentColumnSettings.BlockEnabled(_settings, blocks[0]);
+            && OverlayContentColumnSettings.BlockEnabled(_settings, blocks[0], sessionKind);
         var otherRows = OverlayContentColumnSettings.Standings.Blocks is { Count: > 0 } otherBlocks
             ? OverlayContentColumnSettings.BlockCount(_settings, otherBlocks[0])
             : 2;
@@ -518,11 +519,12 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             maximumRows: Math.Clamp(visibleRows, 1, StandingsOverlayViewModel.MaximumRenderedRows),
             otherClassRowsPerClass: otherRows,
             showClassSeparators: showClassSeparators);
-        var columns = OverlayContentColumnSettings.VisibleColumnsFor(_settings, OverlayContentColumnSettings.Standings)
+        var visibleColumns = OverlayContentColumnSettings.VisibleColumnsFor(_settings, OverlayContentColumnSettings.Standings, sessionKind);
+        var columns = visibleColumns
             .Select(column => new DesignV2Column(column.Label, column.Width, AlignmentFor(column.Alignment)))
             .ToArray();
         var rows = viewModel.Rows.Select(row => new DesignV2TableRow(
-            ValuesForStandingsRow(row),
+            ValuesForStandingsRow(row, visibleColumns),
             row.IsReference,
             row.IsClassHeader,
             row.IsPartial ? DesignV2Evidence.Partial : DesignV2Evidence.Measured,
@@ -575,7 +577,9 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         return Math.Max(1, (bodyHeight - RowHeight) / (RowHeight + RowGap));
     }
 
-    private IReadOnlyList<string> ValuesForStandingsRow(StandingsOverlayRowViewModel row)
+    private static IReadOnlyList<string> ValuesForStandingsRow(
+        StandingsOverlayRowViewModel row,
+        IReadOnlyList<OverlayContentColumnState> visibleColumns)
     {
         var valuesByKey = new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -586,7 +590,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             [OverlayContentColumnSettings.DataInterval] = row.Interval,
             [OverlayContentColumnSettings.DataPit] = row.Pit
         };
-        return OverlayContentColumnSettings.VisibleColumnsFor(_settings, OverlayContentColumnSettings.Standings)
+        return visibleColumns
             .Select(column => valuesByKey.TryGetValue(column.DataKey, out var value) ? value : string.Empty)
             .ToArray();
     }
@@ -601,20 +605,22 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     private DesignV2OverlayModel BuildRelativeModel(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
     {
+        var sessionKind = OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot);
         var carsEachSide = RelativeBrowserSettings.CarsEachSide(_settings);
         var viewModel = RelativeOverlayViewModel.From(
             snapshot,
             now,
             carsEachSide,
             carsEachSide);
-        var columns = OverlayContentColumnSettings.VisibleColumnsFor(_settings, OverlayContentColumnSettings.Relative)
+        var visibleColumns = OverlayContentColumnSettings.VisibleColumnsFor(_settings, OverlayContentColumnSettings.Relative, sessionKind);
+        var columns = visibleColumns
             .Select(column => new DesignV2Column(column.Label, column.Width, AlignmentFor(column.Alignment)))
             .ToArray();
         var rows = StableRelativeRows(viewModel, carsEachSide, carsEachSide)
             .Select(row => row is null
                 ? BlankTableRow(columns.Length)
                 : new DesignV2TableRow(
-                    ValuesForRelativeRow(row),
+                    ValuesForRelativeRow(row, visibleColumns),
                     row.IsReference,
                     IsClassHeader: false,
                     row.IsPartial ? DesignV2Evidence.Partial : DesignV2Evidence.Measured,
@@ -647,7 +653,9 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             ClassColorHex: null);
     }
 
-    private IReadOnlyList<string> ValuesForRelativeRow(RelativeOverlayRowViewModel row)
+    private static IReadOnlyList<string> ValuesForRelativeRow(
+        RelativeOverlayRowViewModel row,
+        IReadOnlyList<OverlayContentColumnState> visibleColumns)
     {
         var valuesByKey = new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -656,7 +664,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             [OverlayContentColumnSettings.DataGap] = row.Gap,
             [OverlayContentColumnSettings.DataPit] = row.IsPit ? "PIT" : string.Empty
         };
-        return OverlayContentColumnSettings.VisibleColumnsFor(_settings, OverlayContentColumnSettings.Relative)
+        return visibleColumns
             .Select(column => valuesByKey.TryGetValue(column.DataKey, out var value) ? value : string.Empty)
             .ToArray();
     }
@@ -677,7 +685,11 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
         var viewModel = FuelCalculatorViewModel.From(
             strategyModel,
-            _settings.GetBooleanOption(OverlayOptionKeys.FuelAdvice, defaultValue: true),
+            OverlayContentColumnSettings.ContentEnabledForSession(
+                _settings,
+                OverlayOptionKeys.FuelAdvice,
+                defaultEnabled: true,
+                OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot)),
             _unitSystem,
             maximumRows: FuelVisibleRowsForHeight(ClientSize.Height, ShowFooterForSettings(_kind, _settings, snapshot)));
         var metricSections = viewModel.MetricSections.Select(section => new DesignV2MetricSection(
@@ -748,11 +760,16 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private DesignV2OverlayModel BuildRadarModel(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
     {
         var calibration = CarRadarCalibrationProfile.FromHistory(LookupCarRadarCalibration(snapshot.Models.Session.Combo));
+        var showMulticlassWarning = OverlayContentColumnSettings.ContentEnabledForSession(
+            _settings,
+            OverlayOptionKeys.RadarMulticlassWarning,
+            defaultEnabled: true,
+            OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot));
         var viewModel = CarRadarOverlayViewModel.From(
             snapshot,
             now,
             _settingsPreviewVisible,
-            _settings.GetBooleanOption(OverlayOptionKeys.RadarMulticlassWarning, defaultValue: true),
+            showMulticlassWarning,
             calibration);
         var renderState = ApplyRadarSurfaceFade(CarRadarRenderModel.FromViewModel(viewModel, calibration), now);
         var body = RadarBodyFromViewModel(viewModel, renderState.RenderModel, renderState.SurfaceAlpha);
@@ -873,6 +890,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     private DesignV2OverlayModel BuildGapModel(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
     {
+        var shouldRender = GapWindowEnabled(_settings);
         var viewModel = GapToLeaderOverlayViewModel.From(snapshot, now);
         var gap = viewModel.Gap;
         if (_lastGapSequence != snapshot.Sequence)
@@ -899,7 +917,8 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                 viewModel.Status,
                 viewModel.Source,
                 DesignV2Evidence.Unavailable,
-                graph);
+                graph,
+                ShouldRender: shouldRender);
         }
 
         var footer = gap.HasData
@@ -910,7 +929,14 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             viewModel.Status,
             footer,
             gap.HasData ? DesignV2Evidence.Live : DesignV2Evidence.Unavailable,
-            graph);
+            graph,
+            ShouldRender: shouldRender);
+    }
+
+    private static bool GapWindowEnabled(OverlaySettings settings)
+    {
+        return settings.GetIntegerOption(OverlayOptionKeys.GapCarsAhead, defaultValue: 5, minimum: 0, maximum: 12) > 0
+            || settings.GetIntegerOption(OverlayOptionKeys.GapCarsBehind, defaultValue: 5, minimum: 0, maximum: 12) > 0;
     }
 
     private void RecordGapSnapshot(LiveTelemetrySnapshot snapshot, LiveLeaderGapSnapshot gap, DateTimeOffset now)
@@ -2342,7 +2368,11 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         _nextTrackMapReloadAtUtc = now.AddSeconds(TrackMapReloadIntervalSeconds);
         _trackMap = _trackMapStore.TryReadBest(
             snapshot.Context.Track,
-            includeUserMaps: _settings.GetBooleanOption(OverlayOptionKeys.TrackMapBuildFromTelemetry, defaultValue: true));
+            includeUserMaps: OverlayContentColumnSettings.ContentEnabledForSession(
+                _settings,
+                OverlayOptionKeys.TrackMapBuildFromTelemetry,
+                defaultEnabled: true,
+                OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot)));
     }
 
     private DesignV2OverlayModel BuildStreamChatModel()

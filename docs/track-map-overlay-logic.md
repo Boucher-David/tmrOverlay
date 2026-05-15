@@ -30,7 +30,7 @@ Bundled maps, when present, are read from `Assets/TrackMaps` in the app output a
 
 ## Generation
 
-After a successful IBT analysis, `TelemetryCaptureHostedService` can ask `IbtTrackMapBuilder` to derive a map from the selected `.ibt` file. User IBT generation is enabled by default from the Track Map settings tab through `track-map.build-from-telemetry`. Fresh installs use bundled app map JSON when available and otherwise keep the circle fallback until local generation produces a map. Locally generated user maps are read by the native overlay and localhost route only while that setting remains enabled. The settings tab explains that derived map geometry is generated locally from the user's telemetry-generated IBT files and stored on the user's machine. Source `.ibt` files are not copied into TMR storage by default.
+After a successful IBT analysis, `TelemetryCaptureHostedService` can ask `IbtTrackMapBuilder` to derive a map from the selected `.ibt` file. User IBT generation is enabled by default through the `track-map.build-from-telemetry` setting, which is surfaced in Support/Diagnostics with other automatic capture behaviors. Fresh installs use bundled app map JSON when available and otherwise keep the circle fallback until local generation produces a map. Locally generated user maps are read by the native overlay and localhost route only while that setting remains enabled. The settings UI explains that derived map geometry is generated locally from the user's telemetry-generated IBT files and stored on the user's machine. Source `.ibt` files are not copied into TMR storage by default.
 
 The builder:
 
@@ -52,13 +52,13 @@ Diagnostics bundles include `metadata/track-maps.json`, a compact inventory of r
 
 ## Localhost
 
-The localhost browser-source route for Track Map is:
+The localhost route for Track Map is:
 
 ```text
 http://localhost:8765/overlays/track-map
 ```
 
-The route is listed in the Track Map settings tab and does not depend on the native overlay being visible. The browser version uses the same map-only shape as native V2: transparent page, generated map or circle fallback, full-opacity track outline, map-fill opacity from settings, model-v2 sector highlights, focused-car position text inside the dot, smoothed live dots, and the same wrap-aware marker progress smoothing. It fetches `/api/overlay-model/track-map` on a 100 ms interval; that payload includes the shared `TrackMapRenderModel` primitives and markers used by both native V2 and localhost. The older `/api/track-map` route remains available for diagnostics and map/settings lookup, but the browser renderer no longer owns separate track-map geometry logic.
+The route is listed in the Track Map settings tab and does not depend on the native overlay being visible. The localhost page uses the same map-only shape as native V2: transparent page, generated map or circle fallback, full-opacity track outline, map-fill opacity from settings, model-v2 sector highlights, focused-car position text inside the dot, smoothed live dots, and the same wrap-aware marker progress smoothing. It fetches `/api/overlay-model/track-map` on a 100 ms interval; that payload includes the shared `TrackMapRenderModel` primitives and markers used by both native V2 and localhost. The older `/api/track-map` route remains available for diagnostics and map/settings lookup, but localhost no longer owns separate track-map geometry logic.
 
 ## Bundled Map Assets
 
@@ -83,7 +83,7 @@ $env:TMR_IbtAnalysis__TelemetryLoggingEnabled = "true"
 dotnet run --project .\src\TmrOverlay.App\TmrOverlay.App.csproj --configuration Release
 ```
 
-In the settings window, open Track Map and leave `Build local maps from IBT telemetry` checked. Run iRacing long enough to record at least two complete clean laps for a usable map, preferably five or more for high confidence, then stop the session and let iRacing finish writing the `.ibt` file. The generated map should appear under:
+In the settings window, open Support and leave `Build local maps from IBT telemetry` checked in the diagnostics/capture controls. Run iRacing long enough to record at least two complete clean laps for a usable map, preferably five or more for high confidence, then stop the session and let iRacing finish writing the `.ibt` file. The generated map should appear under:
 
 ```text
 %TEMP%\TmrOverlay-map-validate\track-maps\user

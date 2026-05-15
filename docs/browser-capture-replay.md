@@ -1,7 +1,7 @@
 # Browser Capture Replay
 
 Development-only browser replay can stream sampled raw-capture frames into the
-localhost browser overlay routes without running iRacing or the Windows app.
+browser review and localhost overlay routes without running iRacing or the Windows app.
 
 ## Export
 
@@ -64,7 +64,7 @@ TMR_STANDINGS_REPLAY_SPEED=60 \
 node tools/browser-review/standings-replay-server.mjs /tmp/tmr-browser-replay.json
 ```
 
-Open `http://127.0.0.1:5187/review/overlays` or a production-style browser
+Open `http://127.0.0.1:5187/review/overlays` or a localhost
 route such as `http://127.0.0.1:5187/overlays/standings`.
 
 Use `?frame=N` to pin a sampled replay frame. Use `?rel=-120`, `?rel=0`, or
@@ -80,8 +80,8 @@ source time instead of a hidden fixed frame count. Set
 position, and cadence summary so reviewers can confirm whether a replay is
 dense enough for Gap To Leader.
 
-Overlays that have browser-facing production model helpers should use those
-helpers in replay rather than maintaining replay-only display builders. Stream
+Overlays that have localhost-facing production model helpers should use those
+helpers in browser review replay rather than maintaining replay-only display builders. Stream
 Chat cannot be derived from iRacing raw capture, so replay serves deterministic
 local chat rows through the normal Stream Chat display model shape and keeps
 external Twitch/Streamlabs connections disabled.
@@ -106,7 +106,7 @@ Gap To Leader validation rejects sparse replay streams whose graph points are
 more than 10 seconds apart unless the segment is explicitly marked as intended
 missing telemetry. A sparse failure means the replay should be re-exported from
 denser raw capture frames; it is not a reason to change production/native graph
-segmentation or to force sparse browser samples into connected lines.
+segmentation or to force sparse browser review samples into connected lines.
 
 ## Limits
 
@@ -116,7 +116,7 @@ does not prove iRacing SDK connection, focus/topmost/click-through behavior, or
 settings persistence.
 
 Replay frames with embedded per-overlay display models are served as-is, which
-keeps browser replay aligned with production-shaped native/browser view models.
+keeps browser review replay aligned with production-shaped native/localhost view models.
 Older replay frames without an embedded model still use browser-review fallback
 summaries built from exported `live.models`; those are useful for exercising
 routes and screenshots against real frame timing, but they are not byte-for-byte

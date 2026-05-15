@@ -12,7 +12,7 @@ internal static class SharedOverlayContract
     public const string StreamChatProviderTwitch = "twitch";
 
     private const int FallbackContractVersion = 1;
-    private const int FallbackSettingsVersion = 10;
+    private const int FallbackSettingsVersion = 11;
     private const string FallbackFontFamily = "Segoe UI";
     private const string FallbackUnitSystem = "Metric";
     private const string FallbackTwitchChannel = "techmatesracing";

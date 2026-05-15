@@ -52,6 +52,12 @@ function renderGarageCoverTextFallback(image) {
     return;
   }
 
+  if (image.dataset.fallback !== 'default' && !String(image.getAttribute('src') || '').includes('/api/garage-cover/default-image')) {
+    image.dataset.fallback = 'default';
+    image.src = '/api/garage-cover/default-image?v=stock';
+    return;
+  }
+
   parent.classList.add('garage-cover-fallback');
   image.remove();
   parent.innerHTML = '<div>TMR</div>';

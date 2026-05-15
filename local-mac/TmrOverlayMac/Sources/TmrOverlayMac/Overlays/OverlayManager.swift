@@ -2138,18 +2138,17 @@ final class OverlayManager {
             return false
         }
 
-        switch sessionKind {
-        case .test:
-            return overlaySettings.showInTest
-        case .practice:
-            return overlaySettings.showInPractice
-        case .qualifying:
-            return overlaySettings.showInQualifying
-        case .race:
-            return overlaySettings.showInRace
-        case nil:
-            return true
+        if definition.id == GapToLeaderOverlayDefinition.definition.id,
+           overlaySettings.classGapCarsAhead <= 0,
+           overlaySettings.classGapCarsBehind <= 0 {
+            return false
         }
+
+        if definition.id == GapToLeaderOverlayDefinition.definition.id {
+            return sessionKind == .race
+        }
+
+        return true
     }
 
     private var isSettingsWindowActive: Bool {
@@ -2844,11 +2843,7 @@ final class OverlayManager {
         }
 
         let normalized = value.lowercased()
-        if normalized.contains("test") {
-            return .test
-        }
-
-        if normalized.contains("practice") {
+        if normalized.contains("test") || normalized.contains("practice") {
             return .practice
         }
 

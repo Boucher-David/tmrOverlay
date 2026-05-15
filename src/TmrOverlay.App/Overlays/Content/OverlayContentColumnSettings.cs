@@ -189,8 +189,8 @@ internal static class OverlayContentColumnSettings
     [
         new(
             StandingsClassSeparatorBlockId,
-            "Class separators",
-            "Show iRacing class-colored separators and a limited sample of other multiclass rows.",
+            "Multiclass sections",
+            "Show class header rows and a limited sample of other multiclass rows.",
             OverlayOptionKeys.StandingsClassSeparatorsEnabled,
             DefaultEnabled: true,
             CountOptionKey: OverlayOptionKeys.StandingsOtherClassRows,
@@ -504,10 +504,30 @@ internal static class OverlayContentColumnSettings
 
     public static IReadOnlyList<OverlayContentColumnState> ColumnsFor(
         OverlaySettings settings,
+        OverlayContentDefinition definition,
+        OverlaySessionKind? sessionKind)
+    {
+        return ColumnsFor(settings, definition.Columns, sessionKind);
+    }
+
+    public static IReadOnlyList<OverlayContentColumnState> ColumnsFor(
+        OverlaySettings settings,
         IReadOnlyList<OverlayContentColumnDefinition> definitions)
     {
         return definitions
             .Select(definition => ToState(settings, definition, definitions.Count))
+            .OrderBy(column => column.Order)
+            .ThenBy(column => definitions.First(definition => string.Equals(definition.Id, column.Id, StringComparison.Ordinal)).DefaultOrder)
+            .ToArray();
+    }
+
+    public static IReadOnlyList<OverlayContentColumnState> ColumnsFor(
+        OverlaySettings settings,
+        IReadOnlyList<OverlayContentColumnDefinition> definitions,
+        OverlaySessionKind? sessionKind)
+    {
+        return definitions
+            .Select(definition => ToState(settings, definition, definitions.Count, sessionKind))
             .OrderBy(column => column.Order)
             .ThenBy(column => definitions.First(definition => string.Equals(definition.Id, column.Id, StringComparison.Ordinal)).DefaultOrder)
             .ToArray();
@@ -518,6 +538,16 @@ internal static class OverlayContentColumnSettings
         IReadOnlyList<OverlayContentColumnDefinition> definitions)
     {
         return ColumnsFor(settings, definitions)
+            .Where(column => column.Enabled)
+            .ToArray();
+    }
+
+    public static IReadOnlyList<OverlayContentColumnState> EnabledColumnsFor(
+        OverlaySettings settings,
+        IReadOnlyList<OverlayContentColumnDefinition> definitions,
+        OverlaySessionKind? sessionKind)
+    {
+        return ColumnsFor(settings, definitions, sessionKind)
             .Where(column => column.Enabled)
             .ToArray();
     }
@@ -535,6 +565,20 @@ internal static class OverlayContentColumnSettings
                 .ToArray();
     }
 
+    public static IReadOnlyList<OverlayContentColumnState> VisibleColumnsFor(
+        OverlaySettings settings,
+        OverlayContentDefinition definition,
+        OverlaySessionKind? sessionKind)
+    {
+        var enabled = EnabledColumnsFor(settings, definition.Columns, sessionKind);
+        return enabled.Count > 0
+            ? enabled
+            : ColumnsFor(settings, definition.Columns, sessionKind)
+                .Where(column => string.Equals(column.Id, definition.FallbackColumnId, StringComparison.Ordinal))
+                .Take(1)
+                .ToArray();
+    }
+
     public static IReadOnlyList<OverlayContentBrowserColumn> BrowserColumnsFor(
         OverlaySettings? settings,
         OverlayContentDefinition definition)
@@ -542,6 +586,24 @@ internal static class OverlayContentColumnSettings
         var columns = settings is null
             ? DefaultVisibleColumnsFor(definition.Columns)
             : VisibleColumnsFor(settings, definition);
+        return columns
+            .Select(column => new OverlayContentBrowserColumn(
+                column.Id,
+                column.Label,
+                column.DataKey,
+                column.Width,
+                BrowserAlignment(column.Alignment)))
+            .ToArray();
+    }
+
+    public static IReadOnlyList<OverlayContentBrowserColumn> BrowserColumnsFor(
+        OverlaySettings? settings,
+        OverlayContentDefinition definition,
+        OverlaySessionKind? sessionKind)
+    {
+        var columns = settings is null
+            ? DefaultVisibleColumnsFor(definition.Columns)
+            : VisibleColumnsFor(settings, definition, sessionKind);
         return columns
             .Select(column => new OverlayContentBrowserColumn(
                 column.Id,
@@ -573,6 +635,31 @@ internal static class OverlayContentColumnSettings
         return settings.GetBooleanOption(block.EnabledOptionKey, block.DefaultEnabled);
     }
 
+    public static bool BlockEnabled(
+        OverlaySettings settings,
+        OverlayContentBlockDefinition block,
+        OverlaySessionKind? sessionKind)
+    {
+        return ContentEnabledForSession(settings, block.EnabledOptionKey, block.DefaultEnabled, sessionKind);
+    }
+
+    public static bool ContentEnabledForSession(
+        OverlaySettings settings,
+        string enabledOptionKey,
+        bool defaultEnabled,
+        OverlaySessionKind? sessionKind)
+    {
+        var globalEnabled = settings.GetBooleanOption(enabledOptionKey, defaultEnabled);
+        return OverlayAvailabilityEvaluator.NormalizeSessionKind(sessionKind) is { } kind
+            ? settings.GetBooleanOption(SessionEnabledOptionKey(enabledOptionKey, kind), globalEnabled)
+            : globalEnabled;
+    }
+
+    public static string SessionEnabledOptionKey(string enabledOptionKey, OverlaySessionKind sessionKind)
+    {
+        return $"{enabledOptionKey}.{SessionSuffix(sessionKind)}";
+    }
+
     public static int BlockCount(OverlaySettings settings, OverlayContentBlockDefinition block)
     {
         return block.CountOptionKey is null
@@ -602,6 +689,34 @@ internal static class OverlayContentColumnSettings
             SettingsLabel: HumanLabel(definition),
             DataKey: definition.DataKey,
             Enabled: settings.GetBooleanOption(definition.EnabledKey(settings.Id), definition.DefaultEnabled),
+            Order: settings.GetIntegerOption(
+                definition.OrderKey(settings.Id),
+                definition.DefaultOrder,
+                minimum: 1,
+                maximum: Math.Max(1, definitionCount)),
+            Width: settings.GetIntegerOption(
+                definition.WidthKey(settings.Id),
+                definition.DefaultWidth,
+                definition.MinimumWidth,
+                definition.MaximumWidth),
+            MinimumWidth: definition.MinimumWidth,
+            MaximumWidth: definition.MaximumWidth,
+            Alignment: definition.Alignment);
+    }
+
+    public static OverlayContentColumnState ToState(
+        OverlaySettings settings,
+        OverlayContentColumnDefinition definition,
+        int definitionCount,
+        OverlaySessionKind? sessionKind)
+    {
+        var enabledKey = definition.EnabledKey(settings.Id);
+        return new OverlayContentColumnState(
+            Id: definition.Id,
+            Label: definition.Label,
+            SettingsLabel: HumanLabel(definition),
+            DataKey: definition.DataKey,
+            Enabled: ContentEnabledForSession(settings, enabledKey, definition.DefaultEnabled, sessionKind),
             Order: settings.GetIntegerOption(
                 definition.OrderKey(settings.Id),
                 definition.DefaultOrder,
@@ -656,6 +771,18 @@ internal static class OverlayContentColumnSettings
             OverlayContentColumnAlignment.Left => "left",
             OverlayContentColumnAlignment.Center => "center",
             _ => "right"
+        };
+    }
+
+    private static string SessionSuffix(OverlaySessionKind sessionKind)
+    {
+        return sessionKind switch
+        {
+            OverlaySessionKind.Test => "test",
+            OverlaySessionKind.Practice => "practice",
+            OverlaySessionKind.Qualifying => "qualifying",
+            OverlaySessionKind.Race => "race",
+            _ => "unknown"
         };
     }
 }

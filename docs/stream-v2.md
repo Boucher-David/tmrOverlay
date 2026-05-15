@@ -1,6 +1,6 @@
 # Stream Chat V2 Notes
 
-This file parks the richer stream-chat work that should become a v1.x or v2 pass. The current branch should keep the v1 Stream Chat overlay focused on necessary parity improvements: Design V2 shell, fixed-height chat history, row wrapping, Twitch author color, visible badges, inline emotes, alerts as rows, and browser/native/replay parity.
+This file parks the richer stream-chat work that should become a v1.x or v2 pass. The current branch should keep the v1 Stream Chat overlay focused on necessary parity improvements: Design V2 shell, fixed-height chat history, row wrapping, Twitch author color, visible badges, inline emotes, alerts as rows, native/localhost parity, and browser review replay coverage.
 
 The deeper model below is intentionally not the required v1 finish line. It exists so we do not lose what Twitch and Streamlabs can expose.
 

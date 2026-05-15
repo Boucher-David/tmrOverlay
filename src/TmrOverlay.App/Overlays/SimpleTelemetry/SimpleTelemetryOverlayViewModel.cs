@@ -52,14 +52,15 @@ internal sealed record SimpleTelemetryOverlayViewModel(
     public static SimpleTelemetryOverlayViewModel ApplyContentSettings(
         SimpleTelemetryOverlayViewModel model,
         OverlaySettings? settings,
-        OverlayContentDefinition contentDefinition)
+        OverlayContentDefinition contentDefinition,
+        OverlaySessionKind? sessionKind = null)
     {
         if (settings is null || contentDefinition.Blocks is not { Count: > 0 } blocks)
         {
             return model;
         }
 
-        if (blocks.All(block => OverlayContentColumnSettings.BlockEnabled(settings, block)))
+        if (blocks.All(block => OverlayContentColumnSettings.BlockEnabled(settings, block, sessionKind)))
         {
             return model;
         }
@@ -123,7 +124,7 @@ internal sealed record SimpleTelemetryOverlayViewModel(
                 return true;
             }
 
-            return OverlayContentColumnSettings.BlockEnabled(settings, block);
+            return OverlayContentColumnSettings.BlockEnabled(settings, block, sessionKind);
         }
     }
 

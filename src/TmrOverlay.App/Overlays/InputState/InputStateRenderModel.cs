@@ -77,15 +77,16 @@ internal static class InputStateRenderModelBuilder
             trace.Clear();
         }
 
-        var showThrottleTrace = BlockEnabled(settings, OverlayContentColumnSettings.InputThrottleTraceBlockId);
-        var showBrakeTrace = BlockEnabled(settings, OverlayContentColumnSettings.InputBrakeTraceBlockId);
-        var showClutchTrace = BlockEnabled(settings, OverlayContentColumnSettings.InputClutchTraceBlockId);
-        var showThrottle = BlockEnabled(settings, OverlayContentColumnSettings.InputThrottleBlockId);
-        var showBrake = BlockEnabled(settings, OverlayContentColumnSettings.InputBrakeBlockId);
-        var showClutch = BlockEnabled(settings, OverlayContentColumnSettings.InputClutchBlockId);
-        var showSteering = BlockEnabled(settings, OverlayContentColumnSettings.InputSteeringBlockId);
-        var showGear = BlockEnabled(settings, OverlayContentColumnSettings.InputGearBlockId);
-        var showSpeed = BlockEnabled(settings, OverlayContentColumnSettings.InputSpeedBlockId);
+        var sessionKind = OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot);
+        var showThrottleTrace = BlockEnabled(settings, OverlayContentColumnSettings.InputThrottleTraceBlockId, sessionKind);
+        var showBrakeTrace = BlockEnabled(settings, OverlayContentColumnSettings.InputBrakeTraceBlockId, sessionKind);
+        var showClutchTrace = BlockEnabled(settings, OverlayContentColumnSettings.InputClutchTraceBlockId, sessionKind);
+        var showThrottle = BlockEnabled(settings, OverlayContentColumnSettings.InputThrottleBlockId, sessionKind);
+        var showBrake = BlockEnabled(settings, OverlayContentColumnSettings.InputBrakeBlockId, sessionKind);
+        var showClutch = BlockEnabled(settings, OverlayContentColumnSettings.InputClutchBlockId, sessionKind);
+        var showSteering = BlockEnabled(settings, OverlayContentColumnSettings.InputSteeringBlockId, sessionKind);
+        var showGear = BlockEnabled(settings, OverlayContentColumnSettings.InputGearBlockId, sessionKind);
+        var showSpeed = BlockEnabled(settings, OverlayContentColumnSettings.InputSpeedBlockId, sessionKind);
         var hasGraph = showThrottleTrace || showBrakeTrace || showClutchTrace;
         var hasRail = showThrottle || showBrake || showClutch || showSteering || showGear || showSpeed;
         var hasContent = hasGraph || hasRail;
@@ -160,11 +161,14 @@ internal static class InputStateRenderModelBuilder
         return RailOnlyBaseWidth;
     }
 
-    private static bool BlockEnabled(OverlaySettings settings, string blockId)
+    private static bool BlockEnabled(
+        OverlaySettings settings,
+        string blockId,
+        OverlaySessionKind? sessionKind = null)
     {
         var block = OverlayContentColumnSettings.InputState.Blocks?.FirstOrDefault(
             block => string.Equals(block.Id, blockId, StringComparison.Ordinal));
-        return block is null || OverlayContentColumnSettings.BlockEnabled(settings, block);
+        return block is null || OverlayContentColumnSettings.BlockEnabled(settings, block, sessionKind);
     }
 
     private static double Clamp01(double? value)

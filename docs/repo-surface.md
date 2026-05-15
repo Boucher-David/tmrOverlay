@@ -27,8 +27,8 @@ Release packaging should include only published runtime output from `src/TmrOver
 - `history/baseline/` contains small tracked sample history for development; the app does not read it by default.
 - `mocks/` contains screenshot and visual-review artifacts. These are validation/design artifacts, not publish output.
 - `skills/` contains agent workflow context and validation instructions.
-- `tools/` contains local analysis and rendering tools, including the Windows WinForms screenshot generator used by CI for parity artifacts and the browser review server for fixture-backed localhost overlay review.
-- `local-mac/TmrOverlayMac/` is tracked local harness source for secondary macOS native-shell review, mock telemetry, and legacy screenshot iteration. Browser review is the primary mac-friendly parity surface now. Generated `.build`, app data, logs, captures, and local screenshots stay ignored.
+- `tools/` contains local analysis and rendering tools, including the Windows WinForms screenshot generator used by CI for parity artifacts and the browser review server for fixture-backed browser and localhost overlay review.
+- `local-mac/TmrOverlayMac/` is tracked local harness source for secondary macOS native-shell review, mock telemetry, and legacy screenshot iteration. Browser review is the primary local surface for localhost/OBS parity now. Generated `.build`, app data, logs, captures, and local screenshots stay ignored.
 
 These are useful inside the repo but should not appear in a Windows tester package.
 

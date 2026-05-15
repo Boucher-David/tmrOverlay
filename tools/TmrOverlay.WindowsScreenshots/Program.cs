@@ -833,7 +833,7 @@ internal static class Program
             Enabled = true,
             Width = width ?? definition.DefaultWidth,
             Height = height ?? definition.DefaultHeight,
-            Opacity = definition.ShowOpacityControl ? 0.88d : 1d,
+            Opacity = 1d,
             AlwaysOnTop = false
         };
         foreach (var option in definition.SettingsOptions)

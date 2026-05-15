@@ -107,7 +107,8 @@ internal static class PitServiceOverlayViewModel
                 new[] { raceContext }));
         }
 
-        var contentOptions = PitServiceContentOptions.From(settings);
+        var sessionKind = OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot);
+        var contentOptions = PitServiceContentOptions.From(settings, sessionKind);
         var tireAnalysisRows = BuildTireAnalysisRows(pit, snapshot.Models.TireCondition, unitSystem, contentOptions);
         IReadOnlyList<SimpleTelemetryGridSectionViewModel> sections = tireAnalysisRows.Count == 0
             ? Array.Empty<SimpleTelemetryGridSectionViewModel>()
@@ -130,7 +131,8 @@ internal static class PitServiceOverlayViewModel
         return SimpleTelemetryOverlayViewModel.ApplyContentSettings(
             model,
             settings,
-            OverlayContentColumnSettings.PitService);
+            OverlayContentColumnSettings.PitService,
+            sessionKind);
     }
 
     private static string BuildSource()
@@ -1162,18 +1164,33 @@ internal static class PitServiceOverlayViewModel
         bool ShowTireWear,
         bool ShowTireDistance)
     {
-        public static PitServiceContentOptions From(OverlaySettings? settings)
+        public static PitServiceContentOptions From(
+            OverlaySettings? settings,
+            OverlaySessionKind? sessionKind)
         {
             return new PitServiceContentOptions(
-                ShowTireCompound: settings?.GetBooleanOption(OverlayOptionKeys.PitServiceShowTireCompound, defaultValue: true) ?? true,
-                ShowTireChange: settings?.GetBooleanOption(OverlayOptionKeys.PitServiceShowTireChange, defaultValue: true) ?? true,
-                ShowTireSetLimit: settings?.GetBooleanOption(OverlayOptionKeys.PitServiceShowTireSetLimit, defaultValue: true) ?? true,
-                ShowTireSetsAvailable: settings?.GetBooleanOption(OverlayOptionKeys.PitServiceShowTireSetsAvailable, defaultValue: true) ?? true,
-                ShowTireSetsUsed: settings?.GetBooleanOption(OverlayOptionKeys.PitServiceShowTireSetsUsed, defaultValue: true) ?? true,
-                ShowTirePressure: settings?.GetBooleanOption(OverlayOptionKeys.PitServiceShowTirePressure, defaultValue: true) ?? true,
-                ShowTireTemperature: settings?.GetBooleanOption(OverlayOptionKeys.PitServiceShowTireTemperature, defaultValue: true) ?? true,
-                ShowTireWear: settings?.GetBooleanOption(OverlayOptionKeys.PitServiceShowTireWear, defaultValue: true) ?? true,
-                ShowTireDistance: settings?.GetBooleanOption(OverlayOptionKeys.PitServiceShowTireDistance, defaultValue: true) ?? true);
+                ShowTireCompound: ContentEnabled(settings, OverlayOptionKeys.PitServiceShowTireCompound, sessionKind),
+                ShowTireChange: ContentEnabled(settings, OverlayOptionKeys.PitServiceShowTireChange, sessionKind),
+                ShowTireSetLimit: ContentEnabled(settings, OverlayOptionKeys.PitServiceShowTireSetLimit, sessionKind),
+                ShowTireSetsAvailable: ContentEnabled(settings, OverlayOptionKeys.PitServiceShowTireSetsAvailable, sessionKind),
+                ShowTireSetsUsed: ContentEnabled(settings, OverlayOptionKeys.PitServiceShowTireSetsUsed, sessionKind),
+                ShowTirePressure: ContentEnabled(settings, OverlayOptionKeys.PitServiceShowTirePressure, sessionKind),
+                ShowTireTemperature: ContentEnabled(settings, OverlayOptionKeys.PitServiceShowTireTemperature, sessionKind),
+                ShowTireWear: ContentEnabled(settings, OverlayOptionKeys.PitServiceShowTireWear, sessionKind),
+                ShowTireDistance: ContentEnabled(settings, OverlayOptionKeys.PitServiceShowTireDistance, sessionKind));
+        }
+
+        private static bool ContentEnabled(
+            OverlaySettings? settings,
+            string optionKey,
+            OverlaySessionKind? sessionKind)
+        {
+            return settings is null
+                || OverlayContentColumnSettings.ContentEnabledForSession(
+                    settings,
+                    optionKey,
+                    defaultEnabled: true,
+                    sessionKind);
         }
     }
 

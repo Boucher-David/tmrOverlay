@@ -19,7 +19,7 @@ internal sealed class OverlaySettings
 
     public int Height { get; set; }
 
-    public double Opacity { get; set; } = 0.88d;
+    public double Opacity { get; set; } = 1d;
 
     public bool AlwaysOnTop { get; set; } = true;
 

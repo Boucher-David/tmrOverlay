@@ -14,15 +14,16 @@ TmrBrowserOverlay.register({
     const railEnabled = inputRailEnabled(inputs);
     const hasContent = inputs.hasContent ?? (hasGraph || railEnabled);
     applyInputOverlayLayoutClasses(hasGraph, railEnabled, hasContent);
+    modelRootOpacity = rootOpacityFromModel(model);
     if (!inputs.isAvailable || !hasContent) {
-      overlayEl.style.opacity = '0';
+      applyOverlayOpacity(0);
       contentEl.innerHTML = `<div class="empty">${escapeHtml(model?.status || 'Waiting for player in car.')}</div>`;
       renderHeaderItems(model, '');
       renderFooterSource(model);
       return;
     }
 
-    overlayEl.style.opacity = '1';
+    applyOverlayOpacity(1);
     const brakeAbsActive = inputs.brakeAbsActive === true;
     const layoutClass = [
       'input-layout',

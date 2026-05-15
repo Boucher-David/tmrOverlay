@@ -47,7 +47,6 @@ internal static class SettingsOverlayTabSections
         var optionsTop = controlTop + 46;
         optionsTop = AddScaleOption(parent, definition, settings, optionsTop, saveAndApply);
         optionsTop = AddOpacityOption(parent, definition, settings, optionsTop, saveAndApply);
-        optionsTop = AddSessionFilterOptions(parent, definition, settings, optionsTop, saveAndApply);
         return optionsTop;
     }
 
@@ -135,60 +134,6 @@ internal static class SettingsOverlayTabSections
         return optionsTop + 50;
     }
 
-    private static int AddSessionFilterOptions(
-        Control parent,
-        OverlayDefinition definition,
-        OverlaySettings settings,
-        int optionsTop,
-        Action saveAndApply)
-    {
-        if (!definition.ShowSessionFilters)
-        {
-            return optionsTop;
-        }
-
-        var sessionBox = new GroupBox
-        {
-            ForeColor = OverlayTheme.Colors.TextControl,
-            Location = new Point(22, optionsTop),
-            Size = new Size(430, 76),
-            Text = "Display in sessions"
-        };
-
-        var testCheckBox = SettingsUi.CreateCheckBox("Test", settings.ShowInTest, 16, 30, 80);
-        var practiceCheckBox = SettingsUi.CreateCheckBox("Practice", settings.ShowInPractice, 106, 30, 100);
-        var qualifyingCheckBox = SettingsUi.CreateCheckBox("Qualifying", settings.ShowInQualifying, 216, 30, 112);
-        var raceCheckBox = SettingsUi.CreateCheckBox("Race", settings.ShowInRace, 338, 30, 76);
-
-        testCheckBox.CheckedChanged += (_, _) =>
-        {
-            settings.ShowInTest = testCheckBox.Checked;
-            saveAndApply();
-        };
-        practiceCheckBox.CheckedChanged += (_, _) =>
-        {
-            settings.ShowInPractice = practiceCheckBox.Checked;
-            saveAndApply();
-        };
-        qualifyingCheckBox.CheckedChanged += (_, _) =>
-        {
-            settings.ShowInQualifying = qualifyingCheckBox.Checked;
-            saveAndApply();
-        };
-        raceCheckBox.CheckedChanged += (_, _) =>
-        {
-            settings.ShowInRace = raceCheckBox.Checked;
-            saveAndApply();
-        };
-
-        sessionBox.Controls.Add(testCheckBox);
-        sessionBox.Controls.Add(practiceCheckBox);
-        sessionBox.Controls.Add(qualifyingCheckBox);
-        sessionBox.Controls.Add(raceCheckBox);
-        parent.Controls.Add(sessionBox);
-        return optionsTop + 98;
-    }
-
     public static void AddChromeSettingsPage(
         Control parent,
         OverlaySettings settings,
@@ -204,20 +149,25 @@ internal static class SettingsOverlayTabSections
         }
 
         parent.Controls.Add(SettingsUi.CreateLabel("Item", 22, 62, 120));
-        parent.Controls.Add(SettingsUi.CreateLabel("Test", 196, 62, 90));
-        parent.Controls.Add(SettingsUi.CreateLabel("Practice", 296, 62, 110));
-        parent.Controls.Add(SettingsUi.CreateLabel("Qualifying", 416, 62, 120));
-        parent.Controls.Add(SettingsUi.CreateLabel("Race", 548, 62, 90));
+        for (var sessionIndex = 0; sessionIndex < OverlaySettingsSessionColumns.Display.Length; sessionIndex++)
+        {
+            parent.Controls.Add(SettingsUi.CreateLabel(
+                OverlaySettingsSessionColumns.Display[sessionIndex].Label,
+                ChromeSessionColumnX(sessionIndex),
+                62,
+                120));
+        }
 
         for (var index = 0; index < rows.Count; index++)
         {
             var row = rows[index];
             var rowTop = 100 + index * 38;
             parent.Controls.Add(SettingsUi.CreateLabel(row.Label, 22, rowTop + 4, 150));
-            AddChromeSessionCheckBox(parent, settings, row.TestKey, 196, rowTop, saveAndApply);
-            AddChromeSessionCheckBox(parent, settings, row.PracticeKey, 296, rowTop, saveAndApply);
-            AddChromeSessionCheckBox(parent, settings, row.QualifyingKey, 416, rowTop, saveAndApply);
-            AddChromeSessionCheckBox(parent, settings, row.RaceKey, 548, rowTop, saveAndApply);
+            for (var sessionIndex = 0; sessionIndex < OverlaySettingsSessionColumns.Display.Length; sessionIndex++)
+            {
+                var sessionKind = OverlaySettingsSessionColumns.Display[sessionIndex].Kind;
+                AddChromeSessionCheckBox(parent, settings, row, sessionKind, ChromeSessionColumnX(sessionIndex), rowTop, saveAndApply);
+            }
         }
     }
 
@@ -640,23 +590,29 @@ internal static class SettingsOverlayTabSections
     private static void AddChromeSessionCheckBox(
         Control parent,
         OverlaySettings settings,
-        string optionKey,
+        OverlayChromeSettingsRow row,
+        OverlaySessionKind sessionKind,
         int x,
         int y,
         Action saveAndApply)
     {
         var checkBox = SettingsUi.CreateCheckBox(
             string.Empty,
-            settings.GetBooleanOption(optionKey, defaultValue: true),
+            OverlaySettingsSessionColumns.ChromeEnabledFor(settings, row, sessionKind),
             x,
             y,
             32);
         checkBox.CheckedChanged += (_, _) =>
         {
-            settings.SetBooleanOption(optionKey, checkBox.Checked);
+            OverlaySettingsSessionColumns.SetChromeEnabledFor(settings, row, sessionKind, checkBox.Checked);
             saveAndApply();
         };
         parent.Controls.Add(checkBox);
+    }
+
+    private static int ChromeSessionColumnX(int sessionIndex)
+    {
+        return 196 + sessionIndex * 130;
     }
 
     private static int ScaleDimension(int defaultDimension, double scale)

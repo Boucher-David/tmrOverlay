@@ -132,7 +132,7 @@ enum SharedOverlayContract {
     private static func fallbackSnapshot(loadedPath: String?) -> Snapshot {
         Snapshot(
             contractVersion: 1,
-            settingsVersion: 10,
+            settingsVersion: 11,
             defaultFontFamily: "Segoe UI",
             defaultUnitSystem: "Metric",
             overlayOptionDefaults: [

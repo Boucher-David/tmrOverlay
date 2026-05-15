@@ -65,7 +65,7 @@ Rows show:
 - Seconds first, then physical distance when available. Lap-fraction-only rows render unavailable instead of showing `L` units in the Relative overlay.
 - Optional pit column when enabled in Content settings.
 
-Relative uses the shared content-column manager. Columns have Relative-owned option keys, remain in one ordered list even when disabled, expose pixel widths, and drive both native/browser rendering plus the OBS size recommendation. The default content keeps the table compact: position, full driver name, and gap are visible; pit is available but disabled by default.
+Relative uses the shared content-column manager. Columns have Relative-owned option keys and drive both native/localhost rendering plus the OBS size recommendation. The current V1 Design V2 settings surface exposes visible content rows plus the rows-around-focus count control; advanced table width/order editing is deferred to the future V2 custom settings slideout. The default content keeps the table compact: position, full driver name, and gap are visible; pit is available but disabled by default.
 
 Normal rows are quiet. Reference rows are visually emphasized; pit rows remain visible but are de-emphasized with muted text/background so the driver can see they are being passed in pit lane rather than treated as an on-track threat. Fully degraded rows are muted.
 
@@ -104,7 +104,7 @@ Unexpected refresh/render failures are logged through the overlay logger and sur
 - Default id: `relative`.
 - Default size: `520x360`.
 - Default position: `(650, 24)`, near the right-side driver stack.
-- Settings expose cars ahead, cars behind, and Content-tab column controls.
-- Theme font, visibility, scale, opacity, session filters, and persistence follow the same managed-overlay behavior as the other product overlays.
+- Settings expose a symmetric rows-around-focus count and Content-tab row visibility controls.
+- Theme font, visibility, scale, opacity, content/header/footer session gates, and persistence follow the same managed-overlay behavior as the other product overlays.
 
-The localhost browser-source route also reads `/api/relative` so it can honor the same cars-ahead, cars-behind, and content-column settings as the native overlay. Browser replay validation should spoof settings/API options when testing column and header/footer states, while keeping relative row values, lap relationships, class positions, and timing evidence capture-derived when available.
+The localhost route also reads `/api/relative` so it can honor the same rows-around-focus and content settings as the native overlay. Browser review replay validation should spoof settings/API options when testing content and header/footer states, while keeping relative row values, lap relationships, class positions, and timing evidence capture-derived when available.

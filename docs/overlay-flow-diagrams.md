@@ -10,7 +10,7 @@ They intentionally describe product behavior, not every C# helper. When behavior
 flowchart TD
     Start["Overlay tick or settings change"] --> Enabled{"Overlay enabled?"}
     Enabled -- no --> Hidden["Keep driving/support overlay hidden"]
-    Enabled -- yes --> Session{"Current session allowed?"}
+    Enabled -- yes --> Session{"Content/header/footer session gates allow it?"}
     Session -- no --> Hidden
     Session -- yes --> Preview{"Settings preview active?"}
     Preview -- yes --> ShowPreview["Show for configuration review only"]
@@ -27,9 +27,9 @@ flowchart TD
     Window --> General["General: units, session preview, app controls"]
     Window --> Support["Support: diagnostics, bundle actions, status"]
     Window --> Tabs["Overlay tabs"]
-    Tabs --> Common["Enabled, position, size, opacity, session filters"]
+    Tabs --> Common["Enabled, position, size, opacity"]
     Tabs --> Content{"Overlay supports content controls?"}
-    Content -- yes --> Columns["Columns, rows, blocks, browser sizing"]
+    Content -- yes --> Columns["Rows, blocks, session gates, localhost sizing"]
     Content -- no --> Specific["Overlay-specific options only"]
     Common --> Persist["Persist keyed OverlaySettings.Options"]
     Columns --> Persist
@@ -84,7 +84,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     Start["Fresh live snapshot"] --> Local{"Local active driver/team context?"}
-    Local -- no --> Hidden["Native window hidden; browser/model waits"]
+    Local -- no --> Hidden["Native window hidden; localhost/model waits"]
     Local -- yes --> Fuel{"Fuel and race context usable?"}
     Fuel -- no --> WaitingFuel["Show waiting/current fuel fallback"]
     Fuel -- yes --> History["Load user/baseline history for combo"]
@@ -122,7 +122,7 @@ flowchart TD
     Provider -- no --> NotConfigured["Show not-configured state"]
     Provider -- yes --> Source{"Provider type"}
     Source -- Twitch --> Connect["Connect to Twitch IRC websocket"]
-    Source -- Streamlabs --> BrowserOnly["Use browser-source widget route"]
+    Source -- Streamlabs --> BrowserOnly["Use localhost widget route"]
     Connect --> Valid{"Connection accepted?"}
     Valid -- no --> Error["Show bounded error message"]
     Valid -- yes --> Messages["Append bounded chat messages"]
@@ -134,14 +134,14 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    Start["Browser-source request"] --> Telemetry{"Fresh telemetry says garage safe?"}
+    Start["Localhost request"] --> Telemetry{"Fresh telemetry says garage safe?"}
     Telemetry -- no --> Cover["Render cover or fallback"]
     Telemetry -- yes --> Garage{"Garage/setup visible?"}
     Garage -- yes --> Cover
     Garage -- no --> Image{"User image configured?"}
     Image -- yes --> Custom["Render configured cover image"]
     Image -- no --> Fallback["Render deterministic fallback"]
-    Custom --> Output["Browser-source output"]
+    Custom --> Output["Localhost output"]
     Fallback --> Output
     Cover --> Output
 ```
@@ -180,7 +180,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     Start["Fresh live snapshot"] --> Local{"Local active driver/team context?"}
-    Local -- no --> Hidden["Native window hidden; browser/model waits"]
+    Local -- no --> Hidden["Native window hidden; localhost/model waits"]
     Local -- yes --> Pit{"Pit-service model usable?"}
     Pit -- no --> Waiting["Waiting for pit service data"]
     Pit -- yes --> Status["Resolve current service status"]
@@ -201,7 +201,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     Start["Fresh live snapshot"] --> Local{"Focused local player in-car context?"}
-    Local -- no --> Hidden["Native window hidden; browser/model waits"]
+    Local -- no --> Hidden["Native window hidden; localhost/model waits"]
     Local -- yes --> Player{"Car telemetry known?"}
     Player -- no --> Waiting["Waiting for car telemetry"]
     Player -- yes --> Inputs["Read pedals, steering, gear, RPM, speed"]
@@ -257,9 +257,9 @@ flowchart TD
 flowchart TD
     Start["Browser review route"] --> Fixture{"Preview fixture requested?"}
     Fixture -- yes --> Mock["Use deterministic browser fixture"]
-    Fixture -- no --> Localhost["Use localhost browser-source model route"]
+    Fixture -- no --> Localhost["Use localhost model route"]
     Mock --> Page["Render settings shell or overlay page"]
     Localhost --> Page
-    Page --> Validate["Validate layout, JS behavior, browser/native model parity"]
+    Page --> Validate["Validate layout, JS behavior, native/localhost model parity"]
     Validate --> Boundary["Leave focus/topmost/click-through to Windows validation"]
 ```

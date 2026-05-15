@@ -182,7 +182,7 @@ enum DesignV2OverlayChromeVisibility {
 
         switch sessionKind {
         case "test":
-            return boolOption(settings.options[testKey], defaultValue: true)
+            return boolOption(settings.options[practiceKey], defaultValue: true)
         case "practice":
             return boolOption(settings.options[practiceKey], defaultValue: true)
         case "qualifying":
@@ -200,10 +200,7 @@ enum DesignV2OverlayChromeVisibility {
         }
 
         let normalized = sessionKey.lowercased()
-        if normalized.contains("test") {
-            return "test"
-        }
-        if normalized.contains("practice") {
+        if normalized.contains("test") || normalized.contains("practice") {
             return "practice"
         }
         if normalized.contains("qual") {

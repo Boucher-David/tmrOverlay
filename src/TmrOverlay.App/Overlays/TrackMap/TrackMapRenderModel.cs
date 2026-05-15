@@ -201,7 +201,7 @@ internal sealed record TrackMapRenderModel(
         DesignHeight,
         IsAvailable: false,
         MapKind: "circle",
-        Primitives: CirclePrimitives([], internalOpacity: 0.88d, showSectorBoundaries: true),
+        Primitives: CirclePrimitives([], internalOpacity: 1d, showSectorBoundaries: true),
         Markers: []);
 
     public static TrackMapRenderModel FromViewModel(
