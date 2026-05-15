@@ -52,7 +52,7 @@
       function initialRegion() {
         const params = new URLSearchParams(window.location.search);
         const requested = params.get('region') || config.selectedRegion || 'general';
-        return ['general', 'content', 'header', 'footer', 'preview', 'twitch'].includes(requested) ? requested : 'general';
+        return ['general', 'content', 'header', 'footer', 'preview', 'twitch', 'streamlabs'].includes(requested) ? requested : 'general';
       }
 
       function knownTab(tabId) {
@@ -68,7 +68,7 @@
       function regionsFor(overlay) {
         if (!overlay) return [];
         if (overlay.id === 'garage-cover') return ['general', 'preview'];
-        if (overlay.id === 'stream-chat') return ['general', 'content', 'twitch'];
+        if (overlay.id === 'stream-chat') return ['general', 'content', 'twitch', 'streamlabs'];
         return overlay.supportsChrome ? ['general', 'content', 'header', 'footer'] : ['general', 'content'];
       }
 
@@ -303,6 +303,8 @@
             return renderGarageCoverPreview(overlay);
           case 'twitch':
             return renderStreamChatTwitch(overlay);
+          case 'streamlabs':
+            return renderStreamChatStreamlabs();
           default:
             return renderOverlayGeneral(overlay);
         }
@@ -474,6 +476,15 @@
       function renderStreamChatTwitch(overlay) {
         return node('div', 'content-stack stream-chat-twitch', {}, [
           contentMatrix('Twitch Metadata', overlay.contentRows || [], 2)
+        ]);
+      }
+
+      function renderStreamChatStreamlabs() {
+        return node('div', 'content-stack stream-chat-streamlabs', {}, [
+          panel('Streamlabs', '', [
+            node('p', 'panel-note', {}, ['No Streamlabs-specific message controls yet.']),
+            node('p', 'panel-note', {}, ['This page is reserved for provider-specific controls after Streamlabs payloads are verified.'])
+          ])
         ]);
       }
 

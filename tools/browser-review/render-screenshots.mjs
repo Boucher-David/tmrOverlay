@@ -14,7 +14,9 @@ import { fileURLToPath } from 'node:url';
 import { browserOverlayPages } from '../../tests/browser-overlays/browserOverlayAssets.js';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const overlayIds = browserOverlayPages().map((page) => page.page.id);
+const overlayPages = browserOverlayPages();
+const overlayIds = overlayPages.map((page) => page.page.id);
+const overlayPagesById = new Map(overlayPages.map((page) => [page.page.id, page]));
 const sharedChromeOverlayIds = new Set([
   'standings',
   'relative',
@@ -23,9 +25,10 @@ const sharedChromeOverlayIds = new Set([
   'session-weather',
   'pit-service'
 ]);
+const previewModes = ['practice', 'qualifying', 'race'];
 
 const args = parseArgs(process.argv.slice(2));
-const outputRoot = resolve(repoRoot, args.output || 'artifacts/browser-review-screenshots');
+const outputRoot = resolve(repoRoot, args.output || defaultOutputFor(args.surface));
 const port = args.port || Number.parseInt(process.env.TMR_BROWSER_SCREENSHOT_PORT || '5199', 10);
 const baseUrl = stripTrailingSlash(args.baseUrl || `http://127.0.0.1:${port}`);
 const settleMilliseconds = args.settleMilliseconds ?? 350;
@@ -36,7 +39,7 @@ try {
     serverProcess = startReviewServer(port);
   }
 
-  await waitForServer(`${baseUrl}/review/app`);
+  await waitForServer(`${baseUrl}${serverProbePath(args.surface)}`);
   rmSync(outputRoot, { recursive: true, force: true });
   mkdirSync(outputRoot, { recursive: true });
 
@@ -48,7 +51,7 @@ try {
   const page = await context.newPage();
   const manifest = [];
 
-  for (const route of screenshotRoutes()) {
+  for (const route of screenshotRoutes(args.surface)) {
     await captureRoute(page, route, manifest);
   }
 
@@ -58,40 +61,86 @@ try {
     `${JSON.stringify({
       generatedAtUtc: new Date().toISOString(),
       baseUrl,
+      surfaceMode: args.surface,
       screenshots: manifest
     }, null, 2)}\n`);
-  console.log(`Wrote ${manifest.length} browser review screenshots to ${outputRoot}`);
+  console.log(`Wrote ${manifest.length} ${args.surface} screenshots to ${outputRoot}`);
 } finally {
   if (serverProcess) {
     serverProcess.kill('SIGTERM');
   }
 }
 
-function screenshotRoutes() {
-  const routes = [
-    settingsRoute('settings/general.png', '/review/app'),
-    settingsRoute('settings/diagnostics.png', '/review/app?tab=support')
-  ];
+function screenshotRoutes(surface) {
+  const routes = [];
+  if (surface === 'browser-review' || surface === 'all') {
+    routes.push(
+      settingsRoute('settings/general.png', '/review/app', { tab: 'general', region: 'general' }),
+      settingsRoute('settings/diagnostics.png', '/review/app?tab=support', { tab: 'support', region: 'general' }),
+      ...previewModes.map((mode) =>
+        settingsRoute(
+          `settings/general-preview-${mode}.png`,
+          `/review/app?preview=${encodeURIComponent(mode)}`,
+          { tab: 'general', region: 'general', previewMode: mode }))
+    );
 
-  for (const overlayId of overlayIds) {
-    for (const region of regionsForOverlay(overlayId)) {
-      const suffix = region === 'general' ? '' : `-${region}`;
-      routes.push(settingsRoute(
-        `settings/${overlayId}${suffix}.png`,
-        `/review/app?tab=${encodeURIComponent(overlayId)}${region === 'general' ? '' : `&region=${encodeURIComponent(region)}`}`));
+    for (const overlayId of overlayIds) {
+      for (const region of regionsForOverlay(overlayId)) {
+        const suffix = region === 'general' ? '' : `-${region}`;
+        routes.push(settingsRoute(
+          `settings/${overlayId}${suffix}.png`,
+          `/review/app?tab=${encodeURIComponent(overlayId)}${region === 'general' ? '' : `&region=${encodeURIComponent(region)}`}`,
+          { tab: overlayId, overlayId, region }));
+      }
     }
   }
 
   for (const overlayId of overlayIds) {
-    routes.push(overlayRoute(`browser-overlays/${overlayId}.png`, withPreview(`/review/overlays/${encodeURIComponent(overlayId)}`)));
-    routes.push(overlayRoute(`localhost-overlays/${overlayId}.png`, withPreview(`/overlays/${encodeURIComponent(overlayId)}`)));
+    if (surface === 'browser-review' || surface === 'all') {
+      routes.push(overlayRoute(
+        `browser-overlays/${overlayId}.png`,
+        withPreview(`/review/overlays/${encodeURIComponent(overlayId)}`, 'race'),
+        { surface: 'browser-review-overlay', overlayId, previewMode: 'race' }));
+    }
+    if (surface === 'localhost' || surface === 'all') {
+      routes.push(overlayRoute(
+        `localhost-overlays/${overlayId}.png`,
+        withPreview(`/overlays/${encodeURIComponent(overlayId)}`, 'race'),
+        { surface: 'localhost-overlay', overlayId, previewMode: 'race' }));
+      for (const alias of localhostAliasesForOverlay(overlayId)) {
+        routes.push(overlayRoute(
+          `localhost-overlays/${overlayId}-alias-${aliasSlug(alias)}.png`,
+          withPreview(alias, 'race'),
+          { surface: 'localhost-overlay', overlayId, previewMode: 'race', routeAlias: alias }));
+      }
+    }
+    for (const mode of previewModesForOverlay(overlayId)) {
+      if (surface === 'browser-review' || surface === 'all') {
+        routes.push(overlayRoute(
+          `browser-overlays/${overlayId}-${mode}.png`,
+          withPreview(`/review/overlays/${encodeURIComponent(overlayId)}`, mode),
+          { surface: 'browser-review-overlay', overlayId, previewMode: mode }));
+      }
+      if (surface === 'localhost' || surface === 'all') {
+        routes.push(overlayRoute(
+          `localhost-overlays/${overlayId}-${mode}.png`,
+          withPreview(`/overlays/${encodeURIComponent(overlayId)}`, mode),
+          { surface: 'localhost-overlay', overlayId, previewMode: mode }));
+        for (const alias of localhostAliasesForOverlay(overlayId)) {
+          routes.push(overlayRoute(
+            `localhost-overlays/${overlayId}-alias-${aliasSlug(alias)}-${mode}.png`,
+            withPreview(alias, mode),
+            { surface: 'localhost-overlay', overlayId, previewMode: mode, routeAlias: alias }));
+        }
+      }
+    }
   }
 
   return routes;
 }
 
-function withPreview(urlPath) {
-  return `${urlPath}${urlPath.includes('?') ? '&' : '?'}preview=race`;
+function withPreview(urlPath, mode) {
+  return `${urlPath}${urlPath.includes('?') ? '&' : '?'}preview=${encodeURIComponent(mode)}`;
 }
 
 function regionsForOverlay(overlayId) {
@@ -99,30 +148,57 @@ function regionsForOverlay(overlayId) {
     return ['general', 'preview'];
   }
   if (overlayId === 'stream-chat') {
-    return ['general', 'content', 'twitch'];
+    return ['general', 'content', 'twitch', 'streamlabs'];
   }
   return sharedChromeOverlayIds.has(overlayId)
     ? ['general', 'content', 'header', 'footer']
     : ['general', 'content'];
 }
 
-function settingsRoute(relativePath, urlPath) {
+function previewModesForOverlay(overlayId) {
+  return overlayId === 'gap-to-leader' ? ['race'] : previewModes;
+}
+
+function localhostAliasesForOverlay(overlayId) {
+  return overlayPagesById.get(overlayId)?.aliases || [];
+}
+
+function aliasSlug(alias) {
+  const slug = String(alias || '')
+    .split('/')
+    .filter(Boolean)
+    .pop();
+  return String(slug || 'alias')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'alias';
+}
+
+function settingsRoute(relativePath, urlPath, metadata = {}) {
   return {
     relativePath,
     urlPath,
     selector: '#settings-app',
     viewport: { width: 1280, height: 760 },
-    minBytes: 10_000
+    minBytes: 10_000,
+    surface: 'browser-review-settings',
+    renderer: 'settings-general.html',
+    sourceContract: 'src/TmrOverlay.App/Overlays/BrowserSources/Assets/templates/settings-general.html',
+    ...metadata
   };
 }
 
-function overlayRoute(relativePath, urlPath) {
+function overlayRoute(relativePath, urlPath, metadata = {}) {
   return {
     relativePath,
     urlPath,
     selector: '.overlay',
     viewport: { width: 1440, height: 900 },
-    minBytes: 1_000
+    minBytes: 1_000,
+    renderer: 'browser-overlay-assets',
+    moduleAsset: metadata.overlayId ? `src/TmrOverlay.App/Overlays/BrowserSources/Assets/modules/${metadata.overlayId}.js` : null,
+    sourceContract: 'src/TmrOverlay.App/Overlays/BrowserSources/BrowserOverlayModelFactory.cs',
+    ...metadata
   };
 }
 
@@ -133,6 +209,8 @@ async function captureRoute(page, route, manifest) {
   const element = page.locator(route.selector).first();
   await element.waitFor({ state: 'visible', timeout: 5_000 });
   await page.waitForTimeout(settleMilliseconds);
+  const model = await readOverlayModel(route);
+  const dom = await readDomDiagnostics(element);
 
   const screenshotPath = join(outputRoot, route.relativePath);
   mkdirSync(dirname(screenshotPath), { recursive: true });
@@ -146,10 +224,114 @@ async function captureRoute(page, route, manifest) {
     path: route.relativePath,
     url: route.urlPath,
     selector: route.selector,
+    surface: route.surface,
+    renderer: route.renderer,
+    sourceContract: route.sourceContract,
+    moduleAsset: route.moduleAsset || null,
+    overlayId: route.overlayId || null,
+    tab: route.tab || null,
+    region: route.region || null,
+    activeRegion: dom.activeRegion,
+    routeAlias: route.routeAlias || null,
+    previewMode: route.previewMode || null,
+    status: stringOrNull(model?.status),
+    source: stringOrNull(model?.source),
+    bodyKind: stringOrNull(model?.bodyKind),
+    shouldRender: booleanOrNull(model?.shouldRender),
+    rowCount: arrayLength(model?.rows),
+    metricCount: arrayLength(model?.metrics) + arrayLength(model?.metricSections) + arrayLength(model?.gridSections),
+    flagCount: arrayLength(model?.flags?.flags),
+    radarShouldRender: booleanOrNull(model?.carRadar?.renderModel?.shouldRender),
+    trackMapMarkerCount: arrayLength(model?.trackMap?.markers),
+    textSample: dom.textSample,
+    contentBounds: dom.contentBounds,
     width: artifact.width,
     height: artifact.height,
     bytes: artifact.bytes
   });
+}
+
+async function readOverlayModel(route) {
+  if (!route.overlayId || !route.surface?.endsWith('-overlay')) {
+    return null;
+  }
+
+  const query = route.urlPath.includes('?') ? route.urlPath.slice(route.urlPath.indexOf('?')) : '';
+  const response = await fetch(`${baseUrl}/api/overlay-model/${encodeURIComponent(route.overlayId)}${query}`, {
+    headers: { accept: 'application/json' }
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to read ${route.overlayId} model for ${route.relativePath}: HTTP ${response.status}`);
+  }
+
+  const payload = await response.json();
+  return payload?.model || null;
+}
+
+async function readDomDiagnostics(element) {
+  return element.evaluate((node) => {
+    const text = String(node.innerText || node.textContent || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 500);
+    const activeRegion = String(node.querySelector('.region-segment.active')?.textContent || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const selectors = [
+      '.overlay-panel',
+      '.overlay-content',
+      '.content',
+      '.metric-list',
+      '.table',
+      '.model-graph-panel',
+      '.flags-v2',
+      '.car-radar-v2',
+      '.track-map-v2',
+      '.garage-cover',
+      '.stream-chat-body',
+      'canvas',
+      'svg'
+    ];
+    const rootRect = node.getBoundingClientRect();
+    const rects = selectors
+      .flatMap((selector) => Array.from(node.querySelectorAll(selector)))
+      .map((element) => element.getBoundingClientRect())
+      .filter((rect) => rect.width > 0 && rect.height > 0);
+    if (!rects.length) {
+      return { textSample: text || null, activeRegion: activeRegion || null, contentBounds: null };
+    }
+
+    const left = Math.min(...rects.map((rect) => rect.left));
+    const top = Math.min(...rects.map((rect) => rect.top));
+    const right = Math.max(...rects.map((rect) => rect.right));
+    const bottom = Math.max(...rects.map((rect) => rect.bottom));
+    const width = right - left;
+    const height = bottom - top;
+    return {
+      textSample: text || null,
+      activeRegion: activeRegion || null,
+      contentBounds: {
+        x: Math.round(left - rootRect.left),
+        y: Math.round(top - rootRect.top),
+        width: Math.round(width),
+        height: Math.round(height),
+        aspectRatio: height > 0 ? Number((width / height).toFixed(4)) : null
+      }
+    };
+  });
+}
+
+function stringOrNull(value) {
+  const text = typeof value === 'string' ? value.trim() : '';
+  return text || null;
+}
+
+function booleanOrNull(value) {
+  return typeof value === 'boolean' ? value : null;
+}
+
+function arrayLength(value) {
+  return Array.isArray(value) ? value.length : 0;
 }
 
 function inspectPng(path, minBytes) {
@@ -237,6 +419,7 @@ function parseArgs(values) {
     output: '',
     port: 0,
     settleMilliseconds: null,
+    surface: 'browser-review',
     verbose: false
   };
 
@@ -250,6 +433,8 @@ function parseArgs(values) {
       parsed.port = Number.parseInt(requiredValue(values, ++index, value), 10);
     } else if (value === '--settle-ms') {
       parsed.settleMilliseconds = Number.parseInt(requiredValue(values, ++index, value), 10);
+    } else if (value === '--surface') {
+      parsed.surface = requiredValue(values, ++index, value);
     } else if (value === '--verbose') {
       parsed.verbose = true;
     } else {
@@ -263,8 +448,27 @@ function parseArgs(values) {
   if (parsed.settleMilliseconds !== null && !Number.isFinite(parsed.settleMilliseconds)) {
     throw new Error('Invalid --settle-ms value.');
   }
+  if (!['browser-review', 'localhost', 'all'].includes(parsed.surface)) {
+    throw new Error('Invalid --surface value. Expected browser-review, localhost, or all.');
+  }
 
   return parsed;
+}
+
+function defaultOutputFor(surface) {
+  if (surface === 'localhost') {
+    return 'artifacts/localhost-screenshots';
+  }
+  if (surface === 'all') {
+    return 'artifacts/browser-localhost-screenshots';
+  }
+  return 'artifacts/browser-review-screenshots';
+}
+
+function serverProbePath(surface) {
+  return surface === 'localhost'
+    ? '/overlays/standings?preview=race'
+    : '/review/app';
 }
 
 function requiredValue(values, index, flag) {

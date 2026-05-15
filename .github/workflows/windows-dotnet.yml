@@ -63,7 +63,16 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Generate browser review screenshots
-        run: npm run screenshots:browser -- --output artifacts/browser-review-screenshots
+        run: npm run screenshots:browser-review -- --output artifacts/browser-review-screenshots
+
+      - name: Validate browser review screenshots
+        run: python3 tools/validate_overlay_screenshots.py --profile browser-review-ci --root artifacts/browser-review-screenshots
+
+      - name: Generate localhost screenshots
+        run: npm run screenshots:localhost -- --output artifacts/localhost-screenshots
+
+      - name: Validate localhost screenshots
+        run: python3 tools/validate_overlay_screenshots.py --profile localhost-ci --root artifacts/localhost-screenshots
 
       - name: Upload browser review screenshots
         uses: actions/upload-artifact@v4
@@ -71,6 +80,15 @@ jobs:
         with:
           name: browser-review-screenshots
           path: artifacts/browser-review-screenshots
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload localhost screenshots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: localhost-screenshots
+          path: artifacts/localhost-screenshots
           if-no-files-found: error
           retention-days: 14
 

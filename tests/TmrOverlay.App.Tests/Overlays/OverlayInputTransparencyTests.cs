@@ -33,14 +33,16 @@ public sealed class OverlayInputTransparencyTests
     }
 
     [Fact]
-    public void StreamChatHitRegion_StaysFullyClickThroughWhenChromeIsUnavailable()
+    public void StreamChatHitRegion_AllowsHeaderDragAndKeepsBodyClickThrough()
     {
         var size = new Size(420, 320);
 
-        Assert.False(StreamChatForm.IsHeaderDragHit(new Point(24, 18), size));
-        Assert.False(DesignV2LiveOverlayForm.IsStreamChatDragHit(new Point(24, 18), size));
+        Assert.True(StreamChatForm.IsHeaderDragHit(new Point(24, 18), size));
+        Assert.True(DesignV2LiveOverlayForm.IsStreamChatDragHit(new Point(24, 18), size));
         Assert.False(StreamChatForm.IsHeaderDragHit(new Point(24, 58), size));
         Assert.False(DesignV2LiveOverlayForm.IsStreamChatDragHit(new Point(24, 58), size));
+        Assert.False(StreamChatForm.IsHeaderDragHit(new Point(392, 18), size));
+        Assert.False(DesignV2LiveOverlayForm.IsStreamChatDragHit(new Point(392, 18), size));
     }
 
     [Fact]

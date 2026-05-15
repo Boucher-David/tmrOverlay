@@ -38,6 +38,8 @@ test-results/
 /runtime-state.json
 /history/user/
 /artifacts/
+# Local screenshot drops copied in for review, for example 0.20.0/.
+/[0-9]*.[0-9]*.[0-9]*/
 
 # Local PSD/livery experiments can be large binary files.
 /livery-poc/

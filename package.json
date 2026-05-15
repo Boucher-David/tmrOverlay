@@ -12,7 +12,10 @@
     "test:localhost:playwright": "playwright test --grep-invert \"application|settings\"",
     "test:browser:install": "playwright install chromium",
     "review:browser": "node tools/browser-review/server.mjs",
-    "screenshots:browser": "node tools/browser-review/render-screenshots.mjs",
+    "screenshots:browser": "node tools/browser-review/render-screenshots.mjs --surface browser-review",
+    "screenshots:browser-review": "node tools/browser-review/render-screenshots.mjs --surface browser-review",
+    "screenshots:localhost": "node tools/browser-review/render-screenshots.mjs --surface localhost",
+    "screenshots:all": "node tools/browser-review/render-screenshots.mjs --surface all",
     "validate:browser:race-start": "node tools/browser-review/validate-race-start-replay.mjs"
   },
   "devDependencies": {

@@ -445,7 +445,11 @@ function overlayIdFromPath(path) {
 
   const overlayPrefix = '/overlays/';
   if (path.startsWith(overlayPrefix)) {
-    return decodeURIComponent(path.slice(overlayPrefix.length));
+    try {
+      return browserOverlayPage(path).page.id;
+    } catch {
+      return decodeURIComponent(path.slice(overlayPrefix.length));
+    }
   }
 
   return null;

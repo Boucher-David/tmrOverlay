@@ -746,13 +746,14 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         var reference = cars.FirstOrDefault(car =>
             car.IsReferenceCar
             && ChartGapSeconds(car) is not null);
-        var referenceCanAnchor = reference is not null && !IsLappedGraphGap(reference);
+        var anchor = reference;
+        var referenceCanAnchor = anchor is not null && !IsLappedGraphGap(anchor);
         foreach (var car in cars.Where(car => car.IsClassLeader || (referenceCanAnchor && car.IsReferenceCar)))
         {
             selected.Add(car.CarIdx);
         }
 
-        if (!referenceCanAnchor)
+        if (!referenceCanAnchor || anchor is null)
         {
             foreach (var car in cars
                 .Where(car => !car.IsClassLeader && !IsLappedGraphGap(car))
@@ -781,7 +782,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         foreach (var car in cars
             .Where(car => !car.IsReferenceCar
                 && !car.IsClassLeader
-                && IsSameLapReferenceCandidate(car, reference)
+                && IsSameLapReferenceCandidate(car, anchor)
                 && car.DeltaSecondsToReference is not null
                 && car.DeltaSecondsToReference.Value < 0d)
             .OrderByDescending(car => car.DeltaSecondsToReference!.Value)
@@ -793,7 +794,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
         foreach (var car in cars
             .Where(car => !car.IsReferenceCar
                 && !car.IsClassLeader
-                && IsSameLapReferenceCandidate(car, reference)
+                && IsSameLapReferenceCandidate(car, anchor)
                 && car.DeltaSecondsToReference is not null
                 && car.DeltaSecondsToReference.Value > 0d)
             .OrderBy(car => car.DeltaSecondsToReference!.Value)
