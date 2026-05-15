@@ -399,14 +399,16 @@ test.describe('browser overlay Playwright integration', () => {
     await expect(page.locator('.chrome-head')).toHaveText(['Item', 'Practice', 'Qualifying', 'Race']);
 
     await page.getByRole('link', { name: 'Stream Chat' }).click();
-    await expect(page.locator('.region-segment')).toHaveText(['General', 'Content', 'Twitch']);
+    await expect(page.locator('.region-segment')).toHaveText(['General', 'Content', 'Twitch', 'Streamlabs']);
     await page.getByRole('tab', { name: 'Content' }).click();
     await expect(page.locator('h2')).toContainText('Chat Source');
     await expect(page.locator('.content-body').getByText('Visible')).toHaveCount(0);
     await page.getByRole('tab', { name: 'Twitch' }).click();
     await expect(page.locator('h2')).toContainText('Twitch Metadata');
     await expect(page.getByText('Badges')).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'Streamlabs' })).toHaveCount(0);
+    await page.getByRole('tab', { name: 'Streamlabs' }).click();
+    await expect(page.locator('h2')).toContainText('Streamlabs');
+    await expect(page.getByText('Streamlabs-specific message controls')).toBeVisible();
 
     await page.getByRole('link', { name: 'Track Map' }).click();
     await expect(page.locator('.content-heading-copy p')).toHaveText('Live car location and sector context.');
