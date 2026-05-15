@@ -1261,7 +1261,7 @@ internal sealed class DesignV2SettingsSurface : Control
         DrawBlockToggleGrid(graphics, settings, "Twitch Metadata", BlockContentRows(settings, OverlayContentColumnSettings.StreamChat), new Rectangle(306, 272, 834, 200), columns: 2, rowHeight: 16, rowGap: 2, useSessionColumns: false);
     }
 
-    private static void DrawStreamChatStreamlabsPage(Graphics graphics)
+    private void DrawStreamChatStreamlabsPage(Graphics graphics)
     {
         DrawPanel(graphics, new Rectangle(306, 272, 834, 150), "Streamlabs");
         DrawText(graphics, "No Streamlabs-specific message controls yet.", new Rectangle(328, 334, 440, 18), 12f, FontStyle.Regular, TextMuted);
