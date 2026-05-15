@@ -73,22 +73,23 @@ public sealed class SessionPreviewStateTests
         var now = DateTimeOffset.Parse("2026-05-10T15:30:00Z");
 
         state.SetMode(OverlaySessionKind.Race);
-        var snapshot = state.TryBuildSnapshot(now);
-        Assert.NotNull(snapshot);
-        snapshot = snapshot!;
+        var snapshot = state.TryBuildSnapshot(now)
+            ?? throw new InvalidOperationException("Expected race session preview snapshot.");
+        var latestSample = snapshot.LatestSample
+            ?? throw new InvalidOperationException("Expected race session preview sample.");
 
         Assert.Equal("nurburgring combinedshortb", snapshot.Context.Track.TrackName);
         Assert.Equal("Gesamtstrecke 24h", snapshot.Context.Track.TrackDisplayName);
         Assert.Equal("Aston Martin Vantage GT3 EVO", snapshot.Context.Car.CarScreenName);
         Assert.Contains(snapshot.Context.Drivers, driver => string.Equals(driver.UserName, "Kauan Vigliazzi Teixeira Lemos", StringComparison.Ordinal));
         Assert.Contains(snapshot.Context.Drivers, driver => string.Equals(driver.TeamName, "Gladius Competitions Powered by ATS Esport", StringComparison.Ordinal));
-        Assert.InRange(snapshot.LatestSample.FuelLevelLiters, 104.93d, 104.95d);
-        Assert.InRange(snapshot.LatestSample.SpeedMetersPerSecond, 77.88d, 77.90d);
-        Assert.Equal(127, snapshot.LatestSample.PitServiceFlags);
-        Assert.Equal(32767, snapshot.LatestSample.SessionLapsTotal);
+        Assert.InRange(latestSample.FuelLevelLiters, 104.93d, 104.95d);
+        Assert.InRange(latestSample.SpeedMetersPerSecond, 77.88d, 77.90d);
+        Assert.Equal(127, latestSample.PitServiceFlags);
+        Assert.Equal(32767, latestSample.SessionLapsTotal);
 
-        var allCars = snapshot.LatestSample.AllCars;
-        Assert.NotNull(allCars);
+        var allCars = latestSample.AllCars
+            ?? throw new InvalidOperationException("Expected race session preview cars.");
         Assert.All(snapshot.Context.Drivers, driver => Assert.True(driver.CarIdx is >= 0 and <= 63));
         Assert.All(allCars, car => Assert.True(car.CarIdx is >= 0 and <= 63));
     }
