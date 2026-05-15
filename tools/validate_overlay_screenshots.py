@@ -640,8 +640,16 @@ def validate_overlay_semantics(
         if isinstance(flag_count, int) and flag_count <= 0:
             failures.append(f"{path}: flags preview model contains no visible flags")
 
-    if overlay_id == "car-radar" and values.get("radarShouldRender") is False:
-        failures.append(f"{path}: car radar preview model reported radarShouldRender=false")
+    if overlay_id == "car-radar":
+        radar_should_render = values.get("radarShouldRender")
+        if radar_should_render is False:
+            failures.append(f"{path}: car radar preview model reported radarShouldRender=false")
+        if path.startswith("native-overlays/"):
+            if radar_should_render is not True:
+                failures.append(f"{path}: native car radar manifest did not prove radarShouldRender=true")
+            surface_alpha = values.get("radarSurfaceAlpha")
+            if not isinstance(surface_alpha, (int, float)) or surface_alpha <= 0.1:
+                failures.append(f"{path}: native car radar surface alpha {surface_alpha!r} is too low for screenshot validation")
 
     if values.get("shouldRender") is False and overlay_id not in SEMANTIC_WAITING_EXEMPT_OVERLAYS:
         failures.append(f"{path}: preview model reported shouldRender=false")

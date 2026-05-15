@@ -871,15 +871,33 @@ internal static class Program
         {
             for (var x = 0; x < bitmap.Width; x++)
             {
-                if (bitmap.GetPixel(x, y).ToArgb() == target)
+                var pixel = bitmap.GetPixel(x, y);
+                var backdrop = ((x / 16) + (y / 16)) % 2 == 0
+                    ? Color.FromArgb(20, 25, 29)
+                    : Color.FromArgb(32, 38, 43);
+                if (pixel.ToArgb() == target || pixel.A == 0)
                 {
-                    var color = ((x / 16) + (y / 16)) % 2 == 0
-                        ? Color.FromArgb(20, 25, 29)
-                        : Color.FromArgb(32, 38, 43);
-                    bitmap.SetPixel(x, y, color);
+                    bitmap.SetPixel(x, y, backdrop);
+                    continue;
+                }
+
+                if (pixel.A < 255)
+                {
+                    bitmap.SetPixel(x, y, CompositeOver(pixel, backdrop));
                 }
             }
         }
+    }
+
+    private static Color CompositeOver(Color foreground, Color background)
+    {
+        var alpha = foreground.A / 255d;
+        var inverseAlpha = 1d - alpha;
+        return Color.FromArgb(
+            255,
+            (int)Math.Round(foreground.R * alpha + background.R * inverseAlpha),
+            (int)Math.Round(foreground.G * alpha + background.G * inverseAlpha),
+            (int)Math.Round(foreground.B * alpha + background.B * inverseAlpha));
     }
 
     private static void RenderContactSheet(string outputRoot, IReadOnlyList<RenderedScreenshot> screenshots)
@@ -967,7 +985,10 @@ internal static class Program
             {
                 Status = designV2.DiagnosticStatus,
                 Evidence = designV2.DiagnosticEvidence,
-                Body = designV2.DiagnosticBodyKind
+                Body = designV2.DiagnosticBodyKind,
+                RadarShouldRender = designV2.DiagnosticRadarShouldRender,
+                RadarSurfaceAlpha = designV2.DiagnosticRadarSurfaceAlpha,
+                RadarCarCount = designV2.DiagnosticRadarCarCount
             };
         }
 
@@ -1055,7 +1076,10 @@ internal static class Program
                     sourceContract = screenshot.Metadata.SourceContract,
                     status = screenshot.Metadata.Status,
                     evidence = screenshot.Metadata.Evidence,
-                    body = screenshot.Metadata.Body
+                    body = screenshot.Metadata.Body,
+                    radarShouldRender = screenshot.Metadata.RadarShouldRender,
+                    radarSurfaceAlpha = screenshot.Metadata.RadarSurfaceAlpha,
+                    radarCarCount = screenshot.Metadata.RadarCarCount
                 }
             })
         };
@@ -1134,7 +1158,10 @@ internal static class Program
         string? SourceContract = null,
         string? Status = null,
         string? Evidence = null,
-        string? Body = null);
+        string? Body = null,
+        bool? RadarShouldRender = null,
+        double? RadarSurfaceAlpha = null,
+        int? RadarCarCount = null);
 
     private sealed record SettingsRegionSpec(string Id, string Label);
 

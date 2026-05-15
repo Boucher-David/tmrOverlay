@@ -29,6 +29,11 @@ public sealed class SessionPreviewStateTests
         Assert.StartsWith("session-preview-", snapshot.SourceId, StringComparison.Ordinal);
         Assert.True(availability.IsAvailable);
         Assert.Equal(mode, OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot));
+        var localInCar = LiveLocalStrategyContext.ForRequirement(
+            snapshot,
+            now,
+            OverlayContextRequirement.LocalPlayerInCar);
+        Assert.True(localInCar.IsAvailable);
         Assert.True(snapshot.Models.Session.HasData);
         Assert.NotNull(snapshot.Models.Session.SessionFlags);
         Assert.NotEqual(0, snapshot.Models.Session.SessionFlags.Value);

@@ -285,7 +285,7 @@ internal static class SessionPreviewTelemetryFixtures
             IsOnTrack: true,
             IsInGarage: false,
             OnPitRoad: false,
-            PitstopActive: mode == OverlaySessionKind.Race,
+            PitstopActive: false,
             PlayerCarInPitStall: false,
             FuelLevelLiters: mode == OverlaySessionKind.Race ? 104.94d : 72.5d,
             FuelLevelPercent: mode == OverlaySessionKind.Race ? 1.0d : 0.70d,

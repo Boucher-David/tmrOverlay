@@ -261,6 +261,12 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         }
 
         _settingsPreviewVisible = previewVisible;
+        if (_kind == DesignV2LiveOverlayKind.CarRadar && previewVisible)
+        {
+            _radarSurfaceAlpha = 1d;
+            _lastRadarFadeAtUtc = null;
+        }
+
         Invalidate();
     }
 
@@ -286,6 +292,18 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     public string DiagnosticEvidence => _model.Evidence.ToString();
 
     public string DiagnosticBodyKind => BodyName(_model.Body);
+
+    public bool? DiagnosticRadarShouldRender => _model.Body is DesignV2RadarBody radar
+        ? radar.RenderModel.ShouldRender
+        : null;
+
+    public double? DiagnosticRadarSurfaceAlpha => _model.Body is DesignV2RadarBody radar
+        ? radar.SurfaceAlpha
+        : null;
+
+    public int? DiagnosticRadarCarCount => _model.Body is DesignV2RadarBody radar
+        ? radar.RenderModel.Cars.Count
+        : null;
 
     public void SetFlagsManagedState(bool managedEnabled, bool settingsOverlayActive)
     {
