@@ -173,7 +173,7 @@ public sealed class TrackMapMarkerPolicyTests
             Markers:
             [
                 new TrackMapOverlayMarker(10, 0.25d, IsFocus: true, ClassColorHex: null, Position: 5, TrackSurface: 3),
-                new TrackMapOverlayMarker(11, 0.50d, IsFocus: false, ClassColorHex: "#FFDA59", Position: 12, TrackSurface: 3)
+                new TrackMapOverlayMarker(11, 0.50d, IsFocus: false, ClassColorHex: "#62C7FF", Position: 12, TrackSurface: 3)
             ],
             Sectors: []), startedAt);
 
@@ -181,7 +181,7 @@ public sealed class TrackMapMarkerPolicyTests
             Markers:
             [
                 new TrackMapOverlayMarker(10, 0.25d, IsFocus: true, ClassColorHex: null, Position: 5, TrackSurface: 0),
-                new TrackMapOverlayMarker(11, 0.50d, IsFocus: false, ClassColorHex: "#FFDA59", Position: 12, TrackSurface: 0)
+                new TrackMapOverlayMarker(11, 0.50d, IsFocus: false, ClassColorHex: "#62C7FF", Position: 12, TrackSurface: 0)
             ],
             Sectors: []), startedAt.AddMilliseconds(100));
 
@@ -197,7 +197,7 @@ public sealed class TrackMapMarkerPolicyTests
             Markers:
             [
                 new TrackMapOverlayMarker(10, 0.25d, IsFocus: true, ClassColorHex: null, Position: 5, TrackSurface: 0),
-                new TrackMapOverlayMarker(11, 0.50d, IsFocus: false, ClassColorHex: "#FFDA59", Position: 12, TrackSurface: 0)
+                new TrackMapOverlayMarker(11, 0.50d, IsFocus: false, ClassColorHex: "#62C7FF", Position: 12, TrackSurface: 0)
             ],
             Sectors: []), startedAt.AddSeconds(3));
 

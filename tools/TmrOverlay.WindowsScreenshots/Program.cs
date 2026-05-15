@@ -378,7 +378,7 @@ internal static class Program
                 "Settings Components - Browser Source",
                 "Relative",
                 null,
-                new Rectangle(306, 518, 716, 92))
+                new Rectangle(726, 272, 414, 132))
         ];
     }
 

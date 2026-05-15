@@ -26,11 +26,13 @@
     <Content Include="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="..\..\assets\brand\TMRLogo.png" Link="Assets\TMRLogo.png">
+    <Content Include="..\..\assets\brand\TMRLogo.png" Link="Assets\TMRLogo.png" TargetPath="Assets\TMRLogo.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
-    <Content Include="..\..\assets\brand\Team_Logo_4k_TMRBRANDING.png" Link="Assets\GarageCoverDefault.png">
+    <Content Include="..\..\assets\brand\Team_Logo_4k_TMRBRANDING.png" Link="Assets\GarageCoverDefault.png" TargetPath="Assets\GarageCoverDefault.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
     <Content Include="Assets\TrackMaps\*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

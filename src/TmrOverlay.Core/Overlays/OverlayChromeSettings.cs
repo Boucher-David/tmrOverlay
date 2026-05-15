@@ -84,7 +84,10 @@ internal static class OverlayChromeSettings
             OverlaySessionKind.Practice => settings.GetBooleanOption(practiceKey, defaultValue: true),
             OverlaySessionKind.Qualifying => settings.GetBooleanOption(qualifyingKey, defaultValue: true),
             OverlaySessionKind.Race => settings.GetBooleanOption(raceKey, defaultValue: true),
-            _ => true
+            _ => settings.GetBooleanOption(testKey, defaultValue: true)
+                || settings.GetBooleanOption(practiceKey, defaultValue: true)
+                || settings.GetBooleanOption(qualifyingKey, defaultValue: true)
+                || settings.GetBooleanOption(raceKey, defaultValue: true)
         };
     }
 }

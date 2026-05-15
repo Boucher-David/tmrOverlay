@@ -113,14 +113,8 @@ internal sealed class StreamChatOverlaySource : IDisposable
                 RetainedMessageCount: retainedMessages.Length,
                 RecentRetainedMessageCount: recentRetainedMessages.Length,
                 VisibleMessageCount: visibleMessages.Length,
-                MessageCountsByKind: retainedMessages
-                    .GroupBy(message => message.Message.Kind.ToString().ToLowerInvariant())
-                    .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
-                    .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase),
-                VisibleMessageCountsByKind: visibleMessages
-                    .GroupBy(message => message.Message.Kind.ToString().ToLowerInvariant())
-                    .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
-                    .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase),
+                MessageCountsByKind: CountMessagesByKind(retainedMessages),
+                VisibleMessageCountsByKind: CountMessagesByKind(visibleMessages),
                 LastReceivedAtUtc: retainedMessages.Length == 0
                     ? null
                     : retainedMessages.Max(message => message.ReceivedAtUtc),
@@ -514,6 +508,18 @@ internal sealed class StreamChatOverlaySource : IDisposable
     private static StoredStreamChatMessage Store(StreamChatMessage message, DateTimeOffset receivedAtUtc)
     {
         return new StoredStreamChatMessage(message, receivedAtUtc);
+    }
+
+    private static IReadOnlyDictionary<string, int> CountMessagesByKind(IReadOnlyList<StoredStreamChatMessage> messages)
+    {
+        var counts = Enum.GetValues<StreamChatMessageKind>()
+            .ToDictionary(kind => kind.ToString().ToLowerInvariant(), _ => 0, StringComparer.OrdinalIgnoreCase);
+        foreach (var message in messages)
+        {
+            counts[message.Message.Kind.ToString().ToLowerInvariant()]++;
+        }
+
+        return counts;
     }
 
     private void SetStatus(int generation, string status)

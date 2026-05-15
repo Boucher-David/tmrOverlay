@@ -183,9 +183,10 @@ public sealed class StreamChatIrcParserTests
         Assert.Equal(2, diagnostics.VisibleMessageCount);
         Assert.Equal(1, diagnostics.MessageCountsByKind["message"]);
         Assert.Equal(1, diagnostics.MessageCountsByKind["notice"]);
-        Assert.Equal(1, diagnostics.MessageCountsByKind["system"]);
+        Assert.Equal(1, diagnostics.MessageCountsByKind["error"]);
+        Assert.Equal(0, diagnostics.MessageCountsByKind["system"]);
         Assert.Equal(1, diagnostics.VisibleMessageCountsByKind["message"]);
-        Assert.False(diagnostics.VisibleMessageCountsByKind.ContainsKey("notice"));
+        Assert.Equal(0, diagnostics.VisibleMessageCountsByKind["notice"]);
         Assert.Equal(now.AddSeconds(2), diagnostics.LastReceivedAtUtc);
         Assert.False(diagnostics.Connected);
         Assert.False(diagnostics.Connecting);
