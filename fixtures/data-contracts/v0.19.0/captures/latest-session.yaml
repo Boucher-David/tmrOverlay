@@ -1,0 +1,11 @@
+WeekendInfo:
+  TrackName: synthetic_circle
+  TrackDisplayName: Synthetic Circle
+  TrackConfigName: Full
+  TrackID: 42
+  TrackLength: 1.50 km
+SessionInfo:
+  Sessions:
+    - SessionNum: 2
+      SessionType: Race
+      SessionName: Race

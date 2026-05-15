@@ -1,0 +1,36 @@
+{
+  "settingsVersion": 11,
+  "futureRootField": {
+    "shouldBeIgnored": true
+  },
+  "general": {
+    "fontFamily": "Segoe UI",
+    "unitSystem": "Metric",
+    "futureGeneralField": "ignored"
+  },
+  "overlays": [
+    {
+      "id": "standings",
+      "enabled": true,
+      "scale": 1,
+      "x": 10,
+      "y": 20,
+      "width": 780,
+      "height": 520,
+      "opacity": 1,
+      "alwaysOnTop": true,
+      "showInTest": true,
+      "showInPractice": true,
+      "showInQualifying": true,
+      "showInRace": true,
+      "futureOverlayField": {
+        "shouldBeIgnored": true
+      },
+      "options": {
+        "contract.future.local-option": "preserve-me",
+        "standings.other-class-rows": "2",
+        "standings.content.standings.gap.enabled": "false"
+      }
+    }
+  ]
+}

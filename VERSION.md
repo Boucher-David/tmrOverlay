@@ -13,70 +13,54 @@ Use `docs/model-v2-future-branches.md` for session-handoff notes, current model-
 
 ## Current Branch Target
 
-### v0.19.0 - V1 Candidate Overlay Parity And Readiness
+### Data Contract Snapshot Baseline
 
-Planned branch name:
+Current branch name:
 
 ```text
-fix/live-overlay-capture-regressions
+fix/v0191-data-contract-snapshots
 ```
+
+Release/tag decision:
+
+- Keep shared product/version metadata at `0.19.0`.
+- Do not create a release tag for this data-contract-only merge.
+- Reconsider a `v0.19.1` patch tag only if Windows-tested compatibility/runtime fixes land in this branch before merge.
 
 Planned scope:
 
-- Promote normalized live reference facts so Standings, Relative, Gap To Leader, Track Map, diagnostics, and browser review validation agree on focus/player/reference identity before overlay-specific interpretation.
-- Keep Radar as the explicit local in-car spatial special case while allowing Relative, Standings, Gap To Leader, and Track Map to work from timing/scoring evidence in pits, spectated focus, and replayed browser review contexts.
-- Bring Standings, Relative, and Gap To Leader native/localhost behavior into production-contract parity: settings-backed chrome/content, stable row/window sizing, grounded source selection, and no fabricated localhost-only fields.
-- Keep Standings grounded in scoring/results order, keep race row membership stable from field/class settings, preserve leader rows when row caps are smaller than class size, and calculate gap/interval only from explicit timing evidence.
-- Keep Relative centered and stable around the reference car, use numerical position and delta semantics, preserve blank slots instead of resizing, and avoid radar-only locality rules.
-- Port Gap To Leader V2 parity features from legacy/mac where agreed: filtered focused range, threat highlighting, trend metrics, endpoint labels, weather/leader/driver markers, and the 4h growing focus window, while intentionally leaving tactical relative mode out of GtL.
-- Align Pit Service native/localhost V2 behavior around the accepted grouped layout, compact session time/lap context, segmented service rows, tire analysis chips, and evidence-backed omission of estimated fuel and in-car setup rows.
-- Align Fuel Calculator native/localhost V2 behavior around local player context gating, grouped race/stint metric sections, shared chrome controls, and replay production-model parity while leaving deeper fuel strategy changes for Fuel Calculator v2.
-- Align Input State native/localhost behavior around the shared render model, 50 ms refresh, smoothed graph/bar progression, settings-driven graph/right-rail visibility, and in-car-only availability.
-- Align Radar native/localhost behavior around the shared render model, distance-based proximity display, class-colour outlines, faster-class approach warning, fade behavior, and bundled/user car-length calibration.
-- Align Track Map native/localhost behavior around live-model replay data, fallback map rendering, class-coloured position markers, sector/lap highlight clearing, track-surface incident pulses, and telemetry-built map capture.
-- Align Stream Chat native/localhost behavior around fixed-height row flow, shared chrome/content settings, Twitch/live-review message display parity, retained chat history, and documented v1.X stream-v2 follow-up scope for rich event payloads.
-- Align Garage Cover localhost behavior around stock privacy-cover imagery, garage-signal activation, localhost image routes, and textless browser review validation.
-- Align Session / Weather native/localhost behavior around grouped session/weather rows, settings-driven content cells, metric/imperial units, weather colouring, local wind-facing direction, shared header chrome, and no source footer option for that overlay.
-- Fix settings visibility/persistence and overlay chrome persistence for visibility, position, opacity, scale, content/header/footer options, content/header/footer session gates, and localhost settings.
-- Add raw `ClutchRaw` capture and input-display fallback while preserving brake behavior for pit/engine-off captures and addressing input wheel clipping.
-- Extend browser review replay validation to stream real telemetry-derived overlay models instead of hand-authored demos, with Road Atlanta, four-hour, and 24-hour mid-race rejoin captures as the preferred scenario set.
-- Keep uploaded raw captures, screenshots, and diagnostic bundles local unless they are deliberately promoted into compact redacted fixtures or review artifacts.
+- Treat `v0.19.0` as the first V1-candidate durable data-contract baseline.
+- Add versioned release snapshots under `fixtures/data-contracts/` for app settings, compact history, generated track maps, raw-capture metadata, and runtime state.
+- Add tests that load the previous release snapshot into the current code and prove its settings map into browser, localhost, and native overlay consumers.
+- Document which persisted files are durable user contracts, versioned diagnostics, or disposable runtime state.
+- Pin pre-v1 settings migrations to the baseline version they actually apply to, so future settings-version bumps do not rewrite valid v0.19.0 user choices.
+- Keep the branch limited to data-contract hardening unless Windows v0.19.0 testing reports a small compatibility fix that should become a tagged patch release.
 
 Technical implementation checklist:
 
-1. Bump shared product/version metadata to `0.19.0` across the Windows product surfaces and shared browser/localhost contracts.
-2. Add `LiveReferenceModel` and route shared overlay consumers through it.
-3. Update Standings, Relative, Gap To Leader, Track Map, diagnostics, and browser replay tooling to consume normalized reference facts.
-4. Keep overlay-specific contexts local to overlays that need them, especially Radar local/in-car spatial gating.
-5. Align native and localhost contracts for Standings, Relative, and Gap To Leader, including settings-backed content/header/footer behavior.
-6. Align Pit Service native and localhost contracts around grouped sections, segmented service rows, tire analysis chips, and the first-pass feature boundary for fuel estimates and in-car setup rows.
-7. Align Fuel Calculator native/localhost contracts around shared local strategy gating, grouped race/stint metric sections, shared source-footer controls, and production-shaped browser review replay models.
-8. Align Input State, Radar, Track Map, Stream Chat, Garage Cover, and Session / Weather native/localhost contracts around shared render/view models and settings-backed browser review replay.
-9. Add clutch raw capture/read models and use `ClutchRaw` as an input fallback when normalized clutch remains flat zero.
-10. Update Settings z-order, persistence, and diagnostics behavior so update/restart and focus transitions preserve visible overlays and settings choices.
-11. Extend browser review replay validation to fetch real telemetry-derived overlay models, assert live-model invariants, and preserve generated review artifacts.
-12. Validate local static checks, browser tests, screenshot expectations, and git hygiene; use Windows CI or a Windows machine for the full .NET build/test and real WinForms behavior pass.
+1. Keep shared product/version metadata at `0.19.0` for the data-contract-only merge.
+2. Add `fixtures/data-contracts/v0.19.0/` with a manifest, exact schema snapshots, and compact representative persisted files.
+3. Add `DataContractSnapshotCompatibilityTests` for settings, history maintenance/query, track maps, raw-capture metadata, and runtime-state parsing.
+4. Add snapshot-to-overlay mapping tests for browser review settings, localhost overlay models, and native overlay consumers.
+5. Update data-contract, history-evolution, README, repo notes, and validation-skill docs.
+6. Run local static validation and use Windows/CI for the targeted .NET data-contract test before merge.
 
 Likely squash title:
 
 ```text
-[v0.19.0] Prepare V1 candidate overlay parity
+Add durable data contract snapshots
 ```
 
 Likely squash body:
 
 ```text
-- Bumped shared product/version metadata to 0.19.0 and treated this branch as the V1 candidate overlay-readiness pass.
-- Standardized the product vocabulary: native is the Windows app/overlay windows, localhost is the OBS route surface, and browser is the local review UI.
-- Promoted shared live reference/session facts so Standings, Relative, Gap To Leader, Track Map, diagnostics, and browser review replay start from the same focus/player/reference context.
-- Aligned the production overlay suite across native and localhost: Standings, Relative, Gap To Leader, Pit Service, Fuel Calculator, Input State, Radar, Track Map, Stream Chat, Garage Cover, Session / Weather, and Flags now use shared render/view models, settings-backed content/header/footer controls, and production-shaped localhost models where applicable.
-- Finished the V2 settings surface pass: simplified overlay controls, removed redundant session filters, rolled Test into Practice, normalized scale/opacity defaults, hid non-functional/development-only controls, moved capture/diagnostic behaviors into Support, and kept settings changes wired to the same contracts native and localhost consume.
-- Hardened overlay availability and persistence around local-player gating, race-data freshness, settings preview, Alt+Tab/topmost behavior, update/restart persistence, and all-content-disabled states.
-- Added or completed targeted model improvements needed for parity: raw `ClutchRaw` input fallback, shared fuel strategy wrapper, radar body-length calibration and bundled car specs, track-map sector/incident rendering, stream-chat row retention/wrapping, Garage Cover stock-image fallback, session/weather metric cells, and flags diagnostics.
-- Extended browser review, browser screenshot, and replay tooling so validation uses production-shaped overlay models instead of hand-authored demo rows, including dense 4h race-start replay coverage across the localhost overlay catalog.
-- Regenerated product/teammate screenshots and refreshed docs, repo notes, validation guidance, and future-branch notes for the V1 candidate behavior and browser/localhost/native parity target.
-- Validated local release hygiene: git diff checks, merge-marker scan, C# compile-shape scan, browser unit tests, browser Playwright tests, browser review screenshot generation, browser review replay script checks, Python compile checks, deterministic screenshot validation, Windows screenshot expectation validation, and dense 4h race-start browser review replay across the overlay catalog.
-- Windows .NET restore/build/test, real WinForms behavior, installer/update, iRacing SDK, and OBS-localhost validation remain the required Windows/CI gates before tagging or calling V1 ready.
+- Added `fixtures/data-contracts/v0.19.0/` as the first release snapshot for durable user-data contracts, covering settings, history, generated track maps, raw-capture metadata, runtime state, and exact persisted schema snapshots.
+- Added data-contract snapshot tests proving the current app loads the v0.19.0 settings snapshot, preserves user choices such as explicit 88% opacity, runs compact history through maintenance/query, reads generated map documents, parses diagnostic metadata, and maps the release settings into browser review, localhost overlay models, and native overlay consumers.
+- Pinned the legacy default-opacity migration to settings versions before the v0.19.0 baseline so future settings-version bumps do not rewrite valid baseline-era user settings.
+- Split CI validation names around browser review, localhost overlay routes, and native tests, including a dedicated browser data-contract mapping step and a named localhost/native data-contract snapshot step.
+- Documented the durable data-contract boundary, snapshot workflow, and required branch validation in data-contract, history-evolution, README, repo-note, and validation guidance docs.
+- Kept shared product/version metadata at 0.19.0 because this branch is data-contract-only hardening and should not produce a release tag unless Windows-tested runtime fixes are added.
+- Windows .NET data-contract tests and normal PR gates remain required before merge.
 ```
 
 ## Next Planned Milestone
@@ -90,6 +74,25 @@ Likely scope:
 - Keep branch theory, fixture-corpus decisions, and future-product discussion in `docs/model-v2-future-branches.md`.
 
 ## Merged Mainline Milestones
+
+### v0.19.0 - V1 Candidate Overlay Parity And Readiness
+
+Commit: `8b8efd6`
+
+Squash title:
+
+```text
+[v0.19.0] Prepare V1 candidate overlay parity
+```
+
+Summary:
+
+- Bumped shared product/version metadata to 0.19.0 and treated the branch as the V1 candidate overlay-readiness pass.
+- Standardized product vocabulary: native is the Windows app/overlay windows, localhost is the OBS route surface, and browser is the local review UI.
+- Promoted shared live reference/session facts so Standings, Relative, Gap To Leader, Track Map, diagnostics, and browser review replay start from the same focus/player/reference context.
+- Aligned the production overlay suite across native and localhost with shared render/view models, settings-backed content/header/footer controls, and production-shaped localhost models where applicable.
+- Finished the V2 settings surface pass, hardened overlay availability/persistence, regenerated product/teammate screenshots, and refreshed docs/repo notes for the V1 candidate behavior.
+- Validated local release hygiene and left Windows .NET restore/build/test, real WinForms behavior, installer/update, iRacing SDK, and OBS-localhost validation as required Windows/CI gates before V1 readiness.
 
 ### v0.18.11 - Race-Start Overlay And Persistence Hardening
 

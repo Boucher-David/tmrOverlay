@@ -1,0 +1,187 @@
+{
+  "summaryVersion": 1,
+  "collectionModelVersion": 1,
+  "sourceCaptureId": "v0190-contract-capture",
+  "startedAtUtc": "2026-05-15T00:00:00+00:00",
+  "finishedAtUtc": "2026-05-15T01:00:00+00:00",
+  "combo": {
+    "carKey": "car-99-mercedes-amg-gt3",
+    "trackKey": "track-42-synthetic-circle",
+    "sessionKey": "race"
+  },
+  "car": {
+    "carId": 99,
+    "carPath": "mercedesamggt3",
+    "carScreenName": "Mercedes-AMG GT3 2020",
+    "carScreenNameShort": "Mercedes GT3",
+    "carClassId": 12,
+    "carClassShortName": "GT3",
+    "driverCarFuelMaxLiters": 120.0,
+    "driverCarFuelKgPerLiter": 0.75,
+    "driverCarEstLapTimeSeconds": 92.5,
+    "driverGearboxType": "Sequential"
+  },
+  "track": {
+    "trackId": 42,
+    "trackName": "synthetic_circle",
+    "trackDisplayName": "Synthetic Circle",
+    "trackConfigName": "Full",
+    "trackLengthKm": 1.5,
+    "trackCity": "Fixture City",
+    "trackCountry": "US",
+    "trackNumTurns": 4,
+    "trackType": "road",
+    "trackVersion": "2026.05"
+  },
+  "session": {
+    "currentSessionNum": 2,
+    "sessionNum": 2,
+    "sessionType": "Race",
+    "sessionName": "Race",
+    "sessionTime": "3600 sec",
+    "sessionLaps": "unlimited",
+    "eventType": "Race",
+    "category": "Road",
+    "official": true,
+    "teamRacing": true,
+    "seriesId": 190,
+    "seasonId": 202602,
+    "sessionId": 190001,
+    "subSessionId": 190002,
+    "buildVersion": "2026.05.fixture"
+  },
+  "conditions": {
+    "airTempC": 21.5,
+    "trackTempCrewC": 34.0,
+    "trackWetness": 0,
+    "weatherDeclaredWet": false,
+    "playerTireCompound": 0,
+    "trackWeatherType": "Static",
+    "trackSkies": "Clear",
+    "trackPrecipitationPercent": 0.0,
+    "sessionTrackRubberState": "Moderate usage"
+  },
+  "metrics": {
+    "sampleFrameCount": 3600,
+    "droppedFrameCount": 0,
+    "sessionInfoSnapshotCount": 2,
+    "captureDurationSeconds": 3600.0,
+    "onTrackTimeSeconds": 3300.0,
+    "pitRoadTimeSeconds": 120.0,
+    "movingTimeSeconds": 3200.0,
+    "validGreenTimeSeconds": 3400.0,
+    "validDistanceLaps": 36.0,
+    "completedValidLaps": 36,
+    "fuelUsedLiters": 108.0,
+    "fuelAddedLiters": 40.0,
+    "fuelPerHourLiters": 108.0,
+    "fuelPerLapLiters": 3.0,
+    "averageLapSeconds": 92.5,
+    "medianLapSeconds": 92.3,
+    "bestLapSeconds": 91.8,
+    "startingFuelLiters": 120.0,
+    "endingFuelLiters": 52.0,
+    "minimumFuelLiters": 50.0,
+    "maximumFuelLiters": 120.0,
+    "pitRoadEntryCount": 1,
+    "pitServiceCount": 1,
+    "stintCount": 2,
+    "averageStintLaps": 18.0,
+    "averageStintSeconds": 1665.0,
+    "averageStintFuelPerLapLiters": 3.0,
+    "averagePitLaneSeconds": 44.0,
+    "averagePitStallSeconds": 25.0,
+    "averagePitServiceSeconds": 22.0,
+    "observedFuelFillRateLitersPerSecond": 2.2,
+    "averageTireChangePitServiceSeconds": 22.0,
+    "averageNoTirePitServiceSeconds": 18.0
+  },
+  "stints": [
+    {
+      "stintNumber": 1,
+      "startRaceTimeSeconds": 0.0,
+      "endRaceTimeSeconds": 1665.0,
+      "durationSeconds": 1665.0,
+      "startLapCompleted": 0,
+      "endLapCompleted": 18,
+      "distanceLaps": 18.0,
+      "fuelStartLiters": 120.0,
+      "fuelEndLiters": 66.0,
+      "fuelUsedLiters": 54.0,
+      "fuelPerLapLiters": 3.0,
+      "driverRole": "local-driver",
+      "confidenceFlags": [
+        "local-fuel-scalar"
+      ]
+    },
+    {
+      "stintNumber": 2,
+      "startRaceTimeSeconds": 1710.0,
+      "endRaceTimeSeconds": 3375.0,
+      "durationSeconds": 1665.0,
+      "startLapCompleted": 18,
+      "endLapCompleted": 36,
+      "distanceLaps": 18.0,
+      "fuelStartLiters": 106.0,
+      "fuelEndLiters": 52.0,
+      "fuelUsedLiters": 54.0,
+      "fuelPerLapLiters": 3.0,
+      "driverRole": "teammate-driver",
+      "confidenceFlags": [
+        "team-car-distance"
+      ]
+    }
+  ],
+  "pitStops": [
+    {
+      "stopNumber": 1,
+      "entryRaceTimeSeconds": 1665.0,
+      "exitRaceTimeSeconds": 1710.0,
+      "pitLaneSeconds": 45.0,
+      "entryLapCompleted": 18,
+      "exitLapCompleted": 18,
+      "pitStallSeconds": 25.0,
+      "serviceActiveSeconds": 22.0,
+      "fuelBeforeLiters": 66.0,
+      "fuelAfterLiters": 106.0,
+      "fuelAddedLiters": 40.0,
+      "fuelFillRateLitersPerSecond": 2.2,
+      "tireSetChanged": true,
+      "fastRepairUsed": false,
+      "pitServiceFlags": 15,
+      "confidenceFlags": [
+        "pitstop-active"
+      ]
+    }
+  ],
+  "radarCalibration": {
+    "sideOverlapWindowSeconds": {
+      "sampleCount": 1,
+      "mean": 0.22,
+      "minimum": 0.22,
+      "maximum": 0.22
+    },
+    "estimatedBodyLengthMeters": {
+      "sampleCount": 1,
+      "mean": 4.75,
+      "minimum": 4.75,
+      "maximum": 4.75
+    },
+    "confidenceFlags": [
+      "identity-backed-body-length"
+    ]
+  },
+  "quality": {
+    "confidence": "high",
+    "contributesToBaseline": true,
+    "reasons": []
+  },
+  "appVersion": {
+    "productName": "Tech Mates Racing Overlay",
+    "version": "0.19.0.0",
+    "informationalVersion": "0.19.0",
+    "runtimeVersion": ".NET 8.0",
+    "operatingSystem": "Windows",
+    "processArchitecture": "X64"
+  }
+}

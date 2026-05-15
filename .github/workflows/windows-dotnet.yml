@@ -16,8 +16,8 @@ env:
   VELOPACK_VERSION: 0.0.1589-ga2c5a97
 
 jobs:
-  browser_overlay_tests:
-    name: Browser overlay tests
+  browser_and_localhost_tests:
+    name: Browser and localhost tests
     runs-on: ubuntu-latest
 
     steps:
@@ -36,8 +36,11 @@ jobs:
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 
-      - name: Test browser overlays
+      - name: Test browser review data contracts
         run: npm run test:browser
+
+      - name: Test localhost overlay routes
+        run: npm run test:localhost
 
   browser_review_screenshots:
     name: Browser review screenshots
@@ -128,7 +131,10 @@ jobs:
       - name: Restore
         run: dotnet restore tmrOverlay.sln
 
-      - name: Test
+      - name: Data contract snapshot tests - localhost/native
+        run: dotnet test tests\TmrOverlay.App.Tests\TmrOverlay.App.Tests.csproj --configuration Release --no-restore --filter DataContracts
+
+      - name: Test native app
         run: dotnet test tmrOverlay.sln --configuration Release --no-restore
 
   windows_screenshots:
