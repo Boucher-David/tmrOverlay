@@ -50,4 +50,10 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
+
+  <Target Name="CopyBrandAssetsToPublish" AfterTargets="Publish">
+    <MakeDir Directories="$(PublishDir)Assets" />
+    <Copy SourceFiles="..\..\assets\brand\TMRLogo.png" DestinationFiles="$(PublishDir)Assets\TMRLogo.png" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="..\..\assets\brand\Team_Logo_4k_TMRBRANDING.png" DestinationFiles="$(PublishDir)Assets\GarageCoverDefault.png" SkipUnchangedFiles="true" />
+  </Target>
 </Project>
