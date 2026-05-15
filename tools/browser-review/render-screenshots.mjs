@@ -23,6 +23,7 @@ const sharedChromeOverlayIds = new Set([
   'session-weather',
   'pit-service'
 ]);
+const previewModes = ['practice', 'qualifying', 'race'];
 
 const args = parseArgs(process.argv.slice(2));
 const outputRoot = resolve(repoRoot, args.output || 'artifacts/browser-review-screenshots');
@@ -69,8 +70,13 @@ try {
 
 function screenshotRoutes() {
   const routes = [
-    settingsRoute('settings/general.png', '/review/app'),
-    settingsRoute('settings/diagnostics.png', '/review/app?tab=support')
+    settingsRoute('settings/general.png', '/review/app', { tab: 'general', region: 'general' }),
+    settingsRoute('settings/diagnostics.png', '/review/app?tab=support', { tab: 'support', region: 'general' }),
+    ...previewModes.map((mode) =>
+      settingsRoute(
+        `settings/general-preview-${mode}.png`,
+        `/review/app?preview=${encodeURIComponent(mode)}`,
+        { tab: 'general', region: 'general', previewMode: mode }))
   ];
 
   for (const overlayId of overlayIds) {
@@ -78,20 +84,37 @@ function screenshotRoutes() {
       const suffix = region === 'general' ? '' : `-${region}`;
       routes.push(settingsRoute(
         `settings/${overlayId}${suffix}.png`,
-        `/review/app?tab=${encodeURIComponent(overlayId)}${region === 'general' ? '' : `&region=${encodeURIComponent(region)}`}`));
+        `/review/app?tab=${encodeURIComponent(overlayId)}${region === 'general' ? '' : `&region=${encodeURIComponent(region)}`}`,
+        { tab: overlayId, overlayId, region }));
     }
   }
 
   for (const overlayId of overlayIds) {
-    routes.push(overlayRoute(`browser-overlays/${overlayId}.png`, withPreview(`/review/overlays/${encodeURIComponent(overlayId)}`)));
-    routes.push(overlayRoute(`localhost-overlays/${overlayId}.png`, withPreview(`/overlays/${encodeURIComponent(overlayId)}`)));
+    routes.push(overlayRoute(
+      `browser-overlays/${overlayId}.png`,
+      withPreview(`/review/overlays/${encodeURIComponent(overlayId)}`, 'race'),
+      { surface: 'browser-review-overlay', overlayId, previewMode: 'race' }));
+    routes.push(overlayRoute(
+      `localhost-overlays/${overlayId}.png`,
+      withPreview(`/overlays/${encodeURIComponent(overlayId)}`, 'race'),
+      { surface: 'localhost-overlay', overlayId, previewMode: 'race' }));
+    for (const mode of previewModesForOverlay(overlayId)) {
+      routes.push(overlayRoute(
+        `browser-overlays/${overlayId}-${mode}.png`,
+        withPreview(`/review/overlays/${encodeURIComponent(overlayId)}`, mode),
+        { surface: 'browser-review-overlay', overlayId, previewMode: mode }));
+      routes.push(overlayRoute(
+        `localhost-overlays/${overlayId}-${mode}.png`,
+        withPreview(`/overlays/${encodeURIComponent(overlayId)}`, mode),
+        { surface: 'localhost-overlay', overlayId, previewMode: mode }));
+    }
   }
 
   return routes;
 }
 
-function withPreview(urlPath) {
-  return `${urlPath}${urlPath.includes('?') ? '&' : '?'}preview=race`;
+function withPreview(urlPath, mode) {
+  return `${urlPath}${urlPath.includes('?') ? '&' : '?'}preview=${encodeURIComponent(mode)}`;
 }
 
 function regionsForOverlay(overlayId) {
@@ -99,30 +122,42 @@ function regionsForOverlay(overlayId) {
     return ['general', 'preview'];
   }
   if (overlayId === 'stream-chat') {
-    return ['general', 'content', 'twitch'];
+    return ['general', 'content', 'twitch', 'streamlabs'];
   }
   return sharedChromeOverlayIds.has(overlayId)
     ? ['general', 'content', 'header', 'footer']
     : ['general', 'content'];
 }
 
-function settingsRoute(relativePath, urlPath) {
+function previewModesForOverlay(overlayId) {
+  return overlayId === 'gap-to-leader' ? ['race'] : previewModes;
+}
+
+function settingsRoute(relativePath, urlPath, metadata = {}) {
   return {
     relativePath,
     urlPath,
     selector: '#settings-app',
     viewport: { width: 1280, height: 760 },
-    minBytes: 10_000
+    minBytes: 10_000,
+    surface: 'browser-review-settings',
+    renderer: 'settings-general.html',
+    sourceContract: 'src/TmrOverlay.App/Overlays/BrowserSources/Assets/templates/settings-general.html',
+    ...metadata
   };
 }
 
-function overlayRoute(relativePath, urlPath) {
+function overlayRoute(relativePath, urlPath, metadata = {}) {
   return {
     relativePath,
     urlPath,
     selector: '.overlay',
     viewport: { width: 1440, height: 900 },
-    minBytes: 1_000
+    minBytes: 1_000,
+    renderer: 'browser-overlay-assets',
+    moduleAsset: metadata.overlayId ? `src/TmrOverlay.App/Overlays/BrowserSources/Assets/modules/${metadata.overlayId}.js` : null,
+    sourceContract: 'src/TmrOverlay.App/Overlays/BrowserSources/BrowserOverlayModelFactory.cs',
+    ...metadata
   };
 }
 
@@ -146,6 +181,14 @@ async function captureRoute(page, route, manifest) {
     path: route.relativePath,
     url: route.urlPath,
     selector: route.selector,
+    surface: route.surface,
+    renderer: route.renderer,
+    sourceContract: route.sourceContract,
+    moduleAsset: route.moduleAsset || null,
+    overlayId: route.overlayId || null,
+    tab: route.tab || null,
+    region: route.region || null,
+    previewMode: route.previewMode || null,
     width: artifact.width,
     height: artifact.height,
     bytes: artifact.bytes

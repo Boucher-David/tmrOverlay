@@ -65,6 +65,9 @@ jobs:
       - name: Generate browser review screenshots
         run: npm run screenshots:browser -- --output artifacts/browser-review-screenshots
 
+      - name: Validate browser and localhost screenshots
+        run: python3 tools/validate_overlay_screenshots.py --profile browser-review-ci --root artifacts/browser-review-screenshots
+
       - name: Upload browser review screenshots
         uses: actions/upload-artifact@v4
         if: always()

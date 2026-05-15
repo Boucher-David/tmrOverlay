@@ -1,6 +1,7 @@
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Reflection;
+using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using TmrOverlay.App.Analysis;
 using TmrOverlay.App.Diagnostics;
@@ -8,6 +9,7 @@ using TmrOverlay.App.Events;
 using TmrOverlay.App.History;
 using TmrOverlay.App.Localhost;
 using TmrOverlay.App.Overlays.CarRadar;
+using TmrOverlay.App.Overlays.DesignV2;
 using TmrOverlay.App.Overlays.Flags;
 using TmrOverlay.App.Overlays.FuelCalculator;
 using TmrOverlay.App.Overlays.GarageCover;
@@ -64,6 +66,7 @@ internal static class Program
             }
 
             Directory.CreateDirectory(Path.Combine(outputRoot, "states"));
+            Directory.CreateDirectory(Path.Combine(outputRoot, "native-overlays"));
             Directory.CreateDirectory(Path.Combine(outputRoot, "components", "settings"));
             var screenshots = RenderAll(outputRoot);
             RenderContactSheet(outputRoot, screenshots);
@@ -83,76 +86,7 @@ internal static class Program
         var screenshots = new List<RenderedScreenshot>();
         var fixture = new TelemetryFixture();
 
-        screenshots.Add(RenderForm(
-            outputRoot,
-            "settings-general",
-            "Settings - General",
-            () => CreateSettingsForm("General")));
-        screenshots.Add(RenderForm(
-            outputRoot,
-            "settings-standings",
-            "Settings - Standings",
-            () => CreateSettingsForm("Standings")));
-        screenshots.Add(RenderForm(
-            outputRoot,
-            "settings-relative",
-            "Settings - Relative",
-            () => CreateSettingsForm("Relative")));
-        screenshots.Add(RenderForm(
-            outputRoot,
-            "settings-gap-to-leader",
-            "Settings - Gap To Leader",
-            () => CreateSettingsForm("Gap To Leader")));
-        screenshots.Add(RenderForm(
-            outputRoot,
-            "settings-track-map",
-            "Settings - Track Map",
-            () => CreateSettingsForm("Track Map")));
-        screenshots.Add(RenderForm(
-            outputRoot,
-            "settings-stream-chat",
-            "Settings - Stream Chat",
-            () => CreateSettingsForm("Stream Chat")));
-        screenshots.Add(RenderForm(
-            outputRoot,
-            "settings-garage-cover",
-            "Settings - Garage Cover",
-            () => CreateSettingsForm("Garage Cover")));
-        screenshots.Add(RenderForm(
-            outputRoot,
-            "settings-fuel-calculator",
-            "Settings - Fuel Calculator",
-            () => CreateSettingsForm("Fuel Calculator")));
-        screenshots.Add(RenderForm(
-            outputRoot,
-            "settings-inputs",
-            "Settings - Inputs",
-            () => CreateSettingsForm("Inputs")));
-        screenshots.Add(RenderForm(
-            outputRoot,
-            "settings-car-radar",
-            "Settings - Car Radar",
-            () => CreateSettingsForm("Car Radar")));
-        screenshots.Add(RenderForm(
-            outputRoot,
-            "settings-flags",
-            "Settings - Flags",
-            () => CreateSettingsForm("Flags")));
-        screenshots.Add(RenderForm(
-            outputRoot,
-            "settings-session-weather",
-            "Settings - Session / Weather",
-            () => CreateSettingsForm("Session / Weather")));
-        screenshots.Add(RenderForm(
-            outputRoot,
-            "settings-pit-service",
-            "Settings - Pit Service",
-            () => CreateSettingsForm("Pit Service")));
-        screenshots.Add(RenderForm(
-            outputRoot,
-            "settings-support",
-            "Settings - Support",
-            () => CreateSettingsForm("Support")));
+        screenshots.AddRange(RenderSettingsScreenshots(outputRoot));
         screenshots.AddRange(RenderSettingsComponentCrops(outputRoot));
         screenshots.Add(RenderForm(
             outputRoot,
@@ -316,6 +250,80 @@ internal static class Program
                 Noop),
             refreshPasses: 42));
 
+        screenshots.AddRange(RenderInstalledNativeOverlayScreenshots(outputRoot));
+
+        return screenshots;
+    }
+
+    private static IReadOnlyList<RenderedScreenshot> RenderSettingsScreenshots(string outputRoot)
+    {
+        var screenshots = new List<RenderedScreenshot>
+        {
+            RenderForm(
+                outputRoot,
+                "settings-general",
+                "Settings - General",
+                () => CreateSettingsForm("General"),
+                metadata: SettingsMetadata(null, "general", null)),
+            RenderForm(
+                outputRoot,
+                "settings-support",
+                "Settings - Support",
+                () => CreateSettingsForm("Support"),
+                metadata: SettingsMetadata(null, "support", null))
+        };
+
+        foreach (var (definition, tabText) in SettingsOverlayTabs())
+        {
+            var fileStem = SettingsFileStem(definition.Id);
+            foreach (var region in SettingsRegionsFor(definition.Id))
+            {
+                var suffix = string.Equals(region.Id, "general", StringComparison.Ordinal)
+                    ? string.Empty
+                    : $"-{region.Id}";
+                screenshots.Add(RenderForm(
+                    outputRoot,
+                    $"settings-{fileStem}{suffix}",
+                    $"Settings - {definition.DisplayName} - {region.Label}",
+                    () => CreateSettingsForm(tabText, region.Id),
+                    metadata: SettingsMetadata(definition.Id, region.Id, null)));
+            }
+        }
+
+        foreach (var previewMode in PreviewModes())
+        {
+            screenshots.Add(RenderForm(
+                outputRoot,
+                $"settings-general-preview-{previewMode.FileStem}",
+                $"Settings - General - {previewMode.Label} Preview",
+                () => CreateSettingsForm("General", previewMode: previewMode.Kind),
+                metadata: SettingsMetadata(null, "general", previewMode.FileStem)));
+        }
+
+        return screenshots;
+    }
+
+    private static IReadOnlyList<RenderedScreenshot> RenderInstalledNativeOverlayScreenshots(string outputRoot)
+    {
+        var screenshots = new List<RenderedScreenshot>();
+        foreach (var overlay in NativeOverlaySpecs())
+        {
+            foreach (var previewMode in PreviewModesForOverlay(overlay.Definition.Id))
+            {
+                screenshots.Add(RenderForm(
+                    outputRoot,
+                    $"{overlay.Definition.Id}-{previewMode.FileStem}",
+                    $"Native {overlay.Definition.DisplayName} - {previewMode.Label}",
+                    () => CreateDesignV2LiveOverlayForm(overlay, previewMode.Kind),
+                    postProcess: overlay.UsesTransparentBackdrop
+                        ? bitmap => ReplaceColorWithReviewBackdrop(bitmap, Color.FromArgb(1, 2, 3))
+                        : null,
+                    refreshPasses: NativeRefreshPassesFor(overlay.Kind),
+                    relativeDirectory: "native-overlays",
+                    metadata: NativeOverlayMetadata(overlay.Definition.Id, previewMode.FileStem)));
+            }
+        }
+
         return screenshots;
     }
 
@@ -396,10 +404,21 @@ internal static class Program
             fileStem,
             label,
             () => CreateSettingsForm(selectedTabText, selectedRegionText),
-            cropBounds);
+            cropBounds,
+            metadata: new ScreenshotMetadata(
+                Surface: "windows-settings-component",
+                Renderer: "SettingsOverlayForm/DesignV2SettingsSurface",
+                OverlayId: OverlayIdForSettingsTab(selectedTabText),
+                Tab: DesignV2TabId(selectedTabText),
+                Region: selectedRegionText?.Trim().ToLowerInvariant() ?? "general",
+                Fixture: "deterministic-settings-fixture",
+                SourceContract: "src/TmrOverlay.App/Overlays/SettingsPanel/DesignV2SettingsSurface.cs"));
     }
 
-    private static SettingsOverlayForm CreateSettingsForm(string selectedTabText, string? selectedRegionText = null)
+    private static SettingsOverlayForm CreateSettingsForm(
+        string selectedTabText,
+        string? selectedRegionText = null,
+        OverlaySessionKind? previewMode = null)
     {
         var storage = StorageOptionsFor(Path.Combine(Path.GetTempPath(), "tmr-overlay-windows-screenshots", Guid.NewGuid().ToString("N")));
         var captureState = new TelemetryCaptureState();
@@ -422,6 +441,7 @@ internal static class Program
             LastUpdatedAtUtc = DateTimeOffset.UtcNow
         });
         var sessionPreview = new SessionPreviewState(new AppEventRecorder(storage));
+        sessionPreview.SetMode(previewMode);
         var diagnostics = new DiagnosticsBundleService(
             storage,
             new LiveModelParityOptions(),
@@ -477,6 +497,53 @@ internal static class Program
         return form;
     }
 
+    private static Form CreateDesignV2LiveOverlayForm(NativeOverlaySpec overlay, OverlaySessionKind previewMode)
+    {
+        var storage = StorageOptionsFor(Path.Combine(
+            Path.GetTempPath(),
+            "tmr-overlay-windows-screenshots",
+            "native",
+            Guid.NewGuid().ToString("N")));
+        var performanceState = new AppPerformanceState();
+        var now = DateTimeOffset.Parse("2026-05-03T15:00:00Z");
+        var telemetry = new SequenceTelemetrySource(frame =>
+            SessionPreviewTelemetryFixtures.Build(
+                previewMode,
+                now.AddMilliseconds(frame.Index * 250),
+                generation: frame.Index + 1));
+        var settings = OverlaySettingsFor(overlay.Definition);
+        if (overlay.Kind == DesignV2LiveOverlayKind.StreamChat)
+        {
+            settings.SetStringOption(OverlayOptionKeys.StreamChatProvider, StreamChatOverlaySettings.ProviderNone);
+        }
+
+        var form = new DesignV2LiveOverlayForm(
+            overlay.Kind,
+            overlay.Definition,
+            telemetry,
+            new TrackMapStore(storage),
+            new SessionHistoryQueryService(new SessionHistoryOptions
+            {
+                Enabled = false,
+                ResolvedUserHistoryRoot = storage.UserHistoryRoot,
+                ResolvedBaselineHistoryRoot = storage.BaselineHistoryRoot
+            }),
+            new StreamChatOverlaySource(NullLogger<StreamChatOverlaySource>.Instance, performanceState),
+            performanceState,
+            NullLogger<DesignV2LiveOverlayForm>.Instance,
+            settings,
+            ScreenshotFontFamily,
+            "Metric",
+            Noop);
+
+        if (overlay.Kind == DesignV2LiveOverlayKind.CarRadar)
+        {
+            form.SetSettingsPreviewVisible(true);
+        }
+
+        return form;
+    }
+
     private static IReadOnlyList<OverlayDefinition> ManagedOverlayDefinitions()
     {
         return
@@ -494,6 +561,118 @@ internal static class Program
             CarRadarOverlayDefinition.Definition,
             GapToLeaderOverlayDefinition.Definition
         ];
+    }
+
+    private static IReadOnlyList<(OverlayDefinition Definition, string TabText)> SettingsOverlayTabs()
+    {
+        return ManagedOverlayDefinitions()
+            .Select(definition => (definition, definition.DisplayName))
+            .ToArray();
+    }
+
+    private static IReadOnlyList<SettingsRegionSpec> SettingsRegionsFor(string overlayId)
+    {
+        if (string.Equals(overlayId, GarageCoverOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            return
+            [
+                new SettingsRegionSpec("general", "General"),
+                new SettingsRegionSpec("preview", "Preview")
+            ];
+        }
+
+        if (string.Equals(overlayId, StreamChatOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            return
+            [
+                new SettingsRegionSpec("general", "General"),
+                new SettingsRegionSpec("content", "Content"),
+                new SettingsRegionSpec("twitch", "Twitch"),
+                new SettingsRegionSpec("streamlabs", "Streamlabs")
+            ];
+        }
+
+        if (SupportsSharedChromeSettings(overlayId))
+        {
+            return
+            [
+                new SettingsRegionSpec("general", "General"),
+                new SettingsRegionSpec("content", "Content"),
+                new SettingsRegionSpec("header", "Header"),
+                new SettingsRegionSpec("footer", "Footer")
+            ];
+        }
+
+        return
+        [
+            new SettingsRegionSpec("general", "General"),
+            new SettingsRegionSpec("content", "Content")
+        ];
+    }
+
+    private static bool SupportsSharedChromeSettings(string overlayId)
+    {
+        return overlayId is
+            "standings"
+            or "relative"
+            or "fuel-calculator"
+            or "gap-to-leader"
+            or "session-weather"
+            or "pit-service";
+    }
+
+    private static string SettingsFileStem(string overlayId)
+    {
+        return string.Equals(overlayId, InputStateOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase)
+            ? "inputs"
+            : overlayId;
+    }
+
+    private static IReadOnlyList<NativeOverlaySpec> NativeOverlaySpecs()
+    {
+        return
+        [
+            new NativeOverlaySpec(DesignV2LiveOverlayKind.Standings, StandingsOverlayDefinition.Definition),
+            new NativeOverlaySpec(DesignV2LiveOverlayKind.FuelCalculator, FuelCalculatorOverlayDefinition.Definition),
+            new NativeOverlaySpec(DesignV2LiveOverlayKind.Relative, RelativeOverlayDefinition.Definition),
+            new NativeOverlaySpec(DesignV2LiveOverlayKind.TrackMap, TrackMapOverlayDefinition.Definition, UsesTransparentBackdrop: true),
+            new NativeOverlaySpec(DesignV2LiveOverlayKind.StreamChat, StreamChatOverlayDefinition.Definition),
+            new NativeOverlaySpec(DesignV2LiveOverlayKind.Flags, FlagsOverlayDefinition.Definition, UsesTransparentBackdrop: true),
+            new NativeOverlaySpec(DesignV2LiveOverlayKind.SessionWeather, SessionWeatherOverlayDefinition.Definition),
+            new NativeOverlaySpec(DesignV2LiveOverlayKind.PitService, PitServiceOverlayDefinition.Definition),
+            new NativeOverlaySpec(DesignV2LiveOverlayKind.InputState, InputStateOverlayDefinition.Definition),
+            new NativeOverlaySpec(DesignV2LiveOverlayKind.CarRadar, CarRadarOverlayDefinition.Definition, UsesTransparentBackdrop: true),
+            new NativeOverlaySpec(DesignV2LiveOverlayKind.GapToLeader, GapToLeaderOverlayDefinition.Definition)
+        ];
+    }
+
+    private static IReadOnlyList<PreviewModeSpec> PreviewModes()
+    {
+        return
+        [
+            new PreviewModeSpec(OverlaySessionKind.Practice, "practice", "Practice"),
+            new PreviewModeSpec(OverlaySessionKind.Qualifying, "qualifying", "Qualifying"),
+            new PreviewModeSpec(OverlaySessionKind.Race, "race", "Race")
+        ];
+    }
+
+    private static IReadOnlyList<PreviewModeSpec> PreviewModesForOverlay(string overlayId)
+    {
+        return string.Equals(overlayId, GapToLeaderOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase)
+            ? PreviewModes().Where(mode => mode.Kind == OverlaySessionKind.Race).ToArray()
+            : PreviewModes();
+    }
+
+    private static int NativeRefreshPassesFor(DesignV2LiveOverlayKind kind)
+    {
+        return kind switch
+        {
+            DesignV2LiveOverlayKind.InputState => 28,
+            DesignV2LiveOverlayKind.GapToLeader => 42,
+            DesignV2LiveOverlayKind.TrackMap => 3,
+            DesignV2LiveOverlayKind.CarRadar => 4,
+            _ => 4
+        };
     }
 
     private static ApplicationSettings CreateApplicationSettings()
@@ -519,7 +698,9 @@ internal static class Program
         string label,
         Func<Form> createForm,
         Action<Bitmap>? postProcess = null,
-        int refreshPasses = 1)
+        int refreshPasses = 1,
+        string relativeDirectory = "states",
+        ScreenshotMetadata? metadata = null)
     {
         using var form = createForm();
         PrepareForm(form, refreshPasses);
@@ -528,9 +709,11 @@ internal static class Program
         form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, form.ClientSize));
         postProcess?.Invoke(bitmap);
 
-        var path = Path.Combine(outputRoot, "states", $"{fileStem}.png");
+        var directory = Path.Combine(outputRoot, relativeDirectory);
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, $"{fileStem}.png");
         bitmap.Save(path, ImageFormat.Png);
-        return new RenderedScreenshot(label, path, form.ClientSize.Width, form.ClientSize.Height);
+        return new RenderedScreenshot(label, path, form.ClientSize.Width, form.ClientSize.Height, CompleteMetadata(metadata, form, relativeDirectory));
     }
 
     private static RenderedScreenshot RenderFormCrop(
@@ -540,7 +723,8 @@ internal static class Program
         string label,
         Func<Form> createForm,
         Rectangle cropBounds,
-        int refreshPasses = 1)
+        int refreshPasses = 1,
+        ScreenshotMetadata? metadata = null)
     {
         using var form = createForm();
         PrepareForm(form, refreshPasses);
@@ -563,7 +747,7 @@ internal static class Program
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, $"{fileStem}.png");
         bitmap.Save(path, ImageFormat.Png);
-        return new RenderedScreenshot(label, path, bitmap.Width, bitmap.Height);
+        return new RenderedScreenshot(label, path, bitmap.Width, bitmap.Height, CompleteMetadata(metadata, form, relativeDirectory));
     }
 
     private static void PrepareForm(Form form, int refreshPasses)
@@ -748,6 +932,69 @@ internal static class Program
         sheet.Save(Path.Combine(outputRoot, "contact-sheet.png"), ImageFormat.Png);
     }
 
+    private static ScreenshotMetadata SettingsMetadata(string? overlayId, string region, string? previewMode)
+    {
+        var tab = overlayId ?? (string.Equals(region, "support", StringComparison.Ordinal) ? "support" : "general");
+        return new ScreenshotMetadata(
+            Surface: "windows-settings",
+            Renderer: "SettingsOverlayForm/DesignV2SettingsSurface",
+            OverlayId: overlayId,
+            Tab: tab,
+            Region: region,
+            PreviewMode: previewMode,
+            Fixture: "deterministic-settings-fixture",
+            SourceContract: "src/TmrOverlay.App/Overlays/SettingsPanel/DesignV2SettingsSurface.cs");
+    }
+
+    private static ScreenshotMetadata NativeOverlayMetadata(string overlayId, string previewMode)
+    {
+        return new ScreenshotMetadata(
+            Surface: "windows-native-overlay",
+            Renderer: nameof(DesignV2LiveOverlayForm),
+            OverlayId: overlayId,
+            PreviewMode: previewMode,
+            Fixture: "SessionPreviewTelemetryFixtures",
+            SourceContract: OverlayDefinitionSourceFor(overlayId));
+    }
+
+    private static ScreenshotMetadata CompleteMetadata(ScreenshotMetadata? metadata, Form form, string relativeDirectory)
+    {
+        var completed = metadata ?? new ScreenshotMetadata(
+            Surface: relativeDirectory.Replace('\\', '/'),
+            Fixture: "deterministic-telemetry-fixture");
+        return completed with
+        {
+            Renderer = completed.Renderer ?? form.GetType().FullName ?? form.GetType().Name
+        };
+    }
+
+    private static string? OverlayIdForSettingsTab(string selectedTabText)
+    {
+        var tabId = DesignV2TabId(selectedTabText);
+        return ManagedOverlayDefinitions().Any(definition => string.Equals(definition.Id, tabId, StringComparison.OrdinalIgnoreCase))
+            ? tabId
+            : null;
+    }
+
+    private static string? OverlayDefinitionSourceFor(string overlayId)
+    {
+        return overlayId switch
+        {
+            "standings" => "src/TmrOverlay.App/Overlays/Standings/StandingsOverlayDefinition.cs",
+            "fuel-calculator" => "src/TmrOverlay.App/Overlays/FuelCalculator/FuelCalculatorOverlayDefinition.cs",
+            "relative" => "src/TmrOverlay.App/Overlays/Relative/RelativeOverlayDefinition.cs",
+            "track-map" => "src/TmrOverlay.App/Overlays/TrackMap/TrackMapOverlayDefinition.cs",
+            "stream-chat" => "src/TmrOverlay.App/Overlays/StreamChat/StreamChatOverlayDefinition.cs",
+            "flags" => "src/TmrOverlay.App/Overlays/Flags/FlagsOverlayDefinition.cs",
+            "session-weather" => "src/TmrOverlay.App/Overlays/SessionWeather/SessionWeatherOverlayDefinition.cs",
+            "pit-service" => "src/TmrOverlay.App/Overlays/PitService/PitServiceOverlayDefinition.cs",
+            "input-state" => "src/TmrOverlay.App/Overlays/InputState/InputStateOverlayDefinition.cs",
+            "car-radar" => "src/TmrOverlay.App/Overlays/CarRadar/CarRadarOverlayDefinition.cs",
+            "gap-to-leader" => "src/TmrOverlay.App/Overlays/GapToLeader/GapToLeaderOverlayDefinition.cs",
+            _ => null
+        };
+    }
+
     private static Rectangle FitImage(int imageWidth, int imageHeight, Rectangle bounds)
     {
         var scale = Math.Min(bounds.Width / (double)imageWidth, bounds.Height / (double)imageHeight);
@@ -777,35 +1024,32 @@ internal static class Program
 
     private static void WriteManifest(string outputRoot, IReadOnlyList<RenderedScreenshot> screenshots)
     {
-        var lines = new List<string>
+        var manifest = new
         {
-            "{",
-            $"  \"generatedAtUtc\": \"{DateTimeOffset.UtcNow:O}\",",
-            $"  \"version\": \"{EscapeJson(AppVersionInfo.Current.InformationalVersion)}\",",
-            "  \"screenshots\": ["
+            generatedAtUtc = DateTimeOffset.UtcNow,
+            version = AppVersionInfo.Current.InformationalVersion,
+            screenshots = screenshots.Select(screenshot => new
+            {
+                label = screenshot.Label,
+                path = Path.GetRelativePath(outputRoot, screenshot.Path).Replace('\\', '/'),
+                width = screenshot.Width,
+                height = screenshot.Height,
+                metadata = new
+                {
+                    surface = screenshot.Metadata.Surface,
+                    renderer = screenshot.Metadata.Renderer,
+                    overlayId = screenshot.Metadata.OverlayId,
+                    tab = screenshot.Metadata.Tab,
+                    region = screenshot.Metadata.Region,
+                    previewMode = screenshot.Metadata.PreviewMode,
+                    fixture = screenshot.Metadata.Fixture,
+                    sourceContract = screenshot.Metadata.SourceContract
+                }
+            })
         };
-
-        for (var index = 0; index < screenshots.Count; index++)
-        {
-            var screenshot = screenshots[index];
-            var comma = index == screenshots.Count - 1 ? string.Empty : ",";
-            var relativePath = Path.GetRelativePath(outputRoot, screenshot.Path).Replace('\\', '/');
-            lines.Add("    {");
-            lines.Add($"      \"label\": \"{EscapeJson(screenshot.Label)}\",");
-            lines.Add($"      \"path\": \"{EscapeJson(relativePath)}\",");
-            lines.Add($"      \"width\": {screenshot.Width},");
-            lines.Add($"      \"height\": {screenshot.Height}");
-            lines.Add($"    }}{comma}");
-        }
-
-        lines.Add("  ]");
-        lines.Add("}");
-        File.WriteAllLines(Path.Combine(outputRoot, "manifest.json"), lines);
-    }
-
-    private static string EscapeJson(string value)
-    {
-        return value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);
+        File.WriteAllText(
+            Path.Combine(outputRoot, "manifest.json"),
+            $"{JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true })}{Environment.NewLine}");
     }
 
     private static AppStorageOptions StorageOptionsFor(string root)
@@ -860,7 +1104,31 @@ internal static class Program
     {
     }
 
-    private sealed record RenderedScreenshot(string Label, string Path, int Width, int Height);
+    private sealed record RenderedScreenshot(
+        string Label,
+        string Path,
+        int Width,
+        int Height,
+        ScreenshotMetadata Metadata);
+
+    private sealed record ScreenshotMetadata(
+        string Surface,
+        string? Renderer = null,
+        string? OverlayId = null,
+        string? Tab = null,
+        string? Region = null,
+        string? PreviewMode = null,
+        string? Fixture = null,
+        string? SourceContract = null);
+
+    private sealed record SettingsRegionSpec(string Id, string Label);
+
+    private sealed record PreviewModeSpec(OverlaySessionKind Kind, string FileStem, string Label);
+
+    private sealed record NativeOverlaySpec(
+        DesignV2LiveOverlayKind Kind,
+        OverlayDefinition Definition,
+        bool UsesTransparentBackdrop = false);
 
     public sealed record FixtureFrame(int Index);
 
