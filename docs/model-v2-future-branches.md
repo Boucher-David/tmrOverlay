@@ -37,18 +37,19 @@ Current evidence/tooling shape:
 - 2026-05-13: Hide Pit Service in-car setup rows for the first pass. ARB/wing-style pit-request telemetry probably exists somewhere in the SDK, but it needs a deliberate raw capture where the driver changes those values before it becomes production overlay content. Track this as a V1.x Pit Service v2 investigation, not as browser spoof data or unsupported native rows.
 - 2026-05-14: Fuel Calculator first-pass parity should keep shared/Core fuel work to the low-risk `LiveFuelStrategyModel` contract that centralizes local-context gating, history lookup, and existing `FuelStrategyCalculator` output for native and localhost consumers. Do not pull rolling measured-burn windows, pit-service refuel recommendations, or team-stint intelligence into this branch; those belong to Fuel Calculator v2. Neutral fuel facts such as Race, Remain, Laps, Target, Tank, Stints, and Stops should use data-presentation tones, not magenta/modelled warning-looking tones.
 - 2026-05-14: Stream Chat first-pass parity should keep the practical V1 enhancements only: Design V2 shell, fixed-height chat history, wrapping rows, author color, visible badges, inline Twitch emotes, native/localhost parity, and browser review replay coverage. The richer Twitch IRC/EventSub and Streamlabs API/widget analysis is parked in `docs/stream-v2.md` as a dedicated V1.x Stream Chat V2 branch/tag candidate, not as required V1 branch-complete scope.
-- 2026-05-15: The current data-contract hardening branch after the v0.19.0 V1-candidate merge keeps shared product/version metadata at 0.19.0 and is not planned as a release tag unless Windows-tested runtime fixes are added. `fixtures/data-contracts/v0.19.0/` is now the first release snapshot for durable user-data validation. Future durable schema branches should keep the previous release snapshot loading through current code, add a new snapshot when the persisted contract changes, and update `docs/data-contracts.md` plus history/settings compatibility tests in the same pass.
+- 2026-05-15: `fixtures/data-contracts/v0.19.0/` is now the first release snapshot for durable user-data validation. Future durable schema branches should keep the previous release snapshot loading through current code, add a new snapshot when the persisted contract changes, and update `docs/data-contracts.md` plus history/settings compatibility tests in the same pass.
+- 2026-05-15: The model-completeness branch makes completed `LiveTelemetrySnapshot.Models` the active overlay runtime contract for native, localhost, and browser surfaces. `LatestSample` remains collector/diagnostic/compatibility evidence, and `LiveTelemetrySnapshot.CompleteModels()` is the bridge for older or partial live snapshots before model builders/renderers run.
 
-## Current Data-Contract Branch Focus
+## Current Model-Completeness Branch Focus
 
-The current branch is a narrow data-contract hardening pass after the v0.19.0 V1-candidate merge. Do not use it for broad overlay or settings churn unless Windows v0.19.0 testing finds a small compatibility fix that should become a tagged patch release.
+The current branch is a model-completeness hardening pass after the v0.19.0 V1-candidate merge. It is intended to remove active overlay-runtime dependence on raw browser snapshots and direct `LatestSample` reads while preserving older snapshot compatibility through completed live models.
 
-Current data-contract focus:
+Current model-completeness focus:
 
-- Keep `fixtures/data-contracts/v0.19.0/` as the first release snapshot for durable user-data validation.
-- Validate vN-1 to vN compatibility by loading the previous release snapshot through current app readers before publishing durable schema changes.
-- Preserve explicit v0.19.0 user settings choices, including opacity and content/header/footer options, when future settings migrations run.
-- Treat settings, compact history, user-generated track maps, raw-capture metadata, and runtime-state diagnostics according to `docs/data-contracts.md`.
+- Complete promoted live models once at product boundaries before native and localhost/browser overlay builders render.
+- Keep browser and localhost overlay pages on `/api/overlay-model/{id}` only; keep `/api/snapshot` as a diagnostic/compatibility route, not an overlay page dependency.
+- Keep the v0.19.0 data-contract snapshot as the previous release baseline. The snapshot-to-overlay tests should prove released settings map into model-only browser/localhost/native overlay consumers without reintroducing `LatestSample` as a rendering dependency.
+- Do not change durable app-data schemas in this branch unless a Windows-tested compatibility issue requires it; a durable schema change needs the data-contract workflow in `docs/data-contracts.md`.
 - Keep the V1-candidate overlay logic stable while this branch is in flight.
 
 Ongoing telemetry/model-v2 guardrails from v0.19.0 still apply:

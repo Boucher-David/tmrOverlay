@@ -50,6 +50,7 @@ internal sealed record CarRadarOverlayViewModel(
         bool showMulticlassWarning,
         CarRadarCalibrationProfile? calibrationProfile = null)
     {
+        snapshot = snapshot with { Models = snapshot.CompleteModels() };
         var calibration = calibrationProfile ?? CarRadarCalibrationProfile.Default;
         var availability = OverlayAvailabilityEvaluator.FromSnapshot(snapshot, now);
         var localContext = LiveLocalStrategyContext.ForRequirement(

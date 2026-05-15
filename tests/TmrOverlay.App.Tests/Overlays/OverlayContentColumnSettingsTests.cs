@@ -198,6 +198,39 @@ public sealed class OverlayContentColumnSettingsTests
             new Size(520, 360)));
     }
 
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData("true", true)]
+    [InlineData("false", false)]
+    [InlineData("0", false)]
+    [InlineData("off", false)]
+    [InlineData("no", false)]
+    public void OverlayManagerDesignV2FlagStillAllowsLegacyNativeFallback(string? configured, bool expected)
+    {
+        var property = typeof(OverlayManager).GetProperty(
+            "UseDesignV2LiveOverlays",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(property);
+        var original = Environment.GetEnvironmentVariable("TMR_WINDOWS_DESIGN_V2_LIVE_OVERLAYS");
+        try
+        {
+            if (configured is null)
+            {
+                Environment.SetEnvironmentVariable("TMR_WINDOWS_DESIGN_V2_LIVE_OVERLAYS", null);
+            }
+            else
+            {
+                Environment.SetEnvironmentVariable("TMR_WINDOWS_DESIGN_V2_LIVE_OVERLAYS", configured);
+            }
+
+            Assert.Equal(expected, (bool)property.GetValue(null)!);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TMR_WINDOWS_DESIGN_V2_LIVE_OVERLAYS", original);
+        }
+    }
+
     [Fact]
     public void DefaultTableColumnWidthsMatchV2CompactProductionLayout()
     {

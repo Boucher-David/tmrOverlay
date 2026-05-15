@@ -13,59 +13,58 @@ Use `docs/model-v2-future-branches.md` for session-handoff notes, current model-
 
 ## Current Branch Target
 
-### Data Contract Snapshot Baseline
+### v0.20.0 - Model Completeness Runtime Contract
 
 Current branch name:
 
 ```text
-fix/v0191-data-contract-snapshots
+v2-model-completeness
 ```
 
 Release/tag decision:
 
-- Keep shared product/version metadata at `0.19.0`.
-- Do not create a release tag for this data-contract-only merge.
-- Reconsider a `v0.19.1` patch tag only if Windows-tested compatibility/runtime fixes land in this branch before merge.
+- Treat this as the `v0.20.0` V1-candidate hardening branch if Windows/CI validates the native runtime.
+- Do not create the release tag until the branch is merged or explicitly designated as the release point.
+- Keep `fixtures/data-contracts/v0.19.0/` as the previous release snapshot; this branch does not change durable user-data schemas.
 
 Planned scope:
 
-- Treat `v0.19.0` as the first V1-candidate durable data-contract baseline.
-- Add versioned release snapshots under `fixtures/data-contracts/` for app settings, compact history, generated track maps, raw-capture metadata, and runtime state.
-- Add tests that load the previous release snapshot into the current code and prove its settings map into browser, localhost, and native overlay consumers.
-- Document which persisted files are durable user contracts, versioned diagnostics, or disposable runtime state.
-- Pin pre-v1 settings migrations to the baseline version they actually apply to, so future settings-version bumps do not rewrite valid v0.19.0 user choices.
-- Keep the branch limited to data-contract hardening unless Windows v0.19.0 testing reports a small compatibility fix that should become a tagged patch release.
+- Make completed `LiveTelemetrySnapshot.Models` the only active overlay runtime contract across native, localhost, and browser surfaces.
+- Keep `LatestSample` as collector, diagnostics, compatibility, and test evidence rather than an overlay rendering input.
+- Keep localhost overlay pages on `/api/overlay-model/{id}` and remove browser shell runtime dependence on `/api/snapshot`, `latestSample`, or `window.TmrBrowserModel`.
+- Preserve older or partial live snapshot compatibility by completing model families at product boundaries before overlay model builders/renderers run.
+- Keep released v0.19.0 settings snapshot validation mapped through model-only browser, localhost, and native overlay consumers.
 
 Technical implementation checklist:
 
-1. Keep shared product/version metadata at `0.19.0` for the data-contract-only merge.
-2. Add `fixtures/data-contracts/v0.19.0/` with a manifest, exact schema snapshots, and compact representative persisted files.
-3. Add `DataContractSnapshotCompatibilityTests` for settings, history maintenance/query, track maps, raw-capture metadata, and runtime-state parsing.
-4. Add snapshot-to-overlay mapping tests for browser review settings, localhost overlay models, and native overlay consumers.
-5. Update data-contract, history-evolution, README, repo notes, and validation-skill docs.
-6. Run local static validation and use Windows/CI for the targeted .NET data-contract test before merge.
+1. Bump shared product/version metadata to `0.20.0` for the hardening branch.
+2. Add `LiveTelemetrySnapshot.CompleteModels()` and mark builder-created models so completion is idempotent.
+3. Complete models before active native/localhost/browser overlay rendering, including defensive completion in simple view models.
+4. Remove production browser shell snapshot helpers and update browser/localhost tests to assert `/api/overlay-model/{id}` runtime use.
+5. Preserve diagnostic/compatibility routes such as `/api/snapshot` while keeping them out of active overlay page runtime.
+6. Re-run snapshot validation with special attention to the model-only overlay mapping test and keep the v0.19.0 fixture unchanged.
 
 Likely squash title:
 
 ```text
-Add durable data contract snapshots
+[v0.20.0] Make overlay runtime depend on completed live models
 ```
 
 Likely squash body:
 
 ```text
-- Added `fixtures/data-contracts/v0.19.0/` as the first release snapshot for durable user-data contracts, covering settings, history, generated track maps, raw-capture metadata, runtime state, and exact persisted schema snapshots.
-- Added data-contract snapshot tests proving the current app loads the v0.19.0 settings snapshot, preserves user choices such as explicit 88% opacity, runs compact history through maintenance/query, reads generated map documents, parses diagnostic metadata, and maps the release settings into browser review, localhost overlay models, and native overlay consumers.
-- Pinned the legacy default-opacity migration to settings versions before the v0.19.0 baseline so future settings-version bumps do not rewrite valid baseline-era user settings.
-- Split CI validation names around browser review, localhost overlay routes, and native tests, including a dedicated browser data-contract mapping step and a named localhost/native data-contract snapshot step.
-- Documented the durable data-contract boundary, snapshot workflow, and required branch validation in data-contract, history-evolution, README, repo-note, and validation guidance docs.
-- Kept shared product/version metadata at 0.19.0 because this branch is data-contract-only hardening and should not produce a release tag unless Windows-tested runtime fixes are added.
-- Windows .NET data-contract tests and normal PR gates remain required before merge.
+- Promoted completed `LiveTelemetrySnapshot.Models` as the active native, localhost, and browser overlay runtime contract, with compatibility completion for older or partial live snapshots.
+- Removed production browser shell dependence on `/api/snapshot`, `latestSample`, and `window.TmrBrowserModel`; localhost overlay pages now render through `/api/overlay-model/{id}` only while legacy snapshot routes remain diagnostic/backcompat endpoints.
+- Completed models before native Design V2, simple telemetry, Gap To Leader, Fuel, Relative, Track Map, Radar, Input, Session/Weather, and Pit Service consumers render, and preserved session-scoped settings behavior across localhost and native paths.
+- Tightened Gap To Leader native runtime and settings parity by removing direct `LatestSample` use and showing race-only chrome controls.
+- Updated browser, localhost, and data-contract mapping tests so the v0.19.0 released settings snapshot maps into model-only browser, localhost, and native overlay consumers.
+- Refreshed model/runtime docs and branch-complete validation notes; no durable user-data schema changes were introduced.
+- Windows .NET data-contract tests, full Windows restore/build/test, and normal PR gates remain required before release.
 ```
 
 ## Next Planned Milestone
 
-### v0.19.1 - V1 Candidate Polish
+### v0.20.1 - V1 Candidate Polish
 
 Likely scope:
 

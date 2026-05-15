@@ -49,7 +49,10 @@ internal static class LiveRaceModelBuilder
             FuelPit: fuelPit,
             PitService: LivePitServiceModel.FromFuelPit(fuelPit, tireCompounds),
             RaceEvents: BuildRaceEvents(sample),
-            Inputs: BuildInputs(sample));
+            Inputs: BuildInputs(sample))
+        {
+            IsLiveSampleModel = true
+        };
     }
 
     private static LiveTrackMapModel BuildTrackMap(HistoricalSessionContext context)
@@ -900,28 +903,32 @@ internal static class LiveRaceModelBuilder
         var classLeaderCarIdx = leaderGap.ClassLeaderCarIdx ?? FocusClassLeaderCarIdx(sample);
         var allowLiveRaceGaps = AllowsLiveRaceGaps(sample);
         var isRaceSession = IsRaceSession(context);
-        var overallGapEvidence = BuildLeaderGapEvidence(
-            source: "overall-gap",
-            position: FocusPosition(sample),
-            leaderCarIdx: sample.LeaderCarIdx,
-            referenceCarIdx: focusCarIdx,
-            referenceF2TimeSeconds: allowLiveRaceGaps
-                ? UsableF2ForTiming(FocusF2TimeSeconds(sample), FocusPosition(sample), isRaceSession)
-                : null,
-            leaderF2TimeSeconds: allowLiveRaceGaps ? sample.LeaderF2TimeSeconds : null,
-            referenceProgress: allowLiveRaceGaps ? Progress(FocusLapCompleted(sample), FocusLapDistPct(sample)) : null,
-            leaderProgress: allowLiveRaceGaps ? Progress(sample.LeaderLapCompleted, sample.LeaderLapDistPct) : null);
-        var classGapEvidence = BuildLeaderGapEvidence(
-            source: "class-gap",
-            position: FocusClassPosition(sample),
-            leaderCarIdx: classLeaderCarIdx,
-            referenceCarIdx: focusCarIdx,
-            referenceF2TimeSeconds: allowLiveRaceGaps
-                ? UsableF2ForTiming(FocusF2TimeSeconds(sample), FocusPosition(sample), isRaceSession)
-                : null,
-            leaderF2TimeSeconds: allowLiveRaceGaps ? FocusClassLeaderF2TimeSeconds(sample) : null,
-            referenceProgress: allowLiveRaceGaps ? Progress(FocusLapCompleted(sample), FocusLapDistPct(sample)) : null,
-            leaderProgress: allowLiveRaceGaps ? Progress(FocusClassLeaderLapCompleted(sample), FocusClassLeaderLapDistPct(sample)) : null);
+        var overallGapEvidence = LegacyGapEvidenceOrBuild(
+            leaderGap.OverallLeaderGap,
+            BuildLeaderGapEvidence(
+                source: "overall-gap",
+                position: FocusPosition(sample),
+                leaderCarIdx: sample.LeaderCarIdx,
+                referenceCarIdx: focusCarIdx,
+                referenceF2TimeSeconds: allowLiveRaceGaps
+                    ? UsableF2ForTiming(FocusF2TimeSeconds(sample), FocusPosition(sample), isRaceSession)
+                    : null,
+                leaderF2TimeSeconds: allowLiveRaceGaps ? sample.LeaderF2TimeSeconds : null,
+                referenceProgress: allowLiveRaceGaps ? Progress(FocusLapCompleted(sample), FocusLapDistPct(sample)) : null,
+                leaderProgress: allowLiveRaceGaps ? Progress(sample.LeaderLapCompleted, sample.LeaderLapDistPct) : null));
+        var classGapEvidence = LegacyGapEvidenceOrBuild(
+            leaderGap.ClassLeaderGap,
+            BuildLeaderGapEvidence(
+                source: "class-gap",
+                position: FocusClassPosition(sample),
+                leaderCarIdx: classLeaderCarIdx,
+                referenceCarIdx: focusCarIdx,
+                referenceF2TimeSeconds: allowLiveRaceGaps
+                    ? UsableF2ForTiming(FocusF2TimeSeconds(sample), FocusPosition(sample), isRaceSession)
+                    : null,
+                leaderF2TimeSeconds: allowLiveRaceGaps ? FocusClassLeaderF2TimeSeconds(sample) : null,
+                referenceProgress: allowLiveRaceGaps ? Progress(FocusLapCompleted(sample), FocusLapDistPct(sample)) : null,
+                leaderProgress: allowLiveRaceGaps ? Progress(FocusClassLeaderLapCompleted(sample), FocusClassLeaderLapDistPct(sample)) : null));
 
         AddKnownRow(
             rows,
@@ -2771,6 +2778,21 @@ internal static class LiveRaceModelBuilder
         }
 
         return LiveSignalEvidence.Unavailable(source, "gap_signals_missing");
+    }
+
+    private static LiveSignalEvidence LegacyGapEvidenceOrBuild(
+        LiveGapValue legacyGap,
+        LiveSignalEvidence modelEvidence)
+    {
+        if (modelEvidence.IsUsable || !legacyGap.HasData)
+        {
+            return modelEvidence;
+        }
+
+        return LiveSignalEvidence.Reliable(
+            string.IsNullOrWhiteSpace(legacyGap.Source)
+                ? "legacy-leader-gap"
+                : legacyGap.Source);
     }
 
     private static LiveSignalEvidence BuildClassGapRowEvidence(

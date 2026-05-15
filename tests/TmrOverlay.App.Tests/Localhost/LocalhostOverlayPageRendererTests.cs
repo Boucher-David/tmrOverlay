@@ -31,9 +31,9 @@ public sealed class BrowserOverlayPageRendererTests
 
         Assert.True(rendered);
         Assert.Contains("\"id\":\"" + expectedId + "\"", html);
-        Assert.Contains("apiPath('/api/snapshot')", html);
-        Assert.Contains("telemetryAvailability", html);
-        Assert.Contains("waiting for fresh telemetry", html);
+        Assert.DoesNotContain("apiPath('/api/snapshot')", html);
+        Assert.DoesNotContain("telemetryAvailability", html);
+        Assert.DoesNotContain("waiting for fresh telemetry", html);
         Assert.Contains("--tmr-surface", html);
         Assert.Contains($"--tmr-cyan: {SharedColor("cyan")}", html);
         Assert.Contains($"--tmr-magenta: {SharedColor("magenta")}", html);
@@ -42,15 +42,16 @@ public sealed class BrowserOverlayPageRendererTests
         Assert.Contains("var(--tmr-surface-raised)", html);
         Assert.Contains("themeColor", html);
         Assert.Contains("fetchOverlayModel(overlayId)", html);
+        Assert.Contains("\"forwardQueryParameters\":[\"preview\",\"rel\"]", html);
         Assert.Contains("renderOverlayModel(model)", html);
         Assert.Contains("displayModelHeaders(model)", html);
-        Assert.Contains("window.TmrBrowserModel = browserModel", html);
+        Assert.DoesNotContain("window.TmrBrowserModel", html);
         Assert.Contains("window.TmrBrowserApiPath = apiPath", html);
-        Assert.Contains("model(live, name)", html);
-        Assert.Contains("currentSessionKind(live)", html);
-        Assert.Contains("referenceCarIdx(live, options = {})", html);
-        Assert.Contains("hasDriverIdentity(row, referenceCarIdx)", html);
-        Assert.Contains("selectRowsAroundReference(rows, referenceCarIdx, limit, carIdxForRow)", html);
+        Assert.DoesNotContain("model(live, name)", html);
+        Assert.DoesNotContain("currentSessionKind(live)", html);
+        Assert.DoesNotContain("referenceCarIdx(live, options = {})", html);
+        Assert.DoesNotContain("hasDriverIdentity(row, referenceCarIdx)", html);
+        Assert.DoesNotContain("selectRowsAroundReference(rows, referenceCarIdx, limit, carIdxForRow)", html);
         if (expectedId == "track-map")
         {
             Assert.Contains("track-map-page", html);
@@ -179,6 +180,22 @@ public sealed class BrowserOverlayPageRendererTests
             {
                 Assert.DoesNotContain(fragment, html);
             }
+        }
+    }
+
+    [Fact]
+    public void TryRender_CurrentV2PagesUseOverlayModelsAsRuntimeContract()
+    {
+        foreach (var page in BrowserOverlayCatalog.Pages)
+        {
+            Assert.True(BrowserOverlayPageRenderer.TryRender(page.CanonicalRoute, out var html));
+            Assert.Contains("fetchOverlayModel(overlayId)", html);
+            Assert.Contains(
+                $"fetchOverlayModel('{page.Id}')",
+                html);
+            Assert.DoesNotContain("apiPath('/api/snapshot')", html);
+            Assert.DoesNotContain("latestSample", html);
+            Assert.DoesNotContain("window.TmrBrowserModel", html);
         }
     }
 

@@ -3,7 +3,7 @@
 The live telemetry boundary now has two layers:
 
 1. Existing overlay-specific slices: fuel, proximity, and leader gap.
-2. Additive shared models under `LiveTelemetrySnapshot.Models`, now used directly by the Relative overlay.
+2. Shared completed models under `LiveTelemetrySnapshot.Models`, now used directly by active native, localhost, and browser overlay runtimes.
 
 The shared models are intended to support simple telemetry-first overlays such as standings, relative, local in-car radar, flags, weather, timing tables, and future map surfaces, plus deeper analysis products, without letting each overlay rediscover the same race state in its form code.
 
@@ -19,9 +19,9 @@ This does not change:
 - existing capture synthesis artifacts
 - existing overlay-specific snapshot properties
 
-Relative and Car Radar are additive on top of those compatibility rules: Relative reads `LiveTelemetrySnapshot.Models.Relative`, Car Radar reads `LiveTelemetrySnapshot.Models.Spatial` for local in-car radar, Fuel reads `LiveTelemetrySnapshot.Models.FuelPit` plus shared race progress, and Gap To Leader reads model-v2 timing/race-progress first while retaining legacy leader-gap fallback for older snapshot shapes. Gap/relative timing code treats zero placeholder F2/estimated-time arrays as unavailable until positive timing evidence appears.
+Active overlay runtimes treat completed live models as the contract. `LiveTelemetrySnapshot.CompleteModels()` is the compatibility bridge for older or partially populated live snapshots: it derives missing model families from the normalized `HistoricalTelemetrySample` once, then native, localhost, and browser overlay consumers read the completed model graph. Browser overlay pages fetch `/api/overlay-model/{id}` only; the legacy localhost `/api/snapshot` endpoint remains a diagnostic/compatibility route and is not part of the overlay page runtime. Gap/relative timing code treats zero placeholder F2/estimated-time arrays as unavailable until positive timing evidence appears.
 
-Older data collected on Windows remains readable because the new models are derived from the normalized `HistoricalTelemetrySample` already produced by the collector. The builder tolerates missing timing, driver, weather, pit, and proximity fields by marking the affected model as `Unavailable` or `Partial` instead of throwing.
+Older data collected on Windows remains readable because the new models can be derived from the normalized `HistoricalTelemetrySample` already produced by the collector. The builder tolerates missing timing, driver, weather, pit, and proximity fields by marking the affected model as `Unavailable` or `Partial` instead of throwing. Direct `LatestSample` reads should stay in collector, diagnostics, compatibility, and test code; product overlay rendering should use completed models.
 
 Overlay availability is now a shared Core contract through `OverlayAvailabilityEvaluator`: disconnected, waiting-for-telemetry, stale, fresh/live, and session-kind classification are derived once from the promoted live snapshot. Native overlays, localhost routes, Garage Cover detection, and the overlay manager consume that shared language instead of each feature inventing its own freshness window.
 

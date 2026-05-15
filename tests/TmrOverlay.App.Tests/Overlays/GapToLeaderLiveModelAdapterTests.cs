@@ -1,4 +1,5 @@
 using TmrOverlay.App.Overlays.GapToLeader;
+using TmrOverlay.Core.History;
 using TmrOverlay.Core.Telemetry.Live;
 using Xunit;
 
@@ -50,6 +51,31 @@ public sealed class GapToLeaderLiveModelAdapterTests
             car.CarIdx == 10
             && car.IsReferenceCar
             && car.GapSecondsToClassLeader == 12.5d);
+    }
+
+    [Fact]
+    public void Select_CompletesV2TimingFromLegacySampleWhenModelsAreUnavailable()
+    {
+        var snapshot = SnapshotWithModels(
+            legacyGapSeconds: 42.5d,
+            timing: LiveTimingModel.Empty,
+            progress: LiveRaceProgressModel.Empty) with
+        {
+            IsConnected = true,
+            IsCollecting = true,
+            LastUpdatedAtUtc = DateTimeOffset.UtcNow,
+            LatestSample = SampleWithReferenceFocus()
+        };
+
+        var gap = GapToLeaderLiveModelAdapter.Select(snapshot);
+
+        Assert.True(gap.HasData);
+        Assert.Equal(42.5d, gap.ClassLeaderGap.Seconds);
+        Assert.Equal("legacy", gap.ClassLeaderGap.Source);
+        Assert.Contains(gap.ClassCars, car =>
+            car.CarIdx == 10
+            && car.IsReferenceCar
+            && car.GapSecondsToClassLeader == 42.5d);
     }
 
     [Fact]
@@ -213,6 +239,44 @@ public sealed class GapToLeaderLiveModelAdapterTests
                 RaceProgress = progress
             }
         };
+    }
+
+    private static HistoricalTelemetrySample SampleWithReferenceFocus()
+    {
+        return new HistoricalTelemetrySample(
+            CapturedAtUtc: DateTimeOffset.UtcNow,
+            SessionTime: 10d,
+            SessionTick: 1,
+            SessionInfoUpdate: 1,
+            IsOnTrack: true,
+            IsInGarage: false,
+            OnPitRoad: false,
+            PitstopActive: false,
+            PlayerCarInPitStall: false,
+            FuelLevelLiters: 25d,
+            FuelLevelPercent: 0.25d,
+            FuelUsePerHourKg: 0d,
+            SpeedMetersPerSecond: 42d,
+            Lap: 4,
+            LapCompleted: 4,
+            LapDistPct: 0.5d,
+            LapLastLapTimeSeconds: null,
+            LapBestLapTimeSeconds: null,
+            AirTempC: 20d,
+            TrackTempCrewC: 24d,
+            TrackWetness: 1,
+            WeatherDeclaredWet: false,
+            PlayerTireCompound: 0,
+            PlayerCarIdx: 10,
+            FocusCarIdx: 10,
+            FocusLapCompleted: 4,
+            FocusLapDistPct: 0.5d,
+            FocusClassPosition: 2,
+            TeamLapCompleted: 4,
+            TeamLapDistPct: 0.5d,
+            TeamClassPosition: 2,
+            ClassLeaderCarIdx: 2,
+            FocusClassLeaderCarIdx: 2);
     }
 
     private static LiveTimingRow TimingRow(

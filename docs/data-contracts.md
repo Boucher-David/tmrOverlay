@@ -101,6 +101,12 @@ review mapping runs in the dedicated browser test step. Data-contract
 regressions are visible as their own gates instead of only failing inside the
 catch-all solution tests.
 
+The snapshot-to-overlay mapping tests intentionally drive localhost and native
+consumers from a production-shaped, model-only live snapshot. That protects the
+current runtime contract: released settings must map into browser, localhost,
+and native overlays without relying on `LatestSample` as an overlay-rendering
+input.
+
 On non-Windows machines without `dotnet`, the branch can still update fixtures
 and docs, but Windows/CI must run the test before release.
 

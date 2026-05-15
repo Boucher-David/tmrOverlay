@@ -15,6 +15,7 @@ using TmrOverlay.App.Overlays.TrackMap;
 using TmrOverlay.App.Performance;
 using TmrOverlay.App.Settings;
 using TmrOverlay.App.TrackMaps;
+using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Telemetry.Live;
 
 namespace TmrOverlay.App.Localhost;
@@ -193,7 +194,19 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
             if (TryGetOverlayModelId(path, out var overlayModelId))
             {
                 route = "overlay_model";
-                var modelSnapshot = _liveTelemetrySource.Snapshot();
+                if (!BrowserOverlayCatalog.TryGetPageByOverlayId(overlayModelId, out var overlayPage))
+                {
+                    await WriteJsonAsync(context.Response, HttpStatusCode.NotFound, new
+                    {
+                        error = "overlay_model_not_found"
+                    }, cancellationToken).ConfigureAwait(false);
+                    statusCode = (int)HttpStatusCode.NotFound;
+                    return;
+                }
+
+                var modelSnapshot = overlayPage.RequiresTelemetry
+                    ? _liveTelemetrySource.Snapshot()
+                    : LiveTelemetrySnapshot.Empty;
                 var modelSettings = _settingsStore.Load();
                 if (_browserModelFactory.TryBuild(
                     overlayModelId,
@@ -256,7 +269,7 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
                 case "/api/track-map":
                     route = "track_map";
                     var snapshot = _liveTelemetrySource.Snapshot();
-                    var trackMapSettings = ReadTrackMapSettings();
+                    var trackMapSettings = ReadTrackMapSettings(snapshot);
                     await WriteJsonAsync(context.Response, HttpStatusCode.OK, new
                     {
                         generatedAtUtc = DateTimeOffset.UtcNow,
@@ -294,20 +307,22 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
 
                 case "/api/relative":
                     route = "relative_settings";
+                    var relativeSnapshot = _liveTelemetrySource.Snapshot();
                     await WriteJsonAsync(context.Response, HttpStatusCode.OK, new
                     {
                         generatedAtUtc = DateTimeOffset.UtcNow,
-                        relativeSettings = ReadRelativeSettings()
+                        relativeSettings = ReadRelativeSettings(relativeSnapshot)
                     }, cancellationToken).ConfigureAwait(false);
                     statusCode = (int)HttpStatusCode.OK;
                     break;
 
                 case "/api/input-state":
                     route = "input_state_settings";
+                    var inputSnapshot = _liveTelemetrySource.Snapshot();
                     await WriteJsonAsync(context.Response, HttpStatusCode.OK, new
                     {
                         generatedAtUtc = DateTimeOffset.UtcNow,
-                        inputStateSettings = ReadInputStateSettings()
+                        inputStateSettings = ReadInputStateSettings(inputSnapshot)
                     }, cancellationToken).ConfigureAwait(false);
                     statusCode = (int)HttpStatusCode.OK;
                     break;
@@ -423,11 +438,13 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
         }
     }
 
-    private TrackMapBrowserSettings ReadTrackMapSettings()
+    private TrackMapBrowserSettings ReadTrackMapSettings(LiveTelemetrySnapshot snapshot)
     {
         try
         {
-            return TrackMapBrowserSettings.From(_settingsStore.Load());
+            return TrackMapBrowserSettings.From(
+                _settingsStore.Load(),
+                OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot));
         }
         catch (Exception exception)
         {
@@ -449,11 +466,13 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
         }
     }
 
-    private RelativeBrowserSettings ReadRelativeSettings()
+    private RelativeBrowserSettings ReadRelativeSettings(LiveTelemetrySnapshot snapshot)
     {
         try
         {
-            return RelativeBrowserSettings.From(_settingsStore.Load());
+            return RelativeBrowserSettings.From(
+                _settingsStore.Load(),
+                OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot));
         }
         catch (Exception exception)
         {
@@ -462,11 +481,13 @@ internal sealed class LocalhostOverlayHostedService : IHostedService
         }
     }
 
-    private InputStateBrowserSettings ReadInputStateSettings()
+    private InputStateBrowserSettings ReadInputStateSettings(LiveTelemetrySnapshot snapshot)
     {
         try
         {
-            return InputStateBrowserSettings.From(_settingsStore.Load());
+            return InputStateBrowserSettings.From(
+                _settingsStore.Load(),
+                OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot));
         }
         catch (Exception exception)
         {

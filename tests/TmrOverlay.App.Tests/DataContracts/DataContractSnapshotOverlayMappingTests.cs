@@ -35,6 +35,10 @@ public sealed class DataContractSnapshotOverlayMappingTests
         var settings = snapshot.Settings;
         var now = DateTimeOffset.Parse("2026-05-15T00:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
         var live = ProductionLikeRaceSnapshot(now);
+        Assert.Null(live.LatestSample);
+        Assert.True(live.Models.Session.HasData);
+        Assert.True(live.Models.Timing.HasData);
+        Assert.True(live.Models.FuelPit.HasData);
         var factory = new BrowserOverlayModelFactory(new SessionHistoryQueryService(new SessionHistoryOptions
         {
             Enabled = false,
@@ -119,6 +123,10 @@ public sealed class DataContractSnapshotOverlayMappingTests
         var settings = snapshot.Settings;
         var now = DateTimeOffset.Parse("2026-05-15T00:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
         var live = ProductionLikeRaceSnapshot(now);
+        Assert.Null(live.LatestSample);
+        Assert.True(live.Models.Session.HasData);
+        Assert.True(live.Models.Timing.HasData);
+        Assert.True(live.Models.FuelPit.HasData);
 
         var standings = Overlay(settings, "standings");
         var standingsColumns = OverlayContentColumnSettings.VisibleColumnsFor(

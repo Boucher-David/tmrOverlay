@@ -21,6 +21,7 @@ export {
 
 export async function renderBrowserOverlay(name, { live, settings = {}, model = null, waitForSelector = 'table' }) {
   const fetchCalls = [];
+  const page = browserOverlayPage(name);
   const dom = new JSDOM(renderOverlayHtml(name), {
     pretendToBeVisual: true,
     runScripts: 'dangerously',
@@ -42,7 +43,13 @@ export async function renderBrowserOverlay(name, { live, settings = {}, model = 
   if (waitForSelector) {
     await waitFor(() => dom.window.document.querySelector(waitForSelector));
   } else {
-    await waitFor(() => fetchCalls.includes('/api/snapshot'));
+    await waitFor(() => {
+      const contentText = dom.window.document.getElementById('content')?.textContent?.trim();
+      const statusText = dom.window.document.getElementById('status')?.textContent?.trim();
+      const opacity = dom.window.document.querySelector('.overlay')?.style?.opacity;
+      return fetchCalls.includes(page.modelRoute)
+        && (contentText !== 'Waiting for live telemetry.' || statusText !== 'waiting' || opacity === '0');
+    });
   }
 
   return {

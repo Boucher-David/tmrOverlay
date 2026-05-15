@@ -149,10 +149,11 @@ internal static class SettingsOverlayTabSections
         }
 
         parent.Controls.Add(SettingsUi.CreateLabel("Item", 22, 62, 120));
-        for (var sessionIndex = 0; sessionIndex < OverlaySettingsSessionColumns.Display.Length; sessionIndex++)
+        var sessionColumns = OverlaySettingsSessionColumns.ChromeColumnsFor(settings.Id);
+        for (var sessionIndex = 0; sessionIndex < sessionColumns.Count; sessionIndex++)
         {
             parent.Controls.Add(SettingsUi.CreateLabel(
-                OverlaySettingsSessionColumns.Display[sessionIndex].Label,
+                sessionColumns[sessionIndex].Label,
                 ChromeSessionColumnX(sessionIndex),
                 62,
                 120));
@@ -163,9 +164,9 @@ internal static class SettingsOverlayTabSections
             var row = rows[index];
             var rowTop = 100 + index * 38;
             parent.Controls.Add(SettingsUi.CreateLabel(row.Label, 22, rowTop + 4, 150));
-            for (var sessionIndex = 0; sessionIndex < OverlaySettingsSessionColumns.Display.Length; sessionIndex++)
+            for (var sessionIndex = 0; sessionIndex < sessionColumns.Count; sessionIndex++)
             {
-                var sessionKind = OverlaySettingsSessionColumns.Display[sessionIndex].Kind;
+                var sessionKind = sessionColumns[sessionIndex].Kind;
                 AddChromeSessionCheckBox(parent, settings, row, sessionKind, ChromeSessionColumnX(sessionIndex), rowTop, saveAndApply);
             }
         }

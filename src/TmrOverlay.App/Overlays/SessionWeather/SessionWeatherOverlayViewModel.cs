@@ -63,6 +63,7 @@ internal static class SessionWeatherOverlayViewModel
             return Waiting(waitingStatus);
         }
 
+        snapshot = snapshot with { Models = snapshot.CompleteModels() };
         var session = snapshot.Models.Session;
         var weather = snapshot.Models.Weather;
         var raceProgress = snapshot.Models.RaceProgress;

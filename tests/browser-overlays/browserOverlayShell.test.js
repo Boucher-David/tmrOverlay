@@ -33,7 +33,7 @@ describe('browser overlay shell', () => {
     expect(styleText).toContain(`--tmr-surface: ${cssColor(sharedContract.design.v2.colors.surface)};`);
   });
 
-  it('shows deterministic unavailable state and fades telemetry overlays while disconnected', async () => {
+  it('uses model renderability for unavailable telemetry states', async () => {
     currentOverlay = await renderBrowserOverlay('standings', {
       live: {
         isConnected: false,
@@ -42,32 +42,29 @@ describe('browser overlay shell', () => {
         sequence: 0,
         models: {}
       },
+      model: {
+        overlayId: 'standings',
+        title: 'Standings',
+        status: 'iRacing disconnected',
+        source: 'source: waiting',
+        bodyKind: 'table',
+        columns: [],
+        rows: [],
+        metrics: [],
+        points: [],
+        headerItems: [{ key: 'status', value: 'iRacing disconnected' }],
+        shouldRender: false
+      },
       waitForSelector: null
     });
 
     await waitFor(() => currentOverlay.document.getElementById('status').textContent === 'iRacing disconnected');
 
-    expect(currentOverlay.document.getElementById('content').textContent).toContain('Waiting for iRacing telemetry.');
+    expect(currentOverlay.fetchCalls).toContain('/api/overlay-model/standings');
+    expect(currentOverlay.fetchCalls).not.toContain('/api/snapshot');
+    expect(currentOverlay.document.getElementById('content').textContent).toBe('');
     expect(currentOverlay.document.querySelector('.overlay').style.opacity).toBe('0');
-    expect(currentOverlay.dom.window.TmrBrowserModel.referenceCarIdx({
-      models: {
-        reference: { focusCarIdx: 9 },
-        scoring: { referenceCarIdx: 4 },
-        relative: { referenceCarIdx: 7 }
-      }
-    }, { preferRelative: true })).toBe(9);
-    expect(currentOverlay.dom.window.TmrBrowserModel.isPlayerInCar({
-      models: {
-        reference: { hasData: true, playerCarIdx: 10, focusCarIdx: 42, focusIsPlayer: false },
-        raceEvents: { hasData: true, isOnTrack: true, isInGarage: false }
-      }
-    })).toBe(false);
-    expect(currentOverlay.dom.window.TmrBrowserModel.isPlayerInCar({
-      models: {
-        reference: { hasData: true, playerCarIdx: 10, focusCarIdx: 10, focusIsPlayer: true },
-        raceEvents: { hasData: true, isOnTrack: true, isInGarage: false, onPitRoad: true }
-      }
-    })).toBe(false);
+    expect(currentOverlay.dom.window.TmrBrowserModel).toBeUndefined();
   });
 
   it('does not invent header or footer chrome when the model omits shared chrome items', async () => {

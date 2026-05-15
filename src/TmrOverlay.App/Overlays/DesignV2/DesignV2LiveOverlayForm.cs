@@ -165,6 +165,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private DesignV2OverlayModel _model;
     private TrackMapDocument? _trackMap;
     private string? _trackMapIdentityKey;
+    private bool? _trackMapIncludeUserMaps;
     private HistoricalComboIdentity? _cachedHistoryCombo;
     private SessionHistoryLookupResult? _cachedHistory;
     private DateTimeOffset _cachedHistoryAtUtc;
@@ -398,6 +399,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     private DesignV2OverlayModel BuildModel(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
     {
+        snapshot = snapshot with { Models = snapshot.CompleteModels() };
         var model = _kind switch
         {
             DesignV2LiveOverlayKind.Standings => BuildStandingsModel(snapshot, now),
@@ -941,10 +943,10 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     private void RecordGapSnapshot(LiveTelemetrySnapshot snapshot, LiveLeaderGapSnapshot gap, DateTimeOffset now)
     {
-        var timestamp = snapshot.LatestSample?.CapturedAtUtc
-            ?? snapshot.LastUpdatedAtUtc
+        var modelSnapshot = snapshot with { Models = snapshot.CompleteModels() };
+        var timestamp = snapshot.LastUpdatedAtUtc
             ?? now;
-        var axisSeconds = SelectGapAxisSeconds(timestamp, snapshot.Models.Session.SessionTimeSeconds ?? snapshot.LatestSample?.SessionTime);
+        var axisSeconds = SelectGapAxisSeconds(timestamp, modelSnapshot.Models.Session.SessionTimeSeconds);
         _latestGapAxisSeconds = axisSeconds;
         if (_gapTrendStartAxisSeconds is null || axisSeconds < _gapTrendStartAxisSeconds.Value)
         {
@@ -952,8 +954,8 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         }
 
         var context = new DesignV2GapReferenceContext(
-            snapshot.Models.Reference.FocusCarIdx ?? snapshot.Models.Timing.FocusCarIdx,
-            snapshot.Models.Reference.ReferenceCarClass ?? snapshot.Models.Timing.FocusRow?.CarClass);
+            modelSnapshot.Models.Reference.FocusCarIdx ?? modelSnapshot.Models.Timing.FocusCarIdx,
+            modelSnapshot.Models.Reference.ReferenceCarClass ?? modelSnapshot.Models.Timing.FocusRow?.CarClass);
         if (_lastGapReferenceContext is not null && _lastGapReferenceContext != context)
         {
             _gapSeries.Clear();
@@ -968,11 +970,11 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         }
 
         _lastGapReferenceContext = context;
-        var lapReferenceSeconds = TmrOverlay.App.Overlays.GapToLeader.GapToLeaderLiveModelAdapter.SelectLapReferenceSeconds(snapshot);
+        var lapReferenceSeconds = TmrOverlay.App.Overlays.GapToLeader.GapToLeaderLiveModelAdapter.SelectLapReferenceSeconds(modelSnapshot);
         _lastGapLapReferenceSeconds = lapReferenceSeconds;
-        RecordGapFuelStint(snapshot, axisSeconds);
-        RecordGapWeather(snapshot, axisSeconds);
-        RecordGapDriverChangeMarkers(snapshot, gap, timestamp, axisSeconds, lapReferenceSeconds);
+        RecordGapFuelStint(modelSnapshot, axisSeconds);
+        RecordGapWeather(modelSnapshot, axisSeconds);
+        RecordGapDriverChangeMarkers(modelSnapshot, gap, timestamp, axisSeconds, lapReferenceSeconds);
         RecordGapLeaderChange(gap, timestamp, axisSeconds);
         foreach (var car in gap.ClassCars)
         {
@@ -1014,7 +1016,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             }
         }
 
-        UpdateGapCarRenderStates(snapshot, gap, axisSeconds, lapReferenceSeconds);
+        UpdateGapCarRenderStates(modelSnapshot, gap, axisSeconds, lapReferenceSeconds);
         PruneGapSeries(axisSeconds);
     }
 
@@ -1045,10 +1047,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
     private void RecordGapFuelStint(LiveTelemetrySnapshot snapshot, double axisSeconds)
     {
-        var fuelLevelLiters = FirstValidFuelLevel(
-            snapshot.Models.FuelPit.Fuel.FuelLevelLiters,
-            snapshot.Fuel.FuelLevelLiters,
-            snapshot.LatestSample?.FuelLevelLiters);
+        var fuelLevelLiters = FirstValidFuelLevel(snapshot.Models.FuelPit.Fuel.FuelLevelLiters);
         if (fuelLevelLiters is null)
         {
             return;
@@ -2353,26 +2352,29 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private void RefreshTrackMap(LiveTelemetrySnapshot snapshot, DateTimeOffset now)
     {
         var identity = TrackMapIdentity.From(snapshot.Context.Track);
+        var includeUserMaps = OverlayContentColumnSettings.ContentEnabledForSession(
+            _settings,
+            OverlayOptionKeys.TrackMapBuildFromTelemetry,
+            defaultEnabled: true,
+            OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot));
         var identityChanged = !string.Equals(identity.Key, _trackMapIdentityKey, StringComparison.Ordinal);
-        if (!identityChanged && now < _nextTrackMapReloadAtUtc)
+        var mapSourceChanged = _trackMapIncludeUserMaps != includeUserMaps;
+        if (!identityChanged && !mapSourceChanged && now < _nextTrackMapReloadAtUtc)
         {
             return;
         }
 
-        if (identityChanged)
+        if (identityChanged || mapSourceChanged)
         {
             _trackMapRenderBuilder.ResetSmoothing();
         }
 
         _trackMapIdentityKey = identity.Key;
+        _trackMapIncludeUserMaps = includeUserMaps;
         _nextTrackMapReloadAtUtc = now.AddSeconds(TrackMapReloadIntervalSeconds);
         _trackMap = _trackMapStore.TryReadBest(
             snapshot.Context.Track,
-            includeUserMaps: OverlayContentColumnSettings.ContentEnabledForSession(
-                _settings,
-                OverlayOptionKeys.TrackMapBuildFromTelemetry,
-                defaultEnabled: true,
-                OverlayAvailabilityEvaluator.CurrentSessionKind(snapshot)));
+            includeUserMaps: includeUserMaps);
     }
 
     private DesignV2OverlayModel BuildStreamChatModel()

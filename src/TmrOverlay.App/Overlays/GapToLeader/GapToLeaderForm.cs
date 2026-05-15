@@ -233,6 +233,7 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
             try
             {
                 snapshot = _liveTelemetrySource.Snapshot();
+                snapshot = snapshot with { Models = snapshot.CompleteModels() };
                 snapshotSucceeded = true;
             }
             finally
@@ -337,10 +338,9 @@ internal sealed class GapToLeaderForm : PersistentOverlayForm
 
     private void RecordGapSnapshot(LiveTelemetrySnapshot snapshot, LiveLeaderGapSnapshot gap)
     {
-        var timestamp = snapshot.LatestSample?.CapturedAtUtc
-            ?? snapshot.LastUpdatedAtUtc
+        var timestamp = snapshot.LastUpdatedAtUtc
             ?? DateTimeOffset.UtcNow;
-        var axisSeconds = SelectAxisSeconds(timestamp, snapshot.Models.Session.SessionTimeSeconds ?? snapshot.LatestSample?.SessionTime);
+        var axisSeconds = SelectAxisSeconds(timestamp, snapshot.Models.Session.SessionTimeSeconds);
         _latestPointAtUtc = timestamp;
         _latestAxisSeconds = axisSeconds;
         if (_trendStartAxisSeconds is null || axisSeconds < _trendStartAxisSeconds.Value)

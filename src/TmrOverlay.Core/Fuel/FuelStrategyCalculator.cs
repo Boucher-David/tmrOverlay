@@ -991,45 +991,14 @@ internal sealed record FuelStrategyInputs(
 {
     public static FuelStrategyInputs From(LiveTelemetrySnapshot live)
     {
-        var models = live.Models;
-        if ((!models.RaceProgress.HasData || !models.FuelPit.HasData) && live.LatestSample is { } sample)
-        {
-            var fuel = live.Fuel.HasValidFuel
-                ? live.Fuel
-                : LiveFuelSnapshot.From(live.Context, sample);
-            models = LiveRaceModelBuilder.From(
-                live.Context,
-                sample,
-                fuel,
-                live.Proximity,
-                live.LeaderGap,
-                models.TrackMap);
-            models = models with
-            {
-                RaceProjection = live.Models.RaceProjection,
-                RaceProgress = LiveRaceProjectionMapper.ApplyToRaceProgress(
-                    models.RaceProgress,
-                    live.Models.RaceProjection)
-            };
-        }
-
-        var fuelPit = models.FuelPit;
-        if (!fuelPit.HasData && live.Fuel.HasValidFuel)
-        {
-            fuelPit = fuelPit with
-            {
-                HasData = true,
-                Quality = LiveModelQuality.Reliable,
-                Fuel = live.Fuel
-            };
-        }
+        var models = live.CompleteModels();
 
         return new FuelStrategyInputs(
             Context: live.Context,
             Session: models.Session,
             RaceProgress: models.RaceProgress,
             RaceProjection: models.RaceProjection,
-            FuelPit: fuelPit,
+            FuelPit: models.FuelPit,
             CompletedStintCount: live.CompletedStintCount);
     }
 }

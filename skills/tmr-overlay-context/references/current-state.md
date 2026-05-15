@@ -54,7 +54,7 @@ Last updated: 2026-05-15
   - `GarageCover/` contains a localhost-only streamer privacy surface for OBS; it uses the specific iRacing Garage/setup-screen-visible signal, fails closed to an opaque imported image or bundled stock fallback when telemetry is unavailable/stale, copies imported images into app-owned settings storage, exposes scale plus settings-tab image preview/import/clear controls and detection state, and uses crop-to-cover image fitting
   - `Flags/` contains a compact transparent icon-only scale-controlled overlay with procedurally drawn live session flags; it can show multiple active user-facing categories at once, ignores background-only SDK bits and plain steady-state green running by themselves, and requires recognized live session context before the runtime window is shown
   - `CarRadar/` contains a transparent circular local-player in-car proximity overlay, backed by local player/team progress, player-only `CarLeftRight`, physically placed nearby `CarIdx*` progress/position telemetry, and optional timing-based multiclass warning context
-  - `GapToLeader/` contains a rolling in-class gap trend graph, backed by `CarIdxF2Time` with progress fallback, a four-hour visible window, and same-lap reference selection for long endurance gaps
+  - `GapToLeader/` contains a rolling in-class gap trend graph, backed by completed model-v2 timing/race-progress state, a four-hour visible window, and same-lap reference selection for long endurance gaps
 
 - `src/TmrOverlay.App/Diagnostics/AppDiagnosticsStatusModel.cs`
   - shared support/status model for app health, live telemetry state, raw capture write health, warnings/errors, Support-tab labels, and diagnostics bundle summaries
@@ -292,10 +292,10 @@ Last updated: 2026-05-15
 
 - `src/TmrOverlay.App/Localhost/`
   - default-on localhost server for OBS and other local capture tools; disable with `LocalhostOverlays:Enabled=false` when the local HTTP server is not wanted
-  - exposes `GET /health`, `GET /snapshot`, `GET /api/snapshot`, `GET /api/standings`, `GET /api/relative`, `GET /api/track-map`, `GET /api/stream-chat`, `GET /api/garage-cover`, `GET /api/garage-cover/image`, and per-overlay HTML routes under `/overlays/{id}`
-  - current routes cover standings, relative, fuel calculator, session/weather, pit service, input state, car radar, gap to leader, track map, stream chat, and Garage Cover; Flags intentionally has no localhost route for now
+  - exposes `GET /health`, legacy diagnostic `GET /snapshot` / `GET /api/snapshot`, per-overlay model routes under `GET /api/overlay-model/{id}`, legacy/settings routes such as `GET /api/standings`, `GET /api/relative`, `GET /api/track-map`, `GET /api/stream-chat`, `GET /api/garage-cover`, `GET /api/garage-cover/image`, and per-overlay HTML routes under `/overlays/{id}`
+  - current localhost overlay routes cover standings, relative, fuel calculator, session/weather, pit service, input state, car radar, gap to leader, track map, flags, stream chat, and Garage Cover
   - localhost route metadata and page scripts live with overlay modules under `src/TmrOverlay.App/Overlays/`; localhost owns HTTP transport and the generic page shell
-  - pages poll `ILiveTelemetrySource`, so local localhost overlays do not read directly from iRacing or raw capture files; `/api/snapshot` serialization is cached by live snapshot sequence so multiple localhost pages sharing the same frame do not all reserialize the live model
+  - pages fetch `/api/overlay-model/{id}` only, and the server completes live models before dispatching to overlay model builders; local localhost overlays do not read directly from iRacing, raw capture files, browser `latestSample` helpers, or the legacy `/api/snapshot` route
   - records lifecycle status, request counts, route counts, failures, recent activity status, last-request details, full browser-route catalog metadata, shared settings/design-token contract metadata, and Garage Cover route/image/detection metadata into diagnostics bundles
   - Stream Chat reads one saved settings source at a time and defaults to public Twitch channel `techmatesracing` through the shared settings contract; the native overlay auto-connects to public Twitch channel chat, while the localhost route can also embed a Streamlabs Chat Box widget URL; Streamlabs widget URLs are redacted from diagnostics bundles
   - each overlay settings tab lists a selectable/copyable localhost URL, and the route remains usable even when the native overlay is hidden or the surface is localhost-only

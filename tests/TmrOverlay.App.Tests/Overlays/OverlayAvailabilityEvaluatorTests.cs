@@ -226,6 +226,27 @@ public sealed class OverlayAvailabilityEvaluatorTests
         Assert.Equal(LiveLocalStrategyContext.FuelWaitingStatus, fuel.StatusText);
     }
 
+    [Fact]
+    public void LiveLocalStrategyContext_CompletesV2ModelsFromLatestSampleWhenModelsAreMissing()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var snapshot = LiveTelemetrySnapshot.Empty with
+        {
+            IsConnected = true,
+            IsCollecting = true,
+            LastUpdatedAtUtc = now,
+            LatestSample = LocalTelemetrySample(now, playerCarIdx: 10, focusCarIdx: 10)
+        };
+
+        var context = LiveLocalStrategyContext.ForRequirement(
+            snapshot,
+            now,
+            OverlayContextRequirement.LocalPlayerInCar);
+
+        Assert.True(context.IsAvailable);
+        Assert.Equal("available", context.Reason);
+    }
+
     private static LiveTelemetrySnapshot SnapshotForSession(string sessionType)
     {
         return LiveTelemetrySnapshot.Empty with
@@ -239,6 +260,41 @@ public sealed class OverlayAvailabilityEvaluatorTests
                 }
             }
         };
+    }
+
+    private static HistoricalTelemetrySample LocalTelemetrySample(
+        DateTimeOffset capturedAtUtc,
+        int? playerCarIdx,
+        int? focusCarIdx)
+    {
+        return new HistoricalTelemetrySample(
+            CapturedAtUtc: capturedAtUtc,
+            SessionTime: 10d,
+            SessionTick: 1,
+            SessionInfoUpdate: 1,
+            IsOnTrack: true,
+            IsInGarage: false,
+            OnPitRoad: false,
+            PitstopActive: false,
+            PlayerCarInPitStall: false,
+            FuelLevelLiters: 25d,
+            FuelLevelPercent: 0.25d,
+            FuelUsePerHourKg: 0d,
+            SpeedMetersPerSecond: 42d,
+            Lap: 1,
+            LapCompleted: 1,
+            LapDistPct: 0.25d,
+            LapLastLapTimeSeconds: null,
+            LapBestLapTimeSeconds: null,
+            AirTempC: 20d,
+            TrackTempCrewC: 24d,
+            TrackWetness: 1,
+            WeatherDeclaredWet: false,
+            PlayerTireCompound: 0,
+            PlayerCarIdx: playerCarIdx,
+            FocusCarIdx: focusCarIdx,
+            FocusLapDistPct: 0.25d,
+            PlayerTrackSurface: 3);
     }
 
     private static LiveTelemetrySnapshot LocalStrategySnapshot(

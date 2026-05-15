@@ -1,9 +1,11 @@
+using TmrOverlay.App.Overlays.CarRadar;
 using TmrOverlay.App.Overlays.Flags;
 using TmrOverlay.App.Overlays.Content;
 using TmrOverlay.App.Overlays.InputState;
 using TmrOverlay.App.Overlays.PitService;
 using TmrOverlay.App.Overlays.SessionWeather;
 using TmrOverlay.App.Overlays.SimpleTelemetry;
+using TmrOverlay.Core.History;
 using TmrOverlay.Core.Overlays;
 using TmrOverlay.Core.Settings;
 using TmrOverlay.Core.Telemetry.Live;
@@ -522,6 +524,29 @@ public sealed class SimpleTelemetryOverlayViewModelTests
     }
 
     [Fact]
+    public void SimpleV2NativeViewModels_CompleteModelsFromLegacySample()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var drivingSnapshot = LegacySampleSnapshot(now, LegacySample(now, carLeftRight: 2));
+        var pitSnapshot = LegacySampleSnapshot(now, LegacySample(now, onPitRoad: true, pitstopActive: true));
+
+        var input = InputStateOverlayViewModel.From(drivingSnapshot, now, "Metric");
+        var weather = SessionWeatherOverlayViewModel.From(drivingSnapshot, now, "Metric");
+        var radar = CarRadarOverlayViewModel.From(
+            drivingSnapshot,
+            now,
+            previewVisible: false,
+            showMulticlassWarning: true);
+        var pit = PitServiceOverlayViewModel.From(pitSnapshot, now, "Metric");
+
+        Assert.Contains(input.Rows, row => row.Label == "Gear / RPM" && row.Value.Contains("4", StringComparison.Ordinal));
+        Assert.Contains(weather.Rows, row => row.Label == "Temps" && row.Value.Contains("30", StringComparison.Ordinal));
+        Assert.True(radar.IsAvailable);
+        Assert.True(radar.HasCarLeft);
+        Assert.Contains(pit.Rows, row => row.Label == "Fuel request" && row.Value.Contains("45.5 L", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void PitService_FromTelemetry_HonorsMetricCellToggles()
     {
         var now = DateTimeOffset.UtcNow;
@@ -982,6 +1007,105 @@ public sealed class SimpleTelemetryOverlayViewModelTests
             Sequence = 1,
             Models = normalizedModels
         };
+    }
+
+    private static LiveTelemetrySnapshot LegacySampleSnapshot(DateTimeOffset now, HistoricalTelemetrySample sample)
+    {
+        var context = new HistoricalSessionContext
+        {
+            Car = new HistoricalCarIdentity
+            {
+                DriverCarFuelMaxLiters = 100d,
+                DriverCarFuelKgPerLiter = 0.75d,
+                DriverCarEstLapTimeSeconds = 92d
+            },
+            Track = new HistoricalTrackIdentity { TrackLengthKm = 5.1d },
+            Session = new HistoricalSessionIdentity
+            {
+                SessionType = "Race",
+                SessionName = "Race Preview",
+                SessionTime = "3600 sec",
+                SessionLaps = "unlimited"
+            },
+            Conditions = new HistoricalSessionInfoConditions()
+        };
+
+        return new LiveTelemetrySnapshot(
+            IsConnected: true,
+            IsCollecting: true,
+            SourceId: "test",
+            StartedAtUtc: now.AddMinutes(-2),
+            LastUpdatedAtUtc: now,
+            Sequence: 1,
+            Context: context,
+            Combo: HistoricalComboIdentity.From(context),
+            LatestSample: sample,
+            Fuel: LiveFuelSnapshot.From(context, sample),
+            Proximity: LiveProximitySnapshot.From(context, sample),
+            LeaderGap: LiveLeaderGapSnapshot.From(sample));
+    }
+
+    private static HistoricalTelemetrySample LegacySample(
+        DateTimeOffset now,
+        bool onPitRoad = false,
+        bool pitstopActive = false,
+        int? carLeftRight = null)
+    {
+        return new HistoricalTelemetrySample(
+            CapturedAtUtc: now,
+            SessionTime: 120d,
+            SessionTick: 100,
+            SessionInfoUpdate: 1,
+            IsOnTrack: !onPitRoad,
+            IsInGarage: false,
+            OnPitRoad: onPitRoad,
+            PitstopActive: pitstopActive,
+            PlayerCarInPitStall: pitstopActive,
+            FuelLevelLiters: 52.4d,
+            FuelLevelPercent: 0.52d,
+            FuelUsePerHourKg: 22d,
+            SpeedMetersPerSecond: onPitRoad ? 12d : 64d,
+            Lap: 4,
+            LapCompleted: 4,
+            LapDistPct: 0.42d,
+            LapLastLapTimeSeconds: 92.4d,
+            LapBestLapTimeSeconds: 91.8d,
+            AirTempC: 21d,
+            TrackTempCrewC: 30d,
+            TrackWetness: 1,
+            WeatherDeclaredWet: false,
+            PlayerTireCompound: 0,
+            SessionTimeRemain: 600d,
+            SessionTimeTotal: 3600d,
+            SessionLapsRemainEx: 32_767,
+            SessionLapsTotal: 32_767,
+            SessionState: 4,
+            RaceLaps: 4,
+            PlayerCarIdx: 10,
+            FocusCarIdx: 10,
+            FocusLapCompleted: 4,
+            FocusLapDistPct: 0.42d,
+            FocusPosition: 5,
+            FocusClassPosition: 3,
+            FocusOnPitRoad: onPitRoad,
+            PlayerTrackSurface: onPitRoad ? 1 : 3,
+            CarLeftRight: carLeftRight,
+            PitServiceStatus: pitstopActive ? PitServiceStatusFormatter.InProgress : null,
+            PitServiceFlags: pitstopActive ? 0x3f : null,
+            PitServiceFuelLiters: pitstopActive ? 45.5d : null,
+            PitRepairLeftSeconds: pitstopActive ? 12.2d : null,
+            Gear: 4,
+            Rpm: 6800d,
+            Throttle: 0.78d,
+            Brake: 0.16d,
+            Clutch: 0d,
+            SteeringWheelAngle: -0.18d,
+            PlayerYawNorthRadians: 0.35d,
+            EngineWarnings: 0,
+            Voltage: 14.1d,
+            WaterTempC: 91d,
+            OilTempC: 96d,
+            BrakeAbsActive: true);
     }
 
     private static LiveTelemetrySnapshot TireAnalysisSnapshot(DateTimeOffset now)
