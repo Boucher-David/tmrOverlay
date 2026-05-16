@@ -11,6 +11,7 @@ import {
   renderOverlayHtml,
   renderOverlayIndexHtml,
   renderAppValidatorReviewHtml,
+  renderInstallerReviewHtml,
   renderSettingsGeneralReviewHtml
 } from '../../tests/browser-overlays/browserOverlayAssets.js';
 
@@ -94,6 +95,13 @@ const server = createServer((request, response) => {
       serveHtml(response, withLiveReload(renderSettingsGeneralReviewHtml({
         previewMode: url.searchParams.get('preview') || 'off',
         reviewState: reviewAppState
+      })));
+      return;
+    }
+
+    if (path === '/review/installer') {
+      serveHtml(response, withLiveReload(renderInstallerReviewHtml({
+        menuId: url.searchParams.get('menu') || 'welcome'
       })));
       return;
     }

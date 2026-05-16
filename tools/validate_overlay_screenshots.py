@@ -347,6 +347,13 @@ BROWSER_REVIEW_SETTINGS_PNGS = [
     "settings/pit-service-footer.png",
 ]
 
+BROWSER_REVIEW_INSTALLER_PNGS = [
+    "review-installer/welcome.png",
+    "review-installer/install-options.png",
+    "review-installer/ready-to-install.png",
+    "review-installer/cancel-confirm.png",
+]
+
 RELEASE_TUTORIAL_EXPECTED_PNGS = {
     "windows-release-teammate-tutorial.png": (1600, 1000),
 }
@@ -611,6 +618,7 @@ def validate_browser_review_ci(root: Path, min_unique_bytes: int, failures: list
             minimum_size=(1000, 680),
         )
 
+    validate_browser_review_installer_pngs(root, min_unique_bytes, failures)
     validate_web_overlay_pngs(root, "browser-overlays", min_unique_bytes, failures)
 
     validate_browser_review_manifest(
@@ -652,6 +660,7 @@ def validate_browser_localhost_ci(root: Path, min_unique_bytes: int, failures: l
             minimum_size=(1000, 680),
         )
 
+    validate_browser_review_installer_pngs(root, min_unique_bytes, failures)
     validate_web_overlay_pngs(root, "browser-overlays", min_unique_bytes, failures)
     validate_web_overlay_pngs(root, "localhost-overlays", min_unique_bytes, failures)
     validate_localhost_alias_pngs(root, min_unique_bytes, failures)
@@ -683,6 +692,18 @@ def validate_web_overlay_pngs(root: Path, prefix: str, min_unique_bytes: int, fa
                 failures=failures,
                 minimum_size=(200, 120),
             )
+
+
+def validate_browser_review_installer_pngs(root: Path, min_unique_bytes: int, failures: list[str]) -> None:
+    for relative_path in BROWSER_REVIEW_INSTALLER_PNGS:
+        validate_png(
+            root=root,
+            relative_path=relative_path,
+            expected_size=None,
+            min_unique_bytes=min_unique_bytes,
+            failures=failures,
+            minimum_size=(320, 120),
+        )
 
 
 def validate_localhost_alias_pngs(root: Path, min_unique_bytes: int, failures: list[str]) -> None:
@@ -720,7 +741,7 @@ def EXPECTED_WINDOWS_COMPONENT_FILES() -> tuple[str, ...]:
 
 
 def browser_review_manifest_paths() -> set[str]:
-    paths = set(BROWSER_REVIEW_SETTINGS_PNGS)
+    paths = set(BROWSER_REVIEW_SETTINGS_PNGS) | set(BROWSER_REVIEW_INSTALLER_PNGS)
     paths.update(web_overlay_manifest_paths("browser-overlays"))
     return paths
 
@@ -853,6 +874,9 @@ def validate_browser_review_manifest(
                 expected_bodies=BROWSER_REVIEW_OVERLAY_BODIES,
                 failures=failures,
             )
+        if path.startswith("review-installer/"):
+            require_manifest_fields(path, screenshot, ["menuId", "moduleAsset", "uiEvidence"], failures)
+            require_installer_ui_evidence(path, screenshot.get("uiEvidence"), failures)
         if path.startswith("settings/"):
             require_manifest_fields(path, screenshot, ["tab", "region", "uiEvidence"], failures)
             require_settings_ui_evidence(path, screenshot.get("uiEvidence"), failures)

@@ -157,7 +157,7 @@ For local design and functionality review without Windows/iRacing, run:
 npm run review:browser
 ```
 
-Then open `http://127.0.0.1:5177/review/app` for the full app validator, or `http://127.0.0.1:5177/review` for the route index.
+Then open `http://127.0.0.1:5177/review/app` for the full app validator, `http://127.0.0.1:5177/review/installer` for the browser MSI installer review, or `http://127.0.0.1:5177/review` for the route index. The browser installer review intentionally mirrors the current Velopack/MSI constraints; real Windows installer screenshots remain the authority for exact installer chrome.
 
 ## Diagnostics
 

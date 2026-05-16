@@ -78,6 +78,10 @@ function screenshotRoutes(surface) {
     routes.push(
       settingsRoute('settings/general.png', '/review/app', { tab: 'general', region: 'general' }),
       settingsRoute('settings/diagnostics.png', '/review/app?tab=support', { tab: 'support', region: 'general' }),
+      installerReviewRoute('review-installer/welcome.png', '/review/installer?menu=welcome', { menuId: 'welcome' }),
+      installerReviewRoute('review-installer/install-options.png', '/review/installer?menu=install-options', { menuId: 'install-options' }),
+      installerReviewRoute('review-installer/ready-to-install.png', '/review/installer?menu=ready-to-install', { menuId: 'ready-to-install' }),
+      installerReviewRoute('review-installer/cancel-confirm.png', '/review/installer?menu=cancel-confirm', { menuId: 'cancel-confirm' }),
       ...previewModes.map((mode) =>
         settingsRoute(
           `settings/general-preview-${mode}.png`,
@@ -203,6 +207,21 @@ function overlayRoute(relativePath, urlPath, metadata = {}) {
   };
 }
 
+function installerReviewRoute(relativePath, urlPath, metadata = {}) {
+  return {
+    relativePath,
+    urlPath,
+    selector: '.installer-window',
+    viewport: { width: 900, height: 620 },
+    minBytes: 1_000,
+    surface: 'browser-review-installer',
+    renderer: 'installer-review.html',
+    sourceContract: 'src/TmrOverlay.App/Overlays/BrowserSources/Assets/templates/installer-review.html',
+    moduleAsset: 'src/TmrOverlay.App/Overlays/BrowserSources/Assets/styles/installer-review.css',
+    ...metadata
+  };
+}
+
 async function captureRoute(page, route, manifest) {
   await page.setViewportSize(route.viewport);
   const url = `${baseUrl}${route.urlPath}`;
@@ -235,6 +254,7 @@ async function captureRoute(page, route, manifest) {
     activeRegion: dom.activeRegion,
     routeAlias: route.routeAlias || null,
     previewMode: route.previewMode || null,
+    menuId: route.menuId || null,
     status: stringOrNull(model?.status),
     source: stringOrNull(model?.source),
     bodyKind: stringOrNull(model?.bodyKind),
@@ -353,6 +373,19 @@ async function readDomDiagnostics(element) {
       ['settings-matrix', '.matrix-table, .toggle-grid, .chrome-table'],
       ['settings-matrix-row', '.matrix-item, .grid-toggle-row, .chrome-row-label'],
       ['settings-matrix-cell', '.matrix-session, .matrix-visible, .matrix-head, .chrome-check, .chrome-head'],
+      ['installer-window', '.installer-window'],
+      ['installer-titlebar', '.installer-titlebar'],
+      ['installer-body', '.installer-body'],
+      ['installer-splash', '.installer-splash'],
+      ['installer-banner', '.installer-banner'],
+      ['installer-content', '.installer-content'],
+      ['installer-heading', '.installer-heading'],
+      ['installer-text', '.installer-text, .installer-note, .installer-field, .installer-option'],
+      ['installer-progress', '.installer-progress'],
+      ['installer-footer', '.installer-footer'],
+      ['installer-button', '.installer-button'],
+      ['installer-modal', '.installer-modal'],
+      ['installer-modal-actions', '.installer-modal-actions'],
       ['overlay', '.overlay'],
       ['header', '.header'],
       ['title', '.title'],
@@ -425,6 +458,10 @@ async function readDomDiagnostics(element) {
       '.overlay-panel',
       '.overlay-content',
       '.content',
+      '.installer-window',
+      '.installer-content',
+      '.installer-footer',
+      '.installer-modal',
       '.metric-list',
       '.table',
       '.model-graph-panel',
@@ -504,6 +541,10 @@ async function readDomDiagnostics(element) {
 }
 
 function uiEvidence(route, dom) {
+  if (route.surface?.includes('installer')) {
+    return installerReviewUiEvidence(route, dom);
+  }
+
   if (!route.surface?.includes('settings')) {
     return null;
   }
@@ -543,6 +584,57 @@ function uiEvidence(route, dom) {
       ].includes(element.role))
       .map(settingElementEvidence),
     preview: settingsPreviewEvidence(elements)
+  };
+}
+
+function installerReviewUiEvidence(route, dom) {
+  const elements = Array.isArray(dom?.layout?.elements) ? dom.layout.elements : [];
+  return {
+    contract: 'browser-installer-ui-evidence/v1',
+    surface: route.surface,
+    windowTitle: 'Tech Mates Racing Overlay Setup',
+    menuId: route.menuId || null,
+    root: dom.layout?.root || null,
+    contentBounds: dom.contentBounds || null,
+    titlebar: firstElement(elements, 'installer-titlebar'),
+    content: firstElement(elements, 'installer-content'),
+    footer: firstElement(elements, 'installer-footer'),
+    modal: firstElement(elements, 'installer-modal'),
+    controls: elements
+      .filter((element) => [
+        'installer-window',
+        'installer-titlebar',
+        'installer-body',
+        'installer-splash',
+        'installer-banner',
+        'installer-content',
+        'installer-footer',
+        'installer-progress',
+        'installer-modal',
+        'installer-modal-actions'
+      ].includes(element.role))
+      .map(settingElementEvidence),
+    buttons: elements
+      .filter((element) => element.role === 'installer-button')
+      .map(settingElementEvidence),
+    textBlocks: elements
+      .filter((element) => [
+        'installer-heading',
+        'installer-text'
+      ].includes(element.role))
+      .map(settingElementEvidence),
+    palette: [
+      { color: '#ffffff', samples: 1 },
+      { color: '#f4f4f4', samples: 1 },
+      { color: '#0078d4', samples: 1 },
+      { color: '#1f2328', samples: 1 }
+    ],
+    sourceAssets: [
+      sourceFileEvidence('assets/brand/TMRMsiWelcome.md'),
+      sourceFileEvidence('assets/brand/TMRMsiBanner.bmp'),
+      sourceFileEvidence('assets/brand/TMRMsiLogo.bmp'),
+      sourceFileEvidence('assets/brand/TMRLogo.png')
+    ]
   };
 }
 
@@ -1233,7 +1325,9 @@ function scenarioEvidence(route, model) {
     routeAlias: route.routeAlias || null,
     fixture: route.surface?.includes('settings')
       ? 'browser-review-settings-fixture'
-      : 'browser-review-preview-fixture',
+      : route.surface?.includes('installer')
+        ? 'browser-review-installer-fixture'
+        : 'browser-review-preview-fixture',
     urlPath: route.urlPath,
     selector: route.selector,
     sourceFiles,
