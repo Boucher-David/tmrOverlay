@@ -1095,6 +1095,30 @@ internal static class Program
                 path = Path.GetRelativePath(outputRoot, screenshot.Path).Replace('\\', '/'),
                 width = screenshot.Width,
                 height = screenshot.Height,
+                bytes = new FileInfo(screenshot.Path).Length,
+                surface = screenshot.Metadata.Surface,
+                renderer = screenshot.Metadata.Renderer,
+                sourceContract = screenshot.Metadata.SourceContract,
+                overlayId = screenshot.Metadata.OverlayId,
+                tab = screenshot.Metadata.Tab,
+                region = screenshot.Metadata.Region,
+                previewMode = screenshot.Metadata.PreviewMode,
+                fixture = screenshot.Metadata.Fixture,
+                status = screenshot.Metadata.Status,
+                source = NativeSourceEvidence(screenshot.Metadata),
+                bodyKind = NormalizedBodyKind(screenshot.Metadata.Body),
+                shouldRender = NativeShouldRender(screenshot.Metadata),
+                rowCount = NativeRowCount(screenshot.Metadata),
+                metricCount = NativeMetricCount(screenshot.Metadata),
+                flagCount = NativeFlagCount(screenshot.Metadata),
+                radarShouldRender = screenshot.Metadata.RadarShouldRender,
+                radarSurfaceAlpha = screenshot.Metadata.RadarSurfaceAlpha,
+                radarCarCount = screenshot.Metadata.RadarCarCount,
+                trackMapMarkerCount = NativeTrackMapMarkerCount(screenshot.Metadata),
+                textSample = NativeTextSample(screenshot.Metadata),
+                contentBounds = NativeContentBounds(screenshot.Metadata.Layout),
+                layout = NativeLayoutEvidence(screenshot.Metadata.Layout),
+                modelEvidence = NativeModelEvidence(screenshot.Metadata),
                 metadata = new
                 {
                     surface = screenshot.Metadata.Surface,
@@ -1118,6 +1142,922 @@ internal static class Program
         File.WriteAllText(
             Path.Combine(outputRoot, "manifest.json"),
             $"{JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true })}{Environment.NewLine}");
+    }
+
+    private static string? NativeSourceEvidence(ScreenshotMetadata metadata)
+    {
+        if (!string.Equals(metadata.Surface, "windows-native-overlay", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var parts = new List<string> { "source: windows native preview" };
+        if (!string.IsNullOrWhiteSpace(metadata.Evidence))
+        {
+            parts.Add($"evidence {metadata.Evidence}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(metadata.Fixture))
+        {
+            parts.Add($"fixture {metadata.Fixture}");
+        }
+
+        return string.Join(" | ", parts);
+    }
+
+    private static string? NormalizedBodyKind(string? body)
+    {
+        return body switch
+        {
+            "metric-rows" => "metrics",
+            "radar" => "car-radar",
+            "chat" => "stream-chat",
+            _ => body
+        };
+    }
+
+    private static bool? NativeShouldRender(ScreenshotMetadata metadata)
+    {
+        var body = metadata.Layout?.BodyLayout;
+        if (body?.Vector is { } vector)
+        {
+            return vector.ShouldRender;
+        }
+
+        if (body?.Inputs is { } inputs)
+        {
+            return inputs.HasContent;
+        }
+
+        return body is not null ? true : null;
+    }
+
+    private static int NativeRowCount(ScreenshotMetadata metadata)
+    {
+        return metadata.Layout?.BodyLayout?.Rows.Count ?? 0;
+    }
+
+    private static int NativeMetricCount(ScreenshotMetadata metadata)
+    {
+        var body = metadata.Layout?.BodyLayout;
+        if (body is null || body.Kind != "metric-rows")
+        {
+            return 0;
+        }
+
+        return body.MetricRows.Count + body.MetricGrids.Sum(grid => grid.Rows.Count);
+    }
+
+    private static int NativeFlagCount(ScreenshotMetadata metadata)
+    {
+        return metadata.Layout?.BodyLayout?.FlagCells.Count ?? 0;
+    }
+
+    private static int NativeTrackMapMarkerCount(ScreenshotMetadata metadata)
+    {
+        var body = metadata.Layout?.BodyLayout;
+        return body?.Kind == "track-map"
+            ? body.Vector?.ItemCount ?? 0
+            : 0;
+    }
+
+    private static object? NativeContentBounds(DesignV2LayoutDiagnostics? layout)
+    {
+        var bounds = layout?.BodyLayout?.Bounds ?? layout?.Body;
+        return bounds is { } rect ? RectEvidence(rect, includeAspectRatio: true) : null;
+    }
+
+    private static object? NativeLayoutEvidence(DesignV2LayoutDiagnostics? layout)
+    {
+        if (layout is null)
+        {
+            return null;
+        }
+
+        var elements = new List<object>();
+        AddLayoutElement(elements, "header", 0, null, layout.Header, null, null);
+        AddLayoutElement(elements, "content", 0, NativeBodyText(layout.BodyLayout), layout.BodyLayout?.Bounds ?? layout.Body, null, null);
+        AddLayoutElement(elements, "footer", 0, null, layout.Footer, null, null);
+
+        if (layout.BodyLayout is { } body)
+        {
+            foreach (var column in body.Columns)
+            {
+                AddLayoutElement(elements, "column", column.Index, column.Label, column.Bounds, null, null);
+            }
+
+            foreach (var row in body.Rows.Take(80))
+            {
+                AddLayoutElement(elements, row.Kind, row.Index, RowText(row), row.Bounds, row.Foreground, row.Background);
+                foreach (var cell in row.Cells)
+                {
+                    AddLayoutElement(
+                        elements,
+                        "cell",
+                        cell.ColumnIndex,
+                        cell.Text,
+                        cell.Bounds,
+                        cell.Foreground,
+                        cell.Background);
+                }
+            }
+
+            foreach (var row in body.MetricRows)
+            {
+                AddLayoutElement(elements, "metric", elements.Count, $"{row.Label} {row.Value}", row.Bounds, row.Foreground, row.Background);
+                foreach (var segment in row.Segments)
+                {
+                    AddLayoutElement(
+                        elements,
+                        "metric-segment",
+                        segment.Index,
+                        $"{segment.Label} {segment.Value}",
+                        segment.Bounds,
+                        segment.Foreground,
+                        segment.Background);
+                }
+            }
+
+            foreach (var grid in body.MetricGrids)
+            {
+                AddLayoutElement(elements, "metric-grid", elements.Count, grid.Title, grid.Bounds, null, null);
+                foreach (var row in grid.Rows)
+                {
+                    AddLayoutElement(elements, row.Kind, row.Index, RowText(row), row.Bounds, row.Foreground, row.Background);
+                    foreach (var cell in row.Cells)
+                    {
+                        AddLayoutElement(elements, "metric-grid-cell", cell.ColumnIndex, cell.Text, cell.Bounds, cell.Foreground, cell.Background);
+                    }
+                }
+            }
+
+            if (body.Graph is { } graph)
+            {
+                AddLayoutElement(elements, "graph-frame", 0, graph.ComparisonLabel, graph.Frame, null, null);
+                AddLayoutElement(elements, "graph-plot", 0, null, graph.Plot, null, null);
+                AddLayoutElement(elements, "graph-label-lane", 0, null, graph.LabelLane, null, null);
+                AddLayoutElement(elements, "graph-metrics-table", 0, null, graph.MetricsTable, null, null);
+            }
+
+            if (body.Inputs is { } inputs)
+            {
+                AddLayoutElement(elements, "input-graph", 0, null, inputs.Graph, null, null);
+                AddLayoutElement(elements, "input-rail", 0, null, inputs.Rail, null, null);
+                foreach (var item in inputs.Items)
+                {
+                    AddLayoutElement(elements, $"input-{item.Kind}", elements.Count, item.Kind, item.Bounds, null, null);
+                }
+            }
+
+            if (body.Vector is { } vector)
+            {
+                AddLayoutElement(elements, $"{body.Kind}-vector", 0, null, vector.Target, null, null);
+                foreach (var primitive in vector.Primitives)
+                {
+                    AddLayoutElement(elements, $"{body.Kind}-primitive-{primitive.Kind}", elements.Count, primitive.Kind, primitive.Bounds, primitive.Stroke, primitive.Fill);
+                }
+
+                foreach (var item in vector.Items)
+                {
+                    AddLayoutElement(elements, $"{body.Kind}-{item.Kind}", elements.Count, item.Id?.ToString() ?? item.Label, item.Bounds, item.Stroke, item.Fill);
+                }
+
+                foreach (var label in vector.Labels)
+                {
+                    AddLayoutElement(elements, $"{body.Kind}-label", elements.Count, label.Text, label.Bounds, label.Color, null);
+                }
+            }
+
+            foreach (var cell in body.FlagCells)
+            {
+                AddLayoutElement(elements, "flag-cell", cell.Index, cell.Kind, cell.Bounds, null, null);
+                AddLayoutElement(elements, "flag-cloth", cell.Index, cell.Kind, cell.ClothBounds, null, null);
+            }
+        }
+
+        return new
+        {
+            contract = "windows-native-layout/v1",
+            root = RectEvidence(layout.Client),
+            contentBounds = NativeContentBounds(layout),
+            elements
+        };
+    }
+
+    private static void AddLayoutElement(
+        List<object> elements,
+        string role,
+        int index,
+        string? text,
+        DesignV2LayoutRect? bounds,
+        string? foreground,
+        string? background)
+    {
+        if (bounds is not { } rect)
+        {
+            return;
+        }
+
+        elements.Add(new
+        {
+            role,
+            index,
+            tag = "native",
+            className = role,
+            text = string.IsNullOrWhiteSpace(text) ? null : text,
+            bounds = RectEvidence(rect),
+            styles = NativeStyleEvidence(foreground, background)
+        });
+    }
+
+    private static object NativeStyleEvidence(string? foreground, string? background)
+    {
+        return new
+        {
+            color = foreground,
+            backgroundColor = background,
+            borderColor = (string?)null,
+            fontFamily = ScreenshotFontFamily,
+            fontSize = (string?)null,
+            fontWeight = (string?)null,
+            display = "native"
+        };
+    }
+
+    private static object? NativeModelEvidence(ScreenshotMetadata metadata)
+    {
+        var body = metadata.Layout?.BodyLayout;
+        if (body is null)
+        {
+            return null;
+        }
+
+        return new
+        {
+            contract = "overlay-model-layout-evidence/v1",
+            bodyKind = NormalizedBodyKind(body.Kind),
+            nativeBodyKind = body.Kind,
+            state = body.State,
+            columns = body.Columns.Select(ColumnEvidence).ToArray(),
+            rows = body.Rows.Take(80).Select(RowEvidence).ToArray(),
+            metrics = body.MetricRows.Select(MetricEvidence).ToArray(),
+            metricSections = MetricSectionEvidence(body),
+            gridSections = body.MetricGrids.Select(GridSectionEvidence).ToArray(),
+            graph = GraphEvidence(body.Graph),
+            inputs = InputsEvidence(body.Inputs),
+            flags = body.FlagCells.Count > 0
+                ? new
+                {
+                    count = body.FlagCells.Count,
+                    kinds = body.FlagCells.Select(flag => flag.Kind).ToArray(),
+                    gridColumns = body.GridColumns,
+                    gridRows = body.GridRows,
+                    cells = body.FlagCells.Select(FlagCellEvidence).ToArray()
+                }
+                : null,
+            carRadar = body.Kind == "radar" && body.Vector is { } radar
+                ? CarRadarEvidence(radar)
+                : null,
+            trackMap = body.Kind == "track-map" && body.Vector is { } trackMap
+                ? TrackMapEvidence(trackMap)
+                : null
+        };
+    }
+
+    private static object ColumnEvidence(DesignV2LayoutColumn column)
+    {
+        return new
+        {
+            index = column.Index,
+            label = column.Label,
+            dataKey = (string?)null,
+            configuredWidth = column.ConfiguredWidth,
+            renderedWidth = column.RenderedWidth,
+            alignment = column.Alignment,
+            bounds = RectEvidence(column.Bounds)
+        };
+    }
+
+    private static object RowEvidence(DesignV2LayoutRow row)
+    {
+        return new
+        {
+            index = row.Index,
+            sourceIndex = row.SourceIndex,
+            kind = row.Kind,
+            isReference = string.Equals(row.Kind, "reference", StringComparison.Ordinal),
+            isPartial = string.Equals(row.Evidence, "Partial", StringComparison.OrdinalIgnoreCase),
+            classColorHex = row.ClassColorHex,
+            relativeLapDelta = row.RelativeLapDelta,
+            evidence = row.Evidence,
+            text = row.Text,
+            detail = row.Detail,
+            foreground = row.Foreground,
+            background = row.Background,
+            bounds = RectEvidence(row.Bounds),
+            cells = row.Cells.Select(cell => cell.Text).ToArray(),
+            renderedCells = row.Cells.Select(CellEvidence).ToArray()
+        };
+    }
+
+    private static object CellEvidence(DesignV2LayoutCell cell)
+    {
+        return new
+        {
+            columnIndex = cell.ColumnIndex,
+            column = cell.ColumnLabel,
+            text = cell.Text,
+            value = cell.Text,
+            alignment = cell.Alignment,
+            tone = ToneFromEvidence(cell.Evidence),
+            evidence = cell.Evidence,
+            foreground = cell.Foreground,
+            background = cell.Background,
+            bounds = RectEvidence(cell.Bounds)
+        };
+    }
+
+    private static object MetricEvidence(DesignV2LayoutMetricRow row)
+    {
+        return new
+        {
+            label = row.Label,
+            value = row.Value,
+            tone = ToneFromEvidence(row.Evidence),
+            rowColorHex = row.Accent,
+            section = row.Section,
+            evidence = row.Evidence,
+            foreground = row.Foreground,
+            background = row.Background,
+            accentHex = row.Accent,
+            bounds = RectEvidence(row.Bounds),
+            labelBounds = RectEvidence(row.LabelBounds),
+            valueBounds = RectEvidence(row.ValueBounds),
+            sectionTitleBounds = row.SectionTitleBounds is { } sectionTitleBounds
+                ? RectEvidence(sectionTitleBounds)
+                : null,
+            segments = row.Segments.Select(SegmentEvidence).ToArray()
+        };
+    }
+
+    private static object SegmentEvidence(DesignV2LayoutMetricSegment segment)
+    {
+        return new
+        {
+            index = segment.Index,
+            label = segment.Label,
+            value = segment.Value,
+            tone = ToneFromEvidence(segment.Evidence),
+            accentHex = segment.Accent,
+            rotationDegrees = segment.RotationDegrees,
+            evidence = segment.Evidence,
+            foreground = segment.Foreground,
+            background = segment.Background,
+            bounds = RectEvidence(segment.Bounds),
+            labelBounds = RectEvidence(segment.LabelBounds),
+            valueBounds = RectEvidence(segment.ValueBounds)
+        };
+    }
+
+    private static object[] MetricSectionEvidence(DesignV2LayoutBody body)
+    {
+        return body.MetricRows
+            .Where(row => !string.IsNullOrWhiteSpace(row.Section))
+            .GroupBy(row => row.Section!)
+            .Select(section => new
+            {
+                title = section.Key,
+                rows = section.Select(MetricEvidence).ToArray()
+            })
+            .ToArray<object>();
+    }
+
+    private static object GridSectionEvidence(DesignV2LayoutMetricGrid grid)
+    {
+        return new
+        {
+            title = grid.Title,
+            bounds = RectEvidence(grid.Bounds),
+            headers = grid.Headers.Select(header => header.Text).ToArray(),
+            renderedHeaders = grid.Headers.Select(CellEvidence).ToArray(),
+            rows = grid.Rows.Select(row => new
+            {
+                index = row.Index,
+                label = row.Text,
+                tone = ToneFromEvidence(row.Evidence),
+                evidence = row.Evidence,
+                foreground = row.Foreground,
+                background = row.Background,
+                bounds = RectEvidence(row.Bounds),
+                cells = row.Cells.Select(cell => new
+                {
+                    value = cell.Text,
+                    tone = ToneFromEvidence(cell.Evidence),
+                    evidence = cell.Evidence,
+                    foreground = cell.Foreground,
+                    background = cell.Background,
+                    bounds = RectEvidence(cell.Bounds)
+                }).ToArray()
+            }).ToArray()
+        };
+    }
+
+    private static object? GraphEvidence(DesignV2LayoutGraph? graph)
+    {
+        if (graph is null)
+        {
+            return null;
+        }
+
+        return new
+        {
+            startSeconds = graph.StartSeconds,
+            endSeconds = graph.EndSeconds,
+            maxGapSeconds = graph.MaxGapSeconds,
+            lapReferenceSeconds = graph.LapReferenceSeconds,
+            selectedSeriesCount = graph.SeriesCount,
+            metricDeadbandSeconds = (double?)null,
+            comparisonLabel = graph.ComparisonLabel,
+            canvasBounds = RectEvidence(graph.Frame),
+            series = graph.Series.Select((series, index) => new
+            {
+                index,
+                carIdx = series.CarIdx,
+                classPosition = series.ClassPosition,
+                isReference = series.IsReference,
+                isClassLeader = series.IsClassLeader,
+                alpha = series.Alpha,
+                isStickyExit = series.IsStickyExit,
+                isStale = series.IsStale,
+                pointCount = series.PointCount,
+                baseColor = series.BaseColor,
+                renderedColor = series.RenderedColor,
+                effectiveAlpha = series.EffectiveAlpha,
+                strokeWidth = series.StrokeWidth,
+                isDashed = series.IsDashed,
+                endpointLabel = series.EndpointLabel,
+                latestPoint = series.LatestPoint is { } latestPoint ? PointEvidence(latestPoint) : null,
+                points = series.Points.Select(GraphPointEvidence).ToArray()
+            }).ToArray(),
+            trendMetricCount = graph.TrendMetricCount,
+            trendMetrics = graph.MetricRows.Select(GraphMetricRowEvidence).ToArray(),
+            weatherCount = graph.WeatherBands.Count,
+            markerCount = graph.Markers.Count,
+            geometry = new
+            {
+                frame = RectEvidence(graph.Frame),
+                plot = RectEvidence(graph.Plot),
+                axis = RectEvidence(graph.Axis),
+                labelLane = RectEvidence(graph.LabelLane),
+                metricsTable = graph.MetricsTable is { } metricsTable ? RectEvidence(metricsTable) : null,
+                scale = graph.Scale,
+                aheadSeconds = graph.AheadSeconds,
+                behindSeconds = graph.BehindSeconds,
+                latestReferenceGapSeconds = graph.LatestReferenceGapSeconds,
+                weatherBands = graph.WeatherBands.Select(BandEvidence).ToArray(),
+                markers = graph.Markers.Select(MarkerEvidence).ToArray(),
+                metricRows = graph.MetricRows.Select(GraphMetricRowEvidence).ToArray(),
+                series = graph.Series.Select(GraphSeriesEvidence).ToArray()
+            }
+        };
+    }
+
+    private static object GraphSeriesEvidence(DesignV2LayoutGraphSeries series, int drawIndex)
+    {
+        return new
+        {
+            sourceIndex = series.Index,
+            drawIndex,
+            drawPriority = series.DrawPriority,
+            carIdx = series.CarIdx,
+            classPosition = series.ClassPosition,
+            isReference = series.IsReference,
+            isClassLeader = series.IsClassLeader,
+            pointCount = series.PointCount,
+            baseColor = series.BaseColor,
+            renderedColor = series.RenderedColor,
+            alpha = series.Alpha,
+            effectiveAlpha = series.EffectiveAlpha,
+            strokeWidth = series.StrokeWidth,
+            isDashed = series.IsDashed,
+            isStickyExit = series.IsStickyExit,
+            isStale = series.IsStale,
+            endpointLabel = series.EndpointLabel,
+            latestPoint = series.LatestPoint is { } latestPoint ? PointEvidence(latestPoint) : null,
+            points = series.Points.Select(GraphPointEvidence).ToArray()
+        };
+    }
+
+    private static object GraphPointEvidence(DesignV2LayoutGraphPoint point)
+    {
+        return new
+        {
+            axisSeconds = point.AxisSeconds,
+            gapSeconds = point.GapSeconds,
+            startsSegment = point.StartsSegment,
+            point = PointEvidence(point.Point)
+        };
+    }
+
+    private static object BandEvidence(DesignV2LayoutGraphBand band)
+    {
+        return new
+        {
+            kind = band.Kind,
+            startAxisSeconds = band.StartAxisSeconds,
+            endAxisSeconds = band.EndAxisSeconds,
+            bounds = RectEvidence(band.Bounds),
+            color = band.Color
+        };
+    }
+
+    private static object MarkerEvidence(DesignV2LayoutGraphMarker marker)
+    {
+        return new
+        {
+            kind = marker.Kind,
+            label = marker.Label,
+            axisSeconds = marker.AxisSeconds,
+            gapSeconds = marker.GapSeconds,
+            carIdx = marker.CarIdx,
+            isReference = marker.IsReference,
+            start = PointEvidence(marker.Start),
+            end = PointEvidence(marker.End),
+            color = marker.Color
+        };
+    }
+
+    private static object GraphMetricRowEvidence(DesignV2LayoutRow row)
+    {
+        return new
+        {
+            index = row.Index,
+            text = row.Text,
+            state = row.Evidence,
+            bounds = RectEvidence(row.Bounds),
+            cells = row.Cells.Select(cell => new
+            {
+                column = cell.ColumnLabel,
+                text = cell.Text,
+                foreground = cell.Foreground,
+                bounds = RectEvidence(cell.Bounds)
+            }).ToArray()
+        };
+    }
+
+    private static object? InputsEvidence(DesignV2LayoutInputs? inputs)
+    {
+        if (inputs is null)
+        {
+            return null;
+        }
+
+        return new
+        {
+            hasContent = inputs.HasContent,
+            hasGraph = inputs.Graph is not null,
+            hasRail = inputs.Rail is not null,
+            isAvailable = inputs.HasContent,
+            sampleIntervalMilliseconds = (int?)null,
+            maximumTracePoints = (int?)null,
+            tracePointCount = inputs.TracePointCount,
+            graph = inputs.Graph is { } graph
+                ? new
+                {
+                    bounds = RectEvidence(graph),
+                    gridLines = inputs.GridLines.Select(LineEvidence).ToArray(),
+                    series = inputs.TraceSeries.Select(TraceSeriesEvidence).ToArray()
+                }
+                : null,
+            rail = inputs.Rail is { } rail
+                ? new
+                {
+                    bounds = RectEvidence(rail),
+                    railWidth = inputs.RailWidth,
+                    items = inputs.Items.Select(item => new
+                    {
+                        kind = item.Kind,
+                        bounds = RectEvidence(item.Bounds)
+                    }).ToArray()
+                }
+                : null
+        };
+    }
+
+    private static object LineEvidence(DesignV2LayoutLine line)
+    {
+        return new
+        {
+            kind = line.Kind,
+            start = PointEvidence(line.Start),
+            end = PointEvidence(line.End),
+            color = line.Color,
+            strokeWidth = line.StrokeWidth
+        };
+    }
+
+    private static object TraceSeriesEvidence(DesignV2LayoutInputTraceSeries series)
+    {
+        return new
+        {
+            kind = series.Kind,
+            color = series.Color,
+            strokeWidth = series.StrokeWidth,
+            pointCount = series.Points.Count,
+            curveCount = series.Curves.Count,
+            points = series.Points.Select(PointEvidence).ToArray(),
+            curves = series.Curves.Select(curve => new
+            {
+                start = PointEvidence(curve.Start),
+                control1 = PointEvidence(curve.Control1),
+                control2 = PointEvidence(curve.Control2),
+                end = PointEvidence(curve.End)
+            }).ToArray()
+        };
+    }
+
+    private static object FlagCellEvidence(DesignV2LayoutFlagCell cell)
+    {
+        return new
+        {
+            index = cell.Index,
+            row = cell.Row,
+            column = cell.Column,
+            kind = cell.Kind,
+            bounds = RectEvidence(cell.Bounds),
+            clothBounds = RectEvidence(cell.ClothBounds)
+        };
+    }
+
+    private static object CarRadarEvidence(DesignV2LayoutVector vector)
+    {
+        return new
+        {
+            shouldRender = vector.ShouldRender,
+            width = vector.SourceWidth,
+            height = vector.SourceHeight,
+            targetBounds = RectEvidence(vector.Target),
+            scaleX = vector.ScaleX,
+            scaleY = vector.ScaleY,
+            carCount = vector.ItemCount,
+            itemCount = vector.ItemCount,
+            primitiveCount = vector.PrimitiveCount,
+            labelCount = vector.LabelCount,
+            ringCount = vector.Primitives.Count(primitive => string.Equals(primitive.Kind, "ring", StringComparison.Ordinal)),
+            surfaceAlpha = vector.SurfaceAlpha,
+            items = vector.Items.Select(VectorItemEvidence).ToArray(),
+            primitives = vector.Primitives.Select(VectorPrimitiveEvidence).ToArray(),
+            labels = vector.Labels.Select(VectorLabelEvidence).ToArray()
+        };
+    }
+
+    private static object TrackMapEvidence(DesignV2LayoutVector vector)
+    {
+        return new
+        {
+            markerCount = vector.ItemCount,
+            primitiveCount = vector.PrimitiveCount,
+            width = vector.SourceWidth,
+            height = vector.SourceHeight,
+            targetBounds = RectEvidence(vector.Target),
+            scaleX = vector.ScaleX,
+            scaleY = vector.ScaleY,
+            shouldRender = vector.ShouldRender,
+            items = vector.Items.Select(VectorItemEvidence).ToArray(),
+            primitives = vector.Primitives.Select(VectorPrimitiveEvidence).ToArray(),
+            labels = vector.Labels.Select(VectorLabelEvidence).ToArray()
+        };
+    }
+
+    private static object VectorItemEvidence(DesignV2LayoutVectorItem item)
+    {
+        return new
+        {
+            kind = item.Kind,
+            id = item.Id,
+            bounds = RectEvidence(item.Bounds),
+            fill = item.Fill,
+            stroke = item.Stroke,
+            strokeWidth = item.StrokeWidth,
+            label = item.Label,
+            labelColor = item.LabelColor,
+            alertKind = item.AlertKind,
+            alertRingBounds = item.AlertRingBounds is { } alertRingBounds
+                ? RectEvidence(alertRingBounds)
+                : null,
+            alertRingStroke = item.AlertRingStroke,
+            alertRingStrokeWidth = item.AlertRingStrokeWidth
+        };
+    }
+
+    private static object VectorPrimitiveEvidence(DesignV2LayoutVectorPrimitive primitive)
+    {
+        return new
+        {
+            kind = primitive.Kind,
+            bounds = primitive.Bounds is { } bounds ? RectEvidence(bounds) : null,
+            points = primitive.Points.Select(PointEvidence).ToArray(),
+            closed = primitive.Closed,
+            startDegrees = primitive.StartDegrees,
+            sweepDegrees = primitive.SweepDegrees,
+            fill = primitive.Fill,
+            stroke = primitive.Stroke,
+            strokeWidth = primitive.StrokeWidth
+        };
+    }
+
+    private static object VectorLabelEvidence(DesignV2LayoutVectorLabel label)
+    {
+        return new
+        {
+            text = label.Text,
+            bounds = RectEvidence(label.Bounds),
+            fontSize = label.FontSize,
+            bold = label.Bold,
+            alignment = label.Alignment,
+            color = label.Color
+        };
+    }
+
+    private static string? NativeTextSample(ScreenshotMetadata metadata)
+    {
+        if (!string.Equals(metadata.Surface, "windows-native-overlay", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var parts = new List<string>();
+        AddText(parts, metadata.OverlayId);
+        AddText(parts, metadata.Status);
+        AddText(parts, metadata.Evidence);
+        AddText(parts, metadata.Body);
+        AddText(parts, NativeBodyText(metadata.Layout?.BodyLayout));
+
+        var sample = string.Join(" ", parts)
+            .Replace("\r", " ", StringComparison.Ordinal)
+            .Replace("\n", " ", StringComparison.Ordinal)
+            .Trim();
+        while (sample.Contains("  ", StringComparison.Ordinal))
+        {
+            sample = sample.Replace("  ", " ", StringComparison.Ordinal);
+        }
+
+        return sample.Length == 0 ? null : sample[..Math.Min(sample.Length, 512)];
+    }
+
+    private static string? NativeBodyText(DesignV2LayoutBody? body)
+    {
+        if (body is null)
+        {
+            return null;
+        }
+
+        var parts = new List<string>();
+        foreach (var row in body.Rows.Take(12))
+        {
+            AddText(parts, RowText(row));
+        }
+
+        foreach (var row in body.MetricRows.Take(12))
+        {
+            AddText(parts, row.Label);
+            AddText(parts, row.Value);
+            foreach (var segment in row.Segments)
+            {
+                AddText(parts, segment.Label);
+                AddText(parts, segment.Value);
+            }
+        }
+
+        foreach (var grid in body.MetricGrids.Take(4))
+        {
+            AddText(parts, grid.Title);
+            foreach (var row in grid.Rows.Take(6))
+            {
+                AddText(parts, RowText(row));
+            }
+        }
+
+        if (body.Graph is { } graph)
+        {
+            AddText(parts, graph.ComparisonLabel);
+            foreach (var series in graph.Series.Take(8))
+            {
+                AddText(parts, series.EndpointLabel);
+            }
+
+            foreach (var row in graph.MetricRows.Take(8))
+            {
+                AddText(parts, RowText(row));
+            }
+        }
+
+        if (body.Inputs is { } inputs)
+        {
+            foreach (var item in inputs.Items)
+            {
+                AddText(parts, item.Kind);
+            }
+
+            foreach (var series in inputs.TraceSeries)
+            {
+                AddText(parts, series.Kind);
+            }
+        }
+
+        foreach (var flag in body.FlagCells)
+        {
+            AddText(parts, flag.Kind);
+        }
+
+        if (body.Vector is { } vector)
+        {
+            foreach (var primitive in vector.Primitives.Take(24))
+            {
+                AddText(parts, primitive.Kind);
+            }
+
+            foreach (var item in vector.Items.Take(16))
+            {
+                AddText(parts, item.Kind);
+                AddText(parts, item.Id?.ToString());
+                AddText(parts, item.Label);
+            }
+
+            foreach (var label in vector.Labels.Take(16))
+            {
+                AddText(parts, label.Text);
+            }
+        }
+
+        return parts.Count == 0 ? null : string.Join(" ", parts);
+    }
+
+    private static string? RowText(DesignV2LayoutRow row)
+    {
+        if (!string.IsNullOrWhiteSpace(row.Text) || !string.IsNullOrWhiteSpace(row.Detail))
+        {
+            return string.Join(" ", new[] { row.Text, row.Detail }.Where(value => !string.IsNullOrWhiteSpace(value)));
+        }
+
+        return row.Cells.Count == 0
+            ? null
+            : string.Join(" ", row.Cells.Select(cell => cell.Text).Where(value => !string.IsNullOrWhiteSpace(value)));
+    }
+
+    private static void AddText(List<string> parts, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            parts.Add(value.Trim());
+        }
+    }
+
+    private static string? ToneFromEvidence(string? evidence)
+    {
+        var token = evidence?.Trim().ToLowerInvariant();
+        return token switch
+        {
+            null or "" => null,
+            "live" => "info",
+            "ok" or "good" => "success",
+            "critical" => "error",
+            _ => token
+        };
+    }
+
+    private static object RectEvidence(DesignV2LayoutRect rect, bool includeAspectRatio = false)
+    {
+        if (!includeAspectRatio)
+        {
+            return new
+            {
+                x = rect.X,
+                y = rect.Y,
+                width = rect.Width,
+                height = rect.Height
+            };
+        }
+
+        return new
+        {
+            x = rect.X,
+            y = rect.Y,
+            width = rect.Width,
+            height = rect.Height,
+            aspectRatio = rect.Height > 0f
+                ? Math.Round(rect.Width / rect.Height, 4)
+                : (double?)null
+        };
+    }
+
+    private static object PointEvidence(DesignV2LayoutPoint point)
+    {
+        return new
+        {
+            x = point.X,
+            y = point.Y
+        };
     }
 
     private static AppStorageOptions StorageOptionsFor(string root)

@@ -3623,6 +3623,8 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             diameter);
         var scaleX = radarRect.Width / (float)Math.Max(1d, model.Width);
         var scaleY = radarRect.Height / (float)Math.Max(1d, model.Height);
+        var primitives = RadarPrimitiveLayouts(radarRect, model, scaleX, scaleY, surfaceAlpha);
+        var labels = model.Labels.Select(label => RadarLabelLayout(radarRect, label, scaleX, scaleY, surfaceAlpha)).ToArray();
         return new DesignV2LayoutBody("radar", LayoutRect(rect))
         {
             Vector = new DesignV2LayoutVector(
@@ -3632,13 +3634,20 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                 scaleX,
                 scaleY,
                 model.Cars.Count,
-                model.Rings.Count,
-                model.Labels.Count)
+                primitives.Count,
+                labels.Length)
             {
                 Items = model.Cars.Select(car => new DesignV2LayoutVectorItem(
                     car.Kind,
                     car.CarIdx,
-                    LayoutRect(ScaleRect(radarRect, car.X, car.Y, car.Width, car.Height, scaleX, scaleY)))).ToArray(),
+                    LayoutRect(ScaleRect(radarRect, car.X, car.Y, car.Width, car.Height, scaleX, scaleY)))
+                {
+                    Fill = ColorHex(RenderColor(car.Fill, surfaceAlpha)),
+                    Stroke = ColorHex(RenderColor(car.Stroke, surfaceAlpha)),
+                    StrokeWidth = Math.Max(1f, (float)car.StrokeWidth * Math.Min(scaleX, scaleY))
+                }).ToArray(),
+                Primitives = primitives,
+                Labels = labels,
                 ShouldRender = model.ShouldRender && surfaceAlpha > model.MinimumVisibleAlpha,
                 SurfaceAlpha = surfaceAlpha
             }
@@ -3668,14 +3677,8 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                 model.Primitives.Count,
                 0)
             {
-                Items = model.Markers.Select(marker => new DesignV2LayoutVectorItem(
-                    marker.IsFocus ? "focus-marker" : "marker",
-                    marker.CarIdx,
-                    LayoutRect(new RectangleF(
-                        target.Left + (float)(marker.X - marker.Radius) * scaleX,
-                        target.Top + (float)(marker.Y - marker.Radius) * scaleY,
-                        (float)(marker.Radius * 2d) * scaleX,
-                        (float)(marker.Radius * 2d) * scaleY)))).ToArray(),
+                Items = model.Markers.Select(marker => TrackMapMarkerItem(target, marker, scaleX, scaleY)).ToArray(),
+                Primitives = model.Primitives.Select(primitive => TrackMapPrimitiveLayout(target, primitive, scaleX, scaleY)).ToArray(),
                 ShouldRender = model.IsAvailable
             }
         };
@@ -3722,6 +3725,146 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             FlagCells = cells,
             DrawnRows = body.Flags.Count
         };
+    }
+
+    private static IReadOnlyList<DesignV2LayoutVectorPrimitive> RadarPrimitiveLayouts(
+        RectangleF target,
+        CarRadarRenderModel model,
+        float scaleX,
+        float scaleY,
+        double surfaceAlpha)
+    {
+        var primitives = new List<DesignV2LayoutVectorPrimitive>
+        {
+            RadarCirclePrimitive("background", target, model.Background, scaleX, scaleY, surfaceAlpha)
+        };
+        primitives.AddRange(model.Rings.Select(ring => RadarCirclePrimitive("ring", target, ring, scaleX, scaleY, surfaceAlpha)));
+        if (model.MulticlassArc is { } arc)
+        {
+            primitives.Add(new DesignV2LayoutVectorPrimitive(
+                "arc",
+                LayoutRect(ScaleRect(target, arc.X, arc.Y, arc.Width, arc.Height, scaleX, scaleY)),
+                [],
+                false,
+                arc.StartDegrees,
+                arc.SweepDegrees,
+                null,
+                ColorHex(RenderColor(arc.Stroke, surfaceAlpha)),
+                Math.Max(1f, (float)arc.StrokeWidth * Math.Min(scaleX, scaleY))));
+        }
+
+        return primitives;
+    }
+
+    private static DesignV2LayoutVectorPrimitive RadarCirclePrimitive(
+        string kind,
+        RectangleF target,
+        CarRadarRenderCircle circle,
+        float scaleX,
+        float scaleY,
+        double surfaceAlpha)
+    {
+        return new DesignV2LayoutVectorPrimitive(
+            kind,
+            LayoutRect(ScaleRect(target, circle.X, circle.Y, circle.Width, circle.Height, scaleX, scaleY)),
+            [],
+            false,
+            null,
+            null,
+            circle.Fill is { } fill ? ColorHex(RenderColor(fill, surfaceAlpha)) : null,
+            circle.Stroke is { } stroke ? ColorHex(RenderColor(stroke, surfaceAlpha)) : null,
+            circle.Stroke is not null && circle.StrokeWidth > 0d
+                ? Math.Max(1f, (float)circle.StrokeWidth * Math.Min(scaleX, scaleY))
+                : 0f);
+    }
+
+    private static DesignV2LayoutVectorLabel RadarLabelLayout(
+        RectangleF target,
+        CarRadarRenderText label,
+        float scaleX,
+        float scaleY,
+        double surfaceAlpha)
+    {
+        var scale = Math.Min(scaleX, scaleY);
+        return new DesignV2LayoutVectorLabel(
+            label.Text,
+            LayoutRect(ScaleRect(target, label.X, label.Y, label.Width, label.Height, scaleX, scaleY)),
+            label.FontSize * scale,
+            label.Bold,
+            label.Alignment,
+            ColorHex(RenderColor(label.Color, surfaceAlpha)));
+    }
+
+    private static DesignV2LayoutVectorItem TrackMapMarkerItem(
+        RectangleF target,
+        TrackMapRenderMarker marker,
+        float scaleX,
+        float scaleY)
+    {
+        var center = ScalePoint(target, new TrackMapRenderPoint(marker.X, marker.Y), scaleX, scaleY);
+        var scale = Math.Min(scaleX, scaleY);
+        var radius = (float)marker.Radius * scale;
+        var markerRect = new RectangleF(center.X - radius, center.Y - radius, radius * 2f, radius * 2f);
+        DesignV2LayoutRect? alertRingBounds = null;
+        if (marker.AlertRingRadius > 0d)
+        {
+            var ringRadius = (float)marker.AlertRingRadius * scale;
+            alertRingBounds = LayoutRect(new RectangleF(center.X - ringRadius, center.Y - ringRadius, ringRadius * 2f, ringRadius * 2f));
+        }
+
+        return new DesignV2LayoutVectorItem(
+            marker.IsFocus ? "focus-marker" : "marker",
+            marker.CarIdx,
+            LayoutRect(markerRect))
+        {
+            Fill = ColorHex(RenderTrackMapColor(marker.Fill)),
+            Stroke = ColorHex(RenderTrackMapColor(marker.Stroke)),
+            StrokeWidth = Math.Max(1f, (float)marker.StrokeWidth * scale),
+            Label = marker.Label,
+            LabelColor = ColorHex(RenderTrackMapColor(marker.LabelColor)),
+            AlertKind = marker.AlertKind,
+            AlertRingBounds = alertRingBounds,
+            AlertRingStroke = marker.AlertRingStroke is { } ringStroke ? ColorHex(RenderTrackMapColor(ringStroke)) : null,
+            AlertRingStrokeWidth = marker.AlertRingStrokeWidth > 0d
+                ? Math.Max(1f, (float)marker.AlertRingStrokeWidth * scale)
+                : null
+        };
+    }
+
+    private static DesignV2LayoutVectorPrimitive TrackMapPrimitiveLayout(
+        RectangleF target,
+        TrackMapRenderPrimitive primitive,
+        float scaleX,
+        float scaleY)
+    {
+        var scale = Math.Min(scaleX, scaleY);
+        var points = primitive.Points.Select(point => LayoutPoint(ScalePoint(target, point, scaleX, scaleY))).ToArray();
+        return new DesignV2LayoutVectorPrimitive(
+            primitive.Kind,
+            primitive.Rect is { } rect
+                ? LayoutRect(ScaleRect(target, rect.X, rect.Y, rect.Width, rect.Height, scaleX, scaleY))
+                : BoundsForPoints(points),
+            points,
+            primitive.Closed,
+            primitive.Kind == "arc" ? primitive.StartDegrees : null,
+            primitive.Kind == "arc" ? primitive.SweepDegrees : null,
+            primitive.Fill is { } fill ? ColorHex(RenderTrackMapColor(fill)) : null,
+            primitive.Stroke is { } stroke ? ColorHex(RenderTrackMapColor(stroke)) : null,
+            primitive.StrokeWidth > 0d ? Math.Max(1f, (float)primitive.StrokeWidth * scale) : 0f);
+    }
+
+    private static DesignV2LayoutRect? BoundsForPoints(IReadOnlyList<DesignV2LayoutPoint> points)
+    {
+        if (points.Count == 0)
+        {
+            return null;
+        }
+
+        var left = points.Min(point => point.X);
+        var top = points.Min(point => point.Y);
+        var right = points.Max(point => point.X);
+        var bottom = points.Max(point => point.Y);
+        return new DesignV2LayoutRect(left, top, Math.Max(0f, right - left), Math.Max(0f, bottom - top));
     }
 
     private static DesignV2LayoutRect LayoutRect(Rectangle bounds)
@@ -7683,12 +7826,54 @@ internal sealed record DesignV2LayoutVector(
     public double? SurfaceAlpha { get; init; }
 
     public IReadOnlyList<DesignV2LayoutVectorItem> Items { get; init; } = [];
+
+    public IReadOnlyList<DesignV2LayoutVectorPrimitive> Primitives { get; init; } = [];
+
+    public IReadOnlyList<DesignV2LayoutVectorLabel> Labels { get; init; } = [];
 }
 
 internal sealed record DesignV2LayoutVectorItem(
     string Kind,
     int? Id,
-    DesignV2LayoutRect Bounds);
+    DesignV2LayoutRect Bounds)
+{
+    public string? Fill { get; init; }
+
+    public string? Stroke { get; init; }
+
+    public float? StrokeWidth { get; init; }
+
+    public string? Label { get; init; }
+
+    public string? LabelColor { get; init; }
+
+    public string? AlertKind { get; init; }
+
+    public DesignV2LayoutRect? AlertRingBounds { get; init; }
+
+    public string? AlertRingStroke { get; init; }
+
+    public float? AlertRingStrokeWidth { get; init; }
+}
+
+internal sealed record DesignV2LayoutVectorPrimitive(
+    string Kind,
+    DesignV2LayoutRect? Bounds,
+    IReadOnlyList<DesignV2LayoutPoint> Points,
+    bool Closed,
+    double? StartDegrees,
+    double? SweepDegrees,
+    string? Fill,
+    string? Stroke,
+    float StrokeWidth);
+
+internal sealed record DesignV2LayoutVectorLabel(
+    string Text,
+    DesignV2LayoutRect Bounds,
+    double FontSize,
+    bool Bold,
+    string Alignment,
+    string Color);
 
 internal sealed record DesignV2LayoutFlagCell(
     int Index,

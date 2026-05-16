@@ -685,8 +685,29 @@ def validate_windows_manifest(root: Path, expected_paths: set[str], failures: li
             continue
         require_manifest_fields(path, metadata, ["surface", "renderer"], failures)
         if path.startswith("native-overlays/"):
+            require_manifest_fields(
+                path,
+                screenshot,
+                [
+                    "surface",
+                    "renderer",
+                    "sourceContract",
+                    "overlayId",
+                    "previewMode",
+                    "status",
+                    "bytes",
+                    "source",
+                    "bodyKind",
+                    "textSample",
+                    "contentBounds",
+                ],
+                failures,
+            )
             require_manifest_fields(path, metadata, ["overlayId", "previewMode", "fixture", "sourceContract", "status", "evidence", "body"], failures)
+            require_windows_native_comparison_evidence(path, screenshot, failures)
+            require_layout_evidence(path, screenshot.get("layout"), failures)
             require_layout_evidence(path, metadata.get("layout"), failures)
+            require_model_evidence(path, screenshot.get("modelEvidence"), failures)
             if metadata.get("surface") != "windows-native-overlay":
                 failures.append(f"{path}: expected windows-native-overlay surface, got {metadata.get('surface')!r}")
             validate_overlay_semantics(
@@ -695,6 +716,14 @@ def validate_windows_manifest(root: Path, expected_paths: set[str], failures: li
                 overlay_id=metadata.get("overlayId"),
                 body_field="body",
                 expected_bodies=WINDOWS_NATIVE_OVERLAY_BODIES,
+                failures=failures,
+            )
+            validate_overlay_semantics(
+                path,
+                values=screenshot,
+                overlay_id=screenshot.get("overlayId"),
+                body_field="bodyKind",
+                expected_bodies=BROWSER_REVIEW_OVERLAY_BODIES,
                 failures=failures,
             )
         if path.startswith("states/settings-"):
@@ -776,9 +805,12 @@ def require_model_evidence(path: str, value: object, failures: list[str]) -> Non
     if body_kind == "table":
         require_non_empty_list(path, value, "columns", failures)
         require_rows_with_cells(path, value.get("rows"), "model table rows", failures)
+        require_rendered_cell_evidence(path, value.get("rows"), failures)
     elif body_kind == "metrics":
         if not any(non_empty_list(value.get(field)) for field in ("metrics", "metricSections", "gridSections")):
             failures.append(f"{path}: model metric evidence missing metrics/sections")
+        require_metric_text_evidence(path, value.get("metrics"), failures)
+        require_grid_section_text_evidence(path, value.get("gridSections"), failures)
     elif body_kind == "graph":
         graph = value.get("graph")
         if not isinstance(graph, dict):
@@ -788,6 +820,9 @@ def require_model_evidence(path: str, value: object, failures: list[str]) -> Non
             if not isinstance(geometry, dict):
                 failures.append(f"{path}: model graph evidence missing rendered geometry")
             else:
+                require_rect(path, geometry.get("frame"), "model graph frame", failures)
+                require_rect(path, geometry.get("plot"), "model graph plot", failures)
+                require_rect(path, geometry.get("labelLane"), "model graph label lane", failures)
                 require_non_empty_list(path, geometry, "series", failures)
                 for index, series in enumerate(geometry.get("series") if isinstance(geometry.get("series"), list) else []):
                     if not isinstance(series, dict):
@@ -797,6 +832,8 @@ def require_model_evidence(path: str, value: object, failures: list[str]) -> Non
                         failures.append(f"{path}: graph series {index} missing baseColor")
                     if series.get("strokeWidth") in (None, ""):
                         failures.append(f"{path}: graph series {index} missing strokeWidth")
+                    if not series.get("endpointLabel"):
+                        failures.append(f"{path}: graph series {index} missing endpointLabel")
                 require_list_key(path, geometry, "metricRows", failures)
     elif body_kind == "inputs":
         inputs = value.get("inputs")
@@ -807,16 +844,46 @@ def require_model_evidence(path: str, value: object, failures: list[str]) -> Non
             if not isinstance(graph, dict):
                 failures.append(f"{path}: model input evidence missing graph geometry")
             else:
+                require_rect(path, graph.get("bounds"), "model input graph bounds", failures)
                 require_non_empty_list(path, graph, "gridLines", failures)
                 require_non_empty_list(path, graph, "series", failures)
     elif body_kind in ("car-radar", "track-map"):
         key = "carRadar" if body_kind == "car-radar" else "trackMap"
-        if not isinstance(value.get(key), dict):
+        vector = value.get(key)
+        if not isinstance(vector, dict):
             failures.append(f"{path}: model {body_kind} evidence missing {key} object")
+        else:
+            if path.startswith("native-overlays/") or vector.get("width") not in (None, ""):
+                require_positive_number(path, vector.get("width"), f"model {body_kind} source width", failures)
+            if path.startswith("native-overlays/") or vector.get("height") not in (None, ""):
+                require_positive_number(path, vector.get("height"), f"model {body_kind} source height", failures)
+            if body_kind == "car-radar":
+                if vector.get("shouldRender") is not True:
+                    failures.append(f"{path}: model car-radar evidence did not prove shouldRender=true")
+                require_non_negative_int(path, vector.get("carCount"), "model car-radar carCount", failures)
+                require_non_negative_int(path, vector.get("labelCount"), "model car-radar labelCount", failures)
+            else:
+                require_non_negative_int(path, vector.get("markerCount"), "model track-map markerCount", failures)
+                require_non_negative_int(path, vector.get("primitiveCount"), "model track-map primitiveCount", failures)
+            if get_manifest_value(vector, "itemCount") not in (None, 0):
+                require_non_empty_list(path, vector, "items", failures)
+                require_vector_item_evidence(path, get_manifest_value(vector, "items"), failures)
+            if "primitives" in vector:
+                require_vector_primitive_evidence(path, vector.get("primitives"), failures)
+            if "labels" in vector:
+                require_vector_label_evidence(path, vector.get("labels"), failures)
     elif body_kind == "flags":
         flags = value.get("flags")
         if not isinstance(flags, dict) or not non_empty_list(flags.get("kinds")):
             failures.append(f"{path}: model flags evidence missing flag kinds")
+        elif non_empty_list(flags.get("cells")):
+            for index, cell in enumerate(flags.get("cells") if isinstance(flags.get("cells"), list) else []):
+                if not isinstance(cell, dict):
+                    continue
+                if not cell.get("kind"):
+                    failures.append(f"{path}: model flag cell {index} missing kind")
+                require_rect(path, cell.get("bounds"), f"model flag cell {index} bounds", failures)
+                require_rect(path, cell.get("clothBounds"), f"model flag cell {index} cloth bounds", failures)
 
 
 def require_native_body_layout_evidence(path: str, body_layout: dict[str, object], failures: list[str]) -> None:
@@ -831,11 +898,15 @@ def require_native_body_layout_evidence(path: str, body_layout: dict[str, object
     elif kind == "metric-rows":
         if not any(non_empty_list(body_layout.get(field)) for field in ("metricRows", "metricGrids", "MetricRows", "MetricGrids")):
             failures.append(f"{path}: native metric layout missing metric rows/grids")
+        require_metric_text_evidence(path, get_manifest_value(body_layout, "metricRows"), failures)
     elif kind == "graph":
         graph = body_layout.get("graph") or body_layout.get("Graph")
         if not isinstance(graph, dict):
             failures.append(f"{path}: native graph layout missing graph object")
             return
+        require_rect(path, get_manifest_value(graph, "frame"), "native graph frame", failures)
+        require_rect(path, get_manifest_value(graph, "plot"), "native graph plot", failures)
+        require_rect(path, get_manifest_value(graph, "labelLane"), "native graph label lane", failures)
         require_non_empty_list(path, graph, "series", failures)
         graph_series = get_manifest_value(graph, "series")
         for index, series in enumerate(graph_series if isinstance(graph_series, list) else []):
@@ -856,10 +927,42 @@ def require_native_body_layout_evidence(path: str, body_layout: dict[str, object
             require_non_empty_list(path, inputs, "gridLines", failures)
             require_non_empty_list(path, inputs, "traceSeries", failures)
     elif kind in ("radar", "track-map"):
-        if not isinstance(body_layout.get("vector") or body_layout.get("Vector"), dict):
+        vector = body_layout.get("vector") or body_layout.get("Vector")
+        if not isinstance(vector, dict):
             failures.append(f"{path}: native {kind} layout missing vector geometry")
+        else:
+            require_rect(path, get_manifest_value(vector, "target"), f"native {kind} vector target", failures)
+            require_positive_number(path, get_manifest_value(vector, "sourceWidth"), f"native {kind} source width", failures)
+            require_positive_number(path, get_manifest_value(vector, "sourceHeight"), f"native {kind} source height", failures)
     elif kind == "flags":
         require_non_empty_list(path, body_layout, "flagCells", failures)
+
+
+def require_windows_native_comparison_evidence(path: str, values: dict[str, object], failures: list[str]) -> None:
+    body_kind = values.get("bodyKind")
+    if not isinstance(body_kind, str) or not body_kind:
+        failures.append(f"{path}: Windows comparison evidence missing bodyKind")
+
+    content_bounds = values.get("contentBounds")
+    require_rect(path, content_bounds, "Windows content bounds", failures)
+    if isinstance(content_bounds, dict) and content_bounds.get("aspectRatio") in (None, ""):
+        failures.append(f"{path}: Windows content bounds missing aspectRatio")
+
+    for field in ("rowCount", "metricCount", "flagCount", "trackMapMarkerCount"):
+        if not isinstance(values.get(field), int):
+            failures.append(f"{path}: Windows comparison evidence missing integer {field}")
+    require_positive_number(path, values.get("bytes"), "Windows screenshot byte size", failures)
+
+    model_evidence = values.get("modelEvidence")
+    if not isinstance(model_evidence, dict):
+        failures.append(f"{path}: Windows comparison evidence missing modelEvidence")
+        return
+
+    if model_evidence.get("bodyKind") != body_kind:
+        failures.append(
+            f"{path}: Windows bodyKind {body_kind!r} does not match "
+            f"modelEvidence bodyKind {model_evidence.get('bodyKind')!r}"
+        )
 
 
 def require_rows_with_cells(path: str, rows: object, label: str, failures: list[str]) -> None:
@@ -876,6 +979,147 @@ def require_rows_with_cells(path: str, rows: object, label: str, failures: list[
         if isinstance(cells, list) and cells:
             return
     failures.append(f"{path}: {label} missing cell bounds/text evidence")
+
+
+def require_rendered_cell_evidence(path: str, rows: object, failures: list[str]) -> None:
+    if not isinstance(rows, list):
+        return
+
+    saw_rendered_cells = False
+    for row_index, row in enumerate(rows[:12]):
+        if not isinstance(row, dict) or get_manifest_value(row, "kind") == "class-header":
+            continue
+        rendered_cells = get_manifest_value(row, "renderedCells")
+        if rendered_cells is None:
+            continue
+        if not isinstance(rendered_cells, list) or not rendered_cells:
+            failures.append(f"{path}: model row {row_index} renderedCells is empty")
+            continue
+        saw_rendered_cells = True
+        saw_text = False
+        for cell_index, cell in enumerate(rendered_cells[:8]):
+            if not isinstance(cell, dict):
+                continue
+            if cell.get("text") not in (None, "") or cell.get("value") not in (None, ""):
+                saw_text = True
+            require_rect(path, cell.get("bounds"), f"model row {row_index} rendered cell {cell_index} bounds", failures)
+        if saw_text:
+            return
+
+    if saw_rendered_cells:
+        failures.append(f"{path}: renderedCells did not include any text/value in the sampled rows")
+
+
+def require_metric_text_evidence(path: str, metrics: object, failures: list[str]) -> None:
+    if metrics is None:
+        return
+    if not isinstance(metrics, list):
+        failures.append(f"{path}: metric evidence is not a list")
+        return
+
+    for index, metric in enumerate(metrics[:12]):
+        if not isinstance(metric, dict):
+            continue
+        if get_manifest_value(metric, "label") in (None, ""):
+            failures.append(f"{path}: metric evidence row {index} missing label")
+        if get_manifest_value(metric, "value") in (None, ""):
+            failures.append(f"{path}: metric evidence row {index} missing value")
+        if "bounds" in metric or "Bounds" in metric:
+            require_rect(path, get_manifest_value(metric, "bounds"), f"metric evidence row {index} bounds", failures)
+        segments = get_manifest_value(metric, "segments")
+        if isinstance(segments, list):
+            for segment_index, segment in enumerate(segments[:8]):
+                if not isinstance(segment, dict):
+                    continue
+                if get_manifest_value(segment, "label") in (None, ""):
+                    failures.append(f"{path}: metric evidence row {index} segment {segment_index} missing label")
+                if get_manifest_value(segment, "value") in (None, ""):
+                    failures.append(f"{path}: metric evidence row {index} segment {segment_index} missing value")
+
+
+def require_grid_section_text_evidence(path: str, sections: object, failures: list[str]) -> None:
+    if sections is None:
+        return
+    if not isinstance(sections, list):
+        failures.append(f"{path}: grid section evidence is not a list")
+        return
+
+    for section_index, section in enumerate(sections[:6]):
+        if not isinstance(section, dict):
+            continue
+        if get_manifest_value(section, "title") in (None, ""):
+            failures.append(f"{path}: grid section {section_index} missing title")
+        rows = get_manifest_value(section, "rows")
+        if not isinstance(rows, list):
+            continue
+        for row_index, row in enumerate(rows[:8]):
+            if not isinstance(row, dict):
+                continue
+            if get_manifest_value(row, "label") in (None, ""):
+                failures.append(f"{path}: grid section {section_index} row {row_index} missing label")
+            cells = get_manifest_value(row, "cells")
+            if isinstance(cells, list) and not cells:
+                failures.append(f"{path}: grid section {section_index} row {row_index} has no cells")
+
+
+def require_vector_item_evidence(path: str, items: object, failures: list[str]) -> None:
+    if not isinstance(items, list):
+        return
+
+    for index, item in enumerate(items[:24]):
+        if not isinstance(item, dict):
+            continue
+        if item.get("kind") in (None, ""):
+            failures.append(f"{path}: vector item {index} missing kind")
+        require_rect(path, item.get("bounds"), f"vector item {index} bounds", failures)
+        if "fill" in item and item.get("fill") in (None, ""):
+            failures.append(f"{path}: vector item {index} missing fill color")
+        if "stroke" in item and item.get("stroke") in (None, ""):
+            failures.append(f"{path}: vector item {index} missing stroke color")
+
+
+def require_vector_primitive_evidence(path: str, primitives: object, failures: list[str]) -> None:
+    if primitives is None:
+        return
+    if not isinstance(primitives, list):
+        failures.append(f"{path}: vector primitive evidence is not a list")
+        return
+
+    for index, primitive in enumerate(primitives[:40]):
+        if not isinstance(primitive, dict):
+            continue
+        if primitive.get("kind") in (None, ""):
+            failures.append(f"{path}: vector primitive {index} missing kind")
+        points = primitive.get("points")
+        bounds = primitive.get("bounds")
+        if isinstance(points, list) and points:
+            for point_index, point in enumerate(points[:8]):
+                if not isinstance(point, dict):
+                    continue
+                for key in ("x", "y"):
+                    if not isinstance(point.get(key), (int, float)):
+                        failures.append(f"{path}: vector primitive {index} point {point_index} missing numeric {key}")
+        elif bounds is not None:
+            require_rect(path, bounds, f"vector primitive {index} bounds", failures)
+        else:
+            failures.append(f"{path}: vector primitive {index} missing points/bounds")
+
+
+def require_vector_label_evidence(path: str, labels: object, failures: list[str]) -> None:
+    if labels is None:
+        return
+    if not isinstance(labels, list):
+        failures.append(f"{path}: vector label evidence is not a list")
+        return
+
+    for index, label in enumerate(labels[:24]):
+        if not isinstance(label, dict):
+            continue
+        if label.get("text") in (None, ""):
+            failures.append(f"{path}: vector label {index} missing text")
+        if label.get("color") in (None, ""):
+            failures.append(f"{path}: vector label {index} missing color")
+        require_rect(path, label.get("bounds"), f"vector label {index} bounds", failures)
 
 
 def require_non_empty_list(path: str, values: dict[str, object], key: str, failures: list[str]) -> None:
@@ -897,6 +1141,30 @@ def get_manifest_value(values: dict[str, object], key: str) -> object:
         return values[key]
     pascal = key[:1].upper() + key[1:]
     return values.get(pascal)
+
+
+def require_rect(path: str, value: object, label: str, failures: list[str]) -> None:
+    if not isinstance(value, dict):
+        failures.append(f"{path}: {label} missing rectangle")
+        return
+
+    for key in ("x", "y", "width", "height"):
+        if key not in value and key[:1].upper() + key[1:] not in value:
+            failures.append(f"{path}: {label} missing {key}")
+            continue
+        actual = get_manifest_value(value, key)
+        if not isinstance(actual, (int, float)):
+            failures.append(f"{path}: {label} {key} must be numeric")
+
+
+def require_positive_number(path: str, value: object, label: str, failures: list[str]) -> None:
+    if not isinstance(value, (int, float)) or value <= 0:
+        failures.append(f"{path}: {label} must be positive, got {value!r}")
+
+
+def require_non_negative_int(path: str, value: object, label: str, failures: list[str]) -> None:
+    if not isinstance(value, int) or value < 0:
+        failures.append(f"{path}: {label} must be a non-negative integer, got {value!r}")
 
 
 def validate_localhost_alias_manifest(path: str, values: dict[str, object], failures: list[str]) -> None:
