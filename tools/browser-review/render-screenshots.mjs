@@ -296,6 +296,9 @@ async function readDomDiagnostics(element) {
         color: style.color || null,
         backgroundColor: style.backgroundColor || null,
         borderColor: style.borderColor || null,
+        fill: style.fill && style.fill !== 'none' ? style.fill : null,
+        stroke: style.stroke && style.stroke !== 'none' ? style.stroke : null,
+        opacity: style.opacity || null,
         fontFamily: style.fontFamily || null,
         fontSize: style.fontSize || null,
         fontWeight: style.fontWeight || null,
@@ -384,7 +387,21 @@ async function readDomDiagnostics(element) {
       ['input-shell', '.input-state-v2, .input-layout'],
       ['input-graph', '.input-graph-panel, .input-graph'],
       ['input-rail', '.input-rail'],
+      ['input-rail-group', '.input-bars, .input-readouts'],
       ['input-item', '.input-bar, .input-readout, .input-wheel'],
+      ['input-bar', '.input-bar'],
+      ['input-bar-label', '.input-bar-label'],
+      ['input-bar-track', '.input-bar-track'],
+      ['input-bar-fill', '.input-bar-track span'],
+      ['input-bar-value', '.input-bar-value'],
+      ['input-readout', '.input-readout'],
+      ['input-readout-label', '.input-readout-label'],
+      ['input-readout-value', '.input-readout-value'],
+      ['input-wheel', '.input-wheel'],
+      ['input-wheel-label', '.input-wheel-label'],
+      ['input-wheel-value', '.input-wheel-value'],
+      ['input-wheel-svg', '.input-wheel svg'],
+      ['input-wheel-shape', '.input-wheel svg circle, .input-wheel svg line'],
       ['stream-chat-body', '.stream-chat-body, .chat'],
       ['chat-line', '.chat-line'],
       ['chat-badge', '.chat-badge, .chat-badge.image'],
@@ -1127,6 +1144,31 @@ function elementsForRole(layout, role) {
   return elements.filter((element) => element.role === role);
 }
 
+function rectIntersects(first, second) {
+  if (!first || !second) {
+    return false;
+  }
+
+  const firstLeft = numberOr(first.x, 0);
+  const firstTop = numberOr(first.y, 0);
+  const firstRight = firstLeft + numberOr(first.width, 0);
+  const firstBottom = firstTop + numberOr(first.height, 0);
+  const secondLeft = numberOr(second.x, 0);
+  const secondTop = numberOr(second.y, 0);
+  const secondRight = secondLeft + numberOr(second.width, 0);
+  const secondBottom = secondTop + numberOr(second.height, 0);
+  return firstRight > secondLeft
+    && firstLeft < secondRight
+    && firstBottom > secondTop
+    && firstTop < secondBottom;
+}
+
+function compareBounds(left, right) {
+  const topDelta = numberOr(left?.bounds?.y, 0) - numberOr(right?.bounds?.y, 0);
+  if (Math.abs(topDelta) > 0.5) return topDelta;
+  return numberOr(left?.bounds?.x, 0) - numberOr(right?.bounds?.x, 0);
+}
+
 function overlapsVertically(first, second) {
   if (!first || !second) {
     return false;
@@ -1502,6 +1544,7 @@ function graphMetricRows(metricsRect, graph, canvasBounds) {
 function inputEvidence(inputs, layout) {
   const canvasBounds = findElementBounds(layout, 'input-graph', 'input-graph')
     || findElementBounds(layout, 'graph-canvas', 'input-graph');
+  const railBounds = findElementBounds(layout, 'input-rail', 'input-rail');
   return {
     hasContent: booleanOrNull(inputs?.hasContent),
     hasGraph: booleanOrNull(inputs?.hasGraph),
@@ -1514,8 +1557,125 @@ function inputEvidence(inputs, layout) {
       bounds: canvasBounds,
       gridLines: inputGridLines(canvasBounds),
       series: inputTraceSeries(inputs, canvasBounds)
-    } : null
+    } : null,
+    rail: railBounds ? inputRailEvidence(layout, railBounds) : null
   };
+}
+
+function inputRailEvidence(layout, railBounds) {
+  const groups = elementsForRole(layout, 'input-rail-group')
+    .filter((element) => rectIntersects(element.bounds, railBounds))
+    .sort(compareBounds)
+    .map((element, index) => ({
+      index,
+      role: element.role || null,
+      kind: inputRailGroupKind(element),
+      text: stringOrNull(element.text),
+      bounds: element.bounds || null,
+      styles: element.styles || null
+    }));
+
+  return {
+    bounds: railBounds,
+    railWidth: railBounds.width,
+    groups,
+    items: inputRailItems(layout, railBounds)
+  };
+}
+
+function inputRailItems(layout, railBounds) {
+  return elementsForRole(layout, 'input-item')
+    .filter((element) => rectIntersects(element.bounds, railBounds))
+    .sort(compareBounds)
+    .map((element, index) => {
+      const children = inputRailItemChildren(layout, element.bounds);
+      const track = children.find((child) => child.role === 'input-bar-track') || null;
+      const fill = children.find((child) => child.role === 'input-bar-fill') || null;
+      return {
+        index,
+        kind: inputRailItemKind(element, children),
+        role: element.role || null,
+        className: element.className || null,
+        text: stringOrNull(element.text),
+        bounds: element.bounds || null,
+        foreground: element.styles?.color || null,
+        background: element.styles?.backgroundColor || null,
+        fillRatio: track?.bounds && fill?.bounds
+          ? round(numberOr(fill.bounds.width, 0) / Math.max(1, numberOr(track.bounds.width, 0)))
+          : null,
+        children
+      };
+    });
+}
+
+function inputRailItemChildren(layout, itemBounds) {
+  const childRoles = new Set([
+    'input-bar-label',
+    'input-bar-track',
+    'input-bar-fill',
+    'input-bar-value',
+    'input-readout-label',
+    'input-readout-value',
+    'input-wheel-label',
+    'input-wheel-value',
+    'input-wheel-svg',
+    'input-wheel-shape'
+  ]);
+  const elements = Array.isArray(layout?.elements) ? layout.elements : [];
+  return elements
+    .filter((element) => childRoles.has(element.role) && rectIntersects(element.bounds, itemBounds))
+    .sort(compareBounds)
+    .map((element, index) => ({
+      index,
+      role: element.role || null,
+      kind: inputRailChildKind(element),
+      tag: element.tag || null,
+      text: stringOrNull(element.text),
+      bounds: element.bounds || null,
+      foreground: element.styles?.color || null,
+      background: element.styles?.backgroundColor || null,
+      fill: element.styles?.fill || null,
+      stroke: element.styles?.stroke || null,
+      opacity: element.styles?.opacity || null,
+      styles: element.styles || null
+    }));
+}
+
+function inputRailItemKind(element, children) {
+  const className = String(element?.className || '');
+  const classNames = className.split(/\s+/);
+  const label = normalizeEvidenceText(children.find((child) => child.role?.endsWith('-label'))?.text);
+  if (classNames.includes('input-wheel')) return 'SteeringWheel';
+  if (classNames.includes('input-bar')) {
+    if (label === 'thr') return 'Throttle';
+    if (label === 'brk' || label === 'abs') return 'Brake';
+    if (label === 'clt') return 'Clutch';
+    return 'InputBar';
+  }
+  if (classNames.includes('input-readout')) {
+    if (label === 'gear') return 'Gear';
+    if (label === 'spd') return 'Speed';
+    return 'InputReadout';
+  }
+  return 'InputRailItem';
+}
+
+function inputRailChildKind(element) {
+  const role = String(element?.role || '');
+  if (role.includes('label')) return 'Label';
+  if (role.includes('value')) return 'Value';
+  if (role.includes('track')) return 'Track';
+  if (role.includes('fill')) return 'Fill';
+  if (role.includes('svg')) return 'WheelSvg';
+  if (role.includes('shape')) return 'WheelShape';
+  return null;
+}
+
+function inputRailGroupKind(element) {
+  const classNames = String(element?.className || '').split(/\s+/);
+  if (classNames.includes('input-bars')) return 'Bars';
+  if (classNames.includes('input-readouts')) return 'Readouts';
+  return 'Group';
 }
 
 function inputGridLines(bounds) {

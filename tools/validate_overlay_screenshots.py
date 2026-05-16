@@ -1097,14 +1097,17 @@ def require_model_evidence(path: str, value: object, failures: list[str]) -> Non
         inputs = value.get("inputs")
         if not isinstance(inputs, dict):
             failures.append(f"{path}: model input evidence missing inputs object")
-        elif inputs.get("hasGraph") is True:
-            graph = inputs.get("graph")
-            if not isinstance(graph, dict):
-                failures.append(f"{path}: model input evidence missing graph geometry")
-            else:
-                require_rect(path, graph.get("bounds"), "model input graph bounds", failures)
-                require_non_empty_list(path, graph, "gridLines", failures)
-                require_non_empty_list(path, graph, "series", failures)
+        else:
+            if inputs.get("hasGraph") is True:
+                graph = inputs.get("graph")
+                if not isinstance(graph, dict):
+                    failures.append(f"{path}: model input evidence missing graph geometry")
+                else:
+                    require_rect(path, graph.get("bounds"), "model input graph bounds", failures)
+                    require_non_empty_list(path, graph, "gridLines", failures)
+                    require_non_empty_list(path, graph, "series", failures)
+            if inputs.get("hasRail") is True:
+                require_input_rail_evidence(path, inputs.get("rail"), failures)
     elif body_kind in ("car-radar", "track-map"):
         key = "carRadar" if body_kind == "car-radar" else "trackMap"
         vector = value.get(key)
@@ -1350,6 +1353,48 @@ def require_grid_section_text_evidence(path: str, sections: object, failures: li
                     if not isinstance(cell, dict):
                         continue
                     require_rect(path, get_manifest_value(cell, "bounds"), f"grid section {section_index} row {row_index} cell {cell_index} bounds", failures)
+
+
+def require_input_rail_evidence(path: str, rail: object, failures: list[str]) -> None:
+    if not isinstance(rail, dict):
+        failures.append(f"{path}: model input evidence missing rail geometry")
+        return
+
+    require_rect(path, rail.get("bounds"), "model input rail bounds", failures)
+    require_positive_number(path, rail.get("railWidth"), "model input rail width", failures)
+    require_non_empty_list(path, rail, "items", failures)
+
+    items = rail.get("items")
+    if isinstance(items, list):
+        for index, item in enumerate(items):
+            if not isinstance(item, dict):
+                failures.append(f"{path}: model input rail item {index} must be an object")
+                continue
+            if item.get("kind") in (None, "") and item.get("role") in (None, ""):
+                failures.append(f"{path}: model input rail item {index} missing kind/role")
+            require_rect(path, item.get("bounds"), f"model input rail item {index} bounds", failures)
+            if path.startswith(("browser-overlays/", "localhost-overlays/")):
+                children = item.get("children")
+                if not isinstance(children, list) or len(children) == 0:
+                    failures.append(f"{path}: model input rail item {index} missing browser child evidence")
+                elif item.get("kind") in (None, ""):
+                    failures.append(f"{path}: model input rail item {index} missing normalized browser kind")
+                else:
+                    for child_index, child in enumerate(children):
+                        if not isinstance(child, dict):
+                            failures.append(f"{path}: model input rail item {index} child {child_index} must be an object")
+                            continue
+                        if child.get("role") in (None, ""):
+                            failures.append(f"{path}: model input rail item {index} child {child_index} missing role")
+                        require_rect(
+                            path,
+                            child.get("bounds"),
+                            f"model input rail item {index} child {child_index} bounds",
+                            failures,
+                        )
+
+    if path.startswith(("browser-overlays/", "localhost-overlays/")):
+        require_non_empty_list(path, rail, "groups", failures)
 
 
 def require_vector_item_evidence(path: str, items: object, failures: list[str]) -> None:
