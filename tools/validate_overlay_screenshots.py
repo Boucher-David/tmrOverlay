@@ -351,6 +351,12 @@ RELEASE_TUTORIAL_EXPECTED_PNGS = {
     "windows-release-teammate-tutorial.png": (1600, 1000),
 }
 
+WINDOWS_INSTALLER_REQUIRED_PNGS = {
+    "contact-sheet.png",
+    "installer-menus/welcome.png",
+    "installer-menus/cancel-confirm.png",
+}
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -360,6 +366,7 @@ def main() -> int:
         choices=(
             "tracked",
             "windows-ci",
+            "windows-installer-ci",
             "browser-review-ci",
             "localhost-ci",
             "browser-localhost-ci",
@@ -382,6 +389,9 @@ def main() -> int:
     failures: list[str] = []
     if args.profile == "windows-ci":
         validate_windows_ci(root, args.min_unique_bytes, failures)
+        return finish(failures)
+    if args.profile == "windows-installer-ci":
+        validate_windows_installer_ci(root, args.min_unique_bytes, failures)
         return finish(failures)
     if args.profile == "browser-review-ci":
         validate_browser_review_ci(root, args.min_unique_bytes, failures)
@@ -509,6 +519,74 @@ def validate_windows_ci(root: Path, min_unique_bytes: int, failures: list[str]) 
         expected_paths=windows_ci_manifest_paths(),
         failures=failures,
     )
+
+
+def validate_windows_installer_ci(root: Path, min_unique_bytes: int, failures: list[str]) -> None:
+    manifest = read_manifest(root, failures)
+    if manifest is None:
+        return
+
+    screenshots = manifest_screenshots(manifest, failures)
+    if screenshots is None:
+        return
+
+    for relative_path in WINDOWS_INSTALLER_REQUIRED_PNGS:
+        validate_png(
+            root=root,
+            relative_path=relative_path,
+            expected_size=None,
+            min_unique_bytes=min_unique_bytes,
+            failures=failures,
+            minimum_size=(320, 180) if relative_path.startswith("installer-menus/") else (900, 500),
+        )
+
+    missing_required = WINDOWS_INSTALLER_REQUIRED_PNGS - {"contact-sheet.png"} - set(screenshots)
+    for relative_path in sorted(missing_required):
+        failures.append(f"Windows installer screenshot manifest paths: missing {relative_path}")
+
+    package_evidence = manifest.get("packageEvidence")
+    require_package_evidence("manifest.json", package_evidence, failures)
+
+    for path, screenshot in screenshots.items():
+        if not path.startswith("installer-menus/"):
+            failures.append(f"{path}: installer manifest contains non-menu screenshot path")
+            continue
+
+        validate_png(
+            root=root,
+            relative_path=path,
+            expected_size=None,
+            min_unique_bytes=min_unique_bytes,
+            failures=failures,
+            minimum_size=(320, 180),
+        )
+        require_manifest_fields(
+            path,
+            screenshot,
+            [
+                "surface",
+                "renderer",
+                "sourceContract",
+                "menuId",
+                "pageIndex",
+                "status",
+                "title",
+                "textSample",
+                "contentBounds",
+                "layout",
+                "uiEvidence",
+                "scenarioEvidence",
+                "packageEvidence",
+            ],
+            failures,
+        )
+        if screenshot.get("surface") != "windows-installer-menu":
+            failures.append(f"{path}: expected windows-installer-menu surface, got {screenshot.get('surface')!r}")
+        require_rect(path, screenshot.get("contentBounds"), "installer content bounds", failures)
+        require_layout_evidence(path, screenshot.get("layout"), failures)
+        require_installer_ui_evidence(path, screenshot.get("uiEvidence"), failures)
+        require_scenario_evidence(path, screenshot.get("scenarioEvidence"), failures)
+        require_package_evidence(path, screenshot.get("packageEvidence"), failures)
 
 
 def validate_browser_review_ci(root: Path, min_unique_bytes: int, failures: list[str]) -> None:
@@ -854,7 +932,11 @@ def require_settings_ui_evidence(path: str, value: object, failures: list[str]) 
 
     tab = value.get("tab")
     requested_region = value.get("requestedRegion")
-    if tab not in (None, "general", "support", "error-logging") and requested_region not in (None, "general"):
+    if (
+        not is_component_crop
+        and tab not in (None, "general", "support", "error-logging")
+        and requested_region not in (None, "general")
+    ):
         regions = value.get("regions")
         if not isinstance(regions, list) or not regions:
             failures.append(f"{path}: settings UI evidence missing region controls")
@@ -886,6 +968,81 @@ def require_settings_ui_evidence(path: str, value: object, failures: list[str]) 
         ]
         if max(evidence_counts, default=0) <= 0:
             failures.append(f"{path}: settings component UI evidence did not capture any structural items")
+
+
+def require_installer_ui_evidence(path: str, value: object, failures: list[str]) -> None:
+    if not isinstance(value, dict):
+        failures.append(f"{path}: installer UI evidence missing object")
+        return
+
+    contract = value.get("contract")
+    if not isinstance(contract, str) or not contract:
+        failures.append(f"{path}: installer UI evidence missing contract")
+
+    require_rect(path, value.get("root"), "installer UI root", failures)
+    require_rect(path, value.get("contentBounds"), "installer UI content bounds", failures)
+
+    if value.get("windowTitle") in (None, ""):
+        failures.append(f"{path}: installer UI evidence missing windowTitle")
+    if value.get("menuId") in (None, ""):
+        failures.append(f"{path}: installer UI evidence missing menuId")
+
+    controls = value.get("controls")
+    if not isinstance(controls, list) or not controls:
+        failures.append(f"{path}: installer UI evidence missing controls")
+    elif isinstance(controls, list):
+        for index, control in enumerate(controls[:40]):
+            if not isinstance(control, dict):
+                continue
+            if control.get("role") in (None, ""):
+                failures.append(f"{path}: installer control {index} missing role")
+            if control.get("className") in (None, ""):
+                failures.append(f"{path}: installer control {index} missing className")
+            require_rect(path, control.get("bounds"), f"installer control {index} bounds", failures)
+
+    buttons = value.get("buttons")
+    if not isinstance(buttons, list) or not buttons:
+        failures.append(f"{path}: installer UI evidence missing buttons")
+    elif isinstance(buttons, list):
+        for index, button in enumerate(buttons[:12]):
+            if not isinstance(button, dict):
+                continue
+            if button.get("text") in (None, ""):
+                failures.append(f"{path}: installer button {index} missing text")
+            require_rect(path, button.get("bounds"), f"installer button {index} bounds", failures)
+
+    text_blocks = value.get("textBlocks")
+    if not isinstance(text_blocks, list):
+        failures.append(f"{path}: installer UI evidence missing textBlocks list")
+    elif not text_blocks and value.get("textSample") in (None, ""):
+        failures.append(f"{path}: installer UI evidence missing visible text")
+
+    palette = value.get("palette")
+    if not isinstance(palette, list) or not palette:
+        failures.append(f"{path}: installer UI evidence missing sampled color palette")
+    elif isinstance(palette, list):
+        for index, color in enumerate(palette[:8]):
+            if not isinstance(color, dict):
+                continue
+            if color.get("color") in (None, ""):
+                failures.append(f"{path}: installer palette color {index} missing color")
+            require_positive_number(path, color.get("samples"), f"installer palette color {index} samples", failures)
+
+    source_assets = value.get("sourceAssets")
+    if not isinstance(source_assets, list) or not source_assets:
+        failures.append(f"{path}: installer UI evidence missing sourceAssets")
+
+
+def require_package_evidence(path: str, value: object, failures: list[str]) -> None:
+    if not isinstance(value, dict):
+        failures.append(f"{path}: installer package evidence missing object")
+        return
+
+    if value.get("fileName") in (None, "") and value.get("FileName") in (None, ""):
+        failures.append(f"{path}: installer package evidence missing fileName")
+    require_positive_number(path, get_manifest_value(value, "bytes"), "installer package bytes", failures)
+    if get_manifest_value(value, "sha256") in (None, ""):
+        failures.append(f"{path}: installer package evidence missing sha256")
 
 
 def require_model_evidence(path: str, value: object, failures: list[str]) -> None:
