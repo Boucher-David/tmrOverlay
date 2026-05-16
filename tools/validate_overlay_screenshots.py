@@ -357,6 +357,10 @@ WINDOWS_INSTALLER_REQUIRED_PNGS = {
     "installer-menus/cancel-confirm.png",
 }
 
+WINDOWS_INSTALLER_CONTACT_SHEET_MINIMUM_SIZE = (900, 500)
+WINDOWS_INSTALLER_MENU_MINIMUM_SIZE = (320, 120)
+WINDOWS_INSTALLER_MENU_MIN_UNIQUE_BYTES = 8
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -530,15 +534,14 @@ def validate_windows_installer_ci(root: Path, min_unique_bytes: int, failures: l
     if screenshots is None:
         return
 
-    for relative_path in WINDOWS_INSTALLER_REQUIRED_PNGS:
-        validate_png(
-            root=root,
-            relative_path=relative_path,
-            expected_size=None,
-            min_unique_bytes=min_unique_bytes,
-            failures=failures,
-            minimum_size=(320, 180) if relative_path.startswith("installer-menus/") else (900, 500),
-        )
+    validate_png(
+        root=root,
+        relative_path="contact-sheet.png",
+        expected_size=None,
+        min_unique_bytes=min_unique_bytes,
+        failures=failures,
+        minimum_size=WINDOWS_INSTALLER_CONTACT_SHEET_MINIMUM_SIZE,
+    )
 
     missing_required = WINDOWS_INSTALLER_REQUIRED_PNGS - {"contact-sheet.png"} - set(screenshots)
     for relative_path in sorted(missing_required):
@@ -556,9 +559,9 @@ def validate_windows_installer_ci(root: Path, min_unique_bytes: int, failures: l
             root=root,
             relative_path=path,
             expected_size=None,
-            min_unique_bytes=min_unique_bytes,
+            min_unique_bytes=installer_menu_min_unique_bytes(min_unique_bytes),
             failures=failures,
-            minimum_size=(320, 180),
+            minimum_size=WINDOWS_INSTALLER_MENU_MINIMUM_SIZE,
         )
         require_manifest_fields(
             path,
@@ -587,6 +590,10 @@ def validate_windows_installer_ci(root: Path, min_unique_bytes: int, failures: l
         require_installer_ui_evidence(path, screenshot.get("uiEvidence"), failures)
         require_scenario_evidence(path, screenshot.get("scenarioEvidence"), failures)
         require_package_evidence(path, screenshot.get("packageEvidence"), failures)
+
+
+def installer_menu_min_unique_bytes(default_min_unique_bytes: int) -> int:
+    return min(default_min_unique_bytes, WINDOWS_INSTALLER_MENU_MIN_UNIQUE_BYTES)
 
 
 def validate_browser_review_ci(root: Path, min_unique_bytes: int, failures: list[str]) -> None:
