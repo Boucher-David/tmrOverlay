@@ -16,16 +16,16 @@ env:
   VELOPACK_VERSION: 0.0.1589-ga2c5a97
 
 jobs:
-  browser_and_localhost_tests:
-    name: Browser and localhost tests
+  browser_review_tests:
+    name: Browser review tests
     runs-on: ubuntu-latest
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
@@ -39,6 +39,26 @@ jobs:
       - name: Test browser review data contracts
         run: npm run test:browser
 
+  localhost_tests:
+    name: Localhost route tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install browser test dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
       - name: Test localhost overlay routes
         run: npm run test:localhost
 
@@ -48,10 +68,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
@@ -68,14 +88,8 @@ jobs:
       - name: Validate browser review screenshots
         run: python3 tools/validate_overlay_screenshots.py --profile browser-review-ci --root artifacts/browser-review-screenshots
 
-      - name: Generate localhost screenshots
-        run: npm run screenshots:localhost -- --output artifacts/localhost-screenshots
-
-      - name: Validate localhost screenshots
-        run: python3 tools/validate_overlay_screenshots.py --profile localhost-ci --root artifacts/localhost-screenshots
-
       - name: Upload browser review screenshots
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: browser-review-screenshots
@@ -83,8 +97,34 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  localhost_screenshots:
+    name: Localhost route screenshots
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install browser screenshot dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Generate localhost screenshots
+        run: npm run screenshots:localhost -- --output artifacts/localhost-screenshots
+
+      - name: Validate localhost screenshots
+        run: python3 tools/validate_overlay_screenshots.py --profile localhost-ci --root artifacts/localhost-screenshots
+
       - name: Upload localhost screenshots
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: localhost-screenshots
@@ -98,10 +138,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.x'
 
@@ -120,10 +160,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 8.0.x
 
@@ -139,10 +179,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 8.0.x
 
@@ -161,15 +201,15 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 8.0.x
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.x'
 
@@ -185,7 +225,7 @@ jobs:
         run: python tools/validate_overlay_screenshots.py --profile windows-ci --root artifacts/windows-overlay-screenshots
 
       - name: Upload Windows overlay screenshots
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: windows-overlay-screenshots
@@ -199,10 +239,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 8.0.x
 
@@ -304,12 +344,12 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 8.0.x
 
@@ -460,7 +500,7 @@ jobs:
           }
 
       - name: Upload package artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.release_metadata.outputs.package_name }}
           path: |
@@ -471,7 +511,7 @@ jobs:
 
       - name: Create GitHub release
         if: steps.release_metadata.outputs.is_release_tag == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
           files: |

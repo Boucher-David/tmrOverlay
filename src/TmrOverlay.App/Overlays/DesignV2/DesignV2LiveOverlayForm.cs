@@ -308,6 +308,8 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         ? radar.RenderModel.Cars.Count
         : null;
 
+    public DesignV2LayoutDiagnostics DiagnosticLayout => BuildLayoutDiagnostics(ClientRectangle, _model);
+
     public void SetFlagsManagedState(bool managedEnabled, bool settingsOverlayActive)
     {
         _flagsManagedEnabled = managedEnabled;
@@ -2663,6 +2665,1118 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         }
 
         return delta;
+    }
+
+    private DesignV2LayoutDiagnostics BuildLayoutDiagnostics(Rectangle bounds, DesignV2OverlayModel model)
+    {
+        var client = LayoutRect(bounds);
+        var constants = new DesignV2LayoutConstants(
+            PaddingSize,
+            HeaderHeight,
+            FooterHeight,
+            BodyGap,
+            RowHeight,
+            RowGap,
+            ColumnGap,
+            MinimumColumnWidth,
+            MetricLabelWidth);
+
+        var custom = BuildCustomLayoutDiagnostics(bounds, model, client, constants);
+        if (custom is not null)
+        {
+            return custom;
+        }
+
+        var outer = RectangleF.Inflate(bounds, -0.5f, -0.5f);
+        var headerBottom = outer.Top;
+        RectangleF? header = null;
+        if (model.ShowHeader)
+        {
+            header = new RectangleF(outer.Left + 1, outer.Top + 1, outer.Width - 2, HeaderHeight);
+            headerBottom = header.Value.Bottom;
+        }
+
+        var footerReserve = model.ShowFooter ? FooterHeight : 8;
+        var bodyTop = model.ShowHeader
+            ? headerBottom + BodyGap
+            : outer.Top + PaddingSize;
+        var body = new RectangleF(
+            outer.Left + PaddingSize,
+            bodyTop,
+            outer.Width - PaddingSize * 2,
+            Math.Max(1, outer.Bottom - bodyTop - footerReserve));
+        var footer = model.ShowFooter
+            ? new RectangleF(outer.Left + 14, outer.Bottom - 24, outer.Width - 28, 14)
+            : (RectangleF?)null;
+
+        return new DesignV2LayoutDiagnostics(
+            "design-v2-layout/v1",
+            KindName(_kind),
+            client,
+            constants)
+        {
+            Outer = LayoutRect(outer),
+            Header = LayoutRect(header),
+            Body = LayoutRect(body),
+            Footer = LayoutRect(footer),
+            ShowHeader = model.ShowHeader,
+            ShowFooter = model.ShowFooter,
+            BodyLayout = BuildBodyLayout(body, model.Body)
+        };
+    }
+
+    private DesignV2LayoutDiagnostics? BuildCustomLayoutDiagnostics(
+        Rectangle bounds,
+        DesignV2OverlayModel model,
+        DesignV2LayoutRect client,
+        DesignV2LayoutConstants constants)
+    {
+        var rect = RectangleF.Inflate(bounds, -0.5f, -0.5f);
+        return model.Body switch
+        {
+            DesignV2RadarBody radar => new DesignV2LayoutDiagnostics(
+                "design-v2-layout/v1",
+                KindName(_kind),
+                client,
+                constants)
+            {
+                Body = LayoutRect(rect),
+                BodyLayout = BuildRadarLayout(rect, radar)
+            },
+            DesignV2InputsBody inputs => BuildInputsLayoutDiagnostics(rect, client, constants, inputs),
+            DesignV2TrackMapBody trackMap => new DesignV2LayoutDiagnostics(
+                "design-v2-layout/v1",
+                KindName(_kind),
+                client,
+                constants)
+            {
+                Body = LayoutRect(rect),
+                BodyLayout = BuildTrackMapLayout(rect, trackMap)
+            },
+            DesignV2FlagsBody flags => new DesignV2LayoutDiagnostics(
+                "design-v2-layout/v1",
+                KindName(_kind),
+                client,
+                constants)
+            {
+                Body = LayoutRect(rect),
+                BodyLayout = BuildFlagsLayout(rect, flags)
+            },
+            _ => null
+        };
+    }
+
+    private DesignV2LayoutDiagnostics BuildInputsLayoutDiagnostics(
+        RectangleF rect,
+        DesignV2LayoutRect client,
+        DesignV2LayoutConstants constants,
+        DesignV2InputsBody inputs)
+    {
+        var header = new RectangleF(rect.Left, rect.Top, rect.Width, HeaderHeight);
+        var content = new RectangleF(
+            rect.Left + 18,
+            header.Bottom + 18,
+            Math.Max(1, rect.Width - 36),
+            Math.Max(1, rect.Height - HeaderHeight - 34));
+        return new DesignV2LayoutDiagnostics(
+            "design-v2-layout/v1",
+            KindName(_kind),
+            client,
+            constants)
+        {
+            Outer = LayoutRect(rect),
+            Header = LayoutRect(header),
+            Body = LayoutRect(content),
+            ShowHeader = true,
+            ShowFooter = false,
+            BodyLayout = BuildInputsLayout(content, inputs)
+        };
+    }
+
+    private DesignV2LayoutBody BuildBodyLayout(RectangleF rect, DesignV2Body body)
+    {
+        return body switch
+        {
+            DesignV2TableBody table => BuildTableLayout(rect, table),
+            DesignV2MetricRowsBody metrics => BuildMetricRowsLayout(rect, metrics),
+            DesignV2GraphBody graph => BuildGraphLayout(rect, graph),
+            DesignV2ChatBody chat => BuildChatLayout(rect, chat),
+            DesignV2InputsBody inputs => BuildInputsLayout(rect, inputs),
+            DesignV2RadarBody radar => BuildRadarLayout(rect, radar),
+            DesignV2FlagsBody flags => BuildFlagsLayout(rect, flags),
+            DesignV2TrackMapBody trackMap => BuildTrackMapLayout(rect, trackMap),
+            _ => new DesignV2LayoutBody(BodyName(body), LayoutRect(rect))
+        };
+    }
+
+    private DesignV2LayoutBody BuildTableLayout(RectangleF rect, DesignV2TableBody table)
+    {
+        var layout = new DesignV2LayoutBody("table", LayoutRect(rect));
+        if (table.Columns.Count == 0)
+        {
+            return layout;
+        }
+
+        var configuredWidth = table.Columns.Sum(column => Math.Max(MinimumColumnWidth, column.Width));
+        var availableWidth = Math.Max(1f, rect.Width - 20 - Math.Max(0, table.Columns.Count - 1) * ColumnGap);
+        var fit = Math.Min(1f, availableWidth / Math.Max(1, configuredWidth));
+        var x = rect.Left + 10;
+        var columns = new List<DesignV2LayoutColumn>();
+        for (var columnIndex = 0; columnIndex < table.Columns.Count; columnIndex++)
+        {
+            var column = table.Columns[columnIndex];
+            var width = Math.Max(MinimumColumnWidth, column.Width) * fit;
+            columns.Add(new DesignV2LayoutColumn(
+                columnIndex,
+                column.Label,
+                column.Width,
+                width,
+                AlignmentName(column.Alignment),
+                LayoutRect(new RectangleF(x, rect.Top + 8, width, 14))));
+            x += width + ColumnGap;
+        }
+
+        var rows = new List<DesignV2LayoutRow>();
+        var maximumRows = Math.Max(1, (int)((rect.Height - RowHeight) / (RowHeight + RowGap)));
+        var y = rect.Top + 30;
+        var drawnRows = 0;
+        for (var sourceIndex = 0; sourceIndex < table.Rows.Count; sourceIndex++)
+        {
+            var row = table.Rows[sourceIndex];
+            if (drawnRows >= maximumRows)
+            {
+                break;
+            }
+
+            if (row.IsClassHeader)
+            {
+                if (drawnRows > 0)
+                {
+                    y += 7;
+                }
+
+                var headerRect = new RectangleF(rect.Left + 8, y, rect.Width - 16, 24);
+                if (headerRect.Bottom > rect.Bottom)
+                {
+                    break;
+                }
+
+                rows.Add(new DesignV2LayoutRow(
+                    drawnRows,
+                    sourceIndex,
+                    "class-header",
+                    LayoutRect(headerRect))
+                {
+                    Text = string.IsNullOrWhiteSpace(row.ClassHeaderTitle) ? "Class" : row.ClassHeaderTitle,
+                    Detail = row.ClassHeaderDetail,
+                    ClassColorHex = row.ClassColorHex,
+                    Background = ColorHex(TryParseHexColor(row.ClassColorHex, out var headerColor)
+                        ? Blend(SurfaceRaised, headerColor, 4, 2)
+                        : Blend(SurfaceRaised, Cyan, 5, 1)),
+                    Foreground = ColorHex(TextPrimary)
+                });
+                y += headerRect.Height + RowGap;
+                drawnRows++;
+                continue;
+            }
+
+            var rowRect = new RectangleF(rect.Left + 8, y, rect.Width - 16, RowHeight);
+            if (rowRect.Bottom > rect.Bottom)
+            {
+                break;
+            }
+
+            x = rowRect.Left + 8;
+            var cells = new List<DesignV2LayoutCell>();
+            var rowTextColor = TableTextColor(row);
+            for (var columnIndex = 0; columnIndex < columns.Count; columnIndex++)
+            {
+                var column = columns[columnIndex];
+                var cellRect = new RectangleF(x, rowRect.Top + 7, column.RenderedWidth, 16);
+                cells.Add(new DesignV2LayoutCell(
+                    columnIndex,
+                    column.Label,
+                    columnIndex < row.Values.Count ? row.Values[columnIndex] : string.Empty,
+                    LayoutRect(cellRect),
+                    column.Alignment)
+                {
+                    Foreground = ColorHex(row.IsReference ? TextPrimary : rowTextColor)
+                });
+                x += column.RenderedWidth + ColumnGap;
+            }
+
+            rows.Add(new DesignV2LayoutRow(
+                drawnRows,
+                sourceIndex,
+                row.IsReference ? "reference" : "row",
+                LayoutRect(rowRect))
+            {
+                Cells = cells,
+                Evidence = row.Evidence.ToString(),
+                RelativeLapDelta = row.RelativeLapDelta,
+                ClassColorHex = row.ClassColorHex,
+                Background = ColorHex(TableRowFillColor(row)),
+                Foreground = ColorHex(row.IsReference ? TextPrimary : rowTextColor)
+            });
+            y += RowHeight + RowGap;
+            drawnRows++;
+        }
+
+        return layout with
+        {
+            ConfiguredWidth = configuredWidth,
+            AvailableWidth = availableWidth,
+            FitScale = fit,
+            Columns = columns,
+            Rows = rows,
+            MaximumRows = maximumRows,
+            DrawnRows = rows.Count
+        };
+    }
+
+    private static Color TableRowFillColor(DesignV2TableRow row)
+    {
+        return row.Evidence == DesignV2Evidence.Unavailable
+            ? SurfaceInset
+            : TryParseHexColor(row.ClassColorHex, out var rowClassColor)
+                ? Blend(SurfaceRaised, rowClassColor, row.IsReference ? 10 : 12, 1)
+                : row.IsReference
+                    ? Blend(SurfaceRaised, Cyan, 10, 1)
+                    : SurfaceRaised;
+    }
+
+    private DesignV2LayoutBody BuildMetricRowsLayout(RectangleF rect, DesignV2MetricRowsBody metrics)
+    {
+        var layout = new DesignV2LayoutBody("metric-rows", LayoutRect(rect));
+        if (metrics.Rows.Count == 0 && metrics.MetricSections.Count == 0 && metrics.Sections.Count == 0)
+        {
+            return layout with { State = "waiting" };
+        }
+
+        var metricRows = new List<DesignV2LayoutMetricRow>();
+        var metricGrids = new List<DesignV2LayoutMetricGrid>();
+        var gridHeight = metrics.Sections.Count == 0
+            ? 0f
+            : Math.Min(176f, Math.Max(80f, metrics.Sections.Sum(section => 26f + Math.Min(6, section.Rows.Count) * 25f) + Math.Max(0, metrics.Sections.Count - 1) * 8f));
+        var rowsRect = metrics.Sections.Count == 0
+            ? rect
+            : new RectangleF(rect.Left, rect.Top, rect.Width, Math.Max(RowHeight, rect.Height - gridHeight - 8f));
+
+        if (metrics.MetricSections.Count > 0)
+        {
+            var y = rowsRect.Top;
+            var rowHeight = 24f;
+            var sectionTitleHeight = 14f;
+            foreach (var section in metrics.MetricSections.Where(section => section.Rows.Count > 0))
+            {
+                if (y + sectionTitleHeight + rowHeight > rowsRect.Bottom)
+                {
+                    break;
+                }
+
+                var titleRect = new RectangleF(rowsRect.Left + 4, y, rowsRect.Width - 8, sectionTitleHeight);
+                y += sectionTitleHeight;
+                foreach (var row in section.Rows)
+                {
+                    if (y + rowHeight > rowsRect.Bottom)
+                    {
+                        break;
+                    }
+
+                    var rowRect = new RectangleF(rowsRect.Left, y, rowsRect.Width, rowHeight);
+                    metricRows.Add(LayoutMetricRow(row, rowRect, section.Title, titleRect));
+                    y += rowHeight + 2f;
+                }
+
+                y += 2f;
+            }
+        }
+        else
+        {
+            var maximumRows = Math.Max(1, (int)(rowsRect.Height / (RowHeight + RowGap)));
+            foreach (var (row, index) in metrics.Rows.Take(maximumRows).Select((row, index) => (row, index)))
+            {
+                var rowRect = new RectangleF(rowsRect.Left, rowsRect.Top + index * (RowHeight + RowGap), rowsRect.Width, RowHeight);
+                metricRows.Add(LayoutMetricRow(row, rowRect, null, null));
+            }
+        }
+
+        if (metrics.Sections.Count > 0)
+        {
+            var sectionTop = Math.Min(rect.Bottom - 72f, rowsRect.Bottom + 8f);
+            foreach (var section in metrics.Sections)
+            {
+                if (sectionTop >= rect.Bottom - 34f)
+                {
+                    break;
+                }
+
+                var maxRows = Math.Max(1, Math.Min(section.Rows.Count, (int)((rect.Bottom - sectionTop - 28f) / 25f)));
+                var sectionHeight = 26f + maxRows * 25f;
+                var sectionRect = new RectangleF(rect.Left, sectionTop, rect.Width, Math.Min(sectionHeight, rect.Bottom - sectionTop));
+                metricGrids.Add(LayoutMetricGrid(section, sectionRect, maxRows));
+                sectionTop += sectionRect.Height + 8f;
+            }
+        }
+
+        return layout with
+        {
+            RowsBounds = LayoutRect(rowsRect),
+            GridHeight = gridHeight,
+            MetricRows = metricRows,
+            MetricGrids = metricGrids,
+            DrawnRows = metricRows.Count
+        };
+    }
+
+    private static DesignV2LayoutMetricRow LayoutMetricRow(
+        DesignV2MetricRow row,
+        RectangleF rowRect,
+        string? section,
+        RectangleF? sectionTitleBounds)
+    {
+        var labelRect = new RectangleF(rowRect.Left + 10, rowRect.Top + 6, MetricLabelWidth, 16);
+        var valueRect = new RectangleF(rowRect.Left + MetricLabelWidth + 12, rowRect.Top + 3, rowRect.Width - MetricLabelWidth - 18, rowRect.Height - 6);
+        var segments = new List<DesignV2LayoutMetricSegment>();
+        var count = Math.Min(6, row.Segments.Count);
+        if (count > 0)
+        {
+            var gap = 3f;
+            var width = Math.Max(1f, (valueRect.Width - gap * (count - 1)) / count);
+            var x = valueRect.Left;
+            for (var index = 0; index < count; index++)
+            {
+                var segment = row.Segments[index];
+                var segmentRect = new RectangleF(x, valueRect.Top, width, valueRect.Height);
+                segments.Add(new DesignV2LayoutMetricSegment(
+                    index,
+                    segment.Label,
+                    segment.Value,
+                    LayoutRect(segmentRect),
+                    LayoutRect(new RectangleF(segmentRect.Left + 4, segmentRect.Top + 2, segmentRect.Width - 8, 9)),
+                    LayoutRect(new RectangleF(segmentRect.Left + 4, segmentRect.Top + 12, segmentRect.Width - 8, Math.Max(9, segmentRect.Height - 13))))
+                {
+                    Foreground = ColorHex(SegmentColor(segment)),
+                    Background = ColorHex(SegmentBackground(segment)),
+                    Accent = TryParseHexColor(segment.AccentHex, out var segmentAccent) ? ColorHex(segmentAccent) : null,
+                    RotationDegrees = segment.RotationDegrees,
+                    Evidence = segment.Evidence.ToString()
+                });
+                x += width + gap;
+            }
+        }
+
+        var hasRowAccent = TryParseHexColor(row.RowColorHex, out var rowAccent);
+        return new DesignV2LayoutMetricRow(row.Label, row.Value, LayoutRect(rowRect), LayoutRect(labelRect), LayoutRect(valueRect))
+        {
+            Section = section,
+            SectionTitleBounds = LayoutRect(sectionTitleBounds),
+            Segments = segments,
+            Evidence = row.Evidence.ToString(),
+            Background = ColorHex(hasRowAccent
+                ? Blend(SurfaceRaised, rowAccent, 12, 1)
+                : SurfaceRaised),
+            Foreground = ColorHex(EvidenceColor(row.Evidence)),
+            Accent = hasRowAccent ? ColorHex(rowAccent) : null
+        };
+    }
+
+    private static DesignV2LayoutMetricGrid LayoutMetricGrid(
+        DesignV2MetricGridSection section,
+        RectangleF rect,
+        int maximumRows)
+    {
+        var headers = section.Headers.Count == 0
+            ? new[] { "Info", "FL", "FR", "RL", "RR" }
+            : section.Headers.Take(5).ToArray();
+        var columns = headers.Length;
+        var gap = 3f;
+        var usableWidth = rect.Width - 16f - Math.Max(0, columns - 1) * gap;
+        var infoWidth = Math.Min(92f, usableWidth * 0.30f);
+        var cornerWidth = columns <= 1
+            ? usableWidth
+            : Math.Max(42f, (usableWidth - infoWidth) / (columns - 1));
+        var widths = Enumerable.Range(0, columns)
+            .Select(index => index == 0 ? infoWidth : cornerWidth)
+            .ToArray();
+        var headerCells = new List<DesignV2LayoutCell>();
+        var rows = new List<DesignV2LayoutRow>();
+        var y = rect.Top + 22f;
+        var x = rect.Left + 8f;
+        for (var index = 0; index < columns; index++)
+        {
+            headerCells.Add(new DesignV2LayoutCell(index, headers[index], headers[index], LayoutRect(new RectangleF(x, y, widths[index], 12f)), index == 0 ? "left" : "right")
+            {
+                Foreground = ColorHex(TextMuted)
+            });
+            x += widths[index] + gap;
+        }
+
+        y += 16f;
+        foreach (var (row, rowIndex) in section.Rows.Take(maximumRows).Select((row, rowIndex) => (row, rowIndex)))
+        {
+            if (y + 21f > rect.Bottom - 4f)
+            {
+                break;
+            }
+
+            x = rect.Left + 8f;
+            var cells = new List<DesignV2LayoutCell>
+            {
+                new(0, headers[0], row.Label, LayoutRect(new RectangleF(x, y, widths[0], 21f)), "left")
+                {
+                    Background = ColorHex(SurfaceRaised),
+                    Foreground = ColorHex(TextSecondary)
+                }
+            };
+            x += widths[0] + gap;
+            for (var index = 1; index < columns; index++)
+            {
+                var cell = index - 1 < row.Cells.Count ? row.Cells[index - 1] : new DesignV2MetricGridCell("--", DesignV2Evidence.Unavailable);
+                cells.Add(new DesignV2LayoutCell(index, headers[index], cell.Value, LayoutRect(new RectangleF(x, y, widths[index], 21f)), "right")
+                {
+                    Evidence = cell.Evidence.ToString(),
+                    Background = ColorHex(EvidenceBackground(cell.Evidence)),
+                    Foreground = ColorHex(EvidenceColor(cell.Evidence))
+                });
+                x += widths[index] + gap;
+            }
+
+            rows.Add(new DesignV2LayoutRow(rowIndex, rowIndex, "grid-row", LayoutRect(new RectangleF(rect.Left + 8f, y, rect.Width - 16f, 21f)))
+            {
+                Text = row.Label,
+                Cells = cells,
+                Evidence = row.Evidence.ToString(),
+                Foreground = ColorHex(EvidenceColor(row.Evidence))
+            });
+            y += 25f;
+        }
+
+        return new DesignV2LayoutMetricGrid(section.Title, LayoutRect(rect), headerCells, rows);
+    }
+
+    private static DesignV2LayoutBody BuildGraphLayout(RectangleF rect, DesignV2GraphBody graph)
+    {
+        var frame = RectangleF.Inflate(rect, -12, -14);
+        const float axisWidth = 58f;
+        const float xAxisHeight = 17f;
+        var plotHeight = Math.Max(40, frame.Height - xAxisHeight);
+        var metricsTableWidth = FocusedGapMetricsTableWidth(frame);
+        var metricsTableRect = metricsTableWidth > 0f
+            ? new RectangleF(frame.Right - metricsTableWidth, frame.Top, metricsTableWidth, plotHeight)
+            : RectangleF.Empty;
+        var chartRight = metricsTableWidth > 0f
+            ? metricsTableRect.Left - GapMetricsTableGap
+            : frame.Right;
+        var labelLane = new RectangleF(
+            chartRight - GapEndpointLabelLaneWidth,
+            frame.Top,
+            GapEndpointLabelLaneWidth,
+            plotHeight);
+        var plot = new RectangleF(
+            frame.Left + axisWidth,
+            frame.Top,
+            Math.Max(40, labelLane.Left - (frame.Left + axisWidth)),
+            plotHeight);
+        var axisBounds = new RectangleF(frame.Left, frame.Top, axisWidth - 8, plot.Height);
+        var scale = graph.Scale ?? DesignV2GapScale.Leader(graph.MaxGapSeconds ?? 1d);
+        var maxGapSeconds = Math.Max(1d, scale.MaxGapSeconds);
+        var seriesLayouts = graph.Series
+            .Select((series, index) => BuildGraphSeriesLayout(graph, plot, maxGapSeconds, series, index))
+            .ToArray();
+        return new DesignV2LayoutBody("graph", LayoutRect(rect))
+        {
+            Graph = new DesignV2LayoutGraph(
+                LayoutRect(frame),
+                LayoutRect(plot),
+                LayoutRect(axisBounds),
+                LayoutRect(labelLane),
+                metricsTableWidth > 0f ? LayoutRect(metricsTableRect) : null,
+                graph.Points.Count,
+                graph.Series.Count,
+                graph.Series.Sum(series => series.Points.Count),
+                graph.TrendMetrics.Count,
+                graph.StartSeconds,
+                graph.EndSeconds)
+            {
+                Series = seriesLayouts,
+                WeatherBands = BuildGraphWeatherBands(graph, plot),
+                Markers = BuildGraphMarkers(graph, plot, maxGapSeconds),
+                MetricRows = BuildGraphMetricRows(metricsTableRect, graph),
+                Scale = scale.IsFocusRelative ? "focus-relative" : "leader",
+                AheadSeconds = scale.IsFocusRelative ? scale.AheadSeconds : null,
+                BehindSeconds = scale.IsFocusRelative ? scale.BehindSeconds : null,
+                LatestReferenceGapSeconds = scale.IsFocusRelative ? scale.LatestReferenceGapSeconds : null,
+                MaxGapSeconds = graph.MaxGapSeconds,
+                LapReferenceSeconds = graph.LapReferenceSeconds,
+                ComparisonLabel = graph.ComparisonLabel
+            }
+        };
+    }
+
+    private static DesignV2LayoutGraphSeries BuildGraphSeriesLayout(
+        DesignV2GraphBody graph,
+        RectangleF plot,
+        double maxGapSeconds,
+        DesignV2GapSeries series,
+        int index)
+    {
+        var baseColor = GapSeriesColor(series, index, graph.ThreatCarIdx);
+        var effectiveAlpha = series.Alpha * GapSeriesAlphaMultiplier(series, graph.ThreatCarIdx);
+        var orderedPoints = series.Points
+            .OrderBy(point => point.AxisSeconds)
+            .Select(point =>
+            {
+                var graphPoint = GapGraphPoint(point, graph, plot, maxGapSeconds);
+                return new DesignV2LayoutGraphPoint(
+                    point.AxisSeconds,
+                    point.GapSeconds,
+                    point.StartsSegment,
+                    LayoutPoint(graphPoint));
+            })
+            .ToArray();
+        var latest = orderedPoints.LastOrDefault();
+        var endpointLabel = series.IsClassLeader
+            ? "P1"
+            : series.ClassPosition is { } position
+                ? $"P{position}"
+                : $"#{series.CarIdx}";
+        return new DesignV2LayoutGraphSeries(
+            index,
+            GapDrawPriority(series, graph.ThreatCarIdx),
+            series.CarIdx,
+            series.IsReference,
+            series.IsClassLeader,
+            series.ClassPosition,
+            series.Points.Count,
+            ColorHex(baseColor),
+            ColorHex(WithAlpha(baseColor, effectiveAlpha)),
+            series.Alpha,
+            effectiveAlpha,
+            series.IsReference ? 2.6f : series.IsClassLeader ? 1.8f : 1.25f,
+            series.IsStickyExit || series.IsStale,
+            series.IsStickyExit,
+            series.IsStale)
+        {
+            Points = orderedPoints,
+            LatestPoint = latest?.Point,
+            EndpointLabel = endpointLabel
+        };
+    }
+
+    private static IReadOnlyList<DesignV2LayoutGraphBand> BuildGraphWeatherBands(
+        DesignV2GraphBody graph,
+        RectangleF plot)
+    {
+        if (graph.Weather.Count == 0)
+        {
+            return [];
+        }
+
+        var bands = new List<DesignV2LayoutGraphBand>();
+        foreach (var (point, index) in graph.Weather.Select((point, index) => (point, index)))
+        {
+            if (GapWeatherColor(point.Condition) is not { } color)
+            {
+                continue;
+            }
+
+            var nextAxis = index + 1 < graph.Weather.Count
+                ? graph.Weather[index + 1].AxisSeconds
+                : graph.EndSeconds;
+            var x = GapAxisToX(graph, plot, point.AxisSeconds);
+            var nextX = GapAxisToX(graph, plot, nextAxis);
+            if (nextX <= x)
+            {
+                continue;
+            }
+
+            bands.Add(new DesignV2LayoutGraphBand(
+                point.Condition.ToString(),
+                point.AxisSeconds,
+                nextAxis,
+                LayoutRect(new RectangleF(x, plot.Top, Math.Max(1f, nextX - x), plot.Height)),
+                ColorHex(color)));
+        }
+
+        return bands;
+    }
+
+    private static IReadOnlyList<DesignV2LayoutGraphMarker> BuildGraphMarkers(
+        DesignV2GraphBody graph,
+        RectangleF plot,
+        double maxGapSeconds)
+    {
+        var markers = new List<DesignV2LayoutGraphMarker>();
+        foreach (var marker in graph.LeaderChanges)
+        {
+            var x = GapAxisToX(graph, plot, marker.AxisSeconds);
+            markers.Add(new DesignV2LayoutGraphMarker(
+                "leader-change",
+                "leader",
+                LayoutPoint(x, plot.Top),
+                LayoutPoint(x, plot.Bottom))
+            {
+                AxisSeconds = marker.AxisSeconds,
+                Color = "#73FFFFFF"
+            });
+        }
+
+        foreach (var marker in graph.DriverChanges)
+        {
+            var point = GapGraphPoint(marker.AxisSeconds, marker.GapSeconds, graph, plot, maxGapSeconds);
+            var color = marker.IsReference ? Green : TextSecondary;
+            markers.Add(new DesignV2LayoutGraphMarker(
+                "driver-change",
+                marker.Label,
+                LayoutPoint(point),
+                LayoutPoint(point))
+            {
+                AxisSeconds = marker.AxisSeconds,
+                GapSeconds = marker.GapSeconds,
+                CarIdx = marker.CarIdx,
+                IsReference = marker.IsReference,
+                Color = ColorHex(color)
+            });
+        }
+
+        return markers;
+    }
+
+    private static IReadOnlyList<DesignV2LayoutRow> BuildGraphMetricRows(RectangleF rect, DesignV2GraphBody graph)
+    {
+        if (rect.Width <= 0f || rect.Height <= 0f || graph.TrendMetrics.Count == 0)
+        {
+            return [];
+        }
+
+        var rowHeight = Math.Max(9.5f, Math.Min(26f, (rect.Height - 8f - 38f) / Math.Max(1, graph.TrendMetrics.Count)));
+        var rowTextHeight = Math.Max(10f, Math.Min(14f, rowHeight));
+        var rows = new List<DesignV2LayoutRow>();
+        for (var index = 0; index < graph.TrendMetrics.Count; index++)
+        {
+            var metric = graph.TrendMetrics[index];
+            var y = rect.Top + 38f + index * rowHeight;
+            rows.Add(new DesignV2LayoutRow(
+                index,
+                index,
+                "graph-metric-row",
+                LayoutRect(new RectangleF(rect.Left + 8f, y, rect.Width - 16f, rowTextHeight)))
+            {
+                Text = metric.Label,
+                Evidence = metric.State,
+                Cells =
+                [
+                    new DesignV2LayoutCell(
+                        0,
+                        "Metric",
+                        metric.Label,
+                        LayoutRect(new RectangleF(rect.Left + 8f, y, 32f, rowTextHeight)),
+                        "left")
+                    {
+                        Foreground = ColorHex(TextSecondary)
+                    },
+                    new DesignV2LayoutCell(
+                        1,
+                        string.IsNullOrWhiteSpace(graph.ComparisonLabel) ? "--" : graph.ComparisonLabel,
+                        GapMetricValueText(metric),
+                        LayoutRect(new RectangleF(rect.Left + 43f, y, 58f, rowTextHeight)),
+                        "left")
+                    {
+                        Foreground = ColorHex(GapMetricValueColor(metric, graph.MetricDeadbandSeconds))
+                    },
+                    new DesignV2LayoutCell(
+                        2,
+                        "Threat",
+                        GapMetricChaserText(metric),
+                        LayoutRect(new RectangleF(rect.Left + 104f, y, rect.Width - 110f, rowTextHeight)),
+                        "left")
+                    {
+                        Foreground = ColorHex(GapMetricChaserColor(metric))
+                    }
+                ]
+            });
+        }
+
+        return rows;
+    }
+
+    private DesignV2LayoutBody BuildChatLayout(RectangleF rect, DesignV2ChatBody chat)
+    {
+        using var bitmap = new Bitmap(1, 1);
+        using var graphics = Graphics.FromImage(bitmap);
+        using var messageFont = FontOf(10.5f);
+        var rowWidth = Math.Max(1f, rect.Width - 16f);
+        var innerHeight = Math.Max(1f, rect.Height - 16f);
+        var visibleRows = VisibleChatRows(graphics, chat.Rows, messageFont, rowWidth, innerHeight);
+        var totalRowsHeight = visibleRows.Sum(row => row.Height) + Math.Max(0, visibleRows.Count - 1) * 8f;
+        var y = Math.Max(rect.Top + 8f, rect.Bottom - 8f - totalRowsHeight);
+        var rows = new List<DesignV2LayoutRow>();
+        for (var index = 0; index < visibleRows.Count; index++)
+        {
+            var row = visibleRows[index];
+            var rowRect = new RectangleF(rect.Left + 8, y, rowWidth, row.Height);
+            rows.Add(new DesignV2LayoutRow(index, index, "chat-row", LayoutRect(rowRect))
+            {
+                Text = row.Row.Author,
+                Detail = row.Row.Message,
+                Evidence = row.Row.Evidence.ToString(),
+                Foreground = ColorHex(TryParseHexColor(row.Row.AuthorColorHex, out var authorColor)
+                    ? authorColor
+                    : EvidenceColor(row.Row.Evidence)),
+                Background = ColorHex(SurfaceRaised)
+            });
+            y += row.Height + 8f;
+        }
+
+        return new DesignV2LayoutBody("chat", LayoutRect(rect))
+        {
+            Rows = rows,
+            DrawnRows = rows.Count
+        };
+    }
+
+    private static DesignV2LayoutBody BuildInputsLayout(RectangleF content, DesignV2InputsBody body)
+    {
+        var railWidth = body.HasRail
+            ? body.HasGraph
+                ? Math.Min(204f, Math.Max(136f, content.Width * 0.40f))
+                : Math.Min(240f, content.Width)
+            : 0f;
+        RectangleF? graph = body.HasGraph
+            ? new RectangleF(
+                content.Left,
+                content.Top + 6,
+                Math.Max(160, content.Width - railWidth - (body.HasRail ? 18 : 0)),
+                Math.Max(40, content.Height - 12))
+            : null;
+        RectangleF? rail = null;
+        IReadOnlyList<DesignV2LayoutInputItem> inputItems = [];
+        if (body.HasRail)
+        {
+            var railLeft = graph is { } railGraph
+                ? railGraph.Right + 18
+                : content.Left + (content.Width - railWidth) / 2f;
+            rail = new RectangleF(railLeft, content.Top, railWidth, content.Height);
+            inputItems = BuildInputRailLayout(
+                    rail.Value,
+                    body.ShowThrottle,
+                    body.ShowBrake,
+                    body.ShowClutch,
+                    body.ShowSteering,
+                    body.ShowGear,
+                    body.ShowSpeed)
+                .Items
+                .Select(item => new DesignV2LayoutInputItem(item.Kind.ToString(), LayoutRect(item.Bounds)))
+                .ToArray();
+        }
+
+        return new DesignV2LayoutBody("inputs", LayoutRect(content))
+        {
+            Inputs = new DesignV2LayoutInputs(
+                body.HasContent,
+                LayoutRect(graph),
+                LayoutRect(rail),
+                railWidth,
+                body.Trace.Count,
+                inputItems)
+            {
+                TraceSeries = BuildInputTraceLayouts(graph, body),
+                GridLines = BuildInputGridLines(graph)
+            }
+        };
+    }
+
+    private static IReadOnlyList<DesignV2LayoutInputTraceSeries> BuildInputTraceLayouts(RectangleF? graph, DesignV2InputsBody body)
+    {
+        if (graph is not { } graphRect)
+        {
+            return [];
+        }
+
+        var series = new List<DesignV2LayoutInputTraceSeries>();
+        AddTrace(body.ShowThrottleTrace, "throttle", Green, point => point.Throttle);
+        AddTrace(body.ShowBrakeTrace, "brake", Error, point => point.Brake);
+        AddTrace(body.ShowClutchTrace, "clutch", Cyan, point => point.Clutch);
+        if (body.ShowBrakeTrace && body.Trace.Count >= 2)
+        {
+            var absSegments = new List<DesignV2LayoutTraceCurveSegment>();
+            for (var index = 1; index < body.Trace.Count; index++)
+            {
+                if (!body.Trace[index].BrakeAbsActive)
+                {
+                    continue;
+                }
+
+                var start = InputTracePoint(body.Trace[index - 1].Brake, index - 1, body.Trace.Count, graphRect);
+                var end = InputTracePoint(body.Trace[index].Brake, index, body.Trace.Count, graphRect);
+                absSegments.Add(new DesignV2LayoutTraceCurveSegment(start, start, end, end));
+            }
+
+            if (absSegments.Count > 0)
+            {
+                series.Add(new DesignV2LayoutInputTraceSeries("brake-abs", ColorHex(Amber), 3f)
+                {
+                    Curves = absSegments
+                });
+            }
+        }
+
+        return series;
+
+        void AddTrace(bool enabled, string kind, Color color, Func<InputStateTracePoint, double> select)
+        {
+            if (!enabled)
+            {
+                return;
+            }
+
+            if (body.Trace.Count < 2)
+            {
+                var y = graphRect.Top + graphRect.Height / 2f;
+                var start = LayoutPoint(graphRect.Left + 8f, y);
+                var end = LayoutPoint(graphRect.Right - 8f, y);
+                series.Add(new DesignV2LayoutInputTraceSeries(kind, ColorHex(Color.FromArgb(60, color)), 2f)
+                {
+                    Curves = [new DesignV2LayoutTraceCurveSegment(start, start, end, end)]
+                });
+                return;
+            }
+
+            var points = body.Trace
+                .Select((point, index) => InputTracePoint(select(point), index, body.Trace.Count, graphRect))
+                .ToArray();
+            series.Add(new DesignV2LayoutInputTraceSeries(kind, ColorHex(color), 2f)
+            {
+                Points = points,
+                Curves = BuildSmoothTraceCurves(points)
+            });
+        }
+    }
+
+    private static IReadOnlyList<DesignV2LayoutLine> BuildInputGridLines(RectangleF? graph)
+    {
+        if (graph is not { } graphRect)
+        {
+            return [];
+        }
+
+        var lines = new List<DesignV2LayoutLine>();
+        for (var step = 1; step < 4; step++)
+        {
+            var y = graphRect.Top + graphRect.Height * step / 4f;
+            lines.Add(new DesignV2LayoutLine(
+                "input-grid",
+                LayoutPoint(graphRect.Left, y),
+                LayoutPoint(graphRect.Right, y))
+            {
+                Color = ColorHex(Color.FromArgb(46, TextMuted)),
+                StrokeWidth = 1f
+            });
+        }
+
+        return lines;
+    }
+
+    private static DesignV2LayoutPoint InputTracePoint(double value, int index, int count, RectangleF rect)
+    {
+        return LayoutPoint(
+            rect.Left + index / (float)Math.Max(1, count - 1) * rect.Width,
+            rect.Bottom - (float)Math.Clamp(value, 0d, 1d) * rect.Height);
+    }
+
+    private static IReadOnlyList<DesignV2LayoutTraceCurveSegment> BuildSmoothTraceCurves(IReadOnlyList<DesignV2LayoutPoint> points)
+    {
+        if (points.Count < 2)
+        {
+            return [];
+        }
+
+        var curves = new List<DesignV2LayoutTraceCurveSegment>();
+        for (var index = 0; index < points.Count - 1; index++)
+        {
+            var p0 = index == 0 ? points[index] : points[index - 1];
+            var p1 = points[index];
+            var p2 = points[index + 1];
+            var p3 = index + 2 < points.Count ? points[index + 2] : p2;
+            var control1 = LayoutPoint(
+                p1.X + (p2.X - p0.X) / 6f,
+                ClampSmoothInputControlY(p1.Y + (p2.Y - p0.Y) / 6f, p1.Y, p2.Y));
+            var control2 = LayoutPoint(
+                p2.X - (p3.X - p1.X) / 6f,
+                ClampSmoothInputControlY(p2.Y - (p3.Y - p1.Y) / 6f, p1.Y, p2.Y));
+            curves.Add(new DesignV2LayoutTraceCurveSegment(p1, control1, control2, p2));
+        }
+
+        return curves;
+    }
+
+    private static DesignV2LayoutBody BuildRadarLayout(RectangleF rect, DesignV2RadarBody radar)
+    {
+        var model = radar.RenderModel;
+        var surfaceAlpha = Math.Clamp(radar.SurfaceAlpha, 0d, 1d);
+        var diameter = Math.Max(20, Math.Min(rect.Width, rect.Height));
+        var radarRect = new RectangleF(
+            rect.Left + (rect.Width - diameter) / 2f,
+            rect.Top + (rect.Height - diameter) / 2f,
+            diameter,
+            diameter);
+        var scaleX = radarRect.Width / (float)Math.Max(1d, model.Width);
+        var scaleY = radarRect.Height / (float)Math.Max(1d, model.Height);
+        return new DesignV2LayoutBody("radar", LayoutRect(rect))
+        {
+            Vector = new DesignV2LayoutVector(
+                LayoutRect(radarRect),
+                model.Width,
+                model.Height,
+                scaleX,
+                scaleY,
+                model.Cars.Count,
+                model.Rings.Count,
+                model.Labels.Count)
+            {
+                Items = model.Cars.Select(car => new DesignV2LayoutVectorItem(
+                    car.Kind,
+                    car.CarIdx,
+                    LayoutRect(ScaleRect(radarRect, car.X, car.Y, car.Width, car.Height, scaleX, scaleY)))).ToArray(),
+                ShouldRender = model.ShouldRender && surfaceAlpha > model.MinimumVisibleAlpha,
+                SurfaceAlpha = surfaceAlpha
+            }
+        };
+    }
+
+    private static DesignV2LayoutBody BuildTrackMapLayout(RectangleF rect, DesignV2TrackMapBody body)
+    {
+        var model = body.RenderModel;
+        var size = Math.Max(20, Math.Min(rect.Width, rect.Height));
+        var target = new RectangleF(
+            rect.Left + (rect.Width - size) / 2f,
+            rect.Top + (rect.Height - size) / 2f,
+            size,
+            size);
+        var scaleX = target.Width / (float)Math.Max(1d, model.Width);
+        var scaleY = target.Height / (float)Math.Max(1d, model.Height);
+        return new DesignV2LayoutBody("track-map", LayoutRect(rect))
+        {
+            Vector = new DesignV2LayoutVector(
+                LayoutRect(target),
+                model.Width,
+                model.Height,
+                scaleX,
+                scaleY,
+                model.Markers.Count,
+                model.Primitives.Count,
+                0)
+            {
+                Items = model.Markers.Select(marker => new DesignV2LayoutVectorItem(
+                    marker.IsFocus ? "focus-marker" : "marker",
+                    marker.CarIdx,
+                    LayoutRect(new RectangleF(
+                        target.Left + (float)(marker.X - marker.Radius) * scaleX,
+                        target.Top + (float)(marker.Y - marker.Radius) * scaleY,
+                        (float)(marker.Radius * 2d) * scaleX,
+                        (float)(marker.Radius * 2d) * scaleY)))).ToArray(),
+                ShouldRender = model.IsAvailable
+            }
+        };
+    }
+
+    private static DesignV2LayoutBody BuildFlagsLayout(RectangleF rect, DesignV2FlagsBody body)
+    {
+        var bounds = new RectangleF(
+            rect.Left + FlagOuterPadding,
+            rect.Top + FlagOuterPadding,
+            Math.Max(1f, rect.Width - FlagOuterPadding * 2f),
+            Math.Max(1f, rect.Height - FlagOuterPadding * 2f));
+        var (columns, rows) = FlagGridFor(body.Flags.Count);
+        var cellWidth = (bounds.Width - (columns - 1) * FlagCellGap) / columns;
+        var cellHeight = (bounds.Height - (rows - 1) * FlagCellGap) / rows;
+        var cells = new List<DesignV2LayoutFlagCell>();
+        for (var index = 0; index < body.Flags.Count; index++)
+        {
+            var row = index / columns;
+            var column = index % columns;
+            var cell = new RectangleF(
+                bounds.Left + column * (cellWidth + FlagCellGap),
+                bounds.Top + row * (cellHeight + FlagCellGap),
+                cellWidth,
+                cellHeight);
+            var poleX = cell.Left + Math.Max(12f, cell.Width * 0.16f);
+            var clothLeft = poleX + (cell.Height < 92f || cell.Width < 132f ? 8f : 11f);
+            var clothWidth = Math.Max(48f, cell.Right - clothLeft - 8f);
+            var clothHeight = Math.Max(24f, Math.Min(cell.Height * 0.7f, clothWidth * 0.58f));
+            var clothTop = cell.Top + Math.Max(4f, (cell.Height - clothHeight) * 0.32f);
+            cells.Add(new DesignV2LayoutFlagCell(
+                index,
+                row,
+                column,
+                body.Flags[index].Kind.ToString(),
+                LayoutRect(cell),
+                LayoutRect(new RectangleF(clothLeft, clothTop, clothWidth, clothHeight))));
+        }
+
+        return new DesignV2LayoutBody("flags", LayoutRect(rect))
+        {
+            GridColumns = columns,
+            GridRows = rows,
+            FlagCells = cells,
+            DrawnRows = body.Flags.Count
+        };
+    }
+
+    private static DesignV2LayoutRect LayoutRect(Rectangle bounds)
+    {
+        return new DesignV2LayoutRect(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+    }
+
+    private static DesignV2LayoutRect LayoutRect(RectangleF bounds)
+    {
+        return new DesignV2LayoutRect(
+            RoundLayout(bounds.X),
+            RoundLayout(bounds.Y),
+            RoundLayout(bounds.Width),
+            RoundLayout(bounds.Height));
+    }
+
+    private static DesignV2LayoutRect? LayoutRect(RectangleF? bounds)
+    {
+        return bounds is { } value ? LayoutRect(value) : null;
+    }
+
+    private static DesignV2LayoutPoint LayoutPoint(PointF point)
+    {
+        return LayoutPoint(point.X, point.Y);
+    }
+
+    private static DesignV2LayoutPoint LayoutPoint(float x, float y)
+    {
+        return new DesignV2LayoutPoint(RoundLayout(x), RoundLayout(y));
+    }
+
+    private static float GapAxisToX(DesignV2GraphBody graph, RectangleF plot, double axisSeconds)
+    {
+        var domain = Math.Max(1d, graph.EndSeconds - graph.StartSeconds);
+        return plot.Left + (float)Math.Clamp((axisSeconds - graph.StartSeconds) / domain, 0d, 1d) * plot.Width;
+    }
+
+    private static float RoundLayout(float value)
+    {
+        return MathF.Round(value, 3);
+    }
+
+    private static string AlignmentName(ContentAlignment alignment)
+    {
+        return alignment switch
+        {
+            ContentAlignment.TopRight or ContentAlignment.MiddleRight or ContentAlignment.BottomRight => "right",
+            ContentAlignment.TopCenter or ContentAlignment.MiddleCenter or ContentAlignment.BottomCenter => "center",
+            _ => "left"
+        };
+    }
+
+    private static string ColorHex(Color color)
+    {
+        return $"#{color.A:X2}{color.R:X2}{color.G:X2}{color.B:X2}";
     }
 
     private bool DrawCustomOverlay(Graphics graphics, Rectangle bounds, DesignV2OverlayModel model)
@@ -6255,6 +7369,334 @@ internal sealed record DesignV2OverlayModel(
     bool ShowHeader = true);
 
 internal abstract record DesignV2Body;
+
+internal sealed record DesignV2LayoutDiagnostics(
+    string Contract,
+    string Kind,
+    DesignV2LayoutRect Client,
+    DesignV2LayoutConstants Constants)
+{
+    public DesignV2LayoutRect? Outer { get; init; }
+
+    public DesignV2LayoutRect? Header { get; init; }
+
+    public DesignV2LayoutRect? Body { get; init; }
+
+    public DesignV2LayoutRect? Footer { get; init; }
+
+    public bool ShowHeader { get; init; }
+
+    public bool ShowFooter { get; init; }
+
+    public DesignV2LayoutBody? BodyLayout { get; init; }
+}
+
+internal readonly record struct DesignV2LayoutRect(float X, float Y, float Width, float Height);
+
+internal readonly record struct DesignV2LayoutPoint(float X, float Y);
+
+internal sealed record DesignV2LayoutConstants(
+    int Padding,
+    int HeaderHeight,
+    int FooterHeight,
+    int BodyGap,
+    int RowHeight,
+    int RowGap,
+    int ColumnGap,
+    int MinimumColumnWidth,
+    int MetricLabelWidth);
+
+internal sealed record DesignV2LayoutBody(string Kind, DesignV2LayoutRect Bounds)
+{
+    public string? State { get; init; }
+
+    public float ConfiguredWidth { get; init; }
+
+    public float AvailableWidth { get; init; }
+
+    public float FitScale { get; init; }
+
+    public int MaximumRows { get; init; }
+
+    public int DrawnRows { get; init; }
+
+    public int GridColumns { get; init; }
+
+    public int GridRows { get; init; }
+
+    public float GridHeight { get; init; }
+
+    public DesignV2LayoutRect? RowsBounds { get; init; }
+
+    public IReadOnlyList<DesignV2LayoutColumn> Columns { get; init; } = [];
+
+    public IReadOnlyList<DesignV2LayoutRow> Rows { get; init; } = [];
+
+    public IReadOnlyList<DesignV2LayoutMetricRow> MetricRows { get; init; } = [];
+
+    public IReadOnlyList<DesignV2LayoutMetricGrid> MetricGrids { get; init; } = [];
+
+    public IReadOnlyList<DesignV2LayoutFlagCell> FlagCells { get; init; } = [];
+
+    public DesignV2LayoutGraph? Graph { get; init; }
+
+    public DesignV2LayoutInputs? Inputs { get; init; }
+
+    public DesignV2LayoutVector? Vector { get; init; }
+}
+
+internal sealed record DesignV2LayoutColumn(
+    int Index,
+    string Label,
+    int ConfiguredWidth,
+    float RenderedWidth,
+    string Alignment,
+    DesignV2LayoutRect Bounds);
+
+internal sealed record DesignV2LayoutRow(
+    int Index,
+    int SourceIndex,
+    string Kind,
+    DesignV2LayoutRect Bounds)
+{
+    public string? Text { get; init; }
+
+    public string? Detail { get; init; }
+
+    public string? Evidence { get; init; }
+
+    public string? Foreground { get; init; }
+
+    public string? Background { get; init; }
+
+    public string? ClassColorHex { get; init; }
+
+    public int? RelativeLapDelta { get; init; }
+
+    public IReadOnlyList<DesignV2LayoutCell> Cells { get; init; } = [];
+}
+
+internal sealed record DesignV2LayoutCell(
+    int ColumnIndex,
+    string ColumnLabel,
+    string Text,
+    DesignV2LayoutRect Bounds,
+    string Alignment)
+{
+    public string? Evidence { get; init; }
+
+    public string? Foreground { get; init; }
+
+    public string? Background { get; init; }
+}
+
+internal sealed record DesignV2LayoutMetricRow(
+    string Label,
+    string Value,
+    DesignV2LayoutRect Bounds,
+    DesignV2LayoutRect LabelBounds,
+    DesignV2LayoutRect ValueBounds)
+{
+    public string? Section { get; init; }
+
+    public DesignV2LayoutRect? SectionTitleBounds { get; init; }
+
+    public string? Evidence { get; init; }
+
+    public string? Foreground { get; init; }
+
+    public string? Background { get; init; }
+
+    public string? Accent { get; init; }
+
+    public IReadOnlyList<DesignV2LayoutMetricSegment> Segments { get; init; } = [];
+}
+
+internal sealed record DesignV2LayoutMetricSegment(
+    int Index,
+    string Label,
+    string Value,
+    DesignV2LayoutRect Bounds,
+    DesignV2LayoutRect LabelBounds,
+    DesignV2LayoutRect ValueBounds)
+{
+    public string? Evidence { get; init; }
+
+    public string? Foreground { get; init; }
+
+    public string? Background { get; init; }
+
+    public string? Accent { get; init; }
+
+    public double? RotationDegrees { get; init; }
+}
+
+internal sealed record DesignV2LayoutMetricGrid(
+    string Title,
+    DesignV2LayoutRect Bounds,
+    IReadOnlyList<DesignV2LayoutCell> Headers,
+    IReadOnlyList<DesignV2LayoutRow> Rows);
+
+internal sealed record DesignV2LayoutGraph(
+    DesignV2LayoutRect Frame,
+    DesignV2LayoutRect Plot,
+    DesignV2LayoutRect Axis,
+    DesignV2LayoutRect LabelLane,
+    DesignV2LayoutRect? MetricsTable,
+    int PointCount,
+    int SeriesCount,
+    int SeriesPointCount,
+    int TrendMetricCount,
+    double StartSeconds,
+    double EndSeconds)
+{
+    public IReadOnlyList<DesignV2LayoutGraphSeries> Series { get; init; } = [];
+
+    public IReadOnlyList<DesignV2LayoutGraphBand> WeatherBands { get; init; } = [];
+
+    public IReadOnlyList<DesignV2LayoutGraphMarker> Markers { get; init; } = [];
+
+    public IReadOnlyList<DesignV2LayoutRow> MetricRows { get; init; } = [];
+
+    public string? Scale { get; init; }
+
+    public double? AheadSeconds { get; init; }
+
+    public double? BehindSeconds { get; init; }
+
+    public double? LatestReferenceGapSeconds { get; init; }
+
+    public double? MaxGapSeconds { get; init; }
+
+    public double? LapReferenceSeconds { get; init; }
+
+    public string? ComparisonLabel { get; init; }
+}
+
+internal sealed record DesignV2LayoutGraphSeries(
+    int Index,
+    int DrawPriority,
+    int CarIdx,
+    bool IsReference,
+    bool IsClassLeader,
+    int? ClassPosition,
+    int PointCount,
+    string BaseColor,
+    string RenderedColor,
+    double Alpha,
+    double EffectiveAlpha,
+    float StrokeWidth,
+    bool IsDashed,
+    bool IsStickyExit,
+    bool IsStale)
+{
+    public IReadOnlyList<DesignV2LayoutGraphPoint> Points { get; init; } = [];
+
+    public DesignV2LayoutPoint? LatestPoint { get; init; }
+
+    public string? EndpointLabel { get; init; }
+}
+
+internal sealed record DesignV2LayoutGraphPoint(
+    double AxisSeconds,
+    double GapSeconds,
+    bool StartsSegment,
+    DesignV2LayoutPoint Point);
+
+internal sealed record DesignV2LayoutGraphBand(
+    string Kind,
+    double StartAxisSeconds,
+    double EndAxisSeconds,
+    DesignV2LayoutRect Bounds,
+    string Color);
+
+internal sealed record DesignV2LayoutGraphMarker(
+    string Kind,
+    string Label,
+    DesignV2LayoutPoint Start,
+    DesignV2LayoutPoint End)
+{
+    public double? AxisSeconds { get; init; }
+
+    public double? GapSeconds { get; init; }
+
+    public int? CarIdx { get; init; }
+
+    public bool? IsReference { get; init; }
+
+    public string? Color { get; init; }
+}
+
+internal sealed record DesignV2LayoutInputs(
+    bool HasContent,
+    DesignV2LayoutRect? Graph,
+    DesignV2LayoutRect? Rail,
+    float RailWidth,
+    int TracePointCount,
+    IReadOnlyList<DesignV2LayoutInputItem> Items)
+{
+    public IReadOnlyList<DesignV2LayoutLine> GridLines { get; init; } = [];
+
+    public IReadOnlyList<DesignV2LayoutInputTraceSeries> TraceSeries { get; init; } = [];
+}
+
+internal sealed record DesignV2LayoutInputItem(string Kind, DesignV2LayoutRect Bounds);
+
+internal sealed record DesignV2LayoutLine(
+    string Kind,
+    DesignV2LayoutPoint Start,
+    DesignV2LayoutPoint End)
+{
+    public string? Color { get; init; }
+
+    public float? StrokeWidth { get; init; }
+}
+
+internal sealed record DesignV2LayoutInputTraceSeries(
+    string Kind,
+    string Color,
+    float StrokeWidth)
+{
+    public IReadOnlyList<DesignV2LayoutPoint> Points { get; init; } = [];
+
+    public IReadOnlyList<DesignV2LayoutTraceCurveSegment> Curves { get; init; } = [];
+}
+
+internal sealed record DesignV2LayoutTraceCurveSegment(
+    DesignV2LayoutPoint Start,
+    DesignV2LayoutPoint Control1,
+    DesignV2LayoutPoint Control2,
+    DesignV2LayoutPoint End);
+
+internal sealed record DesignV2LayoutVector(
+    DesignV2LayoutRect Target,
+    double SourceWidth,
+    double SourceHeight,
+    float ScaleX,
+    float ScaleY,
+    int ItemCount,
+    int PrimitiveCount,
+    int LabelCount)
+{
+    public bool ShouldRender { get; init; }
+
+    public double? SurfaceAlpha { get; init; }
+
+    public IReadOnlyList<DesignV2LayoutVectorItem> Items { get; init; } = [];
+}
+
+internal sealed record DesignV2LayoutVectorItem(
+    string Kind,
+    int? Id,
+    DesignV2LayoutRect Bounds);
+
+internal sealed record DesignV2LayoutFlagCell(
+    int Index,
+    int Row,
+    int Column,
+    string Kind,
+    DesignV2LayoutRect Bounds,
+    DesignV2LayoutRect ClothBounds);
 
 internal sealed record DesignV2TableBody(
     IReadOnlyList<DesignV2Column> Columns,

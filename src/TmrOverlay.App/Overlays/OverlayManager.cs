@@ -716,7 +716,11 @@ internal sealed class OverlayManager : IDisposable
                     registration.Definition.Id,
                     () => registration.Create(settings));
                 var wasVisible = form.Visible;
-                ApplyScaleIfChanged(registration.Definition, settings, form);
+                ApplyScaleIfChanged(
+                    registration.Definition,
+                    settings,
+                    form,
+                    sessionPreviewActive: _sessionPreviewState.Snapshot().Active);
                 ApplyOpacityIfChanged(registration.Definition, settings, form);
                 ApplySettingsWindowInputProtection(form);
                 ApplyRadarSettingsPreview(form, settingsPreview);
@@ -841,16 +845,16 @@ internal sealed class OverlayManager : IDisposable
         }
     }
 
-    private void ApplyScaleIfChanged(OverlayDefinition definition, OverlaySettings settings, Form form)
+    private void ApplyScaleIfChanged(
+        OverlayDefinition definition,
+        OverlaySettings settings,
+        Form form,
+        bool sessionPreviewActive)
     {
-        settings.Scale = Math.Clamp(settings.Scale, 0.6d, 2d);
-        ApplyFlagsCompactPolicy(definition, settings);
-        var size = ScaledOverlaySize(definition, settings);
-        settings.Width = size.Width;
-        settings.Height = size.Height;
+        var size = TargetOverlayClientSizeForApply(definition, settings, form.ClientSize, sessionPreviewActive);
         if (_appliedScales.TryGetValue(definition.Id, out var appliedScale)
             && Math.Abs(appliedScale - settings.Scale) < 0.001d
-            && (form.ClientSize == size || ShouldPreserveExpandedOverlayHeight(definition, form.ClientSize, size)))
+            && form.ClientSize == size)
         {
             return;
         }
@@ -859,12 +863,30 @@ internal sealed class OverlayManager : IDisposable
         _appliedScales[definition.Id] = settings.Scale;
     }
 
+    internal static Size TargetOverlayClientSizeForApply(
+        OverlayDefinition definition,
+        OverlaySettings settings,
+        Size currentSize,
+        bool sessionPreviewActive)
+    {
+        settings.Scale = Math.Clamp(settings.Scale, 0.6d, 2d);
+        ApplyFlagsCompactPolicy(definition, settings);
+        var size = ScaledOverlaySize(definition, settings);
+        settings.Width = size.Width;
+        settings.Height = size.Height;
+        return ShouldPreserveExpandedOverlayHeight(definition, currentSize, size, sessionPreviewActive)
+            ? currentSize
+            : size;
+    }
+
     internal static bool ShouldPreserveExpandedOverlayHeight(
         OverlayDefinition definition,
         Size currentSize,
-        Size targetSize)
+        Size targetSize,
+        bool sessionPreviewActive = false)
     {
-        return string.Equals(definition.Id, StandingsOverlayDefinition.Definition.Id, StringComparison.Ordinal)
+        return !sessionPreviewActive
+            && string.Equals(definition.Id, StandingsOverlayDefinition.Definition.Id, StringComparison.Ordinal)
             && currentSize.Width == targetSize.Width
             && currentSize.Height > targetSize.Height;
     }
@@ -1370,7 +1392,11 @@ internal sealed class OverlayManager : IDisposable
             registration.Definition.Id,
             () => registration.Create(settings));
         var wasVisible = form.Visible;
-        ApplyScaleIfChanged(registration.Definition, settings, form);
+        ApplyScaleIfChanged(
+            registration.Definition,
+            settings,
+            form,
+            sessionPreviewActive: _sessionPreviewState.Snapshot().Active);
         ApplyOpacityIfChanged(registration.Definition, settings, form);
         ApplySettingsWindowInputProtection(form);
         var fadeAllowsVisible = ApplyLiveTelemetryFade(

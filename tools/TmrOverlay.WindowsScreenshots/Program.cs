@@ -8,6 +8,7 @@ using TmrOverlay.App.Diagnostics;
 using TmrOverlay.App.Events;
 using TmrOverlay.App.History;
 using TmrOverlay.App.Localhost;
+using TmrOverlay.App.Overlays;
 using TmrOverlay.App.Overlays.CarRadar;
 using TmrOverlay.App.Overlays.DesignV2;
 using TmrOverlay.App.Overlays.Flags;
@@ -324,6 +325,32 @@ internal static class Program
             }
         }
 
+        screenshots.Add(RenderForm(
+            outputRoot,
+            "standings-preview-sizing-race",
+            "Native Standings - Race Preview Sizing",
+            () =>
+            {
+                var overlay = new NativeOverlaySpec(DesignV2LiveOverlayKind.Standings, StandingsOverlayDefinition.Definition);
+                var settings = OverlaySettingsFor(
+                    StandingsOverlayDefinition.Definition,
+                    width: StandingsOverlayDefinition.Definition.DefaultWidth,
+                    height: 2160);
+                var form = CreateDesignV2LiveOverlayForm(overlay, OverlaySessionKind.Race, settings);
+                form.ClientSize = OverlayManager.TargetOverlayClientSizeForApply(
+                    StandingsOverlayDefinition.Definition,
+                    settings,
+                    form.ClientSize,
+                    sessionPreviewActive: true);
+                return form;
+            },
+            refreshPasses: NativeRefreshPassesFor(DesignV2LiveOverlayKind.Standings),
+            relativeDirectory: "native-overlays",
+            metadata: NativeOverlayMetadata("standings", "race") with
+            {
+                Fixture = "SessionPreviewTelemetryFixtures/preview-sizing-persisted-expanded-height"
+            }));
+
         return screenshots;
     }
 
@@ -497,7 +524,10 @@ internal static class Program
         return form;
     }
 
-    private static Form CreateDesignV2LiveOverlayForm(NativeOverlaySpec overlay, OverlaySessionKind previewMode)
+    private static Form CreateDesignV2LiveOverlayForm(
+        NativeOverlaySpec overlay,
+        OverlaySessionKind previewMode,
+        OverlaySettings? settingsOverride = null)
     {
         var storage = StorageOptionsFor(Path.Combine(
             Path.GetTempPath(),
@@ -510,7 +540,7 @@ internal static class Program
                 previewMode,
                 DateTimeOffset.UtcNow,
                 generation: frame.Index + 1));
-        var settings = OverlaySettingsFor(overlay.Definition);
+        var settings = settingsOverride ?? OverlaySettingsFor(overlay.Definition);
         if (overlay.Kind == DesignV2LiveOverlayKind.StreamChat)
         {
             settings.SetStringOption(OverlayOptionKeys.StreamChatProvider, StreamChatOverlaySettings.ProviderNone);
@@ -988,7 +1018,8 @@ internal static class Program
                 Body = designV2.DiagnosticBodyKind,
                 RadarShouldRender = designV2.DiagnosticRadarShouldRender,
                 RadarSurfaceAlpha = designV2.DiagnosticRadarSurfaceAlpha,
-                RadarCarCount = designV2.DiagnosticRadarCarCount
+                RadarCarCount = designV2.DiagnosticRadarCarCount,
+                Layout = designV2.DiagnosticLayout
             };
         }
 
@@ -1079,7 +1110,8 @@ internal static class Program
                     body = screenshot.Metadata.Body,
                     radarShouldRender = screenshot.Metadata.RadarShouldRender,
                     radarSurfaceAlpha = screenshot.Metadata.RadarSurfaceAlpha,
-                    radarCarCount = screenshot.Metadata.RadarCarCount
+                    radarCarCount = screenshot.Metadata.RadarCarCount,
+                    layout = screenshot.Metadata.Layout
                 }
             })
         };
@@ -1161,7 +1193,8 @@ internal static class Program
         string? Body = null,
         bool? RadarShouldRender = null,
         double? RadarSurfaceAlpha = null,
-        int? RadarCarCount = null);
+        int? RadarCarCount = null,
+        DesignV2LayoutDiagnostics? Layout = null);
 
     private sealed record SettingsRegionSpec(string Id, string Label);
 
