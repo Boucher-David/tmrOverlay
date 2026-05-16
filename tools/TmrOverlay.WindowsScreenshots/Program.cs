@@ -273,7 +273,7 @@ internal static class Program
                 "settings-support",
                 "Settings - Support",
                 () => CreateSettingsForm("Support"),
-                metadata: SettingsMetadata(null, "support", null))
+                metadata: SettingsMetadata(null, "general", null, "support"))
         };
 
         foreach (var (definition, tabText) in SettingsOverlayTabs())
@@ -323,7 +323,8 @@ internal static class Program
                         : null,
                     refreshPasses: NativeRefreshPassesFor(overlay.Kind),
                     relativeDirectory: "native-overlays",
-                    metadata: NativeOverlayMetadata(overlay.Definition.Id, previewMode.FileStem)));
+                    metadata: NativeOverlayMetadata(overlay.Definition.Id, previewMode.FileStem),
+                    beforeCapture: form => ApplyReviewAlignedNativeModelIfAvailable(form, overlay.Definition.Id, previewMode.Kind)));
             }
         }
 
@@ -350,8 +351,11 @@ internal static class Program
             relativeDirectory: "native-overlays",
             metadata: NativeOverlayMetadata("standings", "race") with
             {
-                Fixture = "SessionPreviewTelemetryFixtures/preview-sizing-persisted-expanded-height"
-            }));
+                Fixture = "browser-review/static-overlay-model + windows-native-sizing-persisted-expanded-height",
+                FixtureParity = "model-data-aligned-with-browser-review-and-localhost",
+                ComparisonLimit = "This screenshot intentionally keeps a persisted expanded Windows height to validate preview sizing clamp/race behavior; compare row/cell model data to browser/localhost, not overall window height."
+            },
+            beforeCapture: form => ApplyReviewAlignedNativeModelIfAvailable(form, "standings", OverlaySessionKind.Race)));
 
         return screenshots;
     }
@@ -677,6 +681,378 @@ internal static class Program
         ];
     }
 
+    private static readonly HashSet<string> ReviewAlignedNativeOverlayIds = new(StringComparer.OrdinalIgnoreCase)
+    {
+        StandingsOverlayDefinition.Definition.Id,
+        RelativeOverlayDefinition.Definition.Id,
+        FuelCalculatorOverlayDefinition.Definition.Id,
+        PitServiceOverlayDefinition.Definition.Id
+    };
+
+    private static readonly HashSet<string> FullCanvasComparisonOverlayIds = new(StringComparer.OrdinalIgnoreCase)
+    {
+        CarRadarOverlayDefinition.Definition.Id,
+        TrackMapOverlayDefinition.Definition.Id,
+        FlagsOverlayDefinition.Definition.Id,
+        GarageCoverOverlayDefinition.Definition.Id
+    };
+
+    private static void ApplyReviewAlignedNativeModelIfAvailable(
+        Form form,
+        string overlayId,
+        OverlaySessionKind previewMode)
+    {
+        if (form is not DesignV2LiveOverlayForm designV2
+            || ReviewAlignedNativeModel(overlayId, previewMode) is not { } model)
+        {
+            return;
+        }
+
+        SetDesignV2Model(designV2, model);
+    }
+
+    private static DesignV2OverlayModel? ReviewAlignedNativeModel(string overlayId, OverlaySessionKind previewMode)
+    {
+        if (string.Equals(overlayId, StandingsOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            return ReviewStandingsModel(previewMode);
+        }
+
+        if (string.Equals(overlayId, RelativeOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            return ReviewRelativeModel(previewMode);
+        }
+
+        if (string.Equals(overlayId, FuelCalculatorOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            return ReviewFuelModel();
+        }
+
+        if (string.Equals(overlayId, PitServiceOverlayDefinition.Definition.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            return ReviewPitServiceModel();
+        }
+
+        return null;
+    }
+
+    private static void SetDesignV2Model(DesignV2LiveOverlayForm form, DesignV2OverlayModel model)
+    {
+        var field = typeof(DesignV2LiveOverlayForm).GetField("_model", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("DesignV2LiveOverlayForm._model was not found.");
+        field.SetValue(form, model);
+        form.Invalidate();
+    }
+
+    private static string? ReadDesignV2ModelFooter(DesignV2LiveOverlayForm form)
+    {
+        var field = typeof(DesignV2LiveOverlayForm).GetField("_model", BindingFlags.Instance | BindingFlags.NonPublic);
+        return field?.GetValue(form) is DesignV2OverlayModel model
+            ? model.Footer
+            : null;
+    }
+
+    private static DesignV2OverlayModel ReviewStandingsModel(OverlaySessionKind previewMode)
+    {
+        var status = $"scoring | {ReviewPreviewLabel(previewMode)}";
+        var rows = new[]
+        {
+            ReviewClassHeader("LMP2", "2 cars | ~10 laps", "#33CEFF"),
+            ReviewTableRow(["1", "#8", "Kousuke Konishi", "Leader", "-45.0", ""], null),
+            ReviewClassHeader("GT3", "3 cars | ~12.4 laps", "#FFAA00"),
+            ReviewTableRow(["1", "#000", "Kauan Vigliazzi Teixeira Lemos", "Leader", "-2.0", ""], null),
+            ReviewTableRow(["24", "#3094", "Tech Mates Racing", "+3.4", "0.0", ""], null, isReference: true),
+            ReviewTableRow(["49", "#60", "Tommie Wittens", "+8.9", "+5.5", "IN"], null)
+        };
+        return new DesignV2OverlayModel(
+            "Standings",
+            status,
+            "source: preview fixture extremes",
+            DesignV2Evidence.Measured,
+            new DesignV2TableBody(
+                [
+                    new DesignV2Column("CLS", 35, ContentAlignment.MiddleRight),
+                    new DesignV2Column("CAR", 50, ContentAlignment.MiddleRight),
+                    new DesignV2Column("Driver", 250, ContentAlignment.MiddleLeft),
+                    new DesignV2Column("GAP", 60, ContentAlignment.MiddleRight),
+                    new DesignV2Column("INT", 60, ContentAlignment.MiddleRight),
+                    new DesignV2Column("PIT", 30, ContentAlignment.MiddleRight)
+                ],
+                rows),
+            HeaderText: $"{status} | 06:37:08");
+    }
+
+    private static DesignV2OverlayModel ReviewRelativeModel(OverlaySessionKind previewMode)
+    {
+        var status = $"5 - 2/4 cars | {ReviewPreviewLabel(previewMode)}";
+        var showLapRelationship = OverlayAvailabilityEvaluator.NormalizeSessionKind(previewMode) == OverlaySessionKind.Race;
+        var rows = Enumerable.Repeat(ReviewBlankTableRow(4), 11).ToArray();
+        rows[4] = ReviewTableRow(["3", "#34 Near Ahead", "-2.350", ""], "#33CEFF", relativeLapDelta: showLapRelationship ? (int?)1 : null);
+        rows[5] = ReviewTableRow(["5", "#55 Focus Driver", "0.000", ""], "#FFDA59", isReference: true, relativeLapDelta: showLapRelationship ? (int?)0 : null);
+        rows[6] = ReviewTableRow(["6", "#61 Near Behind", "+1.200", "IN"], "#FF4FD8", relativeLapDelta: showLapRelationship ? (int?)-2 : null);
+        return new DesignV2OverlayModel(
+            "Relative",
+            status,
+            "source: review fixture",
+            DesignV2Evidence.Live,
+            new DesignV2TableBody(
+                [
+                    new DesignV2Column("Pos", 38, ContentAlignment.MiddleRight),
+                    new DesignV2Column("Driver", 180, ContentAlignment.MiddleLeft),
+                    new DesignV2Column("Delta", 70, ContentAlignment.MiddleRight),
+                    new DesignV2Column("Pit", 30, ContentAlignment.MiddleRight)
+                ],
+                rows),
+            HeaderText: $"{status} | 06:37:08");
+    }
+
+    private static DesignV2OverlayModel ReviewFuelModel()
+    {
+        var raceRows = new[]
+        {
+            ReviewMetric("Plan", "31 laps | 3 stints | 2 stops", DesignV2Evidence.Measured,
+            [
+                ReviewSegment("Race", "31 laps", DesignV2Evidence.Measured),
+                ReviewSegment("Remain", "30.4 laps", DesignV2Evidence.Measured),
+                ReviewSegment("Stints", "3", DesignV2Evidence.Measured),
+                ReviewSegment("Stops", "2", DesignV2Evidence.Measured),
+                ReviewSegment("Save", "0.2 L/lap", DesignV2Evidence.Partial)
+            ]),
+            ReviewMetric("Fuel", "74.0 L | 3.1 L/lap | Covered", DesignV2Evidence.Live,
+            [
+                ReviewSegment("Current", "74.0 L", DesignV2Evidence.Measured),
+                ReviewSegment("Burn", "3.1 L/lap", DesignV2Evidence.Measured),
+                ReviewSegment("Tank", "34.2 laps", DesignV2Evidence.Measured),
+                ReviewSegment("Need", "Covered", DesignV2Evidence.Live)
+            ])
+        };
+        var stintRows = new[]
+        {
+            ReviewMetric("Stint 1", "12 laps | target 3.1 L/lap | tires free (36.8 L)", DesignV2Evidence.Measured,
+            [
+                ReviewSegment("Laps", "12 laps", DesignV2Evidence.Measured),
+                ReviewSegment("Target", "3.1 L/lap", DesignV2Evidence.Measured),
+                ReviewSegment("Save", "0.2 L/lap", DesignV2Evidence.Partial),
+                ReviewSegment("Tires", "free (36.8 L)", DesignV2Evidence.Live)
+            ]),
+            ReviewMetric("Stint 2", "12 laps | target 3.1 L/lap | tires free (36.8 L)", DesignV2Evidence.Measured,
+            [
+                ReviewSegment("Laps", "12 laps", DesignV2Evidence.Measured),
+                ReviewSegment("Target", "3.1 L/lap", DesignV2Evidence.Measured),
+                ReviewSegment("Save", "None", DesignV2Evidence.Live),
+                ReviewSegment("Tires", "free (36.8 L)", DesignV2Evidence.Live)
+            ]),
+            ReviewMetric("Stint 3", "7 laps final | target 3.1 L/lap | --", DesignV2Evidence.Measured,
+            [
+                ReviewSegment("Laps", "7 laps", DesignV2Evidence.Measured),
+                ReviewSegment("Target", "3.1 L/lap", DesignV2Evidence.Measured),
+                ReviewSegment("Save", "None", DesignV2Evidence.Live),
+                ReviewSegment("Tires", "--", DesignV2Evidence.Unavailable)
+            ])
+        };
+        var sections = new[]
+        {
+            new DesignV2MetricSection("Race Information", raceRows),
+            new DesignV2MetricSection("Stint Targets", stintRows)
+        };
+        return new DesignV2OverlayModel(
+            "Fuel Calculator",
+            "3 stints / 2 stops",
+            "burn 3.1 L/lap (live burn) | 34.2 laps/tank | history user | tires user pit history | gap O0.18 C0.04",
+            DesignV2Evidence.Modeled,
+            new DesignV2MetricRowsBody(sections.SelectMany(section => section.Rows).ToArray(), sections, []),
+            HeaderText: "3 stints / 2 stops | 06:37:08");
+    }
+
+    private static DesignV2OverlayModel ReviewPitServiceModel()
+    {
+        var sessionRows = new[]
+        {
+            ReviewMetric("Time / Laps", "03:58 | 148/179 laps", DesignV2Evidence.Measured,
+            [
+                ReviewSegment("Time", "03:58", DesignV2Evidence.Measured),
+                ReviewSegment("Laps", "148/179 laps", DesignV2Evidence.Measured)
+            ])
+        };
+        var pitSignalRows = new[]
+        {
+            ReviewMetric("Release", "RED - service active", DesignV2Evidence.Error, rowColorHex: "#FF6274"),
+            ReviewMetric("Pit status", "in progress", DesignV2Evidence.Error, rowColorHex: "#FF6274")
+        };
+        var serviceRows = new[]
+        {
+            ReviewMetric("Fuel request", "requested | 31.6 L", DesignV2Evidence.Measured,
+            [
+                ReviewSegment("Requested", "Yes", DesignV2Evidence.Live),
+                ReviewSegment("Selected", "31.6 L", DesignV2Evidence.Measured)
+            ]),
+            ReviewMetric("Tearoff", "requested", DesignV2Evidence.Measured,
+            [
+                ReviewSegment("Requested", "Yes", DesignV2Evidence.Live)
+            ]),
+            ReviewMetric("Repair", "12s required", DesignV2Evidence.Error,
+            [
+                ReviewSegment("Required", "12s", DesignV2Evidence.Error),
+                ReviewSegment("Optional", "18s", DesignV2Evidence.Partial)
+            ]),
+            ReviewMetric("Fast repair", "selected | available 1", DesignV2Evidence.Measured,
+            [
+                ReviewSegment("Selected", "Yes", DesignV2Evidence.Live),
+                ReviewSegment("Available", "1", DesignV2Evidence.Live)
+            ])
+        };
+        var sections = new[]
+        {
+            new DesignV2MetricSection("Session", sessionRows),
+            new DesignV2MetricSection("Pit Signal", pitSignalRows),
+            new DesignV2MetricSection("Service Request", serviceRows)
+        };
+        var grid = new[]
+        {
+            new DesignV2MetricGridSection(
+                "Tire Analysis",
+                ["Info", "FL", "FR", "RL", "RR"],
+                [
+                    ReviewGridRow(
+                        "Compound",
+                        [
+                            ReviewGridCell("S", DesignV2Evidence.Live),
+                            ReviewGridCell("S", DesignV2Evidence.Live),
+                            ReviewGridCell("S", DesignV2Evidence.Measured),
+                            ReviewGridCell("S", DesignV2Evidence.Live)
+                        ],
+                        DesignV2Evidence.Measured),
+                    ReviewGridRow(
+                        "Change request",
+                        [
+                            ReviewGridCell("Change", DesignV2Evidence.Live),
+                            ReviewGridCell("Change", DesignV2Evidence.Live),
+                            ReviewGridCell("Keep", DesignV2Evidence.Measured),
+                            ReviewGridCell("Change", DesignV2Evidence.Live)
+                        ],
+                        DesignV2Evidence.Measured),
+                    ReviewGridRow("Set limit", ["4 sets", "4 sets", "4 sets", "4 sets"], DesignV2Evidence.Measured),
+                    ReviewGridRow(
+                        "Sets available",
+                        [
+                            ReviewGridCell("2", DesignV2Evidence.Measured),
+                            ReviewGridCell("2", DesignV2Evidence.Measured),
+                            ReviewGridCell("0", DesignV2Evidence.Error),
+                            ReviewGridCell("2", DesignV2Evidence.Measured)
+                        ],
+                        DesignV2Evidence.Measured),
+                    ReviewGridRow("Sets used", ["2", "2", "3", "2"], DesignV2Evidence.Measured),
+                    ReviewGridRow("Pressure", ["1.9 bar", "1.9 bar", "1.9 bar", "1.9 bar"], DesignV2Evidence.Measured),
+                    ReviewGridRow("Temperature", ["83 C", "84 C", "79 C", "80 C"], DesignV2Evidence.Measured),
+                    ReviewGridRow("Wear", ["92/91/90%", "93/92/91%", "96/95/94%", "97/96/95%"], DesignV2Evidence.Measured),
+                    ReviewGridRow("Distance", ["18.4 km", "18.4 km", "18.4 km", "18.4 km"], DesignV2Evidence.Measured)
+                ])
+        };
+        return new DesignV2OverlayModel(
+            "Pit Service",
+            "service active",
+            "source: player/team pit service telemetry",
+            DesignV2Evidence.Error,
+            new DesignV2MetricRowsBody(sections.SelectMany(section => section.Rows).ToArray(), sections, grid),
+            HeaderText: "service active | 00:03:58");
+    }
+
+    private static string ReviewPreviewLabel(OverlaySessionKind previewMode)
+    {
+        return previewMode switch
+        {
+            OverlaySessionKind.Practice => "practice preview",
+            OverlaySessionKind.Qualifying => "qualifying preview",
+            OverlaySessionKind.Race => "race preview",
+            _ => "review fixture"
+        };
+    }
+
+    private static DesignV2TableRow ReviewClassHeader(string title, string detail, string classColorHex)
+    {
+        return new DesignV2TableRow(
+            [],
+            IsReference: false,
+            IsClassHeader: true,
+            DesignV2Evidence.Measured,
+            classColorHex,
+            ClassHeaderTitle: title,
+            ClassHeaderDetail: detail);
+    }
+
+    private static DesignV2TableRow ReviewTableRow(
+        IReadOnlyList<string> values,
+        string? classColorHex,
+        bool isReference = false,
+        int? relativeLapDelta = null)
+    {
+        return new DesignV2TableRow(
+            values,
+            isReference,
+            IsClassHeader: false,
+            DesignV2Evidence.Measured,
+            classColorHex,
+            RelativeLapDelta: relativeLapDelta);
+    }
+
+    private static DesignV2TableRow ReviewBlankTableRow(int columnCount)
+    {
+        return new DesignV2TableRow(
+            Enumerable.Repeat(string.Empty, Math.Max(0, columnCount)).ToArray(),
+            IsReference: false,
+            IsClassHeader: false,
+            DesignV2Evidence.Unavailable,
+            ClassColorHex: null);
+    }
+
+    private static DesignV2MetricRow ReviewMetric(
+        string label,
+        string value,
+        DesignV2Evidence evidence,
+        IReadOnlyList<DesignV2MetricSegment>? segments = null,
+        string? rowColorHex = null)
+    {
+        return new DesignV2MetricRow(label, value, evidence)
+        {
+            Segments = segments ?? Array.Empty<DesignV2MetricSegment>(),
+            RowColorHex = rowColorHex
+        };
+    }
+
+    private static DesignV2MetricSegment ReviewSegment(
+        string label,
+        string value,
+        DesignV2Evidence evidence)
+    {
+        return new DesignV2MetricSegment(label, value, evidence);
+    }
+
+    private static DesignV2MetricGridRow ReviewGridRow(
+        string label,
+        IReadOnlyList<string> values,
+        DesignV2Evidence evidence)
+    {
+        return new DesignV2MetricGridRow(
+            label,
+            values.Select(value => new DesignV2MetricGridCell(value, evidence)).ToArray(),
+            evidence);
+    }
+
+    private static DesignV2MetricGridRow ReviewGridRow(
+        string label,
+        IReadOnlyList<DesignV2MetricGridCell> cells,
+        DesignV2Evidence evidence)
+    {
+        return new DesignV2MetricGridRow(label, cells, evidence);
+    }
+
+    private static DesignV2MetricGridCell ReviewGridCell(
+        string value,
+        DesignV2Evidence evidence)
+    {
+        return new DesignV2MetricGridCell(value, evidence);
+    }
+
     private static IReadOnlyList<PreviewModeSpec> PreviewModes()
     {
         return
@@ -731,10 +1107,12 @@ internal static class Program
         Action<Bitmap>? postProcess = null,
         int refreshPasses = 1,
         string relativeDirectory = "states",
-        ScreenshotMetadata? metadata = null)
+        ScreenshotMetadata? metadata = null,
+        Action<Form>? beforeCapture = null)
     {
         using var form = createForm();
         PrepareForm(form, refreshPasses);
+        beforeCapture?.Invoke(form);
 
         using var bitmap = new Bitmap(form.ClientSize.Width, form.ClientSize.Height, PixelFormat.Format32bppArgb);
         form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, form.ClientSize));
@@ -981,9 +1359,9 @@ internal static class Program
         sheet.Save(Path.Combine(outputRoot, "contact-sheet.png"), ImageFormat.Png);
     }
 
-    private static ScreenshotMetadata SettingsMetadata(string? overlayId, string region, string? previewMode)
+    private static ScreenshotMetadata SettingsMetadata(string? overlayId, string region, string? previewMode, string? tabOverride = null)
     {
-        var tab = overlayId ?? (string.Equals(region, "support", StringComparison.Ordinal) ? "support" : "general");
+        var tab = tabOverride ?? overlayId ?? (string.Equals(region, "support", StringComparison.Ordinal) ? "support" : "general");
         return new ScreenshotMetadata(
             Surface: "windows-settings",
             Renderer: "SettingsOverlayForm/DesignV2SettingsSurface",
@@ -997,13 +1375,28 @@ internal static class Program
 
     private static ScreenshotMetadata NativeOverlayMetadata(string overlayId, string previewMode)
     {
+        var isReviewAligned = ReviewAlignedNativeOverlayIds.Contains(overlayId);
+        var isFullCanvasComparison = FullCanvasComparisonOverlayIds.Contains(overlayId);
         return new ScreenshotMetadata(
             Surface: "windows-native-overlay",
             Renderer: nameof(DesignV2LiveOverlayForm),
             OverlayId: overlayId,
             PreviewMode: previewMode,
-            Fixture: "SessionPreviewTelemetryFixtures",
-            SourceContract: OverlayDefinitionSourceFor(overlayId));
+            Fixture: isReviewAligned
+                ? "browser-review/static-overlay-model"
+                : "SessionPreviewTelemetryFixtures",
+            SourceContract: OverlayDefinitionSourceFor(overlayId),
+            FixtureParity: isReviewAligned
+                ? "model-data-aligned-with-browser-review-and-localhost"
+                : isFullCanvasComparison
+                    ? "source-model-not-forced; comparison-mode-differs"
+                    : "session-preview-telemetry-fixture",
+            ComparisonMode: isFullCanvasComparison
+                ? "native-cropped-overlay-window-vs-browser-localhost-full-canvas"
+                : "native-overlay-window-vs-browser-localhost-overlay-route",
+            ComparisonLimit: isFullCanvasComparison
+                ? "Browser review and localhost capture a full viewport/canvas route while Windows captures the transparent native overlay window; size and canvas bounds are intentionally not direct parity evidence."
+                : null);
     }
 
     private static ScreenshotMetadata CompleteMetadata(ScreenshotMetadata? metadata, Form form, string relativeDirectory, Rectangle? captureBounds)
@@ -1016,6 +1409,7 @@ internal static class Program
             completed = completed with
             {
                 Status = designV2.DiagnosticStatus,
+                ModelSource = ReadDesignV2ModelFooter(designV2),
                 Evidence = designV2.DiagnosticEvidence,
                 Body = designV2.DiagnosticBodyKind,
                 RadarShouldRender = designV2.DiagnosticRadarShouldRender,
@@ -1114,6 +1508,9 @@ internal static class Program
                 region = screenshot.Metadata.Region,
                 previewMode = screenshot.Metadata.PreviewMode,
                 fixture = screenshot.Metadata.Fixture,
+                fixtureParity = screenshot.Metadata.FixtureParity,
+                comparisonMode = screenshot.Metadata.ComparisonMode,
+                comparisonLimit = screenshot.Metadata.ComparisonLimit,
                 status = screenshot.Metadata.Status,
                 source = NativeSourceEvidence(screenshot.Metadata),
                 bodyKind = NormalizedBodyKind(screenshot.Metadata.Body),
@@ -1140,8 +1537,12 @@ internal static class Program
                     region = screenshot.Metadata.Region,
                     previewMode = screenshot.Metadata.PreviewMode,
                     fixture = screenshot.Metadata.Fixture,
+                    fixtureParity = screenshot.Metadata.FixtureParity,
+                    comparisonMode = screenshot.Metadata.ComparisonMode,
+                    comparisonLimit = screenshot.Metadata.ComparisonLimit,
                     sourceContract = screenshot.Metadata.SourceContract,
                     status = screenshot.Metadata.Status,
+                    modelSource = screenshot.Metadata.ModelSource,
                     evidence = screenshot.Metadata.Evidence,
                     body = screenshot.Metadata.Body,
                     radarShouldRender = screenshot.Metadata.RadarShouldRender,
@@ -1160,9 +1561,39 @@ internal static class Program
 
     private static object ScreenshotScenarioEvidence(ScreenshotMetadata metadata)
     {
-        var sourceFiles = string.IsNullOrWhiteSpace(metadata.SourceContract)
-            ? Array.Empty<object>()
-            : new[] { SourceFileEvidence(metadata.SourceContract) };
+        var sourceContracts = new List<string>
+        {
+            "tools/TmrOverlay.WindowsScreenshots/Program.cs"
+        };
+        if (!string.IsNullOrWhiteSpace(metadata.SourceContract))
+        {
+            sourceContracts.Add(metadata.SourceContract);
+        }
+
+        if (string.Equals(metadata.FixtureParity, "model-data-aligned-with-browser-review-and-localhost", StringComparison.Ordinal)
+            || string.Equals(metadata.Fixture, "browser-review/static-overlay-model", StringComparison.Ordinal))
+        {
+            sourceContracts.Add("tools/browser-review/server.mjs");
+            sourceContracts.Add("tools/browser-review/render-screenshots.mjs");
+            sourceContracts.Add("src/TmrOverlay.App/Overlays/BrowserSources/BrowserOverlayModelFactory.cs");
+        }
+
+        if (!string.IsNullOrWhiteSpace(metadata.Fixture)
+            && metadata.Fixture.StartsWith("SessionPreviewTelemetryFixtures", StringComparison.Ordinal))
+        {
+            sourceContracts.Add("src/TmrOverlay.App/Telemetry/SessionPreviewState.cs");
+        }
+
+        if (!string.IsNullOrWhiteSpace(metadata.Fixture)
+            && metadata.Fixture.Contains("windows-native-sizing-persisted-expanded-height", StringComparison.Ordinal))
+        {
+            sourceContracts.Add("src/TmrOverlay.App/Overlays/OverlayManager.cs");
+        }
+
+        var sourceFiles = sourceContracts
+            .Distinct(StringComparer.Ordinal)
+            .Select(SourceFileEvidence)
+            .ToArray();
         var payload = new
         {
             contract = "screenshot-scenario-evidence/v1",
@@ -1174,6 +1605,9 @@ internal static class Program
             region = metadata.Region,
             previewMode = metadata.PreviewMode,
             fixture = metadata.Fixture,
+            fixtureParity = metadata.FixtureParity,
+            comparisonMode = metadata.ComparisonMode,
+            comparisonLimit = metadata.ComparisonLimit,
             status = metadata.Status,
             bodyKind = NormalizedBodyKind(metadata.Body),
             source = NativeSourceEvidence(metadata),
@@ -1192,6 +1626,9 @@ internal static class Program
             region = payload.region,
             previewMode = payload.previewMode,
             fixture = payload.fixture,
+            fixtureParity = payload.fixtureParity,
+            comparisonMode = payload.comparisonMode,
+            comparisonLimit = payload.comparisonLimit,
             status = payload.status,
             bodyKind = payload.bodyKind,
             source = payload.source,
@@ -1253,6 +1690,11 @@ internal static class Program
             return null;
         }
 
+        if (!string.IsNullOrWhiteSpace(metadata.ModelSource))
+        {
+            return metadata.ModelSource;
+        }
+
         var parts = new List<string> { "source: windows native preview" };
         if (!string.IsNullOrWhiteSpace(metadata.Evidence))
         {
@@ -1307,7 +1749,12 @@ internal static class Program
             return 0;
         }
 
-        return body.MetricRows.Count + body.MetricGrids.Sum(grid => grid.Rows.Count);
+        var sectionCount = body.MetricRows
+            .Select(row => row.Section)
+            .Where(section => !string.IsNullOrWhiteSpace(section))
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+        return body.MetricRows.Count + sectionCount + body.MetricGrids.Count;
     }
 
     private static int NativeFlagCount(ScreenshotMetadata metadata)
@@ -1439,7 +1886,7 @@ internal static class Program
         AddCapturedElement(elements, "settings-sidebar", 0, "Settings navigation", Offset(new Rectangle(64, 116, 190, 506), offset), capture, ColorToCss(OverlayTheme.DesignV2.TextSecondary), ColorToCss(OverlayTheme.DesignV2.SurfaceRaised));
         AddCapturedElement(elements, "settings-content", 0, "Settings content", Offset(new Rectangle(278, 116, 890, 506), offset), capture, ColorToCss(OverlayTheme.DesignV2.TextPrimary), ColorToCss(OverlayTheme.DesignV2.SurfaceRaised));
         AddCapturedElement(elements, "settings-content-header", 0, SettingsHeaderText(metadata), Offset(new Rectangle(278, 116, 890, 70), offset), capture, ColorToCss(OverlayTheme.DesignV2.TextPrimary), ColorToCss(OverlayTheme.DesignV2.TitleBar));
-        AddCapturedElement(elements, "settings-content-body", 0, metadata.Region, Offset(new Rectangle(278, 198, 890, 424), offset), capture, ColorToCss(OverlayTheme.DesignV2.TextSecondary), null);
+        AddCapturedElement(elements, "settings-content-body", 0, metadata.Region, Offset(new Rectangle(278, 188, 890, 434), offset), capture, ColorToCss(OverlayTheme.DesignV2.TextSecondary), null);
 
         var tabs = SettingsSidebarTabs();
         for (var index = 0; index < tabs.Count; index++)
@@ -1452,7 +1899,7 @@ internal static class Program
                 "settings-sidebar-tab",
                 index,
                 tab.Label,
-                Offset(new Rectangle(78, 164 + index * 32, 162, 27), offset),
+                Offset(new Rectangle(78, 136 + index * 32, 162, 27), offset),
                 capture,
                 ColorToCss(selected ? OverlayTheme.DesignV2.TextPrimary : OverlayTheme.DesignV2.TextSecondary),
                 selected ? ColorToCss(OverlayTheme.DesignV2.Magenta) : null,
@@ -2106,6 +2553,11 @@ internal static class Program
                     kinds = body.FlagCells.Select(flag => flag.Kind).ToArray(),
                     gridColumns = body.GridColumns,
                     gridRows = body.GridRows,
+                    grid = new
+                    {
+                        columns = body.GridColumns,
+                        rows = body.GridRows
+                    },
                     cells = body.FlagCells.Select(FlagCellEvidence).ToArray()
                 }
                 : null,
@@ -2221,9 +2673,23 @@ internal static class Program
             .Select(section => new
             {
                 title = section.Key,
+                bounds = MetricSectionBounds(section),
                 rows = section.Select(MetricEvidence).ToArray()
             })
             .ToArray<object>();
+    }
+
+    private static object? MetricSectionBounds(IEnumerable<DesignV2LayoutMetricRow> rows)
+    {
+        foreach (var row in rows)
+        {
+            if (row.SectionTitleBounds is { } bounds)
+            {
+                return RectEvidence(bounds);
+            }
+        }
+
+        return null;
     }
 
     private static object GridSectionEvidence(DesignV2LayoutMetricGrid grid)
@@ -2415,6 +2881,8 @@ internal static class Program
             sampleIntervalMilliseconds = (int?)null,
             maximumTracePoints = (int?)null,
             tracePointCount = inputs.TracePointCount,
+            grid = inputs.GridLines.Select(LineEvidence).ToArray(),
+            series = inputs.TraceSeries.Select(TraceSeriesEvidence).ToArray(),
             graph = inputs.Graph is { } graph
                 ? new
                 {
@@ -2478,8 +2946,24 @@ internal static class Program
             row = cell.Row,
             column = cell.Column,
             kind = cell.Kind,
+            fill = FlagFillColor(cell.Kind),
             bounds = RectEvidence(cell.Bounds),
             clothBounds = RectEvidence(cell.ClothBounds)
+        };
+    }
+
+    private static string? FlagFillColor(string kind)
+    {
+        return kind.Trim().ToLowerInvariant() switch
+        {
+            "green" => "rgb(37, 220, 112)",
+            "blue" => "rgb(49, 125, 255)",
+            "yellow" or "caution" => "rgb(255, 210, 64)",
+            "red" => "rgb(244, 70, 70)",
+            "white" => "rgb(245, 248, 252)",
+            "checkered" => "checkered",
+            "meatball" => "rgb(24, 24, 28)",
+            _ => null
         };
     }
 
@@ -2490,15 +2974,29 @@ internal static class Program
             shouldRender = vector.ShouldRender,
             width = vector.SourceWidth,
             height = vector.SourceHeight,
+            sourceWidth = vector.SourceWidth,
+            sourceHeight = vector.SourceHeight,
+            source = new
+            {
+                width = vector.SourceWidth,
+                height = vector.SourceHeight
+            },
+            bounds = RectEvidence(vector.Target),
             targetBounds = RectEvidence(vector.Target),
             scaleX = vector.ScaleX,
             scaleY = vector.ScaleY,
+            scale = new
+            {
+                x = vector.ScaleX,
+                y = vector.ScaleY
+            },
             carCount = vector.ItemCount,
             itemCount = vector.ItemCount,
             primitiveCount = vector.PrimitiveCount,
             labelCount = vector.LabelCount,
             ringCount = vector.Primitives.Count(primitive => string.Equals(primitive.Kind, "ring", StringComparison.Ordinal)),
             surfaceAlpha = vector.SurfaceAlpha,
+            colors = VectorColors(vector),
             items = vector.Items.Select(VectorItemEvidence).ToArray(),
             primitives = vector.Primitives.Select(VectorPrimitiveEvidence).ToArray(),
             labels = vector.Labels.Select(VectorLabelEvidence).ToArray()
@@ -2513,10 +3011,26 @@ internal static class Program
             primitiveCount = vector.PrimitiveCount,
             width = vector.SourceWidth,
             height = vector.SourceHeight,
+            sourceWidth = vector.SourceWidth,
+            sourceHeight = vector.SourceHeight,
+            source = new
+            {
+                width = vector.SourceWidth,
+                height = vector.SourceHeight
+            },
+            bounds = RectEvidence(vector.Target),
             targetBounds = RectEvidence(vector.Target),
             scaleX = vector.ScaleX,
             scaleY = vector.ScaleY,
+            scale = new
+            {
+                x = vector.ScaleX,
+                y = vector.ScaleY
+            },
             shouldRender = vector.ShouldRender,
+            itemCount = vector.ItemCount,
+            labelCount = vector.LabelCount,
+            colors = VectorColors(vector),
             items = vector.Items.Select(VectorItemEvidence).ToArray(),
             primitives = vector.Primitives.Select(VectorPrimitiveEvidence).ToArray(),
             labels = vector.Labels.Select(VectorLabelEvidence).ToArray()
@@ -2571,6 +3085,29 @@ internal static class Program
             alignment = label.Alignment,
             color = label.Color
         };
+    }
+
+    private static string[] VectorColors(DesignV2LayoutVector vector)
+    {
+        var colors = new List<string?>();
+        colors.AddRange(vector.Items.SelectMany(item => new[]
+        {
+            item.Fill,
+            item.Stroke,
+            item.LabelColor,
+            item.AlertRingStroke
+        }));
+        colors.AddRange(vector.Primitives.SelectMany(primitive => new[]
+        {
+            primitive.Fill,
+            primitive.Stroke
+        }));
+        colors.AddRange(vector.Labels.Select(label => label.Color));
+        return colors
+            .Where(color => !string.IsNullOrWhiteSpace(color))
+            .Select(color => color!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private static string? NativeTextSample(ScreenshotMetadata metadata)
@@ -2846,8 +3383,12 @@ internal static class Program
         string? Region = null,
         string? PreviewMode = null,
         string? Fixture = null,
+        string? FixtureParity = null,
+        string? ComparisonMode = null,
+        string? ComparisonLimit = null,
         string? SourceContract = null,
         string? Status = null,
+        string? ModelSource = null,
         string? Evidence = null,
         string? Body = null,
         bool? RadarShouldRender = null,

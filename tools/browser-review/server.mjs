@@ -702,7 +702,7 @@ function reviewDisplayModel(overlayId, previewMode = 'off') {
     case 'standings':
       return applyReviewChrome(filterTableModelContent(filterStandingsReviewRows(standingsDisplayModel(previewLabel), overlayState), 'standings', overlayState, session), overlayId, previewMode);
     case 'relative':
-      return applyReviewChrome(filterTableModelContent(filterRelativeReviewRows(relativeDisplayModel(previewLabel), overlayState), 'relative', overlayState, session), overlayId, previewMode);
+      return applyReviewChrome(filterTableModelContent(filterRelativeReviewRows(relativeDisplayModel(previewLabel, session), overlayState), 'relative', overlayState, session), overlayId, previewMode);
     case 'fuel-calculator':
       {
         const showAdvice = contentEnabled(overlayState, 'Advice column', true, [], session);
@@ -1015,7 +1015,8 @@ function reviewAssetBackedDisplayModel(overlayId, previewMode = 'off') {
   }).model;
 }
 
-function relativeDisplayModel(previewLabel = 'review fixture') {
+function relativeDisplayModel(previewLabel = 'review fixture', session = 'practice') {
+  const showLapRelationship = session === 'race';
   return {
     overlayId: 'relative',
     title: 'Relative',
@@ -1029,9 +1030,9 @@ function relativeDisplayModel(previewLabel = 'review fixture') {
       { id: 'relative.pit', label: 'Pit', dataKey: 'pit', width: 30, alignment: 'right' }
     ],
     rows: [
-      relativeRow(['3', '#34 Near Ahead', '-2.350', ''], { carClassColorHex: '#33CEFF', relativeLapDelta: 1 }),
-      relativeRow(['5', '#55 Focus Driver', '0.000', ''], { isReference: true, carClassColorHex: '#FFDA59', relativeLapDelta: 0 }),
-      relativeRow(['6', '#61 Near Behind', '+1.200', 'IN'], { carClassColorHex: '#FF4FD8', relativeLapDelta: -2, isPit: true })
+      relativeRow(['3', '#34 Near Ahead', '-2.350', ''], { carClassColorHex: '#33CEFF', relativeLapDelta: showLapRelationship ? 1 : null }),
+      relativeRow(['5', '#55 Focus Driver', '0.000', ''], { isReference: true, carClassColorHex: '#FFDA59', relativeLapDelta: showLapRelationship ? 0 : null }),
+      relativeRow(['6', '#61 Near Behind', '+1.200', 'IN'], { carClassColorHex: '#FF4FD8', relativeLapDelta: showLapRelationship ? -2 : null, isPit: true })
     ],
     metrics: [],
     points: [],

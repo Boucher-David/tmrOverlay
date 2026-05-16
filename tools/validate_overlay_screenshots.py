@@ -270,6 +270,26 @@ WINDOWS_NATIVE_OVERLAY_BODIES = {
     "gap-to-leader": "graph",
 }
 
+WINDOWS_NATIVE_REVIEW_ALIGNED_OVERLAYS = {
+    "standings",
+    "relative",
+    "fuel-calculator",
+    "pit-service",
+}
+
+WINDOWS_NATIVE_FULL_CANVAS_COMPARISON_OVERLAYS = {
+    "car-radar",
+    "track-map",
+    "flags",
+    "garage-cover",
+}
+
+WINDOWS_NATIVE_REVIEW_ALIGNED_SOURCE_FILES = {
+    "tools/browser-review/server.mjs",
+    "tools/browser-review/render-screenshots.mjs",
+    "src/TmrOverlay.App/Overlays/BrowserSources/BrowserOverlayModelFactory.cs",
+}
+
 BROWSER_REVIEW_OVERLAY_BODIES = {
     "standings": "table",
     "relative": "table",
@@ -937,6 +957,30 @@ def require_scenario_evidence(path: str, value: object, failures: list[str]) -> 
                 failures.append(f"{path}: scenario source file {index} missing sha256")
 
 
+def require_scenario_source_paths(
+    path: str,
+    scenario: dict[str, object],
+    required_paths: set[str],
+    failures: list[str],
+) -> None:
+    source_files = scenario.get("sourceFiles")
+    if not isinstance(source_files, list):
+        return
+
+    by_path = {
+        source_file.get("path"): source_file
+        for source_file in source_files
+        if isinstance(source_file, dict)
+    }
+    for required_path in sorted(required_paths):
+        source_file = by_path.get(required_path)
+        if not isinstance(source_file, dict):
+            failures.append(f"{path}: scenario evidence missing source file {required_path}")
+            continue
+        if source_file.get("exists") is not True:
+            failures.append(f"{path}: scenario source file {required_path} does not exist")
+
+
 def require_settings_ui_evidence(path: str, value: object, failures: list[str]) -> None:
     if not isinstance(value, dict):
         failures.append(f"{path}: settings UI evidence missing object")
@@ -1243,6 +1287,13 @@ def require_windows_native_comparison_evidence(path: str, values: dict[str, obje
     if not isinstance(body_kind, str) or not body_kind:
         failures.append(f"{path}: Windows comparison evidence missing bodyKind")
 
+    if values.get("status") in (None, ""):
+        failures.append(f"{path}: Windows comparison evidence missing status")
+    if values.get("source") in (None, ""):
+        failures.append(f"{path}: Windows comparison evidence missing source")
+    if values.get("textSample") in (None, ""):
+        failures.append(f"{path}: Windows comparison evidence missing textSample")
+
     content_bounds = values.get("contentBounds")
     require_rect(path, content_bounds, "Windows content bounds", failures)
     if isinstance(content_bounds, dict) and content_bounds.get("aspectRatio") in (None, ""):
@@ -1252,6 +1303,25 @@ def require_windows_native_comparison_evidence(path: str, values: dict[str, obje
         if not isinstance(values.get(field), int):
             failures.append(f"{path}: Windows comparison evidence missing integer {field}")
     require_positive_number(path, values.get("bytes"), "Windows screenshot byte size", failures)
+
+    overlay_id = values.get("overlayId")
+    scenario = values.get("scenarioEvidence")
+    if isinstance(overlay_id, str) and isinstance(scenario, dict):
+        fixture_parity = scenario.get("fixtureParity")
+        comparison_mode = scenario.get("comparisonMode")
+        if overlay_id in WINDOWS_NATIVE_REVIEW_ALIGNED_OVERLAYS:
+            if fixture_parity != "model-data-aligned-with-browser-review-and-localhost":
+                failures.append(f"{path}: Windows native review-aligned overlay missing fixture parity evidence")
+            require_scenario_source_paths(
+                path,
+                scenario,
+                WINDOWS_NATIVE_REVIEW_ALIGNED_SOURCE_FILES,
+                failures)
+        if overlay_id in WINDOWS_NATIVE_FULL_CANVAS_COMPARISON_OVERLAYS:
+            if comparison_mode != "native-cropped-overlay-window-vs-browser-localhost-full-canvas":
+                failures.append(f"{path}: Windows native full-canvas comparison missing comparisonMode evidence")
+            if not scenario.get("comparisonLimit"):
+                failures.append(f"{path}: Windows native full-canvas comparison missing comparisonLimit evidence")
 
     model_evidence = values.get("modelEvidence")
     if not isinstance(model_evidence, dict):
@@ -1263,6 +1333,275 @@ def require_windows_native_comparison_evidence(path: str, values: dict[str, obje
             f"{path}: Windows bodyKind {body_kind!r} does not match "
             f"modelEvidence bodyKind {model_evidence.get('bodyKind')!r}"
         )
+
+    require_native_model_comparison_evidence(path, body_kind, model_evidence, failures)
+
+
+def require_native_model_comparison_evidence(
+    path: str,
+    body_kind: object,
+    model_evidence: dict[str, object],
+    failures: list[str],
+) -> None:
+    if body_kind == "table":
+        require_non_empty_list(path, model_evidence, "columns", failures)
+        require_rows_with_cells(path, model_evidence.get("rows"), "native flattened table rows", failures)
+        require_rendered_cell_evidence(path, model_evidence.get("rows"), failures)
+    elif body_kind == "metrics":
+        require_native_metric_model_evidence(path, model_evidence, failures)
+    elif body_kind == "graph":
+        require_native_graph_model_evidence(path, model_evidence.get("graph"), failures)
+    elif body_kind == "inputs":
+        require_native_input_model_evidence(path, model_evidence.get("inputs"), failures)
+    elif body_kind == "flags":
+        require_native_flag_model_evidence(path, model_evidence.get("flags"), failures)
+    elif body_kind in ("car-radar", "track-map"):
+        key = "carRadar" if body_kind == "car-radar" else "trackMap"
+        require_native_vector_model_evidence(path, body_kind, model_evidence.get(key), failures)
+
+
+def require_native_metric_model_evidence(path: str, model_evidence: dict[str, object], failures: list[str]) -> None:
+    if not any(non_empty_list(model_evidence.get(field)) for field in ("metrics", "metricSections", "gridSections")):
+        failures.append(f"{path}: native flattened metric evidence missing metrics/sections")
+    require_metric_text_evidence(path, model_evidence.get("metrics"), failures)
+    require_metric_section_text_evidence(path, model_evidence.get("metricSections"), failures)
+    require_grid_section_text_evidence(path, model_evidence.get("gridSections"), failures)
+
+
+def require_native_graph_model_evidence(path: str, graph: object, failures: list[str]) -> None:
+    if not isinstance(graph, dict):
+        failures.append(f"{path}: native flattened graph evidence missing graph object")
+        return
+
+    geometry = graph.get("geometry")
+    if not isinstance(geometry, dict):
+        failures.append(f"{path}: native flattened graph evidence missing geometry")
+        return
+
+    for key, label in (
+        ("frame", "native graph frame"),
+        ("plot", "native graph plot"),
+        ("axis", "native graph axis"),
+        ("labelLane", "native graph label lane"),
+    ):
+        require_rect(path, geometry.get(key), label, failures)
+    require_list_key(path, geometry, "metricRows", failures)
+    require_non_empty_list(path, geometry, "series", failures)
+
+    for index, series in enumerate(geometry.get("series") if isinstance(geometry.get("series"), list) else []):
+        require_native_graph_series_evidence(path, series, index, failures)
+
+
+def require_native_graph_series_evidence(path: str, series: object, index: int, failures: list[str]) -> None:
+    if not isinstance(series, dict):
+        failures.append(f"{path}: native graph series {index} must be an object")
+        return
+
+    require_non_empty_list(f"{path}: native graph series {index}", series, "points", failures)
+    for field in ("baseColor", "renderedColor", "endpointLabel"):
+        if series.get(field) in (None, ""):
+            failures.append(f"{path}: native graph series {index} missing {field}")
+    for field in ("alpha", "effectiveAlpha", "strokeWidth"):
+        if not isinstance(series.get(field), (int, float)):
+            failures.append(f"{path}: native graph series {index} missing numeric {field}")
+    require_point(path, series.get("latestPoint"), f"native graph series {index} latestPoint", failures)
+
+    points = series.get("points")
+    if isinstance(points, list):
+        for point_index, point in enumerate(points[:12]):
+            require_graph_point(path, point, f"native graph series {index} point {point_index}", failures)
+
+
+def require_native_input_model_evidence(path: str, inputs: object, failures: list[str]) -> None:
+    if not isinstance(inputs, dict):
+        failures.append(f"{path}: native flattened input evidence missing inputs object")
+        return
+
+    if inputs.get("hasGraph") is not True:
+        failures.append(f"{path}: native input evidence did not prove hasGraph=true")
+    if inputs.get("hasRail") is not True:
+        failures.append(f"{path}: native input evidence did not prove hasRail=true")
+
+    graph = inputs.get("graph")
+    if not isinstance(graph, dict):
+        failures.append(f"{path}: native input evidence missing graph")
+    else:
+        require_rect(path, graph.get("bounds"), "native input graph bounds", failures)
+        require_non_empty_list(path, graph, "gridLines", failures)
+        require_non_empty_list(path, graph, "series", failures)
+        require_input_series_evidence(path, graph.get("series"), failures)
+        require_line_evidence(path, graph.get("gridLines"), "native input graph grid line", failures)
+
+    require_input_rail_evidence(path, inputs.get("rail"), failures)
+    require_line_evidence(path, inputs.get("grid"), "native input grid line", failures)
+    require_input_series_evidence(path, inputs.get("series"), failures)
+
+
+def require_native_flag_model_evidence(path: str, flags: object, failures: list[str]) -> None:
+    if not isinstance(flags, dict):
+        failures.append(f"{path}: native flattened flag evidence missing flags object")
+        return
+
+    require_non_negative_int(path, flags.get("gridColumns"), "native flags gridColumns", failures)
+    require_non_negative_int(path, flags.get("gridRows"), "native flags gridRows", failures)
+    grid = flags.get("grid")
+    if not isinstance(grid, dict):
+        failures.append(f"{path}: native flags evidence missing grid object")
+    else:
+        require_non_negative_int(path, grid.get("columns"), "native flags grid columns", failures)
+        require_non_negative_int(path, grid.get("rows"), "native flags grid rows", failures)
+
+    require_non_empty_list(path, flags, "cells", failures)
+    cells = flags.get("cells")
+    if isinstance(cells, list):
+        for index, cell in enumerate(cells):
+            if not isinstance(cell, dict):
+                failures.append(f"{path}: native flag cell {index} must be an object")
+                continue
+            if cell.get("kind") in (None, ""):
+                failures.append(f"{path}: native flag cell {index} missing kind")
+            if cell.get("fill") in (None, ""):
+                failures.append(f"{path}: native flag cell {index} missing fill")
+            require_rect(path, cell.get("bounds"), f"native flag cell {index} bounds", failures)
+            require_rect(path, cell.get("clothBounds"), f"native flag cell {index} cloth bounds", failures)
+
+
+def require_native_vector_model_evidence(
+    path: str,
+    body_kind: object,
+    vector: object,
+    failures: list[str],
+) -> None:
+    if not isinstance(vector, dict):
+        failures.append(f"{path}: native flattened {body_kind} vector evidence missing object")
+        return
+
+    require_positive_number(path, get_manifest_value(vector, "width"), f"native {body_kind} width", failures)
+    require_positive_number(path, get_manifest_value(vector, "height"), f"native {body_kind} height", failures)
+    require_positive_number(path, get_manifest_value(vector, "sourceWidth"), f"native {body_kind} sourceWidth", failures)
+    require_positive_number(path, get_manifest_value(vector, "sourceHeight"), f"native {body_kind} sourceHeight", failures)
+    require_rect(path, get_manifest_value(vector, "targetBounds"), f"native {body_kind} target bounds", failures)
+    require_positive_number(path, get_manifest_value(vector, "scaleX"), f"native {body_kind} scaleX", failures)
+    require_positive_number(path, get_manifest_value(vector, "scaleY"), f"native {body_kind} scaleY", failures)
+
+    source = get_manifest_value(vector, "source")
+    if not isinstance(source, dict):
+        failures.append(f"{path}: native {body_kind} vector missing source dimensions")
+    else:
+        require_positive_number(path, source.get("width"), f"native {body_kind} source width", failures)
+        require_positive_number(path, source.get("height"), f"native {body_kind} source height", failures)
+
+    scale = get_manifest_value(vector, "scale")
+    if not isinstance(scale, dict):
+        failures.append(f"{path}: native {body_kind} vector missing scale object")
+    else:
+        require_positive_number(path, scale.get("x"), f"native {body_kind} scale x", failures)
+        require_positive_number(path, scale.get("y"), f"native {body_kind} scale y", failures)
+
+    for field in ("itemCount", "primitiveCount", "labelCount"):
+        require_non_negative_int(path, get_manifest_value(vector, field), f"native {body_kind} {field}", failures)
+
+    item_count = get_manifest_value(vector, "itemCount")
+    primitive_count = get_manifest_value(vector, "primitiveCount")
+    label_count = get_manifest_value(vector, "labelCount")
+    if isinstance(item_count, int) and item_count > 0:
+        require_non_empty_list(path, vector, "items", failures)
+        require_vector_item_evidence(path, get_manifest_value(vector, "items"), failures)
+    if isinstance(primitive_count, int) and primitive_count > 0:
+        require_non_empty_list(path, vector, "primitives", failures)
+    if isinstance(label_count, int) and label_count > 0:
+        require_non_empty_list(path, vector, "labels", failures)
+    require_vector_primitive_evidence(path, get_manifest_value(vector, "primitives"), failures)
+    require_vector_label_evidence(path, get_manifest_value(vector, "labels"), failures)
+
+    colors = get_manifest_value(vector, "colors")
+    if not isinstance(colors, list):
+        failures.append(f"{path}: native {body_kind} vector missing colors list")
+    elif isinstance(primitive_count, int) and primitive_count > 0 and not colors:
+        failures.append(f"{path}: native {body_kind} vector colors list is empty")
+
+
+def require_graph_point(path: str, point: object, label: str, failures: list[str]) -> None:
+    if not isinstance(point, dict):
+        failures.append(f"{path}: {label} must be an object")
+        return
+
+    for field in ("axisSeconds", "gapSeconds"):
+        if not isinstance(point.get(field), (int, float)):
+            failures.append(f"{path}: {label} missing numeric {field}")
+    require_point(path, point.get("point"), f"{label} rendered point", failures)
+
+
+def require_point(path: str, point: object, label: str, failures: list[str]) -> None:
+    if not isinstance(point, dict):
+        failures.append(f"{path}: {label} missing point")
+        return
+
+    for field in ("x", "y"):
+        if not isinstance(point.get(field), (int, float)):
+            failures.append(f"{path}: {label} missing numeric {field}")
+
+
+def require_line_evidence(path: str, lines: object, label: str, failures: list[str]) -> None:
+    if lines is None:
+        return
+    if not isinstance(lines, list):
+        failures.append(f"{path}: {label} evidence is not a list")
+        return
+
+    for index, line in enumerate(lines[:12]):
+        if not isinstance(line, dict):
+            failures.append(f"{path}: {label} {index} must be an object")
+            continue
+        if line.get("kind") in (None, ""):
+            failures.append(f"{path}: {label} {index} missing kind")
+        if line.get("color") in (None, ""):
+            failures.append(f"{path}: {label} {index} missing color")
+        if not isinstance(line.get("strokeWidth"), (int, float)):
+            failures.append(f"{path}: {label} {index} missing numeric strokeWidth")
+        require_point(path, line.get("start"), f"{label} {index} start", failures)
+        require_point(path, line.get("end"), f"{label} {index} end", failures)
+
+
+def require_input_series_evidence(path: str, series: object, failures: list[str]) -> None:
+    if series is None:
+        return
+    if not isinstance(series, list):
+        failures.append(f"{path}: native input series evidence is not a list")
+        return
+
+    for index, item in enumerate(series[:8]):
+        if not isinstance(item, dict):
+            failures.append(f"{path}: native input series {index} must be an object")
+            continue
+        if item.get("kind") in (None, ""):
+            failures.append(f"{path}: native input series {index} missing kind")
+        if item.get("color") in (None, ""):
+            failures.append(f"{path}: native input series {index} missing color")
+        if not isinstance(item.get("strokeWidth"), (int, float)):
+            failures.append(f"{path}: native input series {index} missing numeric strokeWidth")
+        point_count = item.get("pointCount")
+        curve_count = item.get("curveCount")
+        if not isinstance(point_count, int):
+            failures.append(f"{path}: native input series {index} missing pointCount")
+        if not isinstance(curve_count, int):
+            failures.append(f"{path}: native input series {index} missing curveCount")
+        if point_count == 0 and curve_count == 0:
+            failures.append(f"{path}: native input series {index} has no points or curves")
+
+        points = item.get("points")
+        if isinstance(points, list):
+            for point_index, point in enumerate(points[:12]):
+                require_point(path, point, f"native input series {index} point {point_index}", failures)
+
+        curves = item.get("curves")
+        if isinstance(curves, list):
+            for curve_index, curve in enumerate(curves[:8]):
+                if not isinstance(curve, dict):
+                    failures.append(f"{path}: native input series {index} curve {curve_index} must be an object")
+                    continue
+                for key in ("start", "control1", "control2", "end"):
+                    require_point(path, curve.get(key), f"native input series {index} curve {curve_index} {key}", failures)
 
 
 def require_rows_with_cells(path: str, rows: object, label: str, failures: list[str]) -> None:

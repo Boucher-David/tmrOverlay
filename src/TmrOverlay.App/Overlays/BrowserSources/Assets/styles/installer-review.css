@@ -6,8 +6,9 @@
   --installer-border-strong: #8d8d8d;
   --installer-text: #1f2328;
   --installer-muted: #5f6670;
-  --installer-accent: #0078d4;
-  --installer-accent-strong: #005a9e;
+  --installer-accent: #00e8ff;
+  --installer-accent-strong: #008fa3;
+  --installer-magenta: #ff2aa7;
   --installer-danger: #b3261e;
 }
 
@@ -87,8 +88,8 @@ body {
 }
 
 .installer-review-link[aria-current="page"] {
-  border-color: #76c9ff;
-  background: #0078d4;
+  border-color: var(--installer-accent);
+  background: #301044;
   color: #ffffff;
 }
 
@@ -162,7 +163,8 @@ body {
 
 .installer-banner {
   overflow: hidden;
-  border-bottom: 1px solid #d8d8d8;
+  border-bottom: 2px solid var(--installer-magenta);
+  box-shadow: 0 2px 0 var(--installer-accent);
 }
 
 .installer-banner img {
@@ -313,8 +315,9 @@ body {
 
 .installer-button.primary {
   border-color: var(--installer-accent-strong);
-  background: var(--installer-accent);
+  background: #241138;
   color: #ffffff;
+  box-shadow: inset 0 -2px 0 var(--installer-accent);
 }
 
 .installer-button.danger {
