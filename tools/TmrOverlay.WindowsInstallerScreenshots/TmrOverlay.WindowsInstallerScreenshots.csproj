@@ -8,8 +8,4 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\..\src\TmrOverlay.Core\TmrOverlay.Core.csproj" />
-  </ItemGroup>
 </Project>

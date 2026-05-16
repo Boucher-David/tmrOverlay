@@ -3,9 +3,9 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
-using TmrOverlay.Core.AppInfo;
 
 namespace TmrOverlay.WindowsInstallerScreenshots;
 
@@ -672,7 +672,7 @@ internal static class Program
         var manifest = new
         {
             generatedAtUtc = DateTimeOffset.UtcNow,
-            version = AppVersionInfo.Current.InformationalVersion,
+            version = CurrentInformationalVersion(),
             packageEvidence = evidenceContext.Package,
             sourceFiles = evidenceContext.SourceFiles,
             screenshots = screenshots.Select(screenshot => new
@@ -727,13 +727,14 @@ internal static class Program
         using var graphics = Graphics.FromImage(bitmap);
         graphics.Clear(Color.FromArgb(246, 248, 250));
 
-        using var titleFont = new Font(SystemFonts.MessageBoxFont.FontFamily, 16, FontStyle.Bold);
-        using var labelFont = new Font(SystemFonts.MessageBoxFont.FontFamily, 10, FontStyle.Bold);
+        var fontFamily = SystemFonts.MessageBoxFont?.FontFamily ?? FontFamily.GenericSansSerif;
+        using var titleFont = new Font(fontFamily, 16, FontStyle.Bold);
+        using var labelFont = new Font(fontFamily, 10, FontStyle.Bold);
         using var titleBrush = new SolidBrush(Color.FromArgb(16, 24, 32));
         using var labelBrush = new SolidBrush(Color.FromArgb(16, 24, 32));
         using var borderPen = new Pen(Color.FromArgb(189, 204, 212));
         graphics.DrawString(
-            $"Tech Mates Racing Overlay installer menus - {AppVersionInfo.Current.InformationalVersion}",
+            $"Tech Mates Racing Overlay installer menus - {CurrentInformationalVersion()}",
             titleFont,
             titleBrush,
             ContactPadding,
@@ -1061,8 +1062,16 @@ internal static class Program
             height = rectangle.Height,
             right = rectangle.Right,
             bottom = rectangle.Bottom,
-            aspectRatio = rectangle.Height == 0 ? null : Math.Round(rectangle.Width / (double)rectangle.Height, 4)
+            aspectRatio = rectangle.Height == 0 ? (double?)null : Math.Round(rectangle.Width / (double)rectangle.Height, 4)
         };
+    }
+
+    private static string CurrentInformationalVersion()
+    {
+        var assembly = Assembly.GetEntryAssembly() ?? typeof(Program).Assembly;
+        return assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+            ?? assembly.GetName().Version?.ToString()
+            ?? "0.0.0";
     }
 
     private static string CssColor(Color color)
