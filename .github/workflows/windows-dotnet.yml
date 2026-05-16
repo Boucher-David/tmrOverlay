@@ -16,8 +16,8 @@ env:
   VELOPACK_VERSION: 0.0.1589-ga2c5a97
 
 jobs:
-  browser_and_localhost_tests:
-    name: Browser and localhost tests
+  browser_review_tests:
+    name: Browser review tests
     runs-on: ubuntu-latest
 
     steps:
@@ -38,6 +38,26 @@ jobs:
 
       - name: Test browser review data contracts
         run: npm run test:browser
+
+  localhost_tests:
+    name: Localhost overlay tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install browser test dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
 
       - name: Test localhost overlay routes
         run: npm run test:localhost
@@ -68,12 +88,6 @@ jobs:
       - name: Validate browser review screenshots
         run: python3 tools/validate_overlay_screenshots.py --profile browser-review-ci --root artifacts/browser-review-screenshots
 
-      - name: Generate localhost screenshots
-        run: npm run screenshots:localhost -- --output artifacts/localhost-screenshots
-
-      - name: Validate localhost screenshots
-        run: python3 tools/validate_overlay_screenshots.py --profile localhost-ci --root artifacts/localhost-screenshots
-
       - name: Upload browser review screenshots
         uses: actions/upload-artifact@v4
         if: always()
@@ -82,6 +96,32 @@ jobs:
           path: artifacts/browser-review-screenshots
           if-no-files-found: error
           retention-days: 14
+
+  localhost_screenshots:
+    name: Localhost screenshots
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install browser screenshot dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Generate localhost screenshots
+        run: npm run screenshots:localhost -- --output artifacts/localhost-screenshots
+
+      - name: Validate localhost screenshots
+        run: python3 tools/validate_overlay_screenshots.py --profile localhost-ci --root artifacts/localhost-screenshots
 
       - name: Upload localhost screenshots
         uses: actions/upload-artifact@v4

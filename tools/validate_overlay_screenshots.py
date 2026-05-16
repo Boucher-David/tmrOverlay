@@ -210,7 +210,7 @@ WINDOWS_NATIVE_OVERLAY_SIZES = {
 }
 
 WINDOWS_NATIVE_SPECIAL_PNGS = {
-    "native-overlays/standings-preview-sizing-race.png": (780, 520),
+    "native-overlays/standings-preview-sizing-race.png": (589, 520),
 }
 
 WINDOWS_NATIVE_OVERLAY_SIZE_SOURCES = {

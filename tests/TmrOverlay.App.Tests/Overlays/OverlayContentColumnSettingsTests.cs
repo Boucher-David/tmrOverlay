@@ -153,6 +153,23 @@ public sealed class OverlayContentColumnSettingsTests
     }
 
     [Fact]
+    public void TargetOverlayClientSizeForApply_DoesNotPreserveExpandedStandingsPreviewHeight()
+    {
+        var standings = new ApplicationSettings().GetOrAddOverlay("standings", 780, 520);
+        standings.Height = 2160;
+
+        var size = OverlayManager.TargetOverlayClientSizeForApply(
+            StandingsOverlayDefinition.Definition,
+            standings,
+            currentSize: new Size(780, 2160),
+            sessionPreviewActive: true);
+
+        Assert.Equal(new Size(589, 520), size);
+        Assert.Equal(589, standings.Width);
+        Assert.Equal(520, standings.Height);
+    }
+
+    [Fact]
     public void InputStateOverlaySizesShrinkToEnabledContent()
     {
         var method = typeof(OverlayManager).GetMethod(
