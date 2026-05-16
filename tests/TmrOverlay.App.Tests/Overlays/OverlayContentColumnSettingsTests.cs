@@ -190,6 +190,11 @@ public sealed class OverlayContentColumnSettingsTests
             new Size(780, 520)));
         Assert.False(OverlayManager.ShouldPreserveExpandedOverlayHeight(
             StandingsOverlayDefinition.Definition,
+            new Size(780, 720),
+            new Size(780, 520),
+            sessionPreviewActive: true));
+        Assert.False(OverlayManager.ShouldPreserveExpandedOverlayHeight(
+            StandingsOverlayDefinition.Definition,
             new Size(760, 720),
             new Size(780, 520)));
         Assert.False(OverlayManager.ShouldPreserveExpandedOverlayHeight(

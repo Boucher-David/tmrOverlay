@@ -209,6 +209,10 @@ WINDOWS_NATIVE_OVERLAY_SIZES = {
     "gap-to-leader": (720, 360),
 }
 
+WINDOWS_NATIVE_SPECIAL_PNGS = {
+    "native-overlays/standings-preview-sizing-race.png": (780, 520),
+}
+
 WINDOWS_NATIVE_OVERLAY_SIZE_SOURCES = {
     "standings": "src/TmrOverlay.App/Overlays/Standings/StandingsOverlayDefinition.cs",
     "fuel-calculator": "src/TmrOverlay.App/Overlays/FuelCalculator/FuelCalculatorOverlayDefinition.cs",
@@ -491,6 +495,15 @@ def validate_windows_ci(root: Path, min_unique_bytes: int, failures: list[str]) 
                 failures=failures,
             )
 
+    for relative_path, expected_size in WINDOWS_NATIVE_SPECIAL_PNGS.items():
+        validate_png(
+            root=root,
+            relative_path=relative_path,
+            expected_size=expected_size,
+            min_unique_bytes=WINDOWS_MIN_UNIQUE_BYTES.get(relative_path, min_unique_bytes),
+            failures=failures,
+        )
+
     validate_windows_manifest(
         root,
         expected_paths=windows_ci_manifest_paths(),
@@ -600,7 +613,7 @@ def validate_localhost_alias_pngs(root: Path, min_unique_bytes: int, failures: l
 
 
 def windows_ci_manifest_paths() -> set[str]:
-    paths = set(WINDOWS_EXPECTED_PNGS) | set(WINDOWS_MINIMUM_PNGS) | set(WINDOWS_SETTING_REGION_PNGS)
+    paths = set(WINDOWS_EXPECTED_PNGS) | set(WINDOWS_MINIMUM_PNGS) | set(WINDOWS_SETTING_REGION_PNGS) | set(WINDOWS_NATIVE_SPECIAL_PNGS)
     paths.update(f"components/settings/{path}" for path in EXPECTED_WINDOWS_COMPONENT_FILES())
     for overlay_id in WINDOWS_NATIVE_OVERLAY_SIZES:
         for mode in preview_modes_for_overlay(overlay_id):
@@ -673,6 +686,7 @@ def validate_windows_manifest(root: Path, expected_paths: set[str], failures: li
         require_manifest_fields(path, metadata, ["surface", "renderer"], failures)
         if path.startswith("native-overlays/"):
             require_manifest_fields(path, metadata, ["overlayId", "previewMode", "fixture", "sourceContract", "status", "evidence", "body"], failures)
+            require_layout_evidence(path, metadata.get("layout"), failures)
             if metadata.get("surface") != "windows-native-overlay":
                 failures.append(f"{path}: expected windows-native-overlay surface, got {metadata.get('surface')!r}")
             validate_overlay_semantics(
@@ -704,8 +718,10 @@ def validate_browser_review_manifest(
     compare_sets(label, set(screenshots), expected_paths, failures)
     for path, screenshot in screenshots.items():
         require_manifest_fields(path, screenshot, ["surface", "renderer", "sourceContract"], failures)
+        require_layout_evidence(path, screenshot.get("layout"), failures)
         if path.startswith(("browser-overlays/", "localhost-overlays/")):
             require_manifest_fields(path, screenshot, ["overlayId", "previewMode", "moduleAsset", "status", "bodyKind"], failures)
+            require_model_evidence(path, screenshot.get("modelEvidence"), failures)
             validate_localhost_alias_manifest(path, screenshot, failures)
             validate_overlay_semantics(
                 path,
@@ -718,6 +734,169 @@ def validate_browser_review_manifest(
         if path.startswith("settings/"):
             require_manifest_fields(path, screenshot, ["tab", "region"], failures)
             validate_settings_region_manifest(path, screenshot, failures)
+
+
+def require_layout_evidence(path: str, value: object, failures: list[str]) -> None:
+    if not isinstance(value, dict):
+        failures.append(f"{path}: manifest missing layout evidence")
+        return
+
+    contract = value.get("contract") or value.get("Contract")
+    if not isinstance(contract, str) or not contract:
+        failures.append(f"{path}: layout evidence missing contract")
+
+    root = value.get("root") or value.get("Root") or value.get("client") or value.get("Client")
+    if not isinstance(root, dict):
+        failures.append(f"{path}: layout evidence missing root/client bounds")
+
+    elements = value.get("elements") or value.get("Elements")
+    body_layout = value.get("bodyLayout") or value.get("BodyLayout")
+    if elements is None and body_layout is None:
+        failures.append(f"{path}: layout evidence missing elements/bodyLayout details")
+        return
+
+    if isinstance(body_layout, dict):
+        require_native_body_layout_evidence(path, body_layout, failures)
+
+
+def require_model_evidence(path: str, value: object, failures: list[str]) -> None:
+    if not isinstance(value, dict):
+        failures.append(f"{path}: manifest missing model layout evidence")
+        return
+
+    contract = value.get("contract")
+    if not isinstance(contract, str) or not contract:
+        failures.append(f"{path}: model layout evidence missing contract")
+
+    body_kind = value.get("bodyKind")
+    if not isinstance(body_kind, str) or not body_kind:
+        failures.append(f"{path}: model layout evidence missing bodyKind")
+        return
+
+    if body_kind == "table":
+        require_non_empty_list(path, value, "columns", failures)
+        require_rows_with_cells(path, value.get("rows"), "model table rows", failures)
+    elif body_kind == "metrics":
+        if not any(non_empty_list(value.get(field)) for field in ("metrics", "metricSections", "gridSections")):
+            failures.append(f"{path}: model metric evidence missing metrics/sections")
+    elif body_kind == "graph":
+        graph = value.get("graph")
+        if not isinstance(graph, dict):
+            failures.append(f"{path}: model graph evidence missing graph object")
+        else:
+            geometry = graph.get("geometry")
+            if not isinstance(geometry, dict):
+                failures.append(f"{path}: model graph evidence missing rendered geometry")
+            else:
+                require_non_empty_list(path, geometry, "series", failures)
+                for index, series in enumerate(geometry.get("series") if isinstance(geometry.get("series"), list) else []):
+                    if not isinstance(series, dict):
+                        continue
+                    require_non_empty_list(f"{path}: graph series {index}", series, "points", failures)
+                    if not series.get("baseColor"):
+                        failures.append(f"{path}: graph series {index} missing baseColor")
+                    if series.get("strokeWidth") in (None, ""):
+                        failures.append(f"{path}: graph series {index} missing strokeWidth")
+                require_list_key(path, geometry, "metricRows", failures)
+    elif body_kind == "inputs":
+        inputs = value.get("inputs")
+        if not isinstance(inputs, dict):
+            failures.append(f"{path}: model input evidence missing inputs object")
+        elif inputs.get("hasGraph") is True:
+            graph = inputs.get("graph")
+            if not isinstance(graph, dict):
+                failures.append(f"{path}: model input evidence missing graph geometry")
+            else:
+                require_non_empty_list(path, graph, "gridLines", failures)
+                require_non_empty_list(path, graph, "series", failures)
+    elif body_kind in ("car-radar", "track-map"):
+        key = "carRadar" if body_kind == "car-radar" else "trackMap"
+        if not isinstance(value.get(key), dict):
+            failures.append(f"{path}: model {body_kind} evidence missing {key} object")
+    elif body_kind == "flags":
+        flags = value.get("flags")
+        if not isinstance(flags, dict) or not non_empty_list(flags.get("kinds")):
+            failures.append(f"{path}: model flags evidence missing flag kinds")
+
+
+def require_native_body_layout_evidence(path: str, body_layout: dict[str, object], failures: list[str]) -> None:
+    kind = body_layout.get("kind") or body_layout.get("Kind")
+    if not isinstance(kind, str) or not kind:
+        failures.append(f"{path}: native body layout missing kind")
+        return
+
+    if kind == "table":
+        require_non_empty_list(path, body_layout, "columns", failures)
+        require_rows_with_cells(path, get_manifest_value(body_layout, "rows"), "native table rows", failures)
+    elif kind == "metric-rows":
+        if not any(non_empty_list(body_layout.get(field)) for field in ("metricRows", "metricGrids", "MetricRows", "MetricGrids")):
+            failures.append(f"{path}: native metric layout missing metric rows/grids")
+    elif kind == "graph":
+        graph = body_layout.get("graph") or body_layout.get("Graph")
+        if not isinstance(graph, dict):
+            failures.append(f"{path}: native graph layout missing graph object")
+            return
+        require_non_empty_list(path, graph, "series", failures)
+        graph_series = get_manifest_value(graph, "series")
+        for index, series in enumerate(graph_series if isinstance(graph_series, list) else []):
+            if not isinstance(series, dict):
+                continue
+            require_non_empty_list(f"{path}: native graph series {index}", series, "points", failures)
+            if not get_manifest_value(series, "baseColor"):
+                failures.append(f"{path}: native graph series {index} missing baseColor")
+            if get_manifest_value(series, "strokeWidth") in (None, ""):
+                failures.append(f"{path}: native graph series {index} missing strokeWidth")
+        require_list_key(path, graph, "metricRows", failures)
+    elif kind == "inputs":
+        inputs = body_layout.get("inputs") or body_layout.get("Inputs")
+        if not isinstance(inputs, dict):
+            failures.append(f"{path}: native input layout missing inputs object")
+            return
+        if inputs.get("graph") is not None or inputs.get("Graph") is not None:
+            require_non_empty_list(path, inputs, "gridLines", failures)
+            require_non_empty_list(path, inputs, "traceSeries", failures)
+    elif kind in ("radar", "track-map"):
+        if not isinstance(body_layout.get("vector") or body_layout.get("Vector"), dict):
+            failures.append(f"{path}: native {kind} layout missing vector geometry")
+    elif kind == "flags":
+        require_non_empty_list(path, body_layout, "flagCells", failures)
+
+
+def require_rows_with_cells(path: str, rows: object, label: str, failures: list[str]) -> None:
+    if not isinstance(rows, list) or not rows:
+        failures.append(f"{path}: {label} missing rows")
+        return
+
+    for index, row in enumerate(rows[:6]):
+        if not isinstance(row, dict):
+            continue
+        if get_manifest_value(row, "kind") == "class-header":
+            continue
+        cells = get_manifest_value(row, "cells")
+        if isinstance(cells, list) and cells:
+            return
+    failures.append(f"{path}: {label} missing cell bounds/text evidence")
+
+
+def require_non_empty_list(path: str, values: dict[str, object], key: str, failures: list[str]) -> None:
+    if not non_empty_list(get_manifest_value(values, key)):
+        failures.append(f"{path}: manifest evidence missing non-empty {key}")
+
+
+def require_list_key(path: str, values: dict[str, object], key: str, failures: list[str]) -> None:
+    if not isinstance(get_manifest_value(values, key), list):
+        failures.append(f"{path}: manifest evidence missing {key} list")
+
+
+def non_empty_list(value: object) -> bool:
+    return isinstance(value, list) and len(value) > 0
+
+
+def get_manifest_value(values: dict[str, object], key: str) -> object:
+    if key in values:
+        return values[key]
+    pascal = key[:1].upper() + key[1:]
+    return values.get(pascal)
 
 
 def validate_localhost_alias_manifest(path: str, values: dict[str, object], failures: list[str]) -> None:
