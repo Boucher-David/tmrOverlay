@@ -1,6 +1,8 @@
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using TmrOverlay.App.Analysis;
@@ -742,7 +744,7 @@ internal static class Program
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, $"{fileStem}.png");
         bitmap.Save(path, ImageFormat.Png);
-        return new RenderedScreenshot(label, path, form.ClientSize.Width, form.ClientSize.Height, CompleteMetadata(metadata, form, relativeDirectory));
+        return new RenderedScreenshot(label, path, form.ClientSize.Width, form.ClientSize.Height, CompleteMetadata(metadata, form, relativeDirectory, null));
     }
 
     private static RenderedScreenshot RenderFormCrop(
@@ -776,7 +778,7 @@ internal static class Program
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, $"{fileStem}.png");
         bitmap.Save(path, ImageFormat.Png);
-        return new RenderedScreenshot(label, path, bitmap.Width, bitmap.Height, CompleteMetadata(metadata, form, relativeDirectory));
+        return new RenderedScreenshot(label, path, bitmap.Width, bitmap.Height, CompleteMetadata(metadata, form, relativeDirectory, boundedCrop));
     }
 
     private static void PrepareForm(Form form, int refreshPasses)
@@ -1004,7 +1006,7 @@ internal static class Program
             SourceContract: OverlayDefinitionSourceFor(overlayId));
     }
 
-    private static ScreenshotMetadata CompleteMetadata(ScreenshotMetadata? metadata, Form form, string relativeDirectory)
+    private static ScreenshotMetadata CompleteMetadata(ScreenshotMetadata? metadata, Form form, string relativeDirectory, Rectangle? captureBounds)
     {
         var completed = metadata ?? new ScreenshotMetadata(
             Surface: relativeDirectory.Replace('\\', '/'),
@@ -1023,9 +1025,17 @@ internal static class Program
             };
         }
 
-        return completed with
+        completed = completed with
         {
             Renderer = completed.Renderer ?? form.GetType().FullName ?? form.GetType().Name
+        };
+        return completed with
+        {
+            TextSample = ScreenshotTextSample(completed, form),
+            ContentBounds = ScreenshotContentBounds(completed, form, captureBounds),
+            LayoutEvidence = ScreenshotLayoutEvidence(completed, form, captureBounds),
+            UiEvidence = ScreenshotUiEvidence(completed, form, captureBounds),
+            ScenarioEvidence = ScreenshotScenarioEvidence(completed)
         };
     }
 
@@ -1115,10 +1125,12 @@ internal static class Program
                 radarSurfaceAlpha = screenshot.Metadata.RadarSurfaceAlpha,
                 radarCarCount = screenshot.Metadata.RadarCarCount,
                 trackMapMarkerCount = NativeTrackMapMarkerCount(screenshot.Metadata),
-                textSample = NativeTextSample(screenshot.Metadata),
-                contentBounds = NativeContentBounds(screenshot.Metadata.Layout),
-                layout = NativeLayoutEvidence(screenshot.Metadata.Layout),
+                textSample = screenshot.Metadata.TextSample,
+                contentBounds = screenshot.Metadata.ContentBounds,
+                layout = screenshot.Metadata.LayoutEvidence,
+                uiEvidence = screenshot.Metadata.UiEvidence,
                 modelEvidence = NativeModelEvidence(screenshot.Metadata),
+                scenarioEvidence = screenshot.Metadata.ScenarioEvidence,
                 metadata = new
                 {
                     surface = screenshot.Metadata.Surface,
@@ -1135,13 +1147,103 @@ internal static class Program
                     radarShouldRender = screenshot.Metadata.RadarShouldRender,
                     radarSurfaceAlpha = screenshot.Metadata.RadarSurfaceAlpha,
                     radarCarCount = screenshot.Metadata.RadarCarCount,
-                    layout = screenshot.Metadata.Layout
+                    layout = screenshot.Metadata.Layout,
+                    uiEvidence = screenshot.Metadata.UiEvidence,
+                    scenarioEvidence = screenshot.Metadata.ScenarioEvidence
                 }
             })
         };
         File.WriteAllText(
             Path.Combine(outputRoot, "manifest.json"),
             $"{JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true })}{Environment.NewLine}");
+    }
+
+    private static object ScreenshotScenarioEvidence(ScreenshotMetadata metadata)
+    {
+        var sourceFiles = string.IsNullOrWhiteSpace(metadata.SourceContract)
+            ? Array.Empty<object>()
+            : new[] { SourceFileEvidence(metadata.SourceContract) };
+        var payload = new
+        {
+            contract = "screenshot-scenario-evidence/v1",
+            surface = metadata.Surface,
+            renderer = metadata.Renderer,
+            sourceContract = metadata.SourceContract,
+            overlayId = metadata.OverlayId,
+            tab = metadata.Tab,
+            region = metadata.Region,
+            previewMode = metadata.PreviewMode,
+            fixture = metadata.Fixture,
+            status = metadata.Status,
+            bodyKind = NormalizedBodyKind(metadata.Body),
+            source = NativeSourceEvidence(metadata),
+            sourceFiles,
+            layoutHash = metadata.Layout is null ? null : Sha256(JsonSerializer.Serialize(metadata.Layout))
+        };
+
+        return new
+        {
+            contract = payload.contract,
+            surface = payload.surface,
+            renderer = payload.renderer,
+            sourceContract = payload.sourceContract,
+            overlayId = payload.overlayId,
+            tab = payload.tab,
+            region = payload.region,
+            previewMode = payload.previewMode,
+            fixture = payload.fixture,
+            status = payload.status,
+            bodyKind = payload.bodyKind,
+            source = payload.source,
+            sourceFiles = payload.sourceFiles,
+            layoutHash = payload.layoutHash,
+            sourceHash = Sha256(JsonSerializer.Serialize(sourceFiles)),
+            scenarioHash = Sha256(JsonSerializer.Serialize(payload))
+        };
+    }
+
+    private static object SourceFileEvidence(string relativePath)
+    {
+        var absolutePath = Path.Combine(RepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
+        if (!File.Exists(absolutePath))
+        {
+            return new
+            {
+                path = relativePath,
+                exists = false,
+                bytes = (long?)null,
+                sha256 = (string?)null
+            };
+        }
+
+        var data = File.ReadAllBytes(absolutePath);
+        return new
+        {
+            path = relativePath,
+            exists = true,
+            bytes = (long)data.Length,
+            sha256 = Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant()
+        };
+    }
+
+    private static string RepoRoot()
+    {
+        for (var directory = new DirectoryInfo(Directory.GetCurrentDirectory());
+             directory is not null;
+             directory = directory.Parent)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "tmrOverlay.sln")))
+            {
+                return directory.FullName;
+            }
+        }
+
+        return Directory.GetCurrentDirectory();
+    }
+
+    private static string Sha256(string value)
+    {
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
     }
 
     private static string? NativeSourceEvidence(ScreenshotMetadata metadata)
@@ -1219,6 +1321,598 @@ internal static class Program
         return body?.Kind == "track-map"
             ? body.Vector?.ItemCount ?? 0
             : 0;
+    }
+
+    private static string? ScreenshotTextSample(ScreenshotMetadata metadata, Form form)
+    {
+        if (string.Equals(metadata.Surface, "windows-native-overlay", StringComparison.Ordinal))
+        {
+            return NativeTextSample(metadata);
+        }
+
+        var parts = new List<string>();
+        AddText(parts, metadata.Surface);
+        AddText(parts, metadata.OverlayId);
+        AddText(parts, metadata.Tab);
+        AddText(parts, metadata.Region);
+        AddText(parts, metadata.PreviewMode);
+        AddText(parts, metadata.Fixture);
+        foreach (var control in Descendants(form).Take(80))
+        {
+            AddText(parts, control.Text);
+            AddText(parts, ReadMemberValue(control, "Selected")?.ToString());
+            AddText(parts, ReadMemberValue(control, "Value")?.ToString());
+        }
+
+        return NormalizeTextSample(parts);
+    }
+
+    private static object? ScreenshotContentBounds(ScreenshotMetadata metadata, Form form, Rectangle? captureBounds)
+    {
+        if (string.Equals(metadata.Surface, "windows-native-overlay", StringComparison.Ordinal)
+            && metadata.Layout is not null)
+        {
+            return NativeContentBounds(metadata.Layout);
+        }
+
+        var capture = CaptureBoundsFor(form, captureBounds);
+        return RectEvidence(new Rectangle(0, 0, capture.Width, capture.Height), includeAspectRatio: true);
+    }
+
+    private static object? ScreenshotLayoutEvidence(ScreenshotMetadata metadata, Form form, Rectangle? captureBounds)
+    {
+        if (string.Equals(metadata.Surface, "windows-native-overlay", StringComparison.Ordinal)
+            && metadata.Layout is not null)
+        {
+            return NativeLayoutEvidence(metadata.Layout);
+        }
+
+        return IsWindowsSettingsSurface(metadata)
+            ? SettingsLayoutEvidence(metadata, form, captureBounds)
+            : GenericFormLayoutEvidence(metadata, form, captureBounds);
+    }
+
+    private static object? ScreenshotUiEvidence(ScreenshotMetadata metadata, Form form, Rectangle? captureBounds)
+    {
+        return IsWindowsSettingsSurface(metadata)
+            ? SettingsUiEvidence(metadata, form, captureBounds)
+            : null;
+    }
+
+    private static bool IsWindowsSettingsSurface(ScreenshotMetadata metadata)
+    {
+        return string.Equals(metadata.Surface, "windows-settings", StringComparison.Ordinal)
+            || string.Equals(metadata.Surface, "windows-settings-component", StringComparison.Ordinal);
+    }
+
+    private static object SettingsLayoutEvidence(ScreenshotMetadata metadata, Form form, Rectangle? captureBounds)
+    {
+        var capture = CaptureBoundsFor(form, captureBounds);
+        var elements = SettingsCapturedElements(metadata, form, capture);
+        return new
+        {
+            contract = "windows-settings-layout/v1",
+            root = RectEvidence(new Rectangle(0, 0, capture.Width, capture.Height)),
+            contentBounds = RectEvidence(new Rectangle(0, 0, capture.Width, capture.Height), includeAspectRatio: true),
+            capture = RectEvidence(capture),
+            selectedTab = metadata.Tab,
+            selectedOverlayId = metadata.OverlayId,
+            selectedRegion = metadata.Region,
+            elements
+        };
+    }
+
+    private static object SettingsUiEvidence(ScreenshotMetadata metadata, Form form, Rectangle? captureBounds)
+    {
+        var capture = CaptureBoundsFor(form, captureBounds);
+        var elements = SettingsCapturedElements(metadata, form, capture);
+        return new
+        {
+            contract = "settings-ui-evidence/v1",
+            surface = metadata.Surface,
+            tab = metadata.Tab,
+            overlayId = metadata.OverlayId,
+            requestedRegion = metadata.Region,
+            activeRegion = metadata.Region,
+            previewMode = metadata.PreviewMode,
+            root = RectEvidence(new Rectangle(0, 0, capture.Width, capture.Height)),
+            contentBounds = RectEvidence(new Rectangle(0, 0, capture.Width, capture.Height), includeAspectRatio: true),
+            sidebar = elements.FirstOrDefault(element => ElementRole(element) == "settings-sidebar"),
+            content = elements.FirstOrDefault(element => ElementRole(element) == "settings-content"),
+            contentBody = elements.FirstOrDefault(element => ElementRole(element) == "settings-content-body"),
+            tabs = elements.Where(element => ElementRole(element) == "settings-sidebar-tab").ToArray(),
+            regions = elements.Where(element => ElementRole(element) == "settings-region-segment").ToArray(),
+            panels = elements.Where(element => ElementRole(element) == "settings-panel").ToArray(),
+            controls = elements.Where(element => ElementRole(element) is "settings-control" or "settings-button" or "settings-choice" or "settings-toggle" or "settings-check" or "settings-stepper" or "settings-slider" or "settings-textbox").ToArray(),
+            preview = (object?)null
+        };
+    }
+
+    private static List<Dictionary<string, object?>> SettingsCapturedElements(ScreenshotMetadata metadata, Form form, Rectangle capture)
+    {
+        var elements = new List<Dictionary<string, object?>>();
+        var surface = Descendants(form).OfType<DesignV2SettingsSurface>().FirstOrDefault();
+        var offset = surface is null ? Point.Empty : ControlOffsetFrom(form, surface);
+
+        AddCapturedElement(elements, "settings-shell", 0, "Settings shell", Offset(new Rectangle(44, 36, 1152, 608), offset), capture, null, ColorToCss(OverlayTheme.Colors.SettingsBackground));
+        AddCapturedElement(elements, "settings-titlebar", 0, "Tech Mates Racing Overlay", Offset(new Rectangle(44, 36, 1152, 58), offset), capture, ColorToCss(OverlayTheme.DesignV2.TextPrimary), ColorToCss(OverlayTheme.DesignV2.TitleBar));
+        AddCapturedElement(elements, "settings-sidebar", 0, "Settings navigation", Offset(new Rectangle(64, 116, 190, 506), offset), capture, ColorToCss(OverlayTheme.DesignV2.TextSecondary), ColorToCss(OverlayTheme.DesignV2.SurfaceRaised));
+        AddCapturedElement(elements, "settings-content", 0, "Settings content", Offset(new Rectangle(278, 116, 890, 506), offset), capture, ColorToCss(OverlayTheme.DesignV2.TextPrimary), ColorToCss(OverlayTheme.DesignV2.SurfaceRaised));
+        AddCapturedElement(elements, "settings-content-header", 0, SettingsHeaderText(metadata), Offset(new Rectangle(278, 116, 890, 70), offset), capture, ColorToCss(OverlayTheme.DesignV2.TextPrimary), ColorToCss(OverlayTheme.DesignV2.TitleBar));
+        AddCapturedElement(elements, "settings-content-body", 0, metadata.Region, Offset(new Rectangle(278, 198, 890, 424), offset), capture, ColorToCss(OverlayTheme.DesignV2.TextSecondary), null);
+
+        var tabs = SettingsSidebarTabs();
+        for (var index = 0; index < tabs.Count; index++)
+        {
+            var tab = tabs[index];
+            var selected = string.Equals(tab.Id, metadata.Tab, StringComparison.OrdinalIgnoreCase)
+                || (string.Equals(tab.Id, "error-logging", StringComparison.OrdinalIgnoreCase) && string.Equals(metadata.Tab, "support", StringComparison.OrdinalIgnoreCase));
+            AddCapturedElement(
+                elements,
+                "settings-sidebar-tab",
+                index,
+                tab.Label,
+                Offset(new Rectangle(78, 164 + index * 32, 162, 27), offset),
+                capture,
+                ColorToCss(selected ? OverlayTheme.DesignV2.TextPrimary : OverlayTheme.DesignV2.TextSecondary),
+                selected ? ColorToCss(OverlayTheme.DesignV2.Magenta) : null,
+                new Dictionary<string, object?>
+                {
+                    ["tabId"] = tab.Id,
+                    ["selected"] = selected,
+                    ["controlKind"] = "tab"
+                });
+        }
+
+        if (!string.IsNullOrWhiteSpace(metadata.OverlayId))
+        {
+            var x = 312;
+            var regions = SettingsRegionsFor(metadata.OverlayId);
+            for (var index = 0; index < regions.Count; index++)
+            {
+                var region = regions[index];
+                var width = SettingsSegmentWidth(region.Id);
+                var selected = string.Equals(region.Id, metadata.Region, StringComparison.OrdinalIgnoreCase);
+                AddCapturedElement(
+                    elements,
+                    "settings-region-segment",
+                    index,
+                    region.Label,
+                    Offset(new Rectangle(x, 208, width, 30), offset),
+                    capture,
+                    ColorToCss(selected ? OverlayTheme.DesignV2.TextPrimary : OverlayTheme.DesignV2.Cyan),
+                    selected ? ColorToCss(OverlayTheme.DesignV2.Magenta) : null,
+                    new Dictionary<string, object?>
+                    {
+                        ["regionId"] = region.Id,
+                        ["selected"] = selected,
+                        ["controlKind"] = "tab"
+                    });
+                x += width + 12;
+            }
+        }
+
+        var panelIndex = 0;
+        foreach (var panel in SettingsPanelRects(metadata))
+        {
+            AddCapturedElement(elements, "settings-panel", panelIndex++, panel.Label, Offset(panel.Bounds, offset), capture, ColorToCss(OverlayTheme.DesignV2.TextPrimary), ColorToCss(OverlayTheme.DesignV2.SurfaceRaised));
+        }
+
+        if (surface is not null)
+        {
+            var controlIndex = 0;
+            foreach (Control control in Descendants(surface))
+            {
+                AddCapturedElement(
+                    elements,
+                    SettingsControlRole(control),
+                    controlIndex++,
+                    SettingsControlText(control),
+                    Offset(ControlBoundsRelativeTo(surface, control), offset),
+                    capture,
+                    ColorToCss(control.ForeColor),
+                    ColorToCss(control.BackColor),
+                    SettingsControlAttributes(control));
+            }
+        }
+
+        return elements;
+    }
+
+    private static object GenericFormLayoutEvidence(ScreenshotMetadata metadata, Form form, Rectangle? captureBounds)
+    {
+        var capture = CaptureBoundsFor(form, captureBounds);
+        var elements = new List<Dictionary<string, object?>>();
+        AddCapturedElement(elements, "form", 0, form.Text, new Rectangle(Point.Empty, form.ClientSize), capture, ColorToCss(form.ForeColor), ColorToCss(form.BackColor));
+        var index = 0;
+        foreach (Control control in Descendants(form))
+        {
+            AddCapturedElement(
+                elements,
+                GenericControlRole(control),
+                index++,
+                control.Text,
+                ControlBoundsRelativeTo(form, control),
+                capture,
+                ColorToCss(control.ForeColor),
+                ColorToCss(control.BackColor),
+                SettingsControlAttributes(control));
+        }
+
+        if (elements.Count == 0)
+        {
+            AddCapturedElement(elements, "client", 0, metadata.Surface, new Rectangle(Point.Empty, form.ClientSize), capture, null, null);
+        }
+
+        return new
+        {
+            contract = "windows-form-layout/v1",
+            root = RectEvidence(new Rectangle(0, 0, capture.Width, capture.Height)),
+            contentBounds = RectEvidence(new Rectangle(0, 0, capture.Width, capture.Height), includeAspectRatio: true),
+            capture = RectEvidence(capture),
+            elements
+        };
+    }
+
+    private static Rectangle CaptureBoundsFor(Form form, Rectangle? captureBounds)
+    {
+        return captureBounds ?? new Rectangle(Point.Empty, form.ClientSize);
+    }
+
+    private static void AddCapturedElement(
+        List<Dictionary<string, object?>> elements,
+        string role,
+        int index,
+        string? text,
+        Rectangle sourceBounds,
+        Rectangle capture,
+        string? foreground,
+        string? background,
+        Dictionary<string, object?>? attributes = null)
+    {
+        var visible = Rectangle.Intersect(sourceBounds, capture);
+        if (visible.Width <= 0 || visible.Height <= 0)
+        {
+            return;
+        }
+
+        elements.Add(new Dictionary<string, object?>
+        {
+            ["role"] = role,
+            ["index"] = index,
+            ["tag"] = "native",
+            ["className"] = role,
+            ["text"] = string.IsNullOrWhiteSpace(text) ? null : text,
+            ["sourceBounds"] = RectEvidence(sourceBounds),
+            ["bounds"] = RectEvidence(new Rectangle(visible.X - capture.X, visible.Y - capture.Y, visible.Width, visible.Height)),
+            ["styles"] = new Dictionary<string, object?>
+            {
+                ["color"] = foreground,
+                ["backgroundColor"] = background,
+                ["borderColor"] = null,
+                ["fontFamily"] = ScreenshotFontFamily,
+                ["fontSize"] = null,
+                ["fontWeight"] = null,
+                ["display"] = "native"
+            },
+            ["attributes"] = attributes
+        });
+    }
+
+    private static string? ElementRole(Dictionary<string, object?> element)
+    {
+        return element.TryGetValue("role", out var role) ? role as string : null;
+    }
+
+    private static IReadOnlyList<(string Id, string Label)> SettingsSidebarTabs()
+    {
+        var tabs = new List<(string Id, string Label)> { ("general", "General") };
+        var byId = ManagedOverlayDefinitions().ToDictionary(definition => definition.Id, StringComparer.OrdinalIgnoreCase);
+        foreach (var preferredId in new[]
+        {
+            "standings",
+            "relative",
+            "gap-to-leader",
+            "track-map",
+            "stream-chat",
+            "garage-cover",
+            "fuel-calculator",
+            "input-state",
+            "car-radar",
+            "flags",
+            "session-weather",
+            "pit-service"
+        })
+        {
+            if (byId.TryGetValue(preferredId, out var definition))
+            {
+                tabs.Add((definition.Id, definition.DisplayName));
+            }
+        }
+
+        foreach (var definition in ManagedOverlayDefinitions())
+        {
+            if (!tabs.Any(tab => string.Equals(tab.Id, definition.Id, StringComparison.OrdinalIgnoreCase)))
+            {
+                tabs.Add((definition.Id, definition.DisplayName));
+            }
+        }
+
+        tabs.Add(("error-logging", "Diagnostics"));
+        return tabs;
+    }
+
+    private static int SettingsSegmentWidth(string regionId)
+    {
+        return regionId switch
+        {
+            "general" => 86,
+            "preview" => 82,
+            "streamlabs" => 104,
+            _ => 76
+        };
+    }
+
+    private static string? SettingsHeaderText(ScreenshotMetadata metadata)
+    {
+        if (string.Equals(metadata.Tab, "general", StringComparison.OrdinalIgnoreCase))
+        {
+            return "General Shared units.";
+        }
+
+        if (string.Equals(metadata.Tab, "support", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(metadata.Tab, "error-logging", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Diagnostics Advanced capture and support bundle tools.";
+        }
+
+        var definition = ManagedOverlayDefinitions()
+            .FirstOrDefault(candidate => string.Equals(candidate.Id, metadata.OverlayId, StringComparison.OrdinalIgnoreCase));
+        return definition is null
+            ? metadata.Tab
+            : $"{definition.DisplayName} {metadata.Region}";
+    }
+
+    private static IReadOnlyList<(string Label, Rectangle Bounds)> SettingsPanelRects(ScreenshotMetadata metadata)
+    {
+        if (string.Equals(metadata.Tab, "general", StringComparison.OrdinalIgnoreCase))
+        {
+            return
+            [
+                ("Units", new Rectangle(306, 214, 392, 132)),
+                ("Updates", new Rectangle(726, 214, 414, 132)),
+                ("Show Preview", new Rectangle(306, 374, 612, 196))
+            ];
+        }
+
+        if (string.Equals(metadata.Tab, "support", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(metadata.Tab, "error-logging", StringComparison.OrdinalIgnoreCase))
+        {
+            return
+            [
+                ("Capture Controls", new Rectangle(306, 214, 392, 206)),
+                ("Automatic History", new Rectangle(726, 214, 414, 206)),
+                ("Support Folders", new Rectangle(306, 446, 392, 142)),
+                ("Support Bundle", new Rectangle(726, 446, 414, 142))
+            ];
+        }
+
+        var overlayId = metadata.OverlayId ?? string.Empty;
+        var region = metadata.Region ?? "general";
+        if (string.Equals(region, "general", StringComparison.OrdinalIgnoreCase))
+        {
+            var controlHeight = string.Equals(overlayId, "garage-cover", StringComparison.OrdinalIgnoreCase) ? 166 : 226;
+            return
+            [
+                ("Overlay Controls", new Rectangle(306, 272, 392, controlHeight)),
+                ("Browser Source", new Rectangle(726, 272, 414, 132))
+            ];
+        }
+
+        if (string.Equals(region, "content", StringComparison.OrdinalIgnoreCase))
+        {
+            return overlayId switch
+            {
+                "standings" => [("Content Display", new Rectangle(306, 272, 834, 344))],
+                "relative" => [("Content Display", new Rectangle(306, 272, 834, 280))],
+                "input-state" => [("Content Display", new Rectangle(306, 272, 834, 236))],
+                "session-weather" => [("Session / Weather Cells", new Rectangle(306, 272, 834, 344))],
+                "pit-service" => [("Pit Service Cells", new Rectangle(306, 272, 834, 344))],
+                "stream-chat" => [("Chat Source", new Rectangle(306, 272, 834, 170))],
+                "flags" => [("Content Display", new Rectangle(306, 272, 834, 240))],
+                "fuel-calculator" or "track-map" => [("Content Display", new Rectangle(306, 272, 834, 150))],
+                _ => [("Content Display", new Rectangle(306, 272, 834, 126))]
+            };
+        }
+
+        if (string.Equals(region, "header", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(region, "footer", StringComparison.OrdinalIgnoreCase))
+        {
+            return [(region, new Rectangle(306, 272, 834, 232))];
+        }
+
+        if (string.Equals(region, "preview", StringComparison.OrdinalIgnoreCase))
+        {
+            return [("Preview", new Rectangle(306, 272, 392, 240))];
+        }
+
+        if (string.Equals(region, "twitch", StringComparison.OrdinalIgnoreCase))
+        {
+            return [("Twitch Metadata", new Rectangle(306, 272, 834, 200))];
+        }
+
+        if (string.Equals(region, "streamlabs", StringComparison.OrdinalIgnoreCase))
+        {
+            return [("Streamlabs", new Rectangle(306, 272, 834, 150))];
+        }
+
+        return [("Settings", new Rectangle(306, 272, 834, 126))];
+    }
+
+    private static Rectangle Offset(Rectangle rectangle, Point offset)
+    {
+        return new Rectangle(rectangle.X + offset.X, rectangle.Y + offset.Y, rectangle.Width, rectangle.Height);
+    }
+
+    private static Point ControlOffsetFrom(Control root, Control control)
+    {
+        var x = 0;
+        var y = 0;
+        for (Control? current = control; current is not null && current != root; current = current.Parent)
+        {
+            x += current.Left;
+            y += current.Top;
+        }
+
+        return new Point(x, y);
+    }
+
+    private static Rectangle ControlBoundsRelativeTo(Control root, Control control)
+    {
+        var offset = ControlOffsetFrom(root, control);
+        return new Rectangle(offset, control.Size);
+    }
+
+    private static string SettingsControlRole(Control control)
+    {
+        var typeName = control.GetType().Name;
+        if (typeName.Contains("Toggle", StringComparison.OrdinalIgnoreCase))
+        {
+            return "settings-toggle";
+        }
+
+        if (typeName.Contains("Check", StringComparison.OrdinalIgnoreCase))
+        {
+            return "settings-check";
+        }
+
+        if (typeName.Contains("Choice", StringComparison.OrdinalIgnoreCase))
+        {
+            return "settings-choice";
+        }
+
+        if (typeName.Contains("Stepper", StringComparison.OrdinalIgnoreCase))
+        {
+            return "settings-stepper";
+        }
+
+        if (typeName.Contains("Slider", StringComparison.OrdinalIgnoreCase))
+        {
+            return "settings-slider";
+        }
+
+        if (control is TextBoxBase)
+        {
+            return "settings-textbox";
+        }
+
+        if (control is ButtonBase || typeName.Contains("Button", StringComparison.OrdinalIgnoreCase))
+        {
+            return "settings-button";
+        }
+
+        return "settings-control";
+    }
+
+    private static string GenericControlRole(Control control)
+    {
+        if (control is ButtonBase)
+        {
+            return "button";
+        }
+
+        if (control is TextBoxBase)
+        {
+            return "textbox";
+        }
+
+        if (control is TabControl)
+        {
+            return "tab-control";
+        }
+
+        return control.GetType().Name;
+    }
+
+    private static string? SettingsControlText(Control control)
+    {
+        var parts = new List<string>();
+        AddText(parts, control.Text);
+        AddText(parts, ReadMemberValue(control, "Selected")?.ToString());
+        AddText(parts, ReadMemberValue(control, "Value")?.ToString());
+        AddText(parts, ReadMemberValue(control, "IsOn") is bool isOn ? (isOn ? "On" : "Off") : null);
+        AddText(parts, ReadMemberValue(control, "IsChecked") is bool isChecked ? (isChecked ? "Checked" : "Unchecked") : null);
+        return parts.Count == 0 ? null : string.Join(" ", parts);
+    }
+
+    private static Dictionary<string, object?> SettingsControlAttributes(Control control)
+    {
+        return new Dictionary<string, object?>
+        {
+            ["controlKind"] = SettingsControlKind(control),
+            ["type"] = control.GetType().Name,
+            ["enabled"] = control.Enabled,
+            ["visible"] = control.Visible,
+            ["tabStop"] = control.TabStop,
+            ["value"] = ReadMemberValue(control, "Value"),
+            ["selected"] = ReadMemberValue(control, "Selected"),
+            ["checked"] = ReadMemberValue(control, "IsChecked"),
+            ["isOn"] = ReadMemberValue(control, "IsOn")
+        };
+    }
+
+    private static string SettingsControlKind(Control control)
+    {
+        return SettingsControlRole(control).Replace("settings-", string.Empty, StringComparison.Ordinal);
+    }
+
+    private static object? ReadMemberValue(object instance, string name)
+    {
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        try
+        {
+            var property = instance.GetType().GetProperty(name, flags);
+            if (property is not null && property.GetIndexParameters().Length == 0)
+            {
+                return property.GetValue(instance);
+            }
+
+            var field = instance.GetType().GetField(name, flags);
+            return field?.GetValue(instance);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? ColorToCss(Color color)
+    {
+        if (color.IsEmpty)
+        {
+            return null;
+        }
+
+        if (color.A == 255)
+        {
+            return $"rgb({color.R}, {color.G}, {color.B})";
+        }
+
+        return $"rgba({color.R}, {color.G}, {color.B}, {Math.Round(color.A / 255d, 3)})";
+    }
+
+    private static string? NormalizeTextSample(IEnumerable<string?> values)
+    {
+        var sample = string.Join(" ", values.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!.Trim()))
+            .Replace("\r", " ", StringComparison.Ordinal)
+            .Replace("\n", " ", StringComparison.Ordinal)
+            .Trim();
+        while (sample.Contains("  ", StringComparison.Ordinal))
+        {
+            sample = sample.Replace("  ", " ", StringComparison.Ordinal);
+        }
+
+        return sample.Length == 0 ? null : sample[..Math.Min(sample.Length, 512)];
     }
 
     private static object? NativeContentBounds(DesignV2LayoutDiagnostics? layout)
@@ -2051,6 +2745,31 @@ internal static class Program
         };
     }
 
+    private static object RectEvidence(Rectangle rect, bool includeAspectRatio = false)
+    {
+        if (!includeAspectRatio)
+        {
+            return new
+            {
+                x = rect.X,
+                y = rect.Y,
+                width = rect.Width,
+                height = rect.Height
+            };
+        }
+
+        return new
+        {
+            x = rect.X,
+            y = rect.Y,
+            width = rect.Width,
+            height = rect.Height,
+            aspectRatio = rect.Height > 0
+                ? Math.Round(rect.Width / (double)rect.Height, 4)
+                : (double?)null
+        };
+    }
+
     private static object PointEvidence(DesignV2LayoutPoint point)
     {
         return new
@@ -2134,7 +2853,12 @@ internal static class Program
         bool? RadarShouldRender = null,
         double? RadarSurfaceAlpha = null,
         int? RadarCarCount = null,
-        DesignV2LayoutDiagnostics? Layout = null);
+        DesignV2LayoutDiagnostics? Layout = null,
+        string? TextSample = null,
+        object? ContentBounds = null,
+        object? LayoutEvidence = null,
+        object? UiEvidence = null,
+        object? ScenarioEvidence = null);
 
     private sealed record SettingsRegionSpec(string Id, string Label);
 

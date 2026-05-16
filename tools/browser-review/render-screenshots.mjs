@@ -9,6 +9,7 @@ import {
   statSync,
   writeFileSync
 } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { browserOverlayPages } from '../../tests/browser-overlays/browserOverlayAssets.js';
@@ -246,7 +247,9 @@ async function captureRoute(page, route, manifest) {
     textSample: dom.textSample,
     contentBounds: dom.contentBounds,
     layout: dom.layout,
+    uiEvidence: uiEvidence(route, dom),
     modelEvidence: modelLayoutEvidence(model, dom.layout),
+    scenarioEvidence: scenarioEvidence(route, model),
     width: artifact.width,
     height: artifact.height,
     bytes: artifact.bytes
@@ -305,6 +308,31 @@ async function readDomDiagnostics(element) {
           : null
       };
     };
+    const controlKindFor = (tag, element) => {
+      if (tag === 'button') return 'button';
+      if (tag === 'a') return 'tab-link';
+      if (tag === 'input') return element.getAttribute('type') || 'input';
+      if (tag === 'select') return 'select';
+      if (tag === 'textarea') return 'textarea';
+      return null;
+    };
+    const attributeEvidence = (element) => {
+      const tag = String(element.tagName || '').toLowerCase();
+      const value = 'value' in element ? String(element.value ?? '') : null;
+      return {
+        role: element.getAttribute('role') || null,
+        ariaLabel: element.getAttribute('aria-label') || null,
+        ariaSelected: element.getAttribute('aria-selected') || null,
+        ariaChecked: element.getAttribute('aria-checked') || null,
+        type: element.getAttribute('type') || null,
+        href: element.getAttribute('href') || null,
+        value: value || null,
+        checked: 'checked' in element ? Boolean(element.checked) : null,
+        selected: 'selected' in element ? Boolean(element.selected) : null,
+        disabled: 'disabled' in element ? Boolean(element.disabled) : null,
+        controlKind: controlKindFor(tag, element)
+      };
+    };
     const roleSelectors = [
       ['settings-app', '#settings-app'],
       ['settings-titlebar', '.titlebar'],
@@ -314,7 +342,7 @@ async function readDomDiagnostics(element) {
       ['settings-content-header', '.content-header'],
       ['settings-content-body', '.content-body'],
       ['settings-region-segment', '.region-segment'],
-      ['settings-panel', '.panel'],
+      ['settings-panel', '.panel, .garage-preview-stage, .cover-preview'],
       ['settings-field-row', '.field-row, .status-row'],
       ['settings-button', 'button'],
       ['settings-segmented', '.segmented'],
@@ -401,10 +429,12 @@ async function readDomDiagnostics(element) {
           role,
           index,
           tag: element.tagName.toLowerCase(),
+          id: element.id || null,
           className: String(element.className?.baseVal || element.className || '') || null,
           text: textFor(element),
           bounds,
-          styles: styleFor(element)
+          styles: styleFor(element),
+          attributes: attributeEvidence(element)
         });
       });
     }
@@ -456,85 +486,763 @@ async function readDomDiagnostics(element) {
   });
 }
 
+function uiEvidence(route, dom) {
+  if (!route.surface?.includes('settings')) {
+    return null;
+  }
+
+  const elements = Array.isArray(dom?.layout?.elements) ? dom.layout.elements : [];
+  return {
+    contract: 'settings-ui-evidence/v1',
+    surface: route.surface,
+    tab: route.tab || null,
+    overlayId: route.overlayId || null,
+    requestedRegion: route.region || null,
+    activeRegion: dom.activeRegion || null,
+    previewMode: route.previewMode || null,
+    root: dom.layout?.root || null,
+    contentBounds: dom.contentBounds || null,
+    sidebar: firstElement(elements, 'settings-sidebar'),
+    content: firstElement(elements, 'settings-content'),
+    contentBody: firstElement(elements, 'settings-content-body'),
+    tabs: elements
+      .filter((element) => element.role === 'settings-sidebar-tab')
+      .map(settingElementEvidence),
+    regions: elements
+      .filter((element) => element.role === 'settings-region-segment')
+      .map(settingElementEvidence),
+    panels: elements
+      .filter((element) => element.role === 'settings-panel')
+      .map(settingElementEvidence),
+    controls: elements
+      .filter((element) => [
+        'settings-field-row',
+        'settings-button',
+        'settings-segmented',
+        'settings-choice',
+        'settings-matrix',
+        'settings-matrix-row',
+        'settings-matrix-cell'
+      ].includes(element.role))
+      .map(settingElementEvidence),
+    preview: settingsPreviewEvidence(elements)
+  };
+}
+
+function firstElement(elements, role) {
+  const element = elements.find((item) => item?.role === role);
+  return element ? settingElementEvidence(element) : null;
+}
+
+function settingElementEvidence(element) {
+  return {
+    role: element.role || null,
+    id: element.id || null,
+    className: element.className || null,
+    text: element.text || null,
+    bounds: element.bounds || null,
+    styles: element.styles || null,
+    attributes: element.attributes || null
+  };
+}
+
+function settingsPreviewEvidence(elements) {
+  const previewRoles = new Set([
+    'overlay',
+    'header',
+    'content',
+    'source',
+    'table',
+    'metric-list',
+    'graph-panel',
+    'flags',
+    'car-radar',
+    'track-map',
+    'input-shell',
+    'stream-chat-body'
+  ]);
+  const previewElements = elements
+    .filter((element) => previewRoles.has(element.role))
+    .map(settingElementEvidence);
+  if (!previewElements.length) {
+    return null;
+  }
+
+  return {
+    elementCount: previewElements.length,
+    elements: previewElements
+  };
+}
+
 function modelLayoutEvidence(model, layout) {
   if (!model || typeof model !== 'object') {
     return null;
   }
 
+  const tableRendering = tableRenderedEvidence(layout);
+  const metricRendering = metricRenderedEvidence(layout);
+  let gridRowCursor = 0;
   return {
     contract: 'overlay-model-layout-evidence/v1',
     bodyKind: stringOrNull(model.bodyKind),
-    columns: (Array.isArray(model.columns) ? model.columns : []).map((column, index) => ({
-      index,
-      label: stringOrNull(column?.label),
-      dataKey: stringOrNull(column?.dataKey),
-      configuredWidth: Number.isFinite(Number(column?.width)) ? Number(column.width) : null,
-      alignment: stringOrNull(column?.alignment)
-    })),
-    rows: (Array.isArray(model.rows) ? model.rows : []).slice(0, 80).map((row, index) => ({
-      index,
-      kind: row?.rowKind || (row?.isClassHeader ? 'class-header' : 'row'),
-      isReference: Boolean(row?.isReference || row?.isFocus || row?.isReferenceCar),
-      isPartial: Boolean(row?.isPartial),
-      classColorHex: stringOrNull(row?.carClassColorHex),
-      cells: Array.isArray(row?.cells) ? row.cells.map((cell) => String(cell ?? '')) : []
-    })),
-    metrics: (Array.isArray(model.metrics) ? model.metrics : []).map(metricEvidence),
+    columns: (Array.isArray(model.columns) ? model.columns : []).map((column, index) => {
+      const rendered = tableRendering.headers[index] || null;
+      return {
+        index,
+        label: stringOrNull(column?.label),
+        dataKey: stringOrNull(column?.dataKey),
+        configuredWidth: Number.isFinite(Number(column?.width)) ? Number(column.width) : null,
+        renderedWidth: numberOrNull(rendered?.bounds?.width),
+        alignment: stringOrNull(column?.alignment),
+        bounds: rendered?.bounds || null,
+        foreground: rendered?.styles?.color || null,
+        background: rendered?.styles?.backgroundColor || null
+      };
+    }),
+    rows: (Array.isArray(model.rows) ? model.rows : []).slice(0, 80).map((row, index) =>
+      tableRowEvidence(row, index, tableRendering)),
+    metrics: (Array.isArray(model.metrics) ? model.metrics : []).map((row, index) =>
+      metricEvidence(row, renderedMetricRowFor(metricRendering, row, index), metricRendering)),
     metricSections: (Array.isArray(model.metricSections) ? model.metricSections : []).map((section) => ({
       title: stringOrNull(section?.title),
-      rows: (Array.isArray(section?.rows) ? section.rows : []).map(metricEvidence)
+      bounds: renderedMetricSectionBounds(metricRendering, section?.title),
+      rows: (Array.isArray(section?.rows) ? section.rows : []).map((row) =>
+        metricEvidence(row, renderedMetricRowFor(metricRendering, row), metricRendering))
     })),
     gridSections: (Array.isArray(model.gridSections) ? model.gridSections : []).map((section) => ({
       title: stringOrNull(section?.title),
+      bounds: renderedMetricSectionBounds(metricRendering, section?.title),
       headers: Array.isArray(section?.headers) ? section.headers.map((header) => String(header ?? '')) : [],
-      rows: (Array.isArray(section?.rows) ? section.rows : []).map((row, index) => ({
-        index,
-        label: stringOrNull(row?.label),
-        tone: stringOrNull(row?.tone),
-        cells: (Array.isArray(row?.cells) ? row.cells : []).map((cell) => ({
-          value: stringOrNull(cell?.value),
-          tone: stringOrNull(cell?.tone)
-        }))
-      }))
+      renderedHeaders: metricRendering.tireCells
+        .filter((cell) => String(cell.className || '').includes('tire-grid-header'))
+        .map((cell, index) => renderedCellEvidence(cell, index, null)),
+      rows: (Array.isArray(section?.rows) ? section.rows : []).map((row, index) => {
+        const renderedRow = metricRendering.tireRows[gridRowCursor++] || null;
+        const renderedCells = renderedGridCellsForRow(metricRendering, renderedRow?.bounds);
+        return {
+          index,
+          label: stringOrNull(row?.label),
+          tone: stringOrNull(row?.tone),
+          bounds: renderedRow?.bounds || null,
+          cells: (Array.isArray(row?.cells) ? row.cells : []).map((cell, cellIndex) => ({
+            value: stringOrNull(cell?.value),
+            tone: stringOrNull(cell?.tone),
+            bounds: renderedGridCellBounds(renderedCells, cellIndex, cell?.value)
+          }))
+        };
+      })
     })),
     graph: graphModelEvidence(model, layout),
     inputs: model.inputs ? inputEvidence(model.inputs, layout) : null,
     flags: model.flags ? {
       count: arrayLength(model.flags?.flags),
-      kinds: (Array.isArray(model.flags?.flags) ? model.flags.flags : []).map((flag) => stringOrNull(flag?.kind))
+      kinds: (Array.isArray(model.flags?.flags) ? model.flags.flags : []).map((flag) => stringOrNull(flag?.kind)),
+      cells: flagCellEvidence(model.flags, layout)
     } : null,
-    carRadar: model.carRadar?.renderModel ? {
-      shouldRender: booleanOrNull(model.carRadar.renderModel.shouldRender),
-      width: numberOrNull(model.carRadar.renderModel.width),
-      height: numberOrNull(model.carRadar.renderModel.height),
-      carCount: arrayLength(model.carRadar.renderModel.cars),
-      labelCount: arrayLength(model.carRadar.renderModel.labels),
-      ringCount: arrayLength(model.carRadar.renderModel.rings)
-    } : null,
-    trackMap: model.trackMap ? {
-      markerCount: arrayLength(model.trackMap.markers),
-      primitiveCount: arrayLength(model.trackMap.primitives),
-      width: numberOrNull(model.trackMap.width),
-      height: numberOrNull(model.trackMap.height)
-    } : null
+    carRadar: carRadarVectorEvidence(model.carRadar?.renderModel, layout),
+    trackMap: trackMapVectorEvidence(model.trackMap?.renderModel || model.trackMap, layout)
   };
 }
 
-function metricEvidence(row) {
+function tableRenderedEvidence(layout) {
+  const elements = Array.isArray(layout?.elements) ? layout.elements : [];
+  const headers = elements.filter((element) => element.role === 'table-header-cell');
+  const rows = elements.filter((element) => element.role === 'table-row');
+  const cells = elements.filter((element) => element.role === 'table-cell');
+  const renderedRows = rows.map((row, index) => {
+    const rowBounds = row.bounds;
+    const rowCells = cells
+      .filter((cell) => overlapsVertically(cell.bounds, rowBounds))
+      .sort((a, b) => numberOr(a.bounds?.x, 0) - numberOr(b.bounds?.x, 0));
+    return {
+      index,
+      row,
+      cells: rowCells
+    };
+  });
+  return { headers, rows: renderedRows };
+}
+
+function tableRowEvidence(row, index, tableRendering) {
+  const rendered = tableRendering.rows[index] || null;
+  return {
+    index,
+    kind: row?.rowKind || (row?.isClassHeader ? 'class-header' : 'row'),
+    isReference: Boolean(row?.isReference || row?.isFocus || row?.isReferenceCar),
+    isPartial: Boolean(row?.isPartial),
+    classColorHex: stringOrNull(row?.carClassColorHex),
+    text: rendered?.row?.text || null,
+    foreground: rendered?.row?.styles?.color || null,
+    background: rendered?.row?.styles?.backgroundColor || null,
+    bounds: rendered?.row?.bounds || null,
+    cells: Array.isArray(row?.cells) ? row.cells.map((cell) => String(cell ?? '')) : [],
+    renderedCells: (rendered?.cells || []).map((cell, cellIndex) =>
+      renderedCellEvidence(cell, cellIndex, tableRendering.headers[cellIndex]?.text || null))
+  };
+}
+
+function renderedCellEvidence(cell, index, column) {
+  return {
+    columnIndex: index,
+    column: stringOrNull(column),
+    text: cell?.text || null,
+    value: cell?.text || null,
+    foreground: cell?.styles?.color || null,
+    background: cell?.styles?.backgroundColor || null,
+    bounds: cell?.bounds || null
+  };
+}
+
+function metricRenderedEvidence(layout) {
+  const elements = Array.isArray(layout?.elements) ? layout.elements : [];
+  return {
+    metricRows: elements.filter((element) => element.role === 'metric-row'),
+    metricLabels: elements.filter((element) => element.role === 'metric-label'),
+    metricValues: elements.filter((element) => element.role === 'metric-value'),
+    metricSegments: elements.filter((element) => element.role === 'metric-segment'),
+    sections: elements.filter((element) => element.role === 'metric-section-title'),
+    grids: elements.filter((element) => element.role === 'tire-grid'),
+    tireRows: elements.filter((element) => element.role === 'tire-grid-row'),
+    tireCells: elements.filter((element) => element.role === 'tire-grid-cell')
+  };
+}
+
+function renderedMetricRowFor(metricRendering, row, fallbackIndex = null) {
+  const label = stringOrNull(row?.label);
+  if (label) {
+    const normalized = normalizeEvidenceText(label);
+    const byText = metricRendering.metricRows.find((candidate) =>
+      normalizeEvidenceText(candidate.text).startsWith(normalized)
+      || normalizeEvidenceText(candidate.text).includes(normalized));
+    if (byText) {
+      return byText;
+    }
+
+    const labelElement = metricRendering.metricLabels.find((candidate) =>
+      normalizeEvidenceText(candidate.text) === normalized);
+    if (labelElement) {
+      const byLabelBounds = metricRendering.metricRows.find((candidate) =>
+        overlapsVertically(candidate.bounds, labelElement.bounds));
+      if (byLabelBounds) {
+        return byLabelBounds;
+      }
+    }
+  }
+
+  return fallbackIndex === null ? null : metricRendering.metricRows[fallbackIndex] || null;
+}
+
+function renderedMetricSectionBounds(metricRendering, title) {
+  const normalized = normalizeEvidenceText(title);
+  if (!normalized) {
+    return null;
+  }
+
+  return metricRendering.sections.find((candidate) =>
+    normalizeEvidenceText(candidate.text) === normalized)?.bounds || null;
+}
+
+function metricEvidence(row, rendered = null, metricRendering = null) {
+  const segmentElements = rendered
+    ? metricRenderedEvidenceForBounds(rendered.bounds, metricRendering)
+    : [];
   return {
     label: stringOrNull(row?.label),
     value: stringOrNull(row?.value),
     tone: stringOrNull(row?.tone),
     rowColorHex: stringOrNull(row?.rowColorHex || row?.carClassColorHex),
+    foreground: rendered?.styles?.color || null,
+    background: rendered?.styles?.backgroundColor || null,
+    bounds: rendered?.bounds || null,
     segments: (Array.isArray(row?.segments) ? row.segments : []).map((segment, index) => ({
       index,
       label: stringOrNull(segment?.label),
       value: stringOrNull(segment?.value),
       tone: stringOrNull(segment?.tone),
       accentHex: stringOrNull(segment?.accentHex),
-      rotationDegrees: numberOrNull(segment?.rotationDegrees)
+      rotationDegrees: numberOrNull(segment?.rotationDegrees),
+      bounds: segmentElements[index]?.bounds || null,
+      foreground: segmentElements[index]?.styles?.color || null,
+      background: segmentElements[index]?.styles?.backgroundColor || null
     }))
   };
+}
+
+function metricRenderedEvidenceForBounds(bounds, metricRendering) {
+  if (!bounds || !metricRendering) {
+    return [];
+  }
+  return metricRendering.metricSegments
+    .filter((segment) => overlapsVertically(segment.bounds, bounds))
+    .sort((left, right) => numberOr(left.bounds?.x, 0) - numberOr(right.bounds?.x, 0));
+}
+
+function renderedGridCellsForRow(metricRendering, rowBounds) {
+  if (!rowBounds) {
+    return [];
+  }
+
+  return metricRendering.tireCells
+    .filter((cell) =>
+      !String(cell.className || '').includes('tire-grid-label')
+      && !String(cell.className || '').includes('tire-grid-header')
+      && overlapsVertically(cell.bounds, rowBounds))
+    .sort((left, right) => numberOr(left.bounds?.x, 0) - numberOr(right.bounds?.x, 0));
+}
+
+function renderedGridCellBounds(renderedCells, cellIndex, value) {
+  const direct = renderedCells[cellIndex] || null;
+  if (direct?.bounds) {
+    return direct.bounds;
+  }
+
+  const text = stringOrNull(value);
+  if (!text) {
+    return null;
+  }
+
+  return renderedCells.find((cell) => cell.text === text)?.bounds || null;
+}
+
+function flagCellEvidence(flags, layout) {
+  const cells = elementsForRole(layout, 'flag-cell');
+  const renderedFlags = Array.isArray(flags?.flags) ? flags.flags : [];
+  const grid = flagGrid(renderedFlags.length);
+  return renderedFlags.map((flag, index) => {
+    const cellBounds = cells[index]?.bounds || null;
+    return {
+      index,
+      row: Math.floor(index / Math.max(1, grid.columns)),
+      column: index % Math.max(1, grid.columns),
+      kind: stringOrNull(flag?.kind),
+      label: stringOrNull(flag?.label),
+      detail: stringOrNull(flag?.detail),
+      fill: flagColor(flag?.kind),
+      bounds: cellBounds,
+      clothBounds: cellBounds ? flagClothBounds(cellBounds, grid.compact) : null
+    };
+  });
+}
+
+function flagGrid(count) {
+  if (count <= 1) return { columns: 1, rows: 1, compact: false };
+  if (count <= 2) return { columns: 2, rows: 1, compact: false };
+  if (count <= 4) return { columns: 2, rows: 2, compact: true };
+  return { columns: 3, rows: Math.ceil(count / 3), compact: true };
+}
+
+function flagClothBounds(cell, compact) {
+  const poleX = cell.x + Math.max(12, cell.width * 0.16);
+  const clothLeft = poleX + 1;
+  const clothWidth = Math.max(48, cell.x + cell.width - clothLeft - 8);
+  const clothHeight = Math.max(24, Math.min(cell.height * 0.7, clothWidth * 0.58));
+  const clothTop = cell.y + Math.max(4, (cell.height - clothHeight) * (compact ? 0.32 : 0.32));
+  return rectEvidence({
+    x: clothLeft,
+    y: clothTop,
+    width: clothWidth,
+    height: clothHeight
+  });
+}
+
+function flagColor(kind) {
+  const token = String(kind || '').toLowerCase();
+  if (token === 'green') return 'rgb(37, 220, 112)';
+  if (token === 'blue') return 'rgb(49, 125, 255)';
+  if (token === 'yellow' || token === 'caution') return 'rgb(255, 210, 64)';
+  if (token === 'red') return 'rgb(244, 70, 70)';
+  if (token === 'white') return 'rgb(245, 248, 252)';
+  if (token === 'checkered') return 'checkered';
+  if (token === 'meatball') return 'rgb(24, 24, 28)';
+  return null;
+}
+
+function carRadarVectorEvidence(renderModel, layout) {
+  if (!renderModel) {
+    return null;
+  }
+
+  const sourceWidth = numberOr(renderModel.width, 300);
+  const sourceHeight = numberOr(renderModel.height, 300);
+  const target = findElementBounds(layout, 'car-radar', 'car-radar-v2')
+    || findElementBounds(layout, 'car-radar', 'radar-v2')
+    || findElementBounds(layout, 'content');
+  const scale = vectorScale(target, sourceWidth, sourceHeight);
+  const primitives = [
+    vectorShapePrimitive('background', 'ellipse', renderModel.background, scale),
+    ...(Array.isArray(renderModel.rings) ? renderModel.rings.map((ring, index) =>
+      vectorShapePrimitive(`ring-${index + 1}`, 'ring', ring, scale)) : []),
+    renderModel.multiclassArc
+      ? vectorShapePrimitive('multiclass-arc', 'arc', renderModel.multiclassArc, scale)
+      : null
+  ].filter(Boolean);
+  const items = (Array.isArray(renderModel.cars) ? renderModel.cars : []).map((car, index) => ({
+    kind: stringOrNull(car?.kind) || 'car',
+    id: stringOrNull(car?.id) || index,
+    bounds: scaleRect(scale, car),
+    fill: colorToCss(car?.fill),
+    stroke: colorToCss(car?.stroke),
+    strokeWidth: numberOrNull(car?.strokeWidth),
+    label: stringOrNull(car?.label)
+  }));
+  const labels = (Array.isArray(renderModel.labels) ? renderModel.labels : []).map((label) => ({
+    text: stringOrNull(label?.text),
+    bounds: scaleRect(scale, label),
+    fontSize: numberOrNull(label?.fontSize),
+    bold: Boolean(label?.bold),
+    alignment: stringOrNull(label?.alignment),
+    color: colorToCss(label?.color)
+  }));
+
+  return {
+    shouldRender: booleanOrNull(renderModel.shouldRender),
+    width: numberOrNull(renderModel.width),
+    height: numberOrNull(renderModel.height),
+    targetBounds: target || null,
+    scaleX: scale?.scaleX || null,
+    scaleY: scale?.scaleY || null,
+    carCount: arrayLength(renderModel.cars),
+    itemCount: items.length,
+    primitiveCount: primitives.length,
+    labelCount: labels.length,
+    ringCount: arrayLength(renderModel.rings),
+    surfaceAlpha: renderModel.shouldRender === true ? 1 : numberOrNull(renderModel.minimumVisibleAlpha),
+    items,
+    primitives,
+    labels
+  };
+}
+
+function trackMapVectorEvidence(renderModel, layout) {
+  if (!renderModel) {
+    return null;
+  }
+
+  const sourceWidth = numberOr(renderModel.width, 360);
+  const sourceHeight = numberOr(renderModel.height, 360);
+  const target = findElementBounds(layout, 'track-map', 'track-map-v2')
+    || findElementBounds(layout, 'track-map', 'track')
+    || findElementBounds(layout, 'content');
+  const scale = vectorScale(target, sourceWidth, sourceHeight);
+  const primitives = (Array.isArray(renderModel.primitives) ? renderModel.primitives : [])
+    .map((primitive, index) => vectorPrimitiveEvidence(primitive, index, scale));
+  const items = (Array.isArray(renderModel.markers) ? renderModel.markers : [])
+    .map((marker, index) => trackMapMarkerEvidence(marker, index, scale));
+  const labels = (Array.isArray(renderModel.markers) ? renderModel.markers : [])
+    .filter((marker) => stringOrNull(marker?.label))
+    .map((marker) => trackMapMarkerLabelEvidence(marker, scale));
+
+  return {
+    markerCount: arrayLength(renderModel.markers),
+    itemCount: items.length,
+    primitiveCount: primitives.length,
+    labelCount: labels.length,
+    width: numberOrNull(renderModel.width),
+    height: numberOrNull(renderModel.height),
+    mapKind: stringOrNull(renderModel.mapKind),
+    isAvailable: booleanOrNull(renderModel.isAvailable),
+    targetBounds: target || null,
+    scaleX: scale?.scaleX || null,
+    scaleY: scale?.scaleY || null,
+    shouldRender: renderModel.isAvailable === false ? false : true,
+    items,
+    primitives,
+    labels
+  };
+}
+
+function vectorShapePrimitive(id, kind, shape, scale) {
+  if (!shape) {
+    return null;
+  }
+
+  return {
+    kind,
+    id,
+    bounds: scaleRect(scale, shape),
+    points: [],
+    closed: false,
+    startDegrees: numberOrNull(shape?.startDegrees),
+    sweepDegrees: numberOrNull(shape?.sweepDegrees),
+    fill: colorToCss(shape?.fill),
+    stroke: colorToCss(shape?.stroke),
+    strokeWidth: numberOrNull(shape?.strokeWidth)
+  };
+}
+
+function vectorPrimitiveEvidence(primitive, index, scale) {
+  const points = (Array.isArray(primitive?.points) ? primitive.points : [])
+    .map((point) => scalePoint(scale, point))
+    .filter(Boolean);
+  const rect = primitive?.rect || primitive?.bounds || null;
+  return {
+    kind: stringOrNull(primitive?.kind) || 'path',
+    id: index,
+    bounds: rect ? scaleRect(scale, rect) : boundsForPoints(points),
+    points,
+    closed: Boolean(primitive?.closed),
+    startDegrees: numberOrNull(primitive?.startDegrees),
+    sweepDegrees: numberOrNull(primitive?.sweepDegrees),
+    fill: colorToCss(primitive?.fill),
+    stroke: colorToCss(primitive?.stroke),
+    strokeWidth: numberOrNull(primitive?.strokeWidth)
+  };
+}
+
+function trackMapMarkerEvidence(marker, index, scale) {
+  const markerRadius = numberOr(marker?.radius, 0);
+  const alertRingRadius = numberOr(marker?.alertRingRadius, 0);
+  const radius = Math.max(markerRadius, alertRingRadius);
+  const center = scalePoint(scale, { x: marker?.x, y: marker?.y });
+  const scaledRadiusX = radius * numberOr(scale?.scaleX, 1);
+  const scaledRadiusY = radius * numberOr(scale?.scaleY, 1);
+  return {
+    kind: marker?.isFocus ? 'focus-marker' : 'car-marker',
+    id: Number.isFinite(Number(marker?.carIdx)) ? Number(marker.carIdx) : index,
+    bounds: center ? rectEvidence({
+      x: center.x - scaledRadiusX,
+      y: center.y - scaledRadiusY,
+      width: scaledRadiusX * 2,
+      height: scaledRadiusY * 2
+    }) : null,
+    fill: colorToCss(marker?.fill),
+    stroke: colorToCss(marker?.stroke),
+    strokeWidth: numberOrNull(marker?.strokeWidth),
+    label: stringOrNull(marker?.label),
+    labelColor: colorToCss(marker?.labelColor),
+    alertKind: stringOrNull(marker?.alertKind),
+    alertRingBounds: center && alertRingRadius > 0
+      ? rectEvidence({
+        x: center.x - alertRingRadius * numberOr(scale?.scaleX, 1),
+        y: center.y - alertRingRadius * numberOr(scale?.scaleY, 1),
+        width: alertRingRadius * 2 * numberOr(scale?.scaleX, 1),
+        height: alertRingRadius * 2 * numberOr(scale?.scaleY, 1)
+      })
+      : null,
+    alertRingStroke: colorToCss(marker?.alertRingStroke),
+    alertRingStrokeWidth: numberOrNull(marker?.alertRingStrokeWidth)
+  };
+}
+
+function trackMapMarkerLabelEvidence(marker, scale) {
+  const center = scalePoint(scale, { x: marker?.x, y: marker?.y });
+  const fontSize = numberOr(marker?.labelFontSize, 7.6) * numberOr(scale?.scaleY, 1);
+  const radius = numberOr(marker?.radius, 5.7) * numberOr(scale?.scaleX, 1);
+  return {
+    text: stringOrNull(marker?.label),
+    bounds: center ? rectEvidence({
+      x: center.x - radius,
+      y: center.y - fontSize,
+      width: radius * 2,
+      height: fontSize * 1.4
+    }) : null,
+    fontSize: numberOrNull(marker?.labelFontSize),
+    bold: true,
+    alignment: 'center',
+    color: colorToCss(marker?.labelColor)
+  };
+}
+
+function vectorScale(target, sourceWidth, sourceHeight) {
+  if (!target || !Number.isFinite(sourceWidth) || sourceWidth <= 0 || !Number.isFinite(sourceHeight) || sourceHeight <= 0) {
+    return null;
+  }
+
+  return {
+    target,
+    scaleX: target.width / sourceWidth,
+    scaleY: target.height / sourceHeight
+  };
+}
+
+function scaleRect(scale, rect) {
+  if (!rect) {
+    return null;
+  }
+
+  if (!scale) {
+    return rectEvidence(rect);
+  }
+
+  return rectEvidence({
+    x: scale.target.x + numberOr(rect.x, 0) * scale.scaleX,
+    y: scale.target.y + numberOr(rect.y, 0) * scale.scaleY,
+    width: numberOr(rect.width, 0) * scale.scaleX,
+    height: numberOr(rect.height, 0) * scale.scaleY
+  });
+}
+
+function scalePoint(scale, point) {
+  if (!point || !Number.isFinite(Number(point.x)) || !Number.isFinite(Number(point.y))) {
+    return null;
+  }
+
+  if (!scale) {
+    return {
+      x: round(point.x),
+      y: round(point.y)
+    };
+  }
+
+  return {
+    x: round(scale.target.x + Number(point.x) * scale.scaleX),
+    y: round(scale.target.y + Number(point.y) * scale.scaleY)
+  };
+}
+
+function boundsForPoints(points) {
+  const valid = (Array.isArray(points) ? points : [])
+    .filter((point) => Number.isFinite(point?.x) && Number.isFinite(point?.y));
+  if (!valid.length) {
+    return null;
+  }
+
+  const left = Math.min(...valid.map((point) => point.x));
+  const top = Math.min(...valid.map((point) => point.y));
+  const right = Math.max(...valid.map((point) => point.x));
+  const bottom = Math.max(...valid.map((point) => point.y));
+  return rectEvidence({
+    x: left,
+    y: top,
+    width: Math.max(0.001, right - left),
+    height: Math.max(0.001, bottom - top)
+  });
+}
+
+function rectEvidence(rect) {
+  if (!rect) {
+    return null;
+  }
+
+  return {
+    x: round(rect.x),
+    y: round(rect.y),
+    width: round(rect.width),
+    height: round(rect.height)
+  };
+}
+
+function elementsForRole(layout, role) {
+  const elements = Array.isArray(layout?.elements) ? layout.elements : [];
+  return elements.filter((element) => element.role === role);
+}
+
+function overlapsVertically(first, second) {
+  if (!first || !second) {
+    return false;
+  }
+
+  const top = Math.max(numberOr(first.y, 0), numberOr(second.y, 0));
+  const bottom = Math.min(
+    numberOr(first.y, 0) + numberOr(first.height, 0),
+    numberOr(second.y, 0) + numberOr(second.height, 0));
+  return bottom - top >= Math.min(numberOr(first.height, 0), numberOr(second.height, 0)) * 0.35;
+}
+
+function colorToCss(color) {
+  if (!color) {
+    return null;
+  }
+
+  if (typeof color === 'string') {
+    return color || null;
+  }
+
+  const red = Math.max(0, Math.min(255, Math.round(numberOr(color.red, 0))));
+  const green = Math.max(0, Math.min(255, Math.round(numberOr(color.green, 0))));
+  const blue = Math.max(0, Math.min(255, Math.round(numberOr(color.blue, 0))));
+  const alpha = Math.max(0, Math.min(1, numberOr(color.alpha, 255) / 255));
+  return `rgba(${red}, ${green}, ${blue}, ${Number(alpha.toFixed(3))})`;
+}
+
+function normalizeEvidenceText(value) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function scenarioEvidence(route, model) {
+  const sourceFiles = [
+    route.sourceContract,
+    route.moduleAsset
+  ].filter(Boolean).map(sourceFileEvidence);
+  const modelSummary = model ? {
+    status: stringOrNull(model.status),
+    source: stringOrNull(model.source),
+    bodyKind: stringOrNull(model.bodyKind),
+    shouldRender: booleanOrNull(model.shouldRender),
+    rowCount: arrayLength(model.rows),
+    metricCount: arrayLength(model.metrics) + arrayLength(model.metricSections) + arrayLength(model.gridSections),
+    flagCount: arrayLength(model.flags?.flags),
+    carRadarCarCount: arrayLength(model.carRadar?.renderModel?.cars),
+    trackMapMarkerCount: arrayLength(model.trackMap?.renderModel?.markers || model.trackMap?.markers)
+  } : null;
+  const base = {
+    contract: 'screenshot-scenario-evidence/v1',
+    surface: route.surface,
+    renderer: route.renderer,
+    sourceContract: route.sourceContract || null,
+    moduleAsset: route.moduleAsset || null,
+    overlayId: route.overlayId || null,
+    tab: route.tab || null,
+    region: route.region || null,
+    previewMode: route.previewMode || null,
+    routeAlias: route.routeAlias || null,
+    fixture: route.surface?.includes('settings')
+      ? 'browser-review-settings-fixture'
+      : 'browser-review-preview-fixture',
+    urlPath: route.urlPath,
+    selector: route.selector,
+    sourceFiles,
+    modelSummary,
+    modelHash: model ? stableHash(model) : null
+  };
+
+  return {
+    ...base,
+    sourceHash: stableHash(sourceFiles),
+    scenarioHash: stableHash(base)
+  };
+}
+
+function sourceFileEvidence(relativePath) {
+  const absolutePath = resolve(repoRoot, relativePath);
+  if (!existsSync(absolutePath)) {
+    return {
+      path: relativePath,
+      exists: false,
+      bytes: null,
+      sha256: null
+    };
+  }
+
+  const data = readFileSync(absolutePath);
+  return {
+    path: relativePath,
+    exists: true,
+    bytes: data.length,
+    sha256: createHash('sha256').update(data).digest('hex')
+  };
+}
+
+function stableHash(value) {
+  return createHash('sha256').update(stableJson(value)).digest('hex');
+}
+
+function stableJson(value) {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value);
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map(stableJson).join(',')}]`;
+  }
+
+  return `{${Object.keys(value)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`)
+    .join(',')}}`;
 }
 
 function graphModelEvidence(model, layout) {

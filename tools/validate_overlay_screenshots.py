@@ -684,6 +684,13 @@ def validate_windows_manifest(root: Path, expected_paths: set[str], failures: li
             failures.append(f"{path}: manifest missing metadata object")
             continue
         require_manifest_fields(path, metadata, ["surface", "renderer"], failures)
+        require_manifest_fields(path, screenshot, ["textSample", "contentBounds", "layout", "scenarioEvidence"], failures)
+        require_rect(path, screenshot.get("contentBounds"), "screenshot content bounds", failures)
+        require_layout_evidence(path, screenshot.get("layout"), failures)
+        require_scenario_evidence(path, screenshot.get("scenarioEvidence"), failures)
+        if path.startswith(("states/settings-", "components/settings/")):
+            require_manifest_fields(path, screenshot, ["uiEvidence"], failures)
+            require_settings_ui_evidence(path, screenshot.get("uiEvidence"), failures)
         if path.startswith("native-overlays/"):
             require_manifest_fields(
                 path,
@@ -705,7 +712,6 @@ def validate_windows_manifest(root: Path, expected_paths: set[str], failures: li
             )
             require_manifest_fields(path, metadata, ["overlayId", "previewMode", "fixture", "sourceContract", "status", "evidence", "body"], failures)
             require_windows_native_comparison_evidence(path, screenshot, failures)
-            require_layout_evidence(path, screenshot.get("layout"), failures)
             require_layout_evidence(path, metadata.get("layout"), failures)
             require_model_evidence(path, screenshot.get("modelEvidence"), failures)
             if metadata.get("surface") != "windows-native-overlay":
@@ -748,6 +754,8 @@ def validate_browser_review_manifest(
     for path, screenshot in screenshots.items():
         require_manifest_fields(path, screenshot, ["surface", "renderer", "sourceContract"], failures)
         require_layout_evidence(path, screenshot.get("layout"), failures)
+        require_manifest_fields(path, screenshot, ["scenarioEvidence"], failures)
+        require_scenario_evidence(path, screenshot.get("scenarioEvidence"), failures)
         if path.startswith(("browser-overlays/", "localhost-overlays/")):
             require_manifest_fields(path, screenshot, ["overlayId", "previewMode", "moduleAsset", "status", "bodyKind"], failures)
             require_model_evidence(path, screenshot.get("modelEvidence"), failures)
@@ -761,7 +769,8 @@ def validate_browser_review_manifest(
                 failures=failures,
             )
         if path.startswith("settings/"):
-            require_manifest_fields(path, screenshot, ["tab", "region"], failures)
+            require_manifest_fields(path, screenshot, ["tab", "region", "uiEvidence"], failures)
+            require_settings_ui_evidence(path, screenshot.get("uiEvidence"), failures)
             validate_settings_region_manifest(path, screenshot, failures)
 
 
@@ -788,6 +797,97 @@ def require_layout_evidence(path: str, value: object, failures: list[str]) -> No
         require_native_body_layout_evidence(path, body_layout, failures)
 
 
+def require_scenario_evidence(path: str, value: object, failures: list[str]) -> None:
+    if not isinstance(value, dict):
+        failures.append(f"{path}: manifest missing scenario evidence")
+        return
+
+    contract = value.get("contract")
+    if not isinstance(contract, str) or not contract:
+        failures.append(f"{path}: scenario evidence missing contract")
+
+    if value.get("scenarioHash") in (None, ""):
+        failures.append(f"{path}: scenario evidence missing scenarioHash")
+    if value.get("sourceHash") in (None, ""):
+        failures.append(f"{path}: scenario evidence missing sourceHash")
+
+    source_files = value.get("sourceFiles")
+    if not isinstance(source_files, list):
+        failures.append(f"{path}: scenario evidence missing sourceFiles list")
+        return
+
+    for index, source_file in enumerate(source_files):
+        if not isinstance(source_file, dict):
+            failures.append(f"{path}: scenario source file {index} is not an object")
+            continue
+        if source_file.get("path") in (None, ""):
+            failures.append(f"{path}: scenario source file {index} missing path")
+        if source_file.get("exists") is True:
+            require_positive_number(path, source_file.get("bytes"), f"scenario source file {index} bytes", failures)
+            if source_file.get("sha256") in (None, ""):
+                failures.append(f"{path}: scenario source file {index} missing sha256")
+
+
+def require_settings_ui_evidence(path: str, value: object, failures: list[str]) -> None:
+    if not isinstance(value, dict):
+        failures.append(f"{path}: settings UI evidence missing object")
+        return
+
+    contract = value.get("contract")
+    if not isinstance(contract, str) or not contract:
+        failures.append(f"{path}: settings UI evidence missing contract")
+
+    require_rect(path, value.get("root"), "settings UI root", failures)
+    require_rect(path, value.get("contentBounds"), "settings UI content bounds", failures)
+
+    is_component_crop = path.startswith("components/settings/")
+    tabs = value.get("tabs")
+    if not is_component_crop and (not isinstance(tabs, list) or not tabs):
+        failures.append(f"{path}: settings UI evidence missing sidebar tabs")
+    elif isinstance(tabs, list):
+        for index, tab in enumerate(tabs[:16]):
+            if not isinstance(tab, dict):
+                continue
+            if tab.get("text") in (None, ""):
+                failures.append(f"{path}: settings UI tab {index} missing text")
+            require_rect(path, tab.get("bounds"), f"settings UI tab {index} bounds", failures)
+
+    tab = value.get("tab")
+    requested_region = value.get("requestedRegion")
+    if tab not in (None, "general", "support", "error-logging") and requested_region not in (None, "general"):
+        regions = value.get("regions")
+        if not isinstance(regions, list) or not regions:
+            failures.append(f"{path}: settings UI evidence missing region controls")
+
+    panels = value.get("panels")
+    if not is_component_crop and (not isinstance(panels, list) or not panels):
+        failures.append(f"{path}: settings UI evidence missing panel bounds")
+    elif isinstance(panels, list):
+        for index, panel in enumerate(panels[:12]):
+            if not isinstance(panel, dict):
+                continue
+            require_rect(path, panel.get("bounds"), f"settings UI panel {index} bounds", failures)
+
+    controls = value.get("controls")
+    if controls is not None and not isinstance(controls, list):
+        failures.append(f"{path}: settings UI controls is not a list")
+    elif isinstance(controls, list):
+        for index, control in enumerate(controls[:32]):
+            if not isinstance(control, dict):
+                continue
+            require_rect(path, control.get("bounds"), f"settings UI control {index} bounds", failures)
+
+    if is_component_crop:
+        evidence_counts = [
+            len(value.get("tabs")) if isinstance(value.get("tabs"), list) else 0,
+            len(value.get("regions")) if isinstance(value.get("regions"), list) else 0,
+            len(value.get("panels")) if isinstance(value.get("panels"), list) else 0,
+            len(value.get("controls")) if isinstance(value.get("controls"), list) else 0,
+        ]
+        if max(evidence_counts, default=0) <= 0:
+            failures.append(f"{path}: settings component UI evidence did not capture any structural items")
+
+
 def require_model_evidence(path: str, value: object, failures: list[str]) -> None:
     if not isinstance(value, dict):
         failures.append(f"{path}: manifest missing model layout evidence")
@@ -810,6 +910,7 @@ def require_model_evidence(path: str, value: object, failures: list[str]) -> Non
         if not any(non_empty_list(value.get(field)) for field in ("metrics", "metricSections", "gridSections")):
             failures.append(f"{path}: model metric evidence missing metrics/sections")
         require_metric_text_evidence(path, value.get("metrics"), failures)
+        require_metric_section_text_evidence(path, value.get("metricSections"), failures)
         require_grid_section_text_evidence(path, value.get("gridSections"), failures)
     elif body_kind == "graph":
         graph = value.get("graph")
@@ -862,9 +963,17 @@ def require_model_evidence(path: str, value: object, failures: list[str]) -> Non
                     failures.append(f"{path}: model car-radar evidence did not prove shouldRender=true")
                 require_non_negative_int(path, vector.get("carCount"), "model car-radar carCount", failures)
                 require_non_negative_int(path, vector.get("labelCount"), "model car-radar labelCount", failures)
+                if isinstance(vector.get("carCount"), int) and vector.get("carCount") > 0:
+                    require_non_empty_list(path, vector, "items", failures)
+                if isinstance(vector.get("labelCount"), int) and vector.get("labelCount") > 0:
+                    require_non_empty_list(path, vector, "labels", failures)
             else:
                 require_non_negative_int(path, vector.get("markerCount"), "model track-map markerCount", failures)
                 require_non_negative_int(path, vector.get("primitiveCount"), "model track-map primitiveCount", failures)
+                if isinstance(vector.get("markerCount"), int) and vector.get("markerCount") > 0:
+                    require_non_empty_list(path, vector, "items", failures)
+                if isinstance(vector.get("primitiveCount"), int) and vector.get("primitiveCount") > 0:
+                    require_non_empty_list(path, vector, "primitives", failures)
             if get_manifest_value(vector, "itemCount") not in (None, 0):
                 require_non_empty_list(path, vector, "items", failures)
                 require_vector_item_evidence(path, get_manifest_value(vector, "items"), failures)
@@ -1024,8 +1133,7 @@ def require_metric_text_evidence(path: str, metrics: object, failures: list[str]
             failures.append(f"{path}: metric evidence row {index} missing label")
         if get_manifest_value(metric, "value") in (None, ""):
             failures.append(f"{path}: metric evidence row {index} missing value")
-        if "bounds" in metric or "Bounds" in metric:
-            require_rect(path, get_manifest_value(metric, "bounds"), f"metric evidence row {index} bounds", failures)
+        require_rect(path, get_manifest_value(metric, "bounds"), f"metric evidence row {index} bounds", failures)
         segments = get_manifest_value(metric, "segments")
         if isinstance(segments, list):
             for segment_index, segment in enumerate(segments[:8]):
@@ -1035,6 +1143,24 @@ def require_metric_text_evidence(path: str, metrics: object, failures: list[str]
                     failures.append(f"{path}: metric evidence row {index} segment {segment_index} missing label")
                 if get_manifest_value(segment, "value") in (None, ""):
                     failures.append(f"{path}: metric evidence row {index} segment {segment_index} missing value")
+                require_rect(path, get_manifest_value(segment, "bounds"), f"metric evidence row {index} segment {segment_index} bounds", failures)
+
+
+def require_metric_section_text_evidence(path: str, sections: object, failures: list[str]) -> None:
+    if sections is None:
+        return
+    if not isinstance(sections, list):
+        failures.append(f"{path}: metric section evidence is not a list")
+        return
+
+    for section_index, section in enumerate(sections[:8]):
+        if not isinstance(section, dict):
+            continue
+        if get_manifest_value(section, "title") in (None, ""):
+            failures.append(f"{path}: metric section {section_index} missing title")
+        if "bounds" in section or "Bounds" in section:
+            require_rect(path, get_manifest_value(section, "bounds"), f"metric section {section_index} bounds", failures)
+        require_metric_text_evidence(path, get_manifest_value(section, "rows"), failures)
 
 
 def require_grid_section_text_evidence(path: str, sections: object, failures: list[str]) -> None:
@@ -1049,6 +1175,7 @@ def require_grid_section_text_evidence(path: str, sections: object, failures: li
             continue
         if get_manifest_value(section, "title") in (None, ""):
             failures.append(f"{path}: grid section {section_index} missing title")
+        require_rect(path, get_manifest_value(section, "bounds"), f"grid section {section_index} bounds", failures)
         rows = get_manifest_value(section, "rows")
         if not isinstance(rows, list):
             continue
@@ -1057,9 +1184,15 @@ def require_grid_section_text_evidence(path: str, sections: object, failures: li
                 continue
             if get_manifest_value(row, "label") in (None, ""):
                 failures.append(f"{path}: grid section {section_index} row {row_index} missing label")
+            require_rect(path, get_manifest_value(row, "bounds"), f"grid section {section_index} row {row_index} bounds", failures)
             cells = get_manifest_value(row, "cells")
             if isinstance(cells, list) and not cells:
                 failures.append(f"{path}: grid section {section_index} row {row_index} has no cells")
+            if isinstance(cells, list):
+                for cell_index, cell in enumerate(cells[:8]):
+                    if not isinstance(cell, dict):
+                        continue
+                    require_rect(path, get_manifest_value(cell, "bounds"), f"grid section {section_index} row {row_index} cell {cell_index} bounds", failures)
 
 
 def require_vector_item_evidence(path: str, items: object, failures: list[str]) -> None:
