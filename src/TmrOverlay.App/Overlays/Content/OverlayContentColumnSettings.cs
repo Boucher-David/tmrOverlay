@@ -172,9 +172,9 @@ internal static class OverlayContentColumnSettings
 
     public static OverlayContentDefinition Standings { get; } = new(
         OverlayId: StandingsOverlayDefinition.Definition.Id,
-        BrowserWidthPadding: 66,
-        BrowserMinimumHeight: 520,
-        NativeMinimumTableHeight: 390,
+        BrowserWidthPadding: 34,
+        BrowserMinimumHeight: 334,
+        NativeMinimumTableHeight: 258,
         FallbackColumnId: StandingsDriverColumnId,
         Columns:
     [
@@ -202,14 +202,14 @@ internal static class OverlayContentColumnSettings
 
     public static OverlayContentDefinition Relative { get; } = new(
         OverlayId: RelativeOverlayDefinition.Definition.Id,
-        BrowserWidthPadding: 66,
+        BrowserWidthPadding: 34,
         BrowserMinimumHeight: 360,
         NativeMinimumTableHeight: 180,
         FallbackColumnId: RelativeDriverColumnId,
         Columns:
     [
         new(RelativePositionColumnId, "Pos", DataRelativePosition, true, 1, 38, 32, 100, SettingsLabel: "Relative position"),
-        new(RelativeDriverColumnId, "Driver", DataDriver, true, 2, 250, 180, 520, Alignment: OverlayContentColumnAlignment.Left),
+        new(RelativeDriverColumnId, "Driver", DataDriver, true, 2, 180, 180, 520, Alignment: OverlayContentColumnAlignment.Left),
         new(RelativeGapColumnId, "Delta", DataGap, true, 3, 70, 60, 160, SettingsLabel: "Relative delta"),
         new(RelativePitColumnId, "Pit", DataPit, false, 4, 30, 24, 90, SettingsLabel: "Pit status")
     ]);
@@ -626,8 +626,7 @@ internal static class OverlayContentColumnSettings
         OverlayContentDefinition definition)
     {
         var columns = VisibleColumnsFor(settings, definition);
-        var columnGaps = Math.Max(0, columns.Count - 1) * 8;
-        return columns.Sum(column => column.Width) + columnGaps;
+        return columns.Sum(column => column.Width);
     }
 
     public static bool BlockEnabled(OverlaySettings settings, OverlayContentBlockDefinition block)

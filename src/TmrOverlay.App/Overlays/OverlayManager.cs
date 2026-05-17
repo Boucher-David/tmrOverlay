@@ -1203,7 +1203,7 @@ internal sealed class OverlayManager : IDisposable
         if (OverlayContentColumnSettings.TryGetContentDefinition(definition.Id, out var contentDefinition)
             && contentDefinition.Columns.Count > 0)
         {
-            var contentSize = OverlayContentBaseSize(settings, contentDefinition);
+            var contentSize = OverlayContentBaseSize(definition, settings, contentDefinition);
             baseWidth = contentSize.Width;
             baseHeight = Math.Max(baseHeight, contentSize.Height);
         }
@@ -1230,15 +1230,17 @@ internal sealed class OverlayManager : IDisposable
     }
 
     private static Size OverlayContentBaseSize(
+        OverlayDefinition overlayDefinition,
         OverlaySettings settings,
         OverlayContentDefinition definition)
     {
         var columns = OverlayContentColumnSettings.VisibleColumnsFor(settings, definition);
         var contentWidth = columns.Sum(column => column.Width);
-        var columnGaps = Math.Max(0, columns.Count - 1) * 8;
         return new Size(
-            contentWidth + columnGaps + 64,
-            definition.NativeMinimumTableHeight + OverlayTheme.Layout.OverlayTableWithFooterReservedHeight);
+            Math.Max(overlayDefinition.DefaultWidth, contentWidth + definition.BrowserWidthPadding),
+            Math.Max(
+                overlayDefinition.DefaultHeight,
+                definition.NativeMinimumTableHeight + OverlayTheme.Layout.OverlayTableWithFooterReservedHeight));
     }
 
     private static bool UsesScaleDerivedSize(OverlayDefinition definition)

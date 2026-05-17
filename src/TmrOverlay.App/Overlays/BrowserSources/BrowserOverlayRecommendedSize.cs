@@ -28,8 +28,8 @@ internal static class BrowserOverlayRecommendedSize
                 settings,
                 contentDefinition);
             return new Size(
-                Math.Max(1, contentWidth + contentDefinition.BrowserWidthPadding),
-                Math.Max(baseSize.Height, contentDefinition.BrowserMinimumHeight));
+                Math.Max(definition.DefaultWidth, Math.Max(1, contentWidth + contentDefinition.BrowserWidthPadding)),
+                Math.Max(definition.DefaultHeight, Math.Max(baseSize.Height, contentDefinition.BrowserMinimumHeight)));
         }
 
         return baseSize;

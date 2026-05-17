@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Diagnostics;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
@@ -60,9 +61,8 @@ internal static class Program
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
-            var outputRoot = args.Length > 0 && !string.IsNullOrWhiteSpace(args[0])
-                ? Path.GetFullPath(args[0])
-                : Path.GetFullPath(Path.Combine("artifacts", "windows-overlay-screenshots"));
+            var options = ParseArguments(args);
+            var outputRoot = options.OutputRoot;
             if (Directory.Exists(outputRoot))
             {
                 Directory.Delete(outputRoot, recursive: true);
@@ -74,6 +74,7 @@ internal static class Program
             var screenshots = RenderAll(outputRoot);
             RenderContactSheet(outputRoot, screenshots);
             WriteManifest(outputRoot, screenshots);
+            RenderInstallerScreenshotsIfRequested(outputRoot, options.InstallerMsiPath);
             Console.WriteLine($"Wrote {screenshots.Count} Windows overlay screenshots to {outputRoot}");
             return 0;
         }
@@ -82,6 +83,128 @@ internal static class Program
             Console.Error.WriteLine(exception);
             return 1;
         }
+    }
+
+    private static ScreenshotRunOptions ParseArguments(string[] args)
+    {
+        string? outputRoot = null;
+        string? installerMsiPath = null;
+        for (var index = 0; index < args.Length; index++)
+        {
+            var arg = args[index];
+            if (string.Equals(arg, "--installer", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(arg, "-i", StringComparison.OrdinalIgnoreCase))
+            {
+                if (index + 1 >= args.Length || string.IsNullOrWhiteSpace(args[index + 1]))
+                {
+                    throw new ArgumentException("--installer requires an MSI path.");
+                }
+
+                installerMsiPath = Path.GetFullPath(args[++index]);
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(arg))
+            {
+                continue;
+            }
+
+            if (outputRoot is null)
+            {
+                outputRoot = Path.GetFullPath(arg);
+                continue;
+            }
+
+            if (installerMsiPath is null)
+            {
+                installerMsiPath = Path.GetFullPath(arg);
+                continue;
+            }
+
+            throw new ArgumentException("Usage: TmrOverlay.WindowsScreenshots [output-root] [installer.msi] or [output-root] --installer <installer.msi>");
+        }
+
+        if (!string.IsNullOrWhiteSpace(installerMsiPath) && !File.Exists(installerMsiPath))
+        {
+            throw new FileNotFoundException("Installer MSI was not found.", installerMsiPath);
+        }
+
+        return new ScreenshotRunOptions(
+            outputRoot ?? Path.GetFullPath(Path.Combine("artifacts", "windows-overlay-screenshots")),
+            installerMsiPath);
+    }
+
+    private static void RenderInstallerScreenshotsIfRequested(string outputRoot, string? installerMsiPath)
+    {
+        if (string.IsNullOrWhiteSpace(installerMsiPath))
+        {
+            return;
+        }
+
+        var repoRoot = FindRepositoryRoot();
+        var installerProject = Path.Combine(
+            repoRoot,
+            "tools",
+            "TmrOverlay.WindowsInstallerScreenshots",
+            "TmrOverlay.WindowsInstallerScreenshots.csproj");
+        if (!File.Exists(installerProject))
+        {
+            throw new FileNotFoundException("Windows installer screenshot project was not found.", installerProject);
+        }
+
+        var installerOutputRoot = Path.Combine(outputRoot, "installer");
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "dotnet",
+            UseShellExecute = false,
+            WorkingDirectory = repoRoot
+        };
+        startInfo.ArgumentList.Add("run");
+        startInfo.ArgumentList.Add("--project");
+        startInfo.ArgumentList.Add(installerProject);
+        startInfo.ArgumentList.Add("--configuration");
+        startInfo.ArgumentList.Add("Release");
+        startInfo.ArgumentList.Add("--");
+        startInfo.ArgumentList.Add(installerMsiPath);
+        startInfo.ArgumentList.Add(installerOutputRoot);
+
+        using var process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Failed to start the Windows installer screenshot tool.");
+        process.WaitForExit();
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException($"Windows installer screenshot capture failed with exit code {process.ExitCode}.");
+        }
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        var startDirectories = new[]
+        {
+            Directory.GetCurrentDirectory(),
+            AppContext.BaseDirectory
+        };
+        var checkedDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var startDirectory in startDirectories)
+        {
+            var directory = new DirectoryInfo(Path.GetFullPath(startDirectory));
+            while (directory is not null && checkedDirectories.Add(directory.FullName))
+            {
+                var projectPath = Path.Combine(
+                    directory.FullName,
+                    "tools",
+                    "TmrOverlay.WindowsScreenshots",
+                    "TmrOverlay.WindowsScreenshots.csproj");
+                if (File.Exists(projectPath))
+                {
+                    return directory.FullName;
+                }
+
+                directory = directory.Parent;
+            }
+        }
+
+        throw new DirectoryNotFoundException("Could not find the repository root containing tools/TmrOverlay.WindowsScreenshots.");
     }
 
     private static IReadOnlyList<RenderedScreenshot> RenderAll(string outputRoot)
@@ -786,10 +909,10 @@ internal static class Program
     {
         var status = $"5 - 2/4 cars | {ReviewPreviewLabel(previewMode)}";
         var showLapRelationship = OverlayAvailabilityEvaluator.NormalizeSessionKind(previewMode) == OverlaySessionKind.Race;
-        var rows = Enumerable.Repeat(ReviewBlankTableRow(4), 11).ToArray();
-        rows[4] = ReviewTableRow(["3", "#34 Near Ahead", "-2.350", ""], "#33CEFF", relativeLapDelta: showLapRelationship ? (int?)1 : null);
-        rows[5] = ReviewTableRow(["5", "#55 Focus Driver", "0.000", ""], "#FFDA59", isReference: true, relativeLapDelta: showLapRelationship ? (int?)0 : null);
-        rows[6] = ReviewTableRow(["6", "#61 Near Behind", "+1.200", "IN"], "#FF4FD8", relativeLapDelta: showLapRelationship ? (int?)-2 : null);
+        var rows = Enumerable.Repeat(ReviewBlankTableRow(3), 11).ToArray();
+        rows[4] = ReviewTableRow(["3", "#34 Near Ahead", "-2.350"], "#33CEFF", relativeLapDelta: showLapRelationship ? (int?)1 : null);
+        rows[5] = ReviewTableRow(["5", "#55 Focus Driver", "0.000"], "#FFDA59", isReference: true, relativeLapDelta: showLapRelationship ? (int?)0 : null);
+        rows[6] = ReviewTableRow(["6", "#61 Near Behind", "+1.200"], "#FF4FD8", relativeLapDelta: showLapRelationship ? (int?)-2 : null);
         return new DesignV2OverlayModel(
             "Relative",
             status,
@@ -799,8 +922,7 @@ internal static class Program
                 [
                     new DesignV2Column("Pos", 38, ContentAlignment.MiddleRight),
                     new DesignV2Column("Driver", 180, ContentAlignment.MiddleLeft),
-                    new DesignV2Column("Delta", 70, ContentAlignment.MiddleRight),
-                    new DesignV2Column("Pit", 30, ContentAlignment.MiddleRight)
+                    new DesignV2Column("Delta", 70, ContentAlignment.MiddleRight)
                 ],
                 rows),
             HeaderText: $"{status} | 06:37:08");
@@ -3409,6 +3531,10 @@ internal static class Program
         DesignV2LiveOverlayKind Kind,
         OverlayDefinition Definition,
         bool UsesTransparentBackdrop = false);
+
+    private sealed record ScreenshotRunOptions(
+        string OutputRoot,
+        string? InstallerMsiPath);
 
     public sealed record FixtureFrame(int Index);
 

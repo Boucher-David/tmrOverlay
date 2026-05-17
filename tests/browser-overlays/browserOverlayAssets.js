@@ -552,18 +552,18 @@ function settingsOverlaySubtitle(id) {
 
 function settingsBrowserSize(id, overlayState = {}) {
   const base = {
-    standings: [780, 520],
-    relative: [520, 360],
-    'gap-to-leader': [720, 360],
+    standings: [519, 334],
+    relative: [360, 373],
+    'gap-to-leader': [654, 357],
     'track-map': [360, 360],
     'stream-chat': [380, 520],
     'garage-cover': [1280, 720],
-    'fuel-calculator': [600, 340],
+    'fuel-calculator': [503, 315],
     'input-state': [520, 260],
     'car-radar': [300, 300],
     flags: [360, 170],
-    'session-weather': [480, 520],
-    'pit-service': [420, 560]
+    'session-weather': [464, 496],
+    'pit-service': [530, 743]
   }[id] || [400, 300];
   if (id === 'input-state') {
     base[0] = inputStateBaseWidth(overlayState, base[0]);

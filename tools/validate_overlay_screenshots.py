@@ -94,16 +94,16 @@ EXPECTED_COMPONENT_PNGS = {
 }
 
 WINDOWS_EXPECTED_PNGS = {
-    "states/fuel-calculator-live.png": (600, 340),
-    "states/relative-live.png": (520, 360),
-    "states/standings-live.png": (780, 520),
+    "states/fuel-calculator-live.png": (503, 315),
+    "states/relative-live.png": (360, 373),
+    "states/standings-live.png": (519, 334),
     "states/track-map-placeholder.png": (360, 360),
     "states/flags-blue.png": (360, 170),
-    "states/session-weather-live.png": (480, 520),
-    "states/pit-service-active.png": (420, 560),
+    "states/session-weather-live.png": (464, 496),
+    "states/pit-service-active.png": (530, 743),
     "states/input-state-trace.png": (520, 260),
     "states/car-radar-side-pressure.png": (300, 300),
-    "states/gap-to-leader-trend.png": (720, 360),
+    "states/gap-to-leader-trend.png": (654, 357),
 }
 
 WINDOWS_EXPECTED_SIZE_SOURCES = {
@@ -196,21 +196,21 @@ WINDOWS_SETTING_REGION_PNGS = [
 ]
 
 WINDOWS_NATIVE_OVERLAY_SIZES = {
-    "standings": (780, 520),
-    "fuel-calculator": (600, 340),
-    "relative": (520, 360),
+    "standings": (519, 334),
+    "fuel-calculator": (503, 315),
+    "relative": (360, 373),
     "track-map": (360, 360),
     "stream-chat": (380, 520),
     "flags": (360, 170),
-    "session-weather": (480, 520),
-    "pit-service": (420, 560),
+    "session-weather": (464, 496),
+    "pit-service": (530, 743),
     "input-state": (520, 260),
     "car-radar": (300, 300),
-    "gap-to-leader": (720, 360),
+    "gap-to-leader": (654, 357),
 }
 
 WINDOWS_NATIVE_SPECIAL_PNGS = {
-    "native-overlays/standings-preview-sizing-race.png": (589, 520),
+    "native-overlays/standings-preview-sizing-race.png": (519, 334),
 }
 
 WINDOWS_NATIVE_OVERLAY_SIZE_SOURCES = {
@@ -550,6 +550,10 @@ def validate_windows_ci(root: Path, min_unique_bytes: int, failures: list[str]) 
         expected_paths=windows_ci_manifest_paths(),
         failures=failures,
     )
+
+    installer_root = root / "installer"
+    if installer_root.exists():
+        validate_windows_installer_ci(installer_root, min_unique_bytes, failures)
 
 
 def validate_windows_installer_ci(root: Path, min_unique_bytes: int, failures: list[str]) -> None:
