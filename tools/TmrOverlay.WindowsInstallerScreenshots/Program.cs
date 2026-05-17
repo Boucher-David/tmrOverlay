@@ -318,7 +318,7 @@ internal static class Program
                 return true;
             }
 
-            if (ScoreInstallerWindow(snapshot) >= 40)
+            if (IsInstallerWindowCandidate(snapshot) && ScoreInstallerWindow(snapshot) >= 40)
             {
                 snapshots.Add(snapshot);
             }
@@ -329,16 +329,45 @@ internal static class Program
         return snapshots;
     }
 
+    private static bool IsInstallerWindowCandidate(WindowSnapshot window)
+    {
+        var combined = $"{window.Title}\n{window.TextSample}".ToLowerInvariant();
+        var hasInstallerClass = window.ClassName.Contains("Msi", StringComparison.OrdinalIgnoreCase);
+        var hasSetupTitle = window.Title.Contains("setup", StringComparison.OrdinalIgnoreCase);
+        var hasWizardAction =
+            FindActionButton(window, "next") is not null ||
+            FindActionButton(window, "install") is not null ||
+            FindActionButton(window, "finish") is not null ||
+            FindActionButton(window, "cancel") is not null;
+        var hasInstallerLanguage =
+            combined.Contains("installer", StringComparison.Ordinal) ||
+            combined.Contains("installation", StringComparison.Ordinal) ||
+            combined.Contains("setup", StringComparison.Ordinal) ||
+            combined.Contains("install location", StringComparison.Ordinal) ||
+            combined.Contains("destination", StringComparison.Ordinal);
+
+        return IsCancelConfirmation(window) ||
+            hasInstallerClass ||
+            hasSetupTitle ||
+            hasWizardAction && hasInstallerLanguage ||
+            hasInstallerLanguage && window.Elements.Count > 0;
+    }
+
     private static int ScoreInstallerWindow(WindowSnapshot window)
     {
         var combined = $"{window.Title}\n{window.TextSample}".ToLowerInvariant();
         var score = 0;
         if (combined.Contains(ProductTitle.ToLowerInvariant(), StringComparison.Ordinal))
         {
-            score += 120;
+            score += 30;
         }
 
         if (combined.Contains("tmroverlay", StringComparison.Ordinal))
+        {
+            score += 30;
+        }
+
+        if (window.Title.Contains("setup", StringComparison.OrdinalIgnoreCase))
         {
             score += 80;
         }
