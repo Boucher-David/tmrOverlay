@@ -1,0 +1,1988 @@
+{
+  "generatedAtUtc": "2026-05-17T03:51:32.8017381+00:00",
+  "version": "0.20.0",
+  "packageEvidence": {
+    "fileName": "TMROverlay-v0.20.0-win-x64.msi",
+    "fullPath": "C:\\Users\\David\\Downloads\\TMROverlay-v0.20.0-win-x64.msi",
+    "bytes": 80531456,
+    "sha256": "6dd93cf567b48b97b2da52cb36803973dfda9da62c5429c89732e140fa85ad68"
+  },
+  "sourceFiles": [
+    {
+      "path": "Directory.Build.props",
+      "exists": true,
+      "bytes": 945,
+      "sha256": "fc96941e51e180c369d9522c39b755e640f2a31219816c9abab5660a82f02340",
+      "imageWidth": null,
+      "imageHeight": null
+    },
+    {
+      "path": "src/TmrOverlay.App/TmrOverlay.App.csproj",
+      "exists": true,
+      "bytes": 2957,
+      "sha256": "0e017a406a46b9245294d61332ab92ed81977faea8964ccfee30c3d9b3cf0e22",
+      "imageWidth": null,
+      "imageHeight": null
+    },
+    {
+      "path": "src/TmrOverlay.App/Assets/TmrOverlay.ico",
+      "exists": true,
+      "bytes": 25156,
+      "sha256": "7f840b22835d99f3c4467374bd718832828aaa89376458b89da3f6faba279717",
+      "imageWidth": 256,
+      "imageHeight": 256
+    },
+    {
+      "path": "assets/brand/TMRInstallerSplash.png",
+      "exists": true,
+      "bytes": 35026,
+      "sha256": "863cc7fe36aa0385436249af9075bf9a4e30f6d876bbb4f6e8d312c3c542cc20",
+      "imageWidth": 640,
+      "imageHeight": 400
+    },
+    {
+      "path": "assets/brand/TMRMsiBanner.bmp",
+      "exists": true,
+      "bytes": 85894,
+      "sha256": "4e21143edd4419cd3dc1c6e334c76e886635e65807705fc48184679017081d9b",
+      "imageWidth": 493,
+      "imageHeight": 58
+    },
+    {
+      "path": "assets/brand/TMRMsiLogo.bmp",
+      "exists": true,
+      "bytes": 461814,
+      "sha256": "9a8516a6acc5355432bc5bc2c4fe8f6975339e62ed762769461222e7e00335bb",
+      "imageWidth": 493,
+      "imageHeight": 312
+    },
+    {
+      "path": "assets/brand/TMRMsiWelcome.md",
+      "exists": true,
+      "bytes": 451,
+      "sha256": "eebbbbf200305742089b01d9cc295048ed6d83a65abfcfc0f05083d0450a25c0",
+      "imageWidth": null,
+      "imageHeight": null
+    },
+    {
+      "path": "assets/brand/TMRLogo.png",
+      "exists": true,
+      "bytes": 621481,
+      "sha256": "2ddc7d3674ae4ffaecf80c6cdaeb6770a7ba7891d7bb1d4f84a532df20d8931e",
+      "imageWidth": 2560,
+      "imageHeight": 1440
+    }
+  ],
+  "screenshots": [
+    {
+      "label": "Installer welcome",
+      "path": "installer-menus/welcome.png",
+      "width": 380,
+      "height": 520,
+      "bytes": 5755,
+      "surface": "windows-installer-menu",
+      "renderer": "msiexec-ui",
+      "sourceContract": "windows-installer-msi/v1",
+      "menuId": "welcome",
+      "pageIndex": 1,
+      "status": "captured",
+      "title": "Tech Mates Racing Overlay",
+      "windowClass": "WindowsForms10.Window.8.app.0.37a9c05_r3_ad1",
+      "textSample": "Tech Mates Racing Overlay",
+      "contentBounds": {
+        "x": 0,
+        "y": 0,
+        "width": 380,
+        "height": 520,
+        "right": 380,
+        "bottom": 520,
+        "aspectRatio": 0.7308
+      },
+      "layout": {
+        "contract": "windows-installer-layout-evidence/v1",
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 380,
+          "height": 520,
+          "right": 380,
+          "bottom": 520,
+          "aspectRatio": 0.7308
+        },
+        "screenBounds": {
+          "x": 1490,
+          "y": 24,
+          "width": 380,
+          "height": 520,
+          "right": 1870,
+          "bottom": 544,
+          "aspectRatio": 0.7308
+        },
+        "client": {
+          "x": 0,
+          "y": 0,
+          "width": 380,
+          "height": 520,
+          "right": 380,
+          "bottom": 520,
+          "aspectRatio": 0.7308
+        },
+        "title": "Tech Mates Racing Overlay",
+        "className": "WindowsForms10.Window.8.app.0.37a9c05_r3_ad1",
+        "elementCount": 0,
+        "elements": []
+      },
+      "uiEvidence": {
+        "contract": "windows-installer-ui-evidence/v1",
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 380,
+          "height": 520,
+          "right": 380,
+          "bottom": 520,
+          "aspectRatio": 0.7308
+        },
+        "contentBounds": {
+          "x": 0,
+          "y": 0,
+          "width": 380,
+          "height": 520,
+          "right": 380,
+          "bottom": 520,
+          "aspectRatio": 0.7308
+        },
+        "menuId": "welcome",
+        "pageIndex": 1,
+        "windowTitle": "Tech Mates Racing Overlay",
+        "windowClass": "WindowsForms10.Window.8.app.0.37a9c05_r3_ad1",
+        "textSample": "Tech Mates Racing Overlay",
+        "controlCount": 0,
+        "buttonCount": 0,
+        "textBlockCount": 0,
+        "controls": [],
+        "buttons": [],
+        "textBlocks": [],
+        "primaryAction": null,
+        "palette": [
+          {
+            "color": "#0d142b",
+            "samples": 2019
+          },
+          {
+            "color": "#090d1e",
+            "samples": 284
+          },
+          {
+            "color": "#121f3a",
+            "samples": 229
+          },
+          {
+            "color": "#080a1c",
+            "samples": 137
+          },
+          {
+            "color": "#047a8f",
+            "samples": 54
+          },
+          {
+            "color": "#223c5c",
+            "samples": 51
+          },
+          {
+            "color": "#577598",
+            "samples": 49
+          },
+          {
+            "color": "#fff7ff",
+            "samples": 5
+          },
+          {
+            "color": "#090c1d",
+            "samples": 3
+          },
+          {
+            "color": "#8caed4",
+            "samples": 3
+          },
+          {
+            "color": "#8c9987",
+            "samples": 3
+          },
+          {
+            "color": "#000000",
+            "samples": 2
+          },
+          {
+            "color": "#080a53",
+            "samples": 2
+          },
+          {
+            "color": "#9dd9ff",
+            "samples": 2
+          },
+          {
+            "color": "#8caea2",
+            "samples": 2
+          },
+          {
+            "color": "#182a40",
+            "samples": 1
+          }
+        ],
+        "sourceAssets": [
+          {
+            "path": "Directory.Build.props",
+            "exists": true,
+            "bytes": 945,
+            "sha256": "fc96941e51e180c369d9522c39b755e640f2a31219816c9abab5660a82f02340",
+            "imageWidth": null,
+            "imageHeight": null
+          },
+          {
+            "path": "src/TmrOverlay.App/TmrOverlay.App.csproj",
+            "exists": true,
+            "bytes": 2957,
+            "sha256": "0e017a406a46b9245294d61332ab92ed81977faea8964ccfee30c3d9b3cf0e22",
+            "imageWidth": null,
+            "imageHeight": null
+          },
+          {
+            "path": "src/TmrOverlay.App/Assets/TmrOverlay.ico",
+            "exists": true,
+            "bytes": 25156,
+            "sha256": "7f840b22835d99f3c4467374bd718832828aaa89376458b89da3f6faba279717",
+            "imageWidth": 256,
+            "imageHeight": 256
+          },
+          {
+            "path": "assets/brand/TMRInstallerSplash.png",
+            "exists": true,
+            "bytes": 35026,
+            "sha256": "863cc7fe36aa0385436249af9075bf9a4e30f6d876bbb4f6e8d312c3c542cc20",
+            "imageWidth": 640,
+            "imageHeight": 400
+          },
+          {
+            "path": "assets/brand/TMRMsiBanner.bmp",
+            "exists": true,
+            "bytes": 85894,
+            "sha256": "4e21143edd4419cd3dc1c6e334c76e886635e65807705fc48184679017081d9b",
+            "imageWidth": 493,
+            "imageHeight": 58
+          },
+          {
+            "path": "assets/brand/TMRMsiLogo.bmp",
+            "exists": true,
+            "bytes": 461814,
+            "sha256": "9a8516a6acc5355432bc5bc2c4fe8f6975339e62ed762769461222e7e00335bb",
+            "imageWidth": 493,
+            "imageHeight": 312
+          },
+          {
+            "path": "assets/brand/TMRMsiWelcome.md",
+            "exists": true,
+            "bytes": 451,
+            "sha256": "eebbbbf200305742089b01d9cc295048ed6d83a65abfcfc0f05083d0450a25c0",
+            "imageWidth": null,
+            "imageHeight": null
+          },
+          {
+            "path": "assets/brand/TMRLogo.png",
+            "exists": true,
+            "bytes": 621481,
+            "sha256": "2ddc7d3674ae4ffaecf80c6cdaeb6770a7ba7891d7bb1d4f84a532df20d8931e",
+            "imageWidth": 2560,
+            "imageHeight": 1440
+          }
+        ]
+      },
+      "scenarioEvidence": {
+        "contract": "windows-installer-scenario-evidence/v1",
+        "surface": "windows-installer-menu",
+        "renderer": "msiexec-ui",
+        "sourceContract": "windows-installer-msi/v1",
+        "menuId": "welcome",
+        "pageIndex": 1,
+        "status": "captured",
+        "title": "Tech Mates Racing Overlay",
+        "className": "WindowsForms10.Window.8.app.0.37a9c05_r3_ad1",
+        "textHash": "598a4d2f7aaec9d3afa709f377cb981baea1b2841ec28b09b5a19a9819a6df7d",
+        "layoutHash": "6f9fb2a0d92189167b0ca05c7515da07186c81b3fefcc15bdac6601c2a8f18d5",
+        "package": {
+          "fileName": "TMROverlay-v0.20.0-win-x64.msi",
+          "fullPath": "C:\\Users\\David\\Downloads\\TMROverlay-v0.20.0-win-x64.msi",
+          "bytes": 80531456,
+          "sha256": "6dd93cf567b48b97b2da52cb36803973dfda9da62c5429c89732e140fa85ad68"
+        },
+        "sourceFiles": [
+          {
+            "path": "Directory.Build.props",
+            "exists": true,
+            "bytes": 945,
+            "sha256": "fc96941e51e180c369d9522c39b755e640f2a31219816c9abab5660a82f02340",
+            "imageWidth": null,
+            "imageHeight": null
+          },
+          {
+            "path": "src/TmrOverlay.App/TmrOverlay.App.csproj",
+            "exists": true,
+            "bytes": 2957,
+            "sha256": "0e017a406a46b9245294d61332ab92ed81977faea8964ccfee30c3d9b3cf0e22",
+            "imageWidth": null,
+            "imageHeight": null
+          },
+          {
+            "path": "src/TmrOverlay.App/Assets/TmrOverlay.ico",
+            "exists": true,
+            "bytes": 25156,
+            "sha256": "7f840b22835d99f3c4467374bd718832828aaa89376458b89da3f6faba279717",
+            "imageWidth": 256,
+            "imageHeight": 256
+          },
+          {
+            "path": "assets/brand/TMRInstallerSplash.png",
+            "exists": true,
+            "bytes": 35026,
+            "sha256": "863cc7fe36aa0385436249af9075bf9a4e30f6d876bbb4f6e8d312c3c542cc20",
+            "imageWidth": 640,
+            "imageHeight": 400
+          },
+          {
+            "path": "assets/brand/TMRMsiBanner.bmp",
+            "exists": true,
+            "bytes": 85894,
+            "sha256": "4e21143edd4419cd3dc1c6e334c76e886635e65807705fc48184679017081d9b",
+            "imageWidth": 493,
+            "imageHeight": 58
+          },
+          {
+            "path": "assets/brand/TMRMsiLogo.bmp",
+            "exists": true,
+            "bytes": 461814,
+            "sha256": "9a8516a6acc5355432bc5bc2c4fe8f6975339e62ed762769461222e7e00335bb",
+            "imageWidth": 493,
+            "imageHeight": 312
+          },
+          {
+            "path": "assets/brand/TMRMsiWelcome.md",
+            "exists": true,
+            "bytes": 451,
+            "sha256": "eebbbbf200305742089b01d9cc295048ed6d83a65abfcfc0f05083d0450a25c0",
+            "imageWidth": null,
+            "imageHeight": null
+          },
+          {
+            "path": "assets/brand/TMRLogo.png",
+            "exists": true,
+            "bytes": 621481,
+            "sha256": "2ddc7d3674ae4ffaecf80c6cdaeb6770a7ba7891d7bb1d4f84a532df20d8931e",
+            "imageWidth": 2560,
+            "imageHeight": 1440
+          }
+        ],
+        "sourceHash": "a50e2d84994c6df31380fd5ed686c821ab6a545de7d964298f996f7babe322f7",
+        "packageHash": "6dd93cf567b48b97b2da52cb36803973dfda9da62c5429c89732e140fa85ad68",
+        "scenarioHash": "16461821be13497d3e919bb1ea5d41334b849ffd308c4edb254220f9adb6ea92"
+      },
+      "packageEvidence": {
+        "fileName": "TMROverlay-v0.20.0-win-x64.msi",
+        "fullPath": "C:\\Users\\David\\Downloads\\TMROverlay-v0.20.0-win-x64.msi",
+        "bytes": 80531456,
+        "sha256": "6dd93cf567b48b97b2da52cb36803973dfda9da62c5429c89732e140fa85ad68"
+      },
+      "metadata": {
+        "surface": "windows-installer-menu",
+        "renderer": "msiexec-ui",
+        "sourceContract": "windows-installer-msi/v1",
+        "menuId": "welcome",
+        "pageIndex": 1,
+        "status": "captured",
+        "title": "Tech Mates Racing Overlay",
+        "windowClass": "WindowsForms10.Window.8.app.0.37a9c05_r3_ad1",
+        "layout": {
+          "contract": "windows-installer-layout-evidence/v1",
+          "root": {
+            "x": 0,
+            "y": 0,
+            "width": 380,
+            "height": 520,
+            "right": 380,
+            "bottom": 520,
+            "aspectRatio": 0.7308
+          },
+          "screenBounds": {
+            "x": 1490,
+            "y": 24,
+            "width": 380,
+            "height": 520,
+            "right": 1870,
+            "bottom": 544,
+            "aspectRatio": 0.7308
+          },
+          "client": {
+            "x": 0,
+            "y": 0,
+            "width": 380,
+            "height": 520,
+            "right": 380,
+            "bottom": 520,
+            "aspectRatio": 0.7308
+          },
+          "title": "Tech Mates Racing Overlay",
+          "className": "WindowsForms10.Window.8.app.0.37a9c05_r3_ad1",
+          "elementCount": 0,
+          "elements": []
+        },
+        "uiEvidence": {
+          "contract": "windows-installer-ui-evidence/v1",
+          "root": {
+            "x": 0,
+            "y": 0,
+            "width": 380,
+            "height": 520,
+            "right": 380,
+            "bottom": 520,
+            "aspectRatio": 0.7308
+          },
+          "contentBounds": {
+            "x": 0,
+            "y": 0,
+            "width": 380,
+            "height": 520,
+            "right": 380,
+            "bottom": 520,
+            "aspectRatio": 0.7308
+          },
+          "menuId": "welcome",
+          "pageIndex": 1,
+          "windowTitle": "Tech Mates Racing Overlay",
+          "windowClass": "WindowsForms10.Window.8.app.0.37a9c05_r3_ad1",
+          "textSample": "Tech Mates Racing Overlay",
+          "controlCount": 0,
+          "buttonCount": 0,
+          "textBlockCount": 0,
+          "controls": [],
+          "buttons": [],
+          "textBlocks": [],
+          "primaryAction": null,
+          "palette": [
+            {
+              "color": "#0d142b",
+              "samples": 2019
+            },
+            {
+              "color": "#090d1e",
+              "samples": 284
+            },
+            {
+              "color": "#121f3a",
+              "samples": 229
+            },
+            {
+              "color": "#080a1c",
+              "samples": 137
+            },
+            {
+              "color": "#047a8f",
+              "samples": 54
+            },
+            {
+              "color": "#223c5c",
+              "samples": 51
+            },
+            {
+              "color": "#577598",
+              "samples": 49
+            },
+            {
+              "color": "#fff7ff",
+              "samples": 5
+            },
+            {
+              "color": "#090c1d",
+              "samples": 3
+            },
+            {
+              "color": "#8caed4",
+              "samples": 3
+            },
+            {
+              "color": "#8c9987",
+              "samples": 3
+            },
+            {
+              "color": "#000000",
+              "samples": 2
+            },
+            {
+              "color": "#080a53",
+              "samples": 2
+            },
+            {
+              "color": "#9dd9ff",
+              "samples": 2
+            },
+            {
+              "color": "#8caea2",
+              "samples": 2
+            },
+            {
+              "color": "#182a40",
+              "samples": 1
+            }
+          ],
+          "sourceAssets": [
+            {
+              "path": "Directory.Build.props",
+              "exists": true,
+              "bytes": 945,
+              "sha256": "fc96941e51e180c369d9522c39b755e640f2a31219816c9abab5660a82f02340",
+              "imageWidth": null,
+              "imageHeight": null
+            },
+            {
+              "path": "src/TmrOverlay.App/TmrOverlay.App.csproj",
+              "exists": true,
+              "bytes": 2957,
+              "sha256": "0e017a406a46b9245294d61332ab92ed81977faea8964ccfee30c3d9b3cf0e22",
+              "imageWidth": null,
+              "imageHeight": null
+            },
+            {
+              "path": "src/TmrOverlay.App/Assets/TmrOverlay.ico",
+              "exists": true,
+              "bytes": 25156,
+              "sha256": "7f840b22835d99f3c4467374bd718832828aaa89376458b89da3f6faba279717",
+              "imageWidth": 256,
+              "imageHeight": 256
+            },
+            {
+              "path": "assets/brand/TMRInstallerSplash.png",
+              "exists": true,
+              "bytes": 35026,
+              "sha256": "863cc7fe36aa0385436249af9075bf9a4e30f6d876bbb4f6e8d312c3c542cc20",
+              "imageWidth": 640,
+              "imageHeight": 400
+            },
+            {
+              "path": "assets/brand/TMRMsiBanner.bmp",
+              "exists": true,
+              "bytes": 85894,
+              "sha256": "4e21143edd4419cd3dc1c6e334c76e886635e65807705fc48184679017081d9b",
+              "imageWidth": 493,
+              "imageHeight": 58
+            },
+            {
+              "path": "assets/brand/TMRMsiLogo.bmp",
+              "exists": true,
+              "bytes": 461814,
+              "sha256": "9a8516a6acc5355432bc5bc2c4fe8f6975339e62ed762769461222e7e00335bb",
+              "imageWidth": 493,
+              "imageHeight": 312
+            },
+            {
+              "path": "assets/brand/TMRMsiWelcome.md",
+              "exists": true,
+              "bytes": 451,
+              "sha256": "eebbbbf200305742089b01d9cc295048ed6d83a65abfcfc0f05083d0450a25c0",
+              "imageWidth": null,
+              "imageHeight": null
+            },
+            {
+              "path": "assets/brand/TMRLogo.png",
+              "exists": true,
+              "bytes": 621481,
+              "sha256": "2ddc7d3674ae4ffaecf80c6cdaeb6770a7ba7891d7bb1d4f84a532df20d8931e",
+              "imageWidth": 2560,
+              "imageHeight": 1440
+            }
+          ]
+        },
+        "scenarioEvidence": {
+          "contract": "windows-installer-scenario-evidence/v1",
+          "surface": "windows-installer-menu",
+          "renderer": "msiexec-ui",
+          "sourceContract": "windows-installer-msi/v1",
+          "menuId": "welcome",
+          "pageIndex": 1,
+          "status": "captured",
+          "title": "Tech Mates Racing Overlay",
+          "className": "WindowsForms10.Window.8.app.0.37a9c05_r3_ad1",
+          "textHash": "598a4d2f7aaec9d3afa709f377cb981baea1b2841ec28b09b5a19a9819a6df7d",
+          "layoutHash": "6f9fb2a0d92189167b0ca05c7515da07186c81b3fefcc15bdac6601c2a8f18d5",
+          "package": {
+            "fileName": "TMROverlay-v0.20.0-win-x64.msi",
+            "fullPath": "C:\\Users\\David\\Downloads\\TMROverlay-v0.20.0-win-x64.msi",
+            "bytes": 80531456,
+            "sha256": "6dd93cf567b48b97b2da52cb36803973dfda9da62c5429c89732e140fa85ad68"
+          },
+          "sourceFiles": [
+            {
+              "path": "Directory.Build.props",
+              "exists": true,
+              "bytes": 945,
+              "sha256": "fc96941e51e180c369d9522c39b755e640f2a31219816c9abab5660a82f02340",
+              "imageWidth": null,
+              "imageHeight": null
+            },
+            {
+              "path": "src/TmrOverlay.App/TmrOverlay.App.csproj",
+              "exists": true,
+              "bytes": 2957,
+              "sha256": "0e017a406a46b9245294d61332ab92ed81977faea8964ccfee30c3d9b3cf0e22",
+              "imageWidth": null,
+              "imageHeight": null
+            },
+            {
+              "path": "src/TmrOverlay.App/Assets/TmrOverlay.ico",
+              "exists": true,
+              "bytes": 25156,
+              "sha256": "7f840b22835d99f3c4467374bd718832828aaa89376458b89da3f6faba279717",
+              "imageWidth": 256,
+              "imageHeight": 256
+            },
+            {
+              "path": "assets/brand/TMRInstallerSplash.png",
+              "exists": true,
+              "bytes": 35026,
+              "sha256": "863cc7fe36aa0385436249af9075bf9a4e30f6d876bbb4f6e8d312c3c542cc20",
+              "imageWidth": 640,
+              "imageHeight": 400
+            },
+            {
+              "path": "assets/brand/TMRMsiBanner.bmp",
+              "exists": true,
+              "bytes": 85894,
+              "sha256": "4e21143edd4419cd3dc1c6e334c76e886635e65807705fc48184679017081d9b",
+              "imageWidth": 493,
+              "imageHeight": 58
+            },
+            {
+              "path": "assets/brand/TMRMsiLogo.bmp",
+              "exists": true,
+              "bytes": 461814,
+              "sha256": "9a8516a6acc5355432bc5bc2c4fe8f6975339e62ed762769461222e7e00335bb",
+              "imageWidth": 493,
+              "imageHeight": 312
+            },
+            {
+              "path": "assets/brand/TMRMsiWelcome.md",
+              "exists": true,
+              "bytes": 451,
+              "sha256": "eebbbbf200305742089b01d9cc295048ed6d83a65abfcfc0f05083d0450a25c0",
+              "imageWidth": null,
+              "imageHeight": null
+            },
+            {
+              "path": "assets/brand/TMRLogo.png",
+              "exists": true,
+              "bytes": 621481,
+              "sha256": "2ddc7d3674ae4ffaecf80c6cdaeb6770a7ba7891d7bb1d4f84a532df20d8931e",
+              "imageWidth": 2560,
+              "imageHeight": 1440
+            }
+          ],
+          "sourceHash": "a50e2d84994c6df31380fd5ed686c821ab6a545de7d964298f996f7babe322f7",
+          "packageHash": "6dd93cf567b48b97b2da52cb36803973dfda9da62c5429c89732e140fa85ad68",
+          "scenarioHash": "16461821be13497d3e919bb1ea5d41334b849ffd308c4edb254220f9adb6ea92"
+        }
+      }
+    },
+    {
+      "label": "Installer cancel confirmation",
+      "path": "installer-menus/cancel-confirm.png",
+      "width": 352,
+      "height": 142,
+      "bytes": 4829,
+      "surface": "windows-installer-menu",
+      "renderer": "msiexec-ui",
+      "sourceContract": "windows-installer-msi/v1",
+      "menuId": "cancel-confirm",
+      "pageIndex": 2,
+      "status": "cancel_confirmation",
+      "title": "Tech Mates Racing Overlay Setup",
+      "windowClass": "MsiDialogCloseClass",
+      "textSample": "Tech Mates Racing Overlay Setup | Information icon | Are you sure you want to cancel Tech Mates Racing Overlay installation? | \u0026Yes | \u0026No",
+      "contentBounds": {
+        "x": 3,
+        "y": 26,
+        "width": 346,
+        "height": 113,
+        "right": 349,
+        "bottom": 139,
+        "aspectRatio": 3.0619
+      },
+      "layout": {
+        "contract": "windows-installer-layout-evidence/v1",
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 352,
+          "height": 142,
+          "right": 352,
+          "bottom": 142,
+          "aspectRatio": 2.4789
+        },
+        "screenBounds": {
+          "x": 2384,
+          "y": 649,
+          "width": 352,
+          "height": 142,
+          "right": 2736,
+          "bottom": 791,
+          "aspectRatio": 2.4789
+        },
+        "client": {
+          "x": 3,
+          "y": 26,
+          "width": 346,
+          "height": 113,
+          "right": 349,
+          "bottom": 139,
+          "aspectRatio": 3.0619
+        },
+        "title": "Tech Mates Racing Overlay Setup",
+        "className": "MsiDialogCloseClass",
+        "elementCount": 4,
+        "elements": [
+          {
+            "index": 0,
+            "controlId": 296,
+            "role": "text",
+            "className": "Static",
+            "text": "Information icon",
+            "bounds": {
+              "x": 23,
+              "y": 46,
+              "width": 32,
+              "height": 32,
+              "right": 55,
+              "bottom": 78,
+              "aspectRatio": 1
+            },
+            "absoluteBounds": {
+              "x": 2407,
+              "y": 695,
+              "width": 32,
+              "height": 32,
+              "right": 2439,
+              "bottom": 727,
+              "aspectRatio": 1
+            },
+            "enabled": false,
+            "visible": true,
+            "sampledColor": "#0000ff"
+          },
+          {
+            "index": 1,
+            "controlId": 522,
+            "role": "text",
+            "className": "Static",
+            "text": "Are you sure you want to cancel Tech Mates Racing Overlay installation?",
+            "bounds": {
+              "x": 67,
+              "y": 46,
+              "width": 258,
+              "height": 40,
+              "right": 325,
+              "bottom": 86,
+              "aspectRatio": 6.45
+            },
+            "absoluteBounds": {
+              "x": 2451,
+              "y": 695,
+              "width": 258,
+              "height": 40,
+              "right": 2709,
+              "bottom": 735,
+              "aspectRatio": 6.45
+            },
+            "enabled": true,
+            "visible": true,
+            "sampledColor": "#87cef0"
+          },
+          {
+            "index": 2,
+            "controlId": 330,
+            "role": "button",
+            "className": "Button",
+            "text": "\u0026Yes",
+            "bounds": {
+              "x": 99,
+              "y": 102,
+              "width": 74,
+              "height": 22,
+              "right": 173,
+              "bottom": 124,
+              "aspectRatio": 3.3636
+            },
+            "absoluteBounds": {
+              "x": 2483,
+              "y": 751,
+              "width": 74,
+              "height": 22,
+              "right": 2557,
+              "bottom": 773,
+              "aspectRatio": 3.3636
+            },
+            "enabled": true,
+            "visible": true,
+            "sampledColor": "#000000"
+          },
+          {
+            "index": 3,
+            "controlId": 329,
+            "role": "button",
+            "className": "Button",
+            "text": "\u0026No",
+            "bounds": {
+              "x": 179,
+              "y": 102,
+              "width": 74,
+              "height": 22,
+              "right": 253,
+              "bottom": 124,
+              "aspectRatio": 3.3636
+            },
+            "absoluteBounds": {
+              "x": 2563,
+              "y": 751,
+              "width": 74,
+              "height": 22,
+              "right": 2637,
+              "bottom": 773,
+              "aspectRatio": 3.3636
+            },
+            "enabled": true,
+            "visible": true,
+            "sampledColor": "#fdfdb5"
+          }
+        ]
+      },
+      "uiEvidence": {
+        "contract": "windows-installer-ui-evidence/v1",
+        "root": {
+          "x": 0,
+          "y": 0,
+          "width": 352,
+          "height": 142,
+          "right": 352,
+          "bottom": 142,
+          "aspectRatio": 2.4789
+        },
+        "contentBounds": {
+          "x": 3,
+          "y": 26,
+          "width": 346,
+          "height": 113,
+          "right": 349,
+          "bottom": 139,
+          "aspectRatio": 3.0619
+        },
+        "menuId": "cancel-confirm",
+        "pageIndex": 2,
+        "windowTitle": "Tech Mates Racing Overlay Setup",
+        "windowClass": "MsiDialogCloseClass",
+        "textSample": "Tech Mates Racing Overlay Setup | Information icon | Are you sure you want to cancel Tech Mates Racing Overlay installation? | \u0026Yes | \u0026No",
+        "controlCount": 4,
+        "buttonCount": 2,
+        "textBlockCount": 2,
+        "controls": [
+          {
+            "index": 0,
+            "controlId": 296,
+            "role": "text",
+            "className": "Static",
+            "text": "Information icon",
+            "bounds": {
+              "x": 23,
+              "y": 46,
+              "width": 32,
+              "height": 32,
+              "right": 55,
+              "bottom": 78,
+              "aspectRatio": 1
+            },
+            "absoluteBounds": {
+              "x": 2407,
+              "y": 695,
+              "width": 32,
+              "height": 32,
+              "right": 2439,
+              "bottom": 727,
+              "aspectRatio": 1
+            },
+            "enabled": false,
+            "visible": true,
+            "sampledColor": "#0000ff"
+          },
+          {
+            "index": 1,
+            "controlId": 522,
+            "role": "text",
+            "className": "Static",
+            "text": "Are you sure you want to cancel Tech Mates Racing Overlay installation?",
+            "bounds": {
+              "x": 67,
+              "y": 46,
+              "width": 258,
+              "height": 40,
+              "right": 325,
+              "bottom": 86,
+              "aspectRatio": 6.45
+            },
+            "absoluteBounds": {
+              "x": 2451,
+              "y": 695,
+              "width": 258,
+              "height": 40,
+              "right": 2709,
+              "bottom": 735,
+              "aspectRatio": 6.45
+            },
+            "enabled": true,
+            "visible": true,
+            "sampledColor": "#87cef0"
+          },
+          {
+            "index": 2,
+            "controlId": 330,
+            "role": "button",
+            "className": "Button",
+            "text": "\u0026Yes",
+            "bounds": {
+              "x": 99,
+              "y": 102,
+              "width": 74,
+              "height": 22,
+              "right": 173,
+              "bottom": 124,
+              "aspectRatio": 3.3636
+            },
+            "absoluteBounds": {
+              "x": 2483,
+              "y": 751,
+              "width": 74,
+              "height": 22,
+              "right": 2557,
+              "bottom": 773,
+              "aspectRatio": 3.3636
+            },
+            "enabled": true,
+            "visible": true,
+            "sampledColor": "#000000"
+          },
+          {
+            "index": 3,
+            "controlId": 329,
+            "role": "button",
+            "className": "Button",
+            "text": "\u0026No",
+            "bounds": {
+              "x": 179,
+              "y": 102,
+              "width": 74,
+              "height": 22,
+              "right": 253,
+              "bottom": 124,
+              "aspectRatio": 3.3636
+            },
+            "absoluteBounds": {
+              "x": 2563,
+              "y": 751,
+              "width": 74,
+              "height": 22,
+              "right": 2637,
+              "bottom": 773,
+              "aspectRatio": 3.3636
+            },
+            "enabled": true,
+            "visible": true,
+            "sampledColor": "#fdfdb5"
+          }
+        ],
+        "buttons": [
+          {
+            "index": 0,
+            "controlId": 330,
+            "role": "button",
+            "className": "Button",
+            "text": "\u0026Yes",
+            "bounds": {
+              "x": 99,
+              "y": 102,
+              "width": 74,
+              "height": 22,
+              "right": 173,
+              "bottom": 124,
+              "aspectRatio": 3.3636
+            },
+            "absoluteBounds": {
+              "x": 2483,
+              "y": 751,
+              "width": 74,
+              "height": 22,
+              "right": 2557,
+              "bottom": 773,
+              "aspectRatio": 3.3636
+            },
+            "enabled": true,
+            "visible": true,
+            "sampledColor": null
+          },
+          {
+            "index": 1,
+            "controlId": 329,
+            "role": "button",
+            "className": "Button",
+            "text": "\u0026No",
+            "bounds": {
+              "x": 179,
+              "y": 102,
+              "width": 74,
+              "height": 22,
+              "right": 253,
+              "bottom": 124,
+              "aspectRatio": 3.3636
+            },
+            "absoluteBounds": {
+              "x": 2563,
+              "y": 751,
+              "width": 74,
+              "height": 22,
+              "right": 2637,
+              "bottom": 773,
+              "aspectRatio": 3.3636
+            },
+            "enabled": true,
+            "visible": true,
+            "sampledColor": null
+          }
+        ],
+        "textBlocks": [
+          {
+            "index": 0,
+            "controlId": 296,
+            "role": "text",
+            "className": "Static",
+            "text": "Information icon",
+            "bounds": {
+              "x": 23,
+              "y": 46,
+              "width": 32,
+              "height": 32,
+              "right": 55,
+              "bottom": 78,
+              "aspectRatio": 1
+            },
+            "absoluteBounds": {
+              "x": 2407,
+              "y": 695,
+              "width": 32,
+              "height": 32,
+              "right": 2439,
+              "bottom": 727,
+              "aspectRatio": 1
+            },
+            "enabled": false,
+            "visible": true,
+            "sampledColor": null
+          },
+          {
+            "index": 1,
+            "controlId": 522,
+            "role": "text",
+            "className": "Static",
+            "text": "Are you sure you want to cancel Tech Mates Racing Overlay installation?",
+            "bounds": {
+              "x": 67,
+              "y": 46,
+              "width": 258,
+              "height": 40,
+              "right": 325,
+              "bottom": 86,
+              "aspectRatio": 6.45
+            },
+            "absoluteBounds": {
+              "x": 2451,
+              "y": 695,
+              "width": 258,
+              "height": 40,
+              "right": 2709,
+              "bottom": 735,
+              "aspectRatio": 6.45
+            },
+            "enabled": true,
+            "visible": true,
+            "sampledColor": null
+          }
+        ],
+        "primaryAction": "\u0026Yes",
+        "palette": [
+          {
+            "color": "#f0f0f0",
+            "samples": 2430
+          },
+          {
+            "color": "#f3f3f3",
+            "samples": 596
+          },
+          {
+            "color": "#000000",
+            "samples": 177
+          },
+          {
+            "color": "#fdfdfd",
+            "samples": 165
+          },
+          {
+            "color": "#ffffff",
+            "samples": 33
+          },
+          {
+            "color": "#f0f0ab",
+            "samples": 23
+          },
+          {
+            "color": "#600036",
+            "samples": 23
+          },
+          {
+            "color": "#919191",
+            "samples": 17
+          },
+          {
+            "color": "#87cef0",
+            "samples": 13
+          },
+          {
+            "color": "#cbcbcb",
+            "samples": 11
+          },
+          {
+            "color": "#bababa",
+            "samples": 9
+          },
+          {
+            "color": "#006bbe",
+            "samples": 9
+          },
+          {
+            "color": "#808080",
+            "samples": 7
+          },
+          {
+            "color": "#f0ab60",
+            "samples": 6
+          },
+          {
+            "color": "#9b9b9b",
+            "samples": 5
+          },
+          {
+            "color": "#b6b6b6",
+            "samples": 5
+          }
+        ],
+        "sourceAssets": [
+          {
+            "path": "Directory.Build.props",
+            "exists": true,
+            "bytes": 945,
+            "sha256": "fc96941e51e180c369d9522c39b755e640f2a31219816c9abab5660a82f02340",
+            "imageWidth": null,
+            "imageHeight": null
+          },
+          {
+            "path": "src/TmrOverlay.App/TmrOverlay.App.csproj",
+            "exists": true,
+            "bytes": 2957,
+            "sha256": "0e017a406a46b9245294d61332ab92ed81977faea8964ccfee30c3d9b3cf0e22",
+            "imageWidth": null,
+            "imageHeight": null
+          },
+          {
+            "path": "src/TmrOverlay.App/Assets/TmrOverlay.ico",
+            "exists": true,
+            "bytes": 25156,
+            "sha256": "7f840b22835d99f3c4467374bd718832828aaa89376458b89da3f6faba279717",
+            "imageWidth": 256,
+            "imageHeight": 256
+          },
+          {
+            "path": "assets/brand/TMRInstallerSplash.png",
+            "exists": true,
+            "bytes": 35026,
+            "sha256": "863cc7fe36aa0385436249af9075bf9a4e30f6d876bbb4f6e8d312c3c542cc20",
+            "imageWidth": 640,
+            "imageHeight": 400
+          },
+          {
+            "path": "assets/brand/TMRMsiBanner.bmp",
+            "exists": true,
+            "bytes": 85894,
+            "sha256": "4e21143edd4419cd3dc1c6e334c76e886635e65807705fc48184679017081d9b",
+            "imageWidth": 493,
+            "imageHeight": 58
+          },
+          {
+            "path": "assets/brand/TMRMsiLogo.bmp",
+            "exists": true,
+            "bytes": 461814,
+            "sha256": "9a8516a6acc5355432bc5bc2c4fe8f6975339e62ed762769461222e7e00335bb",
+            "imageWidth": 493,
+            "imageHeight": 312
+          },
+          {
+            "path": "assets/brand/TMRMsiWelcome.md",
+            "exists": true,
+            "bytes": 451,
+            "sha256": "eebbbbf200305742089b01d9cc295048ed6d83a65abfcfc0f05083d0450a25c0",
+            "imageWidth": null,
+            "imageHeight": null
+          },
+          {
+            "path": "assets/brand/TMRLogo.png",
+            "exists": true,
+            "bytes": 621481,
+            "sha256": "2ddc7d3674ae4ffaecf80c6cdaeb6770a7ba7891d7bb1d4f84a532df20d8931e",
+            "imageWidth": 2560,
+            "imageHeight": 1440
+          }
+        ]
+      },
+      "scenarioEvidence": {
+        "contract": "windows-installer-scenario-evidence/v1",
+        "surface": "windows-installer-menu",
+        "renderer": "msiexec-ui",
+        "sourceContract": "windows-installer-msi/v1",
+        "menuId": "cancel-confirm",
+        "pageIndex": 2,
+        "status": "cancel_confirmation",
+        "title": "Tech Mates Racing Overlay Setup",
+        "className": "MsiDialogCloseClass",
+        "textHash": "843869087385a1b7493977aa6b3f7eaa22751ba7e5beafbe8a160c7150adecad",
+        "layoutHash": "56ef1d68d9664fa6b6c7aad469f07a842780a8ff5fdd5f529c9836eb5d6ee4b5",
+        "package": {
+          "fileName": "TMROverlay-v0.20.0-win-x64.msi",
+          "fullPath": "C:\\Users\\David\\Downloads\\TMROverlay-v0.20.0-win-x64.msi",
+          "bytes": 80531456,
+          "sha256": "6dd93cf567b48b97b2da52cb36803973dfda9da62c5429c89732e140fa85ad68"
+        },
+        "sourceFiles": [
+          {
+            "path": "Directory.Build.props",
+            "exists": true,
+            "bytes": 945,
+            "sha256": "fc96941e51e180c369d9522c39b755e640f2a31219816c9abab5660a82f02340",
+            "imageWidth": null,
+            "imageHeight": null
+          },
+          {
+            "path": "src/TmrOverlay.App/TmrOverlay.App.csproj",
+            "exists": true,
+            "bytes": 2957,
+            "sha256": "0e017a406a46b9245294d61332ab92ed81977faea8964ccfee30c3d9b3cf0e22",
+            "imageWidth": null,
+            "imageHeight": null
+          },
+          {
+            "path": "src/TmrOverlay.App/Assets/TmrOverlay.ico",
+            "exists": true,
+            "bytes": 25156,
+            "sha256": "7f840b22835d99f3c4467374bd718832828aaa89376458b89da3f6faba279717",
+            "imageWidth": 256,
+            "imageHeight": 256
+          },
+          {
+            "path": "assets/brand/TMRInstallerSplash.png",
+            "exists": true,
+            "bytes": 35026,
+            "sha256": "863cc7fe36aa0385436249af9075bf9a4e30f6d876bbb4f6e8d312c3c542cc20",
+            "imageWidth": 640,
+            "imageHeight": 400
+          },
+          {
+            "path": "assets/brand/TMRMsiBanner.bmp",
+            "exists": true,
+            "bytes": 85894,
+            "sha256": "4e21143edd4419cd3dc1c6e334c76e886635e65807705fc48184679017081d9b",
+            "imageWidth": 493,
+            "imageHeight": 58
+          },
+          {
+            "path": "assets/brand/TMRMsiLogo.bmp",
+            "exists": true,
+            "bytes": 461814,
+            "sha256": "9a8516a6acc5355432bc5bc2c4fe8f6975339e62ed762769461222e7e00335bb",
+            "imageWidth": 493,
+            "imageHeight": 312
+          },
+          {
+            "path": "assets/brand/TMRMsiWelcome.md",
+            "exists": true,
+            "bytes": 451,
+            "sha256": "eebbbbf200305742089b01d9cc295048ed6d83a65abfcfc0f05083d0450a25c0",
+            "imageWidth": null,
+            "imageHeight": null
+          },
+          {
+            "path": "assets/brand/TMRLogo.png",
+            "exists": true,
+            "bytes": 621481,
+            "sha256": "2ddc7d3674ae4ffaecf80c6cdaeb6770a7ba7891d7bb1d4f84a532df20d8931e",
+            "imageWidth": 2560,
+            "imageHeight": 1440
+          }
+        ],
+        "sourceHash": "a50e2d84994c6df31380fd5ed686c821ab6a545de7d964298f996f7babe322f7",
+        "packageHash": "6dd93cf567b48b97b2da52cb36803973dfda9da62c5429c89732e140fa85ad68",
+        "scenarioHash": "21379c643ce769539623da1e5fa2003a059e5176dc38fca6e5403da4bcb76cd1"
+      },
+      "packageEvidence": {
+        "fileName": "TMROverlay-v0.20.0-win-x64.msi",
+        "fullPath": "C:\\Users\\David\\Downloads\\TMROverlay-v0.20.0-win-x64.msi",
+        "bytes": 80531456,
+        "sha256": "6dd93cf567b48b97b2da52cb36803973dfda9da62c5429c89732e140fa85ad68"
+      },
+      "metadata": {
+        "surface": "windows-installer-menu",
+        "renderer": "msiexec-ui",
+        "sourceContract": "windows-installer-msi/v1",
+        "menuId": "cancel-confirm",
+        "pageIndex": 2,
+        "status": "cancel_confirmation",
+        "title": "Tech Mates Racing Overlay Setup",
+        "windowClass": "MsiDialogCloseClass",
+        "layout": {
+          "contract": "windows-installer-layout-evidence/v1",
+          "root": {
+            "x": 0,
+            "y": 0,
+            "width": 352,
+            "height": 142,
+            "right": 352,
+            "bottom": 142,
+            "aspectRatio": 2.4789
+          },
+          "screenBounds": {
+            "x": 2384,
+            "y": 649,
+            "width": 352,
+            "height": 142,
+            "right": 2736,
+            "bottom": 791,
+            "aspectRatio": 2.4789
+          },
+          "client": {
+            "x": 3,
+            "y": 26,
+            "width": 346,
+            "height": 113,
+            "right": 349,
+            "bottom": 139,
+            "aspectRatio": 3.0619
+          },
+          "title": "Tech Mates Racing Overlay Setup",
+          "className": "MsiDialogCloseClass",
+          "elementCount": 4,
+          "elements": [
+            {
+              "index": 0,
+              "controlId": 296,
+              "role": "text",
+              "className": "Static",
+              "text": "Information icon",
+              "bounds": {
+                "x": 23,
+                "y": 46,
+                "width": 32,
+                "height": 32,
+                "right": 55,
+                "bottom": 78,
+                "aspectRatio": 1
+              },
+              "absoluteBounds": {
+                "x": 2407,
+                "y": 695,
+                "width": 32,
+                "height": 32,
+                "right": 2439,
+                "bottom": 727,
+                "aspectRatio": 1
+              },
+              "enabled": false,
+              "visible": true,
+              "sampledColor": "#0000ff"
+            },
+            {
+              "index": 1,
+              "controlId": 522,
+              "role": "text",
+              "className": "Static",
+              "text": "Are you sure you want to cancel Tech Mates Racing Overlay installation?",
+              "bounds": {
+                "x": 67,
+                "y": 46,
+                "width": 258,
+                "height": 40,
+                "right": 325,
+                "bottom": 86,
+                "aspectRatio": 6.45
+              },
+              "absoluteBounds": {
+                "x": 2451,
+                "y": 695,
+                "width": 258,
+                "height": 40,
+                "right": 2709,
+                "bottom": 735,
+                "aspectRatio": 6.45
+              },
+              "enabled": true,
+              "visible": true,
+              "sampledColor": "#87cef0"
+            },
+            {
+              "index": 2,
+              "controlId": 330,
+              "role": "button",
+              "className": "Button",
+              "text": "\u0026Yes",
+              "bounds": {
+                "x": 99,
+                "y": 102,
+                "width": 74,
+                "height": 22,
+                "right": 173,
+                "bottom": 124,
+                "aspectRatio": 3.3636
+              },
+              "absoluteBounds": {
+                "x": 2483,
+                "y": 751,
+                "width": 74,
+                "height": 22,
+                "right": 2557,
+                "bottom": 773,
+                "aspectRatio": 3.3636
+              },
+              "enabled": true,
+              "visible": true,
+              "sampledColor": "#000000"
+            },
+            {
+              "index": 3,
+              "controlId": 329,
+              "role": "button",
+              "className": "Button",
+              "text": "\u0026No",
+              "bounds": {
+                "x": 179,
+                "y": 102,
+                "width": 74,
+                "height": 22,
+                "right": 253,
+                "bottom": 124,
+                "aspectRatio": 3.3636
+              },
+              "absoluteBounds": {
+                "x": 2563,
+                "y": 751,
+                "width": 74,
+                "height": 22,
+                "right": 2637,
+                "bottom": 773,
+                "aspectRatio": 3.3636
+              },
+              "enabled": true,
+              "visible": true,
+              "sampledColor": "#fdfdb5"
+            }
+          ]
+        },
+        "uiEvidence": {
+          "contract": "windows-installer-ui-evidence/v1",
+          "root": {
+            "x": 0,
+            "y": 0,
+            "width": 352,
+            "height": 142,
+            "right": 352,
+            "bottom": 142,
+            "aspectRatio": 2.4789
+          },
+          "contentBounds": {
+            "x": 3,
+            "y": 26,
+            "width": 346,
+            "height": 113,
+            "right": 349,
+            "bottom": 139,
+            "aspectRatio": 3.0619
+          },
+          "menuId": "cancel-confirm",
+          "pageIndex": 2,
+          "windowTitle": "Tech Mates Racing Overlay Setup",
+          "windowClass": "MsiDialogCloseClass",
+          "textSample": "Tech Mates Racing Overlay Setup | Information icon | Are you sure you want to cancel Tech Mates Racing Overlay installation? | \u0026Yes | \u0026No",
+          "controlCount": 4,
+          "buttonCount": 2,
+          "textBlockCount": 2,
+          "controls": [
+            {
+              "index": 0,
+              "controlId": 296,
+              "role": "text",
+              "className": "Static",
+              "text": "Information icon",
+              "bounds": {
+                "x": 23,
+                "y": 46,
+                "width": 32,
+                "height": 32,
+                "right": 55,
+                "bottom": 78,
+                "aspectRatio": 1
+              },
+              "absoluteBounds": {
+                "x": 2407,
+                "y": 695,
+                "width": 32,
+                "height": 32,
+                "right": 2439,
+                "bottom": 727,
+                "aspectRatio": 1
+              },
+              "enabled": false,
+              "visible": true,
+              "sampledColor": "#0000ff"
+            },
+            {
+              "index": 1,
+              "controlId": 522,
+              "role": "text",
+              "className": "Static",
+              "text": "Are you sure you want to cancel Tech Mates Racing Overlay installation?",
+              "bounds": {
+                "x": 67,
+                "y": 46,
+                "width": 258,
+                "height": 40,
+                "right": 325,
+                "bottom": 86,
+                "aspectRatio": 6.45
+              },
+              "absoluteBounds": {
+                "x": 2451,
+                "y": 695,
+                "width": 258,
+                "height": 40,
+                "right": 2709,
+                "bottom": 735,
+                "aspectRatio": 6.45
+              },
+              "enabled": true,
+              "visible": true,
+              "sampledColor": "#87cef0"
+            },
+            {
+              "index": 2,
+              "controlId": 330,
+              "role": "button",
+              "className": "Button",
+              "text": "\u0026Yes",
+              "bounds": {
+                "x": 99,
+                "y": 102,
+                "width": 74,
+                "height": 22,
+                "right": 173,
+                "bottom": 124,
+                "aspectRatio": 3.3636
+              },
+              "absoluteBounds": {
+                "x": 2483,
+                "y": 751,
+                "width": 74,
+                "height": 22,
+                "right": 2557,
+                "bottom": 773,
+                "aspectRatio": 3.3636
+              },
+              "enabled": true,
+              "visible": true,
+              "sampledColor": "#000000"
+            },
+            {
+              "index": 3,
+              "controlId": 329,
+              "role": "button",
+              "className": "Button",
+              "text": "\u0026No",
+              "bounds": {
+                "x": 179,
+                "y": 102,
+                "width": 74,
+                "height": 22,
+                "right": 253,
+                "bottom": 124,
+                "aspectRatio": 3.3636
+              },
+              "absoluteBounds": {
+                "x": 2563,
+                "y": 751,
+                "width": 74,
+                "height": 22,
+                "right": 2637,
+                "bottom": 773,
+                "aspectRatio": 3.3636
+              },
+              "enabled": true,
+              "visible": true,
+              "sampledColor": "#fdfdb5"
+            }
+          ],
+          "buttons": [
+            {
+              "index": 0,
+              "controlId": 330,
+              "role": "button",
+              "className": "Button",
+              "text": "\u0026Yes",
+              "bounds": {
+                "x": 99,
+                "y": 102,
+                "width": 74,
+                "height": 22,
+                "right": 173,
+                "bottom": 124,
+                "aspectRatio": 3.3636
+              },
+              "absoluteBounds": {
+                "x": 2483,
+                "y": 751,
+                "width": 74,
+                "height": 22,
+                "right": 2557,
+                "bottom": 773,
+                "aspectRatio": 3.3636
+              },
+              "enabled": true,
+              "visible": true,
+              "sampledColor": null
+            },
+            {
+              "index": 1,
+              "controlId": 329,
+              "role": "button",
+              "className": "Button",
+              "text": "\u0026No",
+              "bounds": {
+                "x": 179,
+                "y": 102,
+                "width": 74,
+                "height": 22,
+                "right": 253,
+                "bottom": 124,
+                "aspectRatio": 3.3636
+              },
+              "absoluteBounds": {
+                "x": 2563,
+                "y": 751,
+                "width": 74,
+                "height": 22,
+                "right": 2637,
+                "bottom": 773,
+                "aspectRatio": 3.3636
+              },
+              "enabled": true,
+              "visible": true,
+              "sampledColor": null
+            }
+          ],
+          "textBlocks": [
+            {
+              "index": 0,
+              "controlId": 296,
+              "role": "text",
+              "className": "Static",
+              "text": "Information icon",
+              "bounds": {
+                "x": 23,
+                "y": 46,
+                "width": 32,
+                "height": 32,
+                "right": 55,
+                "bottom": 78,
+                "aspectRatio": 1
+              },
+              "absoluteBounds": {
+                "x": 2407,
+                "y": 695,
+                "width": 32,
+                "height": 32,
+                "right": 2439,
+                "bottom": 727,
+                "aspectRatio": 1
+              },
+              "enabled": false,
+              "visible": true,
+              "sampledColor": null
+            },
+            {
+              "index": 1,
+              "controlId": 522,
+              "role": "text",
+              "className": "Static",
+              "text": "Are you sure you want to cancel Tech Mates Racing Overlay installation?",
+              "bounds": {
+                "x": 67,
+                "y": 46,
+                "width": 258,
+                "height": 40,
+                "right": 325,
+                "bottom": 86,
+                "aspectRatio": 6.45
+              },
+              "absoluteBounds": {
+                "x": 2451,
+                "y": 695,
+                "width": 258,
+                "height": 40,
+                "right": 2709,
+                "bottom": 735,
+                "aspectRatio": 6.45
+              },
+              "enabled": true,
+              "visible": true,
+              "sampledColor": null
+            }
+          ],
+          "primaryAction": "\u0026Yes",
+          "palette": [
+            {
+              "color": "#f0f0f0",
+              "samples": 2430
+            },
+            {
+              "color": "#f3f3f3",
+              "samples": 596
+            },
+            {
+              "color": "#000000",
+              "samples": 177
+            },
+            {
+              "color": "#fdfdfd",
+              "samples": 165
+            },
+            {
+              "color": "#ffffff",
+              "samples": 33
+            },
+            {
+              "color": "#f0f0ab",
+              "samples": 23
+            },
+            {
+              "color": "#600036",
+              "samples": 23
+            },
+            {
+              "color": "#919191",
+              "samples": 17
+            },
+            {
+              "color": "#87cef0",
+              "samples": 13
+            },
+            {
+              "color": "#cbcbcb",
+              "samples": 11
+            },
+            {
+              "color": "#bababa",
+              "samples": 9
+            },
+            {
+              "color": "#006bbe",
+              "samples": 9
+            },
+            {
+              "color": "#808080",
+              "samples": 7
+            },
+            {
+              "color": "#f0ab60",
+              "samples": 6
+            },
+            {
+              "color": "#9b9b9b",
+              "samples": 5
+            },
+            {
+              "color": "#b6b6b6",
+              "samples": 5
+            }
+          ],
+          "sourceAssets": [
+            {
+              "path": "Directory.Build.props",
+              "exists": true,
+              "bytes": 945,
+              "sha256": "fc96941e51e180c369d9522c39b755e640f2a31219816c9abab5660a82f02340",
+              "imageWidth": null,
+              "imageHeight": null
+            },
+            {
+              "path": "src/TmrOverlay.App/TmrOverlay.App.csproj",
+              "exists": true,
+              "bytes": 2957,
+              "sha256": "0e017a406a46b9245294d61332ab92ed81977faea8964ccfee30c3d9b3cf0e22",
+              "imageWidth": null,
+              "imageHeight": null
+            },
+            {
+              "path": "src/TmrOverlay.App/Assets/TmrOverlay.ico",
+              "exists": true,
+              "bytes": 25156,
+              "sha256": "7f840b22835d99f3c4467374bd718832828aaa89376458b89da3f6faba279717",
+              "imageWidth": 256,
+              "imageHeight": 256
+            },
+            {
+              "path": "assets/brand/TMRInstallerSplash.png",
+              "exists": true,
+              "bytes": 35026,
+              "sha256": "863cc7fe36aa0385436249af9075bf9a4e30f6d876bbb4f6e8d312c3c542cc20",
+              "imageWidth": 640,
+              "imageHeight": 400
+            },
+            {
+              "path": "assets/brand/TMRMsiBanner.bmp",
+              "exists": true,
+              "bytes": 85894,
+              "sha256": "4e21143edd4419cd3dc1c6e334c76e886635e65807705fc48184679017081d9b",
+              "imageWidth": 493,
+              "imageHeight": 58
+            },
+            {
+              "path": "assets/brand/TMRMsiLogo.bmp",
+              "exists": true,
+              "bytes": 461814,
+              "sha256": "9a8516a6acc5355432bc5bc2c4fe8f6975339e62ed762769461222e7e00335bb",
+              "imageWidth": 493,
+              "imageHeight": 312
+            },
+            {
+              "path": "assets/brand/TMRMsiWelcome.md",
+              "exists": true,
+              "bytes": 451,
+              "sha256": "eebbbbf200305742089b01d9cc295048ed6d83a65abfcfc0f05083d0450a25c0",
+              "imageWidth": null,
+              "imageHeight": null
+            },
+            {
+              "path": "assets/brand/TMRLogo.png",
+              "exists": true,
+              "bytes": 621481,
+              "sha256": "2ddc7d3674ae4ffaecf80c6cdaeb6770a7ba7891d7bb1d4f84a532df20d8931e",
+              "imageWidth": 2560,
+              "imageHeight": 1440
+            }
+          ]
+        },
+        "scenarioEvidence": {
+          "contract": "windows-installer-scenario-evidence/v1",
+          "surface": "windows-installer-menu",
+          "renderer": "msiexec-ui",
+          "sourceContract": "windows-installer-msi/v1",
+          "menuId": "cancel-confirm",
+          "pageIndex": 2,
+          "status": "cancel_confirmation",
+          "title": "Tech Mates Racing Overlay Setup",
+          "className": "MsiDialogCloseClass",
+          "textHash": "843869087385a1b7493977aa6b3f7eaa22751ba7e5beafbe8a160c7150adecad",
+          "layoutHash": "56ef1d68d9664fa6b6c7aad469f07a842780a8ff5fdd5f529c9836eb5d6ee4b5",
+          "package": {
+            "fileName": "TMROverlay-v0.20.0-win-x64.msi",
+            "fullPath": "C:\\Users\\David\\Downloads\\TMROverlay-v0.20.0-win-x64.msi",
+            "bytes": 80531456,
+            "sha256": "6dd93cf567b48b97b2da52cb36803973dfda9da62c5429c89732e140fa85ad68"
+          },
+          "sourceFiles": [
+            {
+              "path": "Directory.Build.props",
+              "exists": true,
+              "bytes": 945,
+              "sha256": "fc96941e51e180c369d9522c39b755e640f2a31219816c9abab5660a82f02340",
+              "imageWidth": null,
+              "imageHeight": null
+            },
+            {
+              "path": "src/TmrOverlay.App/TmrOverlay.App.csproj",
+              "exists": true,
+              "bytes": 2957,
+              "sha256": "0e017a406a46b9245294d61332ab92ed81977faea8964ccfee30c3d9b3cf0e22",
+              "imageWidth": null,
+              "imageHeight": null
+            },
+            {
+              "path": "src/TmrOverlay.App/Assets/TmrOverlay.ico",
+              "exists": true,
+              "bytes": 25156,
+              "sha256": "7f840b22835d99f3c4467374bd718832828aaa89376458b89da3f6faba279717",
+              "imageWidth": 256,
+              "imageHeight": 256
+            },
+            {
+              "path": "assets/brand/TMRInstallerSplash.png",
+              "exists": true,
+              "bytes": 35026,
+              "sha256": "863cc7fe36aa0385436249af9075bf9a4e30f6d876bbb4f6e8d312c3c542cc20",
+              "imageWidth": 640,
+              "imageHeight": 400
+            },
+            {
+              "path": "assets/brand/TMRMsiBanner.bmp",
+              "exists": true,
+              "bytes": 85894,
+              "sha256": "4e21143edd4419cd3dc1c6e334c76e886635e65807705fc48184679017081d9b",
+              "imageWidth": 493,
+              "imageHeight": 58
+            },
+            {
+              "path": "assets/brand/TMRMsiLogo.bmp",
+              "exists": true,
+              "bytes": 461814,
+              "sha256": "9a8516a6acc5355432bc5bc2c4fe8f6975339e62ed762769461222e7e00335bb",
+              "imageWidth": 493,
+              "imageHeight": 312
+            },
+            {
+              "path": "assets/brand/TMRMsiWelcome.md",
+              "exists": true,
+              "bytes": 451,
+              "sha256": "eebbbbf200305742089b01d9cc295048ed6d83a65abfcfc0f05083d0450a25c0",
+              "imageWidth": null,
+              "imageHeight": null
+            },
+            {
+              "path": "assets/brand/TMRLogo.png",
+              "exists": true,
+              "bytes": 621481,
+              "sha256": "2ddc7d3674ae4ffaecf80c6cdaeb6770a7ba7891d7bb1d4f84a532df20d8931e",
+              "imageWidth": 2560,
+              "imageHeight": 1440
+            }
+          ],
+          "sourceHash": "a50e2d84994c6df31380fd5ed686c821ab6a545de7d964298f996f7babe322f7",
+          "packageHash": "6dd93cf567b48b97b2da52cb36803973dfda9da62c5429c89732e140fa85ad68",
+          "scenarioHash": "21379c643ce769539623da1e5fa2003a059e5176dc38fca6e5403da4bcb76cd1"
+        }
+      }
+    }
+  ]
+}

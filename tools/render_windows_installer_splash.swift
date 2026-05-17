@@ -2,14 +2,16 @@ import AppKit
 import Foundation
 
 private enum SplashTheme {
-    static let background = NSColor(calibratedRed: 244 / 255, green: 248 / 255, blue: 250 / 255, alpha: 1)
-    static let panel = NSColor.white
-    static let darkPanel = NSColor(calibratedRed: 12 / 255, green: 15 / 255, blue: 18 / 255, alpha: 1)
-    static let border = NSColor(calibratedRed: 189 / 255, green: 204 / 255, blue: 212 / 255, alpha: 1)
-    static let text = NSColor(calibratedRed: 16 / 255, green: 24 / 255, blue: 32 / 255, alpha: 1)
-    static let muted = NSColor(calibratedRed: 75 / 255, green: 92 / 255, blue: 102 / 255, alpha: 1)
-    static let accent = NSColor(calibratedRed: 69 / 255, green: 203 / 255, blue: 250 / 255, alpha: 1)
-    static let accentDark = NSColor(calibratedRed: 0 / 255, green: 103 / 255, blue: 150 / 255, alpha: 1)
+    static let background = NSColor(calibratedRed: 3 / 255, green: 11 / 255, blue: 24 / 255, alpha: 1)
+    static let panel = NSColor(calibratedRed: 9 / 255, green: 18 / 255, blue: 34 / 255, alpha: 1)
+    static let darkPanel = NSColor(calibratedRed: 8 / 255, green: 10 / 255, blue: 28 / 255, alpha: 1)
+    static let border = NSColor(calibratedRed: 32 / 255, green: 54 / 255, blue: 84 / 255, alpha: 1)
+    static let text = NSColor(calibratedRed: 255 / 255, green: 247 / 255, blue: 255 / 255, alpha: 1)
+    static let muted = NSColor(calibratedRed: 185 / 255, green: 217 / 255, blue: 255 / 255, alpha: 1)
+    static let dim = NSColor(calibratedRed: 82 / 255, green: 112 / 255, blue: 148 / 255, alpha: 1)
+    static let accent = NSColor(calibratedRed: 0 / 255, green: 232 / 255, blue: 255 / 255, alpha: 1)
+    static let accentDark = NSColor(calibratedRed: 0 / 255, green: 160 / 255, blue: 190 / 255, alpha: 1)
+    static let magenta = NSColor(calibratedRed: 255 / 255, green: 42 / 255, blue: 167 / 255, alpha: 1)
 
     static func font(_ size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
         NSFont(name: "SF Pro", size: size) ?? NSFont.systemFont(ofSize: size, weight: weight)
@@ -71,16 +73,17 @@ private func renderSplash(_ canvas: SplashCanvas, logo: NSImage?) {
     canvas.fill(bounds, SplashTheme.background)
 
     for x in stride(from: CGFloat(0), through: bounds.width, by: 64) {
-        canvas.line(from: CGPoint(x: x, y: 0), to: CGPoint(x: x, y: bounds.height), color: NSColor(calibratedRed: 189 / 255, green: 204 / 255, blue: 212 / 255, alpha: 0.18))
+        canvas.line(from: CGPoint(x: x, y: 0), to: CGPoint(x: x, y: bounds.height), color: NSColor(calibratedRed: 0 / 255, green: 232 / 255, blue: 255 / 255, alpha: 0.12))
     }
     for y in stride(from: CGFloat(0), through: bounds.height, by: 64) {
-        canvas.line(from: CGPoint(x: 0, y: y), to: CGPoint(x: bounds.width, y: y), color: NSColor(calibratedRed: 189 / 255, green: 204 / 255, blue: 212 / 255, alpha: 0.18))
+        canvas.line(from: CGPoint(x: 0, y: y), to: CGPoint(x: bounds.width, y: y), color: NSColor(calibratedRed: 255 / 255, green: 42 / 255, blue: 167 / 255, alpha: 0.10))
     }
 
     let panel = bounds.insetBy(dx: 34, dy: 32)
     canvas.fill(panel, SplashTheme.panel, radius: 12)
     canvas.stroke(panel, SplashTheme.border, width: 1, radius: 12)
-    canvas.fill(CGRect(x: panel.minX, y: panel.maxY - 4, width: panel.width, height: 4), SplashTheme.accent, radius: 12)
+    canvas.fill(CGRect(x: panel.minX, y: panel.maxY - 6, width: panel.width, height: 3), SplashTheme.magenta, radius: 12)
+    canvas.fill(CGRect(x: panel.minX, y: panel.maxY - 3, width: panel.width, height: 2), SplashTheme.accent, radius: 12)
 
     if let logo {
         logo.draw(in: CGRect(x: panel.minX + 50, y: panel.maxY - 150, width: 205, height: 115), from: .zero, operation: .sourceOver, fraction: 1)
@@ -125,8 +128,9 @@ private func findRepositoryRoot(startingAt url: URL) -> URL? {
 
 private func renderMsiBanner(_ canvas: SplashCanvas, logo: NSImage?) {
     let bounds = CGRect(origin: .zero, size: canvas.size)
-    canvas.fill(bounds, SplashTheme.background)
-    canvas.fill(CGRect(x: bounds.minX, y: bounds.maxY - 4, width: bounds.width, height: 4), SplashTheme.accent)
+    canvas.fill(bounds, SplashTheme.darkPanel)
+    canvas.fill(CGRect(x: bounds.minX, y: bounds.maxY - 5, width: bounds.width, height: 3), SplashTheme.magenta)
+    canvas.fill(CGRect(x: bounds.minX, y: bounds.maxY - 2, width: bounds.width, height: 2), SplashTheme.accent)
 
     if let logo {
         logo.draw(in: CGRect(x: 16, y: 9, width: 76, height: 43), from: .zero, operation: .sourceOver, fraction: 1)
@@ -143,7 +147,7 @@ private func renderMsiBanner(_ canvas: SplashCanvas, logo: NSImage?) {
         in: CGRect(x: 112, y: 12, width: 190, height: 15),
         size: 10.5,
         weight: .semibold,
-        color: SplashTheme.accentDark
+        color: SplashTheme.accent
     )
 }
 
@@ -152,16 +156,17 @@ private func renderMsiLogo(_ canvas: SplashCanvas, logo: NSImage?) {
     canvas.fill(bounds, SplashTheme.background)
 
     for x in stride(from: CGFloat(0), through: bounds.width, by: 56) {
-        canvas.line(from: CGPoint(x: x, y: 0), to: CGPoint(x: x, y: bounds.height), color: NSColor(calibratedRed: 189 / 255, green: 204 / 255, blue: 212 / 255, alpha: 0.18))
+        canvas.line(from: CGPoint(x: x, y: 0), to: CGPoint(x: x, y: bounds.height), color: NSColor(calibratedRed: 0 / 255, green: 232 / 255, blue: 255 / 255, alpha: 0.12))
     }
     for y in stride(from: CGFloat(0), through: bounds.height, by: 56) {
-        canvas.line(from: CGPoint(x: 0, y: y), to: CGPoint(x: bounds.width, y: y), color: NSColor(calibratedRed: 189 / 255, green: 204 / 255, blue: 212 / 255, alpha: 0.18))
+        canvas.line(from: CGPoint(x: 0, y: y), to: CGPoint(x: bounds.width, y: y), color: NSColor(calibratedRed: 255 / 255, green: 42 / 255, blue: 167 / 255, alpha: 0.10))
     }
 
     let brandBlock = CGRect(x: 32, y: 48, width: bounds.width - 64, height: 222)
     canvas.fill(brandBlock, SplashTheme.panel, radius: 14)
     canvas.stroke(brandBlock, SplashTheme.border, width: 1, radius: 14)
-    canvas.fill(CGRect(x: brandBlock.minX, y: brandBlock.maxY - 5, width: brandBlock.width, height: 5), SplashTheme.accent, radius: 14)
+    canvas.fill(CGRect(x: brandBlock.minX, y: brandBlock.maxY - 7, width: brandBlock.width, height: 4), SplashTheme.magenta, radius: 14)
+    canvas.fill(CGRect(x: brandBlock.minX, y: brandBlock.maxY - 3, width: brandBlock.width, height: 3), SplashTheme.accent, radius: 14)
 
     if let logo {
         logo.draw(in: CGRect(x: 111, y: 122, width: 270, height: 152), from: .zero, operation: .sourceOver, fraction: 1)

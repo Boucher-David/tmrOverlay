@@ -58,6 +58,14 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private const int RowHeight = 30;
     private const int RowGap = 5;
     private const int ColumnGap = 8;
+    private const float TableHeaderTop = 5f;
+    private const float TableHeaderHeight = 25f;
+    private const float TableBodyTop = TableHeaderTop + TableHeaderHeight + RowGap;
+    private const float TableRowHeight = 28f;
+    private const float TablePlaceholderRowHeight = 14f;
+    private const float TableClassHeaderRowHeight = 35f;
+    private const float TableClassHeaderBandTop = 11f;
+    private const float TableClassHeaderBandHeight = 24f;
     private const int MinimumColumnWidth = 24;
     private const int MetricLabelWidth = 124;
     private const float FlagOuterPadding = 8f;
@@ -555,7 +563,8 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             row.IsPartial ? DesignV2Evidence.Partial : DesignV2Evidence.Measured,
             row.CarClassColorHex,
             row.IsClassHeader ? row.Driver : string.Empty,
-            row.IsClassHeader ? ClassHeaderDetail(row) : string.Empty)).ToArray();
+            row.IsClassHeader ? ClassHeaderDetail(row) : string.Empty,
+            CellForegrounds: CellForegroundsForStandingsRow(row, visibleColumns))).ToArray();
         return new DesignV2OverlayModel(
             "Standings",
             viewModel.Status,
@@ -613,11 +622,48 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             [OverlayContentColumnSettings.DataDriver] = row.Driver,
             [OverlayContentColumnSettings.DataGap] = row.Gap,
             [OverlayContentColumnSettings.DataInterval] = row.Interval,
+            [OverlayContentColumnSettings.DataFastestLap] = row.FastestLap,
+            [OverlayContentColumnSettings.DataLastLap] = row.LastLap,
             [OverlayContentColumnSettings.DataPit] = row.Pit
         };
         return visibleColumns
             .Select(column => valuesByKey.TryGetValue(column.DataKey, out var value) ? value : string.Empty)
             .ToArray();
+    }
+
+    private static IReadOnlyList<string?> CellForegroundsForStandingsRow(
+        StandingsOverlayRowViewModel row,
+        IReadOnlyList<OverlayContentColumnState> visibleColumns)
+    {
+        return visibleColumns
+            .Select(column =>
+            {
+                if (IsClassFastestLapCell(row, column.DataKey))
+                {
+                    return ColorRgbHex(BestLapSectorColor);
+                }
+
+                return IsRecentCarBestLapCell(row, column.DataKey)
+                    ? ColorRgbHex(Green)
+                    : null;
+            })
+            .ToArray();
+    }
+
+    private static bool IsClassFastestLapCell(StandingsOverlayRowViewModel row, string? dataKey)
+    {
+        return string.Equals(dataKey, OverlayContentColumnSettings.DataFastestLap, StringComparison.Ordinal)
+                && row.IsClassFastestLap
+            || string.Equals(dataKey, OverlayContentColumnSettings.DataLastLap, StringComparison.Ordinal)
+                && row.IsClassFastestLastLap;
+    }
+
+    private static bool IsRecentCarBestLapCell(StandingsOverlayRowViewModel row, string? dataKey)
+    {
+        return string.Equals(dataKey, OverlayContentColumnSettings.DataFastestLap, StringComparison.Ordinal)
+                && row.IsRecentCarBestLap
+            || string.Equals(dataKey, OverlayContentColumnSettings.DataLastLap, StringComparison.Ordinal)
+                && row.IsRecentCarBestLastLap;
     }
 
     private static string ClassHeaderDetail(StandingsOverlayRowViewModel row)
@@ -2818,9 +2864,10 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         }
 
         var configuredWidth = table.Columns.Sum(column => Math.Max(MinimumColumnWidth, column.Width));
-        var availableWidth = Math.Max(1f, rect.Width - 20 - Math.Max(0, table.Columns.Count - 1) * ColumnGap);
+        var availableWidth = Math.Max(1f, rect.Width);
         var fit = Math.Min(1f, availableWidth / Math.Max(1, configuredWidth));
-        var x = rect.Left + 10;
+        var renderedTableWidth = configuredWidth * fit;
+        var x = rect.Left;
         var columns = new List<DesignV2LayoutColumn>();
         for (var columnIndex = 0; columnIndex < table.Columns.Count; columnIndex++)
         {
@@ -2832,13 +2879,13 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                 column.Width,
                 width,
                 AlignmentName(column.Alignment),
-                LayoutRect(new RectangleF(x, rect.Top + 8, width, 14))));
-            x += width + ColumnGap;
+                LayoutRect(new RectangleF(x, rect.Top + TableHeaderTop, width, TableHeaderHeight))));
+            x += width;
         }
 
         var rows = new List<DesignV2LayoutRow>();
-        var maximumRows = Math.Max(1, (int)((rect.Height - RowHeight) / (RowHeight + RowGap)));
-        var y = rect.Top + 30;
+        var maximumRows = table.Rows.Count;
+        var y = rect.Top + TableBodyTop;
         var drawnRows = 0;
         for (var sourceIndex = 0; sourceIndex < table.Rows.Count; sourceIndex++)
         {
@@ -2850,12 +2897,17 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
             if (row.IsClassHeader)
             {
-                if (drawnRows > 0)
+                var classHeaderRowRect = new RectangleF(rect.Left, y, renderedTableWidth, TableClassHeaderRowHeight);
+                if (classHeaderRowRect.Bottom > rect.Bottom)
                 {
-                    y += 7;
+                    break;
                 }
 
-                var headerRect = new RectangleF(rect.Left + 8, y, rect.Width - 16, 24);
+                var headerRect = new RectangleF(
+                    classHeaderRowRect.Left,
+                    classHeaderRowRect.Top + TableClassHeaderBandTop,
+                    classHeaderRowRect.Width,
+                    TableClassHeaderBandHeight);
                 if (headerRect.Bottom > rect.Bottom)
                 {
                     break;
@@ -2865,7 +2917,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                     drawnRows,
                     sourceIndex,
                     "class-header",
-                    LayoutRect(headerRect))
+                    LayoutRect(classHeaderRowRect))
                 {
                     Text = string.IsNullOrWhiteSpace(row.ClassHeaderTitle) ? "Class" : row.ClassHeaderTitle,
                     Detail = row.ClassHeaderDetail,
@@ -2875,12 +2927,13 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                         : Blend(SurfaceRaised, Cyan, 5, 1)),
                     Foreground = ColorHex(TextPrimary)
                 });
-                y += headerRect.Height + RowGap;
+                y += classHeaderRowRect.Height + RowGap;
                 drawnRows++;
                 continue;
             }
 
-            var rowRect = new RectangleF(rect.Left + 8, y, rect.Width - 16, RowHeight);
+            var rowHeight = TableRowHeightFor(row);
+            var rowRect = new RectangleF(rect.Left, y, renderedTableWidth, rowHeight);
             if (rowRect.Bottom > rect.Bottom)
             {
                 break;
@@ -2892,7 +2945,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             for (var columnIndex = 0; columnIndex < columns.Count; columnIndex++)
             {
                 var column = columns[columnIndex];
-                var cellRect = new RectangleF(x, rowRect.Top + 7, column.RenderedWidth, 16);
+                var cellRect = new RectangleF(x, rowRect.Top, column.RenderedWidth, rowRect.Height);
                 cells.Add(new DesignV2LayoutCell(
                     columnIndex,
                     column.Label,
@@ -2900,9 +2953,9 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                     LayoutRect(cellRect),
                     column.Alignment)
                 {
-                    Foreground = ColorHex(row.IsReference ? TextPrimary : rowTextColor)
+                    Foreground = ColorHex(TableCellTextColor(row, columnIndex, rowTextColor))
                 });
-                x += column.RenderedWidth + ColumnGap;
+                x += column.RenderedWidth;
             }
 
             rows.Add(new DesignV2LayoutRow(
@@ -2918,7 +2971,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                 Background = ColorHex(TableRowFillColor(row)),
                 Foreground = ColorHex(row.IsReference ? TextPrimary : rowTextColor)
             });
-            y += RowHeight + RowGap;
+            y += rowHeight + RowGap;
             drawnRows++;
         }
 
@@ -2955,9 +3008,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
         var metricRows = new List<DesignV2LayoutMetricRow>();
         var metricGrids = new List<DesignV2LayoutMetricGrid>();
-        var gridHeight = metrics.Sections.Count == 0
-            ? 0f
-            : Math.Min(176f, Math.Max(80f, metrics.Sections.Sum(section => 26f + Math.Min(6, section.Rows.Count) * 25f) + Math.Max(0, metrics.Sections.Count - 1) * 8f));
+        var gridHeight = MetricGridHeight(metrics.Sections);
         var rowsRect = metrics.Sections.Count == 0
             ? rect
             : new RectangleF(rect.Left, rect.Top, rect.Width, Math.Max(RowHeight, rect.Height - gridHeight - 8f));
@@ -3623,6 +3674,8 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             diameter);
         var scaleX = radarRect.Width / (float)Math.Max(1d, model.Width);
         var scaleY = radarRect.Height / (float)Math.Max(1d, model.Height);
+        var primitives = RadarPrimitiveLayouts(radarRect, model, scaleX, scaleY, surfaceAlpha);
+        var labels = model.Labels.Select(label => RadarLabelLayout(radarRect, label, scaleX, scaleY, surfaceAlpha)).ToArray();
         return new DesignV2LayoutBody("radar", LayoutRect(rect))
         {
             Vector = new DesignV2LayoutVector(
@@ -3632,13 +3685,20 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                 scaleX,
                 scaleY,
                 model.Cars.Count,
-                model.Rings.Count,
-                model.Labels.Count)
+                primitives.Count,
+                labels.Length)
             {
                 Items = model.Cars.Select(car => new DesignV2LayoutVectorItem(
                     car.Kind,
                     car.CarIdx,
-                    LayoutRect(ScaleRect(radarRect, car.X, car.Y, car.Width, car.Height, scaleX, scaleY)))).ToArray(),
+                    LayoutRect(ScaleRect(radarRect, car.X, car.Y, car.Width, car.Height, scaleX, scaleY)))
+                {
+                    Fill = ColorHex(RenderColor(car.Fill, surfaceAlpha)),
+                    Stroke = ColorHex(RenderColor(car.Stroke, surfaceAlpha)),
+                    StrokeWidth = Math.Max(1f, (float)car.StrokeWidth * Math.Min(scaleX, scaleY))
+                }).ToArray(),
+                Primitives = primitives,
+                Labels = labels,
                 ShouldRender = model.ShouldRender && surfaceAlpha > model.MinimumVisibleAlpha,
                 SurfaceAlpha = surfaceAlpha
             }
@@ -3668,14 +3728,8 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                 model.Primitives.Count,
                 0)
             {
-                Items = model.Markers.Select(marker => new DesignV2LayoutVectorItem(
-                    marker.IsFocus ? "focus-marker" : "marker",
-                    marker.CarIdx,
-                    LayoutRect(new RectangleF(
-                        target.Left + (float)(marker.X - marker.Radius) * scaleX,
-                        target.Top + (float)(marker.Y - marker.Radius) * scaleY,
-                        (float)(marker.Radius * 2d) * scaleX,
-                        (float)(marker.Radius * 2d) * scaleY)))).ToArray(),
+                Items = model.Markers.Select(marker => TrackMapMarkerItem(target, marker, scaleX, scaleY)).ToArray(),
+                Primitives = model.Primitives.Select(primitive => TrackMapPrimitiveLayout(target, primitive, scaleX, scaleY)).ToArray(),
                 ShouldRender = model.IsAvailable
             }
         };
@@ -3722,6 +3776,146 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             FlagCells = cells,
             DrawnRows = body.Flags.Count
         };
+    }
+
+    private static IReadOnlyList<DesignV2LayoutVectorPrimitive> RadarPrimitiveLayouts(
+        RectangleF target,
+        CarRadarRenderModel model,
+        float scaleX,
+        float scaleY,
+        double surfaceAlpha)
+    {
+        var primitives = new List<DesignV2LayoutVectorPrimitive>
+        {
+            RadarCirclePrimitive("background", target, model.Background, scaleX, scaleY, surfaceAlpha)
+        };
+        primitives.AddRange(model.Rings.Select(ring => RadarCirclePrimitive("ring", target, ring, scaleX, scaleY, surfaceAlpha)));
+        if (model.MulticlassArc is { } arc)
+        {
+            primitives.Add(new DesignV2LayoutVectorPrimitive(
+                "arc",
+                LayoutRect(ScaleRect(target, arc.X, arc.Y, arc.Width, arc.Height, scaleX, scaleY)),
+                [],
+                false,
+                arc.StartDegrees,
+                arc.SweepDegrees,
+                null,
+                ColorHex(RenderColor(arc.Stroke, surfaceAlpha)),
+                Math.Max(1f, (float)arc.StrokeWidth * Math.Min(scaleX, scaleY))));
+        }
+
+        return primitives;
+    }
+
+    private static DesignV2LayoutVectorPrimitive RadarCirclePrimitive(
+        string kind,
+        RectangleF target,
+        CarRadarRenderCircle circle,
+        float scaleX,
+        float scaleY,
+        double surfaceAlpha)
+    {
+        return new DesignV2LayoutVectorPrimitive(
+            kind,
+            LayoutRect(ScaleRect(target, circle.X, circle.Y, circle.Width, circle.Height, scaleX, scaleY)),
+            [],
+            false,
+            null,
+            null,
+            circle.Fill is { } fill ? ColorHex(RenderColor(fill, surfaceAlpha)) : null,
+            circle.Stroke is { } stroke ? ColorHex(RenderColor(stroke, surfaceAlpha)) : null,
+            circle.Stroke is not null && circle.StrokeWidth > 0d
+                ? Math.Max(1f, (float)circle.StrokeWidth * Math.Min(scaleX, scaleY))
+                : 0f);
+    }
+
+    private static DesignV2LayoutVectorLabel RadarLabelLayout(
+        RectangleF target,
+        CarRadarRenderText label,
+        float scaleX,
+        float scaleY,
+        double surfaceAlpha)
+    {
+        var scale = Math.Min(scaleX, scaleY);
+        return new DesignV2LayoutVectorLabel(
+            label.Text,
+            LayoutRect(ScaleRect(target, label.X, label.Y, label.Width, label.Height, scaleX, scaleY)),
+            label.FontSize * scale,
+            label.Bold,
+            label.Alignment,
+            ColorHex(RenderColor(label.Color, surfaceAlpha)));
+    }
+
+    private static DesignV2LayoutVectorItem TrackMapMarkerItem(
+        RectangleF target,
+        TrackMapRenderMarker marker,
+        float scaleX,
+        float scaleY)
+    {
+        var center = ScalePoint(target, new TrackMapRenderPoint(marker.X, marker.Y), scaleX, scaleY);
+        var scale = Math.Min(scaleX, scaleY);
+        var radius = (float)marker.Radius * scale;
+        var markerRect = new RectangleF(center.X - radius, center.Y - radius, radius * 2f, radius * 2f);
+        DesignV2LayoutRect? alertRingBounds = null;
+        if (marker.AlertRingRadius > 0d)
+        {
+            var ringRadius = (float)marker.AlertRingRadius * scale;
+            alertRingBounds = LayoutRect(new RectangleF(center.X - ringRadius, center.Y - ringRadius, ringRadius * 2f, ringRadius * 2f));
+        }
+
+        return new DesignV2LayoutVectorItem(
+            marker.IsFocus ? "focus-marker" : "marker",
+            marker.CarIdx,
+            LayoutRect(markerRect))
+        {
+            Fill = ColorHex(RenderTrackMapColor(marker.Fill)),
+            Stroke = ColorHex(RenderTrackMapColor(marker.Stroke)),
+            StrokeWidth = Math.Max(1f, (float)marker.StrokeWidth * scale),
+            Label = marker.Label,
+            LabelColor = ColorHex(RenderTrackMapColor(marker.LabelColor)),
+            AlertKind = marker.AlertKind,
+            AlertRingBounds = alertRingBounds,
+            AlertRingStroke = marker.AlertRingStroke is { } ringStroke ? ColorHex(RenderTrackMapColor(ringStroke)) : null,
+            AlertRingStrokeWidth = marker.AlertRingStrokeWidth > 0d
+                ? Math.Max(1f, (float)marker.AlertRingStrokeWidth * scale)
+                : null
+        };
+    }
+
+    private static DesignV2LayoutVectorPrimitive TrackMapPrimitiveLayout(
+        RectangleF target,
+        TrackMapRenderPrimitive primitive,
+        float scaleX,
+        float scaleY)
+    {
+        var scale = Math.Min(scaleX, scaleY);
+        var points = primitive.Points.Select(point => LayoutPoint(ScalePoint(target, point, scaleX, scaleY))).ToArray();
+        return new DesignV2LayoutVectorPrimitive(
+            primitive.Kind,
+            primitive.Rect is { } rect
+                ? LayoutRect(ScaleRect(target, rect.X, rect.Y, rect.Width, rect.Height, scaleX, scaleY))
+                : BoundsForPoints(points),
+            points,
+            primitive.Closed,
+            primitive.Kind == "arc" ? primitive.StartDegrees : null,
+            primitive.Kind == "arc" ? primitive.SweepDegrees : null,
+            primitive.Fill is { } fill ? ColorHex(RenderTrackMapColor(fill)) : null,
+            primitive.Stroke is { } stroke ? ColorHex(RenderTrackMapColor(stroke)) : null,
+            primitive.StrokeWidth > 0d ? Math.Max(1f, (float)primitive.StrokeWidth * scale) : 0f);
+    }
+
+    private static DesignV2LayoutRect? BoundsForPoints(IReadOnlyList<DesignV2LayoutPoint> points)
+    {
+        if (points.Count == 0)
+        {
+            return null;
+        }
+
+        var left = points.Min(point => point.X);
+        var top = points.Min(point => point.Y);
+        var right = points.Max(point => point.X);
+        var bottom = points.Max(point => point.Y);
+        return new DesignV2LayoutRect(left, top, Math.Max(0f, right - left), Math.Max(0f, bottom - top));
     }
 
     private static DesignV2LayoutRect LayoutRect(Rectangle bounds)
@@ -3777,6 +3971,11 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
     private static string ColorHex(Color color)
     {
         return $"#{color.A:X2}{color.R:X2}{color.G:X2}{color.B:X2}";
+    }
+
+    private static string ColorRgbHex(Color color)
+    {
+        return $"#{color.R:X2}{color.G:X2}{color.B:X2}";
     }
 
     private bool DrawCustomOverlay(Graphics graphics, Rectangle bounds, DesignV2OverlayModel model)
@@ -3887,39 +4086,39 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         }
 
         var configuredWidth = table.Columns.Sum(column => Math.Max(MinimumColumnWidth, column.Width));
-        var availableWidth = Math.Max(1f, rect.Width - 20 - Math.Max(0, table.Columns.Count - 1) * ColumnGap);
+        var availableWidth = Math.Max(1f, rect.Width);
         var fit = Math.Min(1f, availableWidth / Math.Max(1, configuredWidth));
-        var x = rect.Left + 10;
+        var renderedTableWidth = configuredWidth * fit;
+        var x = rect.Left;
         using var headerFont = FontOf(9.5f, FontStyle.Bold);
         foreach (var column in table.Columns)
         {
             var width = Math.Max(MinimumColumnWidth, column.Width) * fit;
-            DrawText(graphics, column.Label, headerFont, TextMuted, new RectangleF(x, rect.Top + 8, width, 14), column.Alignment);
-            x += width + ColumnGap;
+            DrawText(graphics, column.Label, headerFont, TextMuted, new RectangleF(x, rect.Top + TableHeaderTop, width, TableHeaderHeight), column.Alignment);
+            x += width;
         }
 
-        var maximumRows = Math.Max(1, (int)((rect.Height - RowHeight) / (RowHeight + RowGap)));
         using var rowFont = FontOf(10.5f);
         using var rowBoldFont = FontOf(10.5f, FontStyle.Bold);
         using var classHeaderFont = FontOf(9.8f, FontStyle.Bold);
         using var classDetailFont = FontOf(9.2f, FontStyle.Bold);
-        var y = rect.Top + 30;
+        var y = rect.Top + TableBodyTop;
         var drawnRows = 0;
         foreach (var row in table.Rows)
         {
-            if (drawnRows >= maximumRows)
-            {
-                break;
-            }
-
             if (row.IsClassHeader)
             {
-                if (drawnRows > 0)
+                var classHeaderRowRect = new RectangleF(rect.Left, y, renderedTableWidth, TableClassHeaderRowHeight);
+                if (classHeaderRowRect.Bottom > rect.Bottom)
                 {
-                    y += 7;
+                    break;
                 }
 
-                var headerRect = new RectangleF(rect.Left + 8, y, rect.Width - 16, 24);
+                var headerRect = new RectangleF(
+                    classHeaderRowRect.Left,
+                    classHeaderRowRect.Top + TableClassHeaderBandTop,
+                    classHeaderRowRect.Width,
+                    TableClassHeaderBandHeight);
                 if (headerRect.Bottom > rect.Bottom)
                 {
                     break;
@@ -3947,12 +4146,13 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                     TextSecondary,
                     new RectangleF(headerRect.Left + headerRect.Width * 0.58f, headerRect.Top + 5, headerRect.Width * 0.42f - 10, 14),
                     ContentAlignment.MiddleRight);
-                y += headerRect.Height + RowGap;
+                y += classHeaderRowRect.Height + RowGap;
                 drawnRows++;
                 continue;
             }
 
-            var rowRect = new RectangleF(rect.Left + 8, y, rect.Width - 16, RowHeight);
+            var rowHeight = TableRowHeightFor(row);
+            var rowRect = new RectangleF(rect.Left, y, renderedTableWidth, rowHeight);
             if (rowRect.Bottom > rect.Bottom)
             {
                 break;
@@ -3967,8 +4167,9 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                         : SurfaceRaised;
             FillRounded(graphics, rowRect, 5, fill, Color.FromArgb(90, BorderMuted));
 
-            x = rowRect.Left + 8;
+            x = rowRect.Left;
             var rowTextColor = TableTextColor(row);
+            var textTop = rowRect.Top + Math.Max(0f, (rowRect.Height - 16f) / 2f);
             for (var columnIndex = 0; columnIndex < table.Columns.Count; columnIndex++)
             {
                 var column = table.Columns[columnIndex];
@@ -3978,15 +4179,27 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                     graphics,
                     value,
                     row.IsReference || columnIndex == 0 ? rowBoldFont : rowFont,
-                    row.IsReference ? TextPrimary : rowTextColor,
-                    new RectangleF(x, rowRect.Top + 7, width, 16),
+                    TableCellTextColor(row, columnIndex, rowTextColor),
+                    new RectangleF(x + 8, textTop, Math.Max(1f, width - 16), 16),
                     column.Alignment);
-                x += width + ColumnGap;
+                x += width;
             }
 
-            y += RowHeight + RowGap;
+            y += rowHeight + RowGap;
             drawnRows++;
         }
+    }
+
+    private static float TableRowHeightFor(DesignV2TableRow row)
+    {
+        return IsPlaceholderTableRow(row) ? TablePlaceholderRowHeight : TableRowHeight;
+    }
+
+    private static bool IsPlaceholderTableRow(DesignV2TableRow row)
+    {
+        return !row.IsClassHeader
+            && row.Evidence == DesignV2Evidence.Unavailable
+            && row.Values.All(string.IsNullOrWhiteSpace);
     }
 
     private static Color TableTextColor(DesignV2TableRow row)
@@ -4004,6 +4217,19 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             <= -2 => MultipleLapsBehindText,
             _ => TextSecondary
         };
+    }
+
+    private static Color TableCellTextColor(DesignV2TableRow row, int columnIndex, Color rowTextColor)
+    {
+        if (row.CellForegrounds is not null
+            && columnIndex >= 0
+            && columnIndex < row.CellForegrounds.Count
+            && TryParseHexColor(row.CellForegrounds[columnIndex], out var foreground))
+        {
+            return foreground;
+        }
+
+        return row.IsReference ? TextPrimary : rowTextColor;
     }
 
     private void DrawMetricRows(
@@ -4024,9 +4250,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         using var labelFont = FontOf(9.8f, FontStyle.Bold);
         using var valueFont = FontOf(10.5f, FontStyle.Bold);
         using var sectionFont = FontOf(8.8f, FontStyle.Bold);
-        var gridHeight = sections.Count == 0
-            ? 0f
-            : Math.Min(176f, Math.Max(80f, sections.Sum(section => 26f + Math.Min(6, section.Rows.Count) * 25f) + Math.Max(0, sections.Count - 1) * 8f));
+        var gridHeight = MetricGridHeight(sections);
         var rowsRect = sections.Count == 0
             ? rect
             : new RectangleF(rect.Left, rect.Top, rect.Width, Math.Max(RowHeight, rect.Height - gridHeight - 8f));
@@ -4063,6 +4287,18 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             DrawMetricGridSection(graphics, sectionRect, section, maxRows);
             sectionTop += sectionRect.Height + 8f;
         }
+    }
+
+    private static float MetricGridHeight(IReadOnlyList<DesignV2MetricGridSection> sections)
+    {
+        if (sections.Count == 0)
+        {
+            return 0f;
+        }
+
+        return Math.Max(
+            80f,
+            sections.Sum(section => 42f + section.Rows.Count * 25f) + Math.Max(0, sections.Count - 1) * 8f);
     }
 
     private void DrawMetricSections(
@@ -7683,12 +7919,54 @@ internal sealed record DesignV2LayoutVector(
     public double? SurfaceAlpha { get; init; }
 
     public IReadOnlyList<DesignV2LayoutVectorItem> Items { get; init; } = [];
+
+    public IReadOnlyList<DesignV2LayoutVectorPrimitive> Primitives { get; init; } = [];
+
+    public IReadOnlyList<DesignV2LayoutVectorLabel> Labels { get; init; } = [];
 }
 
 internal sealed record DesignV2LayoutVectorItem(
     string Kind,
     int? Id,
-    DesignV2LayoutRect Bounds);
+    DesignV2LayoutRect Bounds)
+{
+    public string? Fill { get; init; }
+
+    public string? Stroke { get; init; }
+
+    public float? StrokeWidth { get; init; }
+
+    public string? Label { get; init; }
+
+    public string? LabelColor { get; init; }
+
+    public string? AlertKind { get; init; }
+
+    public DesignV2LayoutRect? AlertRingBounds { get; init; }
+
+    public string? AlertRingStroke { get; init; }
+
+    public float? AlertRingStrokeWidth { get; init; }
+}
+
+internal sealed record DesignV2LayoutVectorPrimitive(
+    string Kind,
+    DesignV2LayoutRect? Bounds,
+    IReadOnlyList<DesignV2LayoutPoint> Points,
+    bool Closed,
+    double? StartDegrees,
+    double? SweepDegrees,
+    string? Fill,
+    string? Stroke,
+    float StrokeWidth);
+
+internal sealed record DesignV2LayoutVectorLabel(
+    string Text,
+    DesignV2LayoutRect Bounds,
+    double FontSize,
+    bool Bold,
+    string Alignment,
+    string Color);
 
 internal sealed record DesignV2LayoutFlagCell(
     int Index,
@@ -8005,7 +8283,8 @@ internal sealed record DesignV2TableRow(
     string? ClassColorHex,
     string ClassHeaderTitle = "",
     string ClassHeaderDetail = "",
-    int? RelativeLapDelta = null);
+    int? RelativeLapDelta = null,
+    IReadOnlyList<string?>? CellForegrounds = null);
 
 internal sealed record DesignV2MetricRow(
     string Label,

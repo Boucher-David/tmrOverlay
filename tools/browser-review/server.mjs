@@ -11,6 +11,7 @@ import {
   renderOverlayHtml,
   renderOverlayIndexHtml,
   renderAppValidatorReviewHtml,
+  renderInstallerReviewHtml,
   renderSettingsGeneralReviewHtml
 } from '../../tests/browser-overlays/browserOverlayAssets.js';
 
@@ -94,6 +95,13 @@ const server = createServer((request, response) => {
       serveHtml(response, withLiveReload(renderSettingsGeneralReviewHtml({
         previewMode: url.searchParams.get('preview') || 'off',
         reviewState: reviewAppState
+      })));
+      return;
+    }
+
+    if (path === '/review/installer') {
+      serveHtml(response, withLiveReload(renderInstallerReviewHtml({
+        menuId: url.searchParams.get('menu') || 'welcome'
       })));
       return;
     }
@@ -694,7 +702,7 @@ function reviewDisplayModel(overlayId, previewMode = 'off') {
     case 'standings':
       return applyReviewChrome(filterTableModelContent(filterStandingsReviewRows(standingsDisplayModel(previewLabel), overlayState), 'standings', overlayState, session), overlayId, previewMode);
     case 'relative':
-      return applyReviewChrome(filterTableModelContent(filterRelativeReviewRows(relativeDisplayModel(previewLabel), overlayState), 'relative', overlayState, session), overlayId, previewMode);
+      return applyReviewChrome(filterTableModelContent(filterRelativeReviewRows(relativeDisplayModel(previewLabel, session), overlayState), 'relative', overlayState, session), overlayId, previewMode);
     case 'fuel-calculator':
       {
         const showAdvice = contentEnabled(overlayState, 'Advice column', true, [], session);
@@ -1007,7 +1015,8 @@ function reviewAssetBackedDisplayModel(overlayId, previewMode = 'off') {
   }).model;
 }
 
-function relativeDisplayModel(previewLabel = 'review fixture') {
+function relativeDisplayModel(previewLabel = 'review fixture', session = 'practice') {
+  const showLapRelationship = session === 'race';
   return {
     overlayId: 'relative',
     title: 'Relative',
@@ -1021,9 +1030,9 @@ function relativeDisplayModel(previewLabel = 'review fixture') {
       { id: 'relative.pit', label: 'Pit', dataKey: 'pit', width: 30, alignment: 'right' }
     ],
     rows: [
-      relativeRow(['3', '#34 Near Ahead', '-2.350', ''], { carClassColorHex: '#33CEFF', relativeLapDelta: 1 }),
-      relativeRow(['5', '#55 Focus Driver', '0.000', ''], { isReference: true, carClassColorHex: '#FFDA59', relativeLapDelta: 0 }),
-      relativeRow(['6', '#61 Near Behind', '+1.200', 'IN'], { carClassColorHex: '#FF4FD8', relativeLapDelta: -2, isPit: true })
+      relativeRow(['3', '#34 Near Ahead', '-2.350', ''], { carClassColorHex: '#33CEFF', relativeLapDelta: showLapRelationship ? 1 : null }),
+      relativeRow(['5', '#55 Focus Driver', '0.000', ''], { isReference: true, carClassColorHex: '#FFDA59', relativeLapDelta: showLapRelationship ? 0 : null }),
+      relativeRow(['6', '#61 Near Behind', '+1.200', 'IN'], { carClassColorHex: '#FF4FD8', relativeLapDelta: showLapRelationship ? -2 : null, isPit: true })
     ],
     metrics: [],
     points: [],
@@ -1130,7 +1139,10 @@ function filterTableModelContent(model, overlayId, overlayState, session = null)
       ? row
       : {
           ...row,
-          cells: retained.map((entry) => row.cells?.[entry.index] ?? '')
+          cells: retained.map((entry) => row.cells?.[entry.index] ?? ''),
+          ...(Array.isArray(row.cellTones)
+            ? { cellTones: retained.map((entry) => row.cellTones?.[entry.index] || null) }
+            : {})
         })
   };
 }
@@ -1144,6 +1156,8 @@ function tableContentLabel(overlayId, column) {
       driver: 'Driver',
       gap: 'Class gap',
       interval: 'Focus interval',
+      'fastest-lap': 'Fastest lap',
+      'last-lap': 'Last lap',
       pit: 'Pit status'
     }[dataKey] || column?.label || dataKey;
   }
@@ -1394,15 +1408,17 @@ function standingsDisplayModel(previewLabel = 'review fixture') {
       { label: 'Driver', dataKey: 'driver', width: 250, alignment: 'left' },
       { label: 'GAP', dataKey: 'gap', width: 60, alignment: 'right' },
       { label: 'INT', dataKey: 'interval', width: 60, alignment: 'right' },
+      { label: 'FAST', dataKey: 'fastest-lap', width: 70, alignment: 'right' },
+      { label: 'LAST', dataKey: 'last-lap', width: 70, alignment: 'right' },
       { label: 'PIT', dataKey: 'pit', width: 30, alignment: 'right' }
     ],
     rows: [
       headerRow('LMP2', '2 cars | ~10 laps', '#33CEFF'),
-      carRow(['1', '#8', 'Kousuke Konishi', 'Leader', '-45.0', '']),
+      carRow(['1', '#8', 'Kousuke Konishi', 'Leader', '-45.0', '1:45.884', '1:46.210', ''], { cellTones: [null, null, null, null, null, 'best-lap', null, null] }),
       headerRow('GT3', '3 cars | ~12.4 laps', '#FFAA00'),
-      carRow(['1', '#000', 'Kauan Vigliazzi Teixeira Lemos', 'Leader', '-2.0', '']),
-      carRow(['24', '#3094', 'Tech Mates Racing', '+3.4', '0.0', ''], { isReference: true }),
-      carRow(['49', '#60', 'Tommie Wittens', '+8.9', '+5.5', 'IN'], { isPit: true })
+      carRow(['1', '#000', 'Kauan Vigliazzi Teixeira Lemos', 'Leader', '-2.0', '1:53.112', '1:53.112', ''], { cellTones: [null, null, null, null, null, 'best-lap', 'best-lap', null] }),
+      carRow(['24', '#3094', 'Tech Mates Racing', '+3.4', '0.0', '1:54.228', '1:54.228', ''], { isReference: true, cellTones: [null, null, null, null, null, 'personal-best', 'personal-best', null] }),
+      carRow(['49', '#60', 'Tommie Wittens', '+8.9', '+5.5', '1:55.480', '1:56.004', 'IN'], { isPit: true })
     ],
     metrics: [],
     headerItems: [

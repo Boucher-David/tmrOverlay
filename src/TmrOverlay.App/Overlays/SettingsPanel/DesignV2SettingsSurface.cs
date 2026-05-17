@@ -941,7 +941,6 @@ internal sealed class DesignV2SettingsSurface : Control
     {
         FillRounded(graphics, new Rectangle(SidebarX, SidebarY, SidebarWidth, SidebarHeight), 14, Rgba(6, 13, 26, 235));
         StrokeRounded(graphics, new Rectangle(SidebarX, SidebarY, SidebarWidth, SidebarHeight), 14, BorderDim, 1f);
-        DrawText(graphics, "SETTINGS", new Rectangle(84, 136, 110, 18), 12f, FontStyle.Bold, Cyan);
 
         for (var index = 0; index < _sidebarTabs.Count; index++)
         {
@@ -1861,7 +1860,7 @@ internal sealed class DesignV2SettingsSurface : Control
 
     private Rectangle SidebarButtonBounds(int index)
     {
-        return new Rectangle(78, 164 + index * 32, 162, 27);
+        return new Rectangle(78, 136 + index * 32, 162, 27);
     }
 
     private Rectangle ContentBounds()
@@ -2290,6 +2289,7 @@ internal sealed class DesignV2SettingsSurface : Control
             Location = bounds.Location;
             Size = bounds.Size;
             BackColor = Rgb(9, 18, 34);
+            ForeColor = TextPrimary;
         }
 
         protected override void OnPaintBackground(PaintEventArgs e)

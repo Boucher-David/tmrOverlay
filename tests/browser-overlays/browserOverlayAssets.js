@@ -114,6 +114,7 @@ export function renderOverlayIndexHtml(port = 8765) {
   const links = [
     '<a href="/review/app">Settings App Review</a>',
     '<a href="/review/settings/general">Settings - General</a>',
+    '<a href="/review/installer">Windows Installer Review</a>',
     ...Object.values(pages)
     .map((page) => `<a href="${page.route}">${page.title}</a>`)
   ].join('\n');
@@ -121,6 +122,22 @@ export function renderOverlayIndexHtml(port = 8765) {
     .replace('{{PORT}}', String(port))
     .replace('{{LINKS}}', links)
     .replace('{{INDEX_CSS}}', assetText('styles/index.css'));
+}
+
+export function renderInstallerReviewHtml({ menuId = 'welcome' } = {}) {
+  const normalizedMenuId = normalizeInstallerMenuId(menuId);
+  const installerCss = assetText('styles/installer-review.css');
+  const welcome = installerWelcomeContent();
+  const windowHtml = normalizedMenuId === 'cancel-confirm'
+    ? installerWindowHtml('welcome', welcome, { showCancelConfirm: true })
+    : installerWindowHtml(normalizedMenuId, welcome);
+
+  return assetText('templates/installer-review.html')
+    .replace('{{TITLE}}', 'Tech Mates Racing Overlay Setup')
+    .replace('{{INSTALLER_CSS}}', installerCss)
+    .replace('{{MENU_ID}}', normalizedMenuId)
+    .replace('{{MENU_LINKS}}', installerMenuLinks(normalizedMenuId))
+    .replace('{{INSTALLER_HTML}}', windowHtml);
 }
 
 export function renderSettingsGeneralReviewHtml({ previewMode = 'off', reviewState = null } = {}) {
@@ -139,6 +156,223 @@ export function renderAppValidatorReviewHtml({ previewMode = 'off', selectedTab 
     selectedRegion,
     reviewState
   });
+}
+
+function normalizeInstallerMenuId(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'options') return 'install-options';
+  return installerMenuDefinitions().some((menu) => menu.id === normalized) ? normalized : 'welcome';
+}
+
+function installerMenuDefinitions() {
+  return [
+    { id: 'welcome', label: 'Welcome' },
+    { id: 'install-options', label: 'Options' },
+    { id: 'ready-to-install', label: 'Ready' },
+    { id: 'progress', label: 'Progress' },
+    { id: 'complete', label: 'Complete' },
+    { id: 'cancel-confirm', label: 'Cancel' }
+  ];
+}
+
+function installerMenuLinks(activeMenuId) {
+  return installerMenuDefinitions()
+    .map((menu) => {
+      const current = menu.id === activeMenuId ? ' aria-current="page"' : '';
+      return `<a class="installer-review-link" href="/review/installer?menu=${menu.id}"${current}>${menu.label}</a>`;
+    })
+    .join('');
+}
+
+function installerWindowHtml(menuId, welcome, { showCancelConfirm = false } = {}) {
+  const dialogUri = assetDataUri('assets/brand/TMRMsiLogo.bmp', 'image/bmp');
+  const logoUri = assetDataUri('assets/brand/TMRLogo.png', 'image/png');
+  const bannerUri = assetDataUri('assets/brand/TMRMsiBanner.bmp', 'image/bmp');
+  const menu = installerMenuModel(menuId, welcome);
+  return `
+    <section class="installer-window" data-menu-id="${escapeAttribute(menu.id)}" aria-label="Tech Mates Racing Overlay Setup">
+      <header class="installer-titlebar">
+        <img class="installer-titlebar-icon" src="${logoUri}" alt="" aria-hidden="true">
+        <span class="installer-titlebar-title">Tech Mates Racing Overlay Setup</span>
+      </header>
+      <div class="installer-body ${menu.visual === 'splash' ? 'with-splash' : 'with-banner'}">
+        ${menu.visual === 'splash' ? installerDialogBitmapHtml(dialogUri) : installerBannerHtml(bannerUri)}
+        <main class="installer-content">
+          <h1 class="installer-heading">${escapeMarkup(menu.heading)}</h1>
+          <div class="installer-copy">${menu.bodyHtml}</div>
+        </main>
+      </div>
+      <footer class="installer-footer">
+        ${installerButton('Back', menu.backHref, { disabled: menu.backDisabled })}
+        ${installerButton(menu.nextLabel, menu.nextHref, { primary: true, disabled: menu.nextDisabled })}
+        ${installerButton('Cancel', '/review/installer?menu=cancel-confirm')}
+      </footer>
+      ${showCancelConfirm ? installerCancelConfirmHtml() : ''}
+    </section>`;
+}
+
+function installerMenuModel(menuId, welcome) {
+  if (menuId === 'install-options') {
+    return {
+      id: menuId,
+      visual: 'banner',
+      heading: 'Choose Setup Options',
+      bodyHtml: `
+        <div class="installer-field">
+          <span class="installer-field-label">Install location</span>
+          <span class="installer-path">%LOCALAPPDATA%\\Programs\\TmrOverlay</span>
+        </div>
+        <p class="installer-text">Setup can install for the current user or all users when Windows allows it.</p>
+        <p class="installer-note">Desktop and Start Menu shortcuts are configured by the Velopack package options, not by custom wizard controls.</p>`,
+      backHref: '/review/installer?menu=welcome',
+      nextHref: '/review/installer?menu=ready-to-install',
+      nextLabel: 'Next'
+    };
+  }
+  if (menuId === 'ready-to-install') {
+    return {
+      id: menuId,
+      visual: 'banner',
+      heading: 'Ready to Install',
+      bodyHtml: `
+        <p class="installer-text">The setup wizard is ready to install Tech Mates Racing Overlay.</p>
+        <dl class="installer-summary">
+          <div><dt>Package</dt><dd>Tech Mates Racing Overlay</dd></div>
+          <div><dt>Shortcuts</dt><dd>Desktop and Start Menu application shortcuts</dd></div>
+          <div><dt>Cleanup</dt><dd>Settings, history, logs, captures, imported garage images, and user track maps are removed on uninstall.</dd></div>
+        </dl>`,
+      backHref: '/review/installer?menu=install-options',
+      nextHref: '/review/installer?menu=progress',
+      nextLabel: 'Install'
+    };
+  }
+  if (menuId === 'progress') {
+    return {
+      id: menuId,
+      visual: 'banner',
+      heading: 'Installing Tech Mates Racing Overlay',
+      bodyHtml: `
+        <p class="installer-text">Please wait while setup installs Tech Mates Racing Overlay.</p>
+        <div class="installer-progress" aria-label="Install progress"><span style="width: 72%"></span></div>
+        <p class="installer-note">Writing application files and shortcuts...</p>`,
+      backHref: '/review/installer?menu=ready-to-install',
+      nextHref: '/review/installer?menu=complete',
+      nextLabel: 'Next',
+      backDisabled: true,
+      nextDisabled: true
+    };
+  }
+  if (menuId === 'complete') {
+    return {
+      id: menuId,
+      visual: 'banner',
+      heading: 'Completed the Tech Mates Racing Overlay Setup Wizard',
+      bodyHtml: `
+        <p class="installer-text">Tech Mates Racing Overlay has been installed on this computer.</p>
+        <label class="installer-option"><input type="checkbox" checked> Launch Tech Mates Racing Overlay</label>`,
+      backHref: '/review/installer?menu=progress',
+      nextHref: '/review/installer?menu=complete',
+      nextLabel: 'Finish',
+      backDisabled: true
+    };
+  }
+  return {
+    id: 'welcome',
+    visual: 'splash',
+    heading: welcome.title,
+    bodyHtml: welcome.bodyHtml,
+    backHref: null,
+    nextHref: '/review/installer?menu=install-options',
+    nextLabel: 'Next',
+    backDisabled: true
+  };
+}
+
+function installerBannerHtml(bannerUri) {
+  return `
+    <aside class="installer-banner">
+      <img src="${bannerUri}" alt="">
+    </aside>`;
+}
+
+function installerDialogBitmapHtml(dialogUri) {
+  return `
+    <aside class="installer-splash">
+      <img src="${dialogUri}" alt="">
+    </aside>`;
+}
+
+function installerCancelConfirmHtml() {
+  return `
+    <div class="installer-modal-backdrop">
+      <section class="installer-modal" role="dialog" aria-modal="true" aria-label="Cancel setup">
+        <h2 class="installer-modal-title">Cancel setup?</h2>
+        <p class="installer-text">Are you sure you want to cancel Tech Mates Racing Overlay Setup?</p>
+        <div class="installer-modal-actions">
+          ${installerButton('Yes', '/review/installer?menu=welcome', { danger: true })}
+          ${installerButton('No', '/review/installer?menu=welcome', { primary: true })}
+        </div>
+      </section>
+    </div>`;
+}
+
+function installerButton(label, href, { primary = false, danger = false, disabled = false } = {}) {
+  const classes = [
+    'installer-button',
+    primary ? 'primary' : '',
+    danger ? 'danger' : '',
+    disabled ? 'disabled' : ''
+  ].filter(Boolean).join(' ');
+  if (disabled || !href) {
+    return `<button type="button" class="${classes}" disabled>${escapeMarkup(label)}</button>`;
+  }
+  return `<button type="button" class="${classes}" data-review-href="${escapeAttribute(href)}" onclick="window.location.href=this.dataset.reviewHref">${escapeMarkup(label)}</button>`;
+}
+
+function installerWelcomeContent() {
+  const markdown = readFileSync(resolve(repoRoot, 'assets/brand/TMRMsiWelcome.md'), 'utf8');
+  const lines = markdown.split(/\r?\n/);
+  const titleLine = lines.find((line) => line.startsWith('# '));
+  const title = titleLine ? titleLine.replace(/^#\s+/, '').trim() : 'Tech Mates Racing Overlay';
+  const paragraphs = [];
+  let current = [];
+  for (const line of lines) {
+    if (line.startsWith('# ')) continue;
+    if (!line.trim()) {
+      if (current.length) {
+        paragraphs.push(current.join(' '));
+        current = [];
+      }
+      continue;
+    }
+    current.push(line.trim());
+  }
+  if (current.length) {
+    paragraphs.push(current.join(' '));
+  }
+  return {
+    title,
+    bodyHtml: paragraphs
+      .map((paragraph, index) => `<p class="${index === 0 ? 'installer-text' : 'installer-note'}">${escapeMarkup(paragraph)}</p>`)
+      .join('')
+  };
+}
+
+function assetDataUri(relativePath, mimeType) {
+  return `data:${mimeType};base64,${readFileSync(resolve(repoRoot, relativePath)).toString('base64')}`;
+}
+
+function escapeMarkup(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function escapeAttribute(value) {
+  return escapeMarkup(value);
 }
 
 function renderSettingsReviewHtml({
@@ -318,18 +552,18 @@ function settingsOverlaySubtitle(id) {
 
 function settingsBrowserSize(id, overlayState = {}) {
   const base = {
-    standings: [780, 520],
-    relative: [520, 360],
-    'gap-to-leader': [720, 360],
+    standings: [659, 334],
+    relative: [360, 373],
+    'gap-to-leader': [654, 357],
     'track-map': [360, 360],
     'stream-chat': [380, 520],
     'garage-cover': [1280, 720],
-    'fuel-calculator': [600, 340],
+    'fuel-calculator': [503, 315],
     'input-state': [520, 260],
     'car-radar': [300, 300],
     flags: [360, 170],
-    'session-weather': [480, 520],
-    'pit-service': [420, 560]
+    'session-weather': [464, 496],
+    'pit-service': [530, 743]
   }[id] || [400, 300];
   if (id === 'input-state') {
     base[0] = inputStateBaseWidth(overlayState, base[0]);
@@ -380,6 +614,8 @@ function settingsContentRows(id, overlayState = {}) {
         enabled('Driver'),
         enabled('Class gap'),
         enabled('Focus interval'),
+        enabled('Fastest lap'),
+        enabled('Last lap'),
         enabled('Pit status')
       ];
     case 'relative':
@@ -505,6 +741,8 @@ function settingsContentOptionKey(id, label) {
       Driver: 'standings.content.standings.driver.enabled',
       'Class gap': 'standings.content.standings.gap.enabled',
       'Focus interval': 'standings.content.standings.interval.enabled',
+      'Fastest lap': 'standings.content.standings.fastest-lap.enabled',
+      'Last lap': 'standings.content.standings.last-lap.enabled',
       'Pit status': 'standings.content.standings.pit.enabled',
       'Multiclass sections': 'standings.class-separators.enabled',
       'Class separators': 'standings.class-separators.enabled'
@@ -2520,6 +2758,7 @@ function themeCssVariables() {
     ['--tmr-orange-rgb', colors.orange],
     ['--tmr-error', colors.error],
     ['--tmr-error-rgb', colors.error],
+    ['--tmr-best-lap', colors.bestLapSector],
     ['--tmr-track-line', colors.trackLine],
     ['--tmr-start-finish-boundary', colors.startFinishBoundary],
     ['--tmr-start-finish-boundary-shadow', colors.startFinishBoundaryShadow]
