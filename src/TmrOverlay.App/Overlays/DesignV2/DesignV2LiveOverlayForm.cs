@@ -2859,13 +2859,17 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
 
             if (row.IsClassHeader)
             {
-                var rowRect = new RectangleF(rect.Left, y, renderedTableWidth, TableClassHeaderRowHeight);
-                if (rowRect.Bottom > rect.Bottom)
+                var classHeaderRowRect = new RectangleF(rect.Left, y, renderedTableWidth, TableClassHeaderRowHeight);
+                if (classHeaderRowRect.Bottom > rect.Bottom)
                 {
                     break;
                 }
 
-                var headerRect = new RectangleF(rowRect.Left, rowRect.Top + TableClassHeaderBandTop, rowRect.Width, TableClassHeaderBandHeight);
+                var headerRect = new RectangleF(
+                    classHeaderRowRect.Left,
+                    classHeaderRowRect.Top + TableClassHeaderBandTop,
+                    classHeaderRowRect.Width,
+                    TableClassHeaderBandHeight);
                 if (headerRect.Bottom > rect.Bottom)
                 {
                     break;
@@ -2875,7 +2879,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                     drawnRows,
                     sourceIndex,
                     "class-header",
-                    LayoutRect(rowRect))
+                    LayoutRect(classHeaderRowRect))
                 {
                     Text = string.IsNullOrWhiteSpace(row.ClassHeaderTitle) ? "Class" : row.ClassHeaderTitle,
                     Detail = row.ClassHeaderDetail,
@@ -2885,7 +2889,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                         : Blend(SurfaceRaised, Cyan, 5, 1)),
                     Foreground = ColorHex(TextPrimary)
                 });
-                y += rowRect.Height + RowGap;
+                y += classHeaderRowRect.Height + RowGap;
                 drawnRows++;
                 continue;
             }
@@ -4061,13 +4065,17 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         {
             if (row.IsClassHeader)
             {
-                var rowRect = new RectangleF(rect.Left, y, renderedTableWidth, TableClassHeaderRowHeight);
-                if (rowRect.Bottom > rect.Bottom)
+                var classHeaderRowRect = new RectangleF(rect.Left, y, renderedTableWidth, TableClassHeaderRowHeight);
+                if (classHeaderRowRect.Bottom > rect.Bottom)
                 {
                     break;
                 }
 
-                var headerRect = new RectangleF(rowRect.Left, rowRect.Top + TableClassHeaderBandTop, rowRect.Width, TableClassHeaderBandHeight);
+                var headerRect = new RectangleF(
+                    classHeaderRowRect.Left,
+                    classHeaderRowRect.Top + TableClassHeaderBandTop,
+                    classHeaderRowRect.Width,
+                    TableClassHeaderBandHeight);
                 if (headerRect.Bottom > rect.Bottom)
                 {
                     break;
@@ -4095,7 +4103,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                     TextSecondary,
                     new RectangleF(headerRect.Left + headerRect.Width * 0.58f, headerRect.Top + 5, headerRect.Width * 0.42f - 10, 14),
                     ContentAlignment.MiddleRight);
-                y += rowRect.Height + RowGap;
+                y += classHeaderRowRect.Height + RowGap;
                 drawnRows++;
                 continue;
             }
