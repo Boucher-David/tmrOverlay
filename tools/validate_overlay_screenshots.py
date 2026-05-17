@@ -96,7 +96,7 @@ EXPECTED_COMPONENT_PNGS = {
 WINDOWS_EXPECTED_PNGS = {
     "states/fuel-calculator-live.png": (503, 315),
     "states/relative-live.png": (360, 373),
-    "states/standings-live.png": (519, 334),
+    "states/standings-live.png": (659, 334),
     "states/track-map-placeholder.png": (360, 360),
     "states/flags-blue.png": (360, 170),
     "states/session-weather-live.png": (464, 496),
@@ -196,7 +196,7 @@ WINDOWS_SETTING_REGION_PNGS = [
 ]
 
 WINDOWS_NATIVE_OVERLAY_SIZES = {
-    "standings": (519, 334),
+    "standings": (659, 334),
     "fuel-calculator": (503, 315),
     "relative": (360, 373),
     "track-map": (360, 360),
@@ -210,7 +210,7 @@ WINDOWS_NATIVE_OVERLAY_SIZES = {
 }
 
 WINDOWS_NATIVE_SPECIAL_PNGS = {
-    "native-overlays/standings-preview-sizing-race.png": (519, 334),
+    "native-overlays/standings-preview-sizing-race.png": (659, 334),
 }
 
 WINDOWS_NATIVE_OVERLAY_SIZE_SOURCES = {
@@ -254,6 +254,12 @@ BROWSER_ONLY_OVERLAY_IDS = {
     # the Windows settings UI; the installed app does not create a native
     # WinForms overlay window for it.
     "garage-cover",
+}
+
+BROWSER_FULL_CANVAS_COMPARISON_OVERLAYS = {
+    "car-radar",
+    "track-map",
+    "flags",
 }
 
 WINDOWS_NATIVE_OVERLAY_BODIES = {
@@ -889,6 +895,7 @@ def validate_browser_review_manifest(
         if path.startswith(("browser-overlays/", "localhost-overlays/")):
             require_manifest_fields(path, screenshot, ["overlayId", "previewMode", "moduleAsset", "status", "bodyKind"], failures)
             require_model_evidence(path, screenshot.get("modelEvidence"), failures)
+            require_browser_full_canvas_exception_evidence(path, screenshot, failures)
             validate_localhost_alias_manifest(path, screenshot, failures)
             validate_overlay_semantics(
                 path,
@@ -983,6 +990,49 @@ def require_scenario_source_paths(
             continue
         if source_file.get("exists") is not True:
             failures.append(f"{path}: scenario source file {required_path} does not exist")
+
+
+def require_browser_full_canvas_exception_evidence(path: str, values: dict[str, object], failures: list[str]) -> None:
+    overlay_id = values.get("overlayId")
+    if overlay_id not in BROWSER_FULL_CANVAS_COMPARISON_OVERLAYS:
+        return
+
+    scenario = values.get("scenarioEvidence")
+    if not isinstance(scenario, dict):
+        failures.append(f"{path}: full-canvas overlay missing scenario evidence")
+        return
+
+    expected_mode = "browser-localhost-full-canvas-vs-native-cropped-overlay-window"
+    if values.get("captureMode") != "browser-source-full-canvas":
+        failures.append(f"{path}: full-canvas overlay missing top-level captureMode evidence")
+    if scenario.get("captureMode") != "browser-source-full-canvas":
+        failures.append(f"{path}: full-canvas overlay missing scenario captureMode evidence")
+    if values.get("comparisonMode") != expected_mode:
+        failures.append(f"{path}: full-canvas overlay missing top-level comparisonMode evidence")
+    if scenario.get("comparisonMode") != expected_mode:
+        failures.append(f"{path}: full-canvas overlay missing scenario comparisonMode evidence")
+    if not values.get("comparisonLimit"):
+        failures.append(f"{path}: full-canvas overlay missing top-level comparisonLimit evidence")
+    if not scenario.get("comparisonLimit"):
+        failures.append(f"{path}: full-canvas overlay missing scenario comparisonLimit evidence")
+
+    expected_size = WINDOWS_NATIVE_OVERLAY_SIZES.get(overlay_id)
+    if expected_size is None:
+        failures.append(f"{path}: full-canvas overlay has no expected native overlay size")
+        return
+
+    for label, size in (
+        ("top-level configuredOverlaySize", values.get("configuredOverlaySize")),
+        ("scenario configuredOverlaySize", scenario.get("configuredOverlaySize")),
+    ):
+        if not isinstance(size, dict):
+            failures.append(f"{path}: full-canvas overlay missing {label}")
+            continue
+        if size.get("width") != expected_size[0] or size.get("height") != expected_size[1]:
+            failures.append(
+                f"{path}: expected {label} {expected_size[0]}x{expected_size[1]}, "
+                f"got {size.get('width')}x{size.get('height')}"
+            )
 
 
 def require_settings_ui_evidence(path: str, value: object, failures: list[str]) -> None:

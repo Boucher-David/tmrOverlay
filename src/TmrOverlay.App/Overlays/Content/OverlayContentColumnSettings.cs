@@ -92,6 +92,8 @@ internal static class OverlayContentColumnSettings
     public const string DataDriver = "driver";
     public const string DataGap = "gap";
     public const string DataInterval = "interval";
+    public const string DataFastestLap = "fastest-lap";
+    public const string DataLastLap = "last-lap";
     public const string DataPit = "pit";
     public const string DataRelativePosition = "relative-position";
     public const string StandingsClassPositionColumnId = "standings.class-position";
@@ -99,6 +101,8 @@ internal static class OverlayContentColumnSettings
     public const string StandingsDriverColumnId = "standings.driver";
     public const string StandingsGapColumnId = "standings.gap";
     public const string StandingsIntervalColumnId = "standings.interval";
+    public const string StandingsFastestLapColumnId = "standings.fastest-lap";
+    public const string StandingsLastLapColumnId = "standings.last-lap";
     public const string StandingsPitColumnId = "standings.pit";
     public const string RelativePositionColumnId = "relative.position";
     public const string RelativeDriverColumnId = "relative.driver";
@@ -183,7 +187,9 @@ internal static class OverlayContentColumnSettings
         new(StandingsDriverColumnId, "Driver", DataDriver, true, 3, 250, 180, 520, OverlayOptionKeys.StandingsColumnDriverWidth, Alignment: OverlayContentColumnAlignment.Left),
         new(StandingsGapColumnId, "GAP", DataGap, true, 4, 60, 50, 160, OverlayOptionKeys.StandingsColumnGapWidth, SettingsLabel: "Class gap"),
         new(StandingsIntervalColumnId, "INT", DataInterval, true, 5, 60, 50, 160, OverlayOptionKeys.StandingsColumnIntervalWidth, SettingsLabel: "Focus interval"),
-        new(StandingsPitColumnId, "PIT", DataPit, true, 6, 30, 24, 90, OverlayOptionKeys.StandingsColumnPitWidth, SettingsLabel: "Pit status")
+        new(StandingsFastestLapColumnId, "FAST", DataFastestLap, true, 6, 70, 56, 150, OverlayOptionKeys.StandingsColumnFastestLapWidth, SettingsLabel: "Fastest lap"),
+        new(StandingsLastLapColumnId, "LAST", DataLastLap, true, 7, 70, 56, 150, OverlayOptionKeys.StandingsColumnLastLapWidth, SettingsLabel: "Last lap"),
+        new(StandingsPitColumnId, "PIT", DataPit, true, 8, 30, 24, 90, OverlayOptionKeys.StandingsColumnPitWidth, SettingsLabel: "Pit status")
     ],
         Blocks:
     [

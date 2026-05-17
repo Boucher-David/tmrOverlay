@@ -26,6 +26,11 @@ const sharedChromeOverlayIds = new Set([
   'session-weather',
   'pit-service'
 ]);
+const fullCanvasOverlaySizes = new Map([
+  ['car-radar', { width: 300, height: 300 }],
+  ['track-map', { width: 360, height: 360 }],
+  ['flags', { width: 360, height: 170 }]
+]);
 const previewModes = ['practice', 'qualifying', 'race'];
 
 const args = parseArgs(process.argv.slice(2));
@@ -194,6 +199,7 @@ function settingsRoute(relativePath, urlPath, metadata = {}) {
 }
 
 function overlayRoute(relativePath, urlPath, metadata = {}) {
+  const fullCanvasSize = metadata.overlayId ? fullCanvasOverlaySizes.get(metadata.overlayId) : null;
   return {
     relativePath,
     urlPath,
@@ -203,6 +209,12 @@ function overlayRoute(relativePath, urlPath, metadata = {}) {
     renderer: 'browser-overlay-assets',
     moduleAsset: metadata.overlayId ? `src/TmrOverlay.App/Overlays/BrowserSources/Assets/modules/${metadata.overlayId}.js` : null,
     sourceContract: 'src/TmrOverlay.App/Overlays/BrowserSources/BrowserOverlayModelFactory.cs',
+    captureMode: fullCanvasSize ? 'browser-source-full-canvas' : 'cropped-overlay-element',
+    configuredOverlaySize: fullCanvasSize || null,
+    comparisonMode: fullCanvasSize ? 'browser-localhost-full-canvas-vs-native-cropped-overlay-window' : null,
+    comparisonLimit: fullCanvasSize
+      ? 'outer PNG dimensions are not parity evidence; compare model, layout, vector, and text evidence against native-overlays'
+      : null,
     ...metadata
   };
 }
@@ -248,6 +260,10 @@ async function captureRoute(page, route, manifest) {
     renderer: route.renderer,
     sourceContract: route.sourceContract,
     moduleAsset: route.moduleAsset || null,
+    captureMode: route.captureMode || null,
+    configuredOverlaySize: route.configuredOverlaySize || null,
+    comparisonMode: route.comparisonMode || null,
+    comparisonLimit: route.comparisonLimit || null,
     overlayId: route.overlayId || null,
     tab: route.tab || null,
     region: route.region || null,
@@ -1323,6 +1339,10 @@ function scenarioEvidence(route, model) {
     region: route.region || null,
     previewMode: route.previewMode || null,
     routeAlias: route.routeAlias || null,
+    captureMode: route.captureMode || null,
+    configuredOverlaySize: route.configuredOverlaySize || null,
+    comparisonMode: route.comparisonMode || null,
+    comparisonLimit: route.comparisonLimit || null,
     fixture: route.surface?.includes('settings')
       ? 'browser-review-settings-fixture'
       : route.surface?.includes('installer')

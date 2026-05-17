@@ -881,11 +881,11 @@ internal static class Program
         var rows = new[]
         {
             ReviewClassHeader("LMP2", "2 cars | ~10 laps", "#33CEFF"),
-            ReviewTableRow(["1", "#8", "Kousuke Konishi", "Leader", "-45.0", ""], null),
+            ReviewTableRow(["1", "#8", "Kousuke Konishi", "Leader", "-45.0", "1:45.884", "1:46.210", ""], null, cellForegrounds: [null, null, null, null, null, "#B65CFF", null, null]),
             ReviewClassHeader("GT3", "3 cars | ~12.4 laps", "#FFAA00"),
-            ReviewTableRow(["1", "#000", "Kauan Vigliazzi Teixeira Lemos", "Leader", "-2.0", ""], null),
-            ReviewTableRow(["24", "#3094", "Tech Mates Racing", "+3.4", "0.0", ""], null, isReference: true),
-            ReviewTableRow(["49", "#60", "Tommie Wittens", "+8.9", "+5.5", "IN"], null)
+            ReviewTableRow(["1", "#000", "Kauan Vigliazzi Teixeira Lemos", "Leader", "-2.0", "1:53.112", "1:53.112", ""], null, cellForegrounds: [null, null, null, null, null, "#B65CFF", "#B65CFF", null]),
+            ReviewTableRow(["24", "#3094", "Tech Mates Racing", "+3.4", "0.0", "1:54.228", "1:54.228", ""], null, isReference: true, cellForegrounds: [null, null, null, null, null, "#62FF9F", "#62FF9F", null]),
+            ReviewTableRow(["49", "#60", "Tommie Wittens", "+8.9", "+5.5", "1:55.480", "1:56.004", "IN"], null)
         };
         return new DesignV2OverlayModel(
             "Standings",
@@ -899,6 +899,8 @@ internal static class Program
                     new DesignV2Column("Driver", 250, ContentAlignment.MiddleLeft),
                     new DesignV2Column("GAP", 60, ContentAlignment.MiddleRight),
                     new DesignV2Column("INT", 60, ContentAlignment.MiddleRight),
+                    new DesignV2Column("FAST", 70, ContentAlignment.MiddleRight),
+                    new DesignV2Column("LAST", 70, ContentAlignment.MiddleRight),
                     new DesignV2Column("PIT", 30, ContentAlignment.MiddleRight)
                 ],
                 rows),
@@ -1106,7 +1108,8 @@ internal static class Program
         IReadOnlyList<string> values,
         string? classColorHex,
         bool isReference = false,
-        int? relativeLapDelta = null)
+        int? relativeLapDelta = null,
+        IReadOnlyList<string?>? cellForegrounds = null)
     {
         return new DesignV2TableRow(
             values,
@@ -1114,7 +1117,8 @@ internal static class Program
             IsClassHeader: false,
             DesignV2Evidence.Measured,
             classColorHex,
-            RelativeLapDelta: relativeLapDelta);
+            RelativeLapDelta: relativeLapDelta,
+            CellForegrounds: cellForegrounds);
     }
 
     private static DesignV2TableRow ReviewBlankTableRow(int columnCount)

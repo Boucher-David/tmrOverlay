@@ -1139,7 +1139,10 @@ function filterTableModelContent(model, overlayId, overlayState, session = null)
       ? row
       : {
           ...row,
-          cells: retained.map((entry) => row.cells?.[entry.index] ?? '')
+          cells: retained.map((entry) => row.cells?.[entry.index] ?? ''),
+          ...(Array.isArray(row.cellTones)
+            ? { cellTones: retained.map((entry) => row.cellTones?.[entry.index] || null) }
+            : {})
         })
   };
 }
@@ -1153,6 +1156,8 @@ function tableContentLabel(overlayId, column) {
       driver: 'Driver',
       gap: 'Class gap',
       interval: 'Focus interval',
+      'fastest-lap': 'Fastest lap',
+      'last-lap': 'Last lap',
       pit: 'Pit status'
     }[dataKey] || column?.label || dataKey;
   }
@@ -1403,15 +1408,17 @@ function standingsDisplayModel(previewLabel = 'review fixture') {
       { label: 'Driver', dataKey: 'driver', width: 250, alignment: 'left' },
       { label: 'GAP', dataKey: 'gap', width: 60, alignment: 'right' },
       { label: 'INT', dataKey: 'interval', width: 60, alignment: 'right' },
+      { label: 'FAST', dataKey: 'fastest-lap', width: 70, alignment: 'right' },
+      { label: 'LAST', dataKey: 'last-lap', width: 70, alignment: 'right' },
       { label: 'PIT', dataKey: 'pit', width: 30, alignment: 'right' }
     ],
     rows: [
       headerRow('LMP2', '2 cars | ~10 laps', '#33CEFF'),
-      carRow(['1', '#8', 'Kousuke Konishi', 'Leader', '-45.0', '']),
+      carRow(['1', '#8', 'Kousuke Konishi', 'Leader', '-45.0', '1:45.884', '1:46.210', ''], { cellTones: [null, null, null, null, null, 'best-lap', null, null] }),
       headerRow('GT3', '3 cars | ~12.4 laps', '#FFAA00'),
-      carRow(['1', '#000', 'Kauan Vigliazzi Teixeira Lemos', 'Leader', '-2.0', '']),
-      carRow(['24', '#3094', 'Tech Mates Racing', '+3.4', '0.0', ''], { isReference: true }),
-      carRow(['49', '#60', 'Tommie Wittens', '+8.9', '+5.5', 'IN'], { isPit: true })
+      carRow(['1', '#000', 'Kauan Vigliazzi Teixeira Lemos', 'Leader', '-2.0', '1:53.112', '1:53.112', ''], { cellTones: [null, null, null, null, null, 'best-lap', 'best-lap', null] }),
+      carRow(['24', '#3094', 'Tech Mates Racing', '+3.4', '0.0', '1:54.228', '1:54.228', ''], { isReference: true, cellTones: [null, null, null, null, null, 'personal-best', 'personal-best', null] }),
+      carRow(['49', '#60', 'Tommie Wittens', '+8.9', '+5.5', '1:55.480', '1:56.004', 'IN'], { isPit: true })
     ],
     metrics: [],
     headerItems: [

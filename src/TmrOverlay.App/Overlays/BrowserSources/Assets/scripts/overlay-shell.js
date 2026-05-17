@@ -131,7 +131,7 @@
           return `<tr class="${classes}"${classHeaderStyle(row)}><td colspan="${Math.max(1, headers.length)}">${classHeaderContent(row)}</td></tr>`;
         }
 
-        const cells = headers.map((header) => `<td${cellStyle(header)}>${header.value(row)}</td>`).join('');
+        const cells = headers.map((header, columnIndex) => `<td${cellStyle(header, row, columnIndex)}>${header.value(row)}</td>`).join('');
         return `<tr class="${classes}"${rowStyle(row)}>${cells}</tr>`;
       }).join('');
       return `<table${tableStyle}>${colGroup}<thead><tr>${headerHtml}</tr></thead><tbody>${rowHtml}</tbody></table>`;
@@ -171,14 +171,23 @@
       return Number.isFinite(width) && width > 0 ? Math.round(width) : 0;
     }
 
-    function cellStyle(header) {
+    function cellStyle(header, row = null, columnIndex = null) {
       const styles = [];
       const width = columnWidth(header);
       if (width > 0) styles.push(`width:${width}px`);
       const align = ['left', 'right', 'center'].includes(header?.align) ? header.align : null;
       if (align) styles.push(`text-align:${align}`);
       if (header?.dataKey === 'driver') styles.push('padding-left:14px');
+      const tone = row ? cellTone(row, columnIndex) : '';
+      if (tone === 'best-lap') styles.push('color:var(--tmr-best-lap)');
+      if (tone === 'personal-best') styles.push('color:var(--tmr-green)');
       return styles.length ? ` style="${styles.join(';')}"` : '';
+    }
+
+    function cellTone(row, columnIndex) {
+      if (!Number.isInteger(columnIndex)) return '';
+      const tones = Array.isArray(row?.cellTones) ? row.cellTones : [];
+      return String(tones[columnIndex] || '').trim().toLowerCase();
     }
 
     function classHeaderStyle(row) {

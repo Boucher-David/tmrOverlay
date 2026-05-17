@@ -1011,15 +1011,17 @@ function standingsDisplayModel() {
       { id: 'standings.driver', label: 'Driver', dataKey: 'driver', width: 250, alignment: 'left' },
       { id: 'standings.gap', label: 'GAP', dataKey: 'gap', width: 60, alignment: 'right' },
       { id: 'standings.interval', label: 'INT', dataKey: 'interval', width: 60, alignment: 'right' },
+      { id: 'standings.fastest-lap', label: 'FAST', dataKey: 'fastest-lap', width: 70, alignment: 'right' },
+      { id: 'standings.last-lap', label: 'LAST', dataKey: 'last-lap', width: 70, alignment: 'right' },
       { id: 'standings.pit', label: 'PIT', dataKey: 'pit', width: 30, alignment: 'right' }
     ],
     rows: [
       headerRow('LMP2', '2 cars | ~10 laps', '#33CEFF'),
-      carRow(['1', '#8', 'Proto One', 'Lap 22', '-45.0', '']),
+      carRow(['1', '#8', 'Proto One', 'Lap 22', '-45.0', '1:45.884', '1:46.210', '']),
       headerRow('GT3', '3 cars | ~12.4 laps', '#FFAA00'),
-      carRow(['1', '#11', 'GT3 Leader', 'Lap 21', '-2.0', '']),
-      carRow(['2', '#71', 'Focus Racer', '+3.4', '0.0', ''], { isReference: true }),
-      carRow(['3', '#91', 'Chaser', '+8.9', '+5.5', 'IN'], { isPit: true })
+      carRow(['1', '#11', 'GT3 Leader', 'Lap 21', '-2.0', '1:53.112', '1:53.112', '']),
+      carRow(['2', '#71', 'Focus Racer', '+3.4', '0.0', '1:54.228', '1:54.901', ''], { isReference: true }),
+      carRow(['3', '#91', 'Chaser', '+8.9', '+5.5', '1:55.480', '1:56.004', 'IN'], { isPit: true })
     ],
     metrics: []
   };

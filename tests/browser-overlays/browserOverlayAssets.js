@@ -552,7 +552,7 @@ function settingsOverlaySubtitle(id) {
 
 function settingsBrowserSize(id, overlayState = {}) {
   const base = {
-    standings: [519, 334],
+    standings: [659, 334],
     relative: [360, 373],
     'gap-to-leader': [654, 357],
     'track-map': [360, 360],
@@ -614,6 +614,8 @@ function settingsContentRows(id, overlayState = {}) {
         enabled('Driver'),
         enabled('Class gap'),
         enabled('Focus interval'),
+        enabled('Fastest lap'),
+        enabled('Last lap'),
         enabled('Pit status')
       ];
     case 'relative':
@@ -739,6 +741,8 @@ function settingsContentOptionKey(id, label) {
       Driver: 'standings.content.standings.driver.enabled',
       'Class gap': 'standings.content.standings.gap.enabled',
       'Focus interval': 'standings.content.standings.interval.enabled',
+      'Fastest lap': 'standings.content.standings.fastest-lap.enabled',
+      'Last lap': 'standings.content.standings.last-lap.enabled',
       'Pit status': 'standings.content.standings.pit.enabled',
       'Multiclass sections': 'standings.class-separators.enabled',
       'Class separators': 'standings.class-separators.enabled'
@@ -2754,6 +2758,7 @@ function themeCssVariables() {
     ['--tmr-orange-rgb', colors.orange],
     ['--tmr-error', colors.error],
     ['--tmr-error-rgb', colors.error],
+    ['--tmr-best-lap', colors.bestLapSector],
     ['--tmr-track-line', colors.trackLine],
     ['--tmr-start-finish-boundary', colors.startFinishBoundary],
     ['--tmr-start-finish-boundary-shadow', colors.startFinishBoundaryShadow]

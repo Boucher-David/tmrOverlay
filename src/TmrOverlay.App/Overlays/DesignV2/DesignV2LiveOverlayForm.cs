@@ -563,7 +563,8 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             row.IsPartial ? DesignV2Evidence.Partial : DesignV2Evidence.Measured,
             row.CarClassColorHex,
             row.IsClassHeader ? row.Driver : string.Empty,
-            row.IsClassHeader ? ClassHeaderDetail(row) : string.Empty)).ToArray();
+            row.IsClassHeader ? ClassHeaderDetail(row) : string.Empty,
+            CellForegrounds: CellForegroundsForStandingsRow(row, visibleColumns))).ToArray();
         return new DesignV2OverlayModel(
             "Standings",
             viewModel.Status,
@@ -621,11 +622,48 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             [OverlayContentColumnSettings.DataDriver] = row.Driver,
             [OverlayContentColumnSettings.DataGap] = row.Gap,
             [OverlayContentColumnSettings.DataInterval] = row.Interval,
+            [OverlayContentColumnSettings.DataFastestLap] = row.FastestLap,
+            [OverlayContentColumnSettings.DataLastLap] = row.LastLap,
             [OverlayContentColumnSettings.DataPit] = row.Pit
         };
         return visibleColumns
             .Select(column => valuesByKey.TryGetValue(column.DataKey, out var value) ? value : string.Empty)
             .ToArray();
+    }
+
+    private static IReadOnlyList<string?> CellForegroundsForStandingsRow(
+        StandingsOverlayRowViewModel row,
+        IReadOnlyList<OverlayContentColumnState> visibleColumns)
+    {
+        return visibleColumns
+            .Select(column =>
+            {
+                if (IsClassFastestLapCell(row, column.DataKey))
+                {
+                    return ColorRgbHex(BestLapSectorColor);
+                }
+
+                return IsRecentCarBestLapCell(row, column.DataKey)
+                    ? ColorRgbHex(Green)
+                    : null;
+            })
+            .ToArray();
+    }
+
+    private static bool IsClassFastestLapCell(StandingsOverlayRowViewModel row, string? dataKey)
+    {
+        return string.Equals(dataKey, OverlayContentColumnSettings.DataFastestLap, StringComparison.Ordinal)
+                && row.IsClassFastestLap
+            || string.Equals(dataKey, OverlayContentColumnSettings.DataLastLap, StringComparison.Ordinal)
+                && row.IsClassFastestLastLap;
+    }
+
+    private static bool IsRecentCarBestLapCell(StandingsOverlayRowViewModel row, string? dataKey)
+    {
+        return string.Equals(dataKey, OverlayContentColumnSettings.DataFastestLap, StringComparison.Ordinal)
+                && row.IsRecentCarBestLap
+            || string.Equals(dataKey, OverlayContentColumnSettings.DataLastLap, StringComparison.Ordinal)
+                && row.IsRecentCarBestLastLap;
     }
 
     private static string ClassHeaderDetail(StandingsOverlayRowViewModel row)
@@ -2915,7 +2953,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                     LayoutRect(cellRect),
                     column.Alignment)
                 {
-                    Foreground = ColorHex(row.IsReference ? TextPrimary : rowTextColor)
+                    Foreground = ColorHex(TableCellTextColor(row, columnIndex, rowTextColor))
                 });
                 x += column.RenderedWidth;
             }
@@ -3935,6 +3973,11 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
         return $"#{color.A:X2}{color.R:X2}{color.G:X2}{color.B:X2}";
     }
 
+    private static string ColorRgbHex(Color color)
+    {
+        return $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+    }
+
     private bool DrawCustomOverlay(Graphics graphics, Rectangle bounds, DesignV2OverlayModel model)
     {
         var rect = RectangleF.Inflate(bounds, -0.5f, -0.5f);
@@ -4136,7 +4179,7 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
                     graphics,
                     value,
                     row.IsReference || columnIndex == 0 ? rowBoldFont : rowFont,
-                    row.IsReference ? TextPrimary : rowTextColor,
+                    TableCellTextColor(row, columnIndex, rowTextColor),
                     new RectangleF(x + 8, textTop, Math.Max(1f, width - 16), 16),
                     column.Alignment);
                 x += width;
@@ -4174,6 +4217,19 @@ internal sealed class DesignV2LiveOverlayForm : PersistentOverlayForm
             <= -2 => MultipleLapsBehindText,
             _ => TextSecondary
         };
+    }
+
+    private static Color TableCellTextColor(DesignV2TableRow row, int columnIndex, Color rowTextColor)
+    {
+        if (row.CellForegrounds is not null
+            && columnIndex >= 0
+            && columnIndex < row.CellForegrounds.Count
+            && TryParseHexColor(row.CellForegrounds[columnIndex], out var foreground))
+        {
+            return foreground;
+        }
+
+        return row.IsReference ? TextPrimary : rowTextColor;
     }
 
     private void DrawMetricRows(
@@ -8227,7 +8283,8 @@ internal sealed record DesignV2TableRow(
     string? ClassColorHex,
     string ClassHeaderTitle = "",
     string ClassHeaderDetail = "",
-    int? RelativeLapDelta = null);
+    int? RelativeLapDelta = null,
+    IReadOnlyList<string?>? CellForegrounds = null);
 
 internal sealed record DesignV2MetricRow(
     string Label,
